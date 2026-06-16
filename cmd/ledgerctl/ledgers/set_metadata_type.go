@@ -27,8 +27,9 @@ Examples:
   ledgerctl ledgers smt --ledger my-ledger --target transaction --key priority --type uint64
   ledgerctl ledgers smt --ledger my-ledger --target ledger --key env --type string
   ledgerctl ledgers set-metadata-type  # Interactive mode`,
-		Args: cobra.NoArgs,
-		RunE: runSetMetadataType,
+		Args:              cobra.NoArgs,
+		RunE:              runSetMetadataType,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

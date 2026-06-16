@@ -29,8 +29,9 @@ Examples:
 
   # Create a checkpoint every 30 seconds (6-field format with seconds)
   ledgerctl query-checkpoint set-schedule "*/30 * * * * *"`,
-		Args: cobra.ExactArgs(1),
-		RunE: runSetSchedule,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runSetSchedule,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

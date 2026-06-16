@@ -26,8 +26,9 @@ Examples:
   ledgerctl ledgers rmt --ledger my-ledger --target transaction --key priority -y
   ledgerctl ledgers rmt --ledger my-ledger --target ledger --key env -y
   ledgerctl ledgers remove-metadata-type  # Interactive mode`,
-		Args: cobra.NoArgs,
-		RunE: runRemoveMetadataType,
+		Args:              cobra.NoArgs,
+		RunE:              runRemoveMetadataType,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

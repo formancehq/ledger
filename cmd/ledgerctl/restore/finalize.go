@@ -16,10 +16,12 @@ import (
 // NewFinalizeCommand creates the restore finalize command.
 func NewFinalizeCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "finalize",
-		Short: "Finalize the restore and shut down the server",
-		Long:  "Commit the staged backup as live data, write the RESTORED marker, and shut down the server",
-		RunE:  runFinalize,
+		Use:               "finalize",
+		Short:             "Finalize the restore and shut down the server",
+		Long:              "Commit the staged backup as live data, write the RESTORED marker, and shut down the server",
+		RunE:              runFinalize,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")

@@ -14,10 +14,11 @@ import (
 
 func newInfoCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "info <checkpoint-id>",
-		Short: "Show detailed information about a query checkpoint",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runInfo,
+		Use:               "info <checkpoint-id>",
+		Short:             "Show detailed information about a query checkpoint",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runInfo,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

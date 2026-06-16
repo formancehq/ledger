@@ -11,11 +11,12 @@ import (
 // newGetScheduleCommand creates the query-checkpoint get-schedule command.
 func newGetScheduleCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get-schedule",
-		Short: "Show automatic query checkpoint creation schedule",
-		Long:  `Display the current cron schedule for automatic query checkpoint creation, if any.`,
-		Args:  cobra.NoArgs,
-		RunE:  runGetSchedule,
+		Use:               "get-schedule",
+		Short:             "Show automatic query checkpoint creation schedule",
+		Long:              `Display the current cron schedule for automatic query checkpoint creation, if any.`,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runGetSchedule,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

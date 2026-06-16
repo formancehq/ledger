@@ -27,8 +27,9 @@ Examples:
   ledgerctl ledgers get-schema my-ledger
   ledgerctl ledgers schema my-ledger
   ledgerctl ledgers gs my-ledger --json`,
-		Args: cobra.ExactArgs(1),
-		RunE: runGetSchema,
+		Args:              cobra.ExactArgs(1),
+		RunE:              runGetSchema,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

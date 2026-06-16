@@ -24,8 +24,9 @@ If this was the last sink, event emission is implicitly disabled.
 
 Examples:
   ledgerctl events remove-sink --name primary`,
-		Args: cobra.NoArgs,
-		RunE: runRemoveSink,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runRemoveSink,
 	}
 
 	cmd.Flags().String("name", "", "Name of the sink to remove (required)")

@@ -29,8 +29,9 @@ Examples:
 
   # Rotate every 30 seconds (6-field format with seconds)
   ledgerctl periods set-schedule "*/30 * * * * *"`,
-		Args: cobra.ExactArgs(1),
-		RunE: runSetSchedule,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runSetSchedule,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

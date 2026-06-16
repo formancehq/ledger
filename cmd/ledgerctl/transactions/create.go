@@ -82,8 +82,9 @@ Examples:
   ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD" --posting "bank,user,500,USD"
   ledgerctl transactions create --ledger my-ledger --script transfer.num --var "amount=1000" --var "asset=USD"
   ledgerctl transactions create --ledger my-ledger  # Interactive mode`,
-		Args: cobra.NoArgs,
-		RunE: runCreate,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runCreate,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

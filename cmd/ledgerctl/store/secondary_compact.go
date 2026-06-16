@@ -13,10 +13,12 @@ import (
 // NewSecondaryCompactCommand creates the store secondary compact command.
 func NewSecondaryCompactCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "compact",
-		Short: "Compact the secondary Pebble store",
-		Long:  "Trigger an online compaction of the secondary (read index) Pebble store via gRPC",
-		RunE:  runSecondaryCompact,
+		Use:               "compact",
+		Short:             "Compact the secondary Pebble store",
+		Long:              "Trigger an online compaction of the secondary (read index) Pebble store via gRPC",
+		RunE:              runSecondaryCompact,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

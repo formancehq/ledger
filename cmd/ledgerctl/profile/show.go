@@ -13,12 +13,13 @@ import (
 // NewShowCommand returns the "profile show" command.
 func NewShowCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:     "show [name]",
-		Aliases: []string{"get", "describe"},
-		Short:   "Show details of a connection profile",
-		Long:    "Show details of a connection profile. Defaults to the active profile if no name is given.",
-		Args:    cobra.MaximumNArgs(1),
-		RunE:    runShow,
+		Use:               "show [name]",
+		Aliases:           []string{"get", "describe"},
+		Short:             "Show details of a connection profile",
+		Long:              "Show details of a connection profile. Defaults to the active profile if no name is given.",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runShow,
 	}
 }
 

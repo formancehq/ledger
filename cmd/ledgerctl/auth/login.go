@@ -41,7 +41,9 @@ Subsequent commands automatically use the stored token without --auth-token.
 
 Accepts a JSON key bundle via --bundle or stdin pipe (produced by
 kubectl ledger agents get-key --bundle). Explicit flags override bundle values.`,
-		RunE: runLogin,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runLogin,
 	}
 
 	addTokenGenerationFlags(cmd)

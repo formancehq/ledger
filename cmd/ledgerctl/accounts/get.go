@@ -28,8 +28,9 @@ Examples:
   ledgerctl accounts get bank --ledger my-ledger
   ledgerctl accounts get bank  # Will prompt for ledger if needed
   ledgerctl accounts get       # Will prompt for both ledger and address`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runGet,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runGet,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

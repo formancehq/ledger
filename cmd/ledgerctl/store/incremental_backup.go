@@ -13,11 +13,13 @@ import (
 // NewIncrementalBackupCommand creates the store incremental-backup command.
 func NewIncrementalBackupCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "incremental-backup",
-		Aliases: []string{"ibk"},
-		Short:   "Export new log and audit entries since the last backup",
-		Long:    "Perform an incremental backup by exporting new log and audit entries to S3 or Azure Blob Storage. Requires a prior full backup.",
-		RunE:    runIncrementalBackup,
+		Use:               "incremental-backup",
+		Aliases:           []string{"ibk"},
+		Short:             "Export new log and audit entries since the last backup",
+		Long:              "Perform an incremental backup by exporting new log and audit entries to S3 or Azure Blob Storage. Requires a prior full backup.",
+		RunE:              runIncrementalBackup,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("path", "", "Reserved for future use")

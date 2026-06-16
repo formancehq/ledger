@@ -27,8 +27,9 @@ Examples:
   ledgerctl transactions delete-metadata 42 status --ledger my-ledger
   ledgerctl transactions delete-metadata 42 reason
   ledgerctl tx dm 42 status`,
-		Args: cobra.MaximumNArgs(2),
-		RunE: runDeleteMetadata,
+		Args:              cobra.MaximumNArgs(2),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runDeleteMetadata,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

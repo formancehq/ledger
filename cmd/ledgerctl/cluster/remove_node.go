@@ -15,11 +15,12 @@ import (
 // NewRemoveNodeCommand creates the cluster remove-node command.
 func NewRemoveNodeCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "remove-node <node-id>",
-		Short: "Remove a node from the cluster",
-		Long:  "Remove a node (voter or learner) from the Raft cluster. The request is forwarded to the leader. Cannot remove the leader itself; transfer leadership first.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runRemoveNode,
+		Use:               "remove-node <node-id>",
+		Short:             "Remove a node from the cluster",
+		Long:              "Remove a node (voter or learner) from the Raft cluster. The request is forwarded to the leader. Cannot remove the leader itself; transfer leadership first.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runRemoveNode,
 	}
 
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

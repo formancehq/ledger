@@ -13,10 +13,12 @@ import (
 // NewCloseCommand creates the periods close command.
 func NewCloseCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "close",
-		Short: "Close the current open period",
-		Long:  "Close the current open period and open a new one. A background seal process will compute the sealing hash.",
-		RunE:  runClose,
+		Use:               "close",
+		Short:             "Close the current open period",
+		Long:              "Close the current open period and open a new one. A background seal process will compute the sealing hash.",
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runClose,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

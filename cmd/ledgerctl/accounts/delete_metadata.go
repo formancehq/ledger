@@ -26,8 +26,9 @@ Examples:
   ledgerctl accounts delete-metadata bank type --ledger my-ledger
   ledgerctl accounts delete-metadata users:alice role
   ledgerctl acc dm bank type`,
-		Args: cobra.MaximumNArgs(2),
-		RunE: runDeleteMetadata,
+		Args:              cobra.MaximumNArgs(2),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runDeleteMetadata,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

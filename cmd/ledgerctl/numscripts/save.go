@@ -25,8 +25,9 @@ The script content is read from a file (--file) or stdin.
 Examples:
   ledgerctl numscripts save transfer --ledger myledger --file transfer.num
   cat transfer.num | ledgerctl numscripts save transfer --ledger myledger`,
-		Args: cobra.ExactArgs(1),
-		RunE: runSave,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runSave,
 	}
 
 	cmd.Flags().String("file", "", "Path to the numscript file (reads stdin if omitted)")

@@ -16,12 +16,13 @@ import (
 // NewGetCommand creates the ledgers get command.
 func NewGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "get <name>",
-		Aliases: cmdutil.GetAliases,
-		Short:   "Get a ledger by name",
-		Long:    "Get detailed information about a ledger by its name via gRPC",
-		Args:    cobra.ExactArgs(1),
-		RunE:    runGet,
+		Use:               "get <name>",
+		Aliases:           cmdutil.GetAliases,
+		Short:             "Get a ledger by name",
+		Long:              "Get detailed information about a ledger by its name via gRPC",
+		Args:              cobra.ExactArgs(1),
+		RunE:              runGet,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddConsistencyFlags(cmd)

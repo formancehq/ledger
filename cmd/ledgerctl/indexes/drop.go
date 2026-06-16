@@ -29,8 +29,9 @@ Index types:
 Examples:
   ledgerctl indexes drop --ledger my-ledger --type address
   ledgerctl indexes drop --ledger my-ledger --type metadata --target account --key category`,
-		Args: cobra.NoArgs,
-		RunE: runDropIndex,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runDropIndex,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

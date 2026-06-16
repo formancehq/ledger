@@ -24,8 +24,9 @@ Examples:
   ledgerctl ledgers promote my-ledger
   ledgerctl ledgers promote --name my-ledger
   ledgerctl ledgers promote  # Interactive mode`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runPromote,
+		Args:              cobra.MaximumNArgs(1),
+		RunE:              runPromote,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("name", "", "Name of the ledger to promote")

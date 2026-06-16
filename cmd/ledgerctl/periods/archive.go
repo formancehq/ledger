@@ -14,11 +14,12 @@ import (
 // NewArchiveCommand creates the periods archive command.
 func NewArchiveCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "archive <period-id>",
-		Short: "Archive a closed period to cold storage",
-		Long:  "Archive a closed period's logs and audit entries to cold storage, then purge them from hot storage.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runArchive,
+		Use:               "archive <period-id>",
+		Short:             "Archive a closed period to cold storage",
+		Long:              "Archive a closed period's logs and audit entries to cold storage, then purge them from hot storage.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runArchive,
 	}
 }
 

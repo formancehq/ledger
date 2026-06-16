@@ -31,8 +31,9 @@ bounded; this endpoint is intentionally not paginated.
 
 Examples:
   ledgerctl events list`,
-		Args: cobra.NoArgs,
-		RunE: runList,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

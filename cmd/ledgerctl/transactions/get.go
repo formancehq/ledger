@@ -27,8 +27,9 @@ Examples:
   ledgerctl transactions get 42 --ledger my-ledger
   ledgerctl transactions get 42  # Will prompt for ledger if needed
   ledgerctl transactions get     # Will prompt for both ledger and transaction ID`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runGet,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runGet,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

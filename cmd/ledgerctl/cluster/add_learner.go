@@ -15,11 +15,12 @@ import (
 // NewAddLearnerCommand creates the cluster add-learner command.
 func NewAddLearnerCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add-learner <node-id> <raft-address> <service-address>",
-		Short: "Add a non-voting learner node to the cluster",
-		Long:  "Add a learner (non-voting) node to the Raft cluster. The request is forwarded to the leader.",
-		Args:  cobra.ExactArgs(3),
-		RunE:  runAddLearner,
+		Use:               "add-learner <node-id> <raft-address> <service-address>",
+		Short:             "Add a non-voting learner node to the cluster",
+		Long:              "Add a learner (non-voting) node to the Raft cluster. The request is forwarded to the leader.",
+		Args:              cobra.ExactArgs(3),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runAddLearner,
 	}
 
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

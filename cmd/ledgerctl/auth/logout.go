@@ -17,7 +17,9 @@ func NewLogoutCommand() *cobra.Command {
 		Short: "Remove stored token from the OS keychain",
 		Long: `Remove the JWT bearer token stored in the OS keychain for the current
 --server address.`,
-		RunE: runLogout,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runLogout,
 	}
 }
 

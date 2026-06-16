@@ -30,8 +30,9 @@ Examples:
 
   # List facets (value + count)
   ledgerctl indexes inspect --ledger my-ledger --key status --mode facets --target transaction`,
-		Args: cobra.NoArgs,
-		RunE: runInspectIndex,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runInspectIndex,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

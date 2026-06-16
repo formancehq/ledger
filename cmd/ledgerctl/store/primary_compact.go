@@ -13,11 +13,13 @@ import (
 // NewPrimaryCompactCommand creates the store primary compact command.
 func NewPrimaryCompactCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "compact",
-		Aliases: []string{"gc"},
-		Short:   "Compact the primary Pebble store",
-		Long:    "Trigger a synchronous prefix-by-prefix compaction of the primary Pebble store via gRPC",
-		RunE:    runPrimaryCompact,
+		Use:               "compact",
+		Aliases:           []string{"gc"},
+		Short:             "Compact the primary Pebble store",
+		Long:              "Trigger a synchronous prefix-by-prefix compaction of the primary Pebble store via gRPC",
+		RunE:              runPrimaryCompact,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

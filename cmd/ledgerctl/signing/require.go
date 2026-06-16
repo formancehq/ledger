@@ -26,8 +26,9 @@ Examples:
 
   # Disable mandatory signatures
   ledgerctl signing require false --signing-key /path/to/seed`,
-		Args: cobra.ExactArgs(1),
-		RunE: runRequire,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runRequire,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

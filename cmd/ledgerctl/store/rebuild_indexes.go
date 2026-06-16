@@ -26,7 +26,9 @@ from scratch. This is a purely offline operation — no server needed.
 
 Use this after restoring from a backup or when the read index becomes
 corrupted or out of date.`,
-		RunE: runRebuildIndexes,
+		RunE:              runRebuildIndexes,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("data-dir", "", "Pebble data directory (required)")

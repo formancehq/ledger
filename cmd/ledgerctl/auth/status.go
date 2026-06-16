@@ -19,7 +19,9 @@ func NewStatusCommand() *cobra.Command {
 		Short:   "Show current authentication status",
 		Long: `Display the current authentication status including token source
 (flag, environment, keychain, or none) and decoded JWT claims.`,
-		RunE: runStatus,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runStatus,
 	}
 }
 

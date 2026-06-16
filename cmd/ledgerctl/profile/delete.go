@@ -12,11 +12,12 @@ import (
 // NewDeleteCommand returns the "profile delete" command.
 func NewDeleteCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "delete <name>",
-		Aliases: []string{"rm", "remove"},
-		Short:   "Delete a connection profile",
-		Args:    cobra.ExactArgs(1),
-		RunE:    runDelete,
+		Use:               "delete <name>",
+		Aliases:           []string{"rm", "remove"},
+		Short:             "Delete a connection profile",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runDelete,
 	}
 
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")

@@ -12,10 +12,11 @@ import (
 // NewUseCommand returns the "profile use" command.
 func NewUseCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "use <name>",
-		Short: "Set the active connection profile",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runUse,
+		Use:               "use <name>",
+		Short:             "Set the active connection profile",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runUse,
 	}
 }
 

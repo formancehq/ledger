@@ -13,9 +13,11 @@ import (
 // NewCommand creates the upgrade command.
 func NewCommand(currentVersion string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "upgrade",
-		Short: "Upgrade ledgerctl to the latest version",
-		Long:  "Download and install the latest version of ledgerctl from GitHub releases",
+		Use:               "upgrade",
+		Short:             "Upgrade ledgerctl to the latest version",
+		Long:              "Download and install the latest version of ledgerctl from GitHub releases",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			channel, _ := cmd.Flags().GetString("channel")
 			force, _ := cmd.Flags().GetBool("force")

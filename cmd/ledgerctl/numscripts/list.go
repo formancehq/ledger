@@ -21,8 +21,9 @@ func NewListCommand() *cobra.Command {
 Examples:
   ledgerctl numscripts list --ledger myledger
   ledgerctl numscripts list --ledger myledger --page-size 5 --reverse`,
-		Args: cobra.NoArgs,
-		RunE: runList,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

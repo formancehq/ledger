@@ -9,10 +9,11 @@ import (
 
 func NewListCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List available provisioning scenarios",
-		Args:    cobra.NoArgs,
+		Use:               "list",
+		Aliases:           []string{"ls"},
+		Short:             "List available provisioning scenarios",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
 		Run: func(_ *cobra.Command, _ []string) {
 			names := scenario.List()
 			if len(names) == 0 {

@@ -15,11 +15,13 @@ import (
 // NewListCommand creates the logs list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: cmdutil.ListAliases,
-		Short:   "List system logs",
-		Long:    "List system log entries via gRPC streaming",
-		RunE:    runList,
+		Use:               "list",
+		Aliases:           cmdutil.ListAliases,
+		Short:             "List system logs",
+		Long:              "List system log entries via gRPC streaming",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Ledger name (required)")

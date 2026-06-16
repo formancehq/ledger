@@ -13,11 +13,13 @@ import (
 // NewStatsCommand creates the ledgers stats command.
 func NewStatsCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "stats",
-		Aliases: []string{"st"},
-		Short:   "Get ledger statistics",
-		Long:    "Get aggregate statistics (account count, transaction count) for a ledger via gRPC",
-		RunE:    runStats,
+		Use:               "stats",
+		Aliases:           []string{"st"},
+		Short:             "Get ledger statistics",
+		Long:              "Get aggregate statistics (account count, transaction count) for a ledger via gRPC",
+		RunE:              runStats,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("ledger", "", "Ledger name (interactive selection if omitted)")

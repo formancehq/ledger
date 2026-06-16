@@ -29,8 +29,9 @@ Examples:
   ledgerctl transactions set-metadata 42 --ledger my-ledger --metadata status=processed
   ledgerctl transactions set-metadata 42 --metadata reason="refund" --metadata ticket=JIRA-123
   ledgerctl tx sm 42 -m status=processed`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runSetMetadata,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runSetMetadata,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

@@ -28,8 +28,9 @@ Examples:
   ledgerctl ledgers set-metadata --ledger my-ledger -m environment=production -m team=payments
   ledgerctl ledgers sm --ledger my-ledger -m region=eu-west-1
   ledgerctl ledgers set-metadata  # Interactive mode`,
-		Args: cobra.NoArgs,
-		RunE: runSetMetadata,
+		Args:              cobra.NoArgs,
+		RunE:              runSetMetadata,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

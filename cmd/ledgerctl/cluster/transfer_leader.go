@@ -15,12 +15,13 @@ import (
 // NewTransferLeaderCommand creates the cluster transfer-leader command.
 func NewTransferLeaderCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "transfer-leader <node-id>",
-		Aliases: []string{"tl"},
-		Short:   "Transfer Raft leadership to a specific node",
-		Long:    "Transfer the Raft cluster leadership to the specified node. The request is forwarded to the current leader.",
-		Args:    cobra.ExactArgs(1),
-		RunE:    runTransferLeader,
+		Use:               "transfer-leader <node-id>",
+		Aliases:           []string{"tl"},
+		Short:             "Transfer Raft leadership to a specific node",
+		Long:              "Transfer the Raft cluster leadership to the specified node. The request is forwarded to the current leader.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runTransferLeader,
 	}
 
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

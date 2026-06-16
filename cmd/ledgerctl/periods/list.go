@@ -18,11 +18,13 @@ import (
 // NewListCommand creates the periods list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: cmdutil.ListAliases,
-		Short:   "List all periods",
-		Long:    "List all accounting periods with their status",
-		RunE:    runList,
+		Use:               "list",
+		Aliases:           cmdutil.ListAliases,
+		Short:             "List all periods",
+		Long:              "List all accounting periods with their status",
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{

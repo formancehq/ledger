@@ -29,8 +29,9 @@ Examples:
   ledgerctl accounts set-metadata bank --ledger my-ledger --metadata type=asset
   ledgerctl accounts set-metadata users:alice --metadata role=admin --metadata tier=premium
   ledgerctl acc sm bank -m type=asset -m label="Main Bank"`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runSetMetadata,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runSetMetadata,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

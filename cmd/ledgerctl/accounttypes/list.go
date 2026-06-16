@@ -28,8 +28,9 @@ If --ledger is not provided and only one ledger exists, it will be used automati
 Examples:
   ledgerctl account-types list --ledger my-ledger
   ledgerctl at ls`,
-		Args: cobra.NoArgs,
-		RunE: runList,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

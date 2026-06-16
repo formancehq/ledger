@@ -24,8 +24,9 @@ AUDIT: allow transactions but log a warning.
 Examples:
   ledgerctl account-types set-default-enforcement --ledger my-ledger --mode STRICT
   ledgerctl at set-default-enforcement --ledger my-ledger --mode AUDIT`,
-		Args: cobra.NoArgs,
-		RunE: runSetDefaultEnforcement,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runSetDefaultEnforcement,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger (required)")

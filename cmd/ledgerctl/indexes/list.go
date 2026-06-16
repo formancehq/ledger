@@ -26,8 +26,9 @@ this endpoint is intentionally not paginated.
 
 Examples:
   ledgerctl indexes list --ledger my-ledger`,
-		Args: cobra.NoArgs,
-		RunE: runListIndexes,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runListIndexes,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

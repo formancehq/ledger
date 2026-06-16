@@ -15,11 +15,12 @@ import (
 // NewPromoteLearnerCommand creates the cluster promote-learner command.
 func NewPromoteLearnerCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "promote-learner <node-id>",
-		Short: "Promote a learner node to voter",
-		Long:  "Promote a learner (non-voting) node to a full voter in the Raft cluster. The request is forwarded to the leader.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runPromoteLearner,
+		Use:               "promote-learner <node-id>",
+		Short:             "Promote a learner node to voter",
+		Long:              "Promote a learner (non-voting) node to a full voter in the Raft cluster. The request is forwarded to the leader.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runPromoteLearner,
 	}
 
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

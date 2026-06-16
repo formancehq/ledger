@@ -25,8 +25,9 @@ Patterns use colon-separated segments with optional variables:
 Examples:
   ledgerctl account-types add user-checking "users:{id}:checking" --ledger my-ledger
   ledgerctl at add bank-main "banks:{iban}:main" --ledger my-ledger`,
-		Args: cobra.ExactArgs(2),
-		RunE: runAdd,
+		Args:              cobra.ExactArgs(2),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runAdd,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger (required)")

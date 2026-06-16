@@ -21,8 +21,9 @@ func NewRemoveCommand() *cobra.Command {
 Examples:
   ledgerctl account-types remove old-type --ledger my-ledger
   ledgerctl at rm legacy-type --ledger my-ledger`,
-		Args: cobra.ExactArgs(1),
-		RunE: runRemove,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runRemove,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger (required)")

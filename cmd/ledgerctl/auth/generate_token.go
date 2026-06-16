@@ -38,7 +38,9 @@ configured with --auth-ed25519-keys.
 
 The token is output on stdout and can be used with --auth-token or the
 Authorization: Bearer header.`,
-		RunE: runGenerateToken,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runGenerateToken,
 	}
 
 	addTokenGenerationFlags(cmd)

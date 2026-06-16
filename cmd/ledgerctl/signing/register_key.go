@@ -36,8 +36,9 @@ Examples:
 
   # Register additional key (must be signed)
   ledgerctl signing register-key --key-id ops --public-key <hex> --signing-key /path/to/seed`,
-		Args: cobra.NoArgs,
-		RunE: runRegisterKey,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runRegisterKey,
 	}
 
 	cmd.Flags().String("key-id", "", "Unique identifier for the key (required)")

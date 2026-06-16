@@ -29,7 +29,9 @@ Examples:
   ledgerctl transactions analyze --ledger my-ledger
   ledgerctl transactions analyze --ledger my-ledger --threshold 20
   ledgerctl transactions analyze --ledger my-ledger --json`,
-		RunE: runAnalyzeTransactions,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runAnalyzeTransactions,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

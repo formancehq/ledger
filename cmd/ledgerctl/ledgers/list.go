@@ -15,11 +15,13 @@ import (
 // NewListCommand creates the ledgers list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: cmdutil.ListAliases,
-		Short:   "List all ledgers",
-		Long:    "List all ledgers in the cluster via gRPC streaming. Ledgers are bounded per cluster; --page-size and --cursor give finer-grained server-side pagination when needed.",
-		RunE:    runList,
+		Use:               "list",
+		Aliases:           cmdutil.ListAliases,
+		Short:             "List all ledgers",
+		Long:              "List all ledgers in the cluster via gRPC streaming. Ledgers are bounded per cluster; --page-size and --cursor give finer-grained server-side pagination when needed.",
+		RunE:              runList,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{

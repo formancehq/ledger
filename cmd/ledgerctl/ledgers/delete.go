@@ -26,8 +26,9 @@ Examples:
   ledgerctl ledgers delete my-ledger
   ledgerctl ledgers delete --name my-ledger
   ledgerctl ledgers delete  # Interactive mode`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runDelete,
+		Args:              cobra.MaximumNArgs(1),
+		RunE:              runDelete,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("name", "", "Name of the ledger to delete")

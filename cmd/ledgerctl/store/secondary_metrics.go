@@ -13,10 +13,12 @@ import (
 // NewSecondaryMetricsCommand creates the store secondary metrics command.
 func NewSecondaryMetricsCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "metrics",
-		Short: "Get secondary store metrics",
-		Long:  "Retrieve and display metrics from the secondary (read index) Pebble store via gRPC",
-		RunE:  runSecondaryMetrics,
+		Use:               "metrics",
+		Short:             "Get secondary store metrics",
+		Long:              "Retrieve and display metrics from the secondary (read index) Pebble store via gRPC",
+		RunE:              runSecondaryMetrics,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

@@ -13,11 +13,13 @@ import (
 // NewCheckpointCommand creates the store checkpoint command.
 func NewCheckpointCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "checkpoint",
-		Aliases: []string{"cp"},
-		Short:   "Create a Pebble checkpoint",
-		Long:    "Create a Pebble checkpoint of the current live database state via gRPC. Useful after compaction to persist the compacted state across restarts.",
-		RunE:    runCheckpoint,
+		Use:               "checkpoint",
+		Aliases:           []string{"cp"},
+		Short:             "Create a Pebble checkpoint",
+		Long:              "Create a Pebble checkpoint of the current live database state via gRPC. Useful after compaction to persist the compacted state across restarts.",
+		RunE:              runCheckpoint,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

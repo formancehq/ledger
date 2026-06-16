@@ -16,11 +16,13 @@ import (
 // NewCheckCommand creates the store check command.
 func NewCheckCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "check",
-		Aliases: []string{"c", "verify"},
-		Short:   "Check store integrity",
-		Long:    "Verify hash chain integrity and derived data consistency via gRPC",
-		RunE:    runCheck,
+		Use:               "check",
+		Aliases:           []string{"c", "verify"},
+		Short:             "Check store integrity",
+		Long:              "Verify hash chain integrity and derived data consistency via gRPC",
+		RunE:              runCheck,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

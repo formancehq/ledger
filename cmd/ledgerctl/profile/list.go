@@ -12,10 +12,12 @@ import (
 // NewListCommand returns the "profile list" command.
 func NewListCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls", "l"},
-		Short:   "List all connection profiles",
-		RunE:    runList,
+		Use:               "list",
+		Aliases:           []string{"ls", "l"},
+		Short:             "List all connection profiles",
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 }
 

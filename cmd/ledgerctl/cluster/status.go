@@ -17,11 +17,13 @@ import (
 // NewStatusCommand creates the cluster status command.
 func NewStatusCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "status",
-		Aliases: []string{"st"},
-		Short:   "Get cluster status",
-		Long:    "Display the current state of the Raft cluster",
-		RunE:    runStatus,
+		Use:               "status",
+		Aliases:           []string{"st"},
+		Short:             "Get cluster status",
+		Long:              "Display the current state of the Raft cluster",
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runStatus,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

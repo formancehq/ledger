@@ -16,11 +16,13 @@ import (
 // NewListKeysCommand creates the signing list-keys command.
 func NewListKeysCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list-keys",
-		Aliases: cmdutil.ListAliases,
-		Short:   "List all registered signing keys",
-		Long:    "List all registered signing keys and their parent relationships",
-		RunE:    runListKeys,
+		Use:               "list-keys",
+		Aliases:           cmdutil.ListAliases,
+		Short:             "List all registered signing keys",
+		Long:              "List all registered signing keys and their parent relationships",
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runListKeys,
 	}
 
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{

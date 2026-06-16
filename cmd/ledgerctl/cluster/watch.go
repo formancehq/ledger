@@ -15,10 +15,12 @@ import (
 // NewWatchCommand creates the cluster watch command.
 func NewWatchCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "watch",
-		Short: "Watch cluster status",
-		Long:  "Continuously poll and display the cluster status (like watch)",
-		RunE:  runWatch,
+		Use:               "watch",
+		Short:             "Watch cluster status",
+		Long:              "Continuously poll and display the cluster status (like watch)",
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runWatch,
 	}
 
 	cmd.Flags().Duration("interval", 2*time.Second, "Polling interval")

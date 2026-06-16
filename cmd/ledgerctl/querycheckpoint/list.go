@@ -21,7 +21,9 @@ func newListCommand() *cobra.Command {
 
 Query checkpoints are stored in replicated state and naturally bounded in size;
 this endpoint is intentionally not paginated.`,
-		RunE: runList,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

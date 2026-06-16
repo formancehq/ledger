@@ -23,8 +23,9 @@ The output excludes read-only status fields and can be edited then applied back.
 Examples:
   ledgerctl ledgers configuration export myledger --yaml > config.yaml
   ledgerctl ledgers configuration export myledger --json > config.json`,
-		Args: cobra.ExactArgs(1),
-		RunE: runConfigurationExport,
+		Args:              cobra.ExactArgs(1),
+		RunE:              runConfigurationExport,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().Bool("json", false, "Output as JSON (default if neither --json nor --yaml)")

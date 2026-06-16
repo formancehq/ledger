@@ -38,7 +38,9 @@ Examples:
   ledgerctl accounts list --reverse   # Reverse alphabetical (Z→A)
   ledgerctl accounts list --all   # Fetch all accounts without pagination
   ledgerctl accounts list --cursor users:bob   # Resume after a previous page`,
-		RunE: runList,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

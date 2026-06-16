@@ -13,11 +13,12 @@ import (
 // NewGetCommand creates the logs get command.
 func NewGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get <sequence>",
-		Short: "Get a single system log by sequence number",
-		Long:  "Retrieve and display a single system log entry by its sequence number",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runGet,
+		Use:               "get <sequence>",
+		Short:             "Get a single system log by sequence number",
+		Long:              "Retrieve and display a single system log entry by its sequence number",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runGet,
 	}
 
 	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")

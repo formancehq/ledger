@@ -22,8 +22,9 @@ func NewCreateCommand() *cobra.Command {
 Examples:
   ledgerctl queries create active-users --ledger my-ledger --target accounts --filter "metadata[active] == true"
   ledgerctl queries create big-txns --ledger my-ledger --target transactions --filter "amount > 1000"`,
-		Args: cobra.ExactArgs(1),
-		RunE: runCreate,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runCreate,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

@@ -11,11 +11,12 @@ import (
 // newDeleteScheduleCommand creates the query-checkpoint delete-schedule command.
 func newDeleteScheduleCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "delete-schedule",
-		Short: "Delete automatic query checkpoint creation schedule",
-		Long:  `Remove the cron schedule for automatic query checkpoint creation, disabling automatic creation.`,
-		Args:  cobra.NoArgs,
-		RunE:  runDeleteSchedule,
+		Use:               "delete-schedule",
+		Short:             "Delete automatic query checkpoint creation schedule",
+		Long:              `Remove the cron schedule for automatic query checkpoint creation, disabling automatic creation.`,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runDeleteSchedule,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

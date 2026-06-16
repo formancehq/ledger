@@ -15,10 +15,12 @@ import (
 // NewPreviewCommand creates the restore preview command.
 func NewPreviewCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "preview",
-		Short: "Preview staged backup data",
-		Long:  "Display a summary of the staged backup data (ledger count, indices, timestamps)",
-		RunE:  runPreview,
+		Use:               "preview",
+		Short:             "Preview staged backup data",
+		Long:              "Display a summary of the staged backup data (ledger count, indices, timestamps)",
+		RunE:              runPreview,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

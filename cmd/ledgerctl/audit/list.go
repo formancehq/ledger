@@ -19,11 +19,13 @@ import (
 // NewListCommand creates the audit list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: cmdutil.ListAliases,
-		Short:   "List audit entries",
-		Long:    "List audit log entries (successes and failures) via gRPC streaming",
-		RunE:    runList,
+		Use:               "list",
+		Aliases:           cmdutil.ListAliases,
+		Short:             "List audit entries",
+		Long:              "List audit log entries (successes and failures) via gRPC streaming",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{})

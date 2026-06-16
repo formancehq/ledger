@@ -25,8 +25,9 @@ Examples:
   ledgerctl ledgers delete-metadata region --ledger my-ledger
   ledgerctl ledgers dm environment --ledger my-ledger -y
   ledgerctl ledgers delete-metadata  # Interactive mode`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runDeleteMetadata,
+		Args:              cobra.MaximumNArgs(1),
+		RunE:              runDeleteMetadata,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

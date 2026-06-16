@@ -37,8 +37,9 @@ Examples:
   ledgerctl transactions revert 42 --at-effective-date
   ledgerctl transactions revert 42 -y  # Skip confirmation
   ledgerctl tx revert 42 --metadata key1=value1 --metadata key2=value2`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runRevert,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runRevert,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

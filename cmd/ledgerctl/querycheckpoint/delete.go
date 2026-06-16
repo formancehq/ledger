@@ -13,11 +13,12 @@ import (
 
 func newDeleteCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "delete <checkpoint-id>",
-		Short: "Delete a query checkpoint",
-		Long:  "Delete a previously created query checkpoint by its ID.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runDelete,
+		Use:               "delete <checkpoint-id>",
+		Short:             "Delete a query checkpoint",
+		Long:              "Delete a previously created query checkpoint by its ID.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runDelete,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

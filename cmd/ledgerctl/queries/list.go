@@ -20,7 +20,9 @@ func NewListCommand() *cobra.Command {
 
 Prepared queries are stored in raft state per ledger and naturally bounded
 in size; this endpoint is intentionally not paginated.`,
-		RunE: runList,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

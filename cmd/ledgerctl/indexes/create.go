@@ -38,8 +38,9 @@ Examples:
   ledgerctl indexes create --ledger my-ledger --type timestamp
   ledgerctl indexes create --ledger my-ledger --type inserted-at
   ledgerctl indexes create --ledger my-ledger --type log-ledger`,
-		Args: cobra.NoArgs,
-		RunE: runCreateIndex,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runCreateIndex,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

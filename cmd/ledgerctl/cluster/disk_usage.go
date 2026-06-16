@@ -11,11 +11,13 @@ import (
 // NewDiskUsageCommand creates the cluster disk-usage command.
 func NewDiskUsageCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "disk-usage",
-		Aliases: []string{"du"},
-		Short:   "Get disk usage",
-		Long:    "Display filesystem-level disk usage on the connected node",
-		RunE:    runDiskUsage,
+		Use:               "disk-usage",
+		Aliases:           []string{"du"},
+		Short:             "Get disk usage",
+		Long:              "Display filesystem-level disk usage on the connected node",
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runDiskUsage,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

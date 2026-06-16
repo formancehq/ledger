@@ -11,11 +11,12 @@ import (
 // NewGetScheduleCommand creates the periods get-schedule command.
 func NewGetScheduleCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get-schedule",
-		Short: "Show automatic period rotation schedule",
-		Long:  `Display the current cron schedule for automatic period rotation, if any.`,
-		Args:  cobra.NoArgs,
-		RunE:  runGetSchedule,
+		Use:               "get-schedule",
+		Short:             "Show automatic period rotation schedule",
+		Long:              `Display the current cron schedule for automatic period rotation, if any.`,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runGetSchedule,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

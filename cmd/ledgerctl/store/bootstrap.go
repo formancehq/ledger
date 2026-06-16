@@ -37,7 +37,9 @@ func NewBootstrapCommand() *cobra.Command {
 directory, optionally validate integrity, and finalize with checkpoint + RESTORED marker.
 
 This is a purely offline operation — no server needed.`,
-		RunE: runBootstrap,
+		RunE:              runBootstrap,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddBackupStorageFlags(cmd)

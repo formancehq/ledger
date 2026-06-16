@@ -12,10 +12,12 @@ import (
 
 func newCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "create",
-		Short: "Create a query checkpoint via Raft consensus",
-		Long:  "Create a query checkpoint that captures a physical Pebble snapshot of the current state. The checkpoint is replicated to all nodes and enables point-in-time queries.",
-		RunE:  runCreate,
+		Use:               "create",
+		Short:             "Create a query checkpoint via Raft consensus",
+		Long:              "Create a query checkpoint that captures a physical Pebble snapshot of the current state. The checkpoint is replicated to all nodes and enables point-in-time queries.",
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runCreate,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

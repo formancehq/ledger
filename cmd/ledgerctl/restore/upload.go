@@ -37,7 +37,9 @@ func NewDownloadCommand() *cobra.Command {
 		Long: "Download backup files from S3 into a server running in --restore mode.\n" +
 			"The download runs asynchronously on the server and survives ingress/load-balancer\n" +
 			"timeouts. Use Ctrl+C to cancel a running download cleanly.",
-		RunE: runDownload,
+		RunE:              runDownload,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddBackupStorageFlags(cmd)

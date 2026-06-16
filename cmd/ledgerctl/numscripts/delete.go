@@ -22,8 +22,9 @@ This removes the latest version pointer. Historical versions are preserved.
 
 Examples:
   ledgerctl numscripts delete transfer --ledger myledger`,
-		Args: cobra.ExactArgs(1),
-		RunE: runDelete,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runDelete,
 	}
 
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

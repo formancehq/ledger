@@ -18,8 +18,9 @@ func NewCreateCommand() *cobra.Command {
 
 If this is the first profile, it is automatically set as the active profile.
 Use --use to activate it immediately even when other profiles already exist.`,
-		Args: cobra.ExactArgs(1),
-		RunE: runCreate,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runCreate,
 	}
 
 	cmd.Flags().String("server", "", "gRPC server address (required)")

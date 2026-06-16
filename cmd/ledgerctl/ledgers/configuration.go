@@ -33,8 +33,9 @@ Examples:
   ledgerctl ledgers configuration myledger
   ledgerctl ledgers configuration export myledger --yaml > config.yaml
   ledgerctl ledgers configuration apply myledger -f config.yaml`,
-		Args: cobra.ExactArgs(1),
-		RunE: runConfiguration,
+		Args:              cobra.ExactArgs(1),
+		RunE:              runConfiguration,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

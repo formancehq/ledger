@@ -42,7 +42,9 @@ Examples:
   ledgerctl transactions list --reverse   # Oldest first
   ledgerctl transactions list --all   # Fetch all transactions without pagination
   ledgerctl transactions list --cursor 42   # Resume after tx id 42`,
-		RunE: runList,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

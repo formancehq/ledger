@@ -65,8 +65,9 @@ Examples:
   # Add a NATS sink that only receives transaction events
   ledgerctl events add-sink --name txn-only --nats-url nats://localhost:4222 --nats-topic txns \
     --event-types COMMITTED_TRANSACTION,REVERTED_TRANSACTION`,
-		Args: cobra.NoArgs,
-		RunE: runAddSink,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runAddSink,
 	}
 
 	cmd.Flags().String("name", "", "Unique name for this sink (required)")

@@ -35,8 +35,9 @@ Examples:
   ledgerctl provision run marketplace
   ledgerctl provision run marketplace --scale 2.0
   ledgerctl provision run --all --workers 4`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runProvision,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runProvision,
 	}
 
 	cmd.Flags().Duration("timeout", 120*time.Second, "Request timeout (default 120s for provisioning)")

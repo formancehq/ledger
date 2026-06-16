@@ -23,8 +23,9 @@ This command must be signed by an existing key (use --signing-key).
 
 Examples:
   ledgerctl signing revoke-key --key-id ops --signing-key /path/to/seed`,
-		Args: cobra.NoArgs,
-		RunE: runRevokeKey,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runRevokeKey,
 	}
 
 	cmd.Flags().String("key-id", "", "Key ID to revoke (required)")

@@ -216,8 +216,10 @@ func isProfileBootstrapCommand(cmd *cobra.Command) bool {
 
 func newVersionCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
+		Use:               "version",
+		Short:             "Print version information",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
 		Run: func(_ *cobra.Command, _ []string) {
 			banner, _ := pterm.DefaultBigText.WithLetters(
 				putils.LettersFromStringWithStyle("Ledger", pterm.FgCyan.ToStyle()),

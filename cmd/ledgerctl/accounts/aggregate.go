@@ -26,7 +26,9 @@ Examples:
   ledgerctl accounts aggregate-volumes --ledger my-ledger --prefix users:
   ledgerctl accounts aggregate-volumes --ledger my-ledger --filter "metadata[type] == user"
   ledgerctl accounts agg --ledger my-ledger --json`,
-		RunE: runAggregateVolumes,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runAggregateVolumes,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

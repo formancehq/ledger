@@ -22,8 +22,9 @@ Examples:
   ledgerctl ledgers configuration apply myledger -f config.yaml
   ledgerctl ledgers configuration apply myledger -f config.json --dry-run
   ledgerctl ledgers configuration apply myledger -f config.yaml --yes`,
-		Args: cobra.ExactArgs(1),
-		RunE: runConfigurationApply,
+		Args:              cobra.ExactArgs(1),
+		RunE:              runConfigurationApply,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().StringP("file", "f", "", "Path to configuration file (JSON or YAML, required)")

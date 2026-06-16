@@ -11,11 +11,12 @@ import (
 // NewDeleteScheduleCommand creates the periods delete-schedule command.
 func NewDeleteScheduleCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "delete-schedule",
-		Short: "Delete automatic period rotation schedule",
-		Long:  `Remove the cron schedule for automatic period rotation, disabling automatic rotation.`,
-		Args:  cobra.NoArgs,
-		RunE:  runDeleteSchedule,
+		Use:               "delete-schedule",
+		Short:             "Delete automatic period rotation schedule",
+		Long:              `Remove the cron schedule for automatic period rotation, disabling automatic rotation.`,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runDeleteSchedule,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

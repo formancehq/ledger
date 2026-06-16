@@ -18,12 +18,13 @@ import (
 // NewCreateCommand creates the ledgers create command.
 func NewCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "create",
-		Aliases: []string{"new", "add"},
-		Short:   "Create a new ledger",
-		Long:    "Create a new ledger via gRPC.\n\nTo create a mirror ledger, use --mode=mirror with source configuration flags.",
-		Args:    cobra.NoArgs,
-		RunE:    runCreate,
+		Use:               "create",
+		Aliases:           []string{"new", "add"},
+		Short:             "Create a new ledger",
+		Long:              "Create a new ledger via gRPC.\n\nTo create a mirror ledger, use --mode=mirror with source configuration flags.",
+		Args:              cobra.NoArgs,
+		RunE:              runCreate,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("name", "", "Name of the ledger to create")

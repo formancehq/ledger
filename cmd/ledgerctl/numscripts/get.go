@@ -21,8 +21,9 @@ By default, returns the latest version. Use --version to get a specific version.
 Examples:
   ledgerctl numscripts get transfer --ledger myledger
   ledgerctl numscripts get transfer --ledger myledger --version 2`,
-		Args: cobra.ExactArgs(1),
-		RunE: runGet,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              runGet,
 	}
 
 	cmd.Flags().String("version", "", "Specific version to retrieve (empty = latest)")

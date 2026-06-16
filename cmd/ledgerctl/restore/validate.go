@@ -15,10 +15,12 @@ import (
 // NewValidateCommand creates the restore validate command.
 func NewValidateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "validate",
-		Short: "Validate staged backup integrity",
-		Long:  "Run integrity checks on the staged backup data (hash chain, volumes, metadata)",
-		RunE:  runValidate,
+		Use:               "validate",
+		Short:             "Validate staged backup integrity",
+		Long:              "Run integrity checks on the staged backup data (hash chain, volumes, metadata)",
+		RunE:              runValidate,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().Duration("timeout", 5*cmdutil.DefaultTimeout, "Request timeout")

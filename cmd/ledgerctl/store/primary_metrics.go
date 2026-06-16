@@ -15,11 +15,13 @@ import (
 // NewPrimaryMetricsCommand creates the store primary metrics command.
 func NewPrimaryMetricsCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "metrics",
-		Aliases: []string{"m"},
-		Short:   "Get primary store metrics",
-		Long:    "Retrieve and display metrics from the primary Pebble storage engine via gRPC",
-		RunE:    runPrimaryMetrics,
+		Use:               "metrics",
+		Aliases:           []string{"m"},
+		Short:             "Get primary store metrics",
+		Long:              "Retrieve and display metrics from the primary Pebble storage engine via gRPC",
+		RunE:              runPrimaryMetrics,
+		Args:              cobra.ExactArgs(0),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmdutil.AddOutputFlags(cmd)
