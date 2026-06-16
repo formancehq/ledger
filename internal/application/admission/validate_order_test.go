@@ -102,6 +102,15 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 						Ledger: "default",
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								// Content source required so the structural gate
+								// (validateOrderContent) doesn't reject the order
+								// before metadata is even looked at.
+								Postings: []*commonpb.Posting{{
+									Source:      "world",
+									Destination: "users:alice",
+									Amount:      commonpb.NewUint256FromUint64(1),
+									Asset:       "USD",
+								}},
 								Metadata: map[string]*commonpb.MetadataValue{
 									"category": {Type: &commonpb.MetadataValue_StringValue{StringValue: "test"}},
 								},
@@ -464,6 +473,134 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 			t.Parallel()
 
 			err := validateOrder(tt.order)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateOrderContent exercises the structural well-formedness gate
+// added in #452: a CreateTransaction must declare at least one content
+// source, and explicit postings cannot be combined with a script.
+func TestValidateOrderContent(t *testing.T) {
+	t.Parallel()
+
+	posting := &commonpb.Posting{
+		Source:      "world",
+		Destination: "users:alice",
+		Amount:      commonpb.NewUint256FromUint64(1),
+		Asset:       "USD",
+	}
+
+	tests := []struct {
+		name    string
+		ct      *raftcmdpb.CreateTransactionOrder
+		wantErr error
+	}{
+		{
+			name:    "fully empty payload",
+			ct:      &raftcmdpb.CreateTransactionOrder{},
+			wantErr: domain.ErrEmptyTransaction,
+		},
+		{
+			name: "empty inline script",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Script: &commonpb.Script{Plain: ""},
+			},
+			wantErr: domain.ErrEmptyTransaction,
+		},
+		{
+			name: "metadata only, no content source",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Metadata: map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")},
+			},
+			wantErr: domain.ErrEmptyTransaction,
+		},
+		{
+			name: "postings + inline script",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{posting},
+				Script:   &commonpb.Script{Plain: "send [USD 1] (source = @world destination = @a)"},
+			},
+			wantErr: domain.ErrPostingsAndScriptConflict,
+		},
+		{
+			name: "postings + scriptReference",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings:           []*commonpb.Posting{posting},
+				NumscriptReference: &raftcmdpb.NumscriptReference{Name: "payment", Version: "1.0.0"},
+			},
+			wantErr: domain.ErrPostingsAndScriptConflict,
+		},
+		{
+			name: "postings only",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{posting},
+			},
+		},
+		{
+			name: "inline script only",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Script: &commonpb.Script{Plain: "send [USD 1] (source = @world destination = @a)"},
+			},
+		},
+		{
+			name: "scriptReference only",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				NumscriptReference: &raftcmdpb.NumscriptReference{Name: "payment", Version: "1.0.0"},
+			},
+		},
+		{
+			name: "empty scriptReference (no name)",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				NumscriptReference: &raftcmdpb.NumscriptReference{},
+			},
+			wantErr: domain.ErrEmptyTransaction,
+		},
+		{
+			name: "scriptReference with vars but no name",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				NumscriptReference: &raftcmdpb.NumscriptReference{Vars: map[string]string{"k": "v"}},
+			},
+			wantErr: domain.ErrEmptyTransaction,
+		},
+		{
+			name: "postings + empty scriptReference (nameless)",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings:           []*commonpb.Posting{posting},
+				NumscriptReference: &raftcmdpb.NumscriptReference{},
+			},
+			wantErr: domain.ErrPostingsAndScriptConflict,
+		},
+		{
+			name: "postings + scriptReference with vars but no name",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings:           []*commonpb.Posting{posting},
+				NumscriptReference: &raftcmdpb.NumscriptReference{Vars: map[string]string{"k": "v"}},
+			},
+			wantErr: domain.ErrPostingsAndScriptConflict,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			order := &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "default",
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: tt.ct,
+						},
+					},
+				},
+			}
+
+			err := validateOrder(order)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 			} else {

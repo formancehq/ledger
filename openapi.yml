@@ -2201,6 +2201,12 @@ components:
 
     CreateTransactionRequest:
       type: object
+      description: |
+        A transaction must declare exactly one content source: explicit
+        `postings`, an inline `script`, or a `scriptReference`. The
+        `postings` array cannot be combined with `script` or
+        `scriptReference`. Idempotency is controlled exclusively via the
+        `Idempotency-Key` HTTP header — there is no body-level key.
       properties:
         accountMetadata:
           type: object
@@ -2225,13 +2231,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PostingRequest'
-          description: List of postings for the transaction (required if script is not provided)
+          description: List of postings for the transaction. Mutually exclusive with `script` and `scriptReference`.
         script:
           $ref: '#/components/schemas/Script'
-          description: Numscript script to execute (required if postings is not provided). Cannot be used together with postings.
-        idempotencyKey:
-          type: string
-          description: Idempotency key to prevent duplicate transactions
+          description: Inline Numscript to execute. Mutually exclusive with `postings` and `scriptReference`.
+        scriptReference:
+          $ref: '#/components/schemas/ScriptReference'
+          description: Reference to a numscript saved in the ledger's library. Mutually exclusive with `postings` and `script`.
         expandVolumes:
           type: boolean
           default: false
@@ -2272,6 +2278,23 @@ components:
           additionalProperties:
             type: string
           description: Variables to pass to the script
+
+    ScriptReference:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Name of the numscript in the ledger's library
+        version:
+          type: string
+          description: Optional semver constraint. Empty means latest.
+        vars:
+          type: object
+          additionalProperties:
+            type: string
+          description: Variables to pass to the referenced script
 
     BulkElement:
       type: object
@@ -2459,19 +2482,19 @@ components:
           properties:
             transaction:
               $ref: '#/components/schemas/TransactionResponse'
-            account_metadata:
+            accountMetadata:
               type: object
               additionalProperties:
                 type: object
               description: Metadata for accounts involved in the transaction
-            post_commit_volumes:
+            postCommitVolumes:
               $ref: '#/components/schemas/PostCommitVolumes'
               description: Post-commit volumes per account/asset (only present when expandVolumes is true)
-            period_id:
+            periodId:
               type: integer
               format: uint64
               description: Period that was OPEN when this transaction was created
-            previous_account_metadata:
+            previousAccountMetadata:
               type: object
               additionalProperties:
                 type: object
@@ -2662,14 +2685,14 @@ components:
     RevertedTransaction:
       type: object
       properties:
-        reverted_transaction_id:
+        revertedTransactionId:
           type: integer
           format: uint64
           description: ID of the original transaction that was reverted
-        revert_transaction:
+        revertTransaction:
           $ref: '#/components/schemas/TransactionResponse'
           description: The new transaction that reverses the original transaction
-        post_commit_volumes:
+        postCommitVolumes:
           $ref: '#/components/schemas/PostCommitVolumes'
           description: Post-commit volumes per account/asset (only present when expandVolumes is true)
         warnings:

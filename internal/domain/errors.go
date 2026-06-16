@@ -324,6 +324,8 @@ var (
 	ErrNumscriptNameRequired      = newValidationSentinel("numscript name is required")
 	ErrNumscriptContentRequired   = newValidationSentinel("numscript content is required")
 	ErrScriptAndReferenceConflict = newValidationSentinel("cannot specify both script and scriptReference")
+	ErrEmptyTransaction           = newValidationSentinel("transaction must produce at least one posting")
+	ErrPostingsAndScriptConflict  = newValidationSentinel("postings cannot be combined with script or scriptReference")
 	ErrScriptRequired             = newValidationSentinel("numscript: script is required")
 	ErrLedgerNameRequired         = newValidationSentinel("ledger name is required")
 )

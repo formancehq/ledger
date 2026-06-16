@@ -564,18 +564,16 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	// Note: When Script.Plain is empty, the processor falls back to stdPostingProducer
-	// which creates an empty transaction. This test verifies that behavior.
+	// A payload with an empty Script.Plain and no postings used to silently
+	// produce a zero-posting transaction (#452). The structural gate at
+	// admission catches inputs with no content source; this FSM-side check
+	// catches anything that slipped past it AND the symmetric case where a
+	// numscript runs cleanly but emits no `send`. The processor rejects
+	// before bumping boundaries.
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -592,17 +590,50 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 		},
 	}
 
-	// Empty script falls back to standard posting producer, creating an empty transaction
 	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.Nil(t, result)
+	require.ErrorIs(t, err, domain.ErrEmptyTransaction)
+}
+
+// TestProcessCreateTransaction_Numscript_NoSendStillRejected exercises the
+// post-producer guard via a numscript that parses and runs cleanly but emits
+// no `send`. Without the FSM-side check, the producer returns an empty
+// result and the transaction would be committed with zero postings (#452).
+func TestProcessCreateTransaction_Numscript_NoSendStillRejected(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
-	require.NotNil(t, result)
 
-	applyLog := result.GetApply()
-	require.NotNil(t, applyLog)
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
-	require.NotNil(t, createdTx)
-	require.Empty(t, createdTx.GetTransaction().GetPostings()) // Empty transaction
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
+
+	// A numscript that declares a variable but never emits a `send`.
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Script: &commonpb.Script{
+							Plain: "vars { account $a }",
+							Vars:  map[string]string{"a": "users:alice"},
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.Nil(t, result)
+	require.ErrorIs(t, err, domain.ErrEmptyTransaction)
 }
 
 func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testing.T) {

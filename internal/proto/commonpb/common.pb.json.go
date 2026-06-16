@@ -175,22 +175,30 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for CreatedTransaction.
 func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Transaction     *Transaction              `json:"transaction,omitempty"`
-		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
+		Transaction             *Transaction              `json:"transaction,omitempty"`
+		AccountMetadata         map[string]map[string]any `json:"accountMetadata,omitempty"`
+		PeriodID                uint64                    `json:"periodId,omitempty"`
+		PostCommitVolumes       *PostCommitVolumes        `json:"postCommitVolumes,omitempty"`
+		PreviousAccountMetadata map[string]map[string]any `json:"previousAccountMetadata,omitempty"`
 	}{
-		Transaction:     x.GetTransaction(),
-		AccountMetadata: AccountMetadataToAnyMap(x.GetAccountMetadata()),
+		Transaction:             x.GetTransaction(),
+		AccountMetadata:         AccountMetadataToAnyMap(x.GetAccountMetadata()),
+		PeriodID:                x.GetPeriodId(),
+		PostCommitVolumes:       x.GetPostCommitVolumes(),
+		PreviousAccountMetadata: AccountMetadataToAnyMap(x.GetPreviousAccountMetadata()),
 	})
 }
 
 // MarshalJSON implements json.Marshaler for RevertedTransaction.
 func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		RevertedTransactionID uint64       `json:"revertedTransactionID,omitempty"`
-		RevertTransaction     *Transaction `json:"revertTransaction,omitempty"`
+		RevertedTransactionID uint64             `json:"revertedTransactionId,omitempty"`
+		RevertTransaction     *Transaction       `json:"revertTransaction,omitempty"`
+		PostCommitVolumes     *PostCommitVolumes `json:"postCommitVolumes,omitempty"`
 	}{
 		RevertedTransactionID: x.GetRevertedTransactionId(),
 		RevertTransaction:     x.GetRevertTransaction(),
+		PostCommitVolumes:     x.GetPostCommitVolumes(),
 	})
 }
 

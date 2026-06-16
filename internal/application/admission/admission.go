@@ -892,9 +892,24 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					}] = struct{}{}
 				}
 
-				// Scripts (inline or reference) are resolved in a separate pass
-				// (resolveScriptsAndEnrichNeeds) after extractPreloadNeeds returns.
-				// Skip volume/metadata preload for script-based orders here.
+				// Caller-supplied account metadata always preloads here,
+				// regardless of whether the transaction is posting-based or
+				// script-based. processCreateTransaction reads previous values
+				// to compute previousAccountMetadata for index replay, so the
+				// keys must be in the preload set even when the postings
+				// themselves are discovered later by the script pass.
+				for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
+					for key := range mm.GetValues() {
+						p.Metadata[domain.MetadataKey{
+							AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
+							Key:        key,
+						}] = struct{}{}
+					}
+				}
+
+				// Volumes for script-based orders are discovered in a separate
+				// pass (resolveScriptsAndEnrichNeeds) after extractPreloadNeeds
+				// returns. Skip the posting-driven volume preload for those.
 				if applyData.CreateTransaction.GetNumscriptReference() != nil ||
 					(applyData.CreateTransaction.GetScript() != nil &&
 						applyData.CreateTransaction.GetScript().GetPlain() != "" &&
@@ -905,16 +920,6 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				for _, posting := range applyData.CreateTransaction.GetPostings() {
 					addVolumeNeed(p, ledgerID, posting.GetSource(), posting.GetAsset())
 					addVolumeNeed(p, ledgerID, posting.GetDestination(), posting.GetAsset())
-				}
-
-				// Preload account metadata for previous value capture.
-				for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
-					for key := range mm.GetValues() {
-						p.Metadata[domain.MetadataKey{
-							AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
-							Key:        key,
-						}] = struct{}{}
-					}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
@@ -981,7 +986,8 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 // dependencies from all script-based CreateTransaction orders. It enriches the given
 // Needs with the discovered dependencies so that a single BuildPreloads call covers everything.
 //
-// This runs after extractPreloadNeeds (which skips script-based orders) and before BuildPreloads.
+// This runs after extractPreloadNeeds (which preloads caller-supplied accountMetadata
+// keys but skips posting-driven volumes for script-based orders) and before BuildPreloads.
 func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *preload.Needs, nameToID map[string]uint32) error {
 	for _, order := range orders {
 		applyOrder, ok := order.GetType().(*raftcmdpb.Order_Apply)

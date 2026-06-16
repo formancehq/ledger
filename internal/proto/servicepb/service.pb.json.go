@@ -28,6 +28,9 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 		Reference       string                    `json:"reference,omitempty"`
 		Postings        []*commonpb.Posting       `json:"postings,omitempty"`
 		Script          *commonpb.Script          `json:"script,omitempty"`
+		ScriptReference *ScriptReference          `json:"scriptReference,omitempty"`
+		Force           bool                      `json:"force,omitempty"`
+		ExpandVolumes   bool                      `json:"expandVolumes,omitempty"`
 	}{
 		AccountMetadata: commonpb.AccountMetadataToAnyMap(x.GetAccountMetadata()),
 		Metadata:        commonpb.MetadataToAnyMap(x.GetMetadata()),
@@ -35,7 +38,68 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 		Reference:       x.GetReference(),
 		Postings:        x.GetPostings(),
 		Script:          x.GetScript(),
+		ScriptReference: x.GetScriptReference(),
+		Force:           x.GetForce(),
+		ExpandVolumes:   x.GetExpandVolumes(),
 	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler for CreateTransactionPayload.
+//
+// The default protoc-gen-go struct tags are snake_case, so a plain
+// encoding/json decode would silently drop the multi-word camelCase keys the
+// REST contract advertises (scriptReference, accountMetadata, expandVolumes,
+// …) and produce a zero-posting transaction (#452). We mirror MarshalJSON's
+// shape here, then rebuild the protobuf struct field-by-field. Unknown JSON
+// keys are tolerated to preserve the lenient behavior of the previous
+// decoder.
+func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		AccountMetadata map[string]map[string]any `json:"accountMetadata"`
+		Metadata        map[string]any            `json:"metadata"`
+		Timestamp       *commonpb.Timestamp       `json:"timestamp"`
+		Reference       string                    `json:"reference"`
+		Postings        []*commonpb.Posting       `json:"postings"`
+		Script          *commonpb.Script          `json:"script"`
+		ScriptReference *ScriptReference          `json:"scriptReference"`
+		Force           bool                      `json:"force"`
+		ExpandVolumes   bool                      `json:"expandVolumes"`
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	metadata, err := commonpb.MetadataFromAnyMap(aux.Metadata)
+	if err != nil {
+		return fmt.Errorf("invalid metadata: %w", err)
+	}
+
+	var accountMetadata map[string]*commonpb.MetadataMap
+	if len(aux.AccountMetadata) > 0 {
+		accountMetadata = make(map[string]*commonpb.MetadataMap, len(aux.AccountMetadata))
+
+		for account, values := range aux.AccountMetadata {
+			mv, err := commonpb.MetadataFromAnyMap(values)
+			if err != nil {
+				return fmt.Errorf("invalid account metadata for %q: %w", account, err)
+			}
+
+			accountMetadata[account] = &commonpb.MetadataMap{Values: mv}
+		}
+	}
+
+	x.Postings = aux.Postings
+	x.Script = aux.Script
+	x.Timestamp = aux.Timestamp
+	x.Reference = aux.Reference
+	x.Metadata = metadata
+	x.AccountMetadata = accountMetadata
+	x.Force = aux.Force
+	x.ExpandVolumes = aux.ExpandVolumes
+	x.ScriptReference = aux.ScriptReference
+
+	return nil
 }
 
 // MarshalJSON implements json.Marshaler for RevertTransactionPayload.
@@ -49,12 +113,16 @@ func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 		Force                bool           `json:"force,omitempty"`
 		AtEffectiveDate      bool           `json:"atEffectiveDate,omitempty"`
 		Metadata             map[string]any `json:"metadata,omitempty"`
+		Receipt              string         `json:"receipt,omitempty"`
+		ExpandVolumes        bool           `json:"expandVolumes,omitempty"`
 	}{
 		TransactionId:        x.GetTransactionId(),
 		TransactionReference: x.GetTransactionReference(),
 		Force:                x.GetForce(),
 		AtEffectiveDate:      x.GetAtEffectiveDate(),
 		Metadata:             commonpb.MetadataToAnyMap(x.GetMetadata()),
+		Receipt:              x.GetReceipt(),
+		ExpandVolumes:        x.GetExpandVolumes(),
 	})
 }
 

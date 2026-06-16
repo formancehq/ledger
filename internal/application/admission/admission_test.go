@@ -919,6 +919,93 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 	})
 }
 
+// TestExtractPreloadNeeds_AccountMetadata_ScriptBacked guards against a
+// regression class exposed by the camelCase decode fix in #452. Before
+// the decode fix, `accountMetadata` was silently dropped on script-backed
+// requests so the bug never surfaced. With decoding fixed, the
+// previously-correct posting-only branch shape would have caused
+// processCreateTransaction's previousAccountMetadata capture to read an
+// un-preloaded key for any inline script / scriptReference combined with
+// accountMetadata. Caller-supplied accountMetadata keys must reach the
+// preload set in all three shapes (postings-only, inline-script,
+// scriptReference).
+func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
+	t.Parallel()
+
+	makeAccountMetadata := func() map[string]*commonpb.MetadataMap {
+		return map[string]*commonpb.MetadataMap{
+			"users:alice": {Values: map[string]*commonpb.MetadataValue{
+				"vip": commonpb.NewStringValue("yes"),
+			}},
+		}
+	}
+
+	cases := []struct {
+		name string
+		ct   *raftcmdpb.CreateTransactionOrder
+	}{
+		{
+			name: "postings + accountMetadata",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{
+					Source:      "world",
+					Destination: "users:alice",
+					Amount:      commonpb.NewUint256FromUint64(1),
+					Asset:       "USD",
+				}},
+				AccountMetadata: makeAccountMetadata(),
+			},
+		},
+		{
+			name: "inline script + accountMetadata",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				Script:          &commonpb.Script{Plain: "send [USD 1] (source = @world destination = @users:alice)"},
+				AccountMetadata: makeAccountMetadata(),
+			},
+		},
+		{
+			name: "scriptReference + accountMetadata",
+			ct: &raftcmdpb.CreateTransactionOrder{
+				NumscriptReference: &raftcmdpb.NumscriptReference{Name: "payment", Version: "1.0.0"},
+				AccountMetadata:    makeAccountMetadata(),
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := createTestStore(t)
+			admission, _ := createTestAdmission(t, store)
+
+			orders := []*raftcmdpb.Order{
+				{
+					Type: &raftcmdpb.Order_Apply{
+						Apply: &raftcmdpb.LedgerApplyOrder{
+							Ledger: testLedgerName,
+							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: tc.ct,
+							},
+						},
+					},
+				},
+			}
+
+			needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+			require.NoError(t, err)
+
+			key := domain.MetadataKey{
+				AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
+				Key:        "vip",
+			}
+			_, ok := needs.Metadata[key]
+			require.True(t, ok,
+				"caller-supplied accountMetadata key must reach the preload set so the FSM can capture previousAccountMetadata",
+			)
+		})
+	}
+}
+
 func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 	t.Parallel()
 

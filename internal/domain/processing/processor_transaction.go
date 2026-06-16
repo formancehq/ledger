@@ -71,6 +71,16 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint
 		return nil, err
 	}
 
+	// Post-producer invariant: a created transaction must move at least one
+	// posting. The structural admission gate (validateOrderContent) rejects
+	// orders with no content source, but a numscript that runs cleanly yet
+	// emits no `send` (or whose `send` short-circuits via vars) only surfaces
+	// here. Without this guard the FSM commits a zero-posting log entry
+	// (#452).
+	if len(result.Postings) == 0 {
+		return nil, domain.ErrEmptyTransaction
+	}
+
 	nextTransactionID := boundaries.GetNextTransactionId()
 	boundaries.NextTransactionId = nextTransactionID + 1
 	boundaries.PostingCount += uint64(len(result.Postings))

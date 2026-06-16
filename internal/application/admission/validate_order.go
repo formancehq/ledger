@@ -22,6 +22,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
+	if err := validateOrderContent(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
 	return nil
 }
 
@@ -167,6 +171,49 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 	default:
 		return nil
 	}
+}
+
+// validateOrderContent enforces structural well-formedness on the order
+// payload (currently CreateTransaction). It rejects orders that declare no
+// content source (no postings, no inline script, no script reference) and
+// orders that combine explicit postings with a script — both shapes silently
+// produce an unintended transaction at the FSM (#452).
+//
+// The "result must contain ≥1 posting" invariant — needed to catch numscripts
+// that execute fine but emit no postings — lives on the FSM
+// (processCreateTransaction) because only it sees the post-producer result.
+func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
+	apply, ok := order.GetType().(*raftcmdpb.Order_Apply)
+	if !ok {
+		return nil
+	}
+
+	ct, ok := apply.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
+	if !ok {
+		return nil
+	}
+
+	o := ct.CreateTransaction
+	hasPostings := len(o.GetPostings()) > 0
+	hasInlineScript := o.GetScript() != nil && o.GetScript().GetPlain() != ""
+	// Two booleans on the reference because the two gates have different needs:
+	//   - refPresent drives the conflict check: any reference (even nameless)
+	//     signals the caller intended the script path, so postings alongside is
+	//     ambiguous and must be rejected.
+	//   - refValid drives the empty-payload check: a nameless reference is not
+	//     real content (the FSM would surface ErrNumscriptNotFound{Name:""}),
+	//     so an order with only `scriptReference: {}` is empty.
+	refPresent := o.GetNumscriptReference() != nil
+	refValid := refPresent && o.GetNumscriptReference().GetName() != ""
+
+	switch {
+	case hasPostings && (hasInlineScript || refPresent):
+		return domain.ErrPostingsAndScriptConflict
+	case !hasPostings && !hasInlineScript && !refValid:
+		return domain.ErrEmptyTransaction
+	}
+
+	return nil
 }
 
 // validateMetadataMap validates all keys and values in a metadata map.

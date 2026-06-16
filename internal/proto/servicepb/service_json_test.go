@@ -46,4 +46,21 @@ func TestRevertTransactionPayload_MarshalJSON_Identifier(t *testing.T) {
 		require.False(t, strings.Contains(out, "transactionReference"),
 			"id variant must not emit a reference key")
 	})
+
+	t.Run("expandVolumes and receipt are emitted", func(t *testing.T) {
+		t.Parallel()
+
+		payload := &RevertTransactionPayload{
+			Identifier:    &RevertTransactionPayload_TransactionId{TransactionId: 1},
+			ExpandVolumes: true,
+			Receipt:       "rcpt-xyz",
+		}
+
+		data, err := payload.MarshalJSON()
+		require.NoError(t, err)
+
+		out := string(data)
+		require.Contains(t, out, `"expandVolumes":true`)
+		require.Contains(t, out, `"receipt":"rcpt-xyz"`)
+	})
 }
