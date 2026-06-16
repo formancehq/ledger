@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -15,14 +16,14 @@ import (
 func TestHandleListPreparedQueries_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listPreparedQueriesFn: func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
 			return []*commonpb.PreparedQuery{
 				{Name: "query1", Ledger: "ledger1"},
 				{Name: "query2", Ledger: "ledger1"},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -38,11 +39,11 @@ func TestHandleListPreparedQueries_Success(t *testing.T) {
 func TestHandleListPreparedQueries_Empty(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listPreparedQueriesFn: func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
 			return nil, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -58,7 +59,7 @@ func TestHandleListPreparedQueries_Empty(t *testing.T) {
 func TestHandleListPreparedQueries_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/prepared-queries", nil, map[string]string{
@@ -73,11 +74,11 @@ func TestHandleListPreparedQueries_MissingLedgerName(t *testing.T) {
 func TestHandleListPreparedQueries_BackendError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listPreparedQueriesFn: func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
 			return nil, errors.New("unexpected error")
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

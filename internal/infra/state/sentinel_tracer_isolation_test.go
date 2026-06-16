@@ -43,7 +43,7 @@ func TestSentinelTracerIsolatedAcrossBatches(t *testing.T) {
 	snap := NewCacheSnapshotter(logger, reg, nil)
 	machine, err := NewMachine(
 		logger, reg, snap, dataStore, dal.NewSentinelFactory(dataStore, true), meter,
-		keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil,
+		keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil,
 		"test-cluster",
 		0,
 	)

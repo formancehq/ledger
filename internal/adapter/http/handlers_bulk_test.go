@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -17,7 +18,7 @@ import (
 func TestHandleBulk_InvalidBody(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`not json`)
@@ -33,7 +34,7 @@ func TestHandleBulk_InvalidBody(t *testing.T) {
 func TestHandleBulk_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`[]`)
@@ -49,7 +50,7 @@ func TestHandleBulk_MissingLedgerName(t *testing.T) {
 func TestHandleBulk_SizeLimitExceeded(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServerWithBulkLimit(t, &mockBackend{}, 1)
+	srv := newTestServerWithBulkLimit(t, NewMockBackend(gomock.NewController(t)), 1)
 
 	// Two elements but limit is 1
 	w := httptest.NewRecorder()
@@ -69,7 +70,7 @@ func TestHandleBulk_SizeLimitExceeded(t *testing.T) {
 func TestHandleBulk_EmptyArray(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`[]`)
@@ -86,11 +87,11 @@ func TestRunBulkAtomic_AllFail(t *testing.T) {
 	t.Parallel()
 
 	expectedErr := errors.New("atomic failure")
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, expectedErr
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	requests := []*servicepb.Request{{}, {}}
@@ -106,14 +107,14 @@ func TestRunBulkAtomic_AllFail(t *testing.T) {
 func TestRunBulkAtomic_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Id: 1}}}}},
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Id: 2}}}}},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	requests := []*servicepb.Request{{}, {}}
@@ -131,8 +132,9 @@ func TestRunBulkSequential_StopOnError(t *testing.T) {
 	t.Parallel()
 
 	callCount := 0
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			callCount++
 			if callCount == 1 {
 				return nil, errors.New("first fails")
@@ -141,8 +143,7 @@ func TestRunBulkSequential_StopOnError(t *testing.T) {
 			return []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	requests := []*servicepb.Request{{}, {}, {}}
@@ -158,8 +159,9 @@ func TestRunBulkSequential_ContinueOnFailure(t *testing.T) {
 	t.Parallel()
 
 	callCount := 0
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			callCount++
 			if callCount == 1 {
 				return nil, errors.New("first fails")
@@ -168,8 +170,7 @@ func TestRunBulkSequential_ContinueOnFailure(t *testing.T) {
 			return []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	requests := []*servicepb.Request{{}, {}}

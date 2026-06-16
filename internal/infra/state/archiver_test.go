@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
@@ -25,140 +26,164 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// mockArchive holds the bytes of an archive plus its persisted SHA-256 — the
+// archive holds the bytes of an archive plus its persisted SHA-256 — the
 // two-step state that real backends keep (object body + checksum sidecar /
 // user-metadata). `data` and `checksum` can be set independently to simulate
 // crashed-mid-upload scenarios.
-type mockArchive struct {
+type archive struct {
 	data     []byte
 	checksum []byte
 }
 
-// mockColdStorage is a test-only in-memory implementation of coldstorage.ColdStorage.
-type mockColdStorage struct {
+// coldStorageState is the in-memory state shared by all DoAndReturn closures
+// wired into a MockColdStorage. It keeps mockgen as the entry point while
+// preserving the stateful semantics tests rely on (seed, mutex-guarded map,
+// archiveCalls counter).
+type coldStorageState struct {
 	mu       sync.Mutex
-	archives map[string]*mockArchive
+	archives map[string]*archive
 
 	archiveCalls atomic.Int32 // count of successful Archive() invocations
 }
 
-func newMockColdStorage() *mockColdStorage {
-	return &mockColdStorage{archives: make(map[string]*mockArchive)}
+func archiveKey(bucketID string, periodID uint64) string {
+	return fmt.Sprintf("%s/%d", bucketID, periodID)
 }
 
-func (m *mockColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// newMockColdStorage returns a MockColdStorage backed by an in-memory state.
+// Tests reach into the returned state to seed archives and inspect counters.
+func newMockColdStorage(t *testing.T) (*MockColdStorage, *coldStorageState) {
+	t.Helper()
 
-	if len(sha256) != coldstorage.ChecksumLength {
-		return fmt.Errorf("mock: invalid checksum length %d", len(sha256))
-	}
+	s := &coldStorageState{archives: make(map[string]*archive)}
+	m := NewMockColdStorage(gomock.NewController(t))
 
-	key := mockArchiveKey(bucketID, periodID)
+	m.EXPECT().Archive(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
+			s.mu.Lock()
+			defer s.mu.Unlock()
 
-	var buf []byte
-	if data != nil {
-		var err error
+			if len(sha256) != coldstorage.ChecksumLength {
+				return fmt.Errorf("mock: invalid checksum length %d", len(sha256))
+			}
 
-		buf, err = io.ReadAll(data)
-		if err != nil {
-			return err
-		}
-	}
+			var buf []byte
+			if data != nil {
+				var err error
 
-	checksumCopy := make([]byte, len(sha256))
-	copy(checksumCopy, sha256)
+				buf, err = io.ReadAll(data)
+				if err != nil {
+					return err
+				}
+			}
 
-	m.archives[key] = &mockArchive{data: buf, checksum: checksumCopy}
-	m.archiveCalls.Add(1)
+			checksumCopy := make([]byte, len(sha256))
+			copy(checksumCopy, sha256)
 
-	return nil
-}
+			s.archives[archiveKey(bucketID, periodID)] = &archive{data: buf, checksum: checksumCopy}
+			s.archiveCalls.Add(1)
 
-func (m *mockColdStorage) Exists(_ context.Context, bucketID string, periodID uint64) (bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+			return nil
+		}).AnyTimes()
 
-	a, ok := m.archives[mockArchiveKey(bucketID, periodID)]
-	if !ok {
-		return false, nil
-	}
+	m.EXPECT().Exists(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64) (bool, error) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
 
-	// Match the real backends: an archive is "fully committed" only when
-	// both the data and its persisted checksum are present.
-	return a.data != nil && a.checksum != nil, nil
-}
+			a, ok := s.archives[archiveKey(bucketID, periodID)]
+			if !ok {
+				return false, nil
+			}
 
-func (m *mockColdStorage) ExpectedChecksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+			// Match the real backends: an archive is "fully committed" only when
+			// both the data and its persisted checksum are present.
+			return a.data != nil && a.checksum != nil, nil
+		}).AnyTimes()
 
-	a, ok := m.archives[mockArchiveKey(bucketID, periodID)]
-	if !ok || a.checksum == nil {
-		return nil, coldstorage.ErrChecksumNotFound
-	}
+	m.EXPECT().ExpectedChecksum(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
 
-	out := make([]byte, len(a.checksum))
-	copy(out, a.checksum)
+			a, ok := s.archives[archiveKey(bucketID, periodID)]
+			if !ok || a.checksum == nil {
+				return nil, coldstorage.ErrChecksumNotFound
+			}
 
-	return out, nil
-}
+			out := make([]byte, len(a.checksum))
+			copy(out, a.checksum)
 
-func (m *mockColdStorage) Checksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+			return out, nil
+		}).AnyTimes()
 
-	a, ok := m.archives[mockArchiveKey(bucketID, periodID)]
-	if !ok || a.data == nil {
-		return nil, fmt.Errorf("archive %s/%d not found", bucketID, periodID)
-	}
+	m.EXPECT().Checksum(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
 
-	return coldstorage.ComputeSHA256(bytes.NewReader(a.data))
-}
+			a, ok := s.archives[archiveKey(bucketID, periodID)]
+			if !ok || a.data == nil {
+				return nil, fmt.Errorf("archive %s/%d not found", bucketID, periodID)
+			}
 
-func (m *mockColdStorage) Fetch(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+			return coldstorage.ComputeSHA256(bytes.NewReader(a.data))
+		}).AnyTimes()
 
-	a, ok := m.archives[mockArchiveKey(bucketID, periodID)]
-	if !ok || a.data == nil {
-		return nil, fmt.Errorf("archive %s/%d not found", bucketID, periodID)
-	}
+	m.EXPECT().Fetch(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
 
-	return io.NopCloser(bytes.NewReader(a.data)), nil
+			a, ok := s.archives[archiveKey(bucketID, periodID)]
+			if !ok || a.data == nil {
+				return nil, fmt.Errorf("archive %s/%d not found", bucketID, periodID)
+			}
+
+			return io.NopCloser(bytes.NewReader(a.data)), nil
+		}).AnyTimes()
+
+	return m, s
 }
 
 // seed inserts a synthetic archive (used to reproduce crash-recovery state in
 // tests). Pass checksum=nil to simulate a data-only partial upload.
-func (m *mockColdStorage) seed(bucketID string, periodID uint64, data, checksum []byte) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (s *coldStorageState) seed(bucketID string, periodID uint64, data, checksum []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	m.archives[mockArchiveKey(bucketID, periodID)] = &mockArchive{
+	s.archives[archiveKey(bucketID, periodID)] = &archive{
 		data:     append([]byte(nil), data...),
 		checksum: append([]byte(nil), checksum...),
 	}
 }
 
-func mockArchiveKey(bucketID string, periodID uint64) string {
-	return fmt.Sprintf("%s/%d", bucketID, periodID)
+// newArchivingPeriodState returns a MockArchiverPeriodState that reports every
+// period as still ARCHIVING — used by archiver tests that pre-date the
+// consume-time guard and need the request to flow through to the cold-storage
+// write path.
+func newArchivingPeriodState(t *testing.T) *MockArchiverPeriodState {
+	t.Helper()
+
+	m := NewMockArchiverPeriodState(gomock.NewController(t))
+	m.EXPECT().ArchivingPeriodByID(gomock.Any()).
+		DoAndReturn(func(id uint64) (*commonpb.Period, bool) {
+			return &commonpb.Period{Id: id, Status: commonpb.PeriodStatus_PERIOD_ARCHIVING}, true
+		}).AnyTimes()
+
+	return m
 }
 
-// fakeArchivingPeriodState reports every period as still ARCHIVING — used by
-// archiver tests that pre-date the consume-time guard and need the request to
-// flow through to the cold-storage write path.
-type fakeArchivingPeriodState struct{}
+// newRejectingPeriodState returns a MockArchiverPeriodState that reports every
+// period as no-longer-ARCHIVING — used to assert the Archiver's consume-time
+// guard against stale requests.
+func newRejectingPeriodState(t *testing.T) *MockArchiverPeriodState {
+	t.Helper()
 
-func (fakeArchivingPeriodState) ArchivingPeriodByID(id uint64) (*commonpb.Period, bool) {
-	return &commonpb.Period{Id: id, Status: commonpb.PeriodStatus_PERIOD_ARCHIVING}, true
-}
+	m := NewMockArchiverPeriodState(gomock.NewController(t))
+	m.EXPECT().ArchivingPeriodByID(gomock.Any()).Return(nil, false).AnyTimes()
 
-// rejectingPeriodState reports every period as no-longer-ARCHIVING — used to
-// assert the Archiver's consume-time guard against stale requests.
-type rejectingPeriodState struct{}
-
-func (rejectingPeriodState) ArchivingPeriodByID(uint64) (*commonpb.Period, bool) {
-	return nil, false
+	return m
 }
 
 func TestArchiverStartStop(t *testing.T) {
@@ -168,9 +193,9 @@ func TestArchiverStartStop(t *testing.T) {
 	logger := logging.FromContext(ctx)
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
-	cs := newMockColdStorage()
+	cs, _ := newMockColdStorage(t)
 
-	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) error { return nil }, func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
+	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) error { return nil }, func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	a.Stop()
 	// No deadlock or panic means success
@@ -196,7 +221,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 	}}))
 	require.NoError(t, batch.Commit())
 
-	cs := newMockColdStorage()
+	cs, _ := newMockColdStorage(t)
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var proposedPeriodID atomic.Uint64
@@ -212,7 +237,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 			return nil
 		},
 		func() bool { return true },
-		fakeArchivingPeriodState{},
+		newArchivingPeriodState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -244,12 +269,12 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
-	cs := newMockColdStorage()
+	cs, csState := newMockColdStorage(t)
 	// Pre-populate: archive already exists with a consistent checksum.
 	data := []byte("existing archive contents")
 	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
 	require.NoError(t, err)
-	cs.seed("test-bucket", 5, data, expected)
+	csState.seed("test-bucket", 5, data, expected)
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
@@ -266,7 +291,7 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 			return nil
 		},
 		func() bool { return true }, // is leader
-		fakeArchivingPeriodState{},
+		newArchivingPeriodState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -293,12 +318,12 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
-	cs := newMockColdStorage()
+	cs, csState := newMockColdStorage(t)
 	// Pre-populate: archive already exists with a consistent checksum.
 	data := []byte("existing archive contents")
 	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
 	require.NoError(t, err)
-	cs.seed("test-bucket", 7, data, expected)
+	csState.seed("test-bucket", 7, data, expected)
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
@@ -315,7 +340,7 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 			return nil
 		},
 		func() bool { return false }, // not leader
-		fakeArchivingPeriodState{},
+		newArchivingPeriodState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -345,7 +370,7 @@ func TestArchiverRejectsStaleRequest(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
-	cs := newMockColdStorage()
+	cs, csState := newMockColdStorage(t)
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var proposedPeriodID atomic.Uint64
@@ -361,7 +386,7 @@ func TestArchiverRejectsStaleRequest(t *testing.T) {
 			return nil
 		},
 		func() bool { return true }, // leader, to prove the guard fires before isLeader gating
-		rejectingPeriodState{},
+		newRejectingPeriodState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -375,7 +400,7 @@ func TestArchiverRejectsStaleRequest(t *testing.T) {
 	}, "test")
 
 	require.Never(t, func() bool {
-		return cs.archiveCalls.Load() > 0 || proposedPeriodID.Load() > 0
+		return csState.archiveCalls.Load() > 0 || proposedPeriodID.Load() > 0
 	}, 200*time.Millisecond, 10*time.Millisecond,
 		"stale request must not write cold storage nor propose")
 }
@@ -391,7 +416,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
 
-	cs := newMockColdStorage()
+	cs, _ := newMockColdStorage(t)
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var (
@@ -412,7 +437,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 			return nil
 		},
 		isLeader.Load,
-		fakeArchivingPeriodState{},
+		newArchivingPeriodState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -469,7 +494,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 	}}))
 	require.NoError(t, batch.Commit())
 
-	cs := newMockColdStorage()
+	cs, _ := newMockColdStorage(t)
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var proposedPeriodID atomic.Uint64
@@ -485,7 +510,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 			return nil
 		},
 		func() bool { return true },
-		fakeArchivingPeriodState{},
+		newArchivingPeriodState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -557,7 +582,7 @@ func TestArchiver_FreshUploadPersistsChecksum(t *testing.T) {
 	logger := logging.FromContext(ctx)
 	dataStore, req := archiveRequestForTest(t)
 
-	cs := newMockColdStorage()
+	cs, _ := newMockColdStorage(t)
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var proposedPeriodID atomic.Uint64
@@ -568,7 +593,7 @@ func TestArchiver_FreshUploadPersistsChecksum(t *testing.T) {
 
 			return nil
 		},
-		func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
@@ -593,11 +618,11 @@ func TestArchiver_CrashRecoveryWithValidArchive(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
-	cs := newMockColdStorage()
+	cs, csState := newMockColdStorage(t)
 	data := []byte("intact archive bytes")
 	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
 	require.NoError(t, err)
-	cs.seed("test-bucket", 11, data, expected)
+	csState.seed("test-bucket", 11, data, expected)
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
@@ -609,7 +634,7 @@ func TestArchiver_CrashRecoveryWithValidArchive(t *testing.T) {
 
 			return nil
 		},
-		func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
@@ -619,7 +644,7 @@ func TestArchiver_CrashRecoveryWithValidArchive(t *testing.T) {
 		return proposedPeriodID.Load() == 11
 	}, 5*time.Second, 50*time.Millisecond, "integrity-verified archive should be proposed")
 
-	require.EqualValues(t, 0, cs.archiveCalls.Load(),
+	require.EqualValues(t, 0, csState.archiveCalls.Load(),
 		"crash-recovery must NOT re-upload when integrity check passes")
 }
 
@@ -629,12 +654,12 @@ func TestArchiver_CrashRecoveryWithCorruptArchive(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
-	cs := newMockColdStorage()
+	cs, csState := newMockColdStorage(t)
 	// Seed with a checksum that does NOT match the data — simulates bit rot
 	// or a truncated upload that was never re-pushed.
 	originalChecksum, err := coldstorage.ComputeSHA256(bytes.NewReader([]byte("intended bytes")))
 	require.NoError(t, err)
-	cs.seed("test-bucket", 13, []byte("corrupted bytes"), originalChecksum)
+	csState.seed("test-bucket", 13, []byte("corrupted bytes"), originalChecksum)
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
@@ -646,7 +671,7 @@ func TestArchiver_CrashRecoveryWithCorruptArchive(t *testing.T) {
 
 			return nil
 		},
-		func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
@@ -656,7 +681,7 @@ func TestArchiver_CrashRecoveryWithCorruptArchive(t *testing.T) {
 	require.Never(t, func() bool { return proposedPeriodID.Load() > 0 },
 		400*time.Millisecond, 25*time.Millisecond,
 		"corrupt archive must NOT be confirmed")
-	require.EqualValues(t, 0, cs.archiveCalls.Load(),
+	require.EqualValues(t, 0, csState.archiveCalls.Load(),
 		"crash-recovery must not re-upload on integrity failure — escalate via logged error")
 }
 
@@ -667,10 +692,10 @@ func TestArchiver_LegacyDataOnlyTriggersReupload(t *testing.T) {
 	logger := logging.FromContext(ctx)
 	dataStore, req := archiveRequestForTest(t)
 
-	cs := newMockColdStorage()
+	cs, csState := newMockColdStorage(t)
 	// Legacy state (pre-PR): data was uploaded but no checksum sidecar was
 	// ever written. Exists() must report false so the leader re-uploads.
-	cs.seed("test-bucket", req.PeriodID, []byte("legacy bytes"), nil)
+	csState.seed("test-bucket", req.PeriodID, []byte("legacy bytes"), nil)
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
@@ -682,7 +707,7 @@ func TestArchiver_LegacyDataOnlyTriggersReupload(t *testing.T) {
 
 			return nil
 		},
-		func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
@@ -697,7 +722,7 @@ func TestArchiver_LegacyDataOnlyTriggersReupload(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, persistedChecksum, coldstorage.ChecksumLength)
 
-	require.EqualValues(t, 1, cs.archiveCalls.Load(),
+	require.EqualValues(t, 1, csState.archiveCalls.Load(),
 		"legacy state must trigger exactly one re-upload")
 }
 

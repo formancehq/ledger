@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -18,9 +19,10 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 
 	var capturedReq *servicepb.Request
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-			capturedReq = requests[0]
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			capturedReq = requests[0].GetUnsigned()
 
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
@@ -32,8 +34,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 					},
 				},
 			}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","oauth2ClientId":"my-id","oauth2ClientSecret":"my-secret","oauth2TokenEndpoint":"https://auth.example.com/token","oauth2Scopes":["ledger:read"]}}`
@@ -68,9 +69,10 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 
 	var capturedReq *servicepb.Request
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-			capturedReq = requests[0]
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			capturedReq = requests[0].GetUnsigned()
 
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
@@ -82,8 +84,7 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 					},
 				},
 			}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"postgres","dsn":"postgres://user:pass@host:5432/ledger"}}`
@@ -111,9 +112,10 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 
 	var capturedReq *servicepb.Request
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-			capturedReq = requests[0]
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			capturedReq = requests[0].GetUnsigned()
 
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
@@ -124,8 +126,7 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 					},
 				},
 			}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	// No "type" field → should default to HTTP
@@ -145,7 +146,7 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 func TestHandleCreateLedger_MirrorModeUnsupportedType(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"s3"}}`
 	w := httptest.NewRecorder()

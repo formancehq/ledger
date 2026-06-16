@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -15,11 +16,11 @@ import (
 func TestHandleRemoveMetadataType_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -37,7 +38,7 @@ func TestHandleRemoveMetadataType_Success(t *testing.T) {
 func TestHandleRemoveMetadataType_InvalidTargetType(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodDelete, "/ledger1/metadata-schema/invalid/key", nil, map[string]string{
@@ -54,7 +55,7 @@ func TestHandleRemoveMetadataType_InvalidTargetType(t *testing.T) {
 func TestHandleRemoveMetadataType_MissingKey(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodDelete, "/ledger1/metadata-schema/account/", nil, map[string]string{

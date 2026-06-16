@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -17,8 +18,9 @@ import (
 func TestHandleSaveNumscript_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -33,8 +35,7 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -53,11 +54,11 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 func TestHandleSaveNumscript_NoContent(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -76,7 +77,7 @@ func TestHandleSaveNumscript_NoContent(t *testing.T) {
 func TestHandleSaveNumscript_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/numscripts/my-script",
@@ -94,7 +95,7 @@ func TestHandleSaveNumscript_MissingLedgerName(t *testing.T) {
 func TestHandleSaveNumscript_MissingName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/numscripts/",
@@ -112,7 +113,7 @@ func TestHandleSaveNumscript_MissingName(t *testing.T) {
 func TestHandleSaveNumscript_InvalidBody(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/numscripts/my-script",
@@ -130,11 +131,11 @@ func TestHandleSaveNumscript_InvalidBody(t *testing.T) {
 func TestHandleSaveNumscript_VersionConflict(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrNumscriptVersionAlreadyExists{Name: "my-script", Version: "1.0.0"}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

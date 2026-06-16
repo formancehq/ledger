@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -15,8 +16,9 @@ import (
 func TestHandleGetAccountType_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
 			return &commonpb.LedgerInfo{
 				Name: "ledger1",
 				AccountTypes: map[string]*commonpb.AccountType{
@@ -26,8 +28,7 @@ func TestHandleGetAccountType_Success(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -44,7 +45,7 @@ func TestHandleGetAccountType_Success(t *testing.T) {
 func TestHandleGetAccountType_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/account-types/users", nil, map[string]string{
@@ -60,11 +61,11 @@ func TestHandleGetAccountType_MissingLedgerName(t *testing.T) {
 func TestHandleGetAccountType_MissingTypeName(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -81,14 +82,14 @@ func TestHandleGetAccountType_MissingTypeName(t *testing.T) {
 func TestHandleGetAccountType_NotFound(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
 			return &commonpb.LedgerInfo{
 				Name:         "ledger1",
 				AccountTypes: map[string]*commonpb.AccountType{},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -105,11 +106,11 @@ func TestHandleGetAccountType_NotFound(t *testing.T) {
 func TestHandleGetAccountType_LedgerNotFound(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

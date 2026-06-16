@@ -15,14 +15,14 @@ import (
 )
 
 // newTestServer creates a Server with a mock backend for testing.
-func newTestServer(t *testing.T, backend *mockBackend) *Server {
+func newTestServer(t *testing.T, backend Backend) *Server {
 	t.Helper()
 
 	return NewServer(logging.Testing(), backend, 0)
 }
 
 // newTestServerWithBulkLimit creates a Server with a mock backend and bulk limit for testing.
-func newTestServerWithBulkLimit(t *testing.T, backend *mockBackend, bulkMaxSize int) *Server {
+func newTestServerWithBulkLimit(t *testing.T, backend Backend, bulkMaxSize int) *Server {
 	t.Helper()
 
 	return NewServer(logging.Testing(), backend, bulkMaxSize)

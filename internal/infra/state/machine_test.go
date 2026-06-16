@@ -43,7 +43,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	registry := NewStateRegistry(c, attrs, 0)
 	snapshotter := NewCacheSnapshotter(logger, registry, nil)
 
-	machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0)
+	machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0)
 	require.NoError(t, err)
 
 	// NewMachine no longer performs the initial recoverState — the caller is
@@ -536,7 +536,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 	// Create first machine and 3 ledgers.
 	reg1 := NewStateRegistry(c, attrs, 0)
 	snap1 := NewCacheSnapshotter(logger, reg1, nil)
-	machine1, err := NewMachine(logger, reg1, snap1, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0)
+	machine1, err := NewMachine(logger, reg1, snap1, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0)
 	require.NoError(t, err)
 	require.NoError(t, NewRecovery(machine1, dataStore).RecoverState())
 
@@ -572,7 +572,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 
 	reg2 := NewStateRegistry(c2, attrs2, 0)
 	snap2 := NewCacheSnapshotter(logger, reg2, nil)
-	machine2, err := NewMachine(logger, reg2, snap2, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0)
+	machine2, err := NewMachine(logger, reg2, snap2, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0)
 	require.NoError(t, err)
 	require.NoError(t, NewRecovery(machine2, dataStore).RecoverState())
 
@@ -631,7 +631,7 @@ func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
 		registry := NewStateRegistry(c, attributes.New(), 0)
 		snapshotter := NewCacheSnapshotter(logger, registry, nil)
 
-		machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0)
+		machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0)
 		require.NoError(t, err)
 		require.NoError(t, NewRecovery(machine, dataStore).RecoverState())
 

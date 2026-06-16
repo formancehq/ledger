@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -17,8 +18,9 @@ import (
 func TestHandleCreateTransaction_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -40,8 +42,7 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -58,7 +59,7 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 func TestHandleCreateTransaction_InvalidBody(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`{invalid`)
@@ -74,16 +75,16 @@ func TestHandleCreateTransaction_InvalidBody(t *testing.T) {
 func TestHandleCreateTransaction_InsufficientFunds(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrInsufficientFunds{
 				Account: "users:001",
 				Asset:   "USD",
 				Amount:  "100",
 				Balance: "50",
 			}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -102,7 +103,7 @@ func TestHandleCreateTransaction_InsufficientFunds(t *testing.T) {
 func TestHandleCreateTransaction_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`{}`)

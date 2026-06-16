@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -27,14 +28,18 @@ import (
 func TestNewHandler_ReturnsNonNil(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(logging.Testing(), &mockBackend{healthy: true}, internalauth.AuthConfig{})
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 	require.NotNil(t, handler)
 }
 
 func TestNewHandler_HealthEndpoint(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(logging.Testing(), &mockBackend{healthy: true}, internalauth.AuthConfig{})
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -48,7 +53,9 @@ func TestNewHandler_HealthEndpoint(t *testing.T) {
 func TestNewHandler_V2Prefix(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(logging.Testing(), &mockBackend{healthy: true}, internalauth.AuthConfig{})
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v2/health", nil)
@@ -61,7 +68,8 @@ func TestNewHandler_V2Prefix(t *testing.T) {
 func TestNewHandler_LivezEndpoint(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(logging.Testing(), &mockBackend{healthy: false, ready: false}, internalauth.AuthConfig{})
+	backend := NewMockBackend(gomock.NewController(t))
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/livez", nil)
@@ -74,7 +82,9 @@ func TestNewHandler_LivezEndpoint(t *testing.T) {
 func TestNewHandler_ReadyzEndpoint(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(logging.Testing(), &mockBackend{ready: true}, internalauth.AuthConfig{})
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().NotReadyReasons().Return(nil).AnyTimes()
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -249,7 +259,7 @@ func TestChiLogEntry_Panic(t *testing.T) {
 func TestHandleRevertTransaction_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/revert", nil, map[string]string{
@@ -265,7 +275,7 @@ func TestHandleRevertTransaction_MissingLedgerName(t *testing.T) {
 func TestHandleRevertTransaction_MissingTransactionID(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/transactions//revert", nil, map[string]string{
@@ -281,7 +291,7 @@ func TestHandleRevertTransaction_MissingTransactionID(t *testing.T) {
 func TestHandleRevertTransaction_InvalidBody(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`not json`)
@@ -301,9 +311,10 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 
 	var capturedRequest *servicepb.Request
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-			capturedRequest = requests[0]
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			capturedRequest = requests[0].GetUnsigned()
 
 			return []*commonpb.Log{
 				{
@@ -324,8 +335,7 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -354,11 +364,11 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 func TestHandleRevertTransaction_BackendError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, errors.New("internal error")
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -379,7 +389,7 @@ func TestHandleRevertTransaction_BackendError(t *testing.T) {
 func TestHandleSaveAccountMetadata_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`{"key":"val"}`)
@@ -396,11 +406,11 @@ func TestHandleSaveAccountMetadata_MissingLedgerName(t *testing.T) {
 func TestHandleSaveAccountMetadata_BackendApplyError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, errors.New("apply failed")
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -422,7 +432,7 @@ func TestHandleSaveAccountMetadata_BackendApplyError(t *testing.T) {
 func TestHandleSaveTransactionMetadata_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`{"key":"val"}`)
@@ -439,7 +449,7 @@ func TestHandleSaveTransactionMetadata_MissingLedgerName(t *testing.T) {
 func TestHandleSaveTransactionMetadata_MissingTransactionID(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`{"key":"val"}`)
@@ -456,11 +466,11 @@ func TestHandleSaveTransactionMetadata_MissingTransactionID(t *testing.T) {
 func TestHandleSaveTransactionMetadata_BackendApplyError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, errors.New("apply failed")
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -482,7 +492,7 @@ func TestHandleSaveTransactionMetadata_BackendApplyError(t *testing.T) {
 func TestHandleGetAccount_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/accounts/addr", nil, map[string]string{
@@ -498,14 +508,15 @@ func TestHandleGetAccount_MissingLedgerName(t *testing.T) {
 func TestHandleGetAccount_GetAccountError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
-		},
-		getAccountFn: func(_ context.Context, _ string, _ string) (*commonpb.Account, error) {
+		}).AnyTimes()
+	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ string) (*commonpb.Account, error) {
 			return nil, errors.New("storage error")
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -526,7 +537,7 @@ func TestHandleGetAccount_GetAccountError(t *testing.T) {
 func TestHandleGetTransaction_MissingTransactionID(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/ledger1/transactions/", nil, map[string]string{
@@ -542,11 +553,11 @@ func TestHandleGetTransaction_MissingTransactionID(t *testing.T) {
 func TestHandleGetTransaction_LedgerLookupError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -567,7 +578,7 @@ func TestHandleGetTransaction_LedgerLookupError(t *testing.T) {
 func TestHandleDeleteAccountMetadata_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodDelete, "/accounts/addr/metadata/key", nil, map[string]string{
@@ -584,7 +595,7 @@ func TestHandleDeleteAccountMetadata_MissingLedgerName(t *testing.T) {
 func TestHandleDeleteAccountMetadata_MissingAddress(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodDelete, "/ledger1/accounts//metadata/key", nil, map[string]string{
@@ -605,7 +616,7 @@ func TestHandleDeleteAccountMetadata_MissingAddress(t *testing.T) {
 func TestHandleDeleteTransactionMetadata_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodDelete, "/transactions/1/metadata/key", nil, map[string]string{
@@ -622,7 +633,7 @@ func TestHandleDeleteTransactionMetadata_MissingLedgerName(t *testing.T) {
 func TestHandleDeleteTransactionMetadata_MissingTransactionID(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodDelete, "/ledger1/transactions//metadata/key", nil, map[string]string{
@@ -643,7 +654,7 @@ func TestHandleDeleteTransactionMetadata_MissingTransactionID(t *testing.T) {
 func TestHandleSetMetadataType_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`{"type":"string"}`)
@@ -661,11 +672,11 @@ func TestHandleSetMetadataType_MissingLedgerName(t *testing.T) {
 func TestHandleSetMetadataType_BackendApplyError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, errors.New("apply failed")
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -688,7 +699,7 @@ func TestHandleSetMetadataType_BackendApplyError(t *testing.T) {
 func TestHandleRemoveMetadataType_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodDelete, "/metadata-schema/account/key", nil, map[string]string{
@@ -705,11 +716,11 @@ func TestHandleRemoveMetadataType_MissingLedgerName(t *testing.T) {
 func TestHandleRemoveMetadataType_BackendApplyError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, errors.New("apply failed")
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -731,11 +742,11 @@ func TestHandleRemoveMetadataType_BackendApplyError(t *testing.T) {
 func TestHandleListAccounts_BackendError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
 			return nil, commonpb.ErrNoLeader
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -751,11 +762,11 @@ func TestHandleListAccounts_BackendError(t *testing.T) {
 func TestHandleListAccounts_CursorIterationError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
 			return &errorCursor[*commonpb.Account]{err: errors.New("cursor iteration failed")}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -773,13 +784,13 @@ func TestHandleListAccounts_WithPrefix(t *testing.T) {
 
 	var capturedFilter *commonpb.QueryFilter
 
-	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
 			capturedFilter = filter
 
 			return cursor.NewSliceCursor[*commonpb.Account](nil), nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -801,11 +812,11 @@ func TestHandleListAccounts_WithPrefix(t *testing.T) {
 func TestHandleListAllLedgers_CursorIterationError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listLedgersFn: func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListLedgers(gomock.Any()).DoAndReturn(
+		func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 			return &errorCursor[*commonpb.LedgerInfo]{err: errors.New("cursor error")}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -845,7 +856,7 @@ func TestConvertBulkElementToRequest(t *testing.T) {
 func TestRunBulk_EmptyElements(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	results := srv.runBulk(context.Background(), "ledger1", nil, bulkOptions{})
 	require.Nil(t, results)
@@ -854,8 +865,9 @@ func TestRunBulk_EmptyElements(t *testing.T) {
 func TestRunBulk_Atomic(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			logs := make([]*commonpb.Log, len(requests))
 			for i := range requests {
 				logs[i] = &commonpb.Log{
@@ -870,8 +882,7 @@ func TestRunBulk_Atomic(t *testing.T) {
 			}
 
 			return logs, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	elements := []*servicepb.BulkElement{
@@ -891,8 +902,9 @@ func TestRunBulk_Atomic(t *testing.T) {
 func TestRunBulk_Sequential(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -904,8 +916,7 @@ func TestRunBulk_Sequential(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	elements := []*servicepb.BulkElement{
@@ -1019,8 +1030,9 @@ func TestWriteBulkErrorResponse_NilError(t *testing.T) {
 func TestHandleBulk_WithAtomicFlag(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			logs := make([]*commonpb.Log, len(requests))
 			for i := range requests {
 				logs[i] = &commonpb.Log{
@@ -1044,8 +1056,7 @@ func TestHandleBulk_WithAtomicFlag(t *testing.T) {
 			}
 
 			return logs, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -1063,8 +1074,9 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 	t.Parallel()
 
 	callCount := 0
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			callCount++
 			if callCount == 1 {
 				return nil, errors.New("first fails")
@@ -1090,8 +1102,7 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -1145,7 +1156,7 @@ func TestToSchemaStatusJSON_WithTransactionFields(t *testing.T) {
 func TestNewServer(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{healthy: true}
+	backend := NewMockBackend(gomock.NewController(t))
 	srv := NewServer(logging.Testing(), backend, 100)
 
 	require.NotNil(t, srv)
@@ -1159,8 +1170,9 @@ func TestNewServer(t *testing.T) {
 func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -1172,8 +1184,7 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
@@ -1188,11 +1199,11 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 func TestNewHandler_GetLedgerRoute(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		getLedgerByNameFn: func(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
 			return &commonpb.LedgerInfo{Name: name}, nil
-		},
-	}
+		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
@@ -1207,11 +1218,11 @@ func TestNewHandler_GetLedgerRoute(t *testing.T) {
 func TestNewHandler_ListAllLedgersRoute(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listLedgersFn: func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListLedgers(gomock.Any()).DoAndReturn(
+		func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 			return cursor.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
-		},
-	}
+		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
@@ -1312,7 +1323,7 @@ func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
 func TestHandleBulk_InvalidElementParsing(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	// Array of raw elements where second element has invalid action
@@ -1336,7 +1347,7 @@ func TestHandleBulk_InvalidElementParsing(t *testing.T) {
 func TestHandleSaveAccountMetadata_InvalidMetadataType(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	// Float values (non-integer) are not supported and trigger MetadataFromAnyMap error
@@ -1361,7 +1372,7 @@ func TestHandleSaveAccountMetadata_InvalidMetadataType(t *testing.T) {
 func TestHandleSaveTransactionMetadata_InvalidMetadataType(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	// Float values (non-integer) trigger MetadataFromAnyMap error
@@ -1431,9 +1442,10 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 
 	var capturedRequest *servicepb.Request
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-			capturedRequest = requests[0]
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			capturedRequest = requests[0].GetUnsigned()
 
 			return []*commonpb.Log{
 				{
@@ -1446,8 +1458,7 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -1472,9 +1483,10 @@ func TestHandleDeleteLedger_IdempotencyKeyPropagated(t *testing.T) {
 
 	var capturedRequest *servicepb.Request
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-			capturedRequest = requests[0]
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			capturedRequest = requests[0].GetUnsigned()
 
 			return []*commonpb.Log{
 				{
@@ -1483,8 +1495,7 @@ func TestHandleDeleteLedger_IdempotencyKeyPropagated(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

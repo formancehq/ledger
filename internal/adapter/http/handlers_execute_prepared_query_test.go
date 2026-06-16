@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -16,11 +17,11 @@ import (
 func TestHandleExecutePreparedQuery_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		executePreparedQueryFn: func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 			return &servicepb.ExecutePreparedQueryResponse{}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -37,7 +38,7 @@ func TestHandleExecutePreparedQuery_Success(t *testing.T) {
 func TestHandleExecutePreparedQuery_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/prepared-queries/my-query/execute", nil, map[string]string{
@@ -53,7 +54,7 @@ func TestHandleExecutePreparedQuery_MissingLedgerName(t *testing.T) {
 func TestHandleExecutePreparedQuery_MissingQueryName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries//execute", nil, map[string]string{
@@ -69,7 +70,7 @@ func TestHandleExecutePreparedQuery_MissingQueryName(t *testing.T) {
 func TestHandleExecutePreparedQuery_InvalidBody(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute", strings.NewReader(`not-json`), map[string]string{
@@ -86,11 +87,11 @@ func TestHandleExecutePreparedQuery_InvalidBody(t *testing.T) {
 func TestHandleExecutePreparedQuery_NotFound(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		executePreparedQueryFn: func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 			return nil, &domain.ErrPreparedQueryNotFound{Ledger: "ledger1", Name: "missing"}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -107,11 +108,11 @@ func TestHandleExecutePreparedQuery_NotFound(t *testing.T) {
 func TestHandleExecutePreparedQuery_NoBody(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		executePreparedQueryFn: func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 			return &servicepb.ExecutePreparedQueryResponse{}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -128,13 +129,13 @@ func TestHandleExecutePreparedQuery_NoBody(t *testing.T) {
 func TestHandleExecutePreparedQuery_WithParameters(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		executePreparedQueryFn: func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 			require.NotNil(t, req.GetParameters())
 
 			return &servicepb.ExecutePreparedQueryResponse{}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -155,13 +156,13 @@ func TestHandleExecutePreparedQuery_ChunkedBody(t *testing.T) {
 
 	var capturedPageSize uint32
 
-	backend := &mockBackend{
-		executePreparedQueryFn: func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 			capturedPageSize = req.GetPageSize()
 
 			return &servicepb.ExecutePreparedQueryResponse{}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -184,7 +185,7 @@ func TestHandleExecutePreparedQuery_ChunkedBody(t *testing.T) {
 func TestHandleExecutePreparedQuery_InvalidPageSizeQueryString(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute?pageSize=not-a-number", nil, map[string]string{
@@ -201,7 +202,7 @@ func TestHandleExecutePreparedQuery_InvalidPageSizeQueryString(t *testing.T) {
 func TestHandleExecutePreparedQuery_UnknownMode(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
@@ -220,7 +221,7 @@ func TestHandleExecutePreparedQuery_UnknownMode(t *testing.T) {
 func TestHandleExecutePreparedQuery_UnsupportedParameterType(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",

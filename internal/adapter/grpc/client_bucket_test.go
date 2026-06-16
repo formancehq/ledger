@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
@@ -19,236 +20,34 @@ import (
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
-// mockStream implements grpc.ServerStreamingClient for testing.
-type mockStream[T any] struct {
-	grpc.ClientStream
+// newRecvStream returns a generated mock ServerStreamingClient[T] that yields
+// each item from items in order then io.EOF. If recvErr is non-nil, Recv
+// returns (nil, recvErr) on every call instead. Trailer() returns an empty
+// metadata.MD by default so the cursor-pagination helpers in
+// BucketGrpcClient see "no more pages" rather than panicking.
+func newRecvStream[T any](ctrl *gomock.Controller, items []*T, recvErr error) *MockServerStreamingClient[T] {
+	stream := NewMockServerStreamingClient[T](ctrl)
+	stream.EXPECT().Trailer().Return(metadata.MD{}).AnyTimes()
+	if recvErr != nil {
+		stream.EXPECT().Recv().DoAndReturn(func() (*T, error) {
+			return nil, recvErr
+		}).AnyTimes()
 
-	items []*T
-	index int
-	err   error
-}
-
-func (m *mockStream[T]) Recv() (*T, error) {
-	if m.err != nil {
-		return nil, m.err
+		return stream
 	}
+	idx := 0
+	stream.EXPECT().Recv().DoAndReturn(func() (*T, error) {
+		if idx >= len(items) {
+			return nil, io.EOF
+		}
+		item := items[idx]
+		idx++
 
-	if m.index >= len(m.items) {
-		return nil, io.EOF
-	}
+		return item, nil
+	}).AnyTimes()
 
-	item := m.items[m.index]
-	m.index++
-
-	return item, nil
+	return stream
 }
-
-func (m *mockStream[T]) CloseSend() error {
-	return nil
-}
-
-// Trailer overrides the embedded ClientStream's nil-receiver method so the
-// trailer-following helpers in BucketGrpcClient see an empty trailer
-// (signaling end of pages) instead of panicking.
-func (m *mockStream[T]) Trailer() metadata.MD {
-	return metadata.MD{}
-}
-
-// mockBucketServiceClient implements servicepb.BucketServiceClient for testing.
-type mockBucketServiceClient struct {
-	// Simple methods - store responses/errors
-	getTransactionResp        *servicepb.GetTransactionResponse
-	getTransactionErr         error
-	listTransactionsStream    grpc.ServerStreamingClient[commonpb.Transaction]
-	listTransactionsErr       error
-	getAccountResp            *commonpb.Account
-	getAccountErr             error
-	listAccountsStream        grpc.ServerStreamingClient[commonpb.Account]
-	listAccountsErr           error
-	listLogsStream            grpc.ServerStreamingClient[commonpb.Log]
-	listLogsErr               error
-	listLedgersStream         grpc.ServerStreamingClient[commonpb.LedgerInfo]
-	listLedgersErr            error
-	getLedgerResp             *commonpb.LedgerInfo
-	getLedgerErr              error
-	listAuditEntriesStream    grpc.ServerStreamingClient[auditpb.AuditEntry]
-	listAuditEntriesErr       error
-	getLogResp                *commonpb.Log
-	getLogErr                 error
-	getAuditEntryResp         *auditpb.AuditEntry
-	getAuditEntryErr          error
-	listPeriodsStream         grpc.ServerStreamingClient[commonpb.Period]
-	listPeriodsErr            error
-	listSigningKeysStream     grpc.ServerStreamingClient[commonpb.SigningKey]
-	listSigningKeysErr        error
-	getMetadataSchemaResp     *servicepb.GetMetadataSchemaStatusResponse
-	getMetadataSchemaErr      error
-	analyzeAccountsStream     grpc.ServerStreamingClient[servicepb.AnalyzeAccountsEvent]
-	analyzeAccountsErr        error
-	analyzeTransactionsStream grpc.ServerStreamingClient[servicepb.AnalyzeTransactionsEvent]
-	analyzeTransactionsErr    error
-	aggregateVolumesResp      *commonpb.AggregateResult
-	aggregateVolumesErr       error
-	listPreparedQueriesResp   *servicepb.ListPreparedQueriesResponse
-	listPreparedQueriesErr    error
-	executePreparedQueryResp  *servicepb.ExecutePreparedQueryResponse
-	executePreparedQueryErr   error
-	getLedgerStatsResp        *commonpb.LedgerStats
-	getLedgerStatsErr         error
-	getNumscriptResp          *commonpb.NumscriptInfo
-	getNumscriptErr           error
-	listNumscriptsStream      grpc.ServerStreamingClient[commonpb.NumscriptInfo]
-	listNumscriptsErr         error
-	applyResp                 *servicepb.ApplyResponse
-	applyErr                  error
-
-	// Capture requests for assertion
-	capturedListLogsReq *servicepb.ListLogsRequest
-	capturedApplyReq    *servicepb.ApplyRequest
-}
-
-func (m *mockBucketServiceClient) Apply(_ context.Context, req *servicepb.ApplyRequest, _ ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
-	m.capturedApplyReq = req
-
-	return m.applyResp, m.applyErr
-}
-
-func (m *mockBucketServiceClient) GetTransaction(_ context.Context, _ *servicepb.GetTransactionRequest, _ ...grpc.CallOption) (*servicepb.GetTransactionResponse, error) {
-	return m.getTransactionResp, m.getTransactionErr
-}
-
-func (m *mockBucketServiceClient) ListTransactions(_ context.Context, _ *servicepb.ListTransactionsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
-	return m.listTransactionsStream, m.listTransactionsErr
-}
-
-func (m *mockBucketServiceClient) GetAccount(_ context.Context, _ *servicepb.GetAccountRequest, _ ...grpc.CallOption) (*commonpb.Account, error) {
-	return m.getAccountResp, m.getAccountErr
-}
-
-func (m *mockBucketServiceClient) ListAccounts(_ context.Context, _ *servicepb.ListAccountsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Account], error) {
-	return m.listAccountsStream, m.listAccountsErr
-}
-
-func (m *mockBucketServiceClient) ListLogs(_ context.Context, req *servicepb.ListLogsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error) {
-	m.capturedListLogsReq = req
-
-	return m.listLogsStream, m.listLogsErr
-}
-
-func (m *mockBucketServiceClient) ListLedgers(_ context.Context, _ *servicepb.ListLedgersRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
-	return m.listLedgersStream, m.listLedgersErr
-}
-
-func (m *mockBucketServiceClient) GetLedger(_ context.Context, _ *servicepb.GetLedgerRequest, _ ...grpc.CallOption) (*commonpb.LedgerInfo, error) {
-	return m.getLedgerResp, m.getLedgerErr
-}
-
-func (m *mockBucketServiceClient) ListAuditEntries(_ context.Context, _ *servicepb.ListAuditEntriesRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[auditpb.AuditEntry], error) {
-	return m.listAuditEntriesStream, m.listAuditEntriesErr
-}
-
-func (m *mockBucketServiceClient) GetLog(_ context.Context, _ *servicepb.GetLogRequest, _ ...grpc.CallOption) (*commonpb.Log, error) {
-	return m.getLogResp, m.getLogErr
-}
-
-func (m *mockBucketServiceClient) GetAuditEntry(_ context.Context, _ *servicepb.GetAuditEntryRequest, _ ...grpc.CallOption) (*auditpb.AuditEntry, error) {
-	return m.getAuditEntryResp, m.getAuditEntryErr
-}
-
-func (m *mockBucketServiceClient) ListPeriods(_ context.Context, _ *servicepb.ListPeriodsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error) {
-	return m.listPeriodsStream, m.listPeriodsErr
-}
-
-func (m *mockBucketServiceClient) ListSigningKeys(_ context.Context, _ *servicepb.ListSigningKeysRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error) {
-	return m.listSigningKeysStream, m.listSigningKeysErr
-}
-
-func (m *mockBucketServiceClient) GetMetadataSchemaStatus(_ context.Context, _ *servicepb.GetMetadataSchemaStatusRequest, _ ...grpc.CallOption) (*servicepb.GetMetadataSchemaStatusResponse, error) {
-	return m.getMetadataSchemaResp, m.getMetadataSchemaErr
-}
-
-func (m *mockBucketServiceClient) AnalyzeAccounts(_ context.Context, _ *servicepb.AnalyzeAccountsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[servicepb.AnalyzeAccountsEvent], error) {
-	return m.analyzeAccountsStream, m.analyzeAccountsErr
-}
-
-func (m *mockBucketServiceClient) AnalyzeTransactions(_ context.Context, _ *servicepb.AnalyzeTransactionsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[servicepb.AnalyzeTransactionsEvent], error) {
-	return m.analyzeTransactionsStream, m.analyzeTransactionsErr
-}
-
-func (m *mockBucketServiceClient) AggregateVolumes(_ context.Context, _ *servicepb.AggregateVolumesRequest, _ ...grpc.CallOption) (*commonpb.AggregateResult, error) {
-	return m.aggregateVolumesResp, m.aggregateVolumesErr
-}
-
-func (m *mockBucketServiceClient) ListPreparedQueries(_ context.Context, _ *servicepb.ListPreparedQueriesRequest, _ ...grpc.CallOption) (*servicepb.ListPreparedQueriesResponse, error) {
-	return m.listPreparedQueriesResp, m.listPreparedQueriesErr
-}
-
-func (m *mockBucketServiceClient) ExecutePreparedQuery(_ context.Context, req *servicepb.ExecutePreparedQueryRequest, _ ...grpc.CallOption) (*servicepb.ExecutePreparedQueryResponse, error) {
-	return m.executePreparedQueryResp, m.executePreparedQueryErr
-}
-
-func (m *mockBucketServiceClient) GetLedgerStats(_ context.Context, _ *servicepb.GetLedgerStatsRequest, _ ...grpc.CallOption) (*commonpb.LedgerStats, error) {
-	return m.getLedgerStatsResp, m.getLedgerStatsErr
-}
-
-func (m *mockBucketServiceClient) GetNumscript(_ context.Context, _ *servicepb.GetNumscriptRequest, _ ...grpc.CallOption) (*commonpb.NumscriptInfo, error) {
-	return m.getNumscriptResp, m.getNumscriptErr
-}
-
-func (m *mockBucketServiceClient) ListNumscripts(_ context.Context, _ *servicepb.ListNumscriptsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error) {
-	return m.listNumscriptsStream, m.listNumscriptsErr
-}
-
-// Stub methods not used by BucketGrpcClient but required by the interface.
-func (m *mockBucketServiceClient) GetPrimaryMetrics(_ context.Context, _ *servicepb.GetPrimaryMetricsRequest, _ ...grpc.CallOption) (*servicepb.GetPrimaryMetricsResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) GetSecondaryMetrics(_ context.Context, _ *servicepb.GetSecondaryMetricsRequest, _ ...grpc.CallOption) (*servicepb.GetSecondaryMetricsResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) CheckStore(_ context.Context, _ *servicepb.CheckStoreRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[servicepb.CheckStoreEvent], error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) GetEventsSinks(_ context.Context, _ *servicepb.GetEventsSinksRequest, _ ...grpc.CallOption) (*servicepb.GetEventsSinksResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) GetPeriodSchedule(_ context.Context, _ *servicepb.GetPeriodScheduleRequest, _ ...grpc.CallOption) (*servicepb.GetPeriodScheduleResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest, _ ...grpc.CallOption) (*servicepb.DiscoveryResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) CreatePreparedQuery(_ context.Context, _ *servicepb.CreatePreparedQueryRequest, _ ...grpc.CallOption) (*servicepb.CreatePreparedQueryResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) UpdatePreparedQuery(_ context.Context, _ *servicepb.UpdatePreparedQueryRequest, _ ...grpc.CallOption) (*servicepb.UpdatePreparedQueryResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) DeletePreparedQuery(_ context.Context, _ *servicepb.DeletePreparedQueryRequest, _ ...grpc.CallOption) (*servicepb.DeletePreparedQueryResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) GetIndexStatus(_ context.Context, _ *servicepb.GetIndexStatusRequest, _ ...grpc.CallOption) (*servicepb.GetIndexStatusResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) Barrier(_ context.Context, _ *servicepb.BarrierRequest, _ ...grpc.CallOption) (*servicepb.BarrierResponse, error) {
-	return nil, nil
-}
-
-func (m *mockBucketServiceClient) InspectIndex(_ context.Context, _ *servicepb.InspectIndexRequest, _ ...grpc.CallOption) (*servicepb.InspectIndexResponse, error) {
-	return nil, nil
-}
-
-var _ servicepb.BucketServiceClient = (*mockBucketServiceClient)(nil)
 
 // --- Tests ---
 
@@ -256,9 +55,11 @@ func TestGetTransaction_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &commonpb.Transaction{Id: 42}
-	mock := &mockBucketServiceClient{
-		getTransactionResp: &servicepb.GetTransactionResponse{Transaction: expected},
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetTransaction(gomock.Any(), gomock.Any()).Return(
+		&servicepb.GetTransactionResponse{Transaction: expected}, nil,
+	)
 
 	client := NewLedgerGrpcClient(mock)
 	tx, err := client.GetTransaction(context.Background(), "ledger1", 42)
@@ -269,9 +70,9 @@ func TestGetTransaction_Success(t *testing.T) {
 func TestGetTransaction_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		getTransactionErr: errors.New("not found"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetTransaction(gomock.Any(), gomock.Any()).Return(nil, errors.New("not found"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.GetTransaction(context.Background(), "ledger1", 99)
@@ -282,13 +83,13 @@ func TestGetTransaction_Error(t *testing.T) {
 func TestListTransactions_Success(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.Transaction]{
-		items: []*commonpb.Transaction{
-			{Id: 1},
-			{Id: 2},
-		},
-	}
-	mock := &mockBucketServiceClient{listTransactionsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.Transaction](ctrl, []*commonpb.Transaction{
+		{Id: 1},
+		{Id: 2},
+	}, nil)
+	mock.EXPECT().ListTransactions(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	cursor, err := client.ListTransactions(context.Background(), "ledger1", 10, 0, nil, false)
@@ -309,9 +110,9 @@ func TestListTransactions_Success(t *testing.T) {
 func TestListTransactions_StreamError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		listTransactionsErr: errors.New("stream init failed"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListTransactions(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream init failed"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListTransactions(context.Background(), "ledger1", 10, 0, nil, false)
@@ -322,7 +123,9 @@ func TestGetAccount_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &commonpb.Account{Address: "user:001"}
-	mock := &mockBucketServiceClient{getAccountResp: expected}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetAccount(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	account, err := client.GetAccount(context.Background(), "ledger1", "user:001")
@@ -333,7 +136,9 @@ func TestGetAccount_Success(t *testing.T) {
 func TestGetAccount_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{getAccountErr: errors.New("unavailable")}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetAccount(gomock.Any(), gomock.Any()).Return(nil, errors.New("unavailable"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.GetAccount(context.Background(), "ledger1", "user:001")
@@ -343,13 +148,13 @@ func TestGetAccount_ReturnsError(t *testing.T) {
 func TestListAccounts_Success(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.Account]{
-		items: []*commonpb.Account{
-			{Address: "user:001"},
-			{Address: "user:002"},
-		},
-	}
-	mock := &mockBucketServiceClient{listAccountsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.Account](ctrl, []*commonpb.Account{
+		{Address: "user:001"},
+		{Address: "user:002"},
+	}, nil)
+	mock.EXPECT().ListAccounts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	cursor, err := client.ListAccounts(context.Background(), "ledger1", 10, "", nil, false)
@@ -367,9 +172,9 @@ func TestListAccounts_Success(t *testing.T) {
 func TestListAccounts_StreamError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		listAccountsErr: errors.New("stream error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListAccounts(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListAccounts(context.Background(), "ledger1", 10, "", nil, false)
@@ -379,13 +184,19 @@ func TestListAccounts_StreamError(t *testing.T) {
 func TestListLogs_Success(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.Log]{
-		items: []*commonpb.Log{
-			{Sequence: 1},
-			{Sequence: 2},
-		},
-	}
-	mock := &mockBucketServiceClient{listLogsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.Log](ctrl, []*commonpb.Log{
+		{Sequence: 1},
+		{Sequence: 2},
+	}, nil)
+	var capturedListLogsReq *servicepb.ListLogsRequest
+	mock.EXPECT().ListLogs(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ListLogsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error) {
+			capturedListLogsReq = req
+
+			return stream, nil
+		})
 
 	client := NewLedgerGrpcClient(mock)
 	cursor, err := client.ListLogs(context.Background(), "ledger1", 0, 10, nil)
@@ -396,18 +207,24 @@ func TestListLogs_Success(t *testing.T) {
 	require.Equal(t, uint64(1), log1.GetSequence())
 
 	// Verify cursor is not set when afterSequence is 0
-	require.Empty(t, mock.capturedListLogsReq.GetOptions().GetCursor())
+	require.Empty(t, capturedListLogsReq.GetOptions().GetCursor())
 	// Verify ledger is set
-	require.Equal(t, "ledger1", mock.capturedListLogsReq.GetLedger())
+	require.Equal(t, "ledger1", capturedListLogsReq.GetLedger())
 }
 
 func TestListLogs_WithAfterSequence(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.Log]{
-		items: []*commonpb.Log{{Sequence: 5}},
-	}
-	mock := &mockBucketServiceClient{listLogsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.Log](ctrl, []*commonpb.Log{{Sequence: 5}}, nil)
+	var capturedListLogsReq *servicepb.ListLogsRequest
+	mock.EXPECT().ListLogs(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ListLogsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error) {
+			capturedListLogsReq = req
+
+			return stream, nil
+		})
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListLogs(context.Background(), "ledger1", 3, 10, nil)
@@ -415,15 +232,15 @@ func TestListLogs_WithAfterSequence(t *testing.T) {
 
 	// The client converts the typed afterSequence into the opaque ListOptions.cursor
 	// (decimal-encoded uint64) — server decodes it back.
-	require.Equal(t, "3", mock.capturedListLogsReq.GetOptions().GetCursor())
+	require.Equal(t, "3", capturedListLogsReq.GetOptions().GetCursor())
 }
 
 func TestListLogs_StreamError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		listLogsErr: errors.New("list logs failed"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListLogs(gomock.Any(), gomock.Any()).Return(nil, errors.New("list logs failed"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListLogs(context.Background(), "ledger1", 0, 10, nil)
@@ -433,13 +250,13 @@ func TestListLogs_StreamError(t *testing.T) {
 func TestListLedgers_Success(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.LedgerInfo]{
-		items: []*commonpb.LedgerInfo{
-			{Name: "ledger1"},
-			{Name: "ledger2"},
-		},
-	}
-	mock := &mockBucketServiceClient{listLedgersStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.LedgerInfo](ctrl, []*commonpb.LedgerInfo{
+		{Name: "ledger1"},
+		{Name: "ledger2"},
+	}, nil)
+	mock.EXPECT().ListLedgers(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	cursor, err := client.ListLedgers(context.Background())
@@ -453,9 +270,9 @@ func TestListLedgers_Success(t *testing.T) {
 func TestListLedgers_StreamError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		listLedgersErr: errors.New("list ledgers failed"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListLedgers(gomock.Any(), gomock.Any()).Return(nil, errors.New("list ledgers failed"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListLedgers(context.Background())
@@ -466,7 +283,9 @@ func TestGetLedgerByName_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &commonpb.LedgerInfo{Name: "my-ledger"}
-	mock := &mockBucketServiceClient{getLedgerResp: expected}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetLedger(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	info, err := client.GetLedgerByName(context.Background(), "my-ledger")
@@ -477,9 +296,9 @@ func TestGetLedgerByName_Success(t *testing.T) {
 func TestGetLedgerByName_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		getLedgerErr: errors.New("not found"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetLedger(gomock.Any(), gomock.Any()).Return(nil, errors.New("not found"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.GetLedgerByName(context.Background(), "missing")
@@ -489,12 +308,12 @@ func TestGetLedgerByName_Error(t *testing.T) {
 func TestListAuditEntries_Success(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[auditpb.AuditEntry]{
-		items: []*auditpb.AuditEntry{
-			{Sequence: 1},
-		},
-	}
-	mock := &mockBucketServiceClient{listAuditEntriesStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[auditpb.AuditEntry](ctrl, []*auditpb.AuditEntry{
+		{Sequence: 1},
+	}, nil)
+	mock.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	seq := uint64(5)
@@ -509,9 +328,9 @@ func TestListAuditEntries_Success(t *testing.T) {
 func TestListAuditEntries_StreamError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		listAuditEntriesErr: errors.New("audit error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any()).Return(nil, errors.New("audit error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListAuditEntries(context.Background(), nil, false, 10, "")
@@ -522,7 +341,9 @@ func TestGetLog_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &commonpb.Log{Sequence: 42}
-	mock := &mockBucketServiceClient{getLogResp: expected}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetLog(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	log, err := client.GetLog(context.Background(), 42)
@@ -533,9 +354,9 @@ func TestGetLog_Success(t *testing.T) {
 func TestGetLog_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		getLogErr: errors.New("log not found"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetLog(gomock.Any(), gomock.Any()).Return(nil, errors.New("log not found"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.GetLog(context.Background(), 99)
@@ -546,7 +367,9 @@ func TestGetAuditEntry_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &auditpb.AuditEntry{Sequence: 7}
-	mock := &mockBucketServiceClient{getAuditEntryResp: expected}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetAuditEntry(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	entry, err := client.GetAuditEntry(context.Background(), 7)
@@ -557,9 +380,9 @@ func TestGetAuditEntry_Success(t *testing.T) {
 func TestGetAuditEntry_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		getAuditEntryErr: errors.New("audit entry not found"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetAuditEntry(gomock.Any(), gomock.Any()).Return(nil, errors.New("audit entry not found"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.GetAuditEntry(context.Background(), 99)
@@ -569,12 +392,12 @@ func TestGetAuditEntry_Error(t *testing.T) {
 func TestListPeriods_Success(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.Period]{
-		items: []*commonpb.Period{
-			{Id: 1},
-		},
-	}
-	mock := &mockBucketServiceClient{listPeriodsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.Period](ctrl, []*commonpb.Period{
+		{Id: 1},
+	}, nil)
+	mock.EXPECT().ListPeriods(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	cursor, err := client.ListPeriods(context.Background())
@@ -588,9 +411,9 @@ func TestListPeriods_Success(t *testing.T) {
 func TestListPeriods_StreamError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		listPeriodsErr: errors.New("periods error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListPeriods(gomock.Any(), gomock.Any()).Return(nil, errors.New("periods error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListPeriods(context.Background())
@@ -601,12 +424,12 @@ func TestListPeriods_StreamError(t *testing.T) {
 func TestListSigningKeys_Success(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.SigningKey]{
-		items: []*commonpb.SigningKey{
-			{KeyId: "key-1"},
-		},
-	}
-	mock := &mockBucketServiceClient{listSigningKeysStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.SigningKey](ctrl, []*commonpb.SigningKey{
+		{KeyId: "key-1"},
+	}, nil)
+	mock.EXPECT().ListSigningKeys(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	cursor, err := client.ListSigningKeys(context.Background())
@@ -620,9 +443,9 @@ func TestListSigningKeys_Success(t *testing.T) {
 func TestListSigningKeys_StreamError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		listSigningKeysErr: errors.New("keys error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListSigningKeys(gomock.Any(), gomock.Any()).Return(nil, errors.New("keys error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListSigningKeys(context.Background())
@@ -634,7 +457,9 @@ func TestGetMetadataSchemaStatus_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &servicepb.GetMetadataSchemaStatusResponse{}
-	mock := &mockBucketServiceClient{getMetadataSchemaResp: expected}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetMetadataSchemaStatus(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	resp, err := client.GetMetadataSchemaStatus(context.Background(), "ledger1")
@@ -645,9 +470,9 @@ func TestGetMetadataSchemaStatus_Success(t *testing.T) {
 func TestGetMetadataSchemaStatus_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		getMetadataSchemaErr: errors.New("schema error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetMetadataSchemaStatus(gomock.Any(), gomock.Any()).Return(nil, errors.New("schema error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.GetMetadataSchemaStatus(context.Background(), "ledger1")
@@ -658,20 +483,20 @@ func TestAnalyzeAccounts_ProgressThenResult(t *testing.T) {
 	t.Parallel()
 
 	expected := &servicepb.AnalyzeAccountsResponse{}
-	stream := &mockStream[servicepb.AnalyzeAccountsEvent]{
-		items: []*servicepb.AnalyzeAccountsEvent{
-			{Type: &servicepb.AnalyzeAccountsEvent_Progress{
-				Progress: &servicepb.AnalyzeProgress{Processed: 10, Total: 100},
-			}},
-			{Type: &servicepb.AnalyzeAccountsEvent_Progress{
-				Progress: &servicepb.AnalyzeProgress{Processed: 50, Total: 100},
-			}},
-			{Type: &servicepb.AnalyzeAccountsEvent_Result{
-				Result: expected,
-			}},
-		},
-	}
-	mock := &mockBucketServiceClient{analyzeAccountsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[servicepb.AnalyzeAccountsEvent](ctrl, []*servicepb.AnalyzeAccountsEvent{
+		{Type: &servicepb.AnalyzeAccountsEvent_Progress{
+			Progress: &servicepb.AnalyzeProgress{Processed: 10, Total: 100},
+		}},
+		{Type: &servicepb.AnalyzeAccountsEvent_Progress{
+			Progress: &servicepb.AnalyzeProgress{Processed: 50, Total: 100},
+		}},
+		{Type: &servicepb.AnalyzeAccountsEvent_Result{
+			Result: expected,
+		}},
+	}, nil)
+	mock.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	var progressCalls []struct{ processed, total uint64 }
 
@@ -690,17 +515,17 @@ func TestAnalyzeAccounts_NilProgressCallback(t *testing.T) {
 	t.Parallel()
 
 	expected := &servicepb.AnalyzeAccountsResponse{}
-	stream := &mockStream[servicepb.AnalyzeAccountsEvent]{
-		items: []*servicepb.AnalyzeAccountsEvent{
-			{Type: &servicepb.AnalyzeAccountsEvent_Progress{
-				Progress: &servicepb.AnalyzeProgress{Processed: 10, Total: 100},
-			}},
-			{Type: &servicepb.AnalyzeAccountsEvent_Result{
-				Result: expected,
-			}},
-		},
-	}
-	mock := &mockBucketServiceClient{analyzeAccountsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[servicepb.AnalyzeAccountsEvent](ctrl, []*servicepb.AnalyzeAccountsEvent{
+		{Type: &servicepb.AnalyzeAccountsEvent_Progress{
+			Progress: &servicepb.AnalyzeProgress{Processed: 10, Total: 100},
+		}},
+		{Type: &servicepb.AnalyzeAccountsEvent_Result{
+			Result: expected,
+		}},
+	}, nil)
+	mock.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.AnalyzeAccounts(context.Background(), "ledger1", 5, nil)
@@ -711,9 +536,9 @@ func TestAnalyzeAccounts_NilProgressCallback(t *testing.T) {
 func TestAnalyzeAccounts_StreamInitError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		analyzeAccountsErr: errors.New("stream init error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream init error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeAccounts(context.Background(), "ledger1", 5, nil)
@@ -724,10 +549,10 @@ func TestAnalyzeAccounts_StreamInitError(t *testing.T) {
 func TestAnalyzeAccounts_StreamRecvError(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[servicepb.AnalyzeAccountsEvent]{
-		err: errors.New("recv error"),
-	}
-	mock := &mockBucketServiceClient{analyzeAccountsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[servicepb.AnalyzeAccountsEvent](ctrl, nil, errors.New("recv error"))
+	mock.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeAccounts(context.Background(), "ledger1", 5, nil)
@@ -738,11 +563,11 @@ func TestAnalyzeAccounts_StreamRecvError(t *testing.T) {
 func TestAnalyzeAccounts_EOFWithoutResult(t *testing.T) {
 	t.Parallel()
 
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
 	// Empty stream - will return EOF immediately
-	stream := &mockStream[servicepb.AnalyzeAccountsEvent]{
-		items: []*servicepb.AnalyzeAccountsEvent{},
-	}
-	mock := &mockBucketServiceClient{analyzeAccountsStream: stream}
+	stream := newRecvStream[servicepb.AnalyzeAccountsEvent](ctrl, nil, nil)
+	mock.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeAccounts(context.Background(), "ledger1", 5, nil)
@@ -754,17 +579,17 @@ func TestAnalyzeTransactions_ProgressThenResult(t *testing.T) {
 	t.Parallel()
 
 	expected := &servicepb.AnalyzeTransactionsResponse{}
-	stream := &mockStream[servicepb.AnalyzeTransactionsEvent]{
-		items: []*servicepb.AnalyzeTransactionsEvent{
-			{Type: &servicepb.AnalyzeTransactionsEvent_Progress{
-				Progress: &servicepb.AnalyzeProgress{Processed: 25, Total: 200},
-			}},
-			{Type: &servicepb.AnalyzeTransactionsEvent_Result{
-				Result: expected,
-			}},
-		},
-	}
-	mock := &mockBucketServiceClient{analyzeTransactionsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[servicepb.AnalyzeTransactionsEvent](ctrl, []*servicepb.AnalyzeTransactionsEvent{
+		{Type: &servicepb.AnalyzeTransactionsEvent_Progress{
+			Progress: &servicepb.AnalyzeProgress{Processed: 25, Total: 200},
+		}},
+		{Type: &servicepb.AnalyzeTransactionsEvent_Result{
+			Result: expected,
+		}},
+	}, nil)
+	mock.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	var progressCalls []struct{ processed, total uint64 }
 
@@ -782,17 +607,17 @@ func TestAnalyzeTransactions_NilProgressCallback(t *testing.T) {
 	t.Parallel()
 
 	expected := &servicepb.AnalyzeTransactionsResponse{}
-	stream := &mockStream[servicepb.AnalyzeTransactionsEvent]{
-		items: []*servicepb.AnalyzeTransactionsEvent{
-			{Type: &servicepb.AnalyzeTransactionsEvent_Progress{
-				Progress: &servicepb.AnalyzeProgress{Processed: 10, Total: 100},
-			}},
-			{Type: &servicepb.AnalyzeTransactionsEvent_Result{
-				Result: expected,
-			}},
-		},
-	}
-	mock := &mockBucketServiceClient{analyzeTransactionsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[servicepb.AnalyzeTransactionsEvent](ctrl, []*servicepb.AnalyzeTransactionsEvent{
+		{Type: &servicepb.AnalyzeTransactionsEvent_Progress{
+			Progress: &servicepb.AnalyzeProgress{Processed: 10, Total: 100},
+		}},
+		{Type: &servicepb.AnalyzeTransactionsEvent_Result{
+			Result: expected,
+		}},
+	}, nil)
+	mock.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.AnalyzeTransactions(context.Background(), "ledger1", 3, nil)
@@ -803,9 +628,9 @@ func TestAnalyzeTransactions_NilProgressCallback(t *testing.T) {
 func TestAnalyzeTransactions_StreamInitError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		analyzeTransactionsErr: errors.New("stream init error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream init error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeTransactions(context.Background(), "ledger1", 3, nil)
@@ -816,10 +641,10 @@ func TestAnalyzeTransactions_StreamInitError(t *testing.T) {
 func TestAnalyzeTransactions_StreamRecvError(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[servicepb.AnalyzeTransactionsEvent]{
-		err: errors.New("recv error"),
-	}
-	mock := &mockBucketServiceClient{analyzeTransactionsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[servicepb.AnalyzeTransactionsEvent](ctrl, nil, errors.New("recv error"))
+	mock.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeTransactions(context.Background(), "ledger1", 3, nil)
@@ -830,10 +655,10 @@ func TestAnalyzeTransactions_StreamRecvError(t *testing.T) {
 func TestAnalyzeTransactions_EOFWithoutResult(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[servicepb.AnalyzeTransactionsEvent]{
-		items: []*servicepb.AnalyzeTransactionsEvent{},
-	}
-	mock := &mockBucketServiceClient{analyzeTransactionsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[servicepb.AnalyzeTransactionsEvent](ctrl, nil, nil)
+	mock.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeTransactions(context.Background(), "ledger1", 3, nil)
@@ -845,7 +670,9 @@ func TestAggregateVolumes_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &commonpb.AggregateResult{}
-	mock := &mockBucketServiceClient{aggregateVolumesResp: expected}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.AggregateVolumes(context.Background(), "ledger1", nil, query.AggregateOptions{
@@ -859,9 +686,9 @@ func TestAggregateVolumes_Success(t *testing.T) {
 func TestAggregateVolumes_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		aggregateVolumesErr: errors.New("aggregate error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any()).Return(nil, errors.New("aggregate error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AggregateVolumes(context.Background(), "ledger1", nil, query.AggregateOptions{})
@@ -875,9 +702,11 @@ func TestListPreparedQueries_Success(t *testing.T) {
 		{Name: "q1"},
 		{Name: "q2"},
 	}
-	mock := &mockBucketServiceClient{
-		listPreparedQueriesResp: &servicepb.ListPreparedQueriesResponse{Queries: queries},
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).Return(
+		&servicepb.ListPreparedQueriesResponse{Queries: queries}, nil,
+	)
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.ListPreparedQueries(context.Background(), "ledger1")
@@ -889,9 +718,9 @@ func TestListPreparedQueries_Success(t *testing.T) {
 func TestListPreparedQueries_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		listPreparedQueriesErr: errors.New("query error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).Return(nil, errors.New("query error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListPreparedQueries(context.Background(), "ledger1")
@@ -902,7 +731,9 @@ func TestExecutePreparedQuery_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &servicepb.ExecutePreparedQueryResponse{}
-	mock := &mockBucketServiceClient{executePreparedQueryResp: expected}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.ExecutePreparedQuery(context.Background(), &servicepb.ExecutePreparedQueryRequest{
@@ -916,9 +747,9 @@ func TestExecutePreparedQuery_Success(t *testing.T) {
 func TestExecutePreparedQuery_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		executePreparedQueryErr: errors.New("exec error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).Return(nil, errors.New("exec error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ExecutePreparedQuery(context.Background(), &servicepb.ExecutePreparedQueryRequest{})
@@ -929,7 +760,9 @@ func TestGetLedgerStats_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &commonpb.LedgerStats{}
-	mock := &mockBucketServiceClient{getLedgerStatsResp: expected}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetLedgerStats(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.GetLedgerStats(context.Background(), "ledger1")
@@ -940,9 +773,9 @@ func TestGetLedgerStats_Success(t *testing.T) {
 func TestGetLedgerStats_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		getLedgerStatsErr: errors.New("stats error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetLedgerStats(gomock.Any(), gomock.Any()).Return(nil, errors.New("stats error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.GetLedgerStats(context.Background(), "ledger1")
@@ -953,7 +786,9 @@ func TestGetNumscript_Success(t *testing.T) {
 	t.Parallel()
 
 	expected := &commonpb.NumscriptInfo{Name: "my-script"}
-	mock := &mockBucketServiceClient{getNumscriptResp: expected}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetNumscript(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.GetNumscript(context.Background(), "ledger1", "my-script", "v1")
@@ -964,9 +799,9 @@ func TestGetNumscript_Success(t *testing.T) {
 func TestGetNumscript_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		getNumscriptErr: errors.New("numscript not found"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().GetNumscript(gomock.Any(), gomock.Any()).Return(nil, errors.New("numscript not found"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.GetNumscript(context.Background(), "ledger1", "missing", "v1")
@@ -976,13 +811,13 @@ func TestGetNumscript_Error(t *testing.T) {
 func TestListNumscripts_Success(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.NumscriptInfo]{
-		items: []*commonpb.NumscriptInfo{
-			{Name: "script1"},
-			{Name: "script2"},
-		},
-	}
-	mock := &mockBucketServiceClient{listNumscriptsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.NumscriptInfo](ctrl, []*commonpb.NumscriptInfo{
+		{Name: "script1"},
+		{Name: "script2"},
+	}, nil)
+	mock.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	scripts, err := client.ListNumscripts(context.Background(), "ledger1")
@@ -995,9 +830,9 @@ func TestListNumscripts_Success(t *testing.T) {
 func TestListNumscripts_StreamInitError(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		listNumscriptsErr: errors.New("stream error"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream error"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListNumscripts(context.Background(), "ledger1")
@@ -1008,10 +843,10 @@ func TestListNumscripts_StreamInitError(t *testing.T) {
 func TestListNumscripts_StreamRecvError(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.NumscriptInfo]{
-		err: errors.New("recv failed"),
-	}
-	mock := &mockBucketServiceClient{listNumscriptsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.NumscriptInfo](ctrl, nil, errors.New("recv failed"))
+	mock.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListNumscripts(context.Background(), "ledger1")
@@ -1022,10 +857,10 @@ func TestListNumscripts_StreamRecvError(t *testing.T) {
 func TestListNumscripts_EmptyStream(t *testing.T) {
 	t.Parallel()
 
-	stream := &mockStream[commonpb.NumscriptInfo]{
-		items: []*commonpb.NumscriptInfo{},
-	}
-	mock := &mockBucketServiceClient{listNumscriptsStream: stream}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	stream := newRecvStream[commonpb.NumscriptInfo](ctrl, nil, nil)
+	mock.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	scripts, err := client.ListNumscripts(context.Background(), "ledger1")
@@ -1037,9 +872,11 @@ func TestApply_Success(t *testing.T) {
 	t.Parallel()
 
 	logs := []*commonpb.Log{{Sequence: 1}}
-	mock := &mockBucketServiceClient{
-		applyResp: &servicepb.ApplyResponse{Logs: logs},
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(
+		&servicepb.ApplyResponse{Logs: logs}, nil,
+	)
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.Apply(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{}))
@@ -1051,9 +888,9 @@ func TestApply_Success(t *testing.T) {
 func TestApply_Error(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		applyErr: errors.New("apply failed"),
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, errors.New("apply failed"))
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.Apply(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{}))
@@ -1071,9 +908,15 @@ func TestApply_Error(t *testing.T) {
 func TestApply_ForwardsCallerSnapshot(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		applyResp: &servicepb.ApplyResponse{},
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	var capturedApplyReq *servicepb.ApplyRequest
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest, _ ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+			capturedApplyReq = req
+
+			return &servicepb.ApplyResponse{}, nil
+		})
 
 	claims := &oidc.AccessTokenClaims{
 		TokenClaims: oidc.TokenClaims{
@@ -1087,7 +930,7 @@ func TestApply_ForwardsCallerSnapshot(t *testing.T) {
 	_, err := client.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{}))
 	require.NoError(t, err)
 
-	fc := mock.capturedApplyReq.GetForwardedCallerSnapshot()
+	fc := capturedApplyReq.GetForwardedCallerSnapshot()
 	require.NotNil(t, fc, "follower must forward the caller snapshot")
 	require.Equal(t, "alice", fc.GetIdentity().GetSubject())
 	require.Equal(t, "https://idp.example.com", fc.GetIdentity().GetIssuer())
@@ -1100,9 +943,15 @@ func TestApply_ForwardsCallerSnapshot(t *testing.T) {
 func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockBucketServiceClient{
-		applyResp: &servicepb.ApplyResponse{},
-	}
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	var capturedApplyReq *servicepb.ApplyRequest
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest, _ ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+			capturedApplyReq = req
+
+			return &servicepb.ApplyResponse{}, nil
+		})
 
 	// Simulate a node that received the request via cluster-internal forward.
 	original := &commonpb.CallerSnapshot{
@@ -1118,7 +967,7 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	_, err := client.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{}))
 	require.NoError(t, err)
 
-	fc := mock.capturedApplyReq.GetForwardedCallerSnapshot()
+	fc := capturedApplyReq.GetForwardedCallerSnapshot()
 	require.NotNil(t, fc)
 	require.Equal(t, "original-user", fc.GetIdentity().GetSubject())
 	require.Equal(t, "ed25519-7", fc.GetIdentity().GetKeyId())

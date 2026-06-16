@@ -41,7 +41,9 @@ func newTestSnapshotServer(checkpointDir string) *testSnapshotServer {
 	}
 }
 
-// noopLogger satisfies the logging.Logger interface for tests.
+// noopLogger stays hand-rolled: logging.Logger lives in
+// github.com/formancehq/go-libs and has no mockgen directive upstream. A
+// silent fixture is simpler than a vendor mock here.
 type noopLogger struct{}
 
 func (noopLogger) Enabled(_ logging.Level) bool                 { return false }

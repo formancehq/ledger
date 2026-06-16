@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -22,11 +23,11 @@ const validFieldFilterJSON = `{"field":{"field":{"metadata":"foo"},"existsCond":
 func TestHandleCreatePreparedQuery_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -51,13 +52,13 @@ func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 	t.Parallel()
 
 	var captured *servicepb.Request
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, reqs ...*servicepb.Request) ([]*commonpb.Log, error) {
-			captured = reqs[0]
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, reqs ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			captured = reqs[0].GetUnsigned()
 
 			return []*commonpb.Log{{}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	body := `{
@@ -106,7 +107,7 @@ func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 func TestHandleCreatePreparedQuery_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/prepared-queries",
@@ -121,7 +122,7 @@ func TestHandleCreatePreparedQuery_MissingLedgerName(t *testing.T) {
 func TestHandleCreatePreparedQuery_MissingName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
@@ -136,7 +137,7 @@ func TestHandleCreatePreparedQuery_MissingName(t *testing.T) {
 func TestHandleCreatePreparedQuery_InvalidBody(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
@@ -151,7 +152,7 @@ func TestHandleCreatePreparedQuery_InvalidBody(t *testing.T) {
 func TestHandleCreatePreparedQuery_MissingFilter(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
@@ -166,7 +167,7 @@ func TestHandleCreatePreparedQuery_MissingFilter(t *testing.T) {
 func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
@@ -181,11 +182,11 @@ func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {
 func TestHandleCreatePreparedQuery_AlreadyExists(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrPreparedQueryAlreadyExists{Ledger: "ledger1", Name: "my-query"}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

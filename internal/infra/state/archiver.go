@@ -40,6 +40,8 @@ type ArchiveRequest struct {
 // ArchiveProposer is a callback to propose a ConfirmArchivePeriod order back into Raft.
 type ArchiveProposer func(periodID uint64) error
 
+//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source archiver.go -destination archiver_period_state_generated_test.go -package state . ArchiverPeriodState
+
 // ArchiverPeriodState provides the Archiver with read access to the current
 // period state, used to gate consumption of stale archive requests after a
 // follower sync — see Archiver.archive for the rationale.

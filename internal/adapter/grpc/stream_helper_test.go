@@ -6,45 +6,59 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	ggrpc "google.golang.org/grpc"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 )
 
-// fakeServerStream is the minimum ServerStreamingServer[Res] needed to drive
-// sendPagedToStream from a unit test. It captures the items the helper sent
-// and the trailer it set.
+// fakeServerStream stays as a thin wrapper rather than a pure mockgen mock:
+// it embeds the generated MockServerStreamingServer[Res] (so it remains a
+// grpc.ServerStreamingServer[Res] callers can pass to handlers) while holding
+// the in-test state sendPagedToStream tests assert on (captured items,
+// merged trailer, optional Send-error injection). The wrapping pattern keeps
+// stateful Send/SetTrailer semantics expressible as DoAndReturn closures
+// without needing a separate state struct per test.
 type fakeServerStream[Res any] struct {
-	ggrpc.ServerStream
+	*MockServerStreamingServer[Res]
 
 	sent     []*Res
 	trailer  metadata.MD
 	sendErr  error
-	ctx      context.Context //nolint:containedctx // matches grpc.ServerStream contract
-	sendStop int             // when >0, return sendErr on the Nth Send (1-indexed)
+	sendStop int // when >0, return sendErr on the Nth Send (1-indexed)
 }
 
-func newFakeServerStream[Res any]() *fakeServerStream[Res] {
-	return &fakeServerStream[Res]{ctx: context.Background(), trailer: metadata.MD{}}
-}
+func newFakeServerStream[Res any](t *testing.T) *fakeServerStream[Res] {
+	t.Helper()
 
-func (f *fakeServerStream[Res]) Send(item *Res) error {
-	f.sent = append(f.sent, item)
-
-	if f.sendStop > 0 && len(f.sent) == f.sendStop {
-		return f.sendErr
+	f := &fakeServerStream[Res]{
+		MockServerStreamingServer: NewMockServerStreamingServer[Res](gomock.NewController(t)),
+		trailer:                   metadata.MD{},
 	}
 
-	return nil
-}
+	f.MockServerStreamingServer.EXPECT().Context().Return(context.Background()).AnyTimes()
 
-func (f *fakeServerStream[Res]) Context() context.Context     { return f.ctx }
-func (f *fakeServerStream[Res]) SetTrailer(md metadata.MD)    { f.trailer = metadata.Join(f.trailer, md) }
-func (f *fakeServerStream[Res]) SetHeader(metadata.MD) error  { return nil }
-func (f *fakeServerStream[Res]) SendHeader(metadata.MD) error { return nil }
-func (f *fakeServerStream[Res]) SendMsg(any) error            { return nil }
-func (f *fakeServerStream[Res]) RecvMsg(any) error            { return nil }
+	f.MockServerStreamingServer.EXPECT().Send(gomock.Any()).DoAndReturn(func(item *Res) error {
+		f.sent = append(f.sent, item)
+
+		if f.sendStop > 0 && len(f.sent) == f.sendStop {
+			return f.sendErr
+		}
+
+		return nil
+	}).AnyTimes()
+
+	f.MockServerStreamingServer.EXPECT().SetTrailer(gomock.Any()).Do(func(md metadata.MD) {
+		f.trailer = metadata.Join(f.trailer, md)
+	}).AnyTimes()
+
+	f.MockServerStreamingServer.EXPECT().SetHeader(gomock.Any()).Return(nil).AnyTimes()
+	f.MockServerStreamingServer.EXPECT().SendHeader(gomock.Any()).Return(nil).AnyTimes()
+	f.MockServerStreamingServer.EXPECT().SendMsg(gomock.Any()).Return(nil).AnyTimes()
+	f.MockServerStreamingServer.EXPECT().RecvMsg(gomock.Any()).Return(nil).AnyTimes()
+
+	return f
+}
 
 // trailerCursor pulls the x-next-cursor token (if any) the helper wrote.
 func (f *fakeServerStream[Res]) trailerCursor() string {
@@ -101,7 +115,7 @@ func TestSendPagedToStream(t *testing.T) {
 		// Source has 4 items, pageSize=3 → peek slot fires on item 4. The
 		// helper sends the first 3 and emits a trailer keyed on the 3rd item.
 		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}, {name: "c"}, {name: "d"}})
-		stream := newFakeServerStream[stringItem]()
+		stream := newFakeServerStream[stringItem](t)
 
 		err := sendPagedToStream(
 			context.Background(), src, stream, "item", 3,
@@ -118,7 +132,7 @@ func TestSendPagedToStream(t *testing.T) {
 		t.Parallel()
 
 		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}, {name: "c"}})
-		stream := newFakeServerStream[stringItem]()
+		stream := newFakeServerStream[stringItem](t)
 
 		err := sendPagedToStream(
 			context.Background(), src, stream, "item", 3,
@@ -134,7 +148,7 @@ func TestSendPagedToStream(t *testing.T) {
 		t.Parallel()
 
 		src := cursor.NewSliceCursor([]*stringItem(nil))
-		stream := newFakeServerStream[stringItem]()
+		stream := newFakeServerStream[stringItem](t)
 
 		err := sendPagedToStream(
 			context.Background(), src, stream, "item", 3,
@@ -153,7 +167,7 @@ func TestSendPagedToStream(t *testing.T) {
 		// payload is not Apply). emitTrailer must short-circuit instead of
 		// publishing a bogus token.
 		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}, {name: "c"}, {name: "d"}})
-		stream := newFakeServerStream[stringItem]()
+		stream := newFakeServerStream[stringItem](t)
 
 		err := sendPagedToStream(
 			context.Background(), src, stream, "item", 3,
@@ -176,7 +190,7 @@ func TestSendPagedToStream(t *testing.T) {
 			items:      []*stringItem{{name: "x"}, {name: "y"}},
 			nextCursor: "from-upstream",
 		}
-		stream := newFakeServerStream[stringItem]()
+		stream := newFakeServerStream[stringItem](t)
 
 		err := sendPagedToStream(
 			context.Background(), up, stream, "item", 5,
@@ -195,7 +209,7 @@ func TestSendPagedToStream(t *testing.T) {
 			items:      []*stringItem{{name: "x"}},
 			nextCursor: "",
 		}
-		stream := newFakeServerStream[stringItem]()
+		stream := newFakeServerStream[stringItem](t)
 
 		err := sendPagedToStream(
 			context.Background(), up, stream, "item", 5,
@@ -209,7 +223,7 @@ func TestSendPagedToStream(t *testing.T) {
 		t.Parallel()
 
 		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}})
-		stream := newFakeServerStream[stringItem]()
+		stream := newFakeServerStream[stringItem](t)
 
 		err := sendPagedToStream(
 			context.Background(), src, stream, "item", 0, nil,
@@ -223,7 +237,7 @@ func TestSendPagedToStream(t *testing.T) {
 		t.Parallel()
 
 		src := cursor.NewSliceCursor([]*stringItem{{name: "a"}, {name: "b"}})
-		stream := newFakeServerStream[stringItem]()
+		stream := newFakeServerStream[stringItem](t)
 		stream.sendStop = 1
 		stream.sendErr = errors.New("network blew up")
 
@@ -264,12 +278,31 @@ func TestUpstreamPeekCursor(t *testing.T) {
 	t.Run("real NewUpstreamPeekCursor surfaces the trailer", func(t *testing.T) {
 		t.Parallel()
 
-		// Drive the production upstreamPeekCursor with a fake streaming
+		// Drive the production upstreamPeekCursor with a mockgen streaming
 		// client whose Trailer() carries x-next-cursor.
-		client := &fakeStreamingClient[stringItem]{
-			items:   []*stringItem{{name: "a"}, {name: "b"}},
-			trailer: metadata.Pairs(NextCursorTrailerKey, "leader-token"),
-		}
+		ctrl := gomock.NewController(t)
+		client := NewMockServerStreamingClient[stringItem](ctrl)
+
+		items := []*stringItem{{name: "a"}, {name: "b"}}
+		idx := 0
+		client.EXPECT().Recv().DoAndReturn(func() (*stringItem, error) {
+			if idx >= len(items) {
+				return nil, errIOEOF
+			}
+
+			out := items[idx]
+			idx++
+
+			return out, nil
+		}).AnyTimes()
+		client.EXPECT().Trailer().Return(metadata.Pairs(NextCursorTrailerKey, "leader-token")).AnyTimes()
+
+		closed := false
+		client.EXPECT().CloseSend().DoAndReturn(func() error {
+			closed = true
+
+			return nil
+		})
 
 		c := NewUpstreamPeekCursor[stringItem](client)
 		ut, ok := c.(UpstreamTrailer)
@@ -287,36 +320,6 @@ func TestUpstreamPeekCursor(t *testing.T) {
 
 		require.Equal(t, "leader-token", ut.NextCursor())
 		require.NoError(t, c.Close(), "Close delegates to the underlying client's CloseSend")
-		require.True(t, client.closed)
+		require.True(t, closed)
 	})
 }
-
-// fakeStreamingClient implements grpc.ServerStreamingClient[Res] with a fixed
-// items slice and a synthetic Trailer().
-type fakeStreamingClient[Res any] struct {
-	ggrpc.ClientStream
-
-	items   []*Res
-	index   int
-	trailer metadata.MD
-	closed  bool
-}
-
-func (f *fakeStreamingClient[Res]) Recv() (*Res, error) {
-	if f.index >= len(f.items) {
-		return nil, errIOEOF
-	}
-
-	out := f.items[f.index]
-	f.index++
-
-	return out, nil
-}
-
-func (f *fakeStreamingClient[Res]) CloseSend() error {
-	f.closed = true
-
-	return nil
-}
-
-func (f *fakeStreamingClient[Res]) Trailer() metadata.MD { return f.trailer }

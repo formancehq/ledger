@@ -6,7 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeMsg implements VTMarshaler for testing.
+// fakeMsg stays hand-rolled: it's a fixture that returns scripted bytes for
+// vtprotobuf's VTMarshaler contract — not a behavioural mock. mockgen would
+// add boilerplate without adding any verification capability the test needs.
 type fakeMsg struct {
 	data []byte
 }

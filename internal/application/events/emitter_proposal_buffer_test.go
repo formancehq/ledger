@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -41,8 +42,11 @@ func (p *capturingProposer) Propose(_ context.Context, proposal *node.Proposal) 
 func TestProposeSinkUpdate_DoesNotMutateEarlierProposalBytes(t *testing.T) {
 	t.Parallel()
 
+	ctrl := gomock.NewController(t)
+	sink := NewMockSink(ctrl)
+
 	prop := &capturingProposer{}
-	emitter := NewEmitter(nil, &noopSink{}, "test-sink", prop, logging.Testing(), DefaultEmitterConfig())
+	emitter := NewEmitter(nil, sink, "test-sink", prop, logging.Testing(), DefaultEmitterConfig())
 
 	const firstCursor uint64 = 42
 	const secondCursor uint64 = 99

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -16,8 +17,9 @@ import (
 func TestHandleCreateLedger_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -29,8 +31,7 @@ func TestHandleCreateLedger_Success(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		})
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -46,7 +47,7 @@ func TestHandleCreateLedger_Success(t *testing.T) {
 func TestHandleCreateLedger_MissingName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/", nil, map[string]string{
@@ -61,11 +62,11 @@ func TestHandleCreateLedger_MissingName(t *testing.T) {
 func TestHandleCreateLedger_AlreadyExists(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrLedgerAlreadyExists{Name: "test-ledger"}
-		},
-	}
+		})
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

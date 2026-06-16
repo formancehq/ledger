@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -15,14 +16,14 @@ import (
 func TestHandleListLedgerLogs_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor([]*commonpb.Log{
 				{Sequence: 1},
 				{Sequence: 2},
 			}), nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -38,11 +39,11 @@ func TestHandleListLedgerLogs_Success(t *testing.T) {
 func TestHandleListLedgerLogs_Empty(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -58,7 +59,7 @@ func TestHandleListLedgerLogs_Empty(t *testing.T) {
 func TestHandleListLedgerLogs_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/logs", nil, map[string]string{
@@ -73,7 +74,7 @@ func TestHandleListLedgerLogs_MissingLedgerName(t *testing.T) {
 func TestHandleListLedgerLogs_InvalidPageSize(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/ledger1/logs?pageSize=abc", nil, map[string]string{
@@ -88,7 +89,7 @@ func TestHandleListLedgerLogs_InvalidPageSize(t *testing.T) {
 func TestHandleListLedgerLogs_InvalidAfter(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/ledger1/logs?after=notanumber", nil, map[string]string{
@@ -103,7 +104,7 @@ func TestHandleListLedgerLogs_InvalidAfter(t *testing.T) {
 func TestHandleListLedgerLogs_InvalidStartDate(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/ledger1/logs?startDate=not-a-date", nil, map[string]string{
@@ -118,7 +119,7 @@ func TestHandleListLedgerLogs_InvalidStartDate(t *testing.T) {
 func TestHandleListLedgerLogs_InvalidEndDate(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/ledger1/logs?endDate=not-a-date", nil, map[string]string{
@@ -133,11 +134,11 @@ func TestHandleListLedgerLogs_InvalidEndDate(t *testing.T) {
 func TestHandleListLedgerLogs_WithDateFilters(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -153,11 +154,11 @@ func TestHandleListLedgerLogs_WithDateFilters(t *testing.T) {
 func TestHandleListLedgerLogs_WithAfterParam(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

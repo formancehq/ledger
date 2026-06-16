@@ -515,6 +515,9 @@ func TestRecoverSchemaRewriteTasks_DropsOrphanedEntries(t *testing.T) {
 }
 
 // noopLogger implements the logging.Logger interface for tests without output.
+// noopLogger stays hand-rolled: logging.Logger lives in
+// github.com/formancehq/go-libs and has no mockgen directive upstream. A
+// silent fixture is simpler than a vendor mock here.
 type noopLogger struct{}
 
 var _ logging.Logger = noopLogger{}

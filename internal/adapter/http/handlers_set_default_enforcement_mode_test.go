@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -16,11 +17,11 @@ import (
 func TestHandleSetDefaultEnforcementMode_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -38,11 +39,11 @@ func TestHandleSetDefaultEnforcementMode_Success(t *testing.T) {
 func TestHandleSetDefaultEnforcementMode_AuditMode(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -60,7 +61,7 @@ func TestHandleSetDefaultEnforcementMode_AuditMode(t *testing.T) {
 func TestHandleSetDefaultEnforcementMode_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/account-types/default-enforcement-mode",
@@ -77,7 +78,7 @@ func TestHandleSetDefaultEnforcementMode_MissingLedgerName(t *testing.T) {
 func TestHandleSetDefaultEnforcementMode_MissingMode(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/account-types/default-enforcement-mode",
@@ -94,7 +95,7 @@ func TestHandleSetDefaultEnforcementMode_MissingMode(t *testing.T) {
 func TestHandleSetDefaultEnforcementMode_InvalidMode(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/account-types/default-enforcement-mode",
@@ -111,7 +112,7 @@ func TestHandleSetDefaultEnforcementMode_InvalidMode(t *testing.T) {
 func TestHandleSetDefaultEnforcementMode_InvalidBody(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/account-types/default-enforcement-mode",

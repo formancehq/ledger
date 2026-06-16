@@ -7,31 +7,47 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// fakeGetter is a hand-rolled PebbleGetter that lets each test inject the
-// exact value/error the read should return. Avoids spinning up a real Pebble
-// for what is purely an error-surface test.
-type fakeGetter struct {
-	entries map[string][]byte
-	getErr  error
+// newGetterWithEntries returns a MockPebbleGetter that resolves every Get call
+// against the given map: hits return the bytes, misses return pebble.ErrNotFound.
+func newGetterWithEntries(t *testing.T, entries map[string][]byte) *MockPebbleGetter {
+	t.Helper()
+
+	g := NewMockPebbleGetter(gomock.NewController(t))
+	g.EXPECT().Get(gomock.Any()).DoAndReturn(func(key []byte) ([]byte, io.Closer, error) {
+		if v, ok := entries[string(key)]; ok {
+			return v, io.NopCloser(nil), nil
+		}
+
+		return nil, nil, pebble.ErrNotFound
+	}).AnyTimes()
+
+	return g
 }
 
-func (f *fakeGetter) Get(key []byte) ([]byte, io.Closer, error) {
-	if f.getErr != nil {
-		return nil, nil, f.getErr
-	}
+// newGetterAlwaysErr returns a MockPebbleGetter whose Get always fails with err.
+func newGetterAlwaysErr(t *testing.T, err error) *MockPebbleGetter {
+	t.Helper()
 
-	v, ok := f.entries[string(key)]
-	if !ok {
-		return nil, nil, pebble.ErrNotFound
-	}
+	g := NewMockPebbleGetter(gomock.NewController(t))
+	g.EXPECT().Get(gomock.Any()).Return(nil, nil, err).AnyTimes()
 
-	return v, io.NopCloser(nil), nil
+	return g
+}
+
+// newGetterUnused returns a MockPebbleGetter that records no expectations —
+// any Get call will fail the test. Useful when the caller must short-circuit
+// before any read happens.
+func newGetterUnused(t *testing.T) *MockPebbleGetter {
+	t.Helper()
+
+	return NewMockPebbleGetter(gomock.NewController(t))
 }
 
 func ledgerLogIndexValue(seq uint64) []byte {
@@ -61,11 +77,9 @@ func TestReadLedgerLogsCompiled_HappyPath(t *testing.T) {
 		string(readstore.LedgerLogKey(kb, ledgerID, 30)): ledgerLogIndexValue(3030),
 	}
 
-	indexReader := &fakeGetter{entries: entries}
-
 	cur, err := ReadLedgerLogsCompiled(
-		&fakeGetter{}, // pebble reader unused in this path (cursor.Next is not called)
-		indexReader,
+		newGetterUnused(t), // pebble reader unused in this path (cursor.Next is not called)
+		newGetterWithEntries(t, entries),
 		ledgerID,
 		[][]byte{logID8(10), logID8(20), logID8(30)},
 	)
@@ -83,7 +97,7 @@ func TestReadLedgerLogsCompiled_MalformedLogIDBytes(t *testing.T) {
 	t.Parallel()
 
 	_, err := ReadLedgerLogsCompiled(
-		&fakeGetter{}, &fakeGetter{},
+		newGetterUnused(t), newGetterUnused(t),
 		7,
 		[][]byte{{0x01, 0x02}}, // logID is only 2 bytes — caught before any Get
 	)
@@ -103,11 +117,10 @@ func TestReadLedgerLogsCompiled_IndexGetError(t *testing.T) {
 	t.Parallel()
 
 	const ledgerID = uint32(42)
-	indexReader := &fakeGetter{getErr: pebble.ErrNotFound}
 
 	_, err := ReadLedgerLogsCompiled(
-		&fakeGetter{},
-		indexReader,
+		newGetterUnused(t),
+		newGetterAlwaysErr(t, pebble.ErrNotFound),
 		ledgerID,
 		[][]byte{logID8(99)},
 	)
@@ -133,8 +146,8 @@ func TestReadLedgerLogsCompiled_MalformedIndexValue(t *testing.T) {
 	}
 
 	_, err := ReadLedgerLogsCompiled(
-		&fakeGetter{},
-		&fakeGetter{entries: entries},
+		newGetterUnused(t),
+		newGetterWithEntries(t, entries),
 		ledgerID,
 		[][]byte{logID8(5)},
 	)

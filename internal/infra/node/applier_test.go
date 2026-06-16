@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -27,10 +28,15 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
-type noopNotifier struct{}
+func newNoopNotifier(t *testing.T) *MockNotifier {
+	t.Helper()
 
-func (noopNotifier) NotifyLogsCommitted(uint64) {}
-func (noopNotifier) NotifyConfigChanged()       {}
+	n := NewMockNotifier(gomock.NewController(t))
+	n.EXPECT().NotifyLogsCommitted(gomock.Any()).AnyTimes()
+	n.EXPECT().NotifyConfigChanged().AnyTimes()
+
+	return n
+}
 
 func listLedgerContains(s *dal.Store, name string) bool {
 	handle, err := s.NewDirectReadHandle()
@@ -108,7 +114,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meter,
-		nil, state.NewSharedState(), noopNotifier{}, nil, "test-cluster", 0,
+		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
 	)
 	require.NoError(t, err)
 

@@ -6,12 +6,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestHandleHealth_Healthy(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{healthy: true}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -27,7 +29,8 @@ func TestHandleHealth_Healthy(t *testing.T) {
 func TestHandleHealth_Unhealthy(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{healthy: false}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().IsHealthy().Return(false).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -44,7 +47,7 @@ func TestHandleLivez(t *testing.T) {
 	t.Parallel()
 
 	// Livez always returns 200 regardless of backend state.
-	backend := &mockBackend{healthy: false, ready: false}
+	backend := NewMockBackend(gomock.NewController(t))
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -60,7 +63,8 @@ func TestHandleLivez(t *testing.T) {
 func TestHandleReadyz_Ready(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{ready: true}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().NotReadyReasons().Return(nil).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -76,7 +80,8 @@ func TestHandleReadyz_Ready(t *testing.T) {
 func TestHandleReadyz_NotReady(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{ready: false}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().NotReadyReasons().Return([]string{"mock: not ready"}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

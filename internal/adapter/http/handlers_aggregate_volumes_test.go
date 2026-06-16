@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -20,8 +21,9 @@ import (
 func TestHandleAggregateVolumes_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		aggregateVolumesFn: func(_ context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			require.Equal(t, "my-ledger", ledgerName)
 			require.Nil(t, filter)
 			require.False(t, opts.UseMaxPrecision)
@@ -36,8 +38,7 @@ func TestHandleAggregateVolumes_Success(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -65,14 +66,14 @@ func TestHandleAggregateVolumes_WithOptions(t *testing.T) {
 	var capturedOpts query.AggregateOptions
 	var capturedFilter *commonpb.QueryFilter
 
-	backend := &mockBackend{
-		aggregateVolumesFn: func(_ context.Context, _ string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			capturedOpts = opts
 			capturedFilter = filter
 
 			return &commonpb.AggregateResult{}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -92,8 +93,9 @@ func TestHandleAggregateVolumes_WithOptions(t *testing.T) {
 func TestHandleAggregateVolumes_WithGroups(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		aggregateVolumesFn: func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			return &commonpb.AggregateResult{
 				Groups: []*commonpb.GroupedAggregateResult{
 					{
@@ -108,8 +110,7 @@ func TestHandleAggregateVolumes_WithGroups(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -135,7 +136,7 @@ func TestHandleAggregateVolumes_WithGroups(t *testing.T) {
 func TestHandleAggregateVolumes_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/volumes", nil, map[string]string{
@@ -150,11 +151,11 @@ func TestHandleAggregateVolumes_MissingLedgerName(t *testing.T) {
 func TestHandleAggregateVolumes_BackendError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		aggregateVolumesFn: func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			return nil, errors.New("internal error")
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -170,11 +171,11 @@ func TestHandleAggregateVolumes_BackendError(t *testing.T) {
 func TestHandleAggregateVolumes_LedgerNotFound(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		aggregateVolumesFn: func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -190,11 +191,11 @@ func TestHandleAggregateVolumes_LedgerNotFound(t *testing.T) {
 func TestHandleAggregateVolumes_NoLeaderError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		aggregateVolumesFn: func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			return nil, commonpb.ErrNoLeader
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -210,8 +211,9 @@ func TestHandleAggregateVolumes_NoLeaderError(t *testing.T) {
 func TestHandleAggregateVolumes_FullRouteIntegration(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		aggregateVolumesFn: func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			return &commonpb.AggregateResult{
 				Volumes: []*commonpb.AggregatedVolume{
 					{
@@ -221,8 +223,7 @@ func TestHandleAggregateVolumes_FullRouteIntegration(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
@@ -237,11 +238,11 @@ func TestHandleAggregateVolumes_FullRouteIntegration(t *testing.T) {
 func TestHandleAggregateVolumes_V2RouteIntegration(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		aggregateVolumesFn: func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 			return &commonpb.AggregateResult{}, nil
-		},
-	}
+		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -16,11 +17,11 @@ import (
 func TestHandleSetMetadataType_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -39,7 +40,7 @@ func TestHandleSetMetadataType_Success(t *testing.T) {
 func TestHandleSetMetadataType_InvalidTargetType(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`{"type":"string"}`)
@@ -57,7 +58,7 @@ func TestHandleSetMetadataType_InvalidTargetType(t *testing.T) {
 func TestHandleSetMetadataType_InvalidMetadataType(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`{"type":"badtype"}`)
@@ -75,7 +76,7 @@ func TestHandleSetMetadataType_InvalidMetadataType(t *testing.T) {
 func TestHandleSetMetadataType_MissingKey(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`{"type":"string"}`)
@@ -93,7 +94,7 @@ func TestHandleSetMetadataType_MissingKey(t *testing.T) {
 func TestHandleSetMetadataType_InvalidBody(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	body := strings.NewReader(`not json`)

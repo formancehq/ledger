@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
@@ -15,10 +16,15 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-type noopNotifier struct{}
+func newNoopNotifier(t *testing.T) *MockNotifier {
+	t.Helper()
 
-func (noopNotifier) NotifyLogsCommitted(uint64) {}
-func (noopNotifier) NotifyConfigChanged()       {}
+	n := NewMockNotifier(gomock.NewController(t))
+	n.EXPECT().NotifyLogsCommitted(gomock.Any()).AnyTimes()
+	n.EXPECT().NotifyConfigChanged().AnyTimes()
+
+	return n
+}
 
 func newTestStore(t *testing.T) *dal.Store {
 	t.Helper()

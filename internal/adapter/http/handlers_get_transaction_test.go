@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -15,14 +16,15 @@ import (
 func TestHandleGetTransaction_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
-		},
-		getTransactionFn: func(_ context.Context, _ string, txID uint64) (*commonpb.Transaction, error) {
+		}).AnyTimes()
+	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, txID uint64) (*commonpb.Transaction, error) {
 			return &commonpb.Transaction{Id: txID}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -39,7 +41,7 @@ func TestHandleGetTransaction_Success(t *testing.T) {
 func TestHandleGetTransaction_InvalidTxID(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/ledger1/transactions/abc", nil, map[string]string{
@@ -55,14 +57,15 @@ func TestHandleGetTransaction_InvalidTxID(t *testing.T) {
 func TestHandleGetTransaction_NotFound(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
-		},
-		getTransactionFn: func(_ context.Context, _ string, _ uint64) (*commonpb.Transaction, error) {
+		}).AnyTimes()
+	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint64) (*commonpb.Transaction, error) {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: 999}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -79,7 +82,7 @@ func TestHandleGetTransaction_NotFound(t *testing.T) {
 func TestHandleGetTransaction_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/", nil, map[string]string{

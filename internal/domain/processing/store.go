@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-//go:generate mockgen -source=store.go -destination=store_mock_test.go -package=processing -mock_names=InMemoryStore=MockInMemoryStore
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source=store.go -destination=store_generated_test.go -typed -package=processing -mock_names=InMemoryStore=MockInMemoryStore
 
 // InMemoryStore is the interface used by RequestProcessor to access data.
 // It abstracts the underlying storage mechanism (e.g., WriteSet).

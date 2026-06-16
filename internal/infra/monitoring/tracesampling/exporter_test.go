@@ -12,6 +12,8 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
+// mockExporter stays hand-rolled: sdktrace.SpanExporter is defined in the
+// upstream OTel SDK and has no mockgen directive we can attach to.
 type mockExporter struct {
 	spans []trace.ReadOnlySpan
 }

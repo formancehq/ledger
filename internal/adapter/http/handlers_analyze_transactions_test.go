@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -20,8 +21,9 @@ import (
 func TestHandleAnalyzeTransactions_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		analyzeTransactionsFn: func(_ context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, ledgerName string, variableThreshold uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 			require.Equal(t, "my-ledger", ledgerName)
 			require.Equal(t, uint32(0), variableThreshold)
 
@@ -51,8 +53,7 @@ func TestHandleAnalyzeTransactions_Success(t *testing.T) {
 					},
 				},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -89,13 +90,13 @@ func TestHandleAnalyzeTransactions_WithThreshold(t *testing.T) {
 
 	var capturedThreshold uint32
 
-	backend := &mockBackend{
-		analyzeTransactionsFn: func(_ context.Context, _ string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, variableThreshold uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 			capturedThreshold = variableThreshold
 
 			return &servicepb.AnalyzeTransactionsResponse{}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -112,7 +113,7 @@ func TestHandleAnalyzeTransactions_WithThreshold(t *testing.T) {
 func TestHandleAnalyzeTransactions_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/analyze-transactions", nil, map[string]string{
@@ -127,7 +128,7 @@ func TestHandleAnalyzeTransactions_MissingLedgerName(t *testing.T) {
 func TestHandleAnalyzeTransactions_InvalidThreshold(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/my-ledger/analyze-transactions?variableThreshold=abc", nil, map[string]string{
@@ -145,11 +146,11 @@ func TestHandleAnalyzeTransactions_InvalidThreshold(t *testing.T) {
 func TestHandleAnalyzeTransactions_BackendError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		analyzeTransactionsFn: func(_ context.Context, _ string, _ uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 			return nil, errors.New("internal error")
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -165,11 +166,11 @@ func TestHandleAnalyzeTransactions_BackendError(t *testing.T) {
 func TestHandleAnalyzeTransactions_LedgerNotFound(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		analyzeTransactionsFn: func(_ context.Context, _ string, _ uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -185,13 +186,13 @@ func TestHandleAnalyzeTransactions_LedgerNotFound(t *testing.T) {
 func TestHandleAnalyzeTransactions_EmptyResponse(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		analyzeTransactionsFn: func(_ context.Context, _ string, _ uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 			return &servicepb.AnalyzeTransactionsResponse{
 				TotalTransactions: 0,
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -211,11 +212,11 @@ func TestHandleAnalyzeTransactions_EmptyResponse(t *testing.T) {
 func TestHandleAnalyzeTransactions_NoLeaderError(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		analyzeTransactionsFn: func(_ context.Context, _ string, _ uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 			return nil, commonpb.ErrNoLeader
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -233,14 +234,14 @@ func TestHandleAnalyzeTransactions_NoLeaderError(t *testing.T) {
 func TestHandleAnalyzeTransactions_FullRouteIntegration(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		analyzeTransactionsFn: func(_ context.Context, _ string, _ uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 			return &servicepb.AnalyzeTransactionsResponse{
 				TotalTransactions: 5,
 				FlowPatterns:      []*servicepb.FlowPattern{},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 

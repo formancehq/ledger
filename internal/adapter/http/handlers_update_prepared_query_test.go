@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -17,11 +18,11 @@ import (
 func TestHandleUpdatePreparedQuery_Success(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -43,13 +44,13 @@ func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 	t.Parallel()
 
 	var captured *servicepb.Request
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, reqs ...*servicepb.Request) ([]*commonpb.Log, error) {
-			captured = reqs[0]
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, reqs ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			captured = reqs[0].GetUnsigned()
 
 			return []*commonpb.Log{{}}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	body := `{
@@ -93,7 +94,7 @@ func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 func TestHandleUpdatePreparedQuery_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/prepared-queries/my-query",
@@ -111,7 +112,7 @@ func TestHandleUpdatePreparedQuery_MissingLedgerName(t *testing.T) {
 func TestHandleUpdatePreparedQuery_MissingQueryName(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/",
@@ -129,7 +130,7 @@ func TestHandleUpdatePreparedQuery_MissingQueryName(t *testing.T) {
 func TestHandleUpdatePreparedQuery_InvalidBody(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
@@ -147,7 +148,7 @@ func TestHandleUpdatePreparedQuery_InvalidBody(t *testing.T) {
 func TestHandleUpdatePreparedQuery_MissingFilter(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
@@ -165,7 +166,7 @@ func TestHandleUpdatePreparedQuery_MissingFilter(t *testing.T) {
 func TestHandleUpdatePreparedQuery_EmptyFilter(t *testing.T) {
 	t.Parallel()
 
-	srv := newTestServer(t, &mockBackend{})
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPut, "/ledger1/prepared-queries/my-query",
@@ -183,11 +184,11 @@ func TestHandleUpdatePreparedQuery_EmptyFilter(t *testing.T) {
 func TestHandleUpdatePreparedQuery_NotFound(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrPreparedQueryNotFound{Ledger: "ledger1", Name: "missing"}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

@@ -12,81 +12,93 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 )
 
-// mockFileStream implements grpc.ServerStreamingClient[snapshotpb.FetchFileResponse].
-type mockFileStream struct {
+// fileStreamScript drives a MockServerStreamingClient[snapshotpb.FetchFileResponse]:
+// it returns `responses` in order, then io.EOF. If failAt >= 0, the call at
+// that index returns failErr instead of the scripted response.
+type fileStreamScript struct {
 	responses []*snapshotpb.FetchFileResponse
-	index     int
 	failAt    int
 	failErr   error
-	ctx       context.Context
 }
 
-func (s *mockFileStream) Recv() (*snapshotpb.FetchFileResponse, error) {
-	if s.failAt >= 0 && s.index == s.failAt {
-		return nil, s.failErr
-	}
+func newFileStream(t *testing.T, script fileStreamScript) *MockServerStreamingClient[snapshotpb.FetchFileResponse] {
+	t.Helper()
 
-	if s.index >= len(s.responses) {
-		return nil, io.EOF
-	}
+	s := NewMockServerStreamingClient[snapshotpb.FetchFileResponse](gomock.NewController(t))
 
-	resp := s.responses[s.index]
-	s.index++
+	idx := 0
+	s.EXPECT().Recv().DoAndReturn(func() (*snapshotpb.FetchFileResponse, error) {
+		if script.failAt >= 0 && idx == script.failAt {
+			return nil, script.failErr
+		}
 
-	return resp, nil
+		if idx >= len(script.responses) {
+			return nil, io.EOF
+		}
+
+		resp := script.responses[idx]
+		idx++
+
+		return resp, nil
+	}).AnyTimes()
+
+	return s
 }
 
-func (s *mockFileStream) Header() (metadata.MD, error) { return nil, nil }
-func (s *mockFileStream) Trailer() metadata.MD         { return nil }
-func (s *mockFileStream) CloseSend() error             { return nil }
-func (s *mockFileStream) Context() context.Context     { return s.ctx }
-func (s *mockFileStream) SendMsg(any) error            { return nil }
-func (s *mockFileStream) RecvMsg(any) error            { return nil }
-
-// mockSnapshotClient implements snapshotpb.SnapshotServiceClient.
-type mockSnapshotClient struct {
-	prepareResp    *snapshotpb.PrepareSnapshotResponse
-	prepareErr     error
-	fileStreams    map[string]*mockFileStream // path → stream
+// snapshotClientState backs a MockSnapshotServiceClient so tests can keep the
+// per-path FetchFile semantics, plus the call-count counters the originals
+// exposed as fields.
+type snapshotClientState struct {
+	fileStreams    map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]
 	closeErr       error
 	closeCalled    atomic.Int32
 	fetchFileCalls atomic.Int32
 }
 
-func (c *mockSnapshotClient) PrepareSnapshot(_ context.Context, _ *snapshotpb.PrepareSnapshotRequest, _ ...grpc.CallOption) (*snapshotpb.PrepareSnapshotResponse, error) {
-	if c.prepareErr != nil {
-		return nil, c.prepareErr
-	}
+func newMockSnapshotClient(t *testing.T, prepareResp *snapshotpb.PrepareSnapshotResponse, prepareErr error, streams map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]) (*MockSnapshotServiceClient, *snapshotClientState) {
+	t.Helper()
 
-	return c.prepareResp, nil
-}
+	s := &snapshotClientState{fileStreams: streams}
+	c := NewMockSnapshotServiceClient(gomock.NewController(t))
 
-func (c *mockSnapshotClient) FetchFile(ctx context.Context, in *snapshotpb.FetchFileRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[snapshotpb.FetchFileResponse], error) {
-	c.fetchFileCalls.Add(1)
+	c.EXPECT().PrepareSnapshot(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *snapshotpb.PrepareSnapshotRequest, _ ...grpc.CallOption) (*snapshotpb.PrepareSnapshotResponse, error) {
+			if prepareErr != nil {
+				return nil, prepareErr
+			}
 
-	stream, ok := c.fileStreams[in.GetPath()]
-	if !ok {
-		return nil, errors.New("no stream for path: " + in.GetPath())
-	}
+			return prepareResp, nil
+		}).AnyTimes()
 
-	stream.ctx = ctx
+	c.EXPECT().FetchFile(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, in *snapshotpb.FetchFileRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[snapshotpb.FetchFileResponse], error) {
+			s.fetchFileCalls.Add(1)
 
-	return stream, nil
-}
+			stream, ok := s.fileStreams[in.GetPath()]
+			if !ok {
+				return nil, errors.New("no stream for path: " + in.GetPath())
+			}
 
-func (c *mockSnapshotClient) CloseSession(_ context.Context, _ *snapshotpb.CloseSessionRequest, _ ...grpc.CallOption) (*snapshotpb.CloseSessionResponse, error) {
-	c.closeCalled.Add(1)
+			return stream, nil
+		}).AnyTimes()
 
-	return &snapshotpb.CloseSessionResponse{}, c.closeErr
+	c.EXPECT().CloseSession(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *snapshotpb.CloseSessionRequest, _ ...grpc.CallOption) (*snapshotpb.CloseSessionResponse, error) {
+			s.closeCalled.Add(1)
+
+			return &snapshotpb.CloseSessionResponse{}, s.closeErr
+		}).AnyTimes()
+
+	return c, s
 }
 
 func fileSHA256(data []byte) string {
@@ -95,10 +107,12 @@ func fileSHA256(data []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-func buildMockClient(files map[string][]byte) *mockSnapshotClient {
+func buildMockClient(t *testing.T, files map[string][]byte) (*MockSnapshotServiceClient, *snapshotClientState) {
+	t.Helper()
+
 	var entries []*snapshotpb.FileEntry
 
-	streams := make(map[string]*mockFileStream, len(files))
+	streams := make(map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse], len(files))
 
 	for path, data := range files {
 		entries = append(entries, &snapshotpb.FileEntry{
@@ -107,21 +121,22 @@ func buildMockClient(files map[string][]byte) *mockSnapshotClient {
 			Sha256: fileSHA256(data),
 		})
 
-		streams[path] = &mockFileStream{
+		streams[path] = newFileStream(t, fileStreamScript{
 			responses: []*snapshotpb.FetchFileResponse{
 				{Data: data, Eof: true},
 			},
 			failAt: -1,
-		}
+		})
 	}
 
-	return &mockSnapshotClient{
-		prepareResp: &snapshotpb.PrepareSnapshotResponse{
+	return newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
 			SessionId: "test-session",
 			Manifest:  &snapshotpb.SnapshotManifest{Files: entries},
 		},
-		fileStreams: streams,
-	}
+		nil,
+		streams,
+	)
 }
 
 func TestGRPCSnapshotFetcher_HappyPath(t *testing.T) {
@@ -133,7 +148,7 @@ func TestGRPCSnapshotFetcher_HappyPath(t *testing.T) {
 		"b.txt": []byte("bbb"),
 	}
 
-	client := buildMockClient(files)
+	client, csState := buildMockClient(t, files)
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 2, retryCount: 5, fileRetryCount: 3}
 
 	size, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
@@ -146,7 +161,7 @@ func TestGRPCSnapshotFetcher_HappyPath(t *testing.T) {
 		require.Equal(t, expected, data)
 	}
 
-	require.Equal(t, int32(1), client.closeCalled.Load())
+	require.Equal(t, int32(1), csState.closeCalled.Load())
 }
 
 func TestGRPCSnapshotFetcher_ParallelFetch(t *testing.T) {
@@ -160,7 +175,7 @@ func TestGRPCSnapshotFetcher_ParallelFetch(t *testing.T) {
 		"d.txt": []byte("ddd"),
 	}
 
-	client := buildMockClient(files)
+	client, csState := buildMockClient(t, files)
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 4, retryCount: 5, fileRetryCount: 3}
 
 	size, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
@@ -168,7 +183,7 @@ func TestGRPCSnapshotFetcher_ParallelFetch(t *testing.T) {
 	require.Equal(t, uint64(12), size)
 
 	// All 4 files fetched.
-	require.Equal(t, int32(4), client.fetchFileCalls.Load())
+	require.Equal(t, int32(4), csState.fetchFileCalls.Load())
 }
 
 func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
@@ -177,8 +192,16 @@ func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
 	dir := t.TempDir()
 	correctData := []byte("correct-content")
 
-	client := &mockSnapshotClient{
-		prepareResp: &snapshotpb.PrepareSnapshotResponse{
+	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+		"data.bin": newFileStream(t, fileStreamScript{
+			responses: []*snapshotpb.FetchFileResponse{
+				{Data: []byte("corrupted-data!!"), Eof: true},
+			},
+			failAt: -1,
+		}),
+	}
+	client, _ := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
 			SessionId: "test-session",
 			Manifest: &snapshotpb.SnapshotManifest{
 				Files: []*snapshotpb.FileEntry{
@@ -186,15 +209,9 @@ func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
 				},
 			},
 		},
-		fileStreams: map[string]*mockFileStream{
-			"data.bin": {
-				responses: []*snapshotpb.FetchFileResponse{
-					{Data: []byte("corrupted-data!!"), Eof: true},
-				},
-				failAt: -1,
-			},
-		},
-	}
+		nil,
+		streams,
+	)
 
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 5, fileRetryCount: 3}
 	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
@@ -205,9 +222,11 @@ func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
 func TestGRPCSnapshotFetcher_UnavailableWrapsErrNotAvailable(t *testing.T) {
 	t.Parallel()
 
-	client := &mockSnapshotClient{
-		prepareErr: status.Error(codes.Unavailable, "connection refused"),
-	}
+	client, _ := newMockSnapshotClient(t,
+		nil,
+		status.Error(codes.Unavailable, "connection refused"),
+		nil,
+	)
 
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 5, fileRetryCount: 3}
 	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
@@ -224,7 +243,7 @@ func TestGRPCSnapshotFetcher_ProgressTracking(t *testing.T) {
 		"b.txt": []byte("bbb"),
 	}
 
-	client := buildMockClient(files)
+	client, _ := buildMockClient(t, files)
 	progress := state.NewSyncProgress()
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 2, retryCount: 5, fileRetryCount: 3}
 
@@ -248,8 +267,16 @@ func TestGRPCSnapshotFetcher_ResumeSkipsCompletedFiles(t *testing.T) {
 
 	bContent := []byte("bbb")
 
-	client := &mockSnapshotClient{
-		prepareResp: &snapshotpb.PrepareSnapshotResponse{
+	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+		"b.txt": newFileStream(t, fileStreamScript{
+			responses: []*snapshotpb.FetchFileResponse{
+				{Data: bContent, Eof: true},
+			},
+			failAt: -1,
+		}),
+	}
+	client, csState := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
 			SessionId: "test-session",
 			Manifest: &snapshotpb.SnapshotManifest{
 				Files: []*snapshotpb.FileEntry{
@@ -258,22 +285,16 @@ func TestGRPCSnapshotFetcher_ResumeSkipsCompletedFiles(t *testing.T) {
 				},
 			},
 		},
-		fileStreams: map[string]*mockFileStream{
-			"b.txt": {
-				responses: []*snapshotpb.FetchFileResponse{
-					{Data: bContent, Eof: true},
-				},
-				failAt: -1,
-			},
-		},
-	}
+		nil,
+		streams,
+	)
 
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 2, retryCount: 5, fileRetryCount: 3}
 	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.NoError(t, err)
 
 	// Only b.txt should have been fetched (a.txt was already on disk).
-	require.Equal(t, int32(1), client.fetchFileCalls.Load())
+	require.Equal(t, int32(1), csState.fetchFileCalls.Load())
 
 	data, err := os.ReadFile(filepath.Join(dir, "b.txt"))
 	require.NoError(t, err)
@@ -284,8 +305,14 @@ func TestGRPCSnapshotFetcher_CloseSessionAlwaysCalled(t *testing.T) {
 	t.Parallel()
 
 	// Even when FetchFile fails, CloseSession should be called.
-	client := &mockSnapshotClient{
-		prepareResp: &snapshotpb.PrepareSnapshotResponse{
+	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+		"fail.txt": newFileStream(t, fileStreamScript{
+			failAt:  0,
+			failErr: status.Error(codes.PermissionDenied, "denied"),
+		}),
+	}
+	client, csState := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
 			SessionId: "test-session",
 			Manifest: &snapshotpb.SnapshotManifest{
 				Files: []*snapshotpb.FileEntry{
@@ -293,16 +320,12 @@ func TestGRPCSnapshotFetcher_CloseSessionAlwaysCalled(t *testing.T) {
 				},
 			},
 		},
-		fileStreams: map[string]*mockFileStream{
-			"fail.txt": {
-				failAt:  0,
-				failErr: status.Error(codes.PermissionDenied, "denied"),
-			},
-		},
-	}
+		nil,
+		streams,
+	)
 
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 5, fileRetryCount: 3}
 	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
 	require.Error(t, err)
-	require.GreaterOrEqual(t, client.closeCalled.Load(), int32(1))
+	require.GreaterOrEqual(t, csState.closeCalled.Load(), int32(1))
 }
