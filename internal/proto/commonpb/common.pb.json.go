@@ -357,6 +357,22 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 	return err
 }
 
+// MarshalJSON implements json.Marshaler for PreparedQuery.
+//
+// PreparedQuery embeds a *QueryFilter (a protobuf oneof) and exposes a
+// QueryTarget enum. Default encoding/json has no way to dispatch the oneof
+// variants (their Go fields carry only `protobuf:",oneof"` — no `json:` tag)
+// and emits the enum as a raw int. Result: `{"filter":{"Filter":{"Reference":
+// {"cond":{"Value":{"Hardcoded":"..."}}}}},"target":1}` instead of the
+// camelCase shape the REST contract advertises and that the input side
+// already accepts via `decodePreparedQueryFilter` (protojson).
+//
+// Route the whole value through protojson to keep the response symmetric
+// with the request — same class of bug as #459 / #473.
+func (x *PreparedQuery) MarshalJSON() ([]byte, error) {
+	return protojson.Marshal(x)
+}
+
 // MarshalJSON implements json.Marshaler for PreparedQueryCursor.
 func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
