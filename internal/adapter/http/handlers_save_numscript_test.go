@@ -51,7 +51,7 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
-func TestHandleSaveNumscript_NoContent(t *testing.T) {
+func TestHandleSaveNumscript_NoLogReturned(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
@@ -69,9 +69,12 @@ func TestHandleSaveNumscript_NoContent(t *testing.T) {
 			"name":       "my-script",
 		})
 
-	srv.handleSaveNumscript(w, r)
-
-	require.Equal(t, http.StatusNoContent, w.Code)
+	// A successful save always emits a log (processSaveNumscript returns either an
+	// error or a SavedNumscript log), so no log is a backend contract violation:
+	// the handler panics (jsonRecoverer turns this into a 500 in production).
+	require.Panics(t, func() {
+		srv.handleSaveNumscript(w, r)
+	})
 }
 
 func TestHandleSaveNumscript_MissingLedgerName(t *testing.T) {

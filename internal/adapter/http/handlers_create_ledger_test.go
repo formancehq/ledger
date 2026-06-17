@@ -59,6 +59,54 @@ func TestHandleCreateLedger_MissingName(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestHandleCreateLedger_NoLogReturned(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			return []*commonpb.Log{}, nil
+		})
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/test-ledger", nil, map[string]string{
+		"ledgerName": "test-ledger",
+	})
+
+	// An apply that returns no log is a backend contract violation; the handler
+	// panics (the jsonRecoverer middleware turns this into a 500 in production).
+	require.Panics(t, func() {
+		srv.handleCreateLedger(w, r)
+	})
+}
+
+func TestHandleCreateLedger_UnexpectedPayloadType(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			return []*commonpb.Log{{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_PromoteLedger{
+						PromoteLedger: &commonpb.PromotedLedgerLog{Name: "test-ledger"},
+					},
+				},
+			}}, nil
+		})
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/test-ledger", nil, map[string]string{
+		"ledgerName": "test-ledger",
+	})
+
+	srv.handleCreateLedger(w, r)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
 func TestHandleCreateLedger_AlreadyExists(t *testing.T) {
 	t.Parallel()
 

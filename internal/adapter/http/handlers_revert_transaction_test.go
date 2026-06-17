@@ -56,6 +56,29 @@ func TestHandleRevertTransaction_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
+func TestHandleRevertTransaction_NoLogReturned(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			return []*commonpb.Log{}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/transactions/1/revert", nil, map[string]string{
+		"ledgerName":    "ledger1",
+		"transactionId": "1",
+	})
+
+	// An apply that returns no log is a backend contract violation; the handler
+	// panics (the jsonRecoverer middleware turns this into a 500 in production).
+	require.Panics(t, func() {
+		srv.handleRevertTransaction(w, r)
+	})
+}
+
 func TestHandleRevertTransaction_AlreadyReverted(t *testing.T) {
 	t.Parallel()
 

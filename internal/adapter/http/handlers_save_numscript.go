@@ -50,12 +50,14 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(logs) > 0 {
-		if saved := logs[0].GetPayload().GetSavedNumscript(); saved != nil {
-			writeCreated(w, saved.GetInfo())
+	if len(logs) == 0 {
+		unreachable("save-numscript apply returned no log", map[string]any{"ledger": ledgerName, "name": name})
+	}
 
-			return
-		}
+	if saved := logs[0].GetPayload().GetSavedNumscript(); saved != nil {
+		writeCreated(w, saved.GetInfo())
+
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)

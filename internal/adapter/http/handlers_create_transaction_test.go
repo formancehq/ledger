@@ -56,6 +56,29 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
+func TestHandleCreateTransaction_NoLogReturned(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			return []*commonpb.Log{}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	body := strings.NewReader(`{"script":{"plain":"send [USD 100] (\n  source = @world\n  destination = @users:001\n)"}}`)
+	r := newRequest(t, http.MethodPost, "/ledger1/transactions", body, map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	// An apply that returns no log is a backend contract violation; the handler
+	// panics (the jsonRecoverer middleware turns this into a 500 in production).
+	require.Panics(t, func() {
+		srv.handleCreateTransaction(w, r)
+	})
+}
+
 func TestHandleCreateTransaction_InvalidBody(t *testing.T) {
 	t.Parallel()
 

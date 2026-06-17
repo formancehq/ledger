@@ -93,12 +93,17 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(logs) == 0 {
-		writeInternalServerError(w, r, errors.New("no log returned from apply"))
+		unreachable("create-ledger apply returned no log", map[string]any{"ledger": ledgerName})
+	}
+
+	createLedgerLog := logs[0].GetPayload().GetCreateLedger()
+	if createLedgerLog == nil {
+		writeInternalServerError(w, r, errors.New("unexpected log payload type"))
 
 		return
 	}
 
-	writeCreated(w, logs[0].GetPayload().GetCreateLedger().ToLedgerInfo())
+	writeCreated(w, createLedgerLog.ToLedgerInfo())
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.

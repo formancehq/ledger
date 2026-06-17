@@ -91,9 +91,10 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 
 	// Return the full reverted transaction response (includes post-commit volumes when requested)
 	if len(logs) == 0 {
-		writeInternalServerError(w, r, errors.New("no log returned from apply"))
-
-		return
+		unreachable("revert-transaction apply returned no log", map[string]any{
+			"ledger":         ledgerName,
+			"transaction_id": transactionID,
+		})
 	}
 
 	ledgerLog := logs[0].GetPayload().GetApply().GetLog()
