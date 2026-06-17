@@ -464,6 +464,28 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aux)
 }
 
+// MarshalJSON implements json.Marshaler for NumscriptInfo.
+//
+// The protoc-gen-go struct tags use snake_case (created_at), so a default
+// encoding/json marshal would emit `created_at` and break the camelCase REST
+// contract that every other endpoint follows. Same class of bug as #459 for
+// CreatedTransaction / RevertedTransaction / RevertTransactionPayload.
+func (x *NumscriptInfo) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Name      string     `json:"name,omitempty"`
+		Content   string     `json:"content,omitempty"`
+		Version   string     `json:"version,omitempty"`
+		CreatedAt *Timestamp `json:"createdAt,omitempty"`
+		Ledger    string     `json:"ledger,omitempty"`
+	}{
+		Name:      x.GetName(),
+		Content:   x.GetContent(),
+		Version:   x.GetVersion(),
+		CreatedAt: x.GetCreatedAt(),
+		Ledger:    x.GetLedger(),
+	})
+}
+
 // MarshalJSON implements json.Marshaler for Period.
 func (x *Period) MarshalJSON() ([]byte, error) {
 	type Aux struct {

@@ -3178,7 +3178,7 @@ components:
           type: string
           description: Semver version string (e.g. "1.0.0")
           example: "1.0.0"
-        created_at:
+        createdAt:
           type: string
           format: date-time
           description: Creation/update timestamp (ISO 8601 format)
