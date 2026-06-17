@@ -12,6 +12,17 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
 
+// validateInterval rejects non-positive polling intervals: time.NewTicker
+// panics on a non-positive duration, so the guard must run before the ticker is
+// created, returning a clean error instead of letting the CLI crash.
+func validateInterval(interval time.Duration) error {
+	if interval <= 0 {
+		return fmt.Errorf("--interval must be greater than 0, got %s", interval)
+	}
+
+	return nil
+}
+
 // NewWatchCommand creates the cluster watch command.
 func NewWatchCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -34,6 +45,10 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 	interval, _ := cmd.Flags().GetDuration("interval")
 	reqTimeout, _ := cmd.Flags().GetDuration("timeout")
 	nodeID, _ := cmd.Flags().GetUint32("node-id")
+
+	if err := validateInterval(interval); err != nil {
+		return err
+	}
 
 	client, conn, err := cmdutil.GetClusterClient(cmd)
 	if err != nil {

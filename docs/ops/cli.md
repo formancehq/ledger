@@ -2325,11 +2325,12 @@ ledgerctl cluster watch [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--interval` | `2s` | Polling interval |
+| `--interval` | `2s` | Polling interval (must be greater than 0) |
 | `--node-id` | `0` | Query specific node by ID (0 = route to leader) |
 | `--timeout` | `10s` | Per-request timeout |
 
 **Behavior:**
+- A non-positive `--interval` (e.g. `0` or `-1s`) is rejected with a clear error before polling starts
 - Polls the cluster state at the configured interval and updates the display in place
 - No banner is shown (saves screen space); a refresh timestamp is displayed at the bottom
 - On error (e.g., unreachable server), the error is displayed in place and polling continues
