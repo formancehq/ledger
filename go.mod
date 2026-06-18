@@ -51,7 +51,7 @@ require (
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.43.0
-	github.com/formancehq/go-libs/v5 v5.3.2
+	github.com/formancehq/go-libs/v5 v5.5.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/iancoleman/strcase v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
@@ -263,8 +263,3 @@ require (
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 )
-
-// TS-456: pulls v5.3.2 + the fx *http.Client scoping fix until go-libs#651
-// is merged on main and a v5.3.3 (or v5.4.x) is tagged. Swap back to a
-// regular `require` of the released version once available.
-replace github.com/formancehq/go-libs/v5 => github.com/formancehq/go-libs/v5 v5.3.3-0.20260618135825-8f0650ec4d54
