@@ -108,7 +108,7 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	ctx = adoptForwardedSnapshotIfTrusted(ctx, req)
 
 	if len(req.GetEnvelopes()) == 0 {
-		return nil, errors.New("at least one envelope is required")
+		return nil, errEnvelopesRequired
 	}
 
 	// Per-envelope scope check: each request in the batch may require a
@@ -291,7 +291,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 	}
 
 	if req.GetLedger() == "" {
-		return nil, errors.New("ledger name is required")
+		return nil, domain.ErrLedgerNameRequired
 	}
 
 	var (
@@ -438,7 +438,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	}
 
 	if req.GetLedger() == "" {
-		return errors.New("ledger name is required")
+		return domain.ErrLedgerNameRequired
 	}
 
 	opts := req.GetOptions()
@@ -572,7 +572,7 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	}
 
 	if req.GetLedger() == "" {
-		return nil, errors.New("ledger name is required")
+		return nil, domain.ErrLedgerNameRequired
 	}
 
 	read := req.GetRead()
@@ -598,7 +598,7 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servic
 	}
 
 	if req.GetLedger() == "" {
-		return nil, errors.New("ledger name is required")
+		return nil, domain.ErrLedgerNameRequired
 	}
 
 	c, cleanup, err := impl.readController(req.GetCheckpointId())
@@ -620,7 +620,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	}
 
 	if req.GetLedger() == "" {
-		return errors.New("ledger name is required")
+		return domain.ErrLedgerNameRequired
 	}
 
 	opts := req.GetOptions()
@@ -964,7 +964,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	}
 
 	if req.GetLedger() == "" {
-		return errors.New("ledger name is required")
+		return domain.ErrLedgerNameRequired
 	}
 
 	afterSequence, err := parseUint64Cursor(opts.GetCursor())
@@ -1134,7 +1134,7 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccou
 	}
 
 	if req.GetLedger() == "" {
-		return errors.New("ledger name is required")
+		return domain.ErrLedgerNameRequired
 	}
 
 	onProgress := func(processed, total uint64) {
@@ -1165,7 +1165,7 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeT
 	}
 
 	if req.GetLedger() == "" {
-		return errors.New("ledger name is required")
+		return domain.ErrLedgerNameRequired
 	}
 
 	onProgress := func(processed, total uint64) {
@@ -1272,7 +1272,7 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 	}
 
 	if req.GetLedger() == "" {
-		return nil, errors.New("ledger name is required")
+		return nil, domain.ErrLedgerNameRequired
 	}
 
 	c, cleanup, err := impl.readController(req.GetCheckpointId())
@@ -1290,7 +1290,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	}
 
 	if req.GetLedger() == "" {
-		return nil, errors.New("ledger name is required")
+		return nil, domain.ErrLedgerNameRequired
 	}
 
 	c, cleanup, err := impl.readController(req.GetCheckpointId())
@@ -1397,11 +1397,11 @@ func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *serv
 	}
 
 	if req.GetLedger() == "" {
-		return nil, errors.New("ledger name is required")
+		return nil, domain.ErrLedgerNameRequired
 	}
 
 	if req.GetMetadataKey() == "" {
-		return nil, errors.New("metadata_key is required")
+		return nil, domain.ErrMetadataKeyRequired
 	}
 
 	c, cleanup, err := impl.readController(req.GetCheckpointId())

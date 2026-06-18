@@ -265,6 +265,8 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 		{"metadata key required", domain.ErrMetadataKeyRequired},
 		{"script required", domain.ErrScriptRequired},
 		{"transaction target missing", domain.ErrTransactionTargetMissing},
+		{"ledger name required", domain.ErrLedgerNameRequired},
+		{"envelopes required", errEnvelopesRequired},
 	}
 
 	for _, tt := range tests {
@@ -498,6 +500,42 @@ func TestConvertToGRPCError_UnknownErrorIsSanitized(t *testing.T) {
 	require.NotContains(t, st.Message(), secretInternalDetail,
 		"raw internal error string MUST NOT leak through to the client (#326)")
 	require.Contains(t, st.Message(), "correlation ID")
+}
+
+// TestConvertToGRPCError_BareValidationSentinels pins EN-1253: request
+// validation sentinels returned raw (not wrapped in BusinessError) by the
+// bucket-service handlers must surface as codes.InvalidArgument, not the
+// codes.Unknown of the default sanitizer. These are the exact sentinels the
+// server_bucket.go guards now return for empty ledger name, empty envelope
+// list, and empty metadata key.
+func TestConvertToGRPCError_BareValidationSentinels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"ledger name required", domain.ErrLedgerNameRequired},
+		{"envelopes required", errEnvelopesRequired},
+		{"metadata key required", domain.ErrMetadataKeyRequired},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			grpcErr := convertToGRPCError(tt.err, testLogger())
+
+			st, ok := status.FromError(grpcErr)
+			require.True(t, ok)
+			require.Equal(t, codes.InvalidArgument, st.Code())
+			require.Equal(t, tt.err.Error(), st.Message())
+
+			info := extractErrorInfo(t, st)
+			require.Equal(t, domain.ErrReasonValidation, info.GetReason())
+			require.Equal(t, errorDomain, info.GetDomain())
+		})
+	}
 }
 
 func TestConvertToGRPCError_MissingSignature(t *testing.T) {

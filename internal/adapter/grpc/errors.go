@@ -10,6 +10,25 @@ import (
 
 const errorDomain = "ledger"
 
+// validationError is a transport-layer validation Describable for request
+// guards whose vocabulary is gRPC-specific (e.g. "envelope") and therefore
+// must not live in the domain layer. It mirrors domain.validationSentinel —
+// Kind=Validation, Reason=VALIDATION, no per-occurrence metadata — so it
+// routes through the same convertToGRPCError path to codes.InvalidArgument
+// with a VALIDATION ErrorInfo.
+type validationError struct{ msg string }
+
+func (e *validationError) Error() string             { return e.msg }
+func (*validationError) Kind() domain.ErrorKind      { return domain.KindValidation }
+func (*validationError) Reason() string              { return domain.ErrReasonValidation }
+func (*validationError) Metadata() map[string]string { return nil }
+
+// errEnvelopesRequired guards Apply against an empty batch. "Envelope" is a
+// servicepb transport carrier (a signed/unsigned request wrapper), not a
+// domain concept, so this sentinel lives in the adapter layer (EN-1253
+// review).
+var errEnvelopesRequired = &validationError{msg: "at least one envelope is required"}
+
 // kindToGRPCCode maps a semantic ErrorKind to a gRPC status code. Adding a
 // new Kind without a branch fails the `exhaustive` golangci-lint rule, which
 // is the whole point of this design (#431): a new domain error cannot reach
