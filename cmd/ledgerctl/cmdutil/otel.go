@@ -75,7 +75,7 @@ func SetupTracing(ctx context.Context, serviceVersion string) func(context.Conte
 
 	res, err := buildResource(ctx, serviceVersion)
 	if err != nil {
-		pterm.Warning.Printfln("OpenTelemetry: failed to build resource, using default: %v", err)
+		otelWarnf("OpenTelemetry: failed to build resource, using default: %v", err)
 
 		res = resource.Default()
 	}
@@ -88,7 +88,7 @@ func SetupTracing(ctx context.Context, serviceVersion string) func(context.Conte
 	exporter, err := newSpanExporter(ctx)
 	if err != nil {
 		// Don't fail the command — fall back to propagation-only tracing.
-		pterm.Warning.Printfln("OpenTelemetry: trace export disabled: %v", err)
+		otelWarnf("OpenTelemetry: trace export disabled: %v", err)
 	} else if exporter != nil {
 		opts = append(opts, sdktrace.WithBatcher(exporter))
 	}
@@ -103,6 +103,14 @@ func SetupTracing(ctx context.Context, serviceVersion string) func(context.Conte
 		_ = tp.ForceFlush(shutdownCtx)
 		_ = tp.Shutdown(shutdownCtx)
 	}
+}
+
+// otelWarnf reports an OpenTelemetry setup problem. It writes to stderr
+// explicitly because SetupTracing runs before the command's PersistentPreRunE
+// calls RoutePtermForStructuredOutput; a stdout warning here would land ahead of
+// a --json/--yaml payload and make it unparsable.
+func otelWarnf(format string, args ...any) {
+	pterm.Warning.WithWriter(os.Stderr).Printfln(format, args...)
 }
 
 // buildResource describes this CLI process. service.name defaults to
