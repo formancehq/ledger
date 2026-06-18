@@ -244,3 +244,8 @@ require (
 	google.golang.org/protobuf v1.36.9
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
+
+// TS-456: replace until go-libs v3.6.3 is tagged with the fx *http.Client
+// scoping fix (see https://github.com/formancehq/go-libs/pull/652).
+// Swap back to a regular `require` of v3.6.3 once released.
+replace github.com/formancehq/go-libs/v3 => github.com/formancehq/go-libs/v3 v3.6.3-0.20260618134705-35c99ca4d280
