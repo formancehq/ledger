@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -80,8 +81,7 @@ func GetClient(cmd *cobra.Command) (servicepb.BucketServiceClient, *grpc.ClientC
 	conn, err := grpc.NewClient(serverAddr,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy), // Retry on UNAVAILABLE (no leader) up to 50 times with 200ms delay (10s max)
-		grpc.WithUnaryInterceptor(TracingUnaryInterceptor()),
-		grpc.WithStreamInterceptor(TracingStreamInterceptor()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),     // Emit a client span per RPC and propagate W3C trace context.
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxRecvMsgSize)),
 	)
 	if err != nil {
@@ -102,8 +102,7 @@ func GetClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc
 
 	conn, err := grpc.NewClient(serverAddr,
 		grpc.WithTransportCredentials(creds),
-		grpc.WithUnaryInterceptor(TracingUnaryInterceptor()),
-		grpc.WithStreamInterceptor(TracingStreamInterceptor()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()), // Emit a client span per RPC and propagate W3C trace context.
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxRecvMsgSize)),
 	)
 	if err != nil {
