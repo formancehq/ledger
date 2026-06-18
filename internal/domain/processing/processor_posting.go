@@ -21,9 +21,9 @@ type cachedAssetPrecision struct {
 // cachedVolumeKey builds a VolumeKey, using the assetCache to avoid
 // re-parsing the asset precision when the same asset string recurs.
 // If assetCache is nil, falls back to domain.NewVolumeKey.
-func cachedVolumeKey(ledgerID uint32, account, asset string, assetCache map[string]cachedAssetPrecision) domain.VolumeKey {
+func cachedVolumeKey(ledgerName string, account, asset string, assetCache map[string]cachedAssetPrecision) domain.VolumeKey {
 	if assetCache == nil {
-		return domain.NewVolumeKey(ledgerID, account, asset)
+		return domain.NewVolumeKey(ledgerName, account, asset)
 	}
 
 	cached, ok := assetCache[asset]
@@ -33,7 +33,7 @@ func cachedVolumeKey(ledgerID uint32, account, asset string, assetCache map[stri
 	}
 
 	return domain.VolumeKey{
-		AccountKey:     domain.AccountKey{LedgerID: ledgerID, Account: account},
+		AccountKey:     domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Asset:          asset,
 		AssetBase:      cached.base,
 		AssetPrecision: cached.precision,
@@ -45,8 +45,8 @@ func cachedVolumeKey(ledgerID uint32, account, asset string, assetCache map[stri
 // increases Output for source and Input for destination.
 // All volumes must be preloaded by the admission layer — nil volumes return an error.
 // assetCache, if non-nil, avoids redundant ParseAssetPrecision calls across postings.
-func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.Describable {
-	sourceKey := cachedVolumeKey(ledgerID, posting.GetSource(), posting.GetAsset(), assetCache)
+func applyPosting(s InMemoryStore, ledgerName string, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.Describable {
+	sourceKey := cachedVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), assetCache)
 
 	// Decode posting amount into stack variable to avoid heap allocation
 	var amount uint256.Int
@@ -119,7 +119,7 @@ func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, s
 	s.PutVolume(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
-	destKey := cachedVolumeKey(ledgerID, posting.GetDestination(), posting.GetAsset(), assetCache)
+	destKey := cachedVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset(), assetCache)
 
 	destReader, err := s.GetVolume(destKey)
 	if err != nil {

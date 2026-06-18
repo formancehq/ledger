@@ -1,14 +1,13 @@
 package readstore
 
 import (
-	"encoding/binary"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ledgerScopedPrefixes lists all readstore key prefixes that contain
-// ledger-scoped data (keyed by [prefix...][ledgerID_BE_4B]...).
+// ledger-scoped data (keyed by [prefix...][ledgerName padded 64B]...).
 var ledgerScopedPrefixes = [][]byte{
 	{PrefixMetadataIndex},
 	{PrefixEntityExists},
@@ -26,27 +25,36 @@ var ledgerScopedPrefixes = [][]byte{
 
 // DeleteLedgerIndexes removes all read index data for the given ledger.
 // It performs range deletes on all ledger-scoped prefixes:
-// [prefix...][ledgerID_BE_4B] -> [prefix...][(ledgerID+1)_BE_4B].
-func DeleteLedgerIndexes(batch *dal.WriteSession, ledgerID uint32) error {
-	var ledgerPrefix [4]byte
-	binary.BigEndian.PutUint32(ledgerPrefix[:], ledgerID)
-
-	var ledgerPrefixUpper [4]byte
-	binary.BigEndian.PutUint32(ledgerPrefixUpper[:], ledgerID+1)
-
+// [prefix...][ledgerName padded 64B] -> successor of that padded block.
+//
+// Validation guarantees ledger names are printable ASCII only, so the last
+// padding byte is never 0xFF — incrementing it cannot carry past the
+// fixed-width name block and yields a clean exclusive upper bound.
+func DeleteLedgerIndexes(batch *dal.WriteSession, ledgerName string) error {
 	for _, prefix := range ledgerScopedPrefixes {
-		start := make([]byte, 0, len(prefix)+4)
+		start := make([]byte, 0, len(prefix)+dal.LedgerNameFixedSize)
 		start = append(start, prefix...)
-		start = append(start, ledgerPrefix[:]...)
+		start = appendPaddedLedgerName(start, ledgerName)
 
-		end := make([]byte, 0, len(prefix)+4)
+		end := make([]byte, 0, len(prefix)+dal.LedgerNameFixedSize)
 		end = append(end, prefix...)
-		end = append(end, ledgerPrefixUpper[:]...)
+		end = appendPaddedLedgerName(end, ledgerName)
+		end[len(end)-1]++
 
 		if err := batch.DeleteRangeNoSync(start, end); err != nil {
-			return fmt.Errorf("deleting readstore prefix %x for ledger %d: %w", prefix, ledgerID, err)
+			return fmt.Errorf("deleting readstore prefix %x for ledger %q: %w", prefix, ledgerName, err)
 		}
 	}
 
 	return nil
+}
+
+// appendPaddedLedgerName appends the ledger name zero-padded to
+// dal.LedgerNameFixedSize bytes. Callers MUST validate the name length
+// upstream — copy() truncates silently here.
+func appendPaddedLedgerName(dst []byte, name string) []byte {
+	var pad [dal.LedgerNameFixedSize]byte
+	copy(pad[:], name)
+
+	return append(dst, pad[:]...)
 }

@@ -1,7 +1,6 @@
 package query
 
 import (
-	"encoding/binary"
 	"fmt"
 	"sort"
 	"strings"
@@ -242,7 +241,7 @@ func (ga *groupedAggregator) result() *commonpb.AggregateResult {
 func AggregateVolumes(
 	pebbleReader dal.PebbleReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
-	ledgerID uint32,
+	ledgerName string,
 	accountIter readstore.EntityIterator,
 	opts AggregateOptions,
 ) (*commonpb.AggregateResult, error) {
@@ -251,11 +250,11 @@ func AggregateVolumes(
 	for accountIter.Next() {
 		account := string(accountIter.Current())
 
-		// Build canonical prefix: [ledgerID BE 4B][account]\x00
+		// Build canonical prefix: [ledgerName padded 64B][account][sepVolume].
 		// This matches all volume keys for this (ledger, account) pair.
-		canonicalPrefix := make([]byte, 4+len(account)+1)
-		binary.BigEndian.PutUint32(canonicalPrefix[0:4], ledgerID)
-		n := 4
+		canonicalPrefix := make([]byte, dal.LedgerNameFixedSize+len(account)+1)
+		copy(canonicalPrefix[:dal.LedgerNameFixedSize], ledgerName)
+		n := dal.LedgerNameFixedSize
 		n += copy(canonicalPrefix[n:], account)
 		canonicalPrefix[n] = dal.CanonicalKeySepVolume
 
@@ -296,15 +295,15 @@ func AggregateVolumes(
 func AggregateAllVolumes(
 	pebbleReader dal.PebbleReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
-	ledgerID uint32,
+	ledgerName string,
 	opts AggregateOptions,
 ) (*commonpb.AggregateResult, error) {
 	acc := newAccumulator(opts)
 
-	// Single-pass: scan [ledgerID BE 4B] prefix which covers all accounts.
+	// Single-pass: scan [ledgerName padded 64B] prefix which covers all accounts.
 	// StreamingIter on volumeAttr skips non-volume entries (metadata).
-	ledgerPrefix := make([]byte, 4)
-	binary.BigEndian.PutUint32(ledgerPrefix, ledgerID)
+	ledgerPrefix := make([]byte, dal.LedgerNameFixedSize)
+	copy(ledgerPrefix, ledgerName)
 
 	iter, err := volumeAttr.NewStreamingIter(pebbleReader, ledgerPrefix)
 	if err != nil {

@@ -202,26 +202,26 @@ func (fsm *Machine) applyMirrorSyncUpdate(batch *dal.WriteSession, update *raftc
 		return nil // ledger not found (may have been deleted)
 	}
 
-	ledgerID := ledgerInfo.GetId()
+	ledgerName := ledgerInfo.GetName()
 
 	if update.GetCursor() > 0 {
-		if err := SetMirrorCursor(batch, ledgerID, update.GetCursor()); err != nil {
+		if err := SetMirrorCursor(batch, ledgerName, update.GetCursor()); err != nil {
 			return fmt.Errorf("setting mirror cursor: %w", err)
 		}
 	}
 
 	if update.GetSourceLogCount() > 0 {
-		if err := SetMirrorSourceHead(batch, ledgerID, update.GetSourceLogCount()); err != nil {
+		if err := SetMirrorSourceHead(batch, ledgerName, update.GetSourceLogCount()); err != nil {
 			return fmt.Errorf("setting mirror source head: %w", err)
 		}
 	}
 
 	if update.GetClearError() {
-		if err := clearMirrorStatus(batch, ledgerID); err != nil {
+		if err := clearMirrorStatus(batch, ledgerName); err != nil {
 			return fmt.Errorf("clearing mirror status: %w", err)
 		}
 	} else if update.GetError() != nil {
-		if err := SetMirrorStatus(batch, ledgerID, update.GetError()); err != nil {
+		if err := SetMirrorStatus(batch, ledgerName, update.GetError()); err != nil {
 			return fmt.Errorf("setting mirror status: %w", err)
 		}
 	}

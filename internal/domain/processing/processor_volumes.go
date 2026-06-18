@@ -13,7 +13,7 @@ import (
 // pairs involved in the given postings. It reads the current volume state from the
 // in-memory store (after postings have been applied) and converts Known values
 // into concrete Input/Output values as big integer strings.
-func buildPostCommitVolumes(s InMemoryStore, ledgerID uint32, postings []*commonpb.Posting) *commonpb.PostCommitVolumes {
+func buildPostCommitVolumes(s InMemoryStore, ledgerName string, postings []*commonpb.Posting) *commonpb.PostCommitVolumes {
 	// Collect unique (account, asset) pairs
 	type accountAsset struct {
 		account string
@@ -43,7 +43,7 @@ func buildPostCommitVolumes(s InMemoryStore, ledgerID uint32, postings []*common
 	var scratch uint256.Int
 
 	for _, pair := range pairs {
-		vol, err := s.GetVolume(domain.NewVolumeKey(ledgerID, pair.account, pair.asset))
+		vol, err := s.GetVolume(domain.NewVolumeKey(ledgerName, pair.account, pair.asset))
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			continue
 		}

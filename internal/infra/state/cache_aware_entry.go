@@ -101,7 +101,6 @@ func (c *CacheAwareEntry[K, V]) PutCacheOnly(
 
 // KeyStore returns the inner KeyStore. Reserved for:
 //   - DerivedKeyStore construction (NewDerivedKeyStore needs *KeyStore)
-//   - Parent().M.Iter() access in GetLedgerByID
 //   - Test setup that populates the store without needing 0xFF consistency
 //
 // Production code outside the DerivedKeyStore→Merge pipeline must NOT call

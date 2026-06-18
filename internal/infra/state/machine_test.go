@@ -66,7 +66,7 @@ func newTestMachine(t *testing.T) (*Machine, *dal.Store, *attributes.Attributes)
 func makeProposal(id uint64, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 	// The FSM assigns ledger IDs starting from 1. In single-ledger tests,
 	// the first ledger always gets ID 1.
-	preloads := buildVolumePreloads(orders, 1)
+	preloads := buildVolumePreloads(orders, "test")
 
 	return &raftcmdpb.Proposal{
 		Id:      id,
@@ -78,7 +78,9 @@ func makeProposal(id uint64, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 
 // buildVolumePreloads extracts all (ledger, account, asset) tuples from posting
 // orders and creates zero-value volume preloads for each unique combination.
-func buildVolumePreloads(orders []*raftcmdpb.Order, ledgerID uint32) []*raftcmdpb.Preload {
+// The second parameter is the default ledger name for orders that do not carry
+// one (none in practice today, but kept for callers passing a literal sentinel).
+func buildVolumePreloads(orders []*raftcmdpb.Order, _ string) []*raftcmdpb.Preload {
 	type volumeKey struct {
 		ledger  string
 		account string
@@ -114,7 +116,7 @@ func buildVolumePreloads(orders []*raftcmdpb.Order, ledgerID uint32) []*raftcmdp
 				seen[key] = struct{}{}
 
 				canonicalKey := domain.VolumeKey{
-					AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
+					AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
 					Asset:      p.GetAsset(),
 				}
 				id, tag := attributes.MakeKey(canonicalKey.Bytes())
@@ -368,8 +370,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	getVolumeFromCache := func(account, asset string) (input, output int64) {
 		key := domain.VolumeKey{
 			AccountKey: domain.AccountKey{
-				LedgerID: 1,
-				Account:  account,
+				LedgerName: ledgerName,
+				Account:    account,
 			},
 			Asset: asset,
 		}
@@ -410,8 +412,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		for _, exp := range expectations {
 			key := domain.VolumeKey{
 				AccountKey: domain.AccountKey{
-					LedgerID: 1,
-					Account:  exp.account,
+					LedgerName: ledgerName,
+					Account:    exp.account,
 				},
 				Asset: exp.asset,
 			}
@@ -458,7 +460,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 
 		// Store: same verification
 		canonicalKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "merchant:bob"},
+			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "merchant:bob"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -480,7 +482,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 
 		// Store: same verification
 		canonicalKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "customer:dave"},
+			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "customer:dave"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -502,7 +504,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 
 		// Store: same verification
 		canonicalKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "platform:revenue"},
+			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "platform:revenue"},
 			Asset:      "EUR",
 		}.Bytes()
 

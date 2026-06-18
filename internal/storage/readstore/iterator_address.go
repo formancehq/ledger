@@ -17,7 +17,7 @@ import (
 type AddressTxIterator struct {
 	reader      dal.PebbleReader
 	kb          *dal.KeyBuilder
-	ledgerID    uint32
+	ledgerName  string
 	prefix      byte           // which account→tx prefix to scan
 	addrIter    EntityIterator // iterates over matching account addresses
 	current     []byte         // current txID (8 bytes)
@@ -33,17 +33,17 @@ type AddressTxIterator struct {
 func NewAddressTxIterator(
 	reader dal.PebbleReader,
 	kb *dal.KeyBuilder,
-	ledgerID uint32,
+	ledgerName string,
 	addrIter EntityIterator,
 	prefix byte,
 ) *AddressTxIterator {
 	return &AddressTxIterator{
-		reader:   reader,
-		kb:       kb,
-		ledgerID: ledgerID,
-		prefix:   prefix,
-		addrIter: addrIter,
-		txSeen:   make(map[uint64]struct{}),
+		reader:     reader,
+		kb:         kb,
+		ledgerName: ledgerName,
+		prefix:     prefix,
+		addrIter:   addrIter,
+		txSeen:     make(map[uint64]struct{}),
 	}
 }
 
@@ -146,7 +146,7 @@ func (it *AddressTxIterator) Close() {
 func (it *AddressTxIterator) materialize() error {
 	for it.addrIter.Next() {
 		account := string(it.addrIter.Current())
-		prefix := AccountTxPrefix(it.kb, it.prefix, it.ledgerID, account)
+		prefix := AccountTxPrefix(it.kb, it.prefix, it.ledgerName, account)
 		upper := IncrementBytes(prefix)
 
 		iter, err := it.reader.NewIter(&pebble.IterOptions{

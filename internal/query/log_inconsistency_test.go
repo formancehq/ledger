@@ -69,18 +69,18 @@ func logID8(id uint64) []byte {
 func TestReadLedgerLogsCompiled_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	const ledgerID = uint32(42)
+	const ledgerName = "test"
 	kb := dal.NewKeyBuilder()
 	entries := map[string][]byte{
-		string(readstore.LedgerLogKey(kb, ledgerID, 10)): ledgerLogIndexValue(1010),
-		string(readstore.LedgerLogKey(kb, ledgerID, 20)): ledgerLogIndexValue(2020),
-		string(readstore.LedgerLogKey(kb, ledgerID, 30)): ledgerLogIndexValue(3030),
+		string(readstore.LedgerLogKey(kb, ledgerName, 10)): ledgerLogIndexValue(1010),
+		string(readstore.LedgerLogKey(kb, ledgerName, 20)): ledgerLogIndexValue(2020),
+		string(readstore.LedgerLogKey(kb, ledgerName, 30)): ledgerLogIndexValue(3030),
 	}
 
 	cur, err := ReadLedgerLogsCompiled(
 		newGetterUnused(t), // pebble reader unused in this path (cursor.Next is not called)
 		newGetterWithEntries(t, entries),
-		ledgerID,
+		ledgerName,
 		[][]byte{logID8(10), logID8(20), logID8(30)},
 	)
 	require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestReadLedgerLogsCompiled_MalformedLogIDBytes(t *testing.T) {
 
 	_, err := ReadLedgerLogsCompiled(
 		newGetterUnused(t), newGetterUnused(t),
-		7,
+		"test",
 		[][]byte{{0x01, 0x02}}, // logID is only 2 bytes — caught before any Get
 	)
 
@@ -116,12 +116,12 @@ func TestReadLedgerLogsCompiled_MalformedLogIDBytes(t *testing.T) {
 func TestReadLedgerLogsCompiled_IndexGetError(t *testing.T) {
 	t.Parallel()
 
-	const ledgerID = uint32(42)
+	const ledgerName = "test"
 
 	_, err := ReadLedgerLogsCompiled(
 		newGetterUnused(t),
 		newGetterAlwaysErr(t, pebble.ErrNotFound),
-		ledgerID,
+		ledgerName,
 		[][]byte{logID8(99)},
 	)
 
@@ -139,16 +139,16 @@ func TestReadLedgerLogsCompiled_IndexGetError(t *testing.T) {
 func TestReadLedgerLogsCompiled_MalformedIndexValue(t *testing.T) {
 	t.Parallel()
 
-	const ledgerID = uint32(42)
+	const ledgerName = "test"
 	kb := dal.NewKeyBuilder()
 	entries := map[string][]byte{
-		string(readstore.LedgerLogKey(kb, ledgerID, 5)): {0xAB}, // 1 byte instead of 8
+		string(readstore.LedgerLogKey(kb, ledgerName, 5)): {0xAB}, // 1 byte instead of 8
 	}
 
 	_, err := ReadLedgerLogsCompiled(
 		newGetterUnused(t),
 		newGetterWithEntries(t, entries),
-		ledgerID,
+		ledgerName,
 		[][]byte{logID8(5)},
 	)
 

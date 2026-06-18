@@ -95,15 +95,15 @@ type InMemoryStore interface {
 	AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType)
 
 	// Prepared query operations
-	GetPreparedQuery(ledgerID uint32, name string) (*commonpb.PreparedQuery, error)
-	PutPreparedQuery(ledgerID uint32, pq *commonpb.PreparedQuery)
-	DeletePreparedQuery(ledgerID uint32, name string)
+	GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error)
+	PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery)
+	DeletePreparedQuery(ledgerName string, name string)
 
 	// Numscript library operations
-	GetNumscriptLatestVersion(ledgerID uint32, name string) (string, error)
-	NumscriptVersionExists(ledgerID uint32, name, version string) (bool, error)
-	PutNumscript(ledgerID uint32, info *commonpb.NumscriptInfo)
-	DeleteNumscriptLatest(ledgerID uint32, name string)
+	GetNumscriptLatestVersion(ledgerName string, name string) (string, error)
+	NumscriptVersionExists(ledgerName string, name, version string) (bool, error)
+	PutNumscript(ledgerName string, info *commonpb.NumscriptInfo)
+	DeleteNumscriptLatest(ledgerName string, name string)
 
 	// Query checkpoint operations
 	GetNextQueryCheckpointID() uint64
@@ -119,5 +119,5 @@ type InMemoryStore interface {
 	MarkLedgerForCleanup(ledger string)
 
 	// Numscript content resolution
-	ResolveNumscriptContent(ledgerID uint32, name, version string) (*commonpb.NumscriptInfo, error)
+	ResolveNumscriptContent(ledgerName string, name, version string) (*commonpb.NumscriptInfo, error)
 }

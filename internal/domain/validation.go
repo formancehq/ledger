@@ -6,11 +6,16 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // maxLedgerNameLength is the maximum allowed length for a ledger name.
-// Pebble keys must stay reasonable; 256 bytes is generous for a human-readable identifier.
-const maxLedgerNameLength = 256
+// Capped to dal.LedgerNameFixedSize because every ledger-scoped canonical
+// key reserves exactly that many bytes for the name (zero-padded).
+// Validating upstream prevents silent truncation in appendLedgerName,
+// which would otherwise cause key collisions between names sharing the
+// first N bytes.
+const maxLedgerNameLength = dal.LedgerNameFixedSize
 
 // maxNumscriptNameLength caps numscript identifiers. Same envelope as
 // ledger names — they are addressed the same way in CLI/UI/RPC.

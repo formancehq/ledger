@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -15,30 +14,31 @@ import (
 )
 
 // ReadPreparedQuery reads a single prepared query by ledger and name from the attributes zone.
-func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleGetter, ledgerID uint32, name string) (*commonpb.PreparedQuery, error) {
+func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleGetter, ledgerName string, name string) (*commonpb.PreparedQuery, error) {
 	_, span := queryTracer.Start(ctx, "query.get_prepared_query",
 		trace.WithAttributes(
-			attribute.Int64("ledger_id", int64(ledgerID)),
+			attribute.String("ledger", ledgerName),
 			attribute.String("name", name),
 		))
 	defer span.End()
 
-	return attr.Get(reader, domain.PreparedQueryKey{LedgerID: ledgerID, Name: name}.Bytes())
+	return attr.Get(reader, domain.PreparedQueryKey{LedgerName: ledgerName, Name: name}.Bytes())
 }
 
 // ReadPreparedQueries reads all prepared queries for a ledger from the attributes zone.
-func ReadPreparedQueries(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleReader, ledgerID uint32) ([]*commonpb.PreparedQuery, error) {
+func ReadPreparedQueries(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleReader, ledgerName string) ([]*commonpb.PreparedQuery, error) {
 	_, span := queryTracer.Start(ctx, "query.list_prepared_queries",
-		trace.WithAttributes(attribute.Int64("ledger_id", int64(ledgerID))))
+		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()
 
-	// Use the ledger ID as canonical key prefix to scope the scan.
-	prefix := make([]byte, 4)
-	binary.BigEndian.PutUint32(prefix, ledgerID)
+	// The ledger-scoped canonical prefix is the fixed-width padded name block —
+	// every PreparedQueryKey for this ledger starts with these 64 bytes.
+	prefix := make([]byte, dal.LedgerNameFixedSize)
+	copy(prefix, ledgerName)
 
 	entries, err := attr.ComputeAllForPrefix(reader, prefix)
 	if err != nil {
-		return nil, fmt.Errorf("scanning prepared queries for ledger %d: %w", ledgerID, err)
+		return nil, fmt.Errorf("scanning prepared queries for ledger %q: %w", ledgerName, err)
 	}
 
 	queries := make([]*commonpb.PreparedQuery, 0, len(entries))

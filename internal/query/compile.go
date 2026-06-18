@@ -37,7 +37,7 @@ type compileCtx struct {
 	pebbleReader dal.PebbleReader
 	indexReader  dal.PebbleReader
 	target       commonpb.QueryTarget
-	ledgerID     uint32
+	ledgerName   string
 	params       map[string]*commonpb.ParameterValue
 	schema       map[string]*commonpb.MetadataFieldSchema
 	info         *commonpb.LedgerInfo
@@ -70,7 +70,7 @@ func Compile(
 	kb *dal.KeyBuilder,
 	filter *commonpb.QueryFilter,
 	target commonpb.QueryTarget,
-	ledgerID uint32,
+	ledgerName string,
 	params map[string]*commonpb.ParameterValue,
 	schema map[string]*commonpb.MetadataFieldSchema,
 	info *commonpb.LedgerInfo,
@@ -82,7 +82,7 @@ func Compile(
 		pebbleReader: pebbleReader,
 		indexReader:  indexReader,
 		target:       target,
-		ledgerID:     ledgerID,
+		ledgerName:   ledgerName,
 		params:       params,
 		schema:       schema,
 		info:         info,
@@ -140,37 +140,37 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 	switch ctx.target {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		iter, err := readstore.NewPebbleAccountIterator(ctx.pebbleReader, ctx.ledgerID)
+		iter, err := readstore.NewPebbleAccountIterator(ctx.pebbleReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating account iterator: %w", err)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PebbleAccountIterator(%d)", ctx.ledgerID),
+			Label:  fmt.Sprintf("PebbleAccountIterator(%s)", ctx.ledgerName),
 			Kind:   "PebbleAccount",
 			Prefix: "pebble:attributes",
 		}), nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		iter, err := readstore.NewPebbleTxIterator(ctx.pebbleReader, ctx.ledgerID)
+		iter, err := readstore.NewPebbleTxIterator(ctx.pebbleReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating tx iterator: %w", err)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PebbleTxIterator(%d)", ctx.ledgerID),
+			Label:  fmt.Sprintf("PebbleTxIterator(%s)", ctx.ledgerName),
 			Kind:   "PebbleTx",
 			Prefix: "pebble:txupdate",
 		}), nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		iter, err := readstore.NewLedgerLogIterator(ctx.indexReader, ctx.kb, ctx.ledgerID)
+		iter, err := readstore.NewLedgerLogIterator(ctx.indexReader, ctx.kb, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating log iterator: %w", err)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("LedgerLogIterator(%d)", ctx.ledgerID),
+			Label:  fmt.Sprintf("LedgerLogIterator(%s)", ctx.ledgerName),
 			Kind:   "LedgerLog",
 			Prefix: "llog",
 		}), nil
@@ -332,7 +332,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	}
 
 	mc := &metadataCtx{
-		prefix:    readstore.MetadataIndexPrefix(ctx.kb, ctx.ledgerID, ns, metaKey),
+		prefix:    readstore.MetadataIndexPrefix(ctx.kb, ctx.ledgerName, ns, metaKey),
 		entityLen: entityLen,
 		namespace: ns,
 		metaKey:   metaKey,
@@ -370,7 +370,7 @@ func compileStringCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Str
 	}
 
 	return trackIterator(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(midx:%d:%s:%s=string)", ctx.ledgerID, mc.namespace, mc.metaKey),
+		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=string)", ctx.ledgerName, mc.namespace, mc.metaKey),
 		Kind:   "Prefix",
 		Prefix: "midx",
 	}), nil
@@ -514,7 +514,7 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PrefixIterator(midx:%d:%s:%s=int)", ctx.ledgerID, mc.namespace, mc.metaKey),
+			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=int)", ctx.ledgerName, mc.namespace, mc.metaKey),
 			Kind:   "Prefix",
 			Prefix: "midx",
 		}), nil
@@ -546,7 +546,7 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 	}
 
 	stats := &IteratorStats{
-		Label:  fmt.Sprintf("SliceIterator(midx:%d:%s:%s=int range)", ctx.ledgerID, mc.namespace, mc.metaKey),
+		Label:  fmt.Sprintf("SliceIterator(midx:%s:%s:%s=int range)", ctx.ledgerName, mc.namespace, mc.metaKey),
 		Kind:   "Range",
 		Prefix: "midx",
 	}
@@ -683,7 +683,7 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PrefixIterator(midx:%d:%s:%s=uint)", ctx.ledgerID, mc.namespace, mc.metaKey),
+			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=uint)", ctx.ledgerName, mc.namespace, mc.metaKey),
 			Kind:   "Prefix",
 			Prefix: "midx",
 		}), nil
@@ -715,7 +715,7 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 	}
 
 	stats := &IteratorStats{
-		Label:  fmt.Sprintf("SliceIterator(midx:%d:%s:%s=uint range)", ctx.ledgerID, mc.namespace, mc.metaKey),
+		Label:  fmt.Sprintf("SliceIterator(midx:%s:%s:%s=uint range)", ctx.ledgerName, mc.namespace, mc.metaKey),
 		Kind:   "Range",
 		Prefix: "midx",
 	}
@@ -739,7 +739,7 @@ func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolC
 	}
 
 	return trackIterator(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(midx:%d:%s:%s=bool)", ctx.ledgerID, mc.namespace, mc.metaKey),
+		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=bool)", ctx.ledgerName, mc.namespace, mc.metaKey),
 		Kind:   "Prefix",
 		Prefix: "midx",
 	}), nil
@@ -748,7 +748,7 @@ func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolC
 // compileExistsCondition -- streaming scan on the entity-ordered existence index (eidx).
 // Entities are stored in entity ID order, so no materialization or sorting is needed.
 func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.ExistsCondition) (readstore.EntityIterator, error) {
-	nonNullPrefix := readstore.EntityExistsNonNullPrefix(ctx.kb, ctx.ledgerID, mc.namespace, mc.metaKey)
+	nonNullPrefix := readstore.EntityExistsNonNullPrefix(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey)
 	if !cond.GetIncludeNull() {
 		// Only non-null entries
 		iter, err := readstore.NewPrefixIterator(ctx.indexReader, nonNullPrefix, len(nonNullPrefix), mc.entityLen)
@@ -757,14 +757,14 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PrefixIterator(eidx:%d:%s:%s non-null)", ctx.ledgerID, mc.namespace, mc.metaKey),
+			Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
 			Kind:   "Prefix",
 			Prefix: "eidx",
 		}), nil
 	}
 
 	// Both non-null and null entries: merge two prefix iterators
-	nullPrefix := readstore.EntityExistsNullPrefix(ctx.kb, ctx.ledgerID, mc.namespace, mc.metaKey)
+	nullPrefix := readstore.EntityExistsNullPrefix(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey)
 
 	nonNullIter, err := readstore.NewPrefixIterator(ctx.indexReader, nonNullPrefix, len(nonNullPrefix), mc.entityLen)
 	if err != nil {
@@ -779,7 +779,7 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	}
 
 	nonNullTracked := trackIterator(nonNullIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(eidx:%d:%s:%s non-null)", ctx.ledgerID, mc.namespace, mc.metaKey),
+		Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
 		Kind:   "Prefix",
 		Prefix: "eidx",
 	})
@@ -790,7 +790,7 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	}
 
 	nullTracked := trackIterator(nullIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(eidx:%d:%s:%s null)", ctx.ledgerID, mc.namespace, mc.metaKey),
+		Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s null)", ctx.ledgerName, mc.namespace, mc.metaKey),
 		Kind:   "Prefix",
 		Prefix: "eidx",
 	})
@@ -803,7 +803,7 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	orIter := readstore.NewOrIterator(nonNullTracked, nullTracked)
 
 	return trackIterator(orIter, ctx.profile, &IteratorStats{
-		Label:    fmt.Sprintf("OrIterator(eidx:%d:%s:%s exists)", ctx.ledgerID, mc.namespace, mc.metaKey),
+		Label:    fmt.Sprintf("OrIterator(eidx:%s:%s:%s exists)", ctx.ledgerName, mc.namespace, mc.metaKey),
 		Kind:     "Or",
 		Prefix:   "eidx",
 		Children: []*IteratorStats{nonNullStats, nullStats},
@@ -872,13 +872,13 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 }
 
 func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
-	accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerID, addrPrefix)
+	accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("creating account prefix iterator: %w", err)
 	}
 
 	trackedAccount := trackIterator(accountIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PebbleAccountIterator(%d:%s*)", ctx.ledgerID, addrPrefix),
+		Label:  fmt.Sprintf("PebbleAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
 		Kind:   "PebbleAccount",
 		Prefix: "pebble:attributes",
 	})
@@ -892,10 +892,10 @@ func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.Addr
 		accountStats = ctx.profile.Root
 	}
 
-	addrTxIter := readstore.NewAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerID, trackedAccount, addressRolePrefix(role))
+	addrTxIter := readstore.NewAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, trackedAccount, addressRolePrefix(role))
 
 	return trackIterator(addrTxIter, ctx.profile, &IteratorStats{
-		Label:    fmt.Sprintf("AddressTxIterator(%d)", ctx.ledgerID),
+		Label:    fmt.Sprintf("AddressTxIterator(%s)", ctx.ledgerName),
 		Kind:     "AddressTx",
 		Prefix:   addressRoleBucketLabel(role),
 		Children: []*IteratorStats{accountStats},
@@ -905,7 +905,7 @@ func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.Addr
 func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
 	// Check if the exact account exists in Pebble by looking for any attribute key
 	// with prefix [0xF1][ledger\x00][address\x00]
-	exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerID, exactAddr)
+	exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
 	if err != nil {
 		return nil, fmt.Errorf("checking account existence: %w", err)
 	}
@@ -934,10 +934,10 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 		singleStats = ctx.profile.Root
 	}
 
-	addrTxIter := readstore.NewAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerID, trackedSingle, addressRolePrefix(role))
+	addrTxIter := readstore.NewAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, trackedSingle, addressRolePrefix(role))
 
 	return trackIterator(addrTxIter, ctx.profile, &IteratorStats{
-		Label:    fmt.Sprintf("AddressTxIterator(%d)", ctx.ledgerID),
+		Label:    fmt.Sprintf("AddressTxIterator(%s)", ctx.ledgerName),
 		Kind:     "AddressTx",
 		Prefix:   addressRoleBucketLabel(role),
 		Children: []*IteratorStats{singleStats},
@@ -964,7 +964,7 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 		return nil, err
 	}
 
-	prefix := readstore.TransactionReferencePrefix(ctx.kb, ctx.ledgerID, value)
+	prefix := readstore.TransactionReferencePrefix(ctx.kb, ctx.ledgerName, value)
 
 	iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, prefix, len(prefix), 8)
 	if pErr != nil {
@@ -972,7 +972,7 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 	}
 
 	return trackIterator(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(txref:%d:%s)", ctx.ledgerID, value),
+		Label:  fmt.Sprintf("PrefixIterator(txref:%s:%s)", ctx.ledgerName, value),
 		Kind:   "Prefix",
 		Prefix: "txref",
 	}), nil
@@ -1006,7 +1006,7 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 
 	// Equality optimization: single txID -> check existence in Pebble and return slice
 	if bounds.isEquality() {
-		exists, pErr := pebbleTxExists(ctx.pebbleReader, ctx.ledgerID, bounds.min)
+		exists, pErr := pebbleTxExists(ctx.pebbleReader, ctx.ledgerName, bounds.min)
 		if pErr != nil {
 			return nil, fmt.Errorf("checking tx existence: %w", pErr)
 		}
@@ -1021,7 +1021,7 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 		iter := &SliceIterator{entities: [][]byte{txIDBytes}}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("SliceIterator(pebble:%d:tx:id=%d)", ctx.ledgerID, bounds.min),
+			Label:  fmt.Sprintf("SliceIterator(pebble:%s:tx:id=%d)", ctx.ledgerName, bounds.min),
 			Kind:   "Slice",
 			Prefix: "pebble:txupdate",
 		}), nil
@@ -1040,13 +1040,13 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 		binary.BigEndian.PutUint64(upper, bounds.max)
 	}
 
-	rangeIter, pErr := readstore.NewPebbleTxRangeIterator(ctx.pebbleReader, ctx.ledgerID, lower, upper)
+	rangeIter, pErr := readstore.NewPebbleTxRangeIterator(ctx.pebbleReader, ctx.ledgerName, lower, upper)
 	if pErr != nil {
 		return nil, fmt.Errorf("creating tx range iterator: %w", pErr)
 	}
 
 	return trackIterator(rangeIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PebbleTxRangeIterator(%d:id range)", ctx.ledgerID),
+		Label:  fmt.Sprintf("PebbleTxRangeIterator(%s:id range)", ctx.ledgerName),
 		Kind:   "PebbleTxRange",
 		Prefix: "pebble:txupdate",
 	}), nil
@@ -1062,7 +1062,7 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerID), "tstmp")
+		readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerName), "tstmp")
 }
 
 // compileInsertedAtCondition filters transactions by inserted_at using the transaction inserted_at index.
@@ -1075,7 +1075,7 @@ func compileInsertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerID), "txiat")
+		readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName), "txiat")
 }
 
 // compileTimestampRangeCondition is the shared logic for timestamp-based range scans.
@@ -1125,7 +1125,7 @@ func compileTimestampRangeCondition(
 	}
 
 	stats := &IteratorStats{
-		Label:  fmt.Sprintf("SliceIterator(%s:%d range)", bucketLabel, ctx.ledgerID),
+		Label:  fmt.Sprintf("SliceIterator(%s:%s range)", bucketLabel, ctx.ledgerName),
 		Kind:   "Range",
 		Prefix: bucketLabel,
 	}
@@ -1158,7 +1158,7 @@ func compileLogDateCondition(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerID), "lldt")
+		readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerName), "lldt")
 }
 
 // compileLogIdCondition filters logs by ledger-local log ID using the ledger logs index.
@@ -1172,13 +1172,13 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		return nil, err
 	}
 
-	prefix := readstore.LedgerLogPrefix(ctx.kb, ctx.ledgerID)
+	prefix := readstore.LedgerLogPrefix(ctx.kb, ctx.ledgerName)
 
 	// Equality optimization: single logID -> check existence in the index
 	if bounds.isEquality() {
 		logIDBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
-		key := readstore.LedgerLogKey(ctx.kb, ctx.ledgerID, bounds.min)
+		key := readstore.LedgerLogKey(ctx.kb, ctx.ledgerName, bounds.min)
 
 		// Point lookup in Pebble index
 		exists, pErr := pebbleKeyExists(ctx.indexReader, key)
@@ -1193,7 +1193,7 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		iter := &SliceIterator{entities: [][]byte{logIDBytes}}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("SliceIterator(llog:%d:id=%d)", ctx.ledgerID, bounds.min),
+			Label:  fmt.Sprintf("SliceIterator(llog:%s:id=%d)", ctx.ledgerName, bounds.min),
 			Kind:   "Slice",
 			Prefix: "llog",
 		}), nil
@@ -1232,7 +1232,7 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 	}
 
 	stats := &IteratorStats{
-		Label:  fmt.Sprintf("SliceIterator(llog:%d:id range)", ctx.ledgerID),
+		Label:  fmt.Sprintf("SliceIterator(llog:%s:id range)", ctx.ledgerName),
 		Kind:   "Range",
 		Prefix: "llog",
 	}
@@ -1280,11 +1280,11 @@ func targetTypeForQueryTarget(t commonpb.QueryTarget) commonpb.TargetType {
 
 // pebbleAccountExists checks if at least one attribute key exists for the given
 // account in Pebble. Checks Volume keys first (most common), falls back to Metadata.
-func pebbleAccountExists(reader dal.PebbleReader, ledgerID uint32, address string) (bool, error) {
-	// Check Volume keys: [0xF1][V][ledgerID_BE_4B][address][0x00]
-	canonicalBase := make([]byte, 4+len(address))
-	binary.BigEndian.PutUint32(canonicalBase[0:4], ledgerID)
-	copy(canonicalBase[4:], address)
+func pebbleAccountExists(reader dal.PebbleReader, ledgerName string, address string) (bool, error) {
+	// Check Volume keys: [0xF1][V][ledgerName padded 64B][address][sepVolume].
+	canonicalBase := make([]byte, dal.LedgerNameFixedSize+len(address))
+	copy(canonicalBase[:dal.LedgerNameFixedSize], ledgerName)
+	copy(canonicalBase[dal.LedgerNameFixedSize:], address)
 
 	volPrefix := make([]byte, 2+len(canonicalBase)+1)
 	volPrefix[0] = dal.ZoneAttributes
@@ -1307,7 +1307,7 @@ func pebbleAccountExists(reader dal.PebbleReader, ledgerID uint32, address strin
 
 	_ = vIter.Close()
 
-	// Check Metadata keys: [0xF1][M][ledger\x00][address][0x01]
+	// Check Metadata keys: [0xF1][M][ledgerName padded 64B][address][sepMetadata].
 	metaPrefix := make([]byte, 2+len(canonicalBase)+1)
 	metaPrefix[0] = dal.ZoneAttributes
 	metaPrefix[1] = dal.SubAttrMetadata
@@ -1327,14 +1327,14 @@ func pebbleAccountExists(reader dal.PebbleReader, ledgerID uint32, address strin
 }
 
 // pebbleTxExists checks if at least one attribute key exists for the given
-// transaction in Pebble. Key prefix: [0xF1][T][ledger\x00\x02][txID(8B)].
-func pebbleTxExists(reader dal.PebbleReader, ledgerID uint32, txID uint64) (bool, error) {
-	prefix := make([]byte, 2+4+1+8)
+// transaction in Pebble. Key prefix: [0xF1][T][ledgerName padded 64B][sepTransaction][txID(8B)].
+func pebbleTxExists(reader dal.PebbleReader, ledgerName string, txID uint64) (bool, error) {
+	prefix := make([]byte, 2+dal.LedgerNameFixedSize+1+8)
 	prefix[0] = dal.ZoneAttributes
 	prefix[1] = dal.SubAttrTransaction
-	binary.BigEndian.PutUint32(prefix[2:], ledgerID)
-	prefix[6] = dal.CanonicalKeySepTransaction
-	binary.BigEndian.PutUint64(prefix[7:], txID)
+	copy(prefix[2:2+dal.LedgerNameFixedSize], ledgerName)
+	prefix[2+dal.LedgerNameFixedSize] = dal.CanonicalKeySepTransaction
+	binary.BigEndian.PutUint64(prefix[2+dal.LedgerNameFixedSize+1:], txID)
 
 	upperBound := readstore.IncrementBytes(prefix)
 

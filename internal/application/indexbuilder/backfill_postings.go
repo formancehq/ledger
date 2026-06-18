@@ -102,13 +102,12 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 			}
 
 			kb := b.kb
-			ledgerID := b.ledgerNameToID[parsed.Ledger]
 			excludedAccounts := audit.syncTo(parsed.Sequence, parsed.Ledger)
 
 			for i := range parsed.Postings {
 				p := &parsed.Postings[i]
 				if err := b.indexPostingAddressMappings(
-					kb, ledgerID, parsed.TxID, p.Source, p.Destination,
+					kb, parsed.Ledger, parsed.TxID, p.Source, p.Destination,
 					indexAny, indexSrc, indexDst, excludedAccounts,
 				); err != nil {
 					_ = batch.Cancel()

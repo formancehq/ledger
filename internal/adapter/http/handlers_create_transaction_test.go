@@ -199,8 +199,8 @@ func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
 
 			backend := NewMockBackend(gomock.NewController(t))
 			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_ context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-					captured = envelopes[0].GetUnsigned().GetApply().GetAction().GetCreateTransaction()
+				func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+					captured = requests[0].GetUnsigned().GetApply().GetAction().GetCreateTransaction()
 
 					return []*commonpb.Log{
 						{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
@@ -240,8 +240,8 @@ func TestHandleCreateTransaction_PostingsAndScriptConflict(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			captured = envelopes[0].GetUnsigned().GetApply().GetAction().GetCreateTransaction()
+		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			captured = requests[0].GetUnsigned().GetApply().GetAction().GetCreateTransaction()
 
 			return nil, &domain.BusinessError{Err: domain.ErrPostingsAndScriptConflict}
 		}).AnyTimes()

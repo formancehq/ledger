@@ -23,9 +23,9 @@ func TestGetBalances_ForceMode(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
-		ledgerID: 0,
-		force:    true,
+		store:      mockStore,
+		ledgerName: "test",
+		force:      true,
 	}
 
 	query := numscriptlib.BalanceQuery{
@@ -51,12 +51,12 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
-		ledgerID: 0,
-		force:    false,
+		store:      mockStore,
+		ledgerName: "test",
+		force:      false,
 	}
 
-	volumeKey := domain.NewVolumeKey(0, "bank", "USD")
+	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
 
 	// Input=1000, Output=300, Balance=700
 	mockStore.EXPECT().GetVolume(volumeKey).Return((&raftcmdpb.VolumePair{
@@ -83,12 +83,12 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
-		ledgerID: 0,
-		force:    false,
+		store:      mockStore,
+		ledgerName: "test",
+		force:      false,
 	}
 
-	volumeKey := domain.NewVolumeKey(0, "bank", "USD")
+	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
 
 	// Volume exists but has no input values (not preloaded)
 	mockStore.EXPECT().GetVolume(volumeKey).Return((&raftcmdpb.VolumePair{}).AsReader(), nil)
@@ -111,12 +111,12 @@ func TestGetBalances_VolumeNotFound_ReturnsError(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
-		ledgerID: 0,
-		force:    false,
+		store:      mockStore,
+		ledgerName: "test",
+		force:      false,
 	}
 
-	volumeKey := domain.NewVolumeKey(0, "bank", "USD")
+	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
 
 	// Volume not found — the adapter returns ErrBalanceNotPreloaded
 	mockStore.EXPECT().GetVolume(volumeKey).Return(nil, domain.ErrNotFound)
@@ -143,13 +143,13 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
-		ledgerID: 0,
-		force:    false,
+		store:      mockStore,
+		ledgerName: "test",
+		force:      false,
 	}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
 		Key:        "status",
 	}
 
@@ -174,13 +174,13 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
-		ledgerID: 0,
-		force:    false,
+		store:      mockStore,
+		ledgerName: "test",
+		force:      false,
 	}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
 		Key:        "status",
 	}
 
@@ -206,9 +206,9 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
-		ledgerID: 0,
-		force:    false,
+		store:      mockStore,
+		ledgerName: "test",
+		force:      false,
 		schema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -220,7 +220,7 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 	}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
 		Key:        "age",
 	}
 
@@ -248,13 +248,13 @@ func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
-		ledgerID: 0,
-		force:    false,
+		store:      mockStore,
+		ledgerName: "test",
+		force:      false,
 	}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
 		Key:        "age",
 	}
 

@@ -252,8 +252,8 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("myled", gomock.Any())
 
 	// Volume operations: the LedgerID should be 1 (assigned by CreateLedger).
-	srcKey := domain.NewVolumeKey(1, "world", "USD")
-	dstKey := domain.NewVolumeKey(1, "users:bob", "USD")
+	srcKey := domain.NewVolumeKey("myled", "world", "USD")
+	dstKey := domain.NewVolumeKey("myled", "users:bob", "USD")
 
 	zeroVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
@@ -265,7 +265,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	mockStore.EXPECT().GetVolume(dstKey).Return(zeroVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(dstKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerName: "myled", ID: 1}, gomock.Any())
 
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(2))

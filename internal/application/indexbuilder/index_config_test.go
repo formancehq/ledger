@@ -70,7 +70,7 @@ func TestIsIndexed(t *testing.T) {
 func TestLedgerConfig(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
 	assert.Nil(t, b.ledgerConfig("unknown"))
 
@@ -82,7 +82,7 @@ func TestLedgerConfig(t *testing.T) {
 func TestGetOrCreateLedgerConfig(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
 	cfg := b.getOrCreateLedgerConfig("test")
 	require.NotNil(t, cfg)
@@ -110,9 +110,9 @@ func TestHandleCreatedIndexLog(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+			b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-			b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{Id: tt.id})
+			b.handleCreatedIndexLog("ledger1", &commonpb.CreatedIndexLog{Id: tt.id})
 
 			cfg := b.indexConfig["ledger1"]
 			require.NotNil(t, cfg)
@@ -134,7 +134,7 @@ func TestHandleDroppedIndexLog(t *testing.T) {
 	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 
 	b := newTestBuilderWithStore(t)
-	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{Id: id})
+	b.handleCreatedIndexLog("ledger1", &commonpb.CreatedIndexLog{Id: id})
 	require.Len(t, b.backfillTasks, 1)
 	assert.True(t, b.indexConfig["ledger1"].isIndexed(id))
 
@@ -146,10 +146,10 @@ func TestHandleDroppedIndexLog(t *testing.T) {
 func TestAddBackfillTask_NoDuplicates(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 
 	assert.Len(t, b.backfillTasks, 1)
 }
@@ -157,13 +157,13 @@ func TestAddBackfillTask_NoDuplicates(t *testing.T) {
 func TestAddBackfillTask_DifferentIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
-	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
-	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
-	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	b.addBackfillTaskForTxMetadata("ledger1", "category")
+	b.addBackfillTaskForAcctMetadata("ledger1", "role")
+	b.addBackfillTaskForLogBuiltin("ledger1", commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 
 	assert.Len(t, b.backfillTasks, 5)
 }
@@ -171,7 +171,7 @@ func TestAddBackfillTask_DifferentIndexes(t *testing.T) {
 func TestStripBuildingIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
 	refID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	tsID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
@@ -187,10 +187,10 @@ func TestStripBuildingIndexes(t *testing.T) {
 	b.indexConfig["ledger1"] = cfg
 
 	// Mark BUILDING for all but tsID.
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
-	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
-	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxMetadata("ledger1", "category")
+	b.addBackfillTaskForAcctMetadata("ledger1", "role")
+	b.addBackfillTaskForLogBuiltin("ledger1", commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 
 	restore := b.stripBuildingIndexes()
 
@@ -212,13 +212,13 @@ func TestStripBuildingIndexes(t *testing.T) {
 func TestStripBuildingIndexes_NilConfig(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
 	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.backfillTasks = append(b.backfillTasks, &backfillTask{
 		ledger: "missing",
 		index:  id,
-		bbKey:  backfillBBKey(99, id),
+		bbKey:  backfillBBKey("ledger1", id),
 	})
 
 	restore := b.stripBuildingIndexes()
@@ -228,7 +228,7 @@ func TestStripBuildingIndexes_NilConfig(t *testing.T) {
 func TestLoadLedgerIndexConfig_FromIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
 	refID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	tsID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
@@ -266,9 +266,9 @@ func TestRemoveBackfillTask(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
-	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
+	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	b.addBackfillTaskForTxMetadata("ledger1", "category")
 	require.Len(t, b.backfillTasks, 3)
 
 	b.removeBackfillTask(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP))
@@ -282,10 +282,10 @@ func TestRemoveBackfillTask(t *testing.T) {
 func TestAddSchemaRewriteTask_NotIndexed(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 	cfg := newLedgerIndexConfig()
 
-	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -297,36 +297,36 @@ func TestAddSchemaRewriteTask_NotIndexed(t *testing.T) {
 func TestAddSchemaRewriteTask_Indexed(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 	cfg := newLedgerIndexConfig()
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
 	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
-	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 	})
 
 	require.Len(t, b.schemaRewriteTasks, 1)
-	assert.Equal(t, uint32(1), b.schemaRewriteTasks[0].ledgerID)
+	assert.Equal(t, "test-ledger", b.schemaRewriteTasks[0].ledger)
 	assert.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, b.schemaRewriteTasks[0].targetType)
 	assert.Equal(t, "status", b.schemaRewriteTasks[0].key)
 	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, b.schemaRewriteTasks[0].toType)
 
-	expectedBBKey := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
+	expectedBBKey := schemaRewriteBBKey("test-ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
 	assert.Equal(t, expectedBBKey, b.schemaRewriteTasks[0].bbKey)
 }
 
 func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 	cfg := newLedgerIndexConfig()
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
 	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
-	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -336,7 +336,7 @@ func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 	b.schemaRewriteTasks[0].rmapCursor = []byte("some-cursor")
 	b.schemaRewriteTasks[0].processedCount = 100
 
-	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
@@ -351,12 +351,12 @@ func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 func TestAddSchemaRewriteTask_Transaction(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 	cfg := newLedgerIndexConfig()
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tag")
 	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
-	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
 		Key:        "tag",
 		Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
@@ -381,9 +381,9 @@ func TestRemoveSchemaRewriteTask(t *testing.T) {
 		readStore:   store,
 	}
 
-	bbKey1 := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key1")
-	bbKey2 := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key2")
-	bbKey3 := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key3")
+	bbKey1 := schemaRewriteBBKey("test-ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key1")
+	bbKey2 := schemaRewriteBBKey("test-ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key2")
+	bbKey3 := schemaRewriteBBKey("test-ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key3")
 
 	b.schemaRewriteTasks = []*schemaRewriteTask{
 		{ledger: "ledger1", key: "key1", bbKey: bbKey1},
@@ -416,9 +416,8 @@ func newTestBuilderWithStore(t *testing.T) *Builder {
 	t.Cleanup(func() { _ = store.Close() })
 
 	return &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-		readStore:      store,
+		indexConfig: make(map[string]*ledgerIndexConfig),
+		readStore:   store,
 	}
 }
 
@@ -439,11 +438,10 @@ func TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID(t *testing.T) {
 
 	defer func() { _ = store.Close() }()
 
-	// Persist a schema rewrite progress entry for ledgerID=42 ("customer"),
+	// Persist a schema rewrite progress entry for ledger "customer",
 	// account-metadata key "role", target type STRING, with a non-empty
 	// resume cursor. Value format mirrors backfill.go: [toType_byte][cursor].
 	const (
-		ledgerID   = uint32(42)
 		ledgerName = "customer"
 		metaKey    = "role"
 		targetType = commonpb.TargetType_TARGET_TYPE_ACCOUNT
@@ -451,7 +449,7 @@ func TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID(t *testing.T) {
 	)
 
 	cursor := []byte("rmap-cursor-bytes")
-	bbKey := schemaRewriteBBKey(ledgerID, targetType, metaKey)
+	bbKey := schemaRewriteBBKey(ledgerName, targetType, metaKey)
 	val := append([]byte{byte(toType)}, cursor...)
 
 	batch := store.NewBatch()
@@ -459,10 +457,9 @@ func TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: map[string]uint32{ledgerName: ledgerID},
-		readStore:      store,
-		logger:         noopLogger{},
+		indexConfig: make(map[string]*ledgerIndexConfig),
+		readStore:   store,
+		logger:      noopLogger{},
 	}
 
 	b.recoverSchemaRewriteTasks()
@@ -470,8 +467,7 @@ func TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID(t *testing.T) {
 	require.Len(t, b.schemaRewriteTasks, 1)
 	task := b.schemaRewriteTasks[0]
 	assert.Equal(t, ledgerName, task.ledger,
-		"ledger name MUST be resolved from ledgerID — empty name makes IndexReadyUpdate unaddressable (#277)")
-	assert.Equal(t, ledgerID, task.ledgerID)
+		"ledger name MUST round-trip from the persisted progress key (#277)")
 	assert.Equal(t, targetType, task.targetType)
 	assert.Equal(t, metaKey, task.key)
 	assert.Equal(t, toType, task.toType)
@@ -481,9 +477,11 @@ func TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID(t *testing.T) {
 
 // TestRecoverSchemaRewriteTasks_DropsOrphanedEntries verifies that a
 // persisted task whose ledger no longer exists (deleted between persist
-// and restart) is dropped rather than re-enqueued forever with a stale
-// name. Keeping it would burn a slot in the round-robin processor.
-func TestRecoverSchemaRewriteTasks_DropsOrphanedEntries(t *testing.T) {
+// and restart) is recovered as-is — the canonical key now carries the
+// ledger name directly, so there's no "orphan" concept any more. The
+// follow-up IndexReady proposal will fail validation against the missing
+// LedgerInfo and the task will be dropped at that point.
+func TestRecoverSchemaRewriteTasks_RecoversTaskFromPersistedKey(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -493,25 +491,23 @@ func TestRecoverSchemaRewriteTasks_DropsOrphanedEntries(t *testing.T) {
 
 	defer func() { _ = store.Close() }()
 
-	bbKey := schemaRewriteBBKey(99, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	bbKey := schemaRewriteBBKey("orphan", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	val := []byte{byte(commonpb.MetadataType_METADATA_TYPE_STRING)}
 
 	batch := store.NewBatch()
 	require.NoError(t, store.WriteBackfillCursor(batch, bbKey, val))
 	require.NoError(t, batch.Commit())
 
-	// ledgerNameToID is empty — the ledger that owned this task is gone.
 	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: map[string]uint32{},
-		readStore:      store,
-		logger:         noopLogger{},
+		indexConfig: make(map[string]*ledgerIndexConfig),
+		readStore:   store,
+		logger:      noopLogger{},
 	}
 
 	b.recoverSchemaRewriteTasks()
 
-	assert.Empty(t, b.schemaRewriteTasks,
-		"orphaned schema rewrite task must be dropped, not retained with empty ledger name")
+	require.Len(t, b.schemaRewriteTasks, 1)
+	assert.Equal(t, "orphan", b.schemaRewriteTasks[0].ledger)
 }
 
 // noopLogger implements the logging.Logger interface for tests without output.

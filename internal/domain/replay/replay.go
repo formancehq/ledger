@@ -17,7 +17,6 @@ import (
 // the integrity checker and the backup restore pipeline.
 func ReplayLedgerLog(
 	ledger string,
-	ledgerID uint32,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
 	w Writer,
@@ -53,15 +52,15 @@ func ReplayLedgerLog(
 		}
 
 		tx := p.CreatedTransaction.GetTransaction()
-		if err := ApplyPostings(ledgerID, tx.GetPostings(), w); err != nil {
+		if err := ApplyPostings(ledger, tx.GetPostings(), w); err != nil {
 			return err
 		}
 
-		if err := replayEphemeralPurge(ledger, ledgerID, tx.GetPostings(), w, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+		if err := replayEphemeralPurge(ledger, tx.GetPostings(), w, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 			return err
 		}
 
-		txCanonical := domain.TransactionKey{LedgerID: ledgerID, ID: tx.GetId()}.Bytes()
+		txCanonical := domain.TransactionKey{LedgerName: ledger, ID: tx.GetId()}.Bytes()
 
 		if err := w.CreateTransaction(txCanonical, seq, tx.GetMetadata()); err != nil {
 			return fmt.Errorf("putting tx state for created tx %d: %w", tx.GetId(), err)
@@ -72,8 +71,8 @@ func ReplayLedgerLog(
 				for key, value := range metadataMap.GetValues() {
 					mk := domain.MetadataKey{
 						AccountKey: domain.AccountKey{
-							LedgerID: ledgerID,
-							Account:  account,
+							LedgerName: ledger,
+							Account:    account,
 						},
 						Key: key,
 					}
@@ -93,21 +92,21 @@ func ReplayLedgerLog(
 		}
 
 		revertTx := p.RevertedTransaction.GetRevertTransaction()
-		if err := ApplyPostings(ledgerID, revertTx.GetPostings(), w); err != nil {
+		if err := ApplyPostings(ledger, revertTx.GetPostings(), w); err != nil {
 			return err
 		}
 
-		if err := replayEphemeralPurge(ledger, ledgerID, revertTx.GetPostings(), w, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+		if err := replayEphemeralPurge(ledger, revertTx.GetPostings(), w, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 			return err
 		}
 
-		origTxCanonical := domain.TransactionKey{LedgerID: ledgerID, ID: p.RevertedTransaction.GetRevertedTransactionId()}.Bytes()
+		origTxCanonical := domain.TransactionKey{LedgerName: ledger, ID: p.RevertedTransaction.GetRevertedTransactionId()}.Bytes()
 
 		if err := w.SetRevertedBy(origTxCanonical, revertTx.GetId()); err != nil {
 			return fmt.Errorf("putting revert marker for tx %d: %w", p.RevertedTransaction.GetRevertedTransactionId(), err)
 		}
 
-		revertTxCanonical := domain.TransactionKey{LedgerID: ledgerID, ID: revertTx.GetId()}.Bytes()
+		revertTxCanonical := domain.TransactionKey{LedgerName: ledger, ID: revertTx.GetId()}.Bytes()
 
 		if err := w.CreateTransaction(revertTxCanonical, seq, revertTx.GetMetadata()); err != nil {
 			return fmt.Errorf("putting tx state for revert tx %d: %w", revertTx.GetId(), err)
@@ -124,8 +123,8 @@ func ReplayLedgerLog(
 				for key, value := range p.SavedMetadata.GetMetadata() {
 					mk := domain.MetadataKey{
 						AccountKey: domain.AccountKey{
-							LedgerID: ledgerID,
-							Account:  target.Account.GetAddr(),
+							LedgerName: ledger,
+							Account:    target.Account.GetAddr(),
 						},
 						Key: key,
 					}
@@ -139,7 +138,7 @@ func ReplayLedgerLog(
 			}
 		case *commonpb.Target_Transaction:
 			if len(p.SavedMetadata.GetMetadata()) > 0 {
-				txCanonical := domain.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.GetId()}.Bytes()
+				txCanonical := domain.TransactionKey{LedgerName: ledger, ID: target.Transaction.GetId()}.Bytes()
 
 				if err := w.SaveTxMetadata(txCanonical, p.SavedMetadata.GetMetadata()); err != nil {
 					return fmt.Errorf("saving tx metadata for tx %d: %w", target.Transaction.GetId(), err)
@@ -156,8 +155,8 @@ func ReplayLedgerLog(
 		case *commonpb.Target_Account:
 			mk := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
-					LedgerID: ledgerID,
-					Account:  target.Account.GetAddr(),
+					LedgerName: ledger,
+					Account:    target.Account.GetAddr(),
 				},
 				Key: p.DeletedMetadata.GetKey(),
 			}
@@ -166,7 +165,7 @@ func ReplayLedgerLog(
 				return fmt.Errorf("deleting metadata: %w", err)
 			}
 		case *commonpb.Target_Transaction:
-			txCanonical := domain.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.GetId()}.Bytes()
+			txCanonical := domain.TransactionKey{LedgerName: ledger, ID: target.Transaction.GetId()}.Bytes()
 
 			if err := w.DeleteTxMetadata(txCanonical, p.DeletedMetadata.GetKey()); err != nil {
 				return fmt.Errorf("deleting tx metadata for tx %d: %w", target.Transaction.GetId(), err)
@@ -191,7 +190,6 @@ func ReplayLedgerLog(
 }
 
 type pendingEphemeralPurge struct {
-	ledgerID uint32
 	postings []*commonpb.Posting
 }
 
@@ -211,19 +209,18 @@ func NewEphemeralPurgeBuffer() *EphemeralPurgeBuffer {
 }
 
 // Add records postings for a ledger in the current replay batch.
-func (b *EphemeralPurgeBuffer) Add(ledger string, ledgerID uint32, postings []*commonpb.Posting) {
+func (b *EphemeralPurgeBuffer) Add(ledger string, postings []*commonpb.Posting) {
 	if b == nil || len(postings) == 0 {
 		return
 	}
 
 	pending := b.byLedger[ledger]
 	if pending == nil {
-		pending = &pendingEphemeralPurge{ledgerID: ledgerID}
+		pending = &pendingEphemeralPurge{}
 		b.byLedger[ledger] = pending
 		b.ledgers = append(b.ledgers, ledger)
 	}
 
-	pending.ledgerID = ledgerID
 	pending.postings = append(pending.postings, postings...)
 }
 
@@ -238,7 +235,7 @@ func (b *EphemeralPurgeBuffer) Flush(
 
 	for _, ledger := range b.ledgers {
 		pending := b.byLedger[ledger]
-		if err := SimulateEphemeralPurge(ledger, pending.ledgerID, pending.postings, w, ledgerAccountTypes); err != nil {
+		if err := SimulateEphemeralPurge(ledger, pending.postings, w, ledgerAccountTypes); err != nil {
 			return err
 		}
 	}
@@ -251,19 +248,18 @@ func (b *EphemeralPurgeBuffer) Flush(
 
 func replayEphemeralPurge(
 	ledger string,
-	ledgerID uint32,
 	postings []*commonpb.Posting,
 	w Writer,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
 	ephemeralPurgeBuffer *EphemeralPurgeBuffer,
 ) error {
 	if ephemeralPurgeBuffer != nil {
-		ephemeralPurgeBuffer.Add(ledger, ledgerID, postings)
+		ephemeralPurgeBuffer.Add(ledger, postings)
 
 		return nil
 	}
 
-	return SimulateEphemeralPurge(ledger, ledgerID, postings, w, ledgerAccountTypes)
+	return SimulateEphemeralPurge(ledger, postings, w, ledgerAccountTypes)
 }
 
 // ProposalBoundaryTracker filters audit log ranges down to newly-created log
@@ -293,7 +289,7 @@ func (t *ProposalBoundaryTracker) Accept(maxLogSequence uint64) (uint64, bool) {
 
 // ApplyPostings applies postings to the writer as volume deltas.
 func ApplyPostings(
-	ledgerID uint32,
+	ledger string,
 	postings []*commonpb.Posting,
 	w Writer,
 ) error {
@@ -302,8 +298,8 @@ func ApplyPostings(
 
 		sourceKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{
-				LedgerID: ledgerID,
-				Account:  posting.GetSource(),
+				LedgerName: ledger,
+				Account:    posting.GetSource(),
 			},
 			Asset: posting.GetAsset(),
 		}
@@ -314,8 +310,8 @@ func ApplyPostings(
 
 		destKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{
-				LedgerID: ledgerID,
-				Account:  posting.GetDestination(),
+				LedgerName: ledger,
+				Account:    posting.GetDestination(),
 			},
 			Asset: posting.GetAsset(),
 		}
@@ -333,7 +329,6 @@ func ApplyPostings(
 // If so, it deletes the volume, mirroring the real purge in WriteSet.Merge().
 func SimulateEphemeralPurge(
 	ledger string,
-	ledgerID uint32,
 	postings []*commonpb.Posting,
 	w Writer,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
@@ -368,7 +363,7 @@ func SimulateEphemeralPurge(
 				}
 
 				vk := domain.VolumeKey{
-					AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: addr},
+					AccountKey: domain.AccountKey{LedgerName: ledger, Account: addr},
 					Asset:      p.GetAsset(),
 				}
 

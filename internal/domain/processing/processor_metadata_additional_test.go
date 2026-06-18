@@ -235,7 +235,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
-	txKey := domain.TransactionKey{LedgerID: 1, ID: 3}
+	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
 	existingState := &commonpb.TransactionState{
 		CreatedByLog: 1,
 		Metadata: map[string]*commonpb.MetadataValue{

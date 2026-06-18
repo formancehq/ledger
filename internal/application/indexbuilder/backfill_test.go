@@ -1,7 +1,6 @@
 package indexbuilder
 
 import (
-	"encoding/binary"
 	"errors"
 	"testing"
 	"time"
@@ -18,19 +17,21 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-func uint32BE(v uint32) []byte {
-	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:], v)
+// paddedLedgerName returns the ledger name zero-padded to LedgerNameFixedSize
+// — matching the canonical encoding used by backfill/schemaRewrite BB keys.
+func paddedLedgerName(name string) []byte {
+	out := make([]byte, dal.LedgerNameFixedSize)
+	copy(out, name)
 
-	return buf[:]
+	return out
 }
 
 func TestSchemaRewriteBBKey_Account(t *testing.T) {
 	t.Parallel()
 
-	key := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
+	key := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
 
-	expected := uint32BE(1)
+	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
 	expected = append(expected, "status"...)
 
@@ -40,9 +41,9 @@ func TestSchemaRewriteBBKey_Account(t *testing.T) {
 func TestSchemaRewriteBBKey_Transaction(t *testing.T) {
 	t.Parallel()
 
-	key := schemaRewriteBBKey(2, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category")
+	key := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category")
 
-	expected := uint32BE(2)
+	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_TRANSACTION))
 	expected = append(expected, "category"...)
 
@@ -52,9 +53,9 @@ func TestSchemaRewriteBBKey_Transaction(t *testing.T) {
 func TestSchemaRewriteBBKey_EmptyMetadataKey(t *testing.T) {
 	t.Parallel()
 
-	key := schemaRewriteBBKey(3, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "")
+	key := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "")
 
-	expected := uint32BE(3)
+	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
 
 	assert.Equal(t, expected, key)
@@ -63,8 +64,8 @@ func TestSchemaRewriteBBKey_EmptyMetadataKey(t *testing.T) {
 func TestSchemaRewriteBBKey_DifferentTargetTypesProduceDifferentKeys(t *testing.T) {
 	t.Parallel()
 
-	keyAcct := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
-	keyTx := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "key")
+	keyAcct := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
+	keyTx := schemaRewriteBBKey("test", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "key")
 
 	assert.NotEqual(t, keyAcct, keyTx)
 }
@@ -72,9 +73,9 @@ func TestSchemaRewriteBBKey_DifferentTargetTypesProduceDifferentKeys(t *testing.
 func TestBackfillBBKey_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey(1, indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+	key := backfillBBKey("test", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 
-	expected := uint32BE(1)
+	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindTxBuiltin, byte(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 
 	assert.Equal(t, expected, key)
@@ -83,9 +84,9 @@ func TestBackfillBBKey_TxBuiltin(t *testing.T) {
 func TestBackfillBBKey_TxMetadata(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey(2, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"))
+	key := backfillBBKey("test", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"))
 
-	expected := uint32BE(2)
+	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindTxMetadata)
 	expected = append(expected, "category"...)
 
@@ -95,9 +96,9 @@ func TestBackfillBBKey_TxMetadata(t *testing.T) {
 func TestBackfillBBKey_AcctBuiltin(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey(1, indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
+	key := backfillBBKey("test", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
 
-	expected := uint32BE(1)
+	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindAcctBuiltin, byte(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
 
 	assert.Equal(t, expected, key)
@@ -106,9 +107,9 @@ func TestBackfillBBKey_AcctBuiltin(t *testing.T) {
 func TestBackfillBBKey_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey(1, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
+	key := backfillBBKey("test", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
 
-	expected := uint32BE(1)
+	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindAcctMetadata)
 	expected = append(expected, "role"...)
 
@@ -118,9 +119,9 @@ func TestBackfillBBKey_AcctMetadata(t *testing.T) {
 func TestBackfillBBKey_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey(1, indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
+	key := backfillBBKey("test", indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 
-	expected := uint32BE(1)
+	expected := paddedLedgerName("test")
 	expected = append(expected, readstore.BackfillKindLogBuiltin, byte(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 
 	assert.Equal(t, expected, key)
@@ -129,8 +130,8 @@ func TestBackfillBBKey_LogBuiltin(t *testing.T) {
 func TestBackfillBBKey_NilID_ReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	assert.Nil(t, backfillBBKey(1, nil))
-	assert.Nil(t, backfillBBKey(1, &commonpb.IndexID{}))
+	assert.Nil(t, backfillBBKey("test", nil))
+	assert.Nil(t, backfillBBKey("test", &commonpb.IndexID{}))
 }
 
 func TestBackfillIndexName_TxBuiltin(t *testing.T) {
@@ -225,11 +226,10 @@ func TestIndexLogEntryUsesReplayAuditSyncForExcludedAccounts(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	b := &Builder{
-		readStore:      store,
-		kb:             dal.NewKeyBuilder(),
-		wb:             readstore.NewWriteBatch(),
-		accounts:       make(map[string]struct{}),
-		ledgerNameToID: map[string]uint32{"ledger-a": 1, "ledger-b": 2},
+		readStore: store,
+		kb:        dal.NewKeyBuilder(),
+		wb:        readstore.NewWriteBatch(),
+		accounts:  make(map[string]struct{}),
 	}
 
 	batch := store.NewBatch()
@@ -252,10 +252,10 @@ func TestIndexLogEntryUsesReplayAuditSyncForExcludedAccounts(t *testing.T) {
 	require.NoError(t, b.wb.Flush())
 
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 2, "transient:source", 99,
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "ledger-b", "transient:source", 99,
 	)))
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 2, "kept:dest", 99,
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "ledger-b", "kept:dest", 99,
 	)))
 }
 
@@ -281,38 +281,38 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	}
 
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, 7, 42, "transient:source", "kept:dest",
+		b.kb, "test", 42, "transient:source", "kept:dest",
 		true, true, true, excludedAccounts,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, 7, 43, "kept:source", "purged:dest",
+		b.kb, "test", 43, "kept:source", "purged:dest",
 		true, true, true, excludedAccounts,
 	))
 	require.NoError(t, b.wb.Flush())
 
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 7, "transient:source", 42,
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "transient:source", 42,
 	)))
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, 7, "transient:source", 42,
+		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "transient:source", 42,
 	)))
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 7, "kept:dest", 42,
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "kept:dest", 42,
 	)))
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixDestAccountTx, 7, "kept:dest", 42,
+		dal.NewKeyBuilder(), readstore.PrefixDestAccountTx, "test", "kept:dest", 42,
 	)))
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 7, "kept:source", 43,
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "kept:source", 43,
 	)))
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, 7, "kept:source", 43,
+		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "kept:source", 43,
 	)))
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 7, "purged:dest", 43,
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "purged:dest", 43,
 	)))
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixDestAccountTx, 7, "purged:dest", 43,
+		dal.NewKeyBuilder(), readstore.PrefixDestAccountTx, "test", "purged:dest", 43,
 	)))
 }
 
@@ -396,18 +396,18 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	b := newTestBuilderWithStore(t)
 	kb := dal.NewKeyBuilder()
 	stop := make(chan struct{})
-	ledgerID := uint32(1)
+	ledgerName := "test"
 
-	firstSkippedKey := readstore.AccountReverseMapKey(kb, ledgerID, "acct-001", "other")
-	secondSkippedKey := readstore.AccountReverseMapKey(kb, ledgerID, "acct-002", "other")
-	matchingKey := readstore.AccountReverseMapKey(kb, ledgerID, "acct-003", "status")
+	firstSkippedKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-001", "other")
+	secondSkippedKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-002", "other")
+	matchingKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-003", "status")
 
 	skippedEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("ignored"))
 	oldEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("42"))
 	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
 	entityID := []byte("acct-003")
-	oldForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerID, readstore.NamespaceAccount, "status", oldEncoded, entityID))
-	newForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerID, readstore.NamespaceAccount, "status", newEncoded, entityID))
+	oldForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, "status", oldEncoded, entityID))
+	newForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, "status", newEncoded, entityID))
 
 	batch := b.readStore.NewBatch()
 	require.NoError(t, batch.SetBytes(firstSkippedKey, skippedEncoded))
@@ -417,11 +417,11 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	require.NoError(t, batch.Commit())
 
 	task := &schemaRewriteTask{
-		ledgerID:   ledgerID,
+		ledger:     ledgerName,
 		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:        "status",
 		toType:     commonpb.MetadataType_METADATA_TYPE_INT64,
-		bbKey:      schemaRewriteBBKey(ledgerID, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
 	}
 
 	done, err := b.processSchemaRewrite(task, 2, stop, time.Now().Add(time.Hour))
@@ -455,8 +455,8 @@ func TestProcessSchemaRewriteStopsBeforeScanningWhenStopClosed(t *testing.T) {
 	stop := make(chan struct{})
 	close(stop)
 
-	ledgerID := uint32(1)
-	reverseKey := readstore.AccountReverseMapKey(kb, ledgerID, "acct-001", "status")
+	ledgerName := "test"
+	reverseKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-001", "status")
 	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("42"))
 
 	batch := b.readStore.NewBatch()
@@ -464,11 +464,11 @@ func TestProcessSchemaRewriteStopsBeforeScanningWhenStopClosed(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	task := &schemaRewriteTask{
-		ledgerID:   ledgerID,
+		ledger:     ledgerName,
 		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		key:        "status",
 		toType:     commonpb.MetadataType_METADATA_TYPE_INT64,
-		bbKey:      schemaRewriteBBKey(ledgerID, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
 	}
 
 	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))

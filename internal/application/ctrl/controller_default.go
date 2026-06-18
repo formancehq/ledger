@@ -206,12 +206,12 @@ func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *da
 
 	defer func() { _ = handle.Close() }()
 
-	return ctrl.buildTransaction(ctx, handle, ledgerInfo.GetId(), transactionID, ledgerInfo.GetMetadataSchema())
+	return ctrl.buildTransaction(ctx, handle, ledgerInfo.GetName(), transactionID, ledgerInfo.GetMetadataSchema())
 }
 
 // buildTransaction builds a transaction from its stored state and creation log.
-func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.PebbleReader, ledgerID uint32, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
-	state, err := query.ReadTransactionState(ctx, reader, ctrl.attrs.Transaction, ledgerID, transactionID)
+func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.PebbleReader, ledgerName string, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+	state, err := query.ReadTransactionState(ctx, reader, ctrl.attrs.Transaction, ledgerName, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("reading transaction state for %d: %w", transactionID, err)
 	}
@@ -344,7 +344,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 
 	result, err := listEntities(rs, entityListParams[uint64]{
 		target:       commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledgerID:     ledgerInfo.GetId(),
+		ledgerName:   ledgerInfo.GetName(),
 		pageSize:     pageSize,
 		after:        afterTxID,
 		filter:       filter,
@@ -374,7 +374,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 	// Enrich each transaction ID from Pebble
 	enrichStart := time.Now()
 
-	txns, err := query.EnrichTransactions(ctx, result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetId(), ledgerInfo.GetMetadataSchema())
+	txns, err := query.EnrichTransactions(ctx, result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName(), ledgerInfo.GetMetadataSchema())
 	if err != nil {
 		_ = handle.Close()
 
@@ -431,7 +431,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	result, err := listEntities(ctrl.readStore, entityListParams[string]{
 		target:       commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		ledgerID:     ledgerInfo.GetId(),
+		ledgerName:   ledgerInfo.GetName(),
 		pageSize:     pageSize,
 		after:        afterAddress,
 		filter:       filter,
@@ -458,7 +458,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	// Enrich each account from Pebble
 	enrichStart := time.Now()
 
-	accounts, err := query.EnrichAccounts(result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetId(), ledgerInfo.GetMetadataSchema())
+	accounts, err := query.EnrichAccounts(result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName(), ledgerInfo.GetMetadataSchema())
 	if err != nil {
 		_ = handle.Close()
 
@@ -500,7 +500,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 
 	defer func() { _ = handle.Close() }()
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetId(), address, ledgerInfo.GetMetadataSchema(), ctrl.logger)
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema(), ctrl.logger)
 }
 
 // GetLedgerStats returns aggregate statistics for a ledger.
@@ -566,7 +566,7 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 
 	// Enrich mirror ledgers with sync progress computed from Pebble state
 	if ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-		progress, err := query.ReadMirrorSyncProgress(ctx, ctrl.store, ledgerInfo.GetId(), name)
+		progress, err := query.ReadMirrorSyncProgress(ctx, ctrl.store, name)
 		if err != nil {
 			return nil, fmt.Errorf("reading mirror sync progress: %w", err)
 		}
@@ -653,7 +653,7 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 
 	defer func() { _ = handle.Close() }()
 
-	it, err := query.NewCompactAccountIterator(handle, ledgerInfo.GetId())
+	it, err := query.NewCompactAccountIterator(handle, ledgerInfo.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -820,7 +820,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	if filter == nil {
 		enrichStart := time.Now()
 
-		result, aggErr := query.AggregateAllVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetId(), opts)
+		result, aggErr := query.AggregateAllVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), opts)
 		if aggErr != nil {
 			return nil, fmt.Errorf("aggregating volumes: %w", aggErr)
 		}
@@ -841,7 +841,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetId(), nil, schemaFields, ledgerInfo, profile, handle)
+	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, profile, handle)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
@@ -853,7 +853,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	enrichStart := time.Now()
 
-	result, err := query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetId(), iter, opts)
+	result, err := query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("aggregating volumes: %w", err)
 	}
@@ -942,7 +942,7 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	inspectResult, err := readstore.InspectIndex(readstore.InspectParams{
 		Reader:      snap,
 		KB:          dal.NewKeyBuilder(),
-		LedgerID:    ledgerInfo.GetId(),
+		LedgerName:  ledgerInfo.GetName(),
 		Namespace:   namespace,
 		MetadataKey: metaKey,
 		Mode:        mode,
@@ -1076,7 +1076,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	iter, err := query.Compile(
 		snap, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
-		ledgerInfo.GetId(), nil, nil,
+		ledgerInfo.GetName(), nil, nil,
 		ledgerInfo, nil, handle,
 	)
 	if err != nil {
@@ -1093,7 +1093,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, fmt.Errorf("paginating log filter: %w", paginateErr)
 	}
 
-	c, err := query.ReadLedgerLogsCompiled(handle, snap, ledgerInfo.GetId(), logIDs)
+	c, err := query.ReadLedgerLogsCompiled(handle, snap, ledgerInfo.GetName(), logIDs)
 	if err != nil {
 		_ = handle.Close()
 
@@ -1242,18 +1242,18 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 	}
 	defer func() { _ = pqHandle.Close() }()
 
-	return query.ReadPreparedQueries(ctx, ctrl.attrs.PreparedQuery, pqHandle, ledgerInfo.GetId())
+	return query.ReadPreparedQueries(ctx, ctrl.attrs.PreparedQuery, pqHandle, ledgerInfo.GetName())
 }
 
 // entityEnricher returns an EntityEnricher that uses the controller's attributes
 // and transaction assembly logic to hydrate raw entity IDs into full objects.
 func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 	return &query.EntityEnricher{
-		EnrichAccount: func(reader dal.PebbleReader, ledgerID uint32, address string, schema *commonpb.MetadataSchema) (*commonpb.Account, error) {
-			return scanAccount(reader, ctrl.attrs, ledgerID, address, schema, ctrl.logger)
+		EnrichAccount: func(reader dal.PebbleReader, ledgerName string, address string, schema *commonpb.MetadataSchema) (*commonpb.Account, error) {
+			return scanAccount(reader, ctrl.attrs, ledgerName, address, schema, ctrl.logger)
 		},
-		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledgerID uint32, txID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
-			return ctrl.buildTransaction(ctx, reader, ledgerID, txID, schema)
+		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+			return ctrl.buildTransaction(ctx, reader, ledgerName, txID, schema)
 		},
 	}
 }
@@ -1279,7 +1279,7 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 
 	defer func() { _ = handle.Close() }()
 
-	info, err := query.ReadNumscript(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetId(), name, version)
+	info, err := query.ReadNumscript(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetName(), name, version)
 	if err != nil {
 		return nil, fmt.Errorf("reading numscript %q: %w", name, err)
 	}
@@ -1305,7 +1305,7 @@ func (ctrl *DefaultController) ListNumscripts(ctx context.Context, ledger string
 
 	defer func() { _ = handle.Close() }()
 
-	return query.ReadAllNumscripts(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetId())
+	return query.ReadAllNumscripts(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetName())
 }
 
 func (ctrl *DefaultController) GetPeriodSchedule(_ context.Context) (string, error) {

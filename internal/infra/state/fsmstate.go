@@ -36,7 +36,7 @@ type FSMState struct {
 
 	// Pending work derived from durable state.
 	QueryCheckpointSchedule string
-	PendingLedgerCleanups   map[uint32]uint64
+	PendingLedgerCleanups   map[string]uint64
 
 	// Last cluster config applied + derived hash generator. Persisted under
 	// ZoneGlobal so it survives restarts.
@@ -62,7 +62,7 @@ func NewFSMState(clusterID string) *FSMState {
 		NextSequenceID:        1,
 		NextAuditSequenceID:   1,
 		NextLedgerID:          1,
-		PendingLedgerCleanups: map[uint32]uint64{},
+		PendingLedgerCleanups: map[string]uint64{},
 		HashGenerator:         processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID),
 		ClusterID:             clusterID,
 	}

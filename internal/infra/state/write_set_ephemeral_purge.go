@@ -49,16 +49,16 @@ func (b *WriteSet) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) volumePartitionResult {
 	// Build a cache of ledger → compiled account types to avoid repeated parsing.
-	ledgerTypes := make(map[uint32][]accounttype.CompiledType)
+	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
 	result := volumePartitionResult{
 		kept: make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(updates)),
 	}
 
 	for _, update := range updates {
-		compiled, ok := ledgerTypes[update.Key.LedgerID]
+		compiled, ok := ledgerTypes[update.Key.LedgerName]
 		if !ok {
-			info, infoOK := b.GetLedgerByID(update.Key.LedgerID)
+			info, infoOK := b.GetLedger(update.Key.LedgerName)
 			if !infoOK {
 				result.kept = append(result.kept, update)
 
@@ -66,7 +66,7 @@ func (b *WriteSet) partitionVolumes(
 			}
 
 			compiled = accounttype.CompileTypes(info.GetAccountTypes())
-			ledgerTypes[update.Key.LedgerID] = compiled
+			ledgerTypes[update.Key.LedgerName] = compiled
 		}
 
 		if len(compiled) == 0 {

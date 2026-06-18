@@ -26,7 +26,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:123"},
+		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
 		Key:        "status",
 	}
 
@@ -84,7 +84,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
-	txKey := domain.TransactionKey{LedgerID: 1, ID: 5}
+	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 5}
 	existingState := &commonpb.TransactionState{
 		CreatedByLog: 1,
 	}
@@ -144,7 +144,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:123"},
+		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
 		Key:        "status",
 	}
 
@@ -198,7 +198,7 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:123"},
+		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
 		Key:        "status",
 	}
 
@@ -249,7 +249,7 @@ func TestProcessDeleteMetadata_Account_NilValueDeletable(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:123"},
+		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
 		Key:        "status",
 	}
 
@@ -299,8 +299,8 @@ func TestProcessAddMetadata_TransactionByReference(t *testing.T) {
 
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
-	refKey := domain.TransactionReferenceKey{LedgerID: 1, Reference: "invoice:42"}
-	txKey := domain.TransactionKey{LedgerID: 1, ID: 7}
+	refKey := domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "invoice:42"}
+	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 7}
 	existingState := &commonpb.TransactionState{CreatedByLog: 3}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
@@ -365,7 +365,7 @@ func TestProcessAddMetadata_TransactionByReferenceNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
-	refKey := domain.TransactionReferenceKey{LedgerID: 1, Reference: "unknown"}
+	refKey := domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "unknown"}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
@@ -452,8 +452,8 @@ func TestProcessDeleteMetadata_TransactionByReference(t *testing.T) {
 
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
-	refKey := domain.TransactionReferenceKey{LedgerID: 1, Reference: "invoice:42"}
-	txKey := domain.TransactionKey{LedgerID: 1, ID: 7}
+	refKey := domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "invoice:42"}
+	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 7}
 	existingState := &commonpb.TransactionState{
 		CreatedByLog: 3,
 		Metadata:     map[string]*commonpb.MetadataValue{"status": commonpb.NewStringValue("paid")},

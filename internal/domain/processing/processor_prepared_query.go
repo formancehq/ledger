@@ -12,9 +12,9 @@ func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePre
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetQuery().GetLedger()}
 	}
 
-	ledgerID := info.GetId()
+	ledgerName := info.GetName()
 
-	existing, err := s.GetPreparedQuery(ledgerID, order.GetQuery().GetName())
+	existing, err := s.GetPreparedQuery(ledgerName, order.GetQuery().GetName())
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
 	}
@@ -26,7 +26,7 @@ func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePre
 		}
 	}
 
-	s.PutPreparedQuery(ledgerID, order.GetQuery())
+	s.PutPreparedQuery(ledgerName, order.GetQuery())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreatedPreparedQuery{
@@ -43,9 +43,9 @@ func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePre
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
 	}
 
-	ledgerID := info.GetId()
+	ledgerName := info.GetName()
 
-	existing, err := s.GetPreparedQuery(ledgerID, order.GetName())
+	existing, err := s.GetPreparedQuery(ledgerName, order.GetName())
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
 	}
@@ -60,7 +60,7 @@ func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePre
 	previousFilter := existing.GetFilter()
 	updated := existing.CloneVT()
 	updated.Filter = order.GetFilter()
-	s.PutPreparedQuery(ledgerID, updated)
+	s.PutPreparedQuery(ledgerName, updated)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_UpdatedPreparedQuery{
@@ -80,9 +80,9 @@ func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePre
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
 	}
 
-	ledgerID := info.GetId()
+	ledgerName := info.GetName()
 
-	existing, err := s.GetPreparedQuery(ledgerID, order.GetName())
+	existing, err := s.GetPreparedQuery(ledgerName, order.GetName())
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
 	}
@@ -94,7 +94,7 @@ func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePre
 		}
 	}
 
-	s.DeletePreparedQuery(ledgerID, order.GetName())
+	s.DeletePreparedQuery(ledgerName, order.GetName())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedPreparedQuery{

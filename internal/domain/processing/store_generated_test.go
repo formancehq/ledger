@@ -257,15 +257,15 @@ func (c *MockInMemoryStoreDeleteLedgerMetadataCall) DoAndReturn(f func(domain.Le
 }
 
 // DeleteNumscriptLatest mocks base method.
-func (m *MockInMemoryStore) DeleteNumscriptLatest(ledgerID uint32, name string) {
+func (m *MockInMemoryStore) DeleteNumscriptLatest(ledgerName, name string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteNumscriptLatest", ledgerID, name)
+	m.ctrl.Call(m, "DeleteNumscriptLatest", ledgerName, name)
 }
 
 // DeleteNumscriptLatest indicates an expected call of DeleteNumscriptLatest.
-func (mr *MockInMemoryStoreMockRecorder) DeleteNumscriptLatest(ledgerID, name any) *MockInMemoryStoreDeleteNumscriptLatestCall {
+func (mr *MockInMemoryStoreMockRecorder) DeleteNumscriptLatest(ledgerName, name any) *MockInMemoryStoreDeleteNumscriptLatestCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNumscriptLatest", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteNumscriptLatest), ledgerID, name)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNumscriptLatest", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteNumscriptLatest), ledgerName, name)
 	return &MockInMemoryStoreDeleteNumscriptLatestCall{Call: call}
 }
 
@@ -281,13 +281,13 @@ func (c *MockInMemoryStoreDeleteNumscriptLatestCall) Return() *MockInMemoryStore
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreDeleteNumscriptLatestCall) Do(f func(uint32, string)) *MockInMemoryStoreDeleteNumscriptLatestCall {
+func (c *MockInMemoryStoreDeleteNumscriptLatestCall) Do(f func(string, string)) *MockInMemoryStoreDeleteNumscriptLatestCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreDeleteNumscriptLatestCall) DoAndReturn(f func(uint32, string)) *MockInMemoryStoreDeleteNumscriptLatestCall {
+func (c *MockInMemoryStoreDeleteNumscriptLatestCall) DoAndReturn(f func(string, string)) *MockInMemoryStoreDeleteNumscriptLatestCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -329,15 +329,15 @@ func (c *MockInMemoryStoreDeletePeriodScheduleCall) DoAndReturn(f func()) *MockI
 }
 
 // DeletePreparedQuery mocks base method.
-func (m *MockInMemoryStore) DeletePreparedQuery(ledgerID uint32, name string) {
+func (m *MockInMemoryStore) DeletePreparedQuery(ledgerName, name string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeletePreparedQuery", ledgerID, name)
+	m.ctrl.Call(m, "DeletePreparedQuery", ledgerName, name)
 }
 
 // DeletePreparedQuery indicates an expected call of DeletePreparedQuery.
-func (mr *MockInMemoryStoreMockRecorder) DeletePreparedQuery(ledgerID, name any) *MockInMemoryStoreDeletePreparedQueryCall {
+func (mr *MockInMemoryStoreMockRecorder) DeletePreparedQuery(ledgerName, name any) *MockInMemoryStoreDeletePreparedQueryCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).DeletePreparedQuery), ledgerID, name)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).DeletePreparedQuery), ledgerName, name)
 	return &MockInMemoryStoreDeletePreparedQueryCall{Call: call}
 }
 
@@ -353,13 +353,13 @@ func (c *MockInMemoryStoreDeletePreparedQueryCall) Return() *MockInMemoryStoreDe
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreDeletePreparedQueryCall) Do(f func(uint32, string)) *MockInMemoryStoreDeletePreparedQueryCall {
+func (c *MockInMemoryStoreDeletePreparedQueryCall) Do(f func(string, string)) *MockInMemoryStoreDeletePreparedQueryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreDeletePreparedQueryCall) DoAndReturn(f func(uint32, string)) *MockInMemoryStoreDeletePreparedQueryCall {
+func (c *MockInMemoryStoreDeletePreparedQueryCall) DoAndReturn(f func(string, string)) *MockInMemoryStoreDeletePreparedQueryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -976,18 +976,18 @@ func (c *MockInMemoryStoreGetNextSequenceIDCall) DoAndReturn(f func() uint64) *M
 }
 
 // GetNumscriptLatestVersion mocks base method.
-func (m *MockInMemoryStore) GetNumscriptLatestVersion(ledgerID uint32, name string) (string, error) {
+func (m *MockInMemoryStore) GetNumscriptLatestVersion(ledgerName, name string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetNumscriptLatestVersion", ledgerID, name)
+	ret := m.ctrl.Call(m, "GetNumscriptLatestVersion", ledgerName, name)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetNumscriptLatestVersion indicates an expected call of GetNumscriptLatestVersion.
-func (mr *MockInMemoryStoreMockRecorder) GetNumscriptLatestVersion(ledgerID, name any) *MockInMemoryStoreGetNumscriptLatestVersionCall {
+func (mr *MockInMemoryStoreMockRecorder) GetNumscriptLatestVersion(ledgerName, name any) *MockInMemoryStoreGetNumscriptLatestVersionCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscriptLatestVersion", reflect.TypeOf((*MockInMemoryStore)(nil).GetNumscriptLatestVersion), ledgerID, name)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscriptLatestVersion", reflect.TypeOf((*MockInMemoryStore)(nil).GetNumscriptLatestVersion), ledgerName, name)
 	return &MockInMemoryStoreGetNumscriptLatestVersionCall{Call: call}
 }
 
@@ -1003,13 +1003,13 @@ func (c *MockInMemoryStoreGetNumscriptLatestVersionCall) Return(arg0 string, arg
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetNumscriptLatestVersionCall) Do(f func(uint32, string) (string, error)) *MockInMemoryStoreGetNumscriptLatestVersionCall {
+func (c *MockInMemoryStoreGetNumscriptLatestVersionCall) Do(f func(string, string) (string, error)) *MockInMemoryStoreGetNumscriptLatestVersionCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetNumscriptLatestVersionCall) DoAndReturn(f func(uint32, string) (string, error)) *MockInMemoryStoreGetNumscriptLatestVersionCall {
+func (c *MockInMemoryStoreGetNumscriptLatestVersionCall) DoAndReturn(f func(string, string) (string, error)) *MockInMemoryStoreGetNumscriptLatestVersionCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1054,18 +1054,18 @@ func (c *MockInMemoryStoreGetPeriodByIDCall) DoAndReturn(f func(uint64) (*common
 }
 
 // GetPreparedQuery mocks base method.
-func (m *MockInMemoryStore) GetPreparedQuery(ledgerID uint32, name string) (*commonpb.PreparedQuery, error) {
+func (m *MockInMemoryStore) GetPreparedQuery(ledgerName, name string) (*commonpb.PreparedQuery, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPreparedQuery", ledgerID, name)
+	ret := m.ctrl.Call(m, "GetPreparedQuery", ledgerName, name)
 	ret0, _ := ret[0].(*commonpb.PreparedQuery)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetPreparedQuery indicates an expected call of GetPreparedQuery.
-func (mr *MockInMemoryStoreMockRecorder) GetPreparedQuery(ledgerID, name any) *MockInMemoryStoreGetPreparedQueryCall {
+func (mr *MockInMemoryStoreMockRecorder) GetPreparedQuery(ledgerName, name any) *MockInMemoryStoreGetPreparedQueryCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).GetPreparedQuery), ledgerID, name)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).GetPreparedQuery), ledgerName, name)
 	return &MockInMemoryStoreGetPreparedQueryCall{Call: call}
 }
 
@@ -1081,13 +1081,13 @@ func (c *MockInMemoryStoreGetPreparedQueryCall) Return(arg0 *commonpb.PreparedQu
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetPreparedQueryCall) Do(f func(uint32, string) (*commonpb.PreparedQuery, error)) *MockInMemoryStoreGetPreparedQueryCall {
+func (c *MockInMemoryStoreGetPreparedQueryCall) Do(f func(string, string) (*commonpb.PreparedQuery, error)) *MockInMemoryStoreGetPreparedQueryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetPreparedQueryCall) DoAndReturn(f func(uint32, string) (*commonpb.PreparedQuery, error)) *MockInMemoryStoreGetPreparedQueryCall {
+func (c *MockInMemoryStoreGetPreparedQueryCall) DoAndReturn(f func(string, string) (*commonpb.PreparedQuery, error)) *MockInMemoryStoreGetPreparedQueryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1514,18 +1514,18 @@ func (c *MockInMemoryStoreMarkLedgerForCleanupCall) DoAndReturn(f func(string)) 
 }
 
 // NumscriptVersionExists mocks base method.
-func (m *MockInMemoryStore) NumscriptVersionExists(ledgerID uint32, name, version string) (bool, error) {
+func (m *MockInMemoryStore) NumscriptVersionExists(ledgerName, name, version string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NumscriptVersionExists", ledgerID, name, version)
+	ret := m.ctrl.Call(m, "NumscriptVersionExists", ledgerName, name, version)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // NumscriptVersionExists indicates an expected call of NumscriptVersionExists.
-func (mr *MockInMemoryStoreMockRecorder) NumscriptVersionExists(ledgerID, name, version any) *MockInMemoryStoreNumscriptVersionExistsCall {
+func (mr *MockInMemoryStoreMockRecorder) NumscriptVersionExists(ledgerName, name, version any) *MockInMemoryStoreNumscriptVersionExistsCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NumscriptVersionExists", reflect.TypeOf((*MockInMemoryStore)(nil).NumscriptVersionExists), ledgerID, name, version)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NumscriptVersionExists", reflect.TypeOf((*MockInMemoryStore)(nil).NumscriptVersionExists), ledgerName, name, version)
 	return &MockInMemoryStoreNumscriptVersionExistsCall{Call: call}
 }
 
@@ -1541,13 +1541,13 @@ func (c *MockInMemoryStoreNumscriptVersionExistsCall) Return(arg0 bool, arg1 err
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreNumscriptVersionExistsCall) Do(f func(uint32, string, string) (bool, error)) *MockInMemoryStoreNumscriptVersionExistsCall {
+func (c *MockInMemoryStoreNumscriptVersionExistsCall) Do(f func(string, string, string) (bool, error)) *MockInMemoryStoreNumscriptVersionExistsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreNumscriptVersionExistsCall) DoAndReturn(f func(uint32, string, string) (bool, error)) *MockInMemoryStoreNumscriptVersionExistsCall {
+func (c *MockInMemoryStoreNumscriptVersionExistsCall) DoAndReturn(f func(string, string, string) (bool, error)) *MockInMemoryStoreNumscriptVersionExistsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1733,15 +1733,15 @@ func (c *MockInMemoryStorePutLedgerMetadataCall) DoAndReturn(f func(domain.Ledge
 }
 
 // PutNumscript mocks base method.
-func (m *MockInMemoryStore) PutNumscript(ledgerID uint32, info *commonpb.NumscriptInfo) {
+func (m *MockInMemoryStore) PutNumscript(ledgerName string, info *commonpb.NumscriptInfo) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutNumscript", ledgerID, info)
+	m.ctrl.Call(m, "PutNumscript", ledgerName, info)
 }
 
 // PutNumscript indicates an expected call of PutNumscript.
-func (mr *MockInMemoryStoreMockRecorder) PutNumscript(ledgerID, info any) *MockInMemoryStorePutNumscriptCall {
+func (mr *MockInMemoryStoreMockRecorder) PutNumscript(ledgerName, info any) *MockInMemoryStorePutNumscriptCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutNumscript", reflect.TypeOf((*MockInMemoryStore)(nil).PutNumscript), ledgerID, info)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutNumscript", reflect.TypeOf((*MockInMemoryStore)(nil).PutNumscript), ledgerName, info)
 	return &MockInMemoryStorePutNumscriptCall{Call: call}
 }
 
@@ -1757,27 +1757,27 @@ func (c *MockInMemoryStorePutNumscriptCall) Return() *MockInMemoryStorePutNumscr
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStorePutNumscriptCall) Do(f func(uint32, *commonpb.NumscriptInfo)) *MockInMemoryStorePutNumscriptCall {
+func (c *MockInMemoryStorePutNumscriptCall) Do(f func(string, *commonpb.NumscriptInfo)) *MockInMemoryStorePutNumscriptCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStorePutNumscriptCall) DoAndReturn(f func(uint32, *commonpb.NumscriptInfo)) *MockInMemoryStorePutNumscriptCall {
+func (c *MockInMemoryStorePutNumscriptCall) DoAndReturn(f func(string, *commonpb.NumscriptInfo)) *MockInMemoryStorePutNumscriptCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // PutPreparedQuery mocks base method.
-func (m *MockInMemoryStore) PutPreparedQuery(ledgerID uint32, pq *commonpb.PreparedQuery) {
+func (m *MockInMemoryStore) PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutPreparedQuery", ledgerID, pq)
+	m.ctrl.Call(m, "PutPreparedQuery", ledgerName, pq)
 }
 
 // PutPreparedQuery indicates an expected call of PutPreparedQuery.
-func (mr *MockInMemoryStoreMockRecorder) PutPreparedQuery(ledgerID, pq any) *MockInMemoryStorePutPreparedQueryCall {
+func (mr *MockInMemoryStoreMockRecorder) PutPreparedQuery(ledgerName, pq any) *MockInMemoryStorePutPreparedQueryCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).PutPreparedQuery), ledgerID, pq)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).PutPreparedQuery), ledgerName, pq)
 	return &MockInMemoryStorePutPreparedQueryCall{Call: call}
 }
 
@@ -1793,13 +1793,13 @@ func (c *MockInMemoryStorePutPreparedQueryCall) Return() *MockInMemoryStorePutPr
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStorePutPreparedQueryCall) Do(f func(uint32, *commonpb.PreparedQuery)) *MockInMemoryStorePutPreparedQueryCall {
+func (c *MockInMemoryStorePutPreparedQueryCall) Do(f func(string, *commonpb.PreparedQuery)) *MockInMemoryStorePutPreparedQueryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStorePutPreparedQueryCall) DoAndReturn(f func(uint32, *commonpb.PreparedQuery)) *MockInMemoryStorePutPreparedQueryCall {
+func (c *MockInMemoryStorePutPreparedQueryCall) DoAndReturn(f func(string, *commonpb.PreparedQuery)) *MockInMemoryStorePutPreparedQueryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -2057,18 +2057,18 @@ func (c *MockInMemoryStoreRemoveSinkConfigCall) DoAndReturn(f func(string)) *Moc
 }
 
 // ResolveNumscriptContent mocks base method.
-func (m *MockInMemoryStore) ResolveNumscriptContent(ledgerID uint32, name, version string) (*commonpb.NumscriptInfo, error) {
+func (m *MockInMemoryStore) ResolveNumscriptContent(ledgerName, name, version string) (*commonpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResolveNumscriptContent", ledgerID, name, version)
+	ret := m.ctrl.Call(m, "ResolveNumscriptContent", ledgerName, name, version)
 	ret0, _ := ret[0].(*commonpb.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ResolveNumscriptContent indicates an expected call of ResolveNumscriptContent.
-func (mr *MockInMemoryStoreMockRecorder) ResolveNumscriptContent(ledgerID, name, version any) *MockInMemoryStoreResolveNumscriptContentCall {
+func (mr *MockInMemoryStoreMockRecorder) ResolveNumscriptContent(ledgerName, name, version any) *MockInMemoryStoreResolveNumscriptContentCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNumscriptContent", reflect.TypeOf((*MockInMemoryStore)(nil).ResolveNumscriptContent), ledgerID, name, version)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNumscriptContent", reflect.TypeOf((*MockInMemoryStore)(nil).ResolveNumscriptContent), ledgerName, name, version)
 	return &MockInMemoryStoreResolveNumscriptContentCall{Call: call}
 }
 
@@ -2084,13 +2084,13 @@ func (c *MockInMemoryStoreResolveNumscriptContentCall) Return(arg0 *commonpb.Num
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreResolveNumscriptContentCall) Do(f func(uint32, string, string) (*commonpb.NumscriptInfo, error)) *MockInMemoryStoreResolveNumscriptContentCall {
+func (c *MockInMemoryStoreResolveNumscriptContentCall) Do(f func(string, string, string) (*commonpb.NumscriptInfo, error)) *MockInMemoryStoreResolveNumscriptContentCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreResolveNumscriptContentCall) DoAndReturn(f func(uint32, string, string) (*commonpb.NumscriptInfo, error)) *MockInMemoryStoreResolveNumscriptContentCall {
+func (c *MockInMemoryStoreResolveNumscriptContentCall) DoAndReturn(f func(string, string, string) (*commonpb.NumscriptInfo, error)) *MockInMemoryStoreResolveNumscriptContentCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

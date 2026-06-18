@@ -37,13 +37,13 @@ func newConverterTestStore(t *testing.T) *dal.Store {
 	return s
 }
 
-// testLedgerID is the ledger ID used by the test fixtures so the seeded
+// testLedgerName is the ledger ID used by the test fixtures so the seeded
 // metadata keys match the prefix the converter scans for.
-const testLedgerID uint32 = 42
+const testLedgerName = "test-ledger"
 
 // registerLedgerWithSchema registers a ledger with a metadata schema. The
 // ledger is given a non-zero ID so test seeds can be built through
-// `domain.MetadataKey{LedgerID: testLedgerID, ...}.Bytes()` — matching how
+// `domain.MetadataKey{LedgerName: testLedgerName, ...}.Bytes()` — matching how
 // production writes keys.
 func registerLedgerWithSchema(t *testing.T, s *dal.Store, name string, schema *commonpb.MetadataSchema) {
 	t.Helper()
@@ -51,7 +51,6 @@ func registerLedgerWithSchema(t *testing.T, s *dal.Store, name string, schema *c
 	batch := s.OpenWriteSession()
 	err := SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:           name,
-		Id:             testLedgerID,
 		CreatedAt:      commonpb.NewTimestamp(libtime.Now()),
 		MetadataSchema: schema,
 	})
@@ -252,7 +251,7 @@ func seedAccountMetadata(t *testing.T, s *dal.Store, _, account, key string, val
 
 	attrs := attributes.New()
 	canonicalKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerID: testLedgerID, Account: account},
+		AccountKey: domain.AccountKey{LedgerName: testLedgerName, Account: account},
 		Key:        key,
 	}.Bytes()
 

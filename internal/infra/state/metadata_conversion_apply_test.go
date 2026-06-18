@@ -42,7 +42,7 @@ func metaConvertFixture(t *testing.T) (fsm *Machine, dataStore *dal.Store, canon
 	require.NoError(t, fsm.saveLedgerWithCache(batch, ledgerKey, info))
 	require.NoError(t, batch.Commit())
 
-	canonicalKey = domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"}, Key: "role"}.Bytes()
+	canonicalKey = domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"}.Bytes()
 
 	return fsm, dataStore, canonicalKey
 }
@@ -321,7 +321,7 @@ func TestApplyMetadataConversionBatch_StaleSchemaStillSkips(t *testing.T) {
 	require.NoError(t, fsm.saveLedgerWithCache(batch, ledgerKey, info))
 	require.NoError(t, batch.Commit())
 
-	canonicalKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"}, Key: "role"}.Bytes()
+	canonicalKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"}.Bytes()
 
 	applyBatch := dataStore.OpenWriteSession()
 	require.NoError(t, fsm.applyMetadataConversionBatch(applyBatch, &raftcmdpb.MetadataConversionBatch{

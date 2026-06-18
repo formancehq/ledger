@@ -1,6 +1,7 @@
 package query
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 
@@ -11,8 +12,8 @@ import (
 )
 
 // ReadReversions loads all per-ledger reversion bitsets from Pebble.
-// Key format: [0x03][0x01][ledger\x00][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
-func ReadReversions(reader dal.PebbleReader) (map[uint32]*bitset.Bitset, error) {
+// Key format: [0x03][0x01][ledgerName padded 64B][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
+func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, error) {
 	lowerBound := []byte{dal.ZonePerLedger, dal.SubPLReversions}
 	upperBound := []byte{dal.ZonePerLedger, dal.SubPLReversions + 1}
 
@@ -26,21 +27,28 @@ func ReadReversions(reader dal.PebbleReader) (map[uint32]*bitset.Bitset, error) 
 
 	defer func() { _ = iter.Close() }()
 
-	result := make(map[uint32]*bitset.Bitset)
+	result := make(map[string]*bitset.Bitset)
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-		// Key format: [0x03][0x01][ledgerID_BE_4B][wordIndex BE 8 bytes]
-		if len(key) < 2+4+8 {
+		// Key format: [0x03][0x01][ledgerName padded 64B][wordIndex BE 8 bytes].
+		if len(key) < 2+dal.LedgerNameFixedSize+8 {
 			continue
 		}
 
-		ledgerID := binary.BigEndian.Uint32(key[2:6])
-		wordIndex := binary.BigEndian.Uint64(key[6:])
+		nameBytes := key[2 : 2+dal.LedgerNameFixedSize]
+
+		end := bytes.IndexByte(nameBytes, 0)
+		if end < 0 {
+			end = dal.LedgerNameFixedSize
+		}
+
+		ledgerName := string(nameBytes[:end])
+		wordIndex := binary.BigEndian.Uint64(key[2+dal.LedgerNameFixedSize:])
 
 		val, err := iter.ValueAndErr()
 		if err != nil {
-			return nil, fmt.Errorf("reading reversion word for ledger %d: %w", ledgerID, err)
+			return nil, fmt.Errorf("reading reversion word for ledger %q: %w", ledgerName, err)
 		}
 
 		if len(val) < 8 {
@@ -49,10 +57,10 @@ func ReadReversions(reader dal.PebbleReader) (map[uint32]*bitset.Bitset, error) 
 
 		word := binary.LittleEndian.Uint64(val)
 
-		bs, ok := result[ledgerID]
+		bs, ok := result[ledgerName]
 		if !ok {
 			bs = &bitset.Bitset{}
-			result[ledgerID] = bs
+			result[ledgerName] = bs
 		}
 
 		bs.SetWord(wordIndex, word)

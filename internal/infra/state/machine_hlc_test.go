@@ -109,7 +109,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 				Id:      2,
 				Orders:  txOrders,
 				Date:    &commonpb.Timestamp{Data: 500000}, // Behind last applied
-				Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders, 1)},
+				Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders, "test")},
 			}),
 		)
 		require.NoError(t, err)
@@ -157,7 +157,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 				Id:      2,
 				Orders:  txOrders,
 				Date:    &commonpb.Timestamp{Data: 5000},
-				Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders, 1)},
+				Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders, "test")},
 			}),
 		)
 		require.NoError(t, err)
@@ -233,7 +233,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 					Id:      uint64(i + 2),
 					Orders:  txOrders,
 					Date:    &commonpb.Timestamp{Data: date},
-					Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders, 1)},
+					Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders, "test")},
 				}),
 			)
 			require.NoError(t, err)

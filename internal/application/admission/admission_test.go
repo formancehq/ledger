@@ -153,7 +153,7 @@ func TestGetTransactionPostings(t *testing.T) {
 		require.NoError(t, err)
 
 		// Store TransactionState to link transaction ID to its creating log
-		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerID: 1, ID: 1}.Bytes(), &commonpb.TransactionState{
+		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}.Bytes(), &commonpb.TransactionState{
 			CreatedByLog: 1,
 		})
 		require.NoError(t, err)
@@ -214,7 +214,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 		volumes := needs.Volumes
 
@@ -222,11 +222,11 @@ func TestExtractNeededVolumes(t *testing.T) {
 		require.Len(t, volumes, 2)
 
 		worldKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "world"},
 			Asset:      "USD",
 		}
 		aliceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "user:alice"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "user:alice"},
 			Asset:      "USD",
 		}
 
@@ -267,7 +267,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 		volumes := needs.Volumes
 
@@ -275,11 +275,11 @@ func TestExtractNeededVolumes(t *testing.T) {
 		require.Len(t, volumes, 2)
 
 		aliceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "user:alice"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "user:alice"},
 			Asset:      "USD",
 		}
 		worldKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "world"},
 			Asset:      "USD",
 		}
 
@@ -323,7 +323,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 		volumes := needs.Volumes
 
@@ -332,15 +332,15 @@ func TestExtractNeededVolumes(t *testing.T) {
 		require.Len(t, volumes, 3)
 
 		aliceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "user:alice"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "user:alice"},
 			Asset:      "USD",
 		}
 		bobKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "user:bob"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "user:bob"},
 			Asset:      "USD",
 		}
 		worldKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "world"},
 			Asset:      "USD",
 		}
 
@@ -382,10 +382,10 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 
-		_, hasRef := needs.References[domain.TransactionReferenceKey{LedgerID: 1, Reference: "invoice:42"}]
+		_, hasRef := needs.References[domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "invoice:42"}]
 		require.True(t, hasRef, "reference key should be preloaded")
 		require.Empty(t, needs.Transactions, "transaction key should not be preloaded when reference is used")
 	})
@@ -419,10 +419,10 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 
-		_, hasTx := needs.Transactions[domain.TransactionKey{LedgerID: 1, ID: 7}]
+		_, hasTx := needs.Transactions[domain.TransactionKey{LedgerName: "test-ledger", ID: 7}]
 		require.True(t, hasTx, "transaction key should be preloaded when id is used")
 		require.Empty(t, needs.References, "reference key should not be preloaded when id is used")
 	})
@@ -532,7 +532,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		err := state.AppendLogs(batch, []*commonpb.Log{txLog})
 		require.NoError(t, err)
 		// Store TransactionState to link transaction ID to its creating log
-		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerID: 1, ID: 1}.Bytes(), &commonpb.TransactionState{
+		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}.Bytes(), &commonpb.TransactionState{
 			CreatedByLog: 1,
 		})
 		require.NoError(t, err)
@@ -608,9 +608,9 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 
 		batch := store.OpenWriteSession()
 		require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{txLog}))
-		_, err := attrs.Transaction.Set(batch, domain.TransactionKey{LedgerID: 1, ID: 1}.Bytes(), &commonpb.TransactionState{CreatedByLog: 1})
+		_, err := attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}.Bytes(), &commonpb.TransactionState{CreatedByLog: 1})
 		require.NoError(t, err)
-		_, err = attrs.References.Set(batch, domain.TransactionReferenceKey{LedgerID: 1, Reference: "invoice:42"}.Bytes(), &commonpb.TransactionReferenceValue{TransactionId: 1})
+		_, err = attrs.References.Set(batch, domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "invoice:42"}.Bytes(), &commonpb.TransactionReferenceValue{TransactionId: 1})
 		require.NoError(t, err)
 		require.NoError(t, state.SetAppliedIndex(batch, 1))
 		require.NoError(t, batch.Commit())
@@ -708,7 +708,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 		volumes := needs.Volumes
 
@@ -716,11 +716,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		require.Len(t, volumes, 2, "force=true should still extract all volumes")
 
 		aliceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"},
 			Asset:      "USD",
 		}
 		bobKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:bob"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:bob"},
 			Asset:      "USD",
 		}
 
@@ -758,7 +758,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 		volumes := needs.Volumes
 
@@ -766,11 +766,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		require.Len(t, volumes, 2, "force=false should extract all volumes")
 
 		aliceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"},
 			Asset:      "USD",
 		}
 		bobKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:bob"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:bob"},
 			Asset:      "USD",
 		}
 
@@ -830,7 +830,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 		volumes := needs.Volumes
 
@@ -839,11 +839,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		// Verify force=true volumes ARE present
 		forceSourceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:force_source"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:force_source"},
 			Asset:      "USD",
 		}
 		forceDestKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:force_dest"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:force_dest"},
 			Asset:      "USD",
 		}
 		_, hasForceSource := volumes[forceSourceKey]
@@ -853,11 +853,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		// Verify force=false volumes are present
 		normalSourceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:normal_source"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:normal_source"},
 			Asset:      "EUR",
 		}
 		normalDestKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:normal_dest"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:normal_dest"},
 			Asset:      "EUR",
 		}
 		_, hasNormalSource := volumes[normalSourceKey]
@@ -896,7 +896,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 		volumes := needs.Volumes
 
@@ -904,11 +904,11 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		require.Len(t, volumes, 2, "revert with force=true should still extract all volumes")
 
 		aliceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "user:alice"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "user:alice"},
 			Asset:      "USD",
 		}
 		worldKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "world"},
 			Asset:      "USD",
 		}
 
@@ -991,11 +991,11 @@ func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 				},
 			}
 
-			needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+			needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 			require.NoError(t, err)
 
 			key := domain.MetadataKey{
-				AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
+				AccountKey: domain.AccountKey{LedgerName: testLedgerName, Account: "users:alice"},
 				Key:        "vip",
 			}
 			_, ok := needs.Metadata[key]
@@ -1066,7 +1066,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		err := state.AppendLogs(batch, []*commonpb.Log{txLog})
 		require.NoError(t, err)
 		// Store TransactionState to link transaction ID to its creating log
-		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerID: 1, ID: 42}.Bytes(), &commonpb.TransactionState{
+		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: "test-ledger", ID: 42}.Bytes(), &commonpb.TransactionState{
 			CreatedByLog: 1,
 		})
 		require.NoError(t, err)
@@ -1142,20 +1142,20 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, nameToID, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
-		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, nameToID))
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs))
 		volumes := needs.Volumes
 
 		// Both source and destination volumes are preloaded from numscript
 		require.Len(t, volumes, 2, "numscript emulation should discover all volumes")
 
 		aliceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"},
 			Asset:      "USD/2",
 		}
 		bobKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:bob"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:bob"},
 			Asset:      "USD/2",
 		}
 
@@ -1195,20 +1195,20 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, nameToID, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
-		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, nameToID))
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs))
 		volumes := needs.Volumes
 
 		// Force=true no longer skips volume extraction - all volumes are preloaded
 		require.Len(t, volumes, 2, "force=true should still extract numscript volumes")
 
 		aliceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"},
 			Asset:      "USD/2",
 		}
 		bobKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:bob"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:bob"},
 			Asset:      "USD/2",
 		}
 
@@ -1257,12 +1257,12 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 				)
 			`)
 
-		needs, nameToID, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
-		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, nameToID))
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs))
 
 		_, hasAlice := needs.Volumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"},
 			Asset:      "USD/2",
 		}]
 		require.True(t, hasAlice, "should discover destination account from reference vars")
@@ -1295,10 +1295,10 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, nameToID, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 
-		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, nameToID)
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs)
 		require.Error(t, err)
 
 		var businessErr *domain.BusinessError
@@ -1343,10 +1343,10 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, nameToID, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 
-		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, nameToID)
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs)
 		require.Error(t, err)
 
 		var businessErr *domain.BusinessError
@@ -1391,7 +1391,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 		volumes := needs.Volumes
 
@@ -1399,11 +1399,11 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		require.Len(t, volumes, 2)
 
 		bankKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "bank"},
 			Asset:      "EUR",
 		}
 		merchantKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: 1, Account: "merchant"},
+			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "merchant"},
 			Asset:      "EUR",
 		}
 

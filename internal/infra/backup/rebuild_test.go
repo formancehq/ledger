@@ -212,7 +212,7 @@ func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 
 	attrs := attributes.New()
 	pair, err := attrs.Volume.Get(handle, domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "orders:1"},
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
 		Asset:      "USD",
 	}.Bytes())
 	require.NoError(t, err)

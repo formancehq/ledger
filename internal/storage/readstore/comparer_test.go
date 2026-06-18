@@ -1,21 +1,25 @@
 package readstore
 
 import (
-	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// ledgerIDKey builds a test key: [prefix][ledgerID BE 4B][suffix...].
-func ledgerIDKey(prefix byte, ledgerID uint32, suffix ...byte) []byte {
-	key := make([]byte, 1+4+len(suffix))
+// ledgerKey builds a test key: [prefix][ledgerName padded 64B][suffix...].
+func ledgerKey(prefix byte, ledgerName string, suffix ...byte) []byte {
+	key := make([]byte, 1+dal.LedgerNameFixedSize+len(suffix))
 	key[0] = prefix
-	binary.BigEndian.PutUint32(key[1:], ledgerID)
-	copy(key[5:], suffix)
+	copy(key[1:1+dal.LedgerNameFixedSize], ledgerName)
+	copy(key[1+dal.LedgerNameFixedSize:], suffix)
 
 	return key
 }
+
+// expectedSplit is the canonical split point for ledger-scoped readstore keys.
+const expectedSplit = 1 + dal.LedgerNameFixedSize
 
 func TestReadStoreSplit(t *testing.T) {
 	t.Parallel()
@@ -26,34 +30,34 @@ func TestReadStoreSplit(t *testing.T) {
 		wantSplit int
 	}{
 		{
-			name:      "metadata index with ledger ID 1",
-			key:       ledgerIDKey(PrefixMetadataIndex, 1, 'a', ':', 'm', 'e', 't', 'a'),
-			wantSplit: 5, // [0x01][00 00 00 01]
+			name:      "metadata index with ledger 'a'",
+			key:       ledgerKey(PrefixMetadataIndex, "a", 'a', ':', 'm', 'e', 't', 'a'),
+			wantSplit: expectedSplit,
 		},
 		{
-			name:      "entity exists with ledger ID 256",
-			key:       ledgerIDKey(PrefixEntityExists, 256, 'a', ':', 'k'),
-			wantSplit: 5, // [0x02][00 00 01 00]
+			name:      "entity exists with ledger 'foo'",
+			key:       ledgerKey(PrefixEntityExists, "foo", 'a', ':', 'k'),
+			wantSplit: expectedSplit,
 		},
 		{
-			name:      "account tx with ledger ID 42 and suffix",
-			key:       ledgerIDKey(PrefixAccountTx, 42, 'a', 'c', 'c', 0x00, 1, 2, 3, 4, 5, 6, 7, 8),
-			wantSplit: 5, // [0x04][00 00 00 2A]
+			name:      "account tx with suffix",
+			key:       ledgerKey(PrefixAccountTx, "billing", 'a', 'c', 'c', 0x00, 1, 2, 3, 4, 5, 6, 7, 8),
+			wantSplit: expectedSplit,
 		},
 		{
-			name:      "ledger ID with zero bytes (ID=0)",
-			key:       ledgerIDKey(PrefixMetadataIndex, 0, 'x'),
-			wantSplit: 5, // must not be confused by 0x00 bytes in the ID
+			name:      "empty ledger name (all zero pad)",
+			key:       ledgerKey(PrefixMetadataIndex, "", 'x'),
+			wantSplit: expectedSplit,
 		},
 		{
-			name:      "large ledger ID (0x01020304)",
-			key:       ledgerIDKey(PrefixTransactionTimestamp, 0x01020304, 0x00, 0x00, 0x00, 0x01),
-			wantSplit: 5,
+			name:      "long ledger name",
+			key:       ledgerKey(PrefixTransactionTimestamp, "very-long-ledger-name", 0x00, 0x00, 0x00, 0x01),
+			wantSplit: expectedSplit,
 		},
 		{
-			name:      "prefix-only key (exactly 5 bytes)",
-			key:       ledgerIDKey(PrefixMetadataIndex, 1),
-			wantSplit: 5,
+			name:      "prefix-only key (exactly prefix+name)",
+			key:       ledgerKey(PrefixMetadataIndex, "a"),
+			wantSplit: expectedSplit,
 		},
 		{
 			name:      "internal progress singleton",
@@ -67,8 +71,8 @@ func TestReadStoreSplit(t *testing.T) {
 		},
 		{
 			name:      "backfill with ledger",
-			key:       []byte{PrefixInternal, SubInternalBackfill, 0x00, 0x00, 0x00, 0x01, 'b', 0x01},
-			wantSplit: 8, // full key — internal prefix, no bloom split
+			key:       append([]byte{PrefixInternal, SubInternalBackfill}, append(make([]byte, dal.LedgerNameFixedSize), 'b', 0x01)...),
+			wantSplit: 2 + dal.LedgerNameFixedSize + 2, // full key — internal prefix, no bloom split
 		},
 		{
 			name:      "empty key",
@@ -81,7 +85,7 @@ func TestReadStoreSplit(t *testing.T) {
 			wantSplit: 1,
 		},
 		{
-			name:      "short key (3 bytes, less than ledgerScopedPrefixLen)",
+			name:      "short key (less than ledgerScopedPrefixLen)",
 			key:       []byte{0x01, 0x00, 0x00},
 			wantSplit: 3, // fallback: entire key
 		},
@@ -97,24 +101,23 @@ func TestReadStoreSplit(t *testing.T) {
 	}
 }
 
-func TestReadStoreSplit_DistinctLedgerIDs(t *testing.T) {
+func TestReadStoreSplit_DistinctLedgerNames(t *testing.T) {
 	t.Parallel()
 
-	// Verify that different ledger IDs produce different split prefixes,
-	// even when the uint32 bytes contain 0x00.
+	// Verify that different ledger names produce different split prefixes.
 	split := ReadStoreComparer.Split
 
-	key1 := ledgerIDKey(PrefixMetadataIndex, 1, 'a', ':', 'x')
-	key2 := ledgerIDKey(PrefixMetadataIndex, 2, 'a', ':', 'x')
-	key256 := ledgerIDKey(PrefixMetadataIndex, 256, 'a', ':', 'x')
+	keyA := ledgerKey(PrefixMetadataIndex, "a", 'a', ':', 'x')
+	keyB := ledgerKey(PrefixMetadataIndex, "b", 'a', ':', 'x')
+	keyLong := ledgerKey(PrefixMetadataIndex, "billing", 'a', ':', 'x')
 
-	prefix1 := key1[:split(key1)]
-	prefix2 := key2[:split(key2)]
-	prefix256 := key256[:split(key256)]
+	prefixA := keyA[:split(keyA)]
+	prefixB := keyB[:split(keyB)]
+	prefixLong := keyLong[:split(keyLong)]
 
-	require.NotEqual(t, prefix1, prefix2, "ledger 1 and 2 must have distinct prefixes")
-	require.NotEqual(t, prefix1, prefix256, "ledger 1 and 256 must have distinct prefixes")
-	require.NotEqual(t, prefix2, prefix256, "ledger 2 and 256 must have distinct prefixes")
+	require.NotEqual(t, prefixA, prefixB, "ledgers a and b must have distinct prefixes")
+	require.NotEqual(t, prefixA, prefixLong, "ledgers a and billing must have distinct prefixes")
+	require.NotEqual(t, prefixB, prefixLong, "ledgers b and billing must have distinct prefixes")
 }
 
 func TestReadStoreComparerOrdering(t *testing.T) {
@@ -122,12 +125,12 @@ func TestReadStoreComparerOrdering(t *testing.T) {
 
 	// Verify that the custom comparer produces the same ordering as bytes.Compare.
 	keys := [][]byte{
-		ledgerIDKey(0x01, 1, 'x'),                  // [0x01][00 00 00 01][x]
-		ledgerIDKey(0x01, 1, 'y'),                  // [0x01][00 00 00 01][y]
-		ledgerIDKey(0x01, 2, 'x'),                  // [0x01][00 00 00 02][x]
-		ledgerIDKey(0x08, 1, 0x01),                 // [0x08][00 00 00 01][01]
-		{PrefixInternal, SubInternalProgress},      // [0xFE][0x01]
-		{PrefixInternal, SubInternalAuditProgress}, // [0xFE][0x02]
+		ledgerKey(0x01, "a", 'x'),
+		ledgerKey(0x01, "a", 'y'),
+		ledgerKey(0x01, "b", 'x'),
+		ledgerKey(0x08, "a", 0x01),
+		{PrefixInternal, SubInternalProgress},
+		{PrefixInternal, SubInternalAuditProgress},
 	}
 
 	cmp := ReadStoreComparer.Compare
@@ -149,14 +152,14 @@ func TestReadStoreComparerImmediateSuccessor(t *testing.T) {
 		want   []byte
 	}{
 		{
-			name:   "ledger-scoped prefix (ID=1)",
-			prefix: ledgerIDKey(0x01, 1),
-			want:   ledgerIDKey(0x01, 2),
-		},
-		{
-			name:   "ledger-scoped prefix (ID=255)",
-			prefix: ledgerIDKey(0x01, 255),
-			want:   ledgerIDKey(0x01, 256),
+			name:   "ledger-scoped prefix ('a' → 'b')",
+			prefix: ledgerKey(0x01, "a"),
+			want: func() []byte {
+				out := ledgerKey(0x01, "a")
+				out[len(out)-1]++
+
+				return out
+			}(),
 		},
 		{
 			name:   "internal singleton prefix",
@@ -187,12 +190,12 @@ func TestReadStoreComparerSplitProperties(t *testing.T) {
 
 	pairs := [][2][]byte{
 		{
-			ledgerIDKey(0x01, 1),                // prefix-only
-			ledgerIDKey(0x01, 1, 'a', ':', 'x'), // prefix + suffix
+			ledgerKey(0x01, "a"),                // prefix-only
+			ledgerKey(0x01, "a", 'a', ':', 'x'), // prefix + suffix
 		},
 		{
-			ledgerIDKey(0x01, 1, 'x'),
-			ledgerIDKey(0x01, 2, 'y'),
+			ledgerKey(0x01, "a", 'x'),
+			ledgerKey(0x01, "b", 'y'),
 		},
 	}
 

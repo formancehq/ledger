@@ -303,7 +303,7 @@ func TestCheckClosePeriod(t *testing.T) {
 				CreatedLog: &commonpb.Log{
 					Sequence: 1,
 					Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{LedgerName: "test"},
+						Apply: &commonpb.ApplyLedgerLog{LedgerName: "test-ledger"},
 					}},
 				},
 			}},

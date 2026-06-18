@@ -2,7 +2,6 @@ package indexbuilder
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -20,8 +19,7 @@ import (
 
 // backfillTask tracks the progress of backfilling a single index.
 type backfillTask struct {
-	ledger   string // ledger name (for logging and config lookup)
-	ledgerID uint32 // ledger ID (for BB key construction and readstore keys)
+	ledger   string // ledger name (used for BB keys, readstore keys, logging)
 	index    *commonpb.IndexID
 	cursor   uint64 // current position (persisted in Pebble)
 	auditSeq uint64 // safe audit resume sequence for transient-account filtering
@@ -61,37 +59,36 @@ func backfillIndexName(id *commonpb.IndexID) string {
 }
 
 // backfillBBKey builds the key for persisting backfill progress.
-// Format (preserved verbatim across the refactor — the wire format is
-// observed by the read store and must remain stable):
+// Format:
 //
-//	TxBuiltin:    [ledgerID_BE_4B]b[builtin_byte]
-//	TxMetadata:   [ledgerID_BE_4B]T[key]
-//	AcctBuiltin:  [ledgerID_BE_4B]A[builtin_byte]
-//	AcctMetadata: [ledgerID_BE_4B]a[key]
-//	LogBuiltin:   [ledgerID_BE_4B]l[builtin_byte]
-func backfillBBKey(ledgerID uint32, id *commonpb.IndexID) []byte {
+//	TxBuiltin:    [ledgerName padded 64B]b[builtin_byte]
+//	TxMetadata:   [ledgerName padded 64B]T[key]
+//	AcctBuiltin:  [ledgerName padded 64B]A[builtin_byte]
+//	AcctMetadata: [ledgerName padded 64B]a[key]
+//	LogBuiltin:   [ledgerName padded 64B]l[builtin_byte]
+func backfillBBKey(ledgerName string, id *commonpb.IndexID) []byte {
 	if id == nil {
 		return nil
 	}
 
-	var prefix [4]byte
-	binary.BigEndian.PutUint32(prefix[:], ledgerID)
+	var prefix [dal.LedgerNameFixedSize]byte
+	copy(prefix[:], ledgerName)
 
 	switch k := id.GetKind().(type) {
 	case *commonpb.IndexID_TxBuiltin:
-		key := make([]byte, 0, 4+2)
+		key := make([]byte, 0, dal.LedgerNameFixedSize+2)
 		key = append(key, prefix[:]...)
 		key = append(key, readstore.BackfillKindTxBuiltin, byte(k.TxBuiltin))
 
 		return key
 	case *commonpb.IndexID_LogBuiltin:
-		key := make([]byte, 0, 4+2)
+		key := make([]byte, 0, dal.LedgerNameFixedSize+2)
 		key = append(key, prefix[:]...)
 		key = append(key, readstore.BackfillKindLogBuiltin, byte(k.LogBuiltin))
 
 		return key
 	case *commonpb.IndexID_AccountBuiltin:
-		key := make([]byte, 0, 4+2)
+		key := make([]byte, 0, dal.LedgerNameFixedSize+2)
 		key = append(key, prefix[:]...)
 		key = append(key, readstore.BackfillKindAcctBuiltin, byte(k.AccountBuiltin))
 
@@ -99,14 +96,14 @@ func backfillBBKey(ledgerID uint32, id *commonpb.IndexID) []byte {
 	case *commonpb.IndexID_Metadata:
 		switch k.Metadata.GetTarget() {
 		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-			key := make([]byte, 0, 4+1+len(k.Metadata.GetKey()))
+			key := make([]byte, 0, dal.LedgerNameFixedSize+1+len(k.Metadata.GetKey()))
 			key = append(key, prefix[:]...)
 			key = append(key, readstore.BackfillKindTxMetadata)
 			key = append(key, k.Metadata.GetKey()...)
 
 			return key
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-			key := make([]byte, 0, 4+1+len(k.Metadata.GetKey()))
+			key := make([]byte, 0, dal.LedgerNameFixedSize+1+len(k.Metadata.GetKey()))
 			key = append(key, prefix[:]...)
 			key = append(key, readstore.BackfillKindAcctMetadata)
 			key = append(key, k.Metadata.GetKey()...)
@@ -120,8 +117,8 @@ func backfillBBKey(ledgerID uint32, id *commonpb.IndexID) []byte {
 
 // addBackfillTask is a helper that creates a backfill task for the given IndexID,
 // avoiding duplicates by checking the precomputed progress key.
-func (b *Builder) addBackfillTask(ledgerName string, ledgerID uint32, id *commonpb.IndexID) {
-	bbKey := backfillBBKey(ledgerID, id)
+func (b *Builder) addBackfillTask(ledgerName string, id *commonpb.IndexID) {
+	bbKey := backfillBBKey(ledgerName, id)
 	for _, t := range b.backfillTasks {
 		if string(t.bbKey) == string(bbKey) {
 			return
@@ -129,32 +126,31 @@ func (b *Builder) addBackfillTask(ledgerName string, ledgerID uint32, id *common
 	}
 
 	b.backfillTasks = append(b.backfillTasks, &backfillTask{
-		ledger:   ledgerName,
-		ledgerID: ledgerID,
-		index:    id,
-		cursor:   0,
-		bbKey:    bbKey,
+		ledger: ledgerName,
+		index:  id,
+		cursor: 0,
+		bbKey:  bbKey,
 	})
 }
 
 // addBackfillTaskForTxBuiltin creates a backfill task for a transaction builtin index.
-func (b *Builder) addBackfillTaskForTxBuiltin(ledgerName string, ledgerID uint32, index commonpb.TransactionBuiltinIndex) {
-	b.addBackfillTask(ledgerName, ledgerID, indexes.TxBuiltinID(index))
+func (b *Builder) addBackfillTaskForTxBuiltin(ledgerName string, index commonpb.TransactionBuiltinIndex) {
+	b.addBackfillTask(ledgerName, indexes.TxBuiltinID(index))
 }
 
 // addBackfillTaskForTxMetadata creates a backfill task for a transaction metadata index.
-func (b *Builder) addBackfillTaskForTxMetadata(ledgerName string, ledgerID uint32, key string) {
-	b.addBackfillTask(ledgerName, ledgerID, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key))
+func (b *Builder) addBackfillTaskForTxMetadata(ledgerName string, key string) {
+	b.addBackfillTask(ledgerName, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key))
 }
 
 // addBackfillTaskForAcctMetadata creates a backfill task for an account metadata index.
-func (b *Builder) addBackfillTaskForAcctMetadata(ledgerName string, ledgerID uint32, key string) {
-	b.addBackfillTask(ledgerName, ledgerID, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+func (b *Builder) addBackfillTaskForAcctMetadata(ledgerName string, key string) {
+	b.addBackfillTask(ledgerName, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 }
 
 // addBackfillTaskForLogBuiltin creates a backfill task for a log builtin index.
-func (b *Builder) addBackfillTaskForLogBuiltin(ledgerName string, ledgerID uint32, index commonpb.LogBuiltinIndex) {
-	b.addBackfillTask(ledgerName, ledgerID, indexes.LogBuiltinID(index))
+func (b *Builder) addBackfillTaskForLogBuiltin(ledgerName string, index commonpb.LogBuiltinIndex) {
+	b.addBackfillTask(ledgerName, indexes.LogBuiltinID(index))
 }
 
 // removeBackfillTask removes a backfill task by index ID and deletes its
@@ -179,7 +175,6 @@ func (b *Builder) removeBackfillTask(id *commonpb.IndexID) {
 // deferred and processed in batches alongside backfill tasks.
 type schemaRewriteTask struct {
 	ledger     string
-	ledgerID   uint32
 	targetType commonpb.TargetType   // account or transaction
 	key        string                // metadata field name
 	toType     commonpb.MetadataType // target type
@@ -197,12 +192,12 @@ type schemaRewriteTask struct {
 }
 
 // schemaRewriteBBKey builds the key for persisting schema rewrite progress.
-// Format: [ledgerID_BE_4B]S[targetType_byte][key].
-func schemaRewriteBBKey(ledgerID uint32, targetType commonpb.TargetType, key string) []byte {
-	bbKey := make([]byte, 0, 4+2+len(key))
+// Format: [ledgerName padded 64B]S[targetType_byte][key].
+func schemaRewriteBBKey(ledgerName string, targetType commonpb.TargetType, key string) []byte {
+	bbKey := make([]byte, 0, dal.LedgerNameFixedSize+2+len(key))
 
-	var prefix [4]byte
-	binary.BigEndian.PutUint32(prefix[:], ledgerID)
+	var prefix [dal.LedgerNameFixedSize]byte
+	copy(prefix[:], ledgerName)
 
 	bbKey = append(bbKey, prefix[:]...)
 	bbKey = append(bbKey, readstore.BackfillKindSchemaRewrite, byte(targetType))
@@ -215,13 +210,13 @@ func schemaRewriteBBKey(ledgerID uint32, targetType commonpb.TargetType, key str
 // log entry, avoiding duplicates. The ledger name is captured so the
 // follow-up IndexReady proposal can address the right LedgerInfo (the FSM
 // keys by name).
-func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerID uint32, ledgerName string, smft *commonpb.SetMetadataFieldTypeLog) {
+func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string, smft *commonpb.SetMetadataFieldTypeLog) {
 	// Only rewrite if this metadata key is indexed.
 	if !cfg.isMetadataIndexed(smft.GetTargetType(), smft.GetKey()) {
 		return
 	}
 
-	bbKey := schemaRewriteBBKey(ledgerID, smft.GetTargetType(), smft.GetKey())
+	bbKey := schemaRewriteBBKey(ledgerName, smft.GetTargetType(), smft.GetKey())
 	for _, t := range b.schemaRewriteTasks {
 		if string(t.bbKey) == string(bbKey) {
 			// Type changed again while a rewrite is in flight — restart
@@ -236,7 +231,6 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerID uint32, 
 
 	b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
 		ledger:     ledgerName,
-		ledgerID:   ledgerID,
 		targetType: smft.GetTargetType(),
 		key:        smft.GetKey(),
 		toType:     smft.GetType(),
@@ -272,7 +266,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 
 	kb := dal.NewKeyBuilder()
 
-	rmapPrefix := readstore.ReverseMapPrefix(kb, task.ledgerID, ns)
+	rmapPrefix := readstore.ReverseMapPrefix(kb, task.ledger, ns)
 	upper := readstore.IncrementBytes(rmapPrefix)
 
 	// Use a snapshot for the scan so it sees a consistent committed state.
@@ -373,7 +367,7 @@ scan:
 		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
 
 		// Delete old forward index entry.
-		oldFwdKey := readstore.MetadataIndexKey(kb, task.ledgerID, ns, task.key, oldEncoded, entityID)
+		oldFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, oldEncoded, entityID)
 		if err := batch.DeleteKey(oldFwdKey); err != nil {
 			return false, fmt.Errorf("deleting old forward index: %w", err)
 		}
@@ -383,19 +377,19 @@ scan:
 		newIsNull := len(newEncoded) > 0 && newEncoded[0] == readstore.TypeTagNull
 
 		if oldIsNull != newIsNull {
-			oldEidxKey := readstore.EntityExistsKey(kb, task.ledgerID, ns, task.key, oldIsNull, entityID)
+			oldEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, oldIsNull, entityID)
 			if err := batch.DeleteKey(oldEidxKey); err != nil {
 				return false, fmt.Errorf("deleting old eidx: %w", err)
 			}
 
-			newEidxKey := readstore.EntityExistsKey(kb, task.ledgerID, ns, task.key, newIsNull, entityID)
+			newEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, newIsNull, entityID)
 			if err := batch.SetBytes(newEidxKey, nil); err != nil {
 				return false, fmt.Errorf("setting new eidx: %w", err)
 			}
 		}
 
 		// Write new forward index entry.
-		newFwdKey := readstore.MetadataIndexKey(kb, task.ledgerID, ns, task.key, newEncoded, entityID)
+		newFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, newEncoded, entityID)
 		if err := batch.SetBytes(newFwdKey, nil); err != nil {
 			return false, fmt.Errorf("setting new forward index: %w", err)
 		}

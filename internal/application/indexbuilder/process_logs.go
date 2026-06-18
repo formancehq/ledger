@@ -106,20 +106,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				continue
 			}
 
-			// Track CreateLedger for name → ID resolution.
-			if cl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreateLedger); ok && cl.CreateLedger != nil {
-				b.ledgerNameToID[cl.CreateLedger.GetName()] = cl.CreateLedger.GetId()
-			}
-
 			// Handle ledger deletion: remove all read indexes for the deleted ledger.
 			if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
 				if dl.DeleteLedger != nil {
-					if ledgerID, ok := b.ledgerNameToID[dl.DeleteLedger.GetName()]; ok {
-						if err := readstore.DeleteLedgerIndexes(batch, ledgerID); err != nil {
-							_ = batch.Cancel()
+					if err := readstore.DeleteLedgerIndexes(batch, dl.DeleteLedger.GetName()); err != nil {
+						_ = batch.Cancel()
 
-							return cursor, err
-						}
+						return cursor, err
 					}
 				}
 
@@ -156,7 +149,6 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 
 			cfg := b.ledgerConfig(ledgerName)
-			ledgerID := b.ledgerNameToID[ledgerName]
 			var excludedAccounts map[string]struct{}
 			if cfg.indexesPostingAddressMappings() {
 				// Sync audit iterator and load excluded accounts (transient + purged ephemeral).
@@ -164,9 +156,9 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 
 			// Per-ledger log index is always maintained — every log gets a
-			// LedgerLogKey(ledgerID, logID) → globalSeq entry. The controller's
+			// LedgerLogKey(ledgerName, logID) → globalSeq entry. The controller's
 			// ListLogs path relies on this being unconditional.
-			if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerID, ledgerLog.GetId(), log.GetSequence()); err != nil {
+			if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence()); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -174,14 +166,14 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 			// Index log date for date range filtering (opt-in via log date builtin index).
 			if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
-				if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerID, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
+				if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
 					_ = batch.Cancel()
 
 					return cursor, err
 				}
 			}
 
-			if err := b.indexPayload(b.kb, cfg, ledgerID, ledgerName, ledgerLog.GetData().GetPayload(), excludedAccounts); err != nil {
+			if err := b.indexPayload(b.kb, cfg, ledgerName, ledgerLog.GetData().GetPayload(), excludedAccounts); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -304,28 +296,27 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 func (b *Builder) indexPayload(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
-	ledgerID uint32,
 	ledgerName string,
 	payload any,
 	excludedAccounts map[string]struct{},
 ) error {
 	switch p := payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(kb, cfg, ledgerID, p.CreatedTransaction, excludedAccounts)
+		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction, excludedAccounts)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(kb, cfg, ledgerID, p.RevertedTransaction, excludedAccounts)
+		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedAccounts)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
-		return b.indexSavedMetadata(kb, cfg, ledgerID, p.SavedMetadata)
+		return b.indexSavedMetadata(kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
-		return b.indexDeletedMetadata(kb, cfg, ledgerID, p.DeletedMetadata)
+		return b.indexDeletedMetadata(kb, cfg, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 		// Defer the rewrite to a background task instead of scanning
 		// the reverse map inline during the hot path.
-		b.addSchemaRewriteTask(cfg, ledgerID, ledgerName, p.SetMetadataFieldType)
+		b.addSchemaRewriteTask(cfg, ledgerName, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
-		return b.handleRemovedMetadataFieldType(kb, cfg, ledgerID, p.RemovedMetadataFieldType)
+		return b.handleRemovedMetadataFieldType(kb, cfg, ledgerName, p.RemovedMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
-		b.handleCreatedIndexLog(ledgerName, ledgerID, p.CreateIndex)
+		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
 		b.handleDroppedIndexLog(ledgerName, p.DropIndex)
 	}
@@ -379,9 +370,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, audit
 	// Handle ledger deletion: remove all read indexes for the deleted ledger.
 	if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
 		if dl.DeleteLedger != nil && b.wb.Batch() != nil {
-			if ledgerID, ok := b.ledgerNameToID[dl.DeleteLedger.GetName()]; ok {
-				return readstore.DeleteLedgerIndexes(b.wb.Batch(), ledgerID)
-			}
+			return readstore.DeleteLedgerIndexes(b.wb.Batch(), dl.DeleteLedger.GetName())
 		}
 
 		return nil
@@ -393,7 +382,6 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, audit
 	}
 
 	ledgerName := applyLog.Apply.GetLedgerName()
-	ledgerID := b.ledgerNameToID[ledgerName]
 	var excludedAccounts map[string]struct{}
 	if audit != nil {
 		excludedAccounts = audit.syncTo(log.GetSequence(), ledgerName)
@@ -405,26 +393,26 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, audit
 	}
 
 	// Per-ledger log index is always maintained — see the live-path comment.
-	if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerID, ledgerLog.GetId(), log.GetSequence()); err != nil {
+	if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence()); err != nil {
 		return err
 	}
 
 	// Index log date for date range filtering (opt-in via log date builtin index).
 	if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
-		if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerID, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
+		if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
 			return err
 		}
 	}
 
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(b.kb, cfg, ledgerID, p.CreatedTransaction, excludedAccounts)
+		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedAccounts)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(b.kb, cfg, ledgerID, p.RevertedTransaction, excludedAccounts)
+		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedAccounts)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
-		return b.indexSavedMetadata(b.kb, cfg, ledgerID, p.SavedMetadata)
+		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
-		return b.indexDeletedMetadata(b.kb, cfg, ledgerID, p.DeletedMetadata)
+		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 		// Schema changes scan the reverse map with iterators — flush buffered
 		// writes first so the iterators see a consistent state, then create a
@@ -436,9 +424,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, audit
 		batch := b.readStore.NewBatch()
 		b.wb.Init(batch) // re-init with a new batch after flush
 
-		return b.indexSetMetadataFieldType(cfg, b.kb, ledgerID, p.SetMetadataFieldType)
+		return b.indexSetMetadataFieldType(cfg, b.kb, ledgerName, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
-		b.handleCreatedIndexLog(ledgerName, ledgerID, p.CreateIndex)
+		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
 		b.handleDroppedIndexLog(ledgerName, p.DropIndex)
 	}
@@ -455,7 +443,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, audit
 func (b *Builder) indexCreatedTransaction(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
-	ledger uint32,
+	ledger string,
 	ct *commonpb.CreatedTransaction,
 	excludedAccounts map[string]struct{},
 ) error {
@@ -563,7 +551,7 @@ func (b *Builder) indexCreatedTransaction(
 func (b *Builder) indexRevertedTransaction(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
-	ledger uint32,
+	ledger string,
 	rt *commonpb.RevertedTransaction,
 	excludedAccounts map[string]struct{},
 ) error {
@@ -634,7 +622,7 @@ func (b *Builder) indexRevertedTransaction(
 
 func (b *Builder) indexPostingAddressMappings(
 	kb *dal.KeyBuilder,
-	ledger uint32,
+	ledger string,
 	txID uint64,
 	source string,
 	destination string,
@@ -681,7 +669,7 @@ func (b *Builder) indexPostingAddressMappings(
 func (b *Builder) indexSavedMetadata(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
-	ledger uint32,
+	ledger string,
 	sm *commonpb.SavedMetadata,
 ) error {
 	if sm.GetTarget() == nil || len(sm.GetMetadata()) == 0 {
@@ -749,7 +737,7 @@ func (b *Builder) indexSavedMetadata(
 func (b *Builder) indexDeletedMetadata(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
-	ledger uint32,
+	ledger string,
 	dm *commonpb.DeletedMetadata,
 ) error {
 	if dm.GetTarget() == nil {
@@ -809,7 +797,7 @@ func (b *Builder) indexDeletedMetadata(
 func (b *Builder) indexSetMetadataFieldType(
 	cfg *ledgerIndexConfig,
 	kb *dal.KeyBuilder,
-	ledger uint32,
+	ledger string,
 	smft *commonpb.SetMetadataFieldTypeLog,
 ) error {
 	// Only re-encode if this metadata key is indexed.

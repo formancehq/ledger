@@ -111,13 +111,13 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 
 	// Transaction state update
 	mockStore.EXPECT().PutTransactionState(
-		domain.TransactionKey{LedgerID: 0, ID: 42},
+		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42},
 		gomock.Any(),
 	)
 
 	// Reference storage
 	mockStore.EXPECT().PutTransactionReference(
-		domain.TransactionReferenceKey{LedgerID: 0, Reference: "tx-ref-v2"},
+		domain.TransactionReferenceKey{LedgerName: "mirror-ledger", Reference: "tx-ref-v2"},
 		gomock.Any(),
 	)
 

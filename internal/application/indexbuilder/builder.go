@@ -53,9 +53,6 @@ type Builder struct {
 	// Per-ledger index configuration cache.
 	indexConfig map[string]*ledgerIndexConfig
 
-	// Ledger name → ID cache, populated from CreateLedger logs.
-	ledgerNameToID map[string]uint32
-
 	// Active backfill tasks for BUILDING indexes.
 	backfillTasks []*backfillTask
 
@@ -102,7 +99,6 @@ func NewBuilder(
 		batchSize:      batchSize,
 		backfillBudget: 50 * time.Millisecond,
 		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
 		kb:             dal.NewKeyBuilder(),
 		wb:             readstore.NewWriteBatch(),
 		accounts:       make(map[string]struct{}, 64),

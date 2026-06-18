@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
@@ -340,18 +339,14 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 		return worker.ErrNotLeader
 	}
 
-	// Resolve the ledger ID for the canonical-key prefix. The live write
-	// paths store metadata under `domain.MetadataKey{LedgerID: ...}` /
-	// `domain.LedgerMetadataKey{LedgerID: ...}` — i.e. a 4-byte BE ledger
-	// ID prefix, NOT the ledger name. Using the name as a prefix would
-	// match zero real entries and propose Complete against stale Pebble
-	// values (flemzord review on #359).
-	ledgerInfo, err := query.GetLedgerByName(ctx, mc.dataStore, req.LedgerName)
-	if err != nil {
+	// Resolve the ledger so the caller can fail fast if it has been deleted
+	// while a conversion request was in flight. The canonical-key prefix is
+	// derived directly from the ledger name (padded fixed-width) — matching
+	// how the live write paths build keys in `domain.MetadataKey` /
+	// `domain.LedgerMetadataKey` since the LedgerID → LedgerName refactor.
+	if _, err := query.GetLedgerByName(ctx, mc.dataStore, req.LedgerName); err != nil {
 		return fmt.Errorf("resolving ledger %q: %w", req.LedgerName, err)
 	}
-
-	ledgerID := ledgerInfo.GetId()
 
 	// Transaction metadata uses read-time enforcement (assembleTransaction replays
 	// append-only update logs on every read). No background scan needed — just
@@ -381,7 +376,7 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 			return nil
 		}
 
-		entriesEnqueued, aborted, err := mc.runConvertPass(ctx, req, ledgerID, logFields)
+		entriesEnqueued, aborted, err := mc.runConvertPass(ctx, req, logFields)
 		if err != nil {
 			return err
 		}
@@ -437,10 +432,9 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 func (mc *MetadataConverter) runConvertPass(
 	ctx context.Context,
 	req MetadataConvertRequest,
-	ledgerID uint32,
 	logFields map[string]any,
 ) (entriesEnqueued uint64, aborted bool, err error) {
-	attr, ledgerPrefix := mc.attrAndPrefixForTarget(req.TargetType, ledgerID)
+	attr, ledgerPrefix := mc.attrAndPrefixForTarget(req.TargetType, req.LedgerName)
 
 	reader, err := mc.dataStore.NewReadHandle()
 	if err != nil {
@@ -560,20 +554,21 @@ func (mc *MetadataConverter) runConvertPass(
 }
 
 // attrAndPrefixForTarget returns the attribute store and canonical prefix to
-// scan for the given target type. The prefix is the 4-byte big-endian ledger
-// ID — matching how the live write paths build canonical keys in
-// `domain.MetadataKey` and `domain.LedgerMetadataKey`.
-func (mc *MetadataConverter) attrAndPrefixForTarget(targetType commonpb.TargetType, ledgerID uint32) (*attributes.Attribute[*commonpb.MetadataValue], []byte) {
-	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:], ledgerID)
+// scan for the given target type. The prefix is the ledger name padded to
+// LedgerNameFixedSize — matching how the live write paths build canonical
+// keys in `domain.MetadataKey` and `domain.LedgerMetadataKey` since the
+// LedgerID → LedgerName refactor.
+func (mc *MetadataConverter) attrAndPrefixForTarget(targetType commonpb.TargetType, ledgerName string) (*attributes.Attribute[*commonpb.MetadataValue], []byte) {
+	prefix := make([]byte, dal.LedgerNameFixedSize)
+	copy(prefix, ledgerName)
 
 	switch targetType {
 	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		// LedgerMetadataKey format: [ledgerID BE 4B]\x01[key]
-		return mc.attrs.LedgerMetadata, append(buf[:], 0x01)
+		// LedgerMetadataKey format: [ledgerName padded 64B]\x01[key]
+		return mc.attrs.LedgerMetadata, append(prefix, 0x01)
 	default:
-		// MetadataKey format: [ledgerID BE 4B][account]\x01[key]
-		return mc.attrs.Metadata, buf[:]
+		// MetadataKey format: [ledgerName padded 64B][account]\x01[key]
+		return mc.attrs.Metadata, prefix
 	}
 }
 

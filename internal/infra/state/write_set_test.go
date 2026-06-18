@@ -63,7 +63,7 @@ func TestWriteSetGetPutAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"}, Key: "role"}
+	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"}
 
 	// Non-existent key falls through to KeyStore which returns ErrNotFound
 	_, err := buf.GetAccountMetadata(key)
@@ -79,7 +79,7 @@ func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "bob"}, Key: "label"}
+	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "bob"}, Key: "label"}
 	buf.PutAccountMetadata(key, commonpb.NewStringValue("value"))
 
 	val, err := buf.GetAccountMetadata(key)
@@ -97,7 +97,7 @@ func TestWriteSetGetPutReverted(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	key := domain.TransactionKey{LedgerID: 1, ID: 42}
+	key := domain.TransactionKey{LedgerName: "test", ID: 42}
 
 	// Non-existent key returns false (not reverted)
 	reverted, err := buf.GetReverted(key)
@@ -131,7 +131,7 @@ func TestWriteSetGetPutTransactionReference(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	key := domain.TransactionReferenceKey{LedgerID: 1, Reference: "ref-1"}
+	key := domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-1"}
 
 	// Non-existent key returns ErrNotFound
 	_, err := buf.GetTransactionReference(key)
@@ -148,7 +148,7 @@ func TestWriteSetTransactionState(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	key := domain.TransactionKey{LedgerID: 1, ID: 1}
+	key := domain.TransactionKey{LedgerName: "test", ID: 1}
 	state := &commonpb.TransactionState{
 		CreatedByLog: 5,
 	}
@@ -466,7 +466,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.PutLedger("leaked", &commonpb.LedgerInfo{Name: "leaked"})
 	buf.PutBoundaries("leaked", &raftcmdpb.LedgerBoundaries{NextTransactionId: 99})
 	buf.PutAccountMetadata(
-		domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"}, Key: "role"},
+		domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"},
 		commonpb.NewStringValue("admin"),
 	)
 	buf.PutIdempotencyKey(
@@ -474,7 +474,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 		&commonpb.IdempotencyKeyValue{LogSequence: 7},
 	)
 	buf.PutTransactionReference(
-		domain.TransactionReferenceKey{LedgerID: 1, Reference: "ref-leak"},
+		domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-leak"},
 		&commonpb.TransactionReferenceValue{TransactionId: 42},
 	)
 
@@ -508,13 +508,13 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	_, ok = buf.GetBoundaries("leaked")
 	require.False(t, ok, "boundaries from previous proposal must not be visible after Reset")
 
-	_, err := buf.GetAccountMetadata(domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"}, Key: "role"})
+	_, err := buf.GetAccountMetadata(domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"})
 	require.ErrorIs(t, err, domain.ErrNotFound, "account metadata from previous proposal must not be visible after Reset")
 
 	_, err = buf.GetIdempotencyKey(domain.IdempotencyKey{Key: "ik-leak"})
 	require.ErrorIs(t, err, domain.ErrNotFound, "idempotency key from previous proposal must not be visible after Reset")
 
-	_, err = buf.GetTransactionReference(domain.TransactionReferenceKey{LedgerID: 1, Reference: "ref-leak"})
+	_, err = buf.GetTransactionReference(domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-leak"})
 	require.ErrorIs(t, err, domain.ErrNotFound, "transaction reference from previous proposal must not be visible after Reset")
 
 	// Pending slices must be cleared

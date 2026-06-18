@@ -122,8 +122,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
 		{
 			// Ephemeral + zero balance → should be purged
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "clearing:tx1"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "clearing:tx1"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "clearing:tx1"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "clearing:tx1"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(100),
 				Output: commonpb.NewUint256FromUint64(100),
@@ -131,8 +131,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		},
 		{
 			// Ephemeral + non-zero balance → should be kept
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "clearing:tx2"}, Asset: "EUR"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "clearing:tx2"}, Asset: "EUR"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "clearing:tx2"}, Asset: "EUR"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "clearing:tx2"}, Asset: "EUR"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(200),
 				Output: commonpb.NewUint256FromUint64(50),
@@ -140,8 +140,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		},
 		{
 			// Non-ephemeral + zero balance → should be kept
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(0),
 				Output: commonpb.NewUint256FromUint64(0),
@@ -149,8 +149,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		},
 		{
 			// No matching type + zero balance → should be kept
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "unknown:addr"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "unknown:addr"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "unknown:addr"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "unknown:addr"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(50),
 				Output: commonpb.NewUint256FromUint64(50),
@@ -205,8 +205,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
 		{
 			// Transient + zero balance → transient partition
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx1"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx1"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx1"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx1"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(100),
 				Output: commonpb.NewUint256FromUint64(100),
@@ -214,8 +214,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 		},
 		{
 			// Transient + non-zero balance → transient partition (validation catches this later)
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx2"}, Asset: "EUR"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx2"}, Asset: "EUR"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx2"}, Asset: "EUR"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx2"}, Asset: "EUR"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(200),
 				Output: commonpb.NewUint256FromUint64(50),
@@ -223,8 +223,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 		},
 		{
 			// Normal account → kept
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(100),
 				Output: commonpb.NewUint256FromUint64(0),
@@ -286,8 +286,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
 		{
 			// TRANSIENT + Old non-zero, New still non-zero → kept (draining phase).
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:draining"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:draining"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:draining"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:draining"}, Asset: "USD"}).Bytes(),
 			Old:          kv.Some(preExistingUnbalanced),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(100),
@@ -296,8 +296,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 		},
 		{
 			// TRANSIENT + Old non-zero, New zero-balance → purged (rebalance).
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:rebalanced"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:rebalanced"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:rebalanced"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:rebalanced"}, Asset: "USD"}).Bytes(),
 			Old:          kv.Some(preExistingUnbalanced),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(100),
@@ -306,8 +306,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 		},
 		{
 			// TRANSIENT + Old already zero-balance → steady-state transient.
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:steady"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:steady"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"}).Bytes(),
 			Old: kv.Some(&raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(0),
 				Output: commonpb.NewUint256FromUint64(0),
@@ -342,8 +342,8 @@ func TestZeroVolumeCache_OverwritesKeyStore(t *testing.T) {
 
 	buf, machine, dataStore := newTestBuffer(t)
 
-	keyA := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx1"}, Asset: "USD"}
-	keyB := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx2"}, Asset: "EUR"}
+	keyA := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx1"}, Asset: "USD"}
+	keyB := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:tx2"}, Asset: "EUR"}
 
 	// Simulate DerivedKeyStore.Merge having already written the cumulative value
 	// into the parent KeyStore. Pre-fix, this state would survive the cache write

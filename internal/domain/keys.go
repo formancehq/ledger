@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -15,9 +16,38 @@ type CanonicalBytes interface {
 	Unmarshal(data []byte) error
 }
 
+// appendLedgerName appends the ledger name as a fixed-size, zero-padded block.
+// copy() truncates silently if name > dal.LedgerNameFixedSize, so callers MUST
+// validate the length upstream (admission layer) to avoid collisions.
+func appendLedgerName(dst []byte, name string) []byte {
+	var pad [dal.LedgerNameFixedSize]byte
+
+	copy(pad[:], name)
+
+	return append(dst, pad[:]...)
+}
+
+// readLedgerName extracts the ledger name from the first dal.LedgerNameFixedSize
+// bytes of src and returns the remainder for further parsing. The trailing
+// zero padding is trimmed.
+func readLedgerName(src []byte) (string, []byte, error) {
+	if len(src) < dal.LedgerNameFixedSize {
+		return "", nil, fmt.Errorf("invalid canonical key: expected at least %d bytes for ledger name, got %d", dal.LedgerNameFixedSize, len(src))
+	}
+
+	raw := src[:dal.LedgerNameFixedSize]
+
+	end := bytes.IndexByte(raw, 0)
+	if end < 0 {
+		end = dal.LedgerNameFixedSize
+	}
+
+	return string(raw[:end]), src[dal.LedgerNameFixedSize:], nil
+}
+
 type AccountKey struct {
-	LedgerID uint32
-	Account  string
+	LedgerName string
+	Account    string
 }
 
 type VolumeKey struct {
@@ -34,21 +64,13 @@ type VolumeKey struct {
 	AssetPrecision uint8
 }
 
-// appendLedgerID appends a uint32 ledger ID in big-endian order to dst.
-func appendLedgerID(dst []byte, id uint32) []byte {
-	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:], id)
-
-	return append(dst, buf[:]...)
-}
-
 // NewVolumeKey creates a VolumeKey with pre-parsed AssetBase and AssetPrecision,
 // avoiding re-parsing on every AppendBytes call in the hot path.
-func NewVolumeKey(ledgerID uint32, account, asset string) VolumeKey {
+func NewVolumeKey(ledgerName, account, asset string) VolumeKey {
 	base, precision := ParseAssetPrecision(asset)
 
 	return VolumeKey{
-		AccountKey:     AccountKey{LedgerID: ledgerID, Account: account},
+		AccountKey:     AccountKey{LedgerName: ledgerName, Account: account},
 		Asset:          asset,
 		AssetBase:      base,
 		AssetPrecision: precision,
@@ -56,7 +78,7 @@ func NewVolumeKey(ledgerID uint32, account, asset string) VolumeKey {
 }
 
 // AppendBytes appends the canonical byte representation to dst and returns the
-// extended slice. Format: [ledgerID BE 4B][account][sep][asset_base][precision_byte].
+// extended slice. Format: [ledgerName padded 64B][account][sep][asset_base][precision_byte].
 func (bk VolumeKey) AppendBytes(dst []byte) []byte {
 	base := bk.AssetBase
 	precision := bk.AssetPrecision
@@ -66,7 +88,7 @@ func (bk VolumeKey) AppendBytes(dst []byte) []byte {
 		base, precision = ParseAssetPrecision(bk.Asset)
 	}
 
-	dst = appendLedgerID(dst, bk.LedgerID)
+	dst = appendLedgerName(dst, bk.LedgerName)
 	dst = append(dst, bk.Account...)
 	dst = append(dst, dal.CanonicalKeySepVolume)
 	dst = append(dst, base...)
@@ -82,21 +104,24 @@ func (bk VolumeKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the VolumeKey.
 func (bk *VolumeKey) Unmarshal(d []byte) error {
-	if len(d) < 4 {
-		return errors.New("invalid balance key bytes: too short for ledger ID")
+	name, rest, err := readLedgerName(d)
+	if err != nil {
+		return fmt.Errorf("invalid balance key bytes: %w", err)
 	}
 
-	bk.LedgerID = binary.BigEndian.Uint32(d[0:4])
+	bk.LedgerName = name
 
-	rest := d[4:]
-	parts := splitNullBytes(rest, 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid balance key bytes: expected 2 parts after ledger ID, got %d", len(parts))
+	// The remaining bytes are [account][sep_volume=0x00][asset_base][precision_byte].
+	// CanonicalKeySepVolume is 0x00; account and asset_base are byte strings
+	// without embedded zero bytes (validated upstream).
+	before, after, ok := bytes.Cut(rest, []byte{dal.CanonicalKeySepVolume})
+	if !ok {
+		return errors.New("invalid balance key bytes: missing account/asset separator")
 	}
 
-	bk.Account = string(parts[0])
+	bk.Account = string(before)
 
-	assetPart := parts[1]
+	assetPart := after
 	if len(assetPart) < 2 {
 		return errors.New("invalid balance key bytes: asset part too short")
 	}
@@ -117,9 +142,9 @@ type MetadataKey struct {
 }
 
 // AppendBytes appends the canonical byte representation to dst.
-// Format: [ledgerID BE 4B][account]\x01[key].
+// Format: [ledgerName padded 64B][account]\x01[key].
 func (mk MetadataKey) AppendBytes(dst []byte) []byte {
-	dst = appendLedgerID(dst, mk.LedgerID)
+	dst = appendLedgerName(dst, mk.LedgerName)
 	dst = append(dst, mk.Account...)
 	dst = append(dst, dal.CanonicalKeySepMetadata)
 	dst = append(dst, mk.Key...)
@@ -134,29 +159,20 @@ func (mk MetadataKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the MetadataKey.
 func (mk *MetadataKey) Unmarshal(d []byte) error {
-	if len(d) < 4 {
-		return errors.New("invalid metadata key bytes: too short for ledger ID")
+	name, rest, err := readLedgerName(d)
+	if err != nil {
+		return fmt.Errorf("invalid metadata key bytes: %w", err)
 	}
 
-	mk.LedgerID = binary.BigEndian.Uint32(d[0:4])
+	mk.LedgerName = name
 
-	rest := d[4:]
-	separator := -1
-
-	for i, b := range rest {
-		if b == dal.CanonicalKeySepMetadata {
-			separator = i
-
-			break
-		}
-	}
-
-	if separator == -1 {
+	before, after, ok := bytes.Cut(rest, []byte{dal.CanonicalKeySepMetadata})
+	if !ok {
 		return errors.New("invalid metadata key bytes: missing account/key separator")
 	}
 
-	mk.Account = string(rest[:separator])
-	mk.Key = string(rest[separator+1:])
+	mk.Account = string(before)
+	mk.Key = string(after)
 
 	return nil
 }
@@ -164,18 +180,20 @@ func (mk *MetadataKey) Unmarshal(d []byte) error {
 var _ CanonicalBytes = (*MetadataKey)(nil)
 
 type TransactionKey struct {
-	LedgerID uint32
-	ID       uint64
+	LedgerName string
+	ID         uint64
 }
 
 // AppendBytes appends the canonical byte representation to dst.
-// Format: [ledgerID BE 4B]\x02[txID (8 bytes)].
+// Format: [ledgerName padded 64B]\x02[txID (8 bytes)].
 func (tk TransactionKey) AppendBytes(dst []byte) []byte {
-	dst = appendLedgerID(dst, tk.LedgerID)
+	dst = appendLedgerName(dst, tk.LedgerName)
 	dst = append(dst, dal.CanonicalKeySepTransaction)
 
 	var buf [8]byte
+
 	binary.BigEndian.PutUint64(buf[:], tk.ID)
+
 	dst = append(dst, buf[:]...)
 
 	return dst
@@ -188,17 +206,22 @@ func (tk TransactionKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the TransactionKey.
 func (tk *TransactionKey) Unmarshal(d []byte) error {
-	if len(d) < 4+1+8 {
-		return fmt.Errorf("invalid transaction key bytes: expected [ledgerID(4)]\\x%02X[txID(8)]", dal.CanonicalKeySepTransaction)
+	name, rest, err := readLedgerName(d)
+	if err != nil {
+		return fmt.Errorf("invalid transaction key bytes: %w", err)
 	}
 
-	tk.LedgerID = binary.BigEndian.Uint32(d[0:4])
+	tk.LedgerName = name
 
-	if d[4] != dal.CanonicalKeySepTransaction {
-		return fmt.Errorf("invalid transaction key bytes: expected separator 0x%02X, got 0x%02x", dal.CanonicalKeySepTransaction, d[4])
+	if len(rest) < 1+8 {
+		return fmt.Errorf("invalid transaction key bytes: expected separator + 8B txID after ledger name, got %d bytes", len(rest))
 	}
 
-	tk.ID = binary.BigEndian.Uint64(d[5:13])
+	if rest[0] != dal.CanonicalKeySepTransaction {
+		return fmt.Errorf("invalid transaction key bytes: expected separator 0x%02X, got 0x%02x", dal.CanonicalKeySepTransaction, rest[0])
+	}
+
+	tk.ID = binary.BigEndian.Uint64(rest[1:9])
 
 	return nil
 }
@@ -230,14 +253,14 @@ var _ CanonicalBytes = (*IdempotencyKey)(nil)
 
 // TransactionReferenceKey represents a unique reference scoped to a ledger.
 type TransactionReferenceKey struct {
-	LedgerID  uint32
-	Reference string
+	LedgerName string
+	Reference  string
 }
 
 // AppendBytes appends the canonical byte representation to dst.
-// Format: [ledgerID BE 4B][reference].
+// Format: [ledgerName padded 64B][reference].
 func (trk TransactionReferenceKey) AppendBytes(dst []byte) []byte {
-	dst = appendLedgerID(dst, trk.LedgerID)
+	dst = appendLedgerName(dst, trk.LedgerName)
 	dst = append(dst, trk.Reference...)
 
 	return dst
@@ -250,12 +273,13 @@ func (trk TransactionReferenceKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the TransactionReferenceKey.
 func (trk *TransactionReferenceKey) Unmarshal(d []byte) error {
-	if len(d) < 4 {
-		return errors.New("invalid transaction reference key bytes: too short for ledger ID")
+	name, rest, err := readLedgerName(d)
+	if err != nil {
+		return fmt.Errorf("invalid transaction reference key bytes: %w", err)
 	}
 
-	trk.LedgerID = binary.BigEndian.Uint32(d[0:4])
-	trk.Reference = string(d[4:])
+	trk.LedgerName = name
+	trk.Reference = string(rest)
 
 	return nil
 }
@@ -289,14 +313,14 @@ var _ CanonicalBytes = (*LedgerKey)(nil)
 
 // LedgerMetadataKey represents a metadata key scoped to a ledger.
 type LedgerMetadataKey struct {
-	LedgerID uint32
-	Key      string
+	LedgerName string
+	Key        string
 }
 
 // AppendBytes appends the canonical byte representation to dst.
-// Format: [ledgerID BE 4B]\x01[key].
+// Format: [ledgerName padded 64B]\x01[key].
 func (lmk LedgerMetadataKey) AppendBytes(dst []byte) []byte {
-	dst = appendLedgerID(dst, lmk.LedgerID)
+	dst = appendLedgerName(dst, lmk.LedgerName)
 	dst = append(dst, 0x01)
 	dst = append(dst, lmk.Key...)
 
@@ -310,17 +334,22 @@ func (lmk LedgerMetadataKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the LedgerMetadataKey.
 func (lmk *LedgerMetadataKey) Unmarshal(d []byte) error {
-	if len(d) < 5 {
-		return errors.New("invalid ledger metadata key bytes: too short")
+	name, rest, err := readLedgerName(d)
+	if err != nil {
+		return fmt.Errorf("invalid ledger metadata key bytes: %w", err)
 	}
 
-	lmk.LedgerID = binary.BigEndian.Uint32(d[0:4])
+	lmk.LedgerName = name
 
-	if d[4] != 0x01 {
-		return fmt.Errorf("invalid ledger metadata key bytes: expected separator 0x01, got 0x%02x", d[4])
+	if len(rest) < 1 {
+		return errors.New("invalid ledger metadata key bytes: missing separator")
 	}
 
-	lmk.Key = string(d[5:])
+	if rest[0] != 0x01 {
+		return fmt.Errorf("invalid ledger metadata key bytes: expected separator 0x01, got 0x%02x", rest[0])
+	}
+
+	lmk.Key = string(rest[1:])
 
 	return nil
 }
@@ -342,12 +371,12 @@ func (k SinkConfigKey) Bytes() []byte {
 
 // PreparedQueryKey uniquely identifies a prepared query by ledger and name.
 type PreparedQueryKey struct {
-	LedgerID uint32
-	Name     string
+	LedgerName string
+	Name       string
 }
 
 func (k PreparedQueryKey) AppendBytes(dst []byte) []byte {
-	dst = appendLedgerID(dst, k.LedgerID)
+	dst = appendLedgerName(dst, k.LedgerName)
 	dst = append(dst, k.Name...)
 
 	return dst
@@ -359,12 +388,12 @@ func (k PreparedQueryKey) Bytes() []byte {
 
 // NumscriptVersionKey uniquely identifies a numscript by ledger and name for version tracking.
 type NumscriptVersionKey struct {
-	LedgerID uint32
-	Name     string
+	LedgerName string
+	Name       string
 }
 
 func (k NumscriptVersionKey) AppendBytes(dst []byte) []byte {
-	dst = appendLedgerID(dst, k.LedgerID)
+	dst = appendLedgerName(dst, k.LedgerName)
 	dst = append(dst, k.Name...)
 
 	return dst
@@ -376,13 +405,13 @@ func (k NumscriptVersionKey) Bytes() []byte {
 
 // NumscriptEntryKey uniquely identifies a specific numscript version entry scoped to a ledger.
 type NumscriptEntryKey struct {
-	LedgerID uint32
-	Name     string
-	Version  string
+	LedgerName string
+	Name       string
+	Version    string
 }
 
 func (k NumscriptEntryKey) AppendBytes(dst []byte) []byte {
-	dst = appendLedgerID(dst, k.LedgerID)
+	dst = appendLedgerName(dst, k.LedgerName)
 	dst = append(dst, k.Name...)
 	dst = append(dst, 0x00)
 	dst = append(dst, k.Version...)
@@ -400,21 +429,3 @@ const (
 	// NumscriptVersionTagLatest is the tag byte for the "latest" numscript slot.
 	NumscriptVersionTagLatest byte = 0x01
 )
-
-// splitNullBytes splits data by null bytes into at most n parts.
-func splitNullBytes(data []byte, n int) [][]byte {
-	var parts [][]byte
-
-	start := 0
-
-	for i, b := range data {
-		if b == 0x00 && len(parts) < n-1 {
-			parts = append(parts, data[start:i])
-			start = i + 1
-		}
-	}
-
-	parts = append(parts, data[start:])
-
-	return parts
-}

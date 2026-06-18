@@ -27,7 +27,7 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
 	}
 
-	ledgerID := ledgerInfo.GetId()
+	ledgerName := ledgerInfo.GetName()
 
 	version := order.GetVersion()
 	if version == "" {
@@ -42,7 +42,7 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 		resolvedVersion = "latest"
 	} else if _, err := semver.Parse(version); err == nil {
 		// Semver versions are immutable — check the specific version doesn't already exist
-		exists, err := s.NumscriptVersionExists(ledgerID, order.GetName(), version)
+		exists, err := s.NumscriptVersionExists(ledgerName, order.GetName(), version)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{Operation: "checking numscript version existence", Cause: err}
 		}
@@ -64,7 +64,7 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 		Ledger:    order.GetLedger(),
 	}
 
-	s.PutNumscript(ledgerID, info)
+	s.PutNumscript(ledgerName, info)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SavedNumscript{
@@ -85,9 +85,9 @@ func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscri
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
 	}
 
-	ledgerID := ledgerInfo.GetId()
+	ledgerName := ledgerInfo.GetName()
 
-	currentVersion, err := s.GetNumscriptLatestVersion(ledgerID, order.GetName())
+	currentVersion, err := s.GetNumscriptLatestVersion(ledgerName, order.GetName())
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "getting numscript latest version", Cause: err}
 	}
@@ -96,7 +96,7 @@ func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscri
 		return nil, &domain.ErrNumscriptNotFound{Name: order.GetName()}
 	}
 
-	s.DeleteNumscriptLatest(ledgerID, order.GetName())
+	s.DeleteNumscriptLatest(ledgerName, order.GetName())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedNumscript{

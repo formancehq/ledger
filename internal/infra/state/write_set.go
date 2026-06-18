@@ -119,11 +119,11 @@ type WriteSet struct {
 
 	// transientAccounts holds unique transient account names per ledger,
 	// populated during Merge for inclusion in the audit entry.
-	transientAccounts map[uint32][]string
+	transientAccounts map[string][]string
 
 	// purgedAccounts holds unique ephemeral account names per ledger whose
 	// volumes were purged (zero balance), populated during Merge.
-	purgedAccounts map[uint32][]string
+	purgedAccounts map[string][]string
 
 	// bloomUpdates collects canonical keys per attribute type during Merge
 	// for bloom filter updates before batch.Commit().
@@ -232,7 +232,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 				}
 
 				b.fsm.logger.WithFields(map[string]any{
-					"ledger":    u.Key.LedgerID,
+					"ledger":    u.Key.LedgerName,
 					"account":   u.Key.Account,
 					"asset":     u.Key.Asset,
 					"oldInput":  oldIn,
@@ -244,7 +244,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 
 			for _, u := range partResult.transient {
 				b.fsm.logger.WithFields(map[string]any{
-					"ledger":  u.Key.LedgerID,
+					"ledger":  u.Key.LedgerName,
 					"account": u.Key.Account,
 					"asset":   u.Key.Asset,
 					"input":   u.New.GetInput().ToBigInt().String(),
@@ -284,21 +284,21 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 
 	// Flush pending reversions to the authoritative in-memory bitset and persist only the modified words.
 	type dirtyWord struct {
-		ledgerID  uint32
-		wordIndex uint64
+		ledgerName string
+		wordIndex  uint64
 	}
 
 	var dirtyWords []dirtyWord
 
 	for _, txKey := range b.Derived.PendingReversions {
 		wi := b.fsm.Registry.SetReverted(txKey)
-		dirtyWords = append(dirtyWords, dirtyWord{ledgerID: txKey.LedgerID, wordIndex: wi})
+		dirtyWords = append(dirtyWords, dirtyWord{ledgerName: txKey.LedgerName, wordIndex: wi})
 	}
 
 	for _, dw := range dirtyWords {
-		word := b.fsm.Registry.Reversions[dw.ledgerID].Word(dw.wordIndex)
-		if err := saveReversionWord(batch, dw.ledgerID, dw.wordIndex, word); err != nil {
-			return fmt.Errorf("saving reversion word for %d: %w", dw.ledgerID, err)
+		word := b.fsm.Registry.Reversions[dw.ledgerName].Word(dw.wordIndex)
+		if err := saveReversionWord(batch, dw.ledgerName, dw.wordIndex, word); err != nil {
+			return fmt.Errorf("saving reversion word for %q: %w", dw.ledgerName, err)
 		}
 	}
 
@@ -478,8 +478,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 		for _, ledgerName := range b.pendingLedgerDeletions {
 			seq := deleteSequences[ledgerName]
 
-			info, ok := b.GetLedger(ledgerName)
-			if !ok {
+			if _, ok := b.GetLedger(ledgerName); !ok {
 				// The ledger name comes from a DeleteLedger order the
 				// processor already validated against b.GetLedger — a
 				// miss here means the WriteSet's view of ledgers became
@@ -488,21 +487,19 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 				return fmt.Errorf("invariant: pending ledger deletion for %q but ledger not in WriteSet view", ledgerName)
 			}
 
-			ledgerID := info.GetId()
-
-			if err := savePendingLedgerCleanup(batch, ledgerID, seq); err != nil {
+			if err := savePendingLedgerCleanup(batch, ledgerName, seq); err != nil {
 				return fmt.Errorf("saving pending ledger cleanup for %q: %w", ledgerName, err)
 			}
 
-			b.fsm.State.PendingLedgerCleanups[ledgerID] = seq
+			b.fsm.State.PendingLedgerCleanups[ledgerName] = seq
 
 			// Boundary deletion is handled above via boundaryDeletions
 			// (MarkLedgerForCleanup adds a Delete to the Derived.Boundaries overlay).
 
 			// Clean in-memory reversion bitset and Pebble words — not needed after deletion.
-			delete(b.fsm.Registry.Reversions, ledgerID)
+			delete(b.fsm.Registry.Reversions, ledgerName)
 
-			if err := deleteReversionsByLedger(batch, ledgerID); err != nil {
+			if err := deleteReversionsByLedger(batch, ledgerName); err != nil {
 				return fmt.Errorf("deleting reversions for %q: %w", ledgerName, err)
 			}
 		}
@@ -598,26 +595,6 @@ func (b *WriteSet) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 	return info, true
 }
 
-// GetLedgerByID finds a LedgerInfo by its numeric ID.
-// Checks dirty values first (current batch), then the parent KeyStore (committed state).
-func (b *WriteSet) GetLedgerByID(id uint32) (*commonpb.LedgerInfo, bool) {
-	// Check dirty values (current batch modifications).
-	for _, info := range b.Derived.Ledgers.DirtyValues() {
-		if info.GetId() == id {
-			return info, true
-		}
-	}
-
-	// Check committed state via parent KeyStore.
-	for _, entry := range b.Derived.Ledgers.Parent().M.Iter() {
-		if entry.Data != nil && entry.Data.GetId() == id {
-			return entry.Data, true
-		}
-	}
-
-	return nil, false
-}
-
 func (b *WriteSet) PutLedger(name string, info *commonpb.LedgerInfo) {
 	b.Derived.Ledgers.Put(domain.LedgerKey{Name: name}, info)
 }
@@ -639,8 +616,8 @@ func (b *WriteSet) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReade
 	return boundaries.AsReader(), true
 }
 
-func (b *WriteSet) ResolveNumscriptContent(ledgerID uint32, name, version string) (*commonpb.NumscriptInfo, error) {
-	return b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerID: ledgerID, Name: name, Version: version})
+func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (*commonpb.NumscriptInfo, error) {
+	return b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
 }
 
 func (b *WriteSet) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
@@ -671,18 +648,18 @@ func (b *WriteSet) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) 
 // mirror lifecycle (kept while unbalanced, purged once the running cumulative
 // returns to zero), so a balance check here would double-up with that flow.
 func (b *WriteSet) ValidateTransientVolumes() domain.Describable {
-	ledgerTypes := make(map[uint32][]accounttype.CompiledType)
+	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
 	for key, vol := range b.Derived.Volumes.DirtyValues() {
-		compiled, ok := ledgerTypes[key.LedgerID]
+		compiled, ok := ledgerTypes[key.LedgerName]
 		if !ok {
-			info, infoOK := b.GetLedgerByID(key.LedgerID)
+			info, infoOK := b.GetLedger(key.LedgerName)
 			if !infoOK {
 				continue
 			}
 
 			compiled = accounttype.CompileTypes(info.GetAccountTypes())
-			ledgerTypes[key.LedgerID] = compiled
+			ledgerTypes[key.LedgerName] = compiled
 		}
 
 		matched := accounttype.FindMatchingType(key.Account, compiled)
@@ -1117,17 +1094,17 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 
 	// Clean up per-ledger data for deleted ledgers whose delete log
 	// falls within this purge range.
-	for ledgerID, deleteSeq := range b.fsm.State.PendingLedgerCleanups {
+	for ledgerName, deleteSeq := range b.fsm.State.PendingLedgerCleanups {
 		if deleteSeq >= pr.startSequence && deleteSeq <= pr.closeSequence {
-			if err := deleteLedgerData(batch, ledgerID); err != nil {
-				return fmt.Errorf("purging ledger data for ledger %d: %w", ledgerID, err)
+			if err := deleteLedgerData(batch, ledgerName); err != nil {
+				return fmt.Errorf("purging ledger data for ledger %q: %w", ledgerName, err)
 			}
 
-			if err := deletePendingLedgerCleanup(batch, ledgerID); err != nil {
-				return fmt.Errorf("removing pending cleanup entry for ledger %d: %w", ledgerID, err)
+			if err := deletePendingLedgerCleanup(batch, ledgerName); err != nil {
+				return fmt.Errorf("removing pending cleanup entry for ledger %q: %w", ledgerName, err)
 			}
 
-			delete(b.fsm.State.PendingLedgerCleanups, ledgerID)
+			delete(b.fsm.State.PendingLedgerCleanups, ledgerName)
 
 			// Liveness anchor for deleted-ledger-data-isolation-and-eventual-purge:
 			// the deferred cleanup recorded at DeleteLedger apply time is only
@@ -1137,7 +1114,7 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 			// and ledger-delete drivers run in parallel, so this branch is
 			// expected to be exercised in every full run.
 			assert.Reachable("deleted ledger deferred cleanup executed by covering purge", map[string]any{
-				"ledgerId":  ledgerID,
+				"ledger":    ledgerName,
 				"deleteSeq": deleteSeq,
 				"periodId":  pr.periodID,
 			})
@@ -1166,8 +1143,8 @@ func (b *WriteSet) HasPurges() bool {
 	return len(b.purgeRanges) > 0
 }
 
-func (b *WriteSet) GetPreparedQuery(ledgerID uint32, name string) (*commonpb.PreparedQuery, error) {
-	pq, err := b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{LedgerID: ledgerID, Name: name})
+func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error) {
+	pq, err := b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{LedgerName: ledgerName, Name: name})
 	// Treat a cache miss as "doesn't exist". A delete in an earlier entry of
 	// the same batch will have cleared the cache
 	if errors.Is(err, domain.ErrNotFound) {
@@ -1177,18 +1154,18 @@ func (b *WriteSet) GetPreparedQuery(ledgerID uint32, name string) (*commonpb.Pre
 	return pq, err
 }
 
-func (b *WriteSet) PutPreparedQuery(ledgerID uint32, pq *commonpb.PreparedQuery) {
-	b.Derived.PreparedQueries.Put(domain.PreparedQueryKey{LedgerID: ledgerID, Name: pq.GetName()}, pq)
+func (b *WriteSet) PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery) {
+	b.Derived.PreparedQueries.Put(domain.PreparedQueryKey{LedgerName: ledgerName, Name: pq.GetName()}, pq)
 }
 
-func (b *WriteSet) DeletePreparedQuery(ledgerID uint32, name string) {
-	b.Derived.PreparedQueries.Delete(domain.PreparedQueryKey{LedgerID: ledgerID, Name: name})
+func (b *WriteSet) DeletePreparedQuery(ledgerName string, name string) {
+	b.Derived.PreparedQueries.Delete(domain.PreparedQueryKey{LedgerName: ledgerName, Name: name})
 }
 
 // Numscript library operations
 
-func (b *WriteSet) GetNumscriptLatestVersion(ledgerID uint32, name string) (string, error) {
-	val, err := b.Derived.NumscriptVersions.Get(domain.NumscriptVersionKey{LedgerID: ledgerID, Name: name})
+func (b *WriteSet) GetNumscriptLatestVersion(ledgerName string, name string) (string, error) {
+	val, err := b.Derived.NumscriptVersions.Get(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name})
 	if err != nil || val == nil {
 		return "", err
 	}
@@ -1196,17 +1173,17 @@ func (b *WriteSet) GetNumscriptLatestVersion(ledgerID uint32, name string) (stri
 	return val.GetVersion(), nil
 }
 
-func (b *WriteSet) PutNumscript(ledgerID uint32, info *commonpb.NumscriptInfo) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerID: ledgerID, Name: info.GetName()}, &commonpb.NumscriptVersionValue{Version: info.GetVersion()})
-	b.Derived.NumscriptContents.Put(domain.NumscriptEntryKey{LedgerID: ledgerID, Name: info.GetName(), Version: info.GetVersion()}, info)
+func (b *WriteSet) PutNumscript(ledgerName string, info *commonpb.NumscriptInfo) {
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: info.GetName()}, &commonpb.NumscriptVersionValue{Version: info.GetVersion()})
+	b.Derived.NumscriptContents.Put(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: info.GetName(), Version: info.GetVersion()}, info)
 }
 
-func (b *WriteSet) DeleteNumscriptLatest(ledgerID uint32, name string) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerID: ledgerID, Name: name}, &commonpb.NumscriptVersionValue{})
+func (b *WriteSet) DeleteNumscriptLatest(ledgerName string, name string) {
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}, &commonpb.NumscriptVersionValue{})
 }
 
-func (b *WriteSet) NumscriptVersionExists(ledgerID uint32, name, version string) (bool, error) {
-	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerID: ledgerID, Name: name, Version: version})
+func (b *WriteSet) NumscriptVersionExists(ledgerName string, name, version string) (bool, error) {
+	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
 	if err != nil {
 		// Not in cache — treat as not existing (admission ensures preloading)
 		return false, nil
@@ -1250,35 +1227,35 @@ func (b *WriteSet) PurgedVolumeKeys() []domain.VolumeKey {
 
 // TransientAccounts returns unique transient account names per ledger,
 // collected during Merge from the transient volume partition.
-func (b *WriteSet) TransientAccounts() map[uint32][]string {
+func (b *WriteSet) TransientAccounts() map[string][]string {
 	return b.transientAccounts
 }
 
 // PurgedAccounts returns unique ephemeral account names per ledger whose
 // volumes were purged (zero balance), collected during Merge.
-func (b *WriteSet) PurgedAccounts() map[uint32][]string {
+func (b *WriteSet) PurgedAccounts() map[string][]string {
 	return b.purgedAccounts
 }
 
 // collectUniqueAccounts extracts unique account names per ledger from
 // volume updates.
-func collectUniqueAccounts(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[uint32][]string {
+func collectUniqueAccounts(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[string][]string {
 	// Deduplicate: a single account may appear multiple times (one per asset).
-	seen := make(map[uint32]map[string]struct{})
+	seen := make(map[string]map[string]struct{})
 
 	for _, update := range updates {
-		ledgerID := update.Key.LedgerID
+		ledgerName := update.Key.LedgerName
 		account := update.Key.Account
 
-		if seen[ledgerID] == nil {
-			seen[ledgerID] = make(map[string]struct{})
+		if seen[ledgerName] == nil {
+			seen[ledgerName] = make(map[string]struct{})
 		}
 
-		seen[ledgerID][account] = struct{}{}
+		seen[ledgerName][account] = struct{}{}
 	}
 
-	result := make(map[uint32][]string, len(seen))
-	for ledgerID, accounts := range seen {
+	result := make(map[string][]string, len(seen))
+	for ledgerName, accounts := range seen {
 		list := make([]string, 0, len(accounts))
 		for account := range accounts {
 			list = append(list, account)
@@ -1286,7 +1263,7 @@ func collectUniqueAccounts(updates []attributes.Update[domain.VolumeKey, *raftcm
 
 		slices.Sort(list)
 
-		result[ledgerID] = list
+		result[ledgerName] = list
 	}
 
 	return result

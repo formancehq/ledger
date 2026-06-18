@@ -3,7 +3,6 @@ package state
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -566,7 +565,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 				fsm.sentinelTracer.RecordRejected(result.Error.Error())
 			} else {
 				fsm.sentinelTracer.RecordApplied(
-					result.ledgerIDs, len(result.createdLogs),
+					result.ledgerNames, len(result.createdLogs),
 					len(result.volumeUpdates), len(result.purgedVolumeKeys),
 				)
 			}
@@ -672,7 +671,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 	if fsm.sentinelMode {
 		pb.sentinelMode = true
 		pb.sentinelUpdates = deduplicateVolumeUpdates(ret.Results)
-		pb.sentinelLedgerIDs = collectLedgerIDsFromResults(ret.Results)
+		pb.sentinelLedgerNames = collectLedgerNamesFromResults(ret.Results)
 		pb.sentinelTracer = fsm.sentinelTracer
 	}
 
@@ -738,7 +737,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	// runCommitter so no other write should race with this read, but the
 	// snapshot is cheap and ensures the sentinel keeps the right invariant
 	// even if a future change reintroduces a synchronous commit path.
-	if len(pb.sentinelUpdates) == 0 && len(pb.sentinelLedgerIDs) == 0 {
+	if len(pb.sentinelUpdates) == 0 && len(pb.sentinelLedgerNames) == 0 {
 		// Nothing to verify — skip the snapshot open entirely.
 	} else if err := fsm.sentinel.Run(func(sentinelHandle dal.PebbleReader) error {
 		if len(pb.sentinelUpdates) > 0 {
@@ -753,13 +752,13 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 			}
 		}
 
-		if len(pb.sentinelLedgerIDs) > 0 {
+		if len(pb.sentinelLedgerNames) > 0 {
 			if fsm.logger.Enabled(logging.TraceLevel) {
-				fsm.logger.Tracef("Verifying aggregated volume balance for %d ledgers at raft index %d", len(pb.sentinelLedgerIDs), pb.lastAppliedIndex)
+				fsm.logger.Tracef("Verifying aggregated volume balance for %d ledgers at raft index %d", len(pb.sentinelLedgerNames), pb.lastAppliedIndex)
 			}
 
 			if err := verifyAggregatedVolumesBalanced(
-				sentinelHandle, fsm.Registry.Attrs.Volume, pb.sentinelLedgerIDs, pb.lastAppliedIndex, fsm.logger,
+				sentinelHandle, fsm.Registry.Attrs.Volume, pb.sentinelLedgerNames, pb.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
 				dumpCacheVsPebbleCoherence(sentinelHandle, fsm.Registry.Cache, pb.lastAppliedIndex, fsm.logger)
@@ -1223,20 +1222,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Cross-check: volume deltas must match postings in the committed logs.
 	if fsm.sentinelMode {
-		// Build ledger name → ID map for sentinel cross-check.
-		sentinelNameToID := make(map[string]uint32)
-		for _, log := range createdLogs {
-			if apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply); ok && apply.Apply != nil {
-				name := apply.Apply.GetLedgerName()
-				if _, exists := sentinelNameToID[name]; !exists {
-					if info, ok := buffer.GetLedger(name); ok {
-						sentinelNameToID[name] = info.GetId()
-					}
-				}
-			}
-		}
-
-		if err := verifyVolumeDeltasMatchPostings(buffer.AllVolumeUpdates(), createdLogs, sentinelNameToID); err != nil {
+		if err := verifyVolumeDeltasMatchPostings(buffer.AllVolumeUpdates(), createdLogs); err != nil {
 			return nil, fmt.Errorf("volume delta/posting cross-check failed at raft index %d: %w", raftIndex, err)
 		}
 	}
@@ -1245,7 +1231,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// The check must run after batch.Commit() — reading from the sentinel reader
 	// before commit sees stale committed state that excludes the current batch,
 	// which produces false positives when batch boundaries differ across nodes.
-	ledgerIDs := collectLedgerIDs(proposal.GetOrders(), buffer)
+	ledgerNames := collectLedgerNames(proposal.GetOrders())
 
 	// Capture the audit hash BEFORE writing this proposal's audit entry.
 	// This is the hash of the predecessor — used as LastAuditHash on the
@@ -1262,24 +1248,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	if ta := buffer.TransientAccounts(); len(ta) > 0 {
 		auditSuccess.TransientAccounts = make(map[string]*auditpb.AccountList, len(ta))
-		for ledgerID, accounts := range ta {
-			ledgerName := strconv.FormatUint(uint64(ledgerID), 10)
-			if info, ok := buffer.GetLedgerByID(ledgerID); ok {
-				ledgerName = info.GetName()
-			}
-
+		for ledgerName, accounts := range ta {
 			auditSuccess.TransientAccounts[ledgerName] = &auditpb.AccountList{Accounts: accounts}
 		}
 	}
 
 	if pa := buffer.PurgedAccounts(); len(pa) > 0 {
 		auditSuccess.PurgedAccounts = make(map[string]*auditpb.AccountList, len(pa))
-		for ledgerID, accounts := range pa {
-			ledgerName := strconv.FormatUint(uint64(ledgerID), 10)
-			if info, ok := buffer.GetLedgerByID(ledgerID); ok {
-				ledgerName = info.GetName()
-			}
-
+		for ledgerName, accounts := range pa {
 			auditSuccess.PurgedAccounts[ledgerName] = &auditpb.AccountList{Accounts: accounts}
 		}
 	}
@@ -1331,7 +1307,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		volumeUpdates:           buffer.KeptVolumeUpdates(),
 		purgedVolumeKeys:        buffer.PurgedVolumeKeys(),
 		createdLogs:             createdLogs,
-		ledgerIDs:               ledgerIDs,
+		ledgerNames:             ledgerNames,
 	}, nil
 }
 
@@ -1628,10 +1604,10 @@ type PreparedBatch struct {
 	checkpointDeletes    []uint64
 
 	// Sentinel data (captured during prepare, validated after commit).
-	sentinelMode      bool
-	sentinelUpdates   []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
-	sentinelLedgerIDs []uint32
-	sentinelTracer    *SentinelTracer
+	sentinelMode        bool
+	sentinelUpdates     []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+	sentinelLedgerNames []string
+	sentinelTracer      *SentinelTracer
 
 	// archiveRequests is captured during prepare so CommitPreparedBatch
 	// does not need to read fsm.Periods (which may be mutated by the next prepare).
@@ -1675,7 +1651,7 @@ type ApplyResult struct {
 	volumeUpdates    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 	purgedVolumeKeys []domain.VolumeKey // keys removed by ephemeral purge
 	createdLogs      []*commonpb.Log
-	ledgerIDs        []uint32 // ledger IDs touched by this proposal (for post-commit balance check)
+	ledgerNames      []string // ledger names touched by this proposal (for post-commit balance check)
 }
 
 type ApplyEntriesResult struct {

@@ -13,19 +13,19 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// mirrorPointKey builds a per-ledger mirror point key: [zone][sub][ledgerID BE 4B].
-func mirrorPointKey(kb *dal.KeyBuilder, sub byte, ledgerID uint32) []byte {
+// mirrorPointKey builds a per-ledger mirror point key: [zone][sub][ledgerName padded 64B].
+func mirrorPointKey(kb *dal.KeyBuilder, sub byte, ledgerName string) []byte {
 	return kb.Reset().
 		PutZonePrefix(dal.ZonePerLedger, sub).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		Build()
 }
 
 // ReadMirrorCursor returns the last ingested v2 log ID for a mirror ledger.
 // Returns 0 if no cursor has been persisted yet.
-func ReadMirrorCursor(reader dal.PebbleGetter, ledgerID uint32) (uint64, error) {
+func ReadMirrorCursor(reader dal.PebbleGetter, ledgerName string) (uint64, error) {
 	kb := dal.NewKeyBuilder()
-	key := mirrorPointKey(kb, dal.SubPLMirrorCursor, ledgerID)
+	key := mirrorPointKey(kb, dal.SubPLMirrorCursor, ledgerName)
 
 	v, err := dal.ReadUint64(reader, key, 0)
 	if err != nil {
@@ -37,9 +37,9 @@ func ReadMirrorCursor(reader dal.PebbleGetter, ledgerID uint32) (uint64, error) 
 
 // ReadMirrorStatus returns the last sync error for a mirror ledger.
 // Returns nil if no error is recorded.
-func ReadMirrorStatus(reader dal.PebbleGetter, ledgerID uint32) (*commonpb.MirrorSyncError, error) {
+func ReadMirrorStatus(reader dal.PebbleGetter, ledgerName string) (*commonpb.MirrorSyncError, error) {
 	kb := dal.NewKeyBuilder()
-	key := mirrorPointKey(kb, dal.SubPLMirrorStatus, ledgerID)
+	key := mirrorPointKey(kb, dal.SubPLMirrorStatus, ledgerName)
 
 	syncErr, err := dal.ReadProto[*commonpb.MirrorSyncError](reader, key)
 	if err != nil {
@@ -51,9 +51,9 @@ func ReadMirrorStatus(reader dal.PebbleGetter, ledgerID uint32) (*commonpb.Mirro
 
 // ReadMirrorSourceHead returns the latest known v2 source log count for a mirror ledger.
 // Returns 0 if no source head has been persisted yet.
-func ReadMirrorSourceHead(reader dal.PebbleGetter, ledgerID uint32) (uint64, error) {
+func ReadMirrorSourceHead(reader dal.PebbleGetter, ledgerName string) (uint64, error) {
 	kb := dal.NewKeyBuilder()
-	key := mirrorPointKey(kb, dal.SubPLMirrorSourceHead, ledgerID)
+	key := mirrorPointKey(kb, dal.SubPLMirrorSourceHead, ledgerName)
 
 	v, err := dal.ReadUint64(reader, key, 0)
 	if err != nil {
@@ -65,22 +65,22 @@ func ReadMirrorSourceHead(reader dal.PebbleGetter, ledgerID uint32) (uint64, err
 
 // ReadMirrorSyncProgress reads the cursor, source head, and error from Pebble
 // and computes the sync progress for a mirror ledger.
-func ReadMirrorSyncProgress(ctx context.Context, reader dal.PebbleGetter, ledgerID uint32, ledgerName string) (*commonpb.MirrorSyncProgress, error) {
+func ReadMirrorSyncProgress(ctx context.Context, reader dal.PebbleGetter, ledgerName string) (*commonpb.MirrorSyncProgress, error) {
 	_, span := queryTracer.Start(ctx, "query.read_mirror_sync_progress",
 		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()
 
-	cursor, err := ReadMirrorCursor(reader, ledgerID)
+	cursor, err := ReadMirrorCursor(reader, ledgerName)
 	if err != nil {
 		return nil, err
 	}
 
-	sourceHead, err := ReadMirrorSourceHead(reader, ledgerID)
+	sourceHead, err := ReadMirrorSourceHead(reader, ledgerName)
 	if err != nil {
 		return nil, err
 	}
 
-	syncErr, err := ReadMirrorStatus(reader, ledgerID)
+	syncErr, err := ReadMirrorStatus(reader, ledgerName)
 	if err != nil {
 		return nil, err
 	}

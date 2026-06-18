@@ -39,7 +39,8 @@ type StateRegistry struct {
 	// Reversions uses a compact bitset per ledger instead of a KeyStore.
 	// Bit N being set means transaction N in that ledger has been reverted.
 	// This is always authoritative (no cache generations, no preload needed).
-	Reversions map[uint32]*bitset.Bitset
+	// Keyed by ledger name (matches the canonical-key change).
+	Reversions map[string]*bitset.Bitset
 }
 
 // NewStateRegistry creates a StateRegistry with all CacheAwareEntries backed
@@ -104,13 +105,13 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes, idempotencyT
 			attrs.LedgerMetadata,
 			dal.SubAttrLedgerMetadata,
 		),
-		Reversions: make(map[uint32]*bitset.Bitset),
+		Reversions: make(map[string]*bitset.Bitset),
 	}
 }
 
 // GetReverted returns whether a transaction has been reverted.
 func (r *StateRegistry) GetReverted(key domain.TransactionKey) bool {
-	bs, ok := r.Reversions[key.LedgerID]
+	bs, ok := r.Reversions[key.LedgerName]
 	if !ok {
 		return false
 	}
@@ -121,10 +122,10 @@ func (r *StateRegistry) GetReverted(key domain.TransactionKey) bool {
 // SetReverted marks a transaction as reverted in the bitset.
 // Returns the word index that was modified.
 func (r *StateRegistry) SetReverted(key domain.TransactionKey) uint64 {
-	bs, ok := r.Reversions[key.LedgerID]
+	bs, ok := r.Reversions[key.LedgerName]
 	if !ok {
 		bs = bitset.New(key.ID)
-		r.Reversions[key.LedgerID] = bs
+		r.Reversions[key.LedgerName] = bs
 	}
 
 	return bs.Set(key.ID)
@@ -132,5 +133,5 @@ func (r *StateRegistry) SetReverted(key domain.TransactionKey) uint64 {
 
 // ResetReversions clears all reversion bitsets (used during snapshot restore).
 func (r *StateRegistry) ResetReversions() {
-	r.Reversions = make(map[uint32]*bitset.Bitset)
+	r.Reversions = make(map[string]*bitset.Bitset)
 }

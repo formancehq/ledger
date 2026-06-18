@@ -33,14 +33,14 @@ func newReceiptTestStore(t *testing.T) *dal.Store {
 // seedTransaction writes a ledger, a transaction-state attribute, and the
 // transaction's creation log (carrying periodID) into store, so that
 // computeTransactionReceipt can resolve a receipt by reading only this store.
-func seedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, ledgerID uint32, txID, logSeq, periodID uint64, tx *commonpb.Transaction) {
+func seedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, txID, logSeq, periodID uint64, tx *commonpb.Transaction) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
 
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{Name: ledger, Id: ledgerID}))
+	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{Name: ledger}))
 
-	txKey := domain.TransactionKey{LedgerID: ledgerID, ID: txID}
+	txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
 	_, err := attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{CreatedByLog: logSeq})
 	require.NoError(t, err)
 
@@ -76,7 +76,6 @@ func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) 
 
 	const (
 		ledger             = "L"
-		ledgerID           = uint32(1)
 		txID               = uint64(1)
 		logSeq             = uint64(1)
 		checkpointPeriodID = uint64(7)
@@ -90,11 +89,11 @@ func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) 
 	}
 
 	checkpointStore := newReceiptTestStore(t)
-	seedTransaction(t, checkpointStore, attrs, ledger, ledgerID, txID, logSeq, checkpointPeriodID, tx)
+	seedTransaction(t, checkpointStore, attrs, ledger, txID, logSeq, checkpointPeriodID, tx)
 
 	// Live store holds the same transaction but under a different period.
 	liveStore := newReceiptTestStore(t)
-	seedTransaction(t, liveStore, attrs, ledger, ledgerID, txID, logSeq, liveStorePeriodID, tx)
+	seedTransaction(t, liveStore, attrs, ledger, txID, logSeq, liveStorePeriodID, tx)
 
 	signer := receipt.NewSigner([]byte("test-receipt-signing-key-32bytes!"))
 	impl := &BucketServiceServerImpl{
@@ -135,14 +134,14 @@ func TestComputeTransactionReceipt_PropagatesReaderError(t *testing.T) {
 
 // seedRevertedTransaction is like seedTransaction but writes a RevertedTransaction
 // creation log (as produced by reverting a transaction), which carries no receipt.
-func seedRevertedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, ledgerID uint32, txID, logSeq uint64, tx *commonpb.Transaction) {
+func seedRevertedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, txID, logSeq uint64, tx *commonpb.Transaction) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
 
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{Name: ledger, Id: ledgerID}))
+	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{Name: ledger}))
 
-	txKey := domain.TransactionKey{LedgerID: ledgerID, ID: txID}
+	txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
 	_, err := attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{CreatedByLog: logSeq})
 	require.NoError(t, err)
 
@@ -177,16 +176,15 @@ func TestComputeTransactionReceipt_RevertTransactionHasNoReceipt(t *testing.T) {
 	t.Parallel()
 
 	const (
-		ledger   = "l"
-		ledgerID = uint32(1)
-		txID     = uint64(2)
-		logSeq   = uint64(5)
+		ledger = "l"
+		txID   = uint64(2)
+		logSeq = uint64(5)
 	)
 
 	attrs := attributes.New()
 	store := newReceiptTestStore(t)
 	tx := &commonpb.Transaction{Id: txID, Timestamp: &commonpb.Timestamp{Data: 1700000000}}
-	seedRevertedTransaction(t, store, attrs, ledger, ledgerID, txID, logSeq, tx)
+	seedRevertedTransaction(t, store, attrs, ledger, txID, logSeq, tx)
 
 	impl := &BucketServiceServerImpl{
 		attrs:         attrs,

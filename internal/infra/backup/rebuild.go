@@ -53,7 +53,6 @@ func RebuildDelta(
 
 	rawLedgerTypes := make(map[string]map[string]*commonpb.AccountType)
 	ledgerAccountTypes := make(map[string][]accounttype.CompiledType)
-	ledgerNameToID := make(map[string]uint32)
 
 	readHandle, err := store.NewDirectReadHandle()
 	if err != nil {
@@ -63,11 +62,11 @@ func RebuildDelta(
 	}
 	defer func() { _ = readHandle.Close() }()
 
-	// Seed ledger context (IDs + account types) from state already in the
-	// store. On an incremental rebuild the CreateLedger / AddAccountType logs
-	// precede fromLogSeq, so without this the replayed entries would resolve to
-	// ledger ID 0 and write derived state under the wrong canonical keys.
-	if err := seedLedgerContext(ctx, readHandle, ledgerNameToID, rawLedgerTypes, ledgerAccountTypes); err != nil {
+	// Seed ledger account types from state already in the store. On an
+	// incremental rebuild the AddAccountType logs precede fromLogSeq, so
+	// without this the replayed entries would skip ephemeral-purge simulation
+	// and write transient volumes that should never have been persisted.
+	if err := seedLedgerContext(ctx, readHandle, rawLedgerTypes, ledgerAccountTypes); err != nil {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("seeding ledger context: %w", err)
@@ -150,7 +149,7 @@ func RebuildDelta(
 
 			ledgerName := p.Apply.GetLedgerName()
 
-			if err := replay.ReplayLedgerLog(ledgerName, ledgerNameToID[ledgerName], seq, p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
@@ -160,8 +159,6 @@ func RebuildDelta(
 			if p.CreateLedger == nil {
 				continue
 			}
-
-			ledgerNameToID[p.CreateLedger.GetName()] = p.CreateLedger.GetId()
 
 			info := &commonpb.LedgerInfo{
 				Name:      p.CreateLedger.GetName(),
@@ -236,15 +233,15 @@ func RebuildDelta(
 		case *commonpb.LogPayload_SavedNumscript:
 			if p.SavedNumscript != nil && p.SavedNumscript.GetInfo() != nil {
 				info := p.SavedNumscript.GetInfo()
-				nsLedgerID := ledgerNameToID[info.GetLedger()]
-				entryKey := domain.NumscriptEntryKey{LedgerID: nsLedgerID, Name: info.GetName(), Version: info.GetVersion()}
+				nsLedger := info.GetLedger()
+				entryKey := domain.NumscriptEntryKey{LedgerName: nsLedger, Name: info.GetName(), Version: info.GetVersion()}
 				if _, err := numscriptContent.Set(batch, entryKey.Bytes(), info); err != nil {
 					_ = batch.Cancel()
 
 					return fmt.Errorf("saving numscript at log %d: %w", seq, err)
 				}
 
-				versionKey := domain.NumscriptVersionKey{LedgerID: nsLedgerID, Name: info.GetName()}
+				versionKey := domain.NumscriptVersionKey{LedgerName: nsLedger, Name: info.GetName()}
 				versionVal := &commonpb.NumscriptVersionValue{Version: info.GetVersion()}
 				if _, err := numscriptVersion.Set(batch, versionKey.Bytes(), versionVal); err != nil {
 					_ = batch.Cancel()
@@ -400,14 +397,13 @@ func (r *proposalBoundaryReader) Close() error {
 	return r.auditCursor.Close()
 }
 
-// seedLedgerContext populates the ledger-ID and account-type maps from ledgers
-// already persisted in the store (i.e. captured by the checkpoint), so an
-// incremental replay resolves ledger IDs and account-type persistence for
-// ledgers created before fromLogSeq.
+// seedLedgerContext populates the account-type maps from ledgers already
+// persisted in the store (i.e. captured by the checkpoint), so an incremental
+// replay resolves account-type persistence for ledgers created before
+// fromLogSeq.
 func seedLedgerContext(
 	ctx context.Context,
 	reader dal.PebbleReader,
-	ledgerNameToID map[string]uint32,
 	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
 ) error {
@@ -429,7 +425,6 @@ func seedLedgerContext(
 		}
 
 		name := info.GetName()
-		ledgerNameToID[name] = info.GetId()
 
 		if types := info.GetAccountTypes(); len(types) > 0 {
 			cloned := maps.Clone(types)

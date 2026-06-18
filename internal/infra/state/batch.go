@@ -199,38 +199,56 @@ func batchDeleteQueryCheckpointSchedule(b *dal.WriteSession) error {
 }
 
 // SaveReversionWord writes a single bitset word for a ledger.
-// Key: [0x03][0x01][ledger\x00][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
-func saveReversionWord(b *dal.WriteSession, ledgerID uint32, wordIndex uint64, value uint64) error {
+// Key: [0x03][0x01][ledgerName padded 64B][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
+func saveReversionWord(b *dal.WriteSession, ledgerName string, wordIndex uint64, value uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLReversions).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutUint64(wordIndex)
 
 	if err := b.SetBytes(b.KeyBuilder.Consume(), bitset.MarshalWord(value)); err != nil {
-		return fmt.Errorf("saving reversion word %d for ledger %d: %w", wordIndex, ledgerID, err)
+		return fmt.Errorf("saving reversion word %d for ledger %q: %w", wordIndex, ledgerName, err)
 	}
 
 	return nil
 }
 
 // DeleteReversionsByLedger removes all reversion words for a ledger.
-func deleteReversionsByLedger(b *dal.WriteSession, ledgerID uint32) error {
-	prefix := make([]byte, 2+4)
-	prefix[0] = dal.ZonePerLedger
-	prefix[1] = dal.SubPLReversions
-	binary.BigEndian.PutUint32(prefix[2:], ledgerID)
+func deleteReversionsByLedger(b *dal.WriteSession, ledgerName string) error {
+	start := buildLedgerScopedPrefix(dal.ZonePerLedger, dal.SubPLReversions, ledgerName)
+	end := buildLedgerScopedPrefixSuccessor(dal.ZonePerLedger, dal.SubPLReversions, ledgerName)
 
-	end := make([]byte, 2+4)
-	end[0] = dal.ZonePerLedger
-	end[1] = dal.SubPLReversions
-	binary.BigEndian.PutUint32(end[2:], ledgerID+1)
+	return b.DeleteRangeNoSync(start, end)
+}
 
-	return b.DeleteRangeNoSync(prefix, end)
+// buildLedgerScopedPrefix builds [zone][sub][ledgerName padded 64B] for
+// range / point operations. The padded name is fixed-width so the comparer
+// can split keys at offset 2+LedgerNameFixedSize without parsing.
+func buildLedgerScopedPrefix(zone, sub byte, ledgerName string) []byte {
+	out := make([]byte, 2+dal.LedgerNameFixedSize)
+	out[0] = zone
+	out[1] = sub
+
+	copy(out[2:], ledgerName)
+
+	return out
+}
+
+// buildLedgerScopedPrefixSuccessor returns the immediate successor of
+// buildLedgerScopedPrefix(zone, sub, ledgerName) — used as the exclusive
+// upper bound for DeleteRange. Increments the last byte of the padded
+// name block; safe because the validation layer rejects names containing
+// 0xFF bytes (printable ASCII only).
+func buildLedgerScopedPrefixSuccessor(zone, sub byte, ledgerName string) []byte {
+	out := buildLedgerScopedPrefix(zone, sub, ledgerName)
+	out[len(out)-1]++
+
+	return out
 }
 
 // SavePreparedQuery stores a prepared query in the batch.
 func SavePreparedQuery(b *dal.WriteSession, pq *commonpb.PreparedQuery) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLPreparedQuery).
-		PutLedgerName(pq.GetLedger()).
+		PutLedgerNameFixed(pq.GetLedger()).
 		PutString(pq.GetName())
 
 	err := b.SetProto(b.KeyBuilder.Consume(), pq)
@@ -350,9 +368,9 @@ func StoreNextPeriodID(b *dal.WriteSession, id uint64) error {
 }
 
 // SetMirrorSourceHead writes the latest known v2 source log count to the batch (Raft-replicated).
-func SetMirrorSourceHead(b *dal.WriteSession, ledgerID uint32, count uint64) error {
+func SetMirrorSourceHead(b *dal.WriteSession, ledgerName string, count uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorSourceHead).
-		PutLedgerID(ledgerID)
+		PutLedgerNameFixed(ledgerName)
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], count)
@@ -366,9 +384,9 @@ func SetMirrorSourceHead(b *dal.WriteSession, ledgerID uint32, count uint64) err
 }
 
 // SetMirrorCursor writes a per-ledger mirror cursor to the batch (Raft-replicated).
-func SetMirrorCursor(b *dal.WriteSession, ledgerID uint32, cursor uint64) error {
+func SetMirrorCursor(b *dal.WriteSession, ledgerName string, cursor uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorCursor).
-		PutLedgerID(ledgerID)
+		PutLedgerNameFixed(ledgerName)
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], cursor)
@@ -382,9 +400,9 @@ func SetMirrorCursor(b *dal.WriteSession, ledgerID uint32, cursor uint64) error 
 }
 
 // SetMirrorStatus writes a per-ledger mirror sync error to the batch.
-func SetMirrorStatus(b *dal.WriteSession, ledgerID uint32, syncErr *commonpb.MirrorSyncError) error {
+func SetMirrorStatus(b *dal.WriteSession, ledgerName string, syncErr *commonpb.MirrorSyncError) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorStatus).
-		PutLedgerID(ledgerID)
+		PutLedgerNameFixed(ledgerName)
 
 	err := b.SetProto(b.KeyBuilder.Consume(), syncErr)
 	if err != nil {
@@ -395,9 +413,9 @@ func SetMirrorStatus(b *dal.WriteSession, ledgerID uint32, syncErr *commonpb.Mir
 }
 
 // ClearMirrorStatus removes a per-ledger mirror sync error from the batch.
-func clearMirrorStatus(b *dal.WriteSession, ledgerID uint32) error {
+func clearMirrorStatus(b *dal.WriteSession, ledgerName string) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorStatus).
-		PutLedgerID(ledgerID)
+		PutLedgerNameFixed(ledgerName)
 
 	err := b.DeleteKey(b.KeyBuilder.Consume())
 	if err != nil {
@@ -438,98 +456,73 @@ var ledgerScopedAttrTypes = []byte{
 // DeleteLedgerData removes all per-ledger data from Pebble for the given ledger.
 // This performs per-type range deletes on:
 //   - Attributes zone (0xF1): one range delete per ledger-scoped attribute type
-//   - Prepared queries: range delete for [zone][sub][ledgerID_BE_4B]
-//   - Reversions: range delete for [zone][sub][ledgerID_BE_4B]
+//   - Prepared queries: range delete for [zone][sub][ledgerName padded 64B]
+//   - Reversions: range delete for [zone][sub][ledgerName padded 64B]
 //   - Point deletes: mirror source head, mirror cursor, mirror status
 //   - Point delete: pending ledger cleanup
 //
 // LedgerInfo and Boundaries are NOT deleted here — LedgerInfo is kept for "ledger deleted"
 // responses, and Boundaries are handled separately via Attribute.Delete.
-func deleteLedgerData(b *dal.WriteSession, ledgerID uint32) error {
-	// Ledger ID as big-endian 4 bytes — this is the prefix for all
-	// ledger-scoped canonical keys in the attributes zone.
-	var ledgerPrefix [4]byte
-	binary.BigEndian.PutUint32(ledgerPrefix[:], ledgerID)
-
-	var ledgerPrefixUpper [4]byte
-	binary.BigEndian.PutUint32(ledgerPrefixUpper[:], ledgerID+1)
-
-	// Per-type range deletes: [0xF1][attrType][ledgerID_BE_4B] -> [0xF1][attrType][(ledgerID+1)_BE_4B]
+func deleteLedgerData(b *dal.WriteSession, ledgerName string) error {
+	// Per-type range deletes: [0xF1][attrType][ledgerName padded] -> successor.
 	for _, attrType := range ledgerScopedAttrTypes {
-		start := make([]byte, 2+4)
-		start[0] = dal.ZoneAttributes
-		start[1] = attrType
-		copy(start[2:], ledgerPrefix[:])
-
-		end := make([]byte, 2+4)
-		end[0] = dal.ZoneAttributes
-		end[1] = attrType
-		copy(end[2:], ledgerPrefixUpper[:])
+		start := buildLedgerScopedPrefix(dal.ZoneAttributes, attrType, ledgerName)
+		end := buildLedgerScopedPrefixSuccessor(dal.ZoneAttributes, attrType, ledgerName)
 
 		if err := b.DeleteRange(start, end, nil); err != nil {
-			return fmt.Errorf("deleting ledger attributes (type=0x%02x) for ledger %d: %w", attrType, ledgerID, err)
+			return fmt.Errorf("deleting ledger attributes (type=0x%02x) for ledger %q: %w", attrType, ledgerName, err)
 		}
 	}
 
-	// Range delete for per-ledger system keys scoped by [zone][sub][ledgerID_BE_4B].
+	// Range delete for per-ledger system keys scoped by [zone][sub][ledgerName padded].
 	for _, sub := range []byte{dal.SubPLPreparedQuery, dal.SubPLReversions} {
-		start := make([]byte, 2+4)
-		start[0] = dal.ZonePerLedger
-		start[1] = sub
-		copy(start[2:], ledgerPrefix[:])
-
-		end := make([]byte, 2+4)
-		end[0] = dal.ZonePerLedger
-		end[1] = sub
-		copy(end[2:], ledgerPrefixUpper[:])
+		start := buildLedgerScopedPrefix(dal.ZonePerLedger, sub, ledgerName)
+		end := buildLedgerScopedPrefixSuccessor(dal.ZonePerLedger, sub, ledgerName)
 
 		if err := b.DeleteRange(start, end, nil); err != nil {
-			return fmt.Errorf("deleting per-ledger keys sub=0x%02x for ledger %d: %w", sub, ledgerID, err)
+			return fmt.Errorf("deleting per-ledger keys sub=0x%02x for ledger %q: %w", sub, ledgerName, err)
 		}
 	}
 
-	// Point deletes for per-ledger keys (keyed by [zone][sub][ledgerID_BE_4B]).
+	// Point deletes for per-ledger keys (keyed by [zone][sub][ledgerName padded]).
 	for _, sub := range []byte{dal.SubPLMirrorSourceHead, dal.SubPLMirrorCursor, dal.SubPLMirrorStatus, dal.SubPLPendingCleanup} {
-		key := make([]byte, 2+4)
-		key[0] = dal.ZonePerLedger
-		key[1] = sub
-		copy(key[2:], ledgerPrefix[:])
+		key := buildLedgerScopedPrefix(dal.ZonePerLedger, sub, ledgerName)
 
 		if err := b.DeleteKey(key); err != nil {
-			return fmt.Errorf("deleting key sub=0x%02x for ledger %d: %w", sub, ledgerID, err)
+			return fmt.Errorf("deleting key sub=0x%02x for ledger %q: %w", sub, ledgerName, err)
 		}
 	}
 
 	return nil
 }
 
-// SavePendingLedgerCleanup records a deferred ledger data cleanup keyed by ledger ID.
+// SavePendingLedgerCleanup records a deferred ledger data cleanup keyed by ledger name.
 // The value is the sequence number of the DeleteLedger log.
-func savePendingLedgerCleanup(b *dal.WriteSession, ledgerID uint32, deleteSequence uint64) error {
+func savePendingLedgerCleanup(b *dal.WriteSession, ledgerName string, deleteSequence uint64) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
-		PutLedgerID(ledgerID)
+		PutLedgerNameFixed(ledgerName)
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], deleteSequence)
 
 	err := b.SetBytes(b.KeyBuilder.Consume(), buf[:])
 	if err != nil {
-		return fmt.Errorf("saving pending ledger cleanup for ledger %d: %w", ledgerID, err)
+		return fmt.Errorf("saving pending ledger cleanup for ledger %q: %w", ledgerName, err)
 	}
 
 	return nil
 }
 
 // DeletePendingLedgerCleanup removes a pending ledger cleanup entry after data has been purged.
-func deletePendingLedgerCleanup(b *dal.WriteSession, ledgerID uint32) error {
+func deletePendingLedgerCleanup(b *dal.WriteSession, ledgerName string) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
-		PutLedgerID(ledgerID)
+		PutLedgerNameFixed(ledgerName)
 
 	err := b.DeleteKey(b.KeyBuilder.Consume())
 	if err != nil {
-		return fmt.Errorf("deleting pending ledger cleanup for ledger %d: %w", ledgerID, err)
+		return fmt.Errorf("deleting pending ledger cleanup for ledger %q: %w", ledgerName, err)
 	}
 
 	return nil

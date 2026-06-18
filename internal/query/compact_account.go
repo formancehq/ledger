@@ -2,7 +2,6 @@ package query
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -43,15 +42,13 @@ type compactSubIter struct {
 
 // NewCompactAccountIterator creates an iterator that yields CompactAccount
 // values by scanning Volume and Metadata attribute ranges for the given ledger.
-func NewCompactAccountIterator(reader dal.PebbleReader, ledgerID uint32) (*CompactAccountIterator, error) {
-	const ledgerLen = 4 // uint32 BE
-
-	vIter, err := newCompactSubIter(reader, dal.SubAttrVolume, dal.CanonicalKeySepVolume, ledgerID, ledgerLen)
+func NewCompactAccountIterator(reader dal.PebbleReader, ledgerName string) (*CompactAccountIterator, error) {
+	vIter, err := newCompactSubIter(reader, dal.SubAttrVolume, dal.CanonicalKeySepVolume, ledgerName, dal.LedgerNameFixedSize)
 	if err != nil {
 		return nil, err
 	}
 
-	mIter, err := newCompactSubIter(reader, dal.SubAttrMetadata, dal.CanonicalKeySepMetadata, ledgerID, ledgerLen)
+	mIter, err := newCompactSubIter(reader, dal.SubAttrMetadata, dal.CanonicalKeySepMetadata, ledgerName, dal.LedgerNameFixedSize)
 	if err != nil {
 		_ = vIter.iter.Close()
 
@@ -61,17 +58,16 @@ func NewCompactAccountIterator(reader dal.PebbleReader, ledgerID uint32) (*Compa
 	return &CompactAccountIterator{v: *vIter, m: *mIter}, nil
 }
 
-func newCompactSubIter(reader dal.PebbleReader, attrType, sepByte byte, ledgerID uint32, ledgerLen int) (*compactSubIter, error) {
-	// Bounds: [0xF1][attrType][ledgerID BE 4B] → [0xF1][attrType][(ledgerID+1) BE 4B]
-	lowerBound := make([]byte, 2+4)
+func newCompactSubIter(reader dal.PebbleReader, attrType, sepByte byte, ledgerName string, ledgerLen int) (*compactSubIter, error) {
+	// Bounds: [0xF1][attrType][ledgerName padded 64B] → successor (last byte +1).
+	lowerBound := make([]byte, 2+dal.LedgerNameFixedSize)
 	lowerBound[0] = dal.ZoneAttributes
 	lowerBound[1] = attrType
-	binary.BigEndian.PutUint32(lowerBound[2:], ledgerID)
+	copy(lowerBound[2:], ledgerName)
 
-	upperBound := make([]byte, 2+4)
-	upperBound[0] = dal.ZoneAttributes
-	upperBound[1] = attrType
-	binary.BigEndian.PutUint32(upperBound[2:], ledgerID+1)
+	upperBound := make([]byte, 2+dal.LedgerNameFixedSize)
+	copy(upperBound, lowerBound)
+	upperBound[len(upperBound)-1]++
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {

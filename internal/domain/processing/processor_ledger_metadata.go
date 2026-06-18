@@ -25,8 +25,8 @@ func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerM
 
 	for key, value := range order.GetMetadata() {
 		metaKey := domain.LedgerMetadataKey{
-			LedgerID: info.GetId(),
-			Key:      key,
+			LedgerName: info.GetName(),
+			Key:        key,
 		}
 
 		if oldVal, err := s.GetLedgerMetadata(metaKey); err == nil {
@@ -67,8 +67,8 @@ func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLe
 	}
 
 	metaKey := domain.LedgerMetadataKey{
-		LedgerID: info.GetId(),
-		Key:      order.GetKey(),
+		LedgerName: info.GetName(),
+		Key:        order.GetKey(),
 	}
 
 	oldVal, err := s.GetLedgerMetadata(metaKey)

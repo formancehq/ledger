@@ -25,7 +25,7 @@ const defaultPageSize = 100
 type InspectParams struct {
 	Reader      dal.PebbleReader
 	KB          *dal.KeyBuilder
-	LedgerID    uint32
+	LedgerName  string
 	Namespace   string // "a:" or "t:"
 	MetadataKey string
 	Mode        InspectMode
@@ -68,7 +68,7 @@ func InspectIndex(params InspectParams) (*InspectResult, error) {
 
 // inspectDistinctValues scans the metadata index and collects unique values with pagination.
 func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
-	prefix := MetadataIndexPrefix(params.KB, params.LedgerID, params.Namespace, params.MetadataKey)
+	prefix := MetadataIndexPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
 	upper := IncrementBytes(prefix)
 
 	lower := prefix
@@ -133,7 +133,7 @@ func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 
 // inspectFacets scans the metadata index and collects (value, count) pairs with pagination.
 func inspectFacets(params InspectParams) (*InspectResult, error) {
-	prefix := MetadataIndexPrefix(params.KB, params.LedgerID, params.Namespace, params.MetadataKey)
+	prefix := MetadataIndexPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
 	upper := IncrementBytes(prefix)
 
 	lower := prefix
@@ -225,7 +225,7 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 	result := &InspectResult{}
 
 	// Scan metadata index for cardinality, min, max.
-	prefix := MetadataIndexPrefix(params.KB, params.LedgerID, params.Namespace, params.MetadataKey)
+	prefix := MetadataIndexPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
 	upper := IncrementBytes(prefix)
 
 	iter, err := params.Reader.NewIter(&pebble.IterOptions{
@@ -273,7 +273,7 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 	_ = iter.Close()
 
 	// Count entities with key (non-null).
-	nonNullPrefix := EntityExistsNonNullPrefix(params.KB, params.LedgerID, params.Namespace, params.MetadataKey)
+	nonNullPrefix := EntityExistsNonNullPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
 	result.EntitiesWithKey, err = countPrefix(params.Reader, nonNullPrefix)
 
 	if err != nil {
@@ -281,7 +281,7 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 	}
 
 	// Count entities with null value.
-	nullPrefix := EntityExistsNullPrefix(params.KB, params.LedgerID, params.Namespace, params.MetadataKey)
+	nullPrefix := EntityExistsNullPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
 	result.EntitiesWithNull, err = countPrefix(params.Reader, nullPrefix)
 
 	if err != nil {

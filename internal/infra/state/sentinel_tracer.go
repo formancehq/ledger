@@ -47,7 +47,7 @@ type sentinelEntryTrace struct {
 	RaftIndex    uint64
 	ProposalID   uint64
 	OrderCount   int
-	LedgerIDs    []uint32
+	LedgerNames  []string
 	Volumes      []sentinelVolumeTrace
 	CacheRotated bool
 	Rejected     bool
@@ -74,20 +74,20 @@ func (t *SentinelTracer) StartEntry(raftIndex, proposalID uint64, orderCount int
 }
 
 // RecordApplied records a successfully applied proposal and logs it.
-func (t *SentinelTracer) RecordApplied(ledgerIDs []uint32, logCount, volumeCount, purgedCount int) {
+func (t *SentinelTracer) RecordApplied(ledgerNames []string, logCount, volumeCount, purgedCount int) {
 	if len(t.entries) == 0 {
 		return
 	}
 
 	e := &t.entries[len(t.entries)-1]
-	e.LedgerIDs = ledgerIDs
+	e.LedgerNames = ledgerNames
 	e.LogCount = logCount
 
 	t.logger.WithFields(map[string]any{
 		"raftIndex":     e.RaftIndex,
 		"proposalID":    e.ProposalID,
 		"orderCount":    e.OrderCount,
-		"ledgerIDs":     ledgerIDs,
+		"ledgerNames":   ledgerNames,
 		"logCount":      logCount,
 		"volumeUpdates": volumeCount,
 		"purgedVolumes": purgedCount,
@@ -97,7 +97,7 @@ func (t *SentinelTracer) RecordApplied(ledgerIDs []uint32, logCount, volumeCount
 		"raftIndex":     e.RaftIndex,
 		"proposalID":    e.ProposalID,
 		"orderCount":    e.OrderCount,
-		"ledgerIDs":     ledgerIDs,
+		"ledgerNames":   ledgerNames,
 		"logCount":      logCount,
 		"volumeUpdates": volumeCount,
 		"purgedVolumes": purgedCount,
@@ -211,8 +211,8 @@ func (t *SentinelTracer) Dump(logger logging.Logger) {
 			parts := make([]string, 0, len(e.Volumes))
 			for _, v := range e.Volumes {
 				parts = append(parts, fmt.Sprintf(
-					"%d/%s/%s[%s] key=%s id=%s old(%s,%s)→new(%s,%s)",
-					v.Key.LedgerID, v.Key.Account, v.Key.Asset, v.Partition,
+					"%q/%s/%s[%s] key=%s id=%s old(%s,%s)→new(%s,%s)",
+					v.Key.LedgerName, v.Key.Account, v.Key.Asset, v.Partition,
 					v.CanonicalKey, v.ID,
 					v.OldInput, v.OldOutput,
 					v.NewInput, v.NewOutput,
@@ -228,7 +228,7 @@ func (t *SentinelTracer) Dump(logger logging.Logger) {
 			"raftIndex":    e.RaftIndex,
 			"proposalID":   e.ProposalID,
 			"orderCount":   e.OrderCount,
-			"ledgerIDs":    e.LedgerIDs,
+			"ledgerNames":  e.LedgerNames,
 			"status":       status,
 			"cacheRotated": e.CacheRotated,
 			"volumes":      volSummary,

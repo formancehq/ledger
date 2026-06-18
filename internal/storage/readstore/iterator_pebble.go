@@ -63,12 +63,12 @@ type PebbleAccountIterator struct {
 // newSingleTypeAccountIterator creates a forward account iterator for one attribute type.
 // With the type-prefixed key layout [0xF1][attrType][...], each type has its own
 // contiguous key range — no need to skip transaction keys.
-func newSingleTypeAccountIterator(reader dal.PebbleReader, attrType byte, ledgerID uint32, addrPrefix string) (*PebbleAccountIterator, error) {
-	// Prefix for address extraction: [0xF1][attrType][ledgerID_BE_4B]
-	prefix := make([]byte, 2+4)
+func newSingleTypeAccountIterator(reader dal.PebbleReader, attrType byte, ledgerName string, addrPrefix string) (*PebbleAccountIterator, error) {
+	// Prefix for address extraction: [0xF1][attrType][ledgerName padded 64B]
+	prefix := make([]byte, 2+dal.LedgerNameFixedSize)
 	prefix[0] = dal.ZoneAttributes
 	prefix[1] = attrType
-	binary.BigEndian.PutUint32(prefix[2:], ledgerID)
+	copy(prefix[2:], ledgerName)
 
 	// Lower bound: [prefix][addrPrefix]
 	lowerBound := make([]byte, len(prefix)+len(addrPrefix))
@@ -94,24 +94,24 @@ func newSingleTypeAccountIterator(reader dal.PebbleReader, attrType byte, ledger
 // NewPebbleAccountIterator creates an iterator over all accounts in a ledger.
 // It merges accounts from Volume and Metadata attribute types via OrIterator.
 // The caller must close it when done.
-func NewPebbleAccountIterator(reader dal.PebbleReader, ledgerID uint32) (EntityIterator, error) {
-	return newMergedAccountIterator(reader, ledgerID, "")
+func NewPebbleAccountIterator(reader dal.PebbleReader, ledgerName string) (EntityIterator, error) {
+	return newMergedAccountIterator(reader, ledgerName, "")
 }
 
 // NewPebbleAccountPrefixIterator creates an iterator over accounts matching an
 // address prefix. Used for compileAddressPrefix.
-func NewPebbleAccountPrefixIterator(reader dal.PebbleReader, ledgerID uint32, addrPrefix string) (EntityIterator, error) {
-	return newMergedAccountIterator(reader, ledgerID, addrPrefix)
+func NewPebbleAccountPrefixIterator(reader dal.PebbleReader, ledgerName string, addrPrefix string) (EntityIterator, error) {
+	return newMergedAccountIterator(reader, ledgerName, addrPrefix)
 }
 
 // newMergedAccountIterator creates a forward account iterator that merges V and M types.
-func newMergedAccountIterator(reader dal.PebbleReader, ledgerID uint32, addrPrefix string) (EntityIterator, error) {
-	vIter, err := newSingleTypeAccountIterator(reader, dal.SubAttrVolume, ledgerID, addrPrefix)
+func newMergedAccountIterator(reader dal.PebbleReader, ledgerName string, addrPrefix string) (EntityIterator, error) {
+	vIter, err := newSingleTypeAccountIterator(reader, dal.SubAttrVolume, ledgerName, addrPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	mIter, err := newSingleTypeAccountIterator(reader, dal.SubAttrMetadata, ledgerID, addrPrefix)
+	mIter, err := newSingleTypeAccountIterator(reader, dal.SubAttrMetadata, ledgerName, addrPrefix)
 	if err != nil {
 		vIter.Close()
 
@@ -253,11 +253,11 @@ type PebbleReverseAccountIterator struct {
 }
 
 // newSingleTypeReverseAccountIterator creates a reverse account iterator for one attribute type.
-func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledgerID uint32) (*PebbleReverseAccountIterator, error) {
-	prefix := make([]byte, 2+4)
+func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledgerName string) (*PebbleReverseAccountIterator, error) {
+	prefix := make([]byte, 2+dal.LedgerNameFixedSize)
 	prefix[0] = dal.ZoneAttributes
 	prefix[1] = attrType
-	binary.BigEndian.PutUint32(prefix[2:], ledgerID)
+	copy(prefix[2:], ledgerName)
 
 	upperBound := IncrementBytes(prefix)
 
@@ -277,13 +277,13 @@ func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte,
 
 // NewPebbleReverseAccountIterator creates a reverse account iterator that merges
 // V and M attribute types, yielding unique addresses in descending order.
-func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledgerID uint32) (*ReverseOrIterator, error) {
-	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledgerID)
+func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledgerName string) (*ReverseOrIterator, error) {
+	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledgerName)
 	if err != nil {
 		return nil, err
 	}
 
-	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrMetadata, ledgerID)
+	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrMetadata, ledgerName)
 	if err != nil {
 		vIter.Close()
 
@@ -445,8 +445,8 @@ type PebbleTxIterator struct {
 }
 
 // NewPebbleTxIterator creates an iterator over all transactions in a ledger.
-func NewPebbleTxIterator(reader dal.PebbleReader, ledgerID uint32) (*PebbleTxIterator, error) {
-	prefix := txAttributeCode(ledgerID)
+func NewPebbleTxIterator(reader dal.PebbleReader, ledgerName string) (*PebbleTxIterator, error) {
+	prefix := txAttributeCode(ledgerName)
 	upperBound := IncrementBytes(prefix)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -581,8 +581,8 @@ type PebbleReverseTxIterator struct {
 }
 
 // NewPebbleReverseTxIterator creates a reverse transaction iterator.
-func NewPebbleReverseTxIterator(reader dal.PebbleReader, ledgerID uint32) (*PebbleReverseTxIterator, error) {
-	prefix := txAttributeCode(ledgerID)
+func NewPebbleReverseTxIterator(reader dal.PebbleReader, ledgerName string) (*PebbleReverseTxIterator, error) {
+	prefix := txAttributeCode(ledgerName)
 	upperBound := IncrementBytes(prefix)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -730,8 +730,8 @@ type LedgerLogIterator struct {
 }
 
 // NewLedgerLogIterator creates a forward iterator over logs in a ledger.
-func NewLedgerLogIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerID uint32) (*LedgerLogIterator, error) {
-	prefix := LedgerLogPrefix(kb, ledgerID)
+func NewLedgerLogIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerName string) (*LedgerLogIterator, error) {
+	prefix := LedgerLogPrefix(kb, ledgerName)
 
 	inner, err := NewPrefixIterator(reader, prefix, len(prefix), 8)
 	if err != nil {
@@ -760,8 +760,8 @@ type PebbleTxRangeIterator struct {
 }
 
 // NewPebbleTxRangeIterator creates a bounded transaction iterator for range queries.
-func NewPebbleTxRangeIterator(reader dal.PebbleReader, ledgerID uint32, lower, upper []byte) (*PebbleTxRangeIterator, error) {
-	prefix := txAttributeCode(ledgerID)
+func NewPebbleTxRangeIterator(reader dal.PebbleReader, ledgerName string, lower, upper []byte) (*PebbleTxRangeIterator, error) {
+	prefix := txAttributeCode(ledgerName)
 
 	lowerBound := make([]byte, len(prefix)+len(lower))
 	copy(lowerBound, prefix)
@@ -898,13 +898,13 @@ func (it *PebbleTxRangeIterator) extractTxID(key []byte) []byte {
 
 // txAttributeCode builds the Pebble key prefix for scanning transactions
 // in a ledger within the attributes zone.
-// Format: [0xF1][T][ledger\x00\x02].
-func txAttributeCode(ledgerID uint32) []byte {
-	prefix := make([]byte, 2+4+1)
+// Format: [0xF1][T][ledgerName padded 64B][0x02].
+func txAttributeCode(ledgerName string) []byte {
+	prefix := make([]byte, 2+dal.LedgerNameFixedSize+1)
 	prefix[0] = dal.ZoneAttributes
 	prefix[1] = dal.SubAttrTransaction
-	binary.BigEndian.PutUint32(prefix[2:], ledgerID)
-	prefix[6] = dal.CanonicalKeySepTransaction
+	copy(prefix[2:2+dal.LedgerNameFixedSize], ledgerName)
+	prefix[2+dal.LedgerNameFixedSize] = dal.CanonicalKeySepTransaction
 
 	return prefix
 }

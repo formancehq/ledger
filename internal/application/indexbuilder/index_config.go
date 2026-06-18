@@ -91,13 +91,9 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 }
 
 // recoverSchemaRewriteTasks rebuilds in-flight schema rewrite tasks from
-// the persisted progress entries. The persisted entry only carries
-// ledgerID, so we resolve it back to ledgerName via b.ledgerNameToID
-// (seeded by loadLedgerIndexConfig). Without the resolved name,
-// proposeSchemaRewriteIndexReady would emit IndexReadyUpdate{Ledger: ""}
-// and isSchemaRewriteIndexReady would call query.GetLedgerByName("") —
-// always NotFound — so the task would loop forever and the index would
-// stay BUILDING across restart (PR #277 review).
+// the persisted progress entries. The persisted entry already carries the
+// ledger name (the canonical key uses LedgerName padded fixed-width), so no
+// id → name resolution is needed any more.
 func (b *Builder) recoverSchemaRewriteTasks() {
 	entries, err := b.readStore.ReadAllSchemaRewriteProgress()
 	if err != nil {
@@ -106,29 +102,9 @@ func (b *Builder) recoverSchemaRewriteTasks() {
 		return
 	}
 
-	idToName := make(map[uint32]string, len(b.ledgerNameToID))
-	for name, id := range b.ledgerNameToID {
-		idToName[id] = name
-	}
-
 	for _, e := range entries {
-		ledgerName, ok := idToName[e.LedgerID]
-		if !ok {
-			// The ledger this task was attached to no longer exists
-			// (deleted while the task was persisted). Drop the entry —
-			// keeping it would leave the task stuck forever.
-			b.logger.WithFields(map[string]any{
-				"ledgerID":   e.LedgerID,
-				"targetType": e.TargetType,
-				"key":        e.Key,
-			}).Errorf("Dropping schema rewrite task for unknown ledger")
-
-			continue
-		}
-
 		b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
-			ledger:     ledgerName,
-			ledgerID:   e.LedgerID,
+			ledger:     e.LedgerName,
 			targetType: commonpb.TargetType(e.TargetType),
 			key:        e.Key,
 			toType:     commonpb.MetadataType(e.ToType),
@@ -142,16 +118,6 @@ func (b *Builder) recoverSchemaRewriteTasks() {
 // Both READY and BUILDING indexes are included so that normal processing writes
 // to new indexes immediately (covering logs after CreateIndex).
 func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
-	// Seed the name → ID lookup so logs that arrive AFTER the persisted cursor
-	// can still resolve their ledger ID. process_logs.go used to populate this
-	// map exclusively from CreateLedger payloads — but on a restart the cursor
-	// is past those, so every pre-existing ledger fell back to the map's zero
-	// value (0). Indexes were then written under ledgerID=0 while queries used
-	// the real id from LedgerInfo, silently freezing the read index (#304).
-	// recoverSchemaRewriteTasks also depends on this map to resolve persisted
-	// ledgerIDs back to names during recovery (#277).
-	b.ledgerNameToID[info.GetName()] = info.GetId()
-
 	cfg := newLedgerIndexConfig()
 
 	for _, idx := range info.GetIndexes() {
@@ -165,7 +131,7 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 			continue
 		}
 
-		b.scheduleBackfillForIndex(info.GetName(), info.GetId(), idx.GetId())
+		b.scheduleBackfillForIndex(info.GetName(), idx.GetId())
 	}
 
 	b.indexConfig[info.GetName()] = cfg
@@ -174,20 +140,20 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 // scheduleBackfillForIndex dispatches a backfill task for a freshly-created or
 // recovered BUILDING index. Unknown kinds are silently ignored — future kinds
 // (e.g. account_type) plug in their own scheduler here.
-func (b *Builder) scheduleBackfillForIndex(ledger string, ledgerID uint32, id *commonpb.IndexID) {
+func (b *Builder) scheduleBackfillForIndex(ledgerName string, id *commonpb.IndexID) {
 	switch k := id.GetKind().(type) {
 	case *commonpb.IndexID_TxBuiltin:
-		b.addBackfillTaskForTxBuiltin(ledger, ledgerID, k.TxBuiltin)
+		b.addBackfillTaskForTxBuiltin(ledgerName, k.TxBuiltin)
 	case *commonpb.IndexID_LogBuiltin:
-		b.addBackfillTaskForLogBuiltin(ledger, ledgerID, k.LogBuiltin)
+		b.addBackfillTaskForLogBuiltin(ledgerName, k.LogBuiltin)
 	case *commonpb.IndexID_AccountBuiltin:
 		// No account builtin backfills yet — placeholder for future kinds.
 	case *commonpb.IndexID_Metadata:
 		switch k.Metadata.GetTarget() {
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-			b.addBackfillTaskForAcctMetadata(ledger, ledgerID, k.Metadata.GetKey())
+			b.addBackfillTaskForAcctMetadata(ledgerName, k.Metadata.GetKey())
 		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-			b.addBackfillTaskForTxMetadata(ledger, ledgerID, k.Metadata.GetKey())
+			b.addBackfillTaskForTxMetadata(ledgerName, k.Metadata.GetKey())
 		}
 	}
 }
@@ -294,13 +260,13 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // is already cached as READY (the processor short-circuited a duplicate
 // create on an already-built index), we skip the backfill scheduling so the
 // builder does not redo work that has already completed.
-func (b *Builder) handleCreatedIndexLog(ledger string, ledgerID uint32, log *commonpb.CreatedIndexLog) {
+func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.CreatedIndexLog) {
 	id := log.GetId()
 	if id == nil {
 		return
 	}
 
-	cfg := b.getOrCreateLedgerConfig(ledger)
+	cfg := b.getOrCreateLedgerConfig(ledgerName)
 
 	if existing := cfg.byCanonical[indexes.Canonical(id)]; existing != nil &&
 		existing.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
@@ -312,7 +278,7 @@ func (b *Builder) handleCreatedIndexLog(ledger string, ledgerID uint32, log *com
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 	}
 
-	b.scheduleBackfillForIndex(ledger, ledgerID, id)
+	b.scheduleBackfillForIndex(ledgerName, id)
 }
 
 // handleDroppedIndexLog updates the index config cache when a DropIndex log is processed.

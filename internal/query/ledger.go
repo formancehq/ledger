@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 
 	"go.opentelemetry.io/otel"
@@ -61,10 +60,10 @@ func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes,
 		return nil
 	}
 
-	// Canonical prefix for this ledger's metadata: [ledgerID BE 4B]\x01
-	prefix := make([]byte, 4+1)
-	binary.BigEndian.PutUint32(prefix[0:4], info.GetId())
-	prefix[4] = 0x01
+	// Canonical prefix for this ledger's metadata: [ledgerName padded 64B]\x01
+	prefix := make([]byte, dal.LedgerNameFixedSize+1)
+	copy(prefix[:dal.LedgerNameFixedSize], info.GetName())
+	prefix[dal.LedgerNameFixedSize] = 0x01
 
 	entries, err := attrs.LedgerMetadata.ComputeAllForPrefix(reader, prefix)
 	if err != nil {

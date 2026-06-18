@@ -1,7 +1,7 @@
 package readstore
 
 import (
-	"encoding/binary"
+	"bytes"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -27,7 +27,7 @@ const (
 	PrefixInternal           byte = 0xFE
 	SubInternalProgress      byte = 0x01 // [0xFE][0x01] — last indexed log sequence
 	SubInternalAuditProgress byte = 0x02 // [0xFE][0x02] — last consumed audit sequence
-	SubInternalBackfill      byte = 0x03 // [0xFE][0x03][ledgerID_BE(4B)][kind][...] — backfill cursors
+	SubInternalBackfill      byte = 0x03 // [0xFE][0x03][ledgerName padded 64B][kind][...] — backfill cursors
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.
@@ -45,44 +45,49 @@ const (
 
 // Backfill key kind bytes identify the index type in a backfill progress key.
 const (
-	BackfillKindTxBuiltin     = byte('b') // builtin transaction field index: [ledgerID_BE(4B)]b[builtin_byte]
-	BackfillKindTxMetadata    = byte('T') // transaction metadata index: [ledgerID_BE(4B)]T[key]
-	BackfillKindAcctBuiltin   = byte('A') // builtin account field index: [ledgerID_BE(4B)]A[builtin_byte]
-	BackfillKindAcctMetadata  = byte('a') // account metadata index: [ledgerID_BE(4B)]a[key]
-	BackfillKindLogBuiltin    = byte('l') // builtin log field index: [ledgerID_BE(4B)]l[builtin_byte]
-	BackfillKindSchemaRewrite = byte('S') // schema rewrite task: [ledgerID_BE(4B)]S[targetType_byte][key]
+	BackfillKindTxBuiltin     = byte('b') // builtin transaction field index: [ledgerName padded 64B]b[builtin_byte]
+	BackfillKindTxMetadata    = byte('T') // transaction metadata index: [ledgerName padded 64B]T[key]
+	BackfillKindAcctBuiltin   = byte('A') // builtin account field index: [ledgerName padded 64B]A[builtin_byte]
+	BackfillKindAcctMetadata  = byte('a') // account metadata index: [ledgerName padded 64B]a[key]
+	BackfillKindLogBuiltin    = byte('l') // builtin log field index: [ledgerName padded 64B]l[builtin_byte]
+	BackfillKindSchemaRewrite = byte('S') // schema rewrite task: [ledgerName padded 64B]S[targetType_byte][key]
 )
 
 // ParseBackfillKey decodes a backfill key into its components.
-// The key does NOT include the PrefixBackfill byte — that is stripped by the caller.
+// The key does NOT include the PrefixBackfill bytes — that prefix is stripped by the caller.
 // Format:
 //
-//	TxBuiltin:    [ledgerID_BE_4B]b[builtin_byte]
-//	TxMetadata:   [ledgerID_BE_4B]T[key]
-//	AcctBuiltin:  [ledgerID_BE_4B]A[builtin_byte]
-//	AcctMetadata: [ledgerID_BE_4B]a[key]
-//	LogBuiltin:   [ledgerID_BE_4B]l[builtin_byte]
+//	TxBuiltin:    [ledgerName padded 64B]b[builtin_byte]
+//	TxMetadata:   [ledgerName padded 64B]T[key]
+//	AcctBuiltin:  [ledgerName padded 64B]A[builtin_byte]
+//	AcctMetadata: [ledgerName padded 64B]a[key]
+//	LogBuiltin:   [ledgerName padded 64B]l[builtin_byte]
 //
-// Returns the ledger ID, kind byte, remaining details, and ok.
-func ParseBackfillKey(key []byte) (ledgerID uint32, kind byte, details []byte, ok bool) {
-	// Need at least 4 bytes for ledgerID + 1 byte for kind.
-	if len(key) < 5 {
-		return 0, 0, nil, false
+// Returns the ledger name (trimmed of zero padding), kind byte, remaining details, and ok.
+func ParseBackfillKey(key []byte) (ledgerName string, kind byte, details []byte, ok bool) {
+	// Need at least LedgerNameFixedSize bytes for the name + 1 byte for kind.
+	if len(key) < dal.LedgerNameFixedSize+1 {
+		return "", 0, nil, false
 	}
 
-	ledgerID = binary.BigEndian.Uint32(key[:4])
+	raw := key[:dal.LedgerNameFixedSize]
 
-	return ledgerID, key[4], key[5:], true
+	end := bytes.IndexByte(raw, 0)
+	if end < 0 {
+		end = dal.LedgerNameFixedSize
+	}
+
+	return string(raw[:end]), key[dal.LedgerNameFixedSize], key[dal.LedgerNameFixedSize+1:], true
 }
 
 // MetadataIndexPrefix returns the prefix for scanning all entries of a specific
 // metadata key within a namespace. Used for ExistsCondition and schema change handling.
 //
-//	[0x01][ledgerID_BE(4B)][ns:][metadataKey\x00]
-func MetadataIndexPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns, metadataKey string) []byte {
+//	[0x01][ledgerName padded 64B][ns:][metadataKey\x00]
+func MetadataIndexPrefix(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string) []byte {
 	return kb.Reset().
 		PutByte(PrefixMetadataIndex).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutNamespace(ns).
 		PutStringNull(metadataKey).
 		Snapshot()
@@ -90,11 +95,11 @@ func MetadataIndexPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns, metadataKey st
 
 // MetadataIndexKey builds a full metadata inverted index key.
 //
-//	[0x01][ledgerID_BE(4B)][ns:][metadataKey\x00][typeTag+sortableValue][entityID]
-func MetadataIndexKey(kb *dal.KeyBuilder, ledgerID uint32, ns, metadataKey string, encodedValue []byte, entityID []byte) []byte {
+//	[0x01][ledgerName padded 64B][ns:][metadataKey\x00][typeTag+sortableValue][entityID]
+func MetadataIndexKey(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, encodedValue []byte, entityID []byte) []byte {
 	return kb.Reset().
 		PutByte(PrefixMetadataIndex).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutNamespace(ns).
 		PutStringNull(metadataKey).
 		PutBytes(encodedValue).
@@ -104,11 +109,11 @@ func MetadataIndexKey(kb *dal.KeyBuilder, ledgerID uint32, ns, metadataKey strin
 
 // AccountReverseMapKey builds a reverse map key for account metadata.
 //
-//	[0x03][ledgerID_BE(4B)][a:][account\x00][metadataKey]
-func AccountReverseMapKey(kb *dal.KeyBuilder, ledgerID uint32, account, metadataKey string) []byte {
+//	[0x03][ledgerName padded 64B][a:][account\x00][metadataKey]
+func AccountReverseMapKey(kb *dal.KeyBuilder, ledgerName string, account, metadataKey string) []byte {
 	return kb.Reset().
 		PutByte(PrefixReverseMap).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutNamespace(NamespaceAccount).
 		PutStringNull(account).
 		PutString(metadataKey).
@@ -117,11 +122,11 @@ func AccountReverseMapKey(kb *dal.KeyBuilder, ledgerID uint32, account, metadata
 
 // TransactionReverseMapKey builds a reverse map key for transaction metadata.
 //
-//	[0x03][ledgerID_BE(4B)][t:][txID(8B)][metadataKey]
-func TransactionReverseMapKey(kb *dal.KeyBuilder, ledgerID uint32, txID uint64, metadataKey string) []byte {
+//	[0x03][ledgerName padded 64B][t:][txID(8B)][metadataKey]
+func TransactionReverseMapKey(kb *dal.KeyBuilder, ledgerName string, txID uint64, metadataKey string) []byte {
 	return kb.Reset().
 		PutByte(PrefixReverseMap).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutNamespace(NamespaceTransaction).
 		PutUint64(txID).
 		PutString(metadataKey).
@@ -130,11 +135,11 @@ func TransactionReverseMapKey(kb *dal.KeyBuilder, ledgerID uint32, txID uint64, 
 
 // AccountTxKey builds an account-to-transaction mapping key.
 //
-//	[prefix][ledgerID_BE(4B)][accountAddress\x00][txID(8B)]
-func AccountTxKey(kb *dal.KeyBuilder, prefix byte, ledgerID uint32, account string, txID uint64) []byte {
+//	[prefix][ledgerName padded 64B][accountAddress\x00][txID(8B)]
+func AccountTxKey(kb *dal.KeyBuilder, prefix byte, ledgerName string, account string, txID uint64) []byte {
 	return kb.Reset().
 		PutByte(prefix).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutStringNull(account).
 		PutUint64(txID).
 		Consume()
@@ -142,19 +147,19 @@ func AccountTxKey(kb *dal.KeyBuilder, prefix byte, ledgerID uint32, account stri
 
 // AccountTxPrefix returns the prefix for scanning all transactions for an account.
 //
-//	[prefix][ledgerID_BE(4B)][accountAddress\x00]
-func AccountTxPrefix(kb *dal.KeyBuilder, prefix byte, ledgerID uint32, account string) []byte {
+//	[prefix][ledgerName padded 64B][accountAddress\x00]
+func AccountTxPrefix(kb *dal.KeyBuilder, prefix byte, ledgerName string, account string) []byte {
 	return kb.Reset().
 		PutByte(prefix).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutStringNull(account).
 		Snapshot()
 }
 
 // EntityExistsKey builds a full entity-ordered existence index key.
 //
-//	[0x02][ledgerID_BE(4B)][ns:][metadataKey\x00][nullFlag][entityID]
-func EntityExistsKey(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string, isNull bool, entityID []byte) []byte {
+//	[0x02][ledgerName padded 64B][ns:][metadataKey\x00][nullFlag][entityID]
+func EntityExistsKey(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, isNull bool, entityID []byte) []byte {
 	nullFlag := EntityExistsNonNull
 	if isNull {
 		nullFlag = EntityExistsNull
@@ -162,7 +167,7 @@ func EntityExistsKey(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string, is
 
 	return kb.Reset().
 		PutByte(PrefixEntityExists).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutNamespace(ns).
 		PutStringNull(metaKey).
 		PutByte(nullFlag).
@@ -174,11 +179,11 @@ func EntityExistsKey(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string, is
 // entries for a given metadata key — i.e. every entry recorded under that
 // key, regardless of whether the value was null.
 //
-//	[0x02][ledgerID_BE(4B)][ns:][metadataKey\x00]
-func EntityExistsKeyPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string) []byte {
+//	[0x02][ledgerName padded 64B][ns:][metadataKey\x00]
+func EntityExistsKeyPrefix(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string) []byte {
 	return kb.Reset().
 		PutByte(PrefixEntityExists).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutNamespace(ns).
 		PutStringNull(metaKey).
 		Snapshot()
@@ -187,11 +192,11 @@ func EntityExistsKeyPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey stri
 // EntityExistsNonNullPrefix returns the prefix for scanning non-null entities
 // that have a given metadata key.
 //
-//	[0x02][ledgerID_BE(4B)][ns:][metadataKey\x00][0x00]
-func EntityExistsNonNullPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string) []byte {
+//	[0x02][ledgerName padded 64B][ns:][metadataKey\x00][0x00]
+func EntityExistsNonNullPrefix(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string) []byte {
 	return kb.Reset().
 		PutByte(PrefixEntityExists).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutNamespace(ns).
 		PutStringNull(metaKey).
 		PutByte(EntityExistsNonNull).
@@ -201,11 +206,11 @@ func EntityExistsNonNullPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey 
 // EntityExistsNullPrefix returns the prefix for scanning null-valued entities
 // that have a given metadata key.
 //
-//	[0x02][ledgerID_BE(4B)][ns:][metadataKey\x00][0x01]
-func EntityExistsNullPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string) []byte {
+//	[0x02][ledgerName padded 64B][ns:][metadataKey\x00][0x01]
+func EntityExistsNullPrefix(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string) []byte {
 	return kb.Reset().
 		PutByte(PrefixEntityExists).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutNamespace(ns).
 		PutStringNull(metaKey).
 		PutByte(EntityExistsNull).
@@ -214,11 +219,11 @@ func EntityExistsNullPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey str
 
 // TransactionReferenceKey builds a full key in the transaction reference index.
 //
-//	[0x07][ledgerID_BE(4B)][reference\x00][txID_BE(8B)]
-func TransactionReferenceKey(kb *dal.KeyBuilder, ledgerID uint32, reference string, txID uint64) []byte {
+//	[0x07][ledgerName padded 64B][reference\x00][txID_BE(8B)]
+func TransactionReferenceKey(kb *dal.KeyBuilder, ledgerName string, reference string, txID uint64) []byte {
 	return kb.Reset().
 		PutByte(PrefixTransactionReference).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutStringNull(reference).
 		PutUint64(txID).
 		Consume()
@@ -226,22 +231,22 @@ func TransactionReferenceKey(kb *dal.KeyBuilder, ledgerID uint32, reference stri
 
 // TransactionReferencePrefix returns the prefix for scanning all txIDs with a given reference.
 //
-//	[0x07][ledgerID_BE(4B)][reference\x00]
-func TransactionReferencePrefix(kb *dal.KeyBuilder, ledgerID uint32, reference string) []byte {
+//	[0x07][ledgerName padded 64B][reference\x00]
+func TransactionReferencePrefix(kb *dal.KeyBuilder, ledgerName string, reference string) []byte {
 	return kb.Reset().
 		PutByte(PrefixTransactionReference).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutStringNull(reference).
 		Snapshot()
 }
 
 // TransactionTimestampKey builds a full key in the transaction timestamp index.
 //
-//	[0x08][ledgerID_BE(4B)][timestamp_BE(8B)][txID_BE(8B)]
-func TransactionTimestampKey(kb *dal.KeyBuilder, ledgerID uint32, timestamp, txID uint64) []byte {
+//	[0x08][ledgerName padded 64B][timestamp_BE(8B)][txID_BE(8B)]
+func TransactionTimestampKey(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) []byte {
 	return kb.Reset().
 		PutByte(PrefixTransactionTimestamp).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutUint64(timestamp).
 		PutUint64(txID).
 		Consume()
@@ -249,21 +254,21 @@ func TransactionTimestampKey(kb *dal.KeyBuilder, ledgerID uint32, timestamp, txI
 
 // TransactionTimestampRangePrefix returns the ledger prefix for range scans in the timestamp index.
 //
-//	[0x08][ledgerID_BE(4B)]
-func TransactionTimestampRangePrefix(kb *dal.KeyBuilder, ledgerID uint32) []byte {
+//	[0x08][ledgerName padded 64B]
+func TransactionTimestampRangePrefix(kb *dal.KeyBuilder, ledgerName string) []byte {
 	return kb.Reset().
 		PutByte(PrefixTransactionTimestamp).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		Snapshot()
 }
 
 // TransactionInsertedAtKey builds a full key in the transaction inserted_at index.
 //
-//	[0x0B][ledgerID_BE(4B)][timestamp_BE(8B)][txID_BE(8B)]
-func TransactionInsertedAtKey(kb *dal.KeyBuilder, ledgerID uint32, timestamp, txID uint64) []byte {
+//	[0x0B][ledgerName padded 64B][timestamp_BE(8B)][txID_BE(8B)]
+func TransactionInsertedAtKey(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) []byte {
 	return kb.Reset().
 		PutByte(PrefixTransactionInsertedAt).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutUint64(timestamp).
 		PutUint64(txID).
 		Consume()
@@ -271,42 +276,42 @@ func TransactionInsertedAtKey(kb *dal.KeyBuilder, ledgerID uint32, timestamp, tx
 
 // TransactionInsertedAtRangePrefix returns the ledger prefix for range scans in the inserted_at index.
 //
-//	[0x0B][ledgerID_BE(4B)]
-func TransactionInsertedAtRangePrefix(kb *dal.KeyBuilder, ledgerID uint32) []byte {
+//	[0x0B][ledgerName padded 64B]
+func TransactionInsertedAtRangePrefix(kb *dal.KeyBuilder, ledgerName string) []byte {
 	return kb.Reset().
 		PutByte(PrefixTransactionInsertedAt).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		Snapshot()
 }
 
 // LedgerLogKey builds a full key in the ledger logs index.
 //
-//	[0x09][ledgerID_BE(4B)][ledgerLogID_BE(8B)]
-func LedgerLogKey(kb *dal.KeyBuilder, ledgerID uint32, logID uint64) []byte {
+//	[0x09][ledgerName padded 64B][ledgerLogID_BE(8B)]
+func LedgerLogKey(kb *dal.KeyBuilder, ledgerName string, logID uint64) []byte {
 	return kb.Reset().
 		PutByte(PrefixLedgerLogs).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutUint64(logID).
 		Consume()
 }
 
 // LedgerLogPrefix returns the ledger prefix for range scans in the ledger logs index.
 //
-//	[0x09][ledgerID_BE(4B)]
-func LedgerLogPrefix(kb *dal.KeyBuilder, ledgerID uint32) []byte {
+//	[0x09][ledgerName padded 64B]
+func LedgerLogPrefix(kb *dal.KeyBuilder, ledgerName string) []byte {
 	return kb.Reset().
 		PutByte(PrefixLedgerLogs).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		Snapshot()
 }
 
 // LedgerLogDateKey builds a full key in the ledger log date index.
 //
-//	[0x0A][ledgerID_BE(4B)][timestamp_BE(8B)][logID_BE(8B)]
-func LedgerLogDateKey(kb *dal.KeyBuilder, ledgerID uint32, timestamp, logID uint64) []byte {
+//	[0x0A][ledgerName padded 64B][timestamp_BE(8B)][logID_BE(8B)]
+func LedgerLogDateKey(kb *dal.KeyBuilder, ledgerName string, timestamp, logID uint64) []byte {
 	return kb.Reset().
 		PutByte(PrefixLedgerLogDate).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutUint64(timestamp).
 		PutUint64(logID).
 		Consume()
@@ -314,22 +319,22 @@ func LedgerLogDateKey(kb *dal.KeyBuilder, ledgerID uint32, timestamp, logID uint
 
 // LedgerLogDateRangePrefix returns the ledger prefix for range scans in the log date index.
 //
-//	[0x0A][ledgerID_BE(4B)]
-func LedgerLogDateRangePrefix(kb *dal.KeyBuilder, ledgerID uint32) []byte {
+//	[0x0A][ledgerName padded 64B]
+func LedgerLogDateRangePrefix(kb *dal.KeyBuilder, ledgerName string) []byte {
 	return kb.Reset().
 		PutByte(PrefixLedgerLogDate).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		Snapshot()
 }
 
 // ReverseMapPrefix returns the prefix for scanning reverse map entries
 // within a namespace.
 //
-//	[0x03][ledgerID_BE(4B)][ns:]
-func ReverseMapPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns string) []byte {
+//	[0x03][ledgerName padded 64B][ns:]
+func ReverseMapPrefix(kb *dal.KeyBuilder, ledgerName string, ns string) []byte {
 	return kb.Reset().
 		PutByte(PrefixReverseMap).
-		PutLedgerID(ledgerID).
+		PutLedgerNameFixed(ledgerName).
 		PutNamespace(ns).
 		Snapshot()
 }

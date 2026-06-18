@@ -17,16 +17,16 @@ func TestReadMirrorSourceHead(t *testing.T) {
 	s := newTestStore(t)
 
 	// Initially returns 0
-	head, err := query.ReadMirrorSourceHead(s, 1)
+	head, err := query.ReadMirrorSourceHead(s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), head)
 
 	// Write source head
 	batch := s.OpenWriteSession()
-	require.NoError(t, state.SetMirrorSourceHead(batch, 1, 42))
+	require.NoError(t, state.SetMirrorSourceHead(batch, "my-ledger", 42))
 	require.NoError(t, batch.Commit())
 
-	head, err = query.ReadMirrorSourceHead(s, 1)
+	head, err = query.ReadMirrorSourceHead(s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), head)
 }
@@ -38,11 +38,11 @@ func TestReadMirrorSyncProgress_Syncing(t *testing.T) {
 
 	// Write cursor=5, sourceHead=100
 	batch := s.OpenWriteSession()
-	require.NoError(t, state.SetMirrorCursor(batch, 1, 5))
-	require.NoError(t, state.SetMirrorSourceHead(batch, 1, 100))
+	require.NoError(t, state.SetMirrorCursor(batch, "my-ledger", 5))
+	require.NoError(t, state.SetMirrorSourceHead(batch, "my-ledger", 100))
 	require.NoError(t, batch.Commit())
 
-	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, 1, "my-ledger")
+	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
 	require.Equal(t, uint64(5), progress.GetCursor())
@@ -58,11 +58,11 @@ func TestReadMirrorSyncProgress_Following(t *testing.T) {
 
 	// Write cursor=100, sourceHead=100
 	batch := s.OpenWriteSession()
-	require.NoError(t, state.SetMirrorCursor(batch, 1, 100))
-	require.NoError(t, state.SetMirrorSourceHead(batch, 1, 100))
+	require.NoError(t, state.SetMirrorCursor(batch, "my-ledger", 100))
+	require.NoError(t, state.SetMirrorSourceHead(batch, "my-ledger", 100))
 	require.NoError(t, batch.Commit())
 
-	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, 1, "my-ledger")
+	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING, progress.GetState())
 	require.Equal(t, uint64(100), progress.GetCursor())
@@ -77,14 +77,14 @@ func TestReadMirrorSyncProgress_WithError(t *testing.T) {
 
 	// Write cursor and error
 	batch := s.OpenWriteSession()
-	require.NoError(t, state.SetMirrorCursor(batch, 1, 10))
-	require.NoError(t, state.SetMirrorSourceHead(batch, 1, 50))
-	require.NoError(t, state.SetMirrorStatus(batch, 1, &commonpb.MirrorSyncError{
+	require.NoError(t, state.SetMirrorCursor(batch, "my-ledger", 10))
+	require.NoError(t, state.SetMirrorSourceHead(batch, "my-ledger", 50))
+	require.NoError(t, state.SetMirrorStatus(batch, "my-ledger", &commonpb.MirrorSyncError{
 		Message: "connection refused",
 	}))
 	require.NoError(t, batch.Commit())
 
-	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, 1, "my-ledger")
+	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
 	require.Equal(t, uint64(40), progress.GetRemainingLogs())
@@ -98,7 +98,7 @@ func TestReadMirrorSyncProgress_NoData(t *testing.T) {
 	s := newTestStore(t)
 
 	// No data written — should return SYNCING with zeros
-	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, 1, "my-ledger")
+	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
 	require.Equal(t, uint64(0), progress.GetCursor())

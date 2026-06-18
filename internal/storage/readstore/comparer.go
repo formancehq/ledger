@@ -5,22 +5,21 @@ import (
 	"encoding/binary"
 
 	"github.com/cockroachdb/pebble/v2"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // readStoreComparerName is persisted in the Pebble database. Changing it
 // requires rebuilding the read index from the Raft log.
-const readStoreComparerName = "formance.readstore.v1"
-
-// ledgerIDSize is the fixed size of a uint32 big-endian ledger ID in keys.
-const ledgerIDSize = 4
+const readStoreComparerName = "formance.readstore.v2"
 
 // ledgerScopedPrefixLen is the split point for ledger-scoped keys:
-// 1 byte prefix + 4 bytes uint32 ledger ID.
-const ledgerScopedPrefixLen = 1 + ledgerIDSize
+// 1 byte prefix + LedgerNameFixedSize bytes ledger name (zero-padded).
+const ledgerScopedPrefixLen = 1 + dal.LedgerNameFixedSize
 
 // ReadStoreComparer is a Pebble comparer that splits keys at the
-// [prefix_byte][ledger_id_BE_4B] boundary so that bloom filters are built on
-// the ledger-scoped prefix rather than the full key.
+// [prefix_byte][ledger_name padded 64B] boundary so that bloom filters are
+// built on the ledger-scoped prefix rather than the full key.
 //
 // This enables SeekPrefixGE to check bloom filters during range scans,
 // skipping entire SSTables that do not contain keys for the target ledger.
@@ -90,27 +89,25 @@ var ReadStoreComparer = &pebble.Comparer{
 
 	// Split extracts the ledger-scoped prefix from a read store key.
 	//
-	// For keys following [prefix_byte][ledger_id_BE_4B][...], Split returns
-	// ledgerScopedPrefixLen (= 5): 1 byte prefix + 4 bytes uint32 ledger ID.
+	// For keys following [prefix_byte][ledger_name padded 64B][...], Split
+	// returns ledgerScopedPrefixLen: 1 byte prefix + 64 bytes ledger name.
 	//
-	// For singleton keys (PrefixInternal) that have no ledger ID, Split
+	// For singleton keys (PrefixInternal) that have no ledger name, Split
 	// returns len(key) — the entire key is the prefix (same as the default
 	// comparer).
 	Split: readStoreSplit,
 
 	// ImmediateSuccessor returns the smallest prefix larger than the given prefix.
 	//
-	// For ledger-scoped prefixes (5 bytes: [prefix_byte][ledger_id_BE_4B]),
-	// increment the uint32 ledger ID. All keys with the original ledger ID
-	// sort between [prefix][id] and [prefix][id+1].
+	// For ledger-scoped prefixes (1+64 bytes), increment the last padding byte;
+	// validation rejects non-printable ASCII so 0xFF cannot appear, ensuring the
+	// increment never carries past the fixed-width name block.
 	//
 	// For fallback prefixes (singleton keys), append 0x00.
 	ImmediateSuccessor: func(dst, prefix []byte) []byte {
 		dst = append(dst[:0], prefix...)
 		if len(dst) == ledgerScopedPrefixLen {
-			// Ledger-scoped prefix: increment the uint32 ledger ID.
-			id := binary.BigEndian.Uint32(dst[1:])
-			binary.BigEndian.PutUint32(dst[1:], id+1)
+			dst[len(dst)-1]++
 
 			return dst
 		}
@@ -133,8 +130,7 @@ func readStoreSplit(key []byte) int {
 		return len(key)
 	}
 
-	// Ledger-scoped keys: [prefix_byte][ledger_id_BE_4B][...].
-	// The prefix is the first 5 bytes (1 + 4).
+	// Ledger-scoped keys: [prefix_byte][ledger_name padded 64B][...].
 	if len(key) >= ledgerScopedPrefixLen {
 		return ledgerScopedPrefixLen
 	}

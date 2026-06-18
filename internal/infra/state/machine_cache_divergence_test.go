@@ -619,15 +619,15 @@ func buildProposalWithLeaderPreloads(
 				ledgerInfo, _, _ = leader.Registry.Ledgers.GetKey(ledgerKey)
 			}
 
-			ledgerID := uint32(1)
+			ledgerName := ledger
 			if ledgerInfo != nil {
-				ledgerID = ledgerInfo.GetId()
+				ledgerName = ledgerInfo.GetName()
 			}
 
 			for _, p := range ct.GetPostings() {
 				for _, account := range []string{p.GetSource(), p.GetDestination()} {
 					volKey := domain.VolumeKey{
-						AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 						Asset:      p.GetAsset(),
 					}
 					volCanonical := volKey.Bytes()

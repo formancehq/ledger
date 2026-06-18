@@ -19,12 +19,12 @@ import (
 
 type numscriptPostingProducer struct {
 	cache      *numscript.NumscriptCache
-	ledgerID   uint32
+	ledgerName string
 	schema     *commonpb.MetadataSchema
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
+func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
 	if script == nil || script.GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
@@ -42,10 +42,10 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 	// Create the store adapter
 	// When Force is true, the adapter returns unlimited balances to bypass balance checks
 	storeAdapter := &numscriptStoreAdapter{
-		store:    s,
-		ledgerID: ledgerID,
-		force:    order.GetForce(),
-		schema:   p.schema,
+		store:      s,
+		ledgerName: ledgerName,
+		force:      order.GetForce(),
+		schema:     p.schema,
 	}
 
 	// Execute the script (experimental features are declared directly in scripts)
@@ -87,7 +87,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		}
 
 		// Update source output (money going out)
-		sourceKey := domain.NewVolumeKey(ledgerID, posting.Source, posting.Asset)
+		sourceKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset)
 
 		sourceReader, err := s.GetVolume(sourceKey)
 		if err != nil {
@@ -127,7 +127,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
-		destKey := domain.NewVolumeKey(ledgerID, posting.Destination, posting.Asset)
+		destKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset)
 
 		destReader, err := s.GetVolume(destKey)
 		if err != nil {
@@ -223,10 +223,10 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 
 // numscriptStoreAdapter adapts the Store interface to the numscript.Store interface.
 type numscriptStoreAdapter struct {
-	store    InMemoryStore
-	ledgerID uint32
-	force    bool // When true, return unlimited balances to bypass balance checks
-	schema   *commonpb.MetadataSchema
+	store      InMemoryStore
+	ledgerName string
+	force      bool // When true, return unlimited balances to bypass balance checks
+	schema     *commonpb.MetadataSchema
 }
 
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
@@ -247,7 +247,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 				continue
 			}
 
-			volumeKey := domain.NewVolumeKey(s.ledgerID, account, asset)
+			volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset)
 
 			vol, err := s.store.GetVolume(volumeKey)
 			if err != nil {
@@ -286,8 +286,8 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 		for _, key := range keys {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
-					LedgerID: s.ledgerID,
-					Account:  account,
+					LedgerName: s.ledgerName,
+					Account:    account,
 				},
 				Key: key,
 			}

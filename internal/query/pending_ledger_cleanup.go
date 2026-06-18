@@ -1,6 +1,7 @@
 package query
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 
@@ -8,8 +9,8 @@ import (
 )
 
 // ReadPendingLedgerCleanups reads all pending ledger cleanup entries from Pebble.
-// Returns a map of ledger ID -> delete log sequence number.
-func ReadPendingLedgerCleanups(reader dal.PebbleReader) (map[uint32]uint64, error) {
+// Returns a map of ledger name -> delete log sequence number.
+func ReadPendingLedgerCleanups(reader dal.PebbleReader) (map[string]uint64, error) {
 	iter, err := dal.NewBoundedIter(reader, []byte{dal.ZonePerLedger, dal.SubPLPendingCleanup}, []byte{dal.ZonePerLedger, dal.SubPLPendingCleanup + 1})
 	if err != nil {
 		return nil, fmt.Errorf("creating pending ledger cleanup iterator: %w", err)
@@ -17,27 +18,34 @@ func ReadPendingLedgerCleanups(reader dal.PebbleReader) (map[uint32]uint64, erro
 
 	defer func() { _ = iter.Close() }()
 
-	result := make(map[uint32]uint64)
+	result := make(map[string]uint64)
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		// Key format: [zone][sub][ledgerID_BE_4B]
+		// Key format: [zone][sub][ledgerName padded 64B].
 		raw := iter.Key()[2:]
-		if len(raw) < 4 {
+		if len(raw) < dal.LedgerNameFixedSize {
 			continue
 		}
 
-		ledgerID := binary.BigEndian.Uint32(raw[:4])
+		nameBytes := raw[:dal.LedgerNameFixedSize]
+
+		end := bytes.IndexByte(nameBytes, 0)
+		if end < 0 {
+			end = dal.LedgerNameFixedSize
+		}
+
+		ledgerName := string(nameBytes[:end])
 
 		value, valErr := iter.ValueAndErr()
 		if valErr != nil {
-			return nil, fmt.Errorf("reading pending cleanup value for ledger %d: %w", ledgerID, valErr)
+			return nil, fmt.Errorf("reading pending cleanup value for ledger %q: %w", ledgerName, valErr)
 		}
 
 		if len(value) < 8 {
-			return nil, fmt.Errorf("invalid pending cleanup value for ledger %d: expected 8 bytes, got %d", ledgerID, len(value))
+			return nil, fmt.Errorf("invalid pending cleanup value for ledger %q: expected 8 bytes, got %d", ledgerName, len(value))
 		}
 
-		result[ledgerID] = binary.BigEndian.Uint64(value[:8])
+		result[ledgerName] = binary.BigEndian.Uint64(value[:8])
 	}
 
 	if err := iter.Error(); err != nil {

@@ -82,14 +82,14 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 		batch := s.OpenWriteSession()
 
 		// Index 1: world sends 100 to bank
-		worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"}, Asset: "USD"}
+		worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "world"}, Asset: "USD"}
 		worldCanonicalKey := worldKey.Bytes()
 		_, err := attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
 			Output: commonpb.NewUint256FromUint64(100),
 		})
 		require.NoError(t, err)
 
-		bankKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"}, Asset: "USD"}
+		bankKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "bank"}, Asset: "USD"}
 		bankCanonicalKey := bankKey.Bytes()
 		_, err = attrs.Volume.Set(batch, bankCanonicalKey, &raftcmdpb.VolumePair{
 			Input:  commonpb.NewUint256FromUint64(100),
@@ -97,7 +97,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 		})
 		require.NoError(t, err)
 
-		userKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "user"}, Asset: "USD"}
+		userKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "user"}, Asset: "USD"}
 		userCanonicalKey := userKey.Bytes()
 
 		_, err = attrs.Volume.Set(batch, userCanonicalKey, &raftcmdpb.VolumePair{
@@ -267,9 +267,9 @@ func TestVolume(t *testing.T) {
 	const ledgerName = "test-ledger"
 	registerLedger(t, s, ledgerName)
 
-	bankUSD := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"}, Asset: "USD"}
-	userUSD := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "user"}, Asset: "USD"}
-	bankEUR := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"}, Asset: "EUR"}
+	bankUSD := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "bank"}, Asset: "USD"}
+	userUSD := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "user"}, Asset: "USD"}
+	bankEUR := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "bank"}, Asset: "EUR"}
 
 	bankUSDKey := bankUSD.Bytes()
 	userUSDKey := userUSD.Bytes()
@@ -340,7 +340,7 @@ func TestVolume(t *testing.T) {
 	require.Equal(t, big.NewInt(0), v.GetOutput().ToBigInt())
 
 	// Non-existing ledger should have 0 volume
-	nonExistingKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 99, Account: "bank"}, Asset: "USD"}
+	nonExistingKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "other-ledger", Account: "bank"}, Asset: "USD"}
 	nonExistingCanonicalKey := nonExistingKey.Bytes()
 	v = getVolume(nonExistingCanonicalKey)
 	require.Equal(t, big.NewInt(0), v.GetInput().ToBigInt())

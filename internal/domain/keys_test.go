@@ -4,7 +4,18 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// padName returns the ledger name zero-padded to LedgerNameFixedSize. Mirrors
+// the encoding used by AccountKey/TransactionKey/etc. .Bytes() implementations.
+func padName(name string) []byte {
+	out := make([]byte, dal.LedgerNameFixedSize)
+	copy(out, name)
+
+	return out
+}
 
 func newVolumeKey(ak AccountKey, asset string) VolumeKey {
 	base, prec := ParseAssetPrecision(asset)
@@ -43,7 +54,7 @@ func TestVolumeKey_RoundTrip(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			vk := newVolumeKey(AccountKey{LedgerID: 1, Account: "users:alice"}, tt.asset)
+			vk := newVolumeKey(AccountKey{LedgerName: "test", Account: "users:alice"}, tt.asset)
 
 			data := vk.Bytes()
 
@@ -60,11 +71,11 @@ func TestVolumeKey_RoundTrip(t *testing.T) {
 func TestVolumeKey_ByteFormat(t *testing.T) {
 	t.Parallel()
 
-	vk := newVolumeKey(AccountKey{LedgerID: 1, Account: "a"}, "USD/4")
+	vk := newVolumeKey(AccountKey{LedgerName: "test", Account: "a"}, "USD/4")
 
 	data := vk.Bytes()
-	// Expected: [ledgerID BE 4B] "a" \x00 "USD" \x04
-	expected := []byte{0x00, 0x00, 0x00, 0x01, 'a', 0x00, 'U', 'S', 'D', 0x04}
+	// Expected: [ledgerName padded 64B] "a" \x00 "USD" \x04
+	expected := append(padName("test"), 'a', 0x00, 'U', 'S', 'D', 0x04)
 	require.Equal(t, expected, data)
 }
 
@@ -73,12 +84,12 @@ func TestVolumeKey_StructLiteralFallback(t *testing.T) {
 
 	// VolumeKey constructed via struct literal (legacy pattern) should still work.
 	vk := VolumeKey{
-		AccountKey: AccountKey{LedgerID: 1, Account: "a"},
+		AccountKey: AccountKey{LedgerName: "test", Account: "a"},
 		Asset:      "EUR/2",
 	}
 
 	data := vk.Bytes()
-	expected := []byte{0x00, 0x00, 0x00, 0x01, 'a', 0x00, 'E', 'U', 'R', 0x02}
+	expected := append(padName("test"), 'a', 0x00, 'E', 'U', 'R', 0x02)
 	require.Equal(t, expected, data)
 }
 
@@ -86,7 +97,7 @@ func TestMetadataKey_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	mk := MetadataKey{
-		AccountKey: AccountKey{LedgerID: 42, Account: "users:alice"},
+		AccountKey: AccountKey{LedgerName: "test", Account: "users:alice"},
 		Key:        "role",
 	}
 
@@ -101,20 +112,20 @@ func TestMetadataKey_ByteFormat(t *testing.T) {
 	t.Parallel()
 
 	mk := MetadataKey{
-		AccountKey: AccountKey{LedgerID: 1, Account: "a"},
+		AccountKey: AccountKey{LedgerName: "test", Account: "a"},
 		Key:        "k",
 	}
 
 	data := mk.Bytes()
-	// Expected: [ledgerID BE 4B] "a" \x01 "k"
-	expected := []byte{0x00, 0x00, 0x00, 0x01, 'a', 0x01, 'k'}
+	// Expected: [ledgerName padded 64B] "a" \x01 "k"
+	expected := append(padName("test"), 'a', 0x01, 'k')
 	require.Equal(t, expected, data)
 }
 
 func TestTransactionKey_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	tk := TransactionKey{LedgerID: 5, ID: 12345}
+	tk := TransactionKey{LedgerName: "test", ID: 12345}
 
 	data := tk.Bytes()
 
@@ -126,22 +137,21 @@ func TestTransactionKey_RoundTrip(t *testing.T) {
 func TestTransactionKey_ByteFormat(t *testing.T) {
 	t.Parallel()
 
-	tk := TransactionKey{LedgerID: 1, ID: 1}
+	tk := TransactionKey{LedgerName: "test", ID: 1}
 
 	data := tk.Bytes()
-	// Expected: [ledgerID BE 4B] \x02 [txID BE 8B]
-	expected := []byte{
-		0x00, 0x00, 0x00, 0x01, // ledgerID = 1
+	// Expected: [ledgerName padded 64B] \x02 [txID BE 8B]
+	expected := append(padName("test"),
 		0x02,                                           // separator
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // txID = 1
-	}
+	)
 	require.Equal(t, expected, data)
 }
 
 func TestTransactionReferenceKey_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	trk := TransactionReferenceKey{LedgerID: 10, Reference: "order-abc-123"}
+	trk := TransactionReferenceKey{LedgerName: "test", Reference: "order-abc-123"}
 
 	data := trk.Bytes()
 
@@ -153,18 +163,18 @@ func TestTransactionReferenceKey_RoundTrip(t *testing.T) {
 func TestTransactionReferenceKey_ByteFormat(t *testing.T) {
 	t.Parallel()
 
-	trk := TransactionReferenceKey{LedgerID: 1, Reference: "ref"}
+	trk := TransactionReferenceKey{LedgerName: "test", Reference: "ref"}
 
 	data := trk.Bytes()
-	// Expected: [ledgerID BE 4B][reference]
-	expected := []byte{0x00, 0x00, 0x00, 0x01, 'r', 'e', 'f'}
+	// Expected: [ledgerName padded 64B][reference]
+	expected := append(padName("test"), 'r', 'e', 'f')
 	require.Equal(t, expected, data)
 }
 
 func TestLedgerMetadataKey_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	lmk := LedgerMetadataKey{LedgerID: 7, Key: "description"}
+	lmk := LedgerMetadataKey{LedgerName: "test", Key: "description"}
 
 	data := lmk.Bytes()
 
@@ -176,43 +186,43 @@ func TestLedgerMetadataKey_RoundTrip(t *testing.T) {
 func TestLedgerMetadataKey_ByteFormat(t *testing.T) {
 	t.Parallel()
 
-	lmk := LedgerMetadataKey{LedgerID: 1, Key: "k"}
+	lmk := LedgerMetadataKey{LedgerName: "test", Key: "k"}
 
 	data := lmk.Bytes()
-	// Expected: [ledgerID BE 4B] \x01 "k"
-	expected := []byte{0x00, 0x00, 0x00, 0x01, 0x01, 'k'}
+	// Expected: [ledgerName padded 64B] \x01 "k"
+	expected := append(padName("test"), 0x01, 'k')
 	require.Equal(t, expected, data)
 }
 
 func TestPreparedQueryKey_ByteFormat(t *testing.T) {
 	t.Parallel()
 
-	k := PreparedQueryKey{LedgerID: 2, Name: "q1"}
+	k := PreparedQueryKey{LedgerName: "test", Name: "q1"}
 
 	data := k.Bytes()
-	// Expected: [ledgerID BE 4B][name]
-	expected := []byte{0x00, 0x00, 0x00, 0x02, 'q', '1'}
+	// Expected: [ledgerName padded 64B][name]
+	expected := append(padName("test"), 'q', '1')
 	require.Equal(t, expected, data)
 }
 
 func TestNumscriptVersionKey_ByteFormat(t *testing.T) {
 	t.Parallel()
 
-	k := NumscriptVersionKey{LedgerID: 3, Name: "pay"}
+	k := NumscriptVersionKey{LedgerName: "test", Name: "pay"}
 
 	data := k.Bytes()
-	// Expected: [ledgerID BE 4B][name]
-	expected := []byte{0x00, 0x00, 0x00, 0x03, 'p', 'a', 'y'}
+	// Expected: [ledgerName padded 64B][name]
+	expected := append(padName("test"), 'p', 'a', 'y')
 	require.Equal(t, expected, data)
 }
 
 func TestNumscriptEntryKey_ByteFormat(t *testing.T) {
 	t.Parallel()
 
-	k := NumscriptEntryKey{LedgerID: 4, Name: "pay", Version: "v1"}
+	k := NumscriptEntryKey{LedgerName: "test", Name: "pay", Version: "v1"}
 
 	data := k.Bytes()
-	// Expected: [ledgerID BE 4B][name]\x00[version]
-	expected := []byte{0x00, 0x00, 0x00, 0x04, 'p', 'a', 'y', 0x00, 'v', '1'}
+	// Expected: [ledgerName padded 64B][name]\x00[version]
+	expected := append(padName("test"), 'p', 'a', 'y', 0x00, 'v', '1')
 	require.Equal(t, expected, data)
 }

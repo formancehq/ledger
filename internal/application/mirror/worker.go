@@ -48,7 +48,6 @@ type prefetchResult struct {
 // them via Raft. It is started/stopped by the Manager based on leadership.
 type Worker struct {
 	ledgerName     string
-	ledgerID       uint32
 	batchSize      int
 	source         v2.Source
 	store          *dal.Store
@@ -82,7 +81,6 @@ type Worker struct {
 // NewWorker creates a new mirror Worker for the given ledger.
 func NewWorker(
 	ledgerName string,
-	ledgerID uint32,
 	batchSize int,
 	source v2.Source,
 	store *dal.Store,
@@ -125,7 +123,6 @@ func NewWorker(
 
 	return &Worker{
 		ledgerName: ledgerName,
-		ledgerID:   ledgerID,
 		batchSize:  batchSize,
 		source:     source,
 		store:      store,
@@ -257,7 +254,7 @@ func (w *Worker) processBatch() (bool, error) {
 
 	// Load cursor from Pebble only once; subsequent batches use the in-memory value.
 	if !w.cursorLoaded {
-		cursor, err := query.ReadMirrorCursor(w.store, w.ledgerID)
+		cursor, err := query.ReadMirrorCursor(w.store, w.ledgerName)
 		if err != nil {
 			return false, err
 		}
@@ -537,8 +534,8 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 
 		for _, posting := range postings {
 			for _, volKey := range []domain.VolumeKey{
-				{AccountKey: domain.AccountKey{LedgerID: w.ledgerID, Account: posting.GetSource()}, Asset: posting.GetAsset()},
-				{AccountKey: domain.AccountKey{LedgerID: w.ledgerID, Account: posting.GetDestination()}, Asset: posting.GetAsset()},
+				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetSource()}, Asset: posting.GetAsset()},
+				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetDestination()}, Asset: posting.GetAsset()},
 			} {
 				needs.Volumes[volKey] = struct{}{}
 			}
@@ -549,7 +546,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 			for account, mm := range ct.GetAccountMetadata() {
 				for key := range mm.GetValues() {
 					needs.Metadata[domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerID: w.ledgerID, Account: account},
+						AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: account},
 						Key:        key,
 					}] = struct{}{}
 				}
@@ -560,7 +557,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 			if target, ok := sm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 				for key := range sm.GetMetadata() {
 					needs.Metadata[domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerID: w.ledgerID, Account: target.Account.GetAddr()},
+						AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
 						Key:        key,
 					}] = struct{}{}
 				}
@@ -570,7 +567,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 			if target, ok := dm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 				needs.Metadata[domain.MetadataKey{
-					AccountKey: domain.AccountKey{LedgerID: w.ledgerID, Account: target.Account.GetAddr()},
+					AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
 					Key:        dm.GetKey(),
 				}] = struct{}{}
 			}

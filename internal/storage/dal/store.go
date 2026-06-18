@@ -240,6 +240,14 @@ const (
 	CanonicalKeySepTransaction byte = 0x02
 )
 
+// LedgerNameFixedSize is the fixed-width (zero-padded) block reserved for the
+// ledger name in every ledger-scoped canonical key. Fixed width lets the
+// Pebble Comparer split keys at a constant offset (bloom prefix, range
+// bounds, ImmediateSuccessor) without parsing a length prefix on every
+// comparison. Callers MUST validate the upstream name length against this
+// limit to avoid silent truncation collisions.
+const LedgerNameFixedSize = 64
+
 // MaxUint64Bytes is the big-endian representation of math.MaxUint64,
 // used as an upper bound sentinel for sequence-keyed iterations.
 var MaxUint64Bytes = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}

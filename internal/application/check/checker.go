@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"strconv"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
@@ -154,10 +153,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	// State tracked during log replay
 	var (
-		knownLedgers = make(map[string]uint32) // ledger name → ledger ID
+		knownLedgers = make(map[string]struct{}) // set of ledger names
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
-		ledgerKnownTxIDs    = make(map[uint32]*bitset.Bitset)
-		ledgerRevertedTxIDs = make(map[uint32]*bitset.Bitset)
+		ledgerKnownTxIDs    = make(map[string]*bitset.Bitset)
+		ledgerRevertedTxIDs = make(map[string]*bitset.Bitset)
 		// Per-ledger account types for ephemeral purge simulation
 		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
@@ -188,7 +187,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		for _, info := range ledgers {
 			if info.GetDeletedAt() == nil {
-				knownLedgers[info.GetName()] = info.GetId()
+				knownLedgers[info.GetName()] = struct{}{}
 
 				if types := info.GetAccountTypes(); len(types) > 0 {
 					rawLedgerTypes[info.GetName()] = types
@@ -212,10 +211,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				continue // skip unparsable keys
 			}
 
-			trackTxID(ledgerKnownTxIDs, tk.LedgerID, tk.ID)
+			trackTxID(ledgerKnownTxIDs, tk.LedgerName, tk.ID)
 
 			if entry.Value.GetRevertedByTransaction() != 0 {
-				trackTxID(ledgerRevertedTxIDs, tk.LedgerID, tk.ID)
+				trackTxID(ledgerRevertedTxIDs, tk.LedgerName, tk.ID)
 			}
 		}
 
@@ -288,7 +287,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			switch payload := log.GetPayload().GetType().(type) {
 			case *commonpb.LogPayload_CreateLedger:
 				if payload.CreateLedger != nil {
-					knownLedgers[payload.CreateLedger.GetName()] = payload.CreateLedger.GetId()
+					knownLedgers[payload.CreateLedger.GetName()] = struct{}{}
 				}
 			case *commonpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
@@ -298,8 +297,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				if payload.Apply != nil {
 					ledgerName := payload.Apply.GetLedgerName()
 
-					ledgerID, ok := knownLedgers[ledgerName]
-					if !ok {
+					if _, ok := knownLedgers[ledgerName]; !ok {
 						callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER,
 							fmt.Sprintf("log %d references unknown ledger %q", seq, ledgerName),
 							seq, ledgerName, "", ""))
@@ -308,11 +306,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						if err := domainreplay.ReplayLedgerLog(ledgerName, ledgerID, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
-						checkReversionInvariants(ledgerName, ledgerID, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
+						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
 					}
 				}
 			}
@@ -400,19 +398,19 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	return nil
 }
 
-// excludedAccountsSet maps ledger ID to a set of account addresses that
+// excludedAccountsSet maps ledger name to a set of account addresses that
 // legitimately diverge between the replay store and the live Pebble store.
 // Sources: AuditSuccess.TransientAccounts (never persisted live) and
 // AuditSuccess.PurgedAccounts (ephemeral, zeroed and purged). Mirrors the
 // indexbuilder's audit_sync exclusion set.
-type excludedAccountsSet map[uint32]map[string]struct{}
+type excludedAccountsSet map[string]map[string]struct{}
 
-func (e excludedAccountsSet) contains(ledgerID uint32, account string) bool {
+func (e excludedAccountsSet) contains(ledgerName string, account string) bool {
 	if e == nil {
 		return false
 	}
 
-	accs, ok := e[ledgerID]
+	accs, ok := e[ledgerName]
 	if !ok {
 		return false
 	}
@@ -430,7 +428,7 @@ func (e excludedAccountsSet) contains(ledgerID uint32, account string) bool {
 func (c *Checker) collectExcludedAccounts(
 	ctx context.Context,
 	reader dal.PebbleReader,
-	knownLedgers map[string]uint32,
+	knownLedgers map[string]struct{},
 	callback func(*servicepb.CheckStoreEvent),
 ) (excludedAccountsSet, error) {
 	cursorIter, err := query.ReadAuditEntries(ctx, reader, nil)
@@ -463,8 +461,7 @@ func (c *Checker) collectExcludedAccounts(
 
 		addAccounts := func(perLedger map[string]*auditpb.AccountList) {
 			for ledgerName, accountList := range perLedger {
-				ledgerID, ok := knownLedgers[ledgerName]
-				if !ok {
+				if _, ok := knownLedgers[ledgerName]; !ok {
 					// Audit references a ledger we don't know about: surface
 					// it instead of silently skipping. A divergence here means
 					// the audit log and the ledger registry disagree, which
@@ -476,10 +473,10 @@ func (c *Checker) collectExcludedAccounts(
 					continue
 				}
 
-				set, exists := result[ledgerID]
+				set, exists := result[ledgerName]
 				if !exists {
 					set = make(map[string]struct{})
-					result[ledgerID] = set
+					result[ledgerName] = set
 				}
 
 				for _, account := range accountList.GetAccounts() {
@@ -663,7 +660,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 		// and replay is expected and benign. Until #347 this used an
 		// input == output heuristic that also masked symmetric mutations
 		// (e.g. expected (100,100) vs actual (999,999) on a normal account).
-		if excluded.contains(vk.LedgerID, vk.Account) {
+		if excluded.contains(vk.LedgerName, vk.Account) {
 			continue
 		}
 
@@ -671,7 +668,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("input mismatch for %s/%s: expected %s, got %s",
 					vk.Account, vk.Asset, expectedInput.String(), actualInput.String()),
-				0, strconv.FormatUint(uint64(vk.LedgerID), 10), vk.Account, vk.Asset))
+				0, vk.LedgerName, vk.Account, vk.Asset))
 
 			errorCount++
 		}
@@ -680,7 +677,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("output mismatch for %s/%s: expected %s, got %s",
 					vk.Account, vk.Asset, expectedOutput.String(), actualOutput.String()),
-				0, strconv.FormatUint(uint64(vk.LedgerID), 10), vk.Account, vk.Asset))
+				0, vk.LedgerName, vk.Account, vk.Asset))
 
 			errorCount++
 		}
@@ -833,7 +830,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 			continue
 		}
 
-		if excluded.contains(mk.LedgerID, mk.Account) {
+		if excluded.contains(mk.LedgerName, mk.Account) {
 			continue
 		}
 
@@ -860,12 +857,12 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 					fmt.Sprintf("metadata missing for %s/%s: expected %q",
 						mk.Account, mk.Key, expectedValue),
-					0, strconv.FormatUint(uint64(mk.LedgerID), 10), mk.Account, ""))
+					0, mk.LedgerName, mk.Account, ""))
 			} else {
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 					fmt.Sprintf("unexpected metadata for %s/%s: got %q",
 						mk.Account, mk.Key, actualValue),
-					0, strconv.FormatUint(uint64(mk.LedgerID), 10), mk.Account, ""))
+					0, mk.LedgerName, mk.Account, ""))
 			}
 
 			errorCount++
@@ -873,7 +870,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 				fmt.Sprintf("metadata mismatch for %s/%s: expected %q, got %q",
 					mk.Account, mk.Key, expectedValue, actualValue),
-				0, strconv.FormatUint(uint64(mk.LedgerID), 10), mk.Account, ""))
+				0, mk.LedgerName, mk.Account, ""))
 
 			errorCount++
 		}
@@ -1040,7 +1037,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			if actualState != nil {
 				callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
 					fmt.Sprintf("unexpected transaction in live store for tx %d (no matching log or baseline)", tk.ID),
-					strconv.FormatUint(uint64(tk.LedgerID), 10), tk.ID))
+					tk.LedgerName, tk.ID))
 
 				errorCount++
 			}
@@ -1051,7 +1048,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		if actualState == nil {
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
 				fmt.Sprintf("transaction state missing for tx %d", tk.ID),
-				strconv.FormatUint(uint64(tk.LedgerID), 10), tk.ID))
+				tk.LedgerName, tk.ID))
 
 			errorCount++
 
@@ -1068,7 +1065,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
 				fmt.Sprintf("transaction state mismatch for tx %d: expected %s, got %s",
 					tk.ID, expected.String(), actualState.String()),
-				strconv.FormatUint(uint64(tk.LedgerID), 10), tk.ID))
+				tk.LedgerName, tk.ID))
 
 			errorCount++
 		}
@@ -1355,18 +1352,17 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 // checkReversionInvariants tracks transaction IDs and validates reversion invariants
 // during log replay.
 func checkReversionInvariants(
-	ledger string,
-	ledgerID uint32,
+	ledgerName string,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
-	knownTxIDs map[uint32]*bitset.Bitset,
-	revertedTxIDs map[uint32]*bitset.Bitset,
+	knownTxIDs map[string]*bitset.Bitset,
+	revertedTxIDs map[string]*bitset.Bitset,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	switch p := payload.GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		if p.CreatedTransaction != nil && p.CreatedTransaction.GetTransaction() != nil {
-			trackTxID(knownTxIDs, ledgerID, p.CreatedTransaction.GetTransaction().GetId())
+			trackTxID(knownTxIDs, ledgerName, p.CreatedTransaction.GetTransaction().GetId())
 		}
 
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
@@ -1377,27 +1373,27 @@ func checkReversionInvariants(
 		revertedID := p.RevertedTransaction.GetRevertedTransactionId()
 
 		// Check that the target transaction exists
-		bs := knownTxIDs[ledgerID]
+		bs := knownTxIDs[ledgerName]
 		if bs == nil || !bs.Test(revertedID) {
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
-				fmt.Sprintf("log %d reverts non-existent transaction %d in ledger %q", seq, revertedID, ledger),
-				ledger, revertedID))
+				fmt.Sprintf("log %d reverts non-existent transaction %d in ledger %q", seq, revertedID, ledgerName),
+				ledgerName, revertedID))
 		}
 
 		// Check that the transaction is not already reverted
-		rbs := revertedTxIDs[ledgerID]
+		rbs := revertedTxIDs[ledgerName]
 		if rbs != nil && rbs.Test(revertedID) {
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
-				fmt.Sprintf("log %d double-reverts transaction %d in ledger %q", seq, revertedID, ledger),
-				ledger, revertedID))
+				fmt.Sprintf("log %d double-reverts transaction %d in ledger %q", seq, revertedID, ledgerName),
+				ledgerName, revertedID))
 		}
 
 		// Mark the transaction as reverted
-		trackTxID(revertedTxIDs, ledgerID, revertedID)
+		trackTxID(revertedTxIDs, ledgerName, revertedID)
 
 		// Track the revert transaction's own ID
 		if p.RevertedTransaction.GetRevertTransaction() != nil {
-			trackTxID(knownTxIDs, ledgerID, p.RevertedTransaction.GetRevertTransaction().GetId())
+			trackTxID(knownTxIDs, ledgerName, p.RevertedTransaction.GetRevertTransaction().GetId())
 		}
 	}
 }
@@ -1410,11 +1406,11 @@ func normalizeTransactionState(s *commonpb.TransactionState) {
 	}
 }
 
-func trackTxID(m map[uint32]*bitset.Bitset, ledgerID uint32, txID uint64) {
-	bs := m[ledgerID]
+func trackTxID(m map[string]*bitset.Bitset, ledgerName string, txID uint64) {
+	bs := m[ledgerName]
 	if bs == nil {
 		bs = &bitset.Bitset{}
-		m[ledgerID] = bs
+		m[ledgerName] = bs
 	}
 
 	bs.Set(txID)

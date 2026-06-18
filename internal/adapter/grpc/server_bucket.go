@@ -349,7 +349,7 @@ func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Conte
 		return "", err
 	}
 
-	log, err := query.FindTransactionCreationLog(ctx, reader, impl.attrs.Transaction, ledgerInfo.GetId(), txID)
+	log, err := query.FindTransactionCreationLog(ctx, reader, impl.attrs.Transaction, ledgerInfo.GetName(), txID)
 	if errors.Is(err, domain.ErrNotFound) {
 		// No creation log for this transaction in this store (e.g. its log was
 		// archived/purged). The transaction is still readable; it just has no
@@ -746,14 +746,14 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 		fileSize = uint64(info.Size())
 	}
 
-	// Read per-index backfill cursors keyed by (ledgerID, IndexID canonical).
+	// Read per-index backfill cursors keyed by (ledger name, IndexID canonical).
 	backfillEntries, err := impl.readStore.ListBackfillProgress()
 	if err != nil {
 		return nil, fmt.Errorf("reading backfill progress: %w", err)
 	}
 
 	type cursorKey struct {
-		ledgerID  uint32
+		ledger    string
 		canonical string
 	}
 
@@ -765,7 +765,7 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 			continue
 		}
 
-		cursors[cursorKey{ledgerID: e.LedgerID, canonical: indexes.Canonical(id)}] = e.Cursor
+		cursors[cursorKey{ledger: e.LedgerName, canonical: indexes.Canonical(id)}] = e.Cursor
 	}
 
 	// Enumerate ledgers and join their LedgerInfo.indexes with the backfill cursors.
@@ -799,7 +799,7 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 			entries = append(entries, &servicepb.IndexEntry{
 				Ledger: info.GetName(),
 				Index:  idx,
-				Cursor: cursors[cursorKey{ledgerID: info.GetId(), canonical: indexes.Canonical(idx.GetId())}],
+				Cursor: cursors[cursorKey{ledger: info.GetName(), canonical: indexes.Canonical(idx.GetId())}],
 			})
 		}
 	}

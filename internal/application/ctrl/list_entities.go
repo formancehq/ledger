@@ -15,7 +15,7 @@ import (
 // T is the entity identifier type ([]byte for both txIDs and account addresses).
 type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	target       commonpb.QueryTarget
-	ledgerID     uint32
+	ledgerName   string
 	pageSize     uint32
 	after        T
 	filter       *commonpb.QueryFilter
@@ -68,7 +68,7 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 	iter, err := query.Compile(
 		indexReader, kb, params.filter,
 		params.target,
-		params.ledgerID, nil, params.schema, params.info, params.profile,
+		params.ledgerName, nil, params.schema, params.info, params.profile,
 		params.pebbleReader,
 	)
 	if err != nil {
@@ -140,28 +140,28 @@ func (r *reverseCloser) Close() { r.close() }
 func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T]) (iter *reverseCloser, label, kind, bucket string, err error) {
 	switch params.target {
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		it, itErr := readstore.NewPebbleReverseTxIterator(params.pebbleReader, params.ledgerID)
+		it, itErr := readstore.NewPebbleReverseTxIterator(params.pebbleReader, params.ledgerName)
 		if itErr != nil {
 			return nil, "", "", "", fmt.Errorf("creating reverse tx iterator: %w", itErr)
 		}
 
 		return &reverseCloser{it, it.Close},
-			fmt.Sprintf("PebbleReverseTxIterator(%d)", params.ledgerID),
+			fmt.Sprintf("PebbleReverseTxIterator(%s)", params.ledgerName),
 			"PebbleReverseTx", "pebble:txupdate", nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		it, itErr := readstore.NewPebbleReverseAccountIterator(params.pebbleReader, params.ledgerID)
+		it, itErr := readstore.NewPebbleReverseAccountIterator(params.pebbleReader, params.ledgerName)
 		if itErr != nil {
 			return nil, "", "", "", fmt.Errorf("creating reverse account iterator: %w", itErr)
 		}
 
 		return &reverseCloser{it, it.Close},
-			fmt.Sprintf("PebbleReverseAccountIterator(%d)", params.ledgerID),
+			fmt.Sprintf("PebbleReverseAccountIterator(%s)", params.ledgerName),
 			"PebbleReverseAccount", "pebble:attributes", nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		kb := dal.NewKeyBuilder()
-		prefix := readstore.LedgerLogPrefix(kb, params.ledgerID)
+		prefix := readstore.LedgerLogPrefix(kb, params.ledgerName)
 		entityOffset := len(prefix)
 
 		it, itErr := readstore.NewReversePrefixIterator(indexReader, prefix, entityOffset, 8)
@@ -170,7 +170,7 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 		}
 
 		return &reverseCloser{it, it.Close},
-			fmt.Sprintf("ReverseLedgerLogIterator(%d)", params.ledgerID),
+			fmt.Sprintf("ReverseLedgerLogIterator(%s)", params.ledgerName),
 			"ReverseLedgerLog", "pebble:llog", nil
 
 	default:
@@ -185,7 +185,7 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 	iter, err := query.Compile(
 		indexReader, kb, params.filter,
 		params.target,
-		params.ledgerID, nil, params.schema, params.info, params.profile,
+		params.ledgerName, nil, params.schema, params.info, params.profile,
 		params.pebbleReader,
 	)
 	if err != nil {

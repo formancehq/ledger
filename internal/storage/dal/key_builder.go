@@ -75,13 +75,24 @@ func (kb *KeyBuilder) PutUint32(v uint32) *KeyBuilder {
 }
 
 // PutLedgerName appends a ledger name followed by a null terminator.
+// Variable-length encoding; used only by paths that do not require a
+// fixed-width split (e.g. SaveLedger in the LedgerInfo Pebble row).
 func (kb *KeyBuilder) PutLedgerName(name string) *KeyBuilder {
 	return kb.PutStringNull(name)
 }
 
-// PutLedgerID appends a uint32 ledger ID in big-endian order.
-func (kb *KeyBuilder) PutLedgerID(id uint32) *KeyBuilder {
-	return kb.PutUint32(id)
+// PutLedgerNameFixed appends the ledger name as a zero-padded fixed-width
+// block of LedgerNameFixedSize bytes. Required for ledger-scoped Pebble
+// keys that the Comparer must split at a constant offset (bloom filter
+// prefix, ImmediateSuccessor, range delete bounds). Callers MUST have
+// validated the name length upstream — copy() truncates silently here.
+func (kb *KeyBuilder) PutLedgerNameFixed(name string) *KeyBuilder {
+	var pad [LedgerNameFixedSize]byte
+
+	copy(pad[:], name)
+	kb.buf = append(kb.buf, pad[:]...)
+
+	return kb
 }
 
 // PutNamespace appends a namespace prefix (e.g., "a:" or "t:").

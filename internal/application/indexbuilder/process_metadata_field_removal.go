@@ -33,7 +33,7 @@ import (
 func (b *Builder) handleRemovedMetadataFieldType(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
-	ledgerID uint32,
+	ledgerName string,
 	log *commonpb.RemovedMetadataFieldTypeLog,
 ) error {
 	dropped := log.GetDroppedIndex()
@@ -59,16 +59,16 @@ func (b *Builder) handleRemovedMetadataFieldType(
 	}
 
 	// Forward inverted index.
-	if err := deleteReadStoreRange(batch, readstore.MetadataIndexPrefix(kb, ledgerID, ns, key)); err != nil {
+	if err := deleteReadStoreRange(batch, readstore.MetadataIndexPrefix(kb, ledgerName, ns, key)); err != nil {
 		return err
 	}
 
 	// Entity-existence index (covers both null and non-null variants).
-	if err := deleteReadStoreRange(batch, readstore.EntityExistsKeyPrefix(kb, ledgerID, ns, key)); err != nil {
+	if err := deleteReadStoreRange(batch, readstore.EntityExistsKeyPrefix(kb, ledgerName, ns, key)); err != nil {
 		return err
 	}
 
-	if err := b.purgeReverseMapForKey(kb, ledgerID, ns, key); err != nil {
+	if err := b.purgeReverseMapForKey(kb, ledgerName, ns, key); err != nil {
 		return err
 	}
 
@@ -85,8 +85,8 @@ func (b *Builder) handleRemovedMetadataFieldType(
 // map cannot be range-deleted directly because the metadata key sits as a
 // suffix; the scan cost is bounded by the number of entities that had this
 // metadata key.
-func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerID uint32, ns, key string) error {
-	rmapPrefix := readstore.ReverseMapPrefix(kb, ledgerID, ns)
+func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerName string, ns, key string) error {
+	rmapPrefix := readstore.ReverseMapPrefix(kb, ledgerName, ns)
 	upper := readstore.IncrementBytes(rmapPrefix)
 
 	// Use a Pebble snapshot so the scan sees committed data only; the

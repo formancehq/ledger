@@ -12,9 +12,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func makeEntry(ledgerID uint32, account, asset string, input, output uint64) attributes.ComputedEntry[*raftcmdpb.VolumePair] {
+func makeEntry(ledgerName string, account, asset string, input, output uint64) attributes.ComputedEntry[*raftcmdpb.VolumePair] {
 	vk := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
+		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Asset:      asset,
 	}
 
@@ -32,8 +32,8 @@ func TestVolumeAggregator_NoRescaling(t *testing.T) {
 
 	va := newVolumeAggregator(false)
 
-	require.NoError(t, va.accumulate(makeEntry(1, "a", "USD/2", 100, 50)))
-	require.NoError(t, va.accumulate(makeEntry(1, "a", "USD/4", 10000, 5000)))
+	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/2", 100, 50)))
+	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/4", 10000, 5000)))
 
 	result := va.result()
 	require.Len(t, result.GetVolumes(), 2)
@@ -47,9 +47,9 @@ func TestVolumeAggregator_UseMaxPrecision(t *testing.T) {
 	va := newVolumeAggregator(true)
 
 	// USD/2: 100 in, 50 out → rescaled to /4: 10000 in, 5000 out
-	require.NoError(t, va.accumulate(makeEntry(1, "a", "USD/2", 100, 50)))
+	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/2", 100, 50)))
 	// USD/4: 10000 in, 5000 out → stays as is
-	require.NoError(t, va.accumulate(makeEntry(1, "b", "USD/4", 10000, 5000)))
+	require.NoError(t, va.accumulate(makeEntry("test", "b", "USD/4", 10000, 5000)))
 
 	result := va.result()
 	require.Len(t, result.GetVolumes(), 1)
@@ -68,8 +68,8 @@ func TestVolumeAggregator_UseMaxPrecision_SamePrecision(t *testing.T) {
 
 	va := newVolumeAggregator(true)
 
-	require.NoError(t, va.accumulate(makeEntry(1, "a", "EUR/2", 200, 100)))
-	require.NoError(t, va.accumulate(makeEntry(1, "b", "EUR/2", 300, 150)))
+	require.NoError(t, va.accumulate(makeEntry("test", "a", "EUR/2", 200, 100)))
+	require.NoError(t, va.accumulate(makeEntry("test", "b", "EUR/2", 300, 150)))
 
 	result := va.result()
 	require.Len(t, result.GetVolumes(), 1)
@@ -85,9 +85,9 @@ func TestVolumeAggregator_UseMaxPrecision_MixedAssets(t *testing.T) {
 
 	va := newVolumeAggregator(true)
 
-	require.NoError(t, va.accumulate(makeEntry(1, "a", "USD/2", 100, 0)))
-	require.NoError(t, va.accumulate(makeEntry(1, "a", "USD/4", 10000, 0)))
-	require.NoError(t, va.accumulate(makeEntry(1, "a", "EUR/2", 200, 0)))
+	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/2", 100, 0)))
+	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/4", 10000, 0)))
+	require.NoError(t, va.accumulate(makeEntry("test", "a", "EUR/2", 200, 0)))
 
 	result := va.result()
 	require.Len(t, result.GetVolumes(), 2)
@@ -101,8 +101,8 @@ func TestVolumeAggregator_UseMaxPrecision_NoPrecision(t *testing.T) {
 
 	va := newVolumeAggregator(true)
 
-	require.NoError(t, va.accumulate(makeEntry(1, "a", "GOLD", 500, 100)))
-	require.NoError(t, va.accumulate(makeEntry(1, "b", "GOLD", 300, 200)))
+	require.NoError(t, va.accumulate(makeEntry("test", "a", "GOLD", 500, 100)))
+	require.NoError(t, va.accumulate(makeEntry("test", "b", "GOLD", 300, 200)))
 
 	result := va.result()
 	require.Len(t, result.GetVolumes(), 1)
@@ -120,9 +120,9 @@ func TestGroupedAggregator_BasicPrefixes(t *testing.T) {
 		GroupByPrefixes: []string{"users:", "merchants:"},
 	})
 
-	require.NoError(t, ga.accumulate(makeEntry(1, "users:alice", "USD/2", 100, 50)))
-	require.NoError(t, ga.accumulate(makeEntry(1, "users:bob", "USD/2", 200, 100)))
-	require.NoError(t, ga.accumulate(makeEntry(1, "merchants:shop1", "USD/2", 500, 250)))
+	require.NoError(t, ga.accumulate(makeEntry("test", "users:alice", "USD/2", 100, 50)))
+	require.NoError(t, ga.accumulate(makeEntry("test", "users:bob", "USD/2", 200, 100)))
+	require.NoError(t, ga.accumulate(makeEntry("test", "merchants:shop1", "USD/2", 500, 250)))
 
 	result := ga.result()
 	require.Empty(t, result.GetVolumes(), "flat volumes should be empty for grouped result")
@@ -151,8 +151,8 @@ func TestGroupedAggregator_UnmatchedAccountSkipped(t *testing.T) {
 		GroupByPrefixes: []string{"users:"},
 	})
 
-	require.NoError(t, ga.accumulate(makeEntry(1, "users:alice", "USD/2", 100, 50)))
-	require.NoError(t, ga.accumulate(makeEntry(1, "world", "USD/2", 9999, 9999))) // no match
+	require.NoError(t, ga.accumulate(makeEntry("test", "users:alice", "USD/2", 100, 50)))
+	require.NoError(t, ga.accumulate(makeEntry("test", "world", "USD/2", 9999, 9999))) // no match
 
 	result := ga.result()
 	require.Len(t, result.GetGroups(), 1)
@@ -170,8 +170,8 @@ func TestGroupedAggregator_WithMaxPrecision(t *testing.T) {
 		GroupByPrefixes: []string{"users:"},
 	})
 
-	require.NoError(t, ga.accumulate(makeEntry(1, "users:alice", "USD/2", 100, 50)))
-	require.NoError(t, ga.accumulate(makeEntry(1, "users:bob", "USD/4", 10000, 5000)))
+	require.NoError(t, ga.accumulate(makeEntry("test", "users:alice", "USD/2", 100, 50)))
+	require.NoError(t, ga.accumulate(makeEntry("test", "users:bob", "USD/4", 10000, 5000)))
 
 	result := ga.result()
 	require.Len(t, result.GetGroups(), 1)
@@ -190,7 +190,7 @@ func TestGroupedAggregator_FirstPrefixWins(t *testing.T) {
 		GroupByPrefixes: []string{"users:", "users:v"},
 	})
 
-	require.NoError(t, ga.accumulate(makeEntry(1, "users:vip1", "USD/2", 100, 50)))
+	require.NoError(t, ga.accumulate(makeEntry("test", "users:vip1", "USD/2", 100, 50)))
 
 	result := ga.result()
 	// "users:vip1" matches "users:" first.
@@ -206,7 +206,7 @@ func TestNewAccumulator_FlatByDefault(t *testing.T) {
 	t.Parallel()
 
 	acc := newAccumulator(AggregateOptions{})
-	require.NoError(t, acc.accumulate(makeEntry(1, "a", "USD/2", 100, 50)))
+	require.NoError(t, acc.accumulate(makeEntry("test", "a", "USD/2", 100, 50)))
 
 	result := acc.result()
 	require.Len(t, result.GetVolumes(), 1)
@@ -217,7 +217,7 @@ func TestNewAccumulator_GroupedWhenPrefixes(t *testing.T) {
 	t.Parallel()
 
 	acc := newAccumulator(AggregateOptions{GroupByPrefixes: []string{"a:"}})
-	require.NoError(t, acc.accumulate(makeEntry(1, "a:1", "USD/2", 100, 50)))
+	require.NoError(t, acc.accumulate(makeEntry("test", "a:1", "USD/2", 100, 50)))
 
 	result := acc.result()
 	require.Empty(t, result.GetVolumes())
