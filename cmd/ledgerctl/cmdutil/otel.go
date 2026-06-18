@@ -54,6 +54,14 @@ const otelShutdownTimeout = 5 * time.Second
 func SetupTracing(ctx context.Context, serviceVersion string) func(context.Context) {
 	noop := func(context.Context) {}
 
+	// Shell completion (cobra's hidden __complete* commands) runs on every TAB
+	// press and may itself issue RPCs (e.g. --ledger name completion). Keep it
+	// fast and side-effect free: never initialise an exporter or emit spans for
+	// a completion request.
+	if isCompletionRequest() {
+		return noop
+	}
+
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("OTEL_SDK_DISABLED")), "true") {
 		return noop
 	}
@@ -151,6 +159,22 @@ func newSpanExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
 		return otlptracehttp.New(ctx)
 	default:
 		return nil, fmt.Errorf("unsupported OTLP protocol %q (use \"grpc\" or \"http/protobuf\")", protocol)
+	}
+}
+
+// isCompletionRequest reports whether this process was invoked by cobra's shell
+// completion machinery (the hidden __complete / __completeNoDesc commands the
+// shell calls on TAB), rather than by a user running a real command.
+func isCompletionRequest() bool {
+	if len(os.Args) < 2 {
+		return false
+	}
+
+	switch os.Args[1] {
+	case cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
+		return true
+	default:
+		return false
 	}
 }
 
