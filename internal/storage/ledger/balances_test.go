@@ -403,7 +403,7 @@ func TestBalancesAggregatesPITWithMetadataHistoryDisabled(t *testing.T) {
 		).
 		WithTimestamp(now).
 		WithInsertedAt(now)
-	require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx))
+	require.NoError(t, store.CommitTransaction(ctx, &tx, nil))
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
 		"merchant:m1:held": {
@@ -438,7 +438,7 @@ func TestBalancesAggregatesPITWithMetadataHistoryDisabled(t *testing.T) {
 	})
 
 	t.Run("with pit and partial address filter", func(t *testing.T) {
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
 			PIT: pointer.For(now.Add(time.Minute)),
 			Builder: query.And(
 				query.Match("address", "merchant:"),
