@@ -570,6 +570,59 @@ func TestProcessAddMetadata_TransactionTargetMissing(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrTransactionTargetMissing)
 }
 
+func TestProcessDeleteMetadata_Transaction_NotFound(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
+	refKey := domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "invoice:42"}
+	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 7}
+	existingState := &commonpb.TransactionState{
+		CreatedByLog: 3,
+		Metadata:     map[string]*commonpb.MetadataValue{"status": commonpb.NewStringValue("paid")},
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetTransactionReference(refKey).Return((&commonpb.TransactionReferenceValue{TransactionId: 7}).AsReader(), nil)
+	mockStore.EXPECT().GetTransactionState(txKey).Return(existingState.AsReader(), nil)
+	// No PutTransactionState / PutBoundaries: deleting a missing key is rejected.
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+					DeleteMetadata: &commonpb.DeleteMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Transaction{
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Reference{Reference: "invoice:42"},
+								},
+							},
+						},
+						Key: "missing",
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	var metaNotFound *domain.ErrMetadataNotFound
+	require.ErrorAs(t, err, &metaNotFound)
+	require.Equal(t, "missing", metaNotFound.Key)
+}
+
 func TestProcessDeleteMetadata_TransactionByReference(t *testing.T) {
 	t.Parallel()
 

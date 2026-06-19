@@ -2,6 +2,7 @@ package processing
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -247,14 +248,18 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 
 		state := stateReader.Mutate()
 
-		// Capture old value and remove the metadata key from the transaction state
-		if state.GetMetadata() != nil {
-			if val, ok := state.GetMetadata()[order.GetKey()]; ok {
-				previousValue = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_TRANSACTION, order.GetKey(), val)
-				delete(state.GetMetadata(), order.GetKey())
+		// Capture old value and remove the metadata key from the transaction
+		// state. A missing key is rejected with METADATA_NOT_FOUND.
+		val, ok := state.GetMetadata()[order.GetKey()]
+		if !ok {
+			return nil, &domain.ErrMetadataNotFound{
+				Target: strconv.FormatUint(txID, 10),
+				Key:    order.GetKey(),
 			}
 		}
 
+		previousValue = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_TRANSACTION, order.GetKey(), val)
+		delete(state.GetMetadata(), order.GetKey())
 		s.PutTransactionState(txKey, state)
 	}
 
