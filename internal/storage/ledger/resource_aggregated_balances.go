@@ -62,16 +62,27 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 		}
 
 		if query.UseFilter("metadata") {
-			subQuery := h.store.newScopedSelect().
-				DistinctOn("accounts_address").
-				ModelTableExpr(h.store.GetPrefixedRelationName("accounts_metadata")).
-				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-				Where("accounts_metadata.accounts_address = moves.accounts_address").
-				Where("date <= ?", query.PIT)
+			if h.store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") {
+				subQuery := h.store.newScopedSelect().
+					DistinctOn("accounts_address").
+					ModelTableExpr(h.store.GetPrefixedRelationName("accounts_metadata")).
+					ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
+					Where("accounts_metadata.accounts_address = moves.accounts_address").
+					Where("date <= ?", query.PIT)
 
-			ret = ret.
-				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
-				Column("metadata")
+				ret = ret.
+					Join(`left join lateral (?) accounts_metadata on true`, subQuery).
+					Column("metadata")
+			} else {
+				subQuery := h.store.newScopedSelect().
+					TableExpr(h.store.GetPrefixedRelationName("accounts")).
+					ColumnExpr("metadata").
+					Where("accounts.address = moves.accounts_address")
+
+				ret = ret.
+					Join(`left join lateral (?) accounts on true`, subQuery).
+					Column("metadata")
+			}
 		}
 
 		return ret, nil
