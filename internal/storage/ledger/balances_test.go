@@ -19,6 +19,7 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 func TestBalancesGet(t *testing.T) {
@@ -393,5 +394,74 @@ func TestBalancesAggregates(t *testing.T) {
 				},
 			},
 		}, *ret)
+	})
+}
+
+// Regression test for https://github.com/formancehq/ledger/issues/1416:
+// /aggregate/balances with PIT + metadata filter used to silently return an
+// empty result when ACCOUNT_METADATA_HISTORY was DISABLED because the query
+// joined the unpopulated accounts_metadata history table. When the feature is
+// off we must fall back to the current accounts.metadata column.
+func TestBalancesAggregatesPITWithMetadataHistoryDisabled(t *testing.T) {
+	t.Parallel()
+
+	store := newLedgerStore(t, func(cfg *ledger.Configuration) {
+		cfg.Features = features.DefaultFeatures.With(features.FeatureAccountMetadataHistory, "DISABLED")
+	})
+	now := time.Now()
+	ctx := logging.TestingContext()
+
+	amount := big.NewInt(350)
+
+	tx := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "merchant:m1:held", "USD/2", amount),
+		).
+		WithTimestamp(now).
+		WithInsertedAt(now)
+	require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx))
+
+	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
+		"merchant:m1:held": {
+			"trust": "true",
+		},
+	}, time.Time{}))
+
+	expected := ledger.AggregatedVolumes{
+		Aggregated: ledger.VolumesByAssets{
+			"USD/2": ledger.Volumes{
+				Input:  amount,
+				Output: new(big.Int),
+			},
+		},
+	}
+
+	t.Run("without pit", func(t *testing.T) {
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+			Builder: query.Match("metadata[trust]", "true"),
+		})
+		require.NoError(t, err)
+		RequireEqual(t, expected, *ret)
+	})
+
+	t.Run("with pit", func(t *testing.T) {
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+			PIT:     pointer.For(now.Add(time.Minute)),
+			Builder: query.Match("metadata[trust]", "true"),
+		})
+		require.NoError(t, err)
+		RequireEqual(t, expected, *ret)
+	})
+
+	t.Run("with pit and partial address filter", func(t *testing.T) {
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
+			PIT: pointer.For(now.Add(time.Minute)),
+			Builder: query.And(
+				query.Match("address", "merchant:"),
+				query.Match("metadata[trust]", "true"),
+			),
+		})
+		require.NoError(t, err)
+		RequireEqual(t, expected, *ret)
 	})
 }
