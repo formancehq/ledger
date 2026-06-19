@@ -12,8 +12,8 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 	// Check deletion status before boundaries: MarkLedgerForCleanup removes
 	// boundaries on delete, so GetBoundaries would return false and we'd
 	// incorrectly return ErrLedgerNotFound instead of ErrLedgerDeleted.
-	ledgerInfo, infoOk := s.GetLedger(apply.GetLedger())
-	if infoOk && ledgerInfo.GetDeletedAt() != nil {
+	ledgerInfoReader, infoOk := s.GetLedger(apply.GetLedger())
+	if infoOk && ledgerInfoReader.GetDeletedAt() != nil {
 		return nil, &domain.ErrLedgerDeleted{Name: apply.GetLedger()}
 	}
 
@@ -25,8 +25,16 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 	boundaries := boundariesReader.Mutate()
 
 	// Block writes on mirror-mode ledgers.
-	if infoOk && ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
+	if infoOk && ledgerInfoReader.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
 		return nil, &domain.ErrLedgerInMirrorMode{Name: apply.GetLedger()}
+	}
+
+	// Mutate() once at the boundary so sub-processors receive a *LedgerInfo
+	// they can read freely. The clone is discarded if no PutLedger happens;
+	// writes to the cache still go through s.PutLedger.
+	var ledgerInfo *commonpb.LedgerInfo
+	if infoOk {
+		ledgerInfo = ledgerInfoReader.Mutate()
 	}
 
 	var (

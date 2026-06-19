@@ -13,12 +13,12 @@ func (p *RequestProcessor) processAddAccountType(
 	order *raftcmdpb.AddAccountTypeOrder,
 	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, ok := s.GetLedger(ledgerName)
+	infoReader, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	info = info.CloneVT()
+	info := infoReader.Mutate()
 
 	at := order.GetAccountType()
 	if at == nil || at.GetName() == "" {
@@ -77,12 +77,12 @@ func (p *RequestProcessor) processRemoveAccountType(
 	order *raftcmdpb.RemoveAccountTypeOrder,
 	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, ok := s.GetLedger(ledgerName)
+	infoReader, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	info = info.CloneVT()
+	info := infoReader.Mutate()
 
 	if _, exists := info.GetAccountTypes()[order.GetName()]; !exists {
 		return nil, &domain.ErrAccountTypeNotFound{Name: order.GetName()}
@@ -167,12 +167,12 @@ func (p *RequestProcessor) processUpdateDefaultEnforcementMode(
 	order *raftcmdpb.UpdateDefaultEnforcementModeOrder,
 	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, ok := s.GetLedger(ledgerName)
+	infoReader, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	info = info.CloneVT()
+	info := infoReader.Mutate()
 
 	info.DefaultEnforcementMode = order.GetEnforcementMode()
 	s.PutLedger(ledgerName, info)

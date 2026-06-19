@@ -170,7 +170,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 			}
 
 			// Capture old value before overwriting (for log replay in indexbuilder).
-			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
+			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil && oldVal != nil {
 				if previousAccountMetadata == nil {
 					previousAccountMetadata = make(map[string]*commonpb.MetadataMap)
 				}
@@ -181,7 +181,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 					previousAccountMetadata[account] = prevMap
 				}
 
-				prevMap.Values[key] = oldVal
+				prevMap.Values[key] = oldVal.Mutate()
 			}
 
 			s.PutAccountMetadata(metaKey, value)

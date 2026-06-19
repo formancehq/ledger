@@ -10,9 +10,14 @@ import (
 
 // InMemoryStore is the interface used by RequestProcessor to access data.
 // It abstracts the underlying storage mechanism (e.g., WriteSet).
+//
+// Cache-backed Get* methods return a Reader view over the cache entry so
+// processors cannot accidentally mutate cached state in place. Use
+// Reader.Mutate() to obtain a writeable clone before modifying, then write
+// the result back through the matching Put* method.
 type InMemoryStore interface {
 	// Ledger operations
-	GetLedger(name string) (*commonpb.LedgerInfo, bool)
+	GetLedger(name string) (commonpb.LedgerInfoReader, bool)
 	PutLedger(name string, info *commonpb.LedgerInfo)
 
 	// Boundaries operations
@@ -24,12 +29,12 @@ type InMemoryStore interface {
 	PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair)
 
 	// Account metadata operations
-	GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error)
+	GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error)
 	PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue)
 	DeleteAccountMetadata(key domain.MetadataKey)
 
 	// Ledger metadata operations
-	GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error)
+	GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error)
 	PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue)
 	DeleteLedgerMetadata(key domain.LedgerMetadataKey)
 
@@ -38,15 +43,15 @@ type InMemoryStore interface {
 	PutReverted(key domain.TransactionKey, reverted bool)
 
 	// Idempotency key operations
-	GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)
+	GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error)
 	PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue)
 
 	// Transaction reference operations
-	GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)
+	GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error)
 	PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
 
 	// Transaction state operations
-	GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error)
+	GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error)
 	PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState)
 
 	// Signing key operations
@@ -63,7 +68,7 @@ type InMemoryStore interface {
 	DeletePeriodSchedule()
 
 	// Events sink operations
-	GetSinkConfig(name string) (*commonpb.SinkConfig, error)
+	GetSinkConfig(name string) (commonpb.SinkConfigReader, error)
 	AddSinkConfig(config *commonpb.SinkConfig)
 	RemoveSinkConfig(name string)
 
@@ -95,7 +100,7 @@ type InMemoryStore interface {
 	AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType)
 
 	// Prepared query operations
-	GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error)
+	GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error)
 	PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery)
 	DeletePreparedQuery(ledgerName string, name string)
 
@@ -119,5 +124,5 @@ type InMemoryStore interface {
 	MarkLedgerForCleanup(ledger string)
 
 	// Numscript content resolution
-	ResolveNumscriptContent(ledgerName string, name, version string) (*commonpb.NumscriptInfo, error)
+	ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error)
 }

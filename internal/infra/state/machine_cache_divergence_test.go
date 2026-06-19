@@ -616,7 +616,9 @@ func buildProposalWithLeaderPreloads(
 			ledgerInfo, _ := leader.writeSet.GetLedger(ledger)
 			if ledgerInfo == nil {
 				// Try from parent store
-				ledgerInfo, _, _ = leader.Registry.Ledgers.GetKey(ledgerKey)
+				if direct, _, _ := leader.Registry.Ledgers.GetKey(ledgerKey); direct != nil {
+					ledgerInfo = direct.AsReader()
+				}
 			}
 
 			ledgerName := ledger

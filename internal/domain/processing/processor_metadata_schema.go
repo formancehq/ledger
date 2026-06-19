@@ -12,12 +12,12 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 	order *raftcmdpb.SetMetadataFieldTypeOrder,
 	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, ok := s.GetLedger(ledgerName)
+	infoReader, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	info = info.CloneVT()
+	info := infoReader.Mutate()
 
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
@@ -80,12 +80,12 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 	order *raftcmdpb.RemoveMetadataFieldTypeOrder,
 	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, ok := s.GetLedger(ledgerName)
+	infoReader, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	info = info.CloneVT()
+	info := infoReader.Mutate()
 
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}

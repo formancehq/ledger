@@ -12,17 +12,17 @@ func (p *RequestProcessor) processCreateIndex(
 	order *raftcmdpb.CreateIndexOrder,
 	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, ok := s.GetLedger(ledgerName)
+	infoReader, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
+
+	info := infoReader.Mutate()
 
 	id := order.GetId()
 	if err := validateIndexTarget(info, id); err != nil {
 		return nil, err
 	}
-
-	info = info.CloneVT()
 
 	// Short-circuit when an index is already present and ready: no log entry
 	// is emitted, callers receive the same response shape as a fresh create.
@@ -47,12 +47,12 @@ func (p *RequestProcessor) processDropIndex(
 	order *raftcmdpb.DropIndexOrder,
 	s InMemoryStore,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, ok := s.GetLedger(ledgerName)
+	infoReader, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	info = info.CloneVT()
+	info := infoReader.Mutate()
 	id := order.GetId()
 	indexes.Remove(info, id)
 	s.PutLedger(ledgerName, info)

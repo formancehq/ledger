@@ -30,7 +30,7 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 
 	var putBoundaries *raftcmdpb.LedgerBoundaries
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
+	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
 	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetDate().Return(now)
@@ -91,7 +91,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 
 	var putBoundaries *raftcmdpb.LedgerBoundaries
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
+	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
 	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
@@ -179,7 +179,7 @@ func TestMirrorIngest_NotMirrorMode(t *testing.T) {
 		Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL,
 	}
 
-	mockStore.EXPECT().GetLedger("normal-ledger").Return(ledgerInfo, true).AnyTimes()
+	mockStore.EXPECT().GetLedger("normal-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_MirrorIngest{
@@ -260,7 +260,7 @@ func TestPromoteLedger_Success(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), true)
 	mockStore.EXPECT().PutLedger("mirror-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
@@ -300,7 +300,7 @@ func TestPromoteLedger_NotMirrorMode(t *testing.T) {
 		Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL,
 	}
 
-	mockStore.EXPECT().GetLedger("normal-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("normal-ledger").Return(ledgerInfo.AsReader(), true)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_PromoteLedger{
@@ -367,7 +367,7 @@ func TestMirrorIngest_CreatedTransaction_MissingVolumes(t *testing.T) {
 	}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
+	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
 	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
 
@@ -425,7 +425,7 @@ func TestMirrorIngest_RevertedTransaction_MissingVolumes(t *testing.T) {
 	}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1}
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
+	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
 	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
 
@@ -481,7 +481,7 @@ func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), true)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{

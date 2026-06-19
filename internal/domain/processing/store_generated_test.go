@@ -437,10 +437,10 @@ func (c *MockInMemoryStoreDeleteQueryCheckpointScheduleCall) DoAndReturn(f func(
 }
 
 // GetAccountMetadata mocks base method.
-func (m *MockInMemoryStore) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
+func (m *MockInMemoryStore) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccountMetadata", key)
-	ret0, _ := ret[0].(*commonpb.MetadataValue)
+	ret0, _ := ret[0].(commonpb.MetadataValueReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -458,19 +458,19 @@ type MockInMemoryStoreGetAccountMetadataCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockInMemoryStoreGetAccountMetadataCall) Return(arg0 *commonpb.MetadataValue, arg1 error) *MockInMemoryStoreGetAccountMetadataCall {
+func (c *MockInMemoryStoreGetAccountMetadataCall) Return(arg0 commonpb.MetadataValueReader, arg1 error) *MockInMemoryStoreGetAccountMetadataCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetAccountMetadataCall) Do(f func(domain.MetadataKey) (*commonpb.MetadataValue, error)) *MockInMemoryStoreGetAccountMetadataCall {
+func (c *MockInMemoryStoreGetAccountMetadataCall) Do(f func(domain.MetadataKey) (commonpb.MetadataValueReader, error)) *MockInMemoryStoreGetAccountMetadataCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetAccountMetadataCall) DoAndReturn(f func(domain.MetadataKey) (*commonpb.MetadataValue, error)) *MockInMemoryStoreGetAccountMetadataCall {
+func (c *MockInMemoryStoreGetAccountMetadataCall) DoAndReturn(f func(domain.MetadataKey) (commonpb.MetadataValueReader, error)) *MockInMemoryStoreGetAccountMetadataCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -669,10 +669,10 @@ func (c *MockInMemoryStoreGetDateCall) DoAndReturn(f func() *commonpb.Timestamp)
 }
 
 // GetIdempotencyKey mocks base method.
-func (m *MockInMemoryStore) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (m *MockInMemoryStore) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetIdempotencyKey", key)
-	ret0, _ := ret[0].(*commonpb.IdempotencyKeyValue)
+	ret0, _ := ret[0].(commonpb.IdempotencyKeyValueReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -690,28 +690,28 @@ type MockInMemoryStoreGetIdempotencyKeyCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockInMemoryStoreGetIdempotencyKeyCall) Return(arg0 *commonpb.IdempotencyKeyValue, arg1 error) *MockInMemoryStoreGetIdempotencyKeyCall {
+func (c *MockInMemoryStoreGetIdempotencyKeyCall) Return(arg0 commonpb.IdempotencyKeyValueReader, arg1 error) *MockInMemoryStoreGetIdempotencyKeyCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetIdempotencyKeyCall) Do(f func(domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)) *MockInMemoryStoreGetIdempotencyKeyCall {
+func (c *MockInMemoryStoreGetIdempotencyKeyCall) Do(f func(domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error)) *MockInMemoryStoreGetIdempotencyKeyCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetIdempotencyKeyCall) DoAndReturn(f func(domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)) *MockInMemoryStoreGetIdempotencyKeyCall {
+func (c *MockInMemoryStoreGetIdempotencyKeyCall) DoAndReturn(f func(domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error)) *MockInMemoryStoreGetIdempotencyKeyCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetLedger mocks base method.
-func (m *MockInMemoryStore) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
+func (m *MockInMemoryStore) GetLedger(name string) (commonpb.LedgerInfoReader, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedger", name)
-	ret0, _ := ret[0].(*commonpb.LedgerInfo)
+	ret0, _ := ret[0].(commonpb.LedgerInfoReader)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }
@@ -729,28 +729,28 @@ type MockInMemoryStoreGetLedgerCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockInMemoryStoreGetLedgerCall) Return(arg0 *commonpb.LedgerInfo, arg1 bool) *MockInMemoryStoreGetLedgerCall {
+func (c *MockInMemoryStoreGetLedgerCall) Return(arg0 commonpb.LedgerInfoReader, arg1 bool) *MockInMemoryStoreGetLedgerCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetLedgerCall) Do(f func(string) (*commonpb.LedgerInfo, bool)) *MockInMemoryStoreGetLedgerCall {
+func (c *MockInMemoryStoreGetLedgerCall) Do(f func(string) (commonpb.LedgerInfoReader, bool)) *MockInMemoryStoreGetLedgerCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetLedgerCall) DoAndReturn(f func(string) (*commonpb.LedgerInfo, bool)) *MockInMemoryStoreGetLedgerCall {
+func (c *MockInMemoryStoreGetLedgerCall) DoAndReturn(f func(string) (commonpb.LedgerInfoReader, bool)) *MockInMemoryStoreGetLedgerCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetLedgerMetadata mocks base method.
-func (m *MockInMemoryStore) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
+func (m *MockInMemoryStore) GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedgerMetadata", key)
-	ret0, _ := ret[0].(*commonpb.MetadataValue)
+	ret0, _ := ret[0].(commonpb.MetadataValueReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -768,19 +768,19 @@ type MockInMemoryStoreGetLedgerMetadataCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockInMemoryStoreGetLedgerMetadataCall) Return(arg0 *commonpb.MetadataValue, arg1 error) *MockInMemoryStoreGetLedgerMetadataCall {
+func (c *MockInMemoryStoreGetLedgerMetadataCall) Return(arg0 commonpb.MetadataValueReader, arg1 error) *MockInMemoryStoreGetLedgerMetadataCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetLedgerMetadataCall) Do(f func(domain.LedgerMetadataKey) (*commonpb.MetadataValue, error)) *MockInMemoryStoreGetLedgerMetadataCall {
+func (c *MockInMemoryStoreGetLedgerMetadataCall) Do(f func(domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error)) *MockInMemoryStoreGetLedgerMetadataCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetLedgerMetadataCall) DoAndReturn(f func(domain.LedgerMetadataKey) (*commonpb.MetadataValue, error)) *MockInMemoryStoreGetLedgerMetadataCall {
+func (c *MockInMemoryStoreGetLedgerMetadataCall) DoAndReturn(f func(domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error)) *MockInMemoryStoreGetLedgerMetadataCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1054,10 +1054,10 @@ func (c *MockInMemoryStoreGetPeriodByIDCall) DoAndReturn(f func(uint64) (*common
 }
 
 // GetPreparedQuery mocks base method.
-func (m *MockInMemoryStore) GetPreparedQuery(ledgerName, name string) (*commonpb.PreparedQuery, error) {
+func (m *MockInMemoryStore) GetPreparedQuery(ledgerName, name string) (commonpb.PreparedQueryReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetPreparedQuery", ledgerName, name)
-	ret0, _ := ret[0].(*commonpb.PreparedQuery)
+	ret0, _ := ret[0].(commonpb.PreparedQueryReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1075,19 +1075,19 @@ type MockInMemoryStoreGetPreparedQueryCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockInMemoryStoreGetPreparedQueryCall) Return(arg0 *commonpb.PreparedQuery, arg1 error) *MockInMemoryStoreGetPreparedQueryCall {
+func (c *MockInMemoryStoreGetPreparedQueryCall) Return(arg0 commonpb.PreparedQueryReader, arg1 error) *MockInMemoryStoreGetPreparedQueryCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetPreparedQueryCall) Do(f func(string, string) (*commonpb.PreparedQuery, error)) *MockInMemoryStoreGetPreparedQueryCall {
+func (c *MockInMemoryStoreGetPreparedQueryCall) Do(f func(string, string) (commonpb.PreparedQueryReader, error)) *MockInMemoryStoreGetPreparedQueryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetPreparedQueryCall) DoAndReturn(f func(string, string) (*commonpb.PreparedQuery, error)) *MockInMemoryStoreGetPreparedQueryCall {
+func (c *MockInMemoryStoreGetPreparedQueryCall) DoAndReturn(f func(string, string) (commonpb.PreparedQueryReader, error)) *MockInMemoryStoreGetPreparedQueryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1170,10 +1170,10 @@ func (c *MockInMemoryStoreGetSigningKeyChildrenCall) DoAndReturn(f func(string) 
 }
 
 // GetSinkConfig mocks base method.
-func (m *MockInMemoryStore) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
+func (m *MockInMemoryStore) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetSinkConfig", name)
-	ret0, _ := ret[0].(*commonpb.SinkConfig)
+	ret0, _ := ret[0].(commonpb.SinkConfigReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1191,28 +1191,28 @@ type MockInMemoryStoreGetSinkConfigCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockInMemoryStoreGetSinkConfigCall) Return(arg0 *commonpb.SinkConfig, arg1 error) *MockInMemoryStoreGetSinkConfigCall {
+func (c *MockInMemoryStoreGetSinkConfigCall) Return(arg0 commonpb.SinkConfigReader, arg1 error) *MockInMemoryStoreGetSinkConfigCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetSinkConfigCall) Do(f func(string) (*commonpb.SinkConfig, error)) *MockInMemoryStoreGetSinkConfigCall {
+func (c *MockInMemoryStoreGetSinkConfigCall) Do(f func(string) (commonpb.SinkConfigReader, error)) *MockInMemoryStoreGetSinkConfigCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetSinkConfigCall) DoAndReturn(f func(string) (*commonpb.SinkConfig, error)) *MockInMemoryStoreGetSinkConfigCall {
+func (c *MockInMemoryStoreGetSinkConfigCall) DoAndReturn(f func(string) (commonpb.SinkConfigReader, error)) *MockInMemoryStoreGetSinkConfigCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetTransactionReference mocks base method.
-func (m *MockInMemoryStore) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+func (m *MockInMemoryStore) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactionReference", key)
-	ret0, _ := ret[0].(*commonpb.TransactionReferenceValue)
+	ret0, _ := ret[0].(commonpb.TransactionReferenceValueReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1230,28 +1230,28 @@ type MockInMemoryStoreGetTransactionReferenceCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockInMemoryStoreGetTransactionReferenceCall) Return(arg0 *commonpb.TransactionReferenceValue, arg1 error) *MockInMemoryStoreGetTransactionReferenceCall {
+func (c *MockInMemoryStoreGetTransactionReferenceCall) Return(arg0 commonpb.TransactionReferenceValueReader, arg1 error) *MockInMemoryStoreGetTransactionReferenceCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetTransactionReferenceCall) Do(f func(domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)) *MockInMemoryStoreGetTransactionReferenceCall {
+func (c *MockInMemoryStoreGetTransactionReferenceCall) Do(f func(domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error)) *MockInMemoryStoreGetTransactionReferenceCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetTransactionReferenceCall) DoAndReturn(f func(domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)) *MockInMemoryStoreGetTransactionReferenceCall {
+func (c *MockInMemoryStoreGetTransactionReferenceCall) DoAndReturn(f func(domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error)) *MockInMemoryStoreGetTransactionReferenceCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetTransactionState mocks base method.
-func (m *MockInMemoryStore) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
+func (m *MockInMemoryStore) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactionState", key)
-	ret0, _ := ret[0].(*commonpb.TransactionState)
+	ret0, _ := ret[0].(commonpb.TransactionStateReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1269,19 +1269,19 @@ type MockInMemoryStoreGetTransactionStateCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockInMemoryStoreGetTransactionStateCall) Return(arg0 *commonpb.TransactionState, arg1 error) *MockInMemoryStoreGetTransactionStateCall {
+func (c *MockInMemoryStoreGetTransactionStateCall) Return(arg0 commonpb.TransactionStateReader, arg1 error) *MockInMemoryStoreGetTransactionStateCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreGetTransactionStateCall) Do(f func(domain.TransactionKey) (*commonpb.TransactionState, error)) *MockInMemoryStoreGetTransactionStateCall {
+func (c *MockInMemoryStoreGetTransactionStateCall) Do(f func(domain.TransactionKey) (commonpb.TransactionStateReader, error)) *MockInMemoryStoreGetTransactionStateCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreGetTransactionStateCall) DoAndReturn(f func(domain.TransactionKey) (*commonpb.TransactionState, error)) *MockInMemoryStoreGetTransactionStateCall {
+func (c *MockInMemoryStoreGetTransactionStateCall) DoAndReturn(f func(domain.TransactionKey) (commonpb.TransactionStateReader, error)) *MockInMemoryStoreGetTransactionStateCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -2057,10 +2057,10 @@ func (c *MockInMemoryStoreRemoveSinkConfigCall) DoAndReturn(f func(string)) *Moc
 }
 
 // ResolveNumscriptContent mocks base method.
-func (m *MockInMemoryStore) ResolveNumscriptContent(ledgerName, name, version string) (*commonpb.NumscriptInfo, error) {
+func (m *MockInMemoryStore) ResolveNumscriptContent(ledgerName, name, version string) (commonpb.NumscriptInfoReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ResolveNumscriptContent", ledgerName, name, version)
-	ret0, _ := ret[0].(*commonpb.NumscriptInfo)
+	ret0, _ := ret[0].(commonpb.NumscriptInfoReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -2078,19 +2078,19 @@ type MockInMemoryStoreResolveNumscriptContentCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockInMemoryStoreResolveNumscriptContentCall) Return(arg0 *commonpb.NumscriptInfo, arg1 error) *MockInMemoryStoreResolveNumscriptContentCall {
+func (c *MockInMemoryStoreResolveNumscriptContentCall) Return(arg0 commonpb.NumscriptInfoReader, arg1 error) *MockInMemoryStoreResolveNumscriptContentCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockInMemoryStoreResolveNumscriptContentCall) Do(f func(string, string, string) (*commonpb.NumscriptInfo, error)) *MockInMemoryStoreResolveNumscriptContentCall {
+func (c *MockInMemoryStoreResolveNumscriptContentCall) Do(f func(string, string, string) (commonpb.NumscriptInfoReader, error)) *MockInMemoryStoreResolveNumscriptContentCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockInMemoryStoreResolveNumscriptContentCall) DoAndReturn(f func(string, string, string) (*commonpb.NumscriptInfo, error)) *MockInMemoryStoreResolveNumscriptContentCall {
+func (c *MockInMemoryStoreResolveNumscriptContentCall) DoAndReturn(f func(string, string, string) (commonpb.NumscriptInfoReader, error)) *MockInMemoryStoreResolveNumscriptContentCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

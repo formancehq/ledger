@@ -58,14 +58,17 @@ func (b *WriteSet) partitionVolumes(
 	for _, update := range updates {
 		compiled, ok := ledgerTypes[update.Key.LedgerName]
 		if !ok {
-			info, infoOK := b.GetLedger(update.Key.LedgerName)
+			infoReader, infoOK := b.GetLedger(update.Key.LedgerName)
 			if !infoOK {
 				result.kept = append(result.kept, update)
 
 				continue
 			}
 
-			compiled = accounttype.CompileTypes(info.GetAccountTypes())
+			// Mutate() to access the concrete AccountTypes map. Acceptable
+			// here: per-batch ephemeral purge path; the result is cached
+			// locally per ledger below.
+			compiled = accounttype.CompileTypes(infoReader.Mutate().GetAccountTypes())
 			ledgerTypes[update.Key.LedgerName] = compiled
 		}
 

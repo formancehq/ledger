@@ -70,7 +70,7 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
-	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger.AsReader(), true)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
@@ -99,7 +99,7 @@ func TestProcessDeleteLedger(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger.AsReader(), true)
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().MarkLedgerForCleanup("test-ledger")

@@ -292,12 +292,13 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 				Key: key,
 			}
 
-			value, err := s.store.GetAccountMetadata(metaKey)
+			valueReader, err := s.store.GetAccountMetadata(metaKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, err
 			}
 
-			if value != nil {
+			if valueReader != nil {
+				value := valueReader.Mutate()
 				// Opportunistically convert to declared schema type and write back.
 				if s.schema != nil {
 					if fields := s.schema.GetAccountFields(); fields != nil {

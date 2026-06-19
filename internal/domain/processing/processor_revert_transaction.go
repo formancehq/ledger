@@ -65,15 +65,16 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 	boundaries.RevertCount++
 
 	// Update the original transaction's state to record the reversion
-	origState, err := s.GetTransactionState(txKey)
+	origStateReader, err := s.GetTransactionState(txKey)
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "getting original transaction state", Cause: err}
 	}
 
-	if origState == nil {
+	if origStateReader == nil {
 		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
 	}
 
+	origState := origStateReader.Mutate()
 	origState.RevertedByTransaction = revertTxID
 	s.PutTransactionState(txKey, origState)
 

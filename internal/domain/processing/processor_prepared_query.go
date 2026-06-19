@@ -57,8 +57,8 @@ func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePre
 		}
 	}
 
-	previousFilter := existing.GetFilter()
-	updated := existing.CloneVT()
+	updated := existing.Mutate()
+	previousFilter := updated.GetFilter().CloneVT()
 	updated.Filter = order.GetFilter()
 	s.PutPreparedQuery(ledgerName, updated)
 

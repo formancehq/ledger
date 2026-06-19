@@ -586,13 +586,13 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 
 // Store interface implementation for WriteSet
 
-func (b *WriteSet) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
+func (b *WriteSet) GetLedger(name string) (commonpb.LedgerInfoReader, bool) {
 	info, err := b.Derived.Ledgers.Get(domain.LedgerKey{Name: name})
 	if err != nil || info == nil {
 		return nil, false
 	}
 
-	return info, true
+	return info.AsReader(), true
 }
 
 func (b *WriteSet) PutLedger(name string, info *commonpb.LedgerInfo) {
@@ -616,8 +616,13 @@ func (b *WriteSet) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReade
 	return boundaries.AsReader(), true
 }
 
-func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (*commonpb.NumscriptInfo, error) {
-	return b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
+func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error) {
+	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
+	if err != nil || info == nil {
+		return nil, err
+	}
+
+	return info.AsReader(), nil
 }
 
 func (b *WriteSet) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
@@ -653,12 +658,15 @@ func (b *WriteSet) ValidateTransientVolumes() domain.Describable {
 	for key, vol := range b.Derived.Volumes.DirtyValues() {
 		compiled, ok := ledgerTypes[key.LedgerName]
 		if !ok {
-			info, infoOK := b.GetLedger(key.LedgerName)
+			infoReader, infoOK := b.GetLedger(key.LedgerName)
 			if !infoOK {
 				continue
 			}
 
-			compiled = accounttype.CompileTypes(info.GetAccountTypes())
+			// Mutate() to access the concrete AccountTypes map. Acceptable
+			// here: ValidateTransientVolumes is called once per batch on a
+			// rare path; the per-ledger result is cached locally below.
+			compiled = accounttype.CompileTypes(infoReader.Mutate().GetAccountTypes())
 			ledgerTypes[key.LedgerName] = compiled
 		}
 
@@ -685,8 +693,13 @@ func (b *WriteSet) ValidateTransientVolumes() domain.Describable {
 	return nil
 }
 
-func (b *WriteSet) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
-	return b.Derived.AccountMetadata.Get(key)
+func (b *WriteSet) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
+	v, err := b.Derived.AccountMetadata.Get(key)
+	if err != nil || v == nil {
+		return nil, err
+	}
+
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
@@ -697,8 +710,13 @@ func (b *WriteSet) DeleteAccountMetadata(key domain.MetadataKey) {
 	b.Derived.AccountMetadata.Delete(key)
 }
 
-func (b *WriteSet) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
-	return b.Derived.LedgerMetadata.Get(key)
+func (b *WriteSet) GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
+	v, err := b.Derived.LedgerMetadata.Get(key)
+	if err != nil || v == nil {
+		return nil, err
+	}
+
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
@@ -719,7 +737,7 @@ func (b *WriteSet) PutReverted(key domain.TransactionKey, reverted bool) {
 	}
 }
 
-func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
 	value, err := b.Derived.Idempotency.Get(key.Key)
 	if err != nil || value == nil {
 		return nil, err
@@ -730,7 +748,7 @@ func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.Idemp
 		return nil, nil
 	}
 
-	return value, nil
+	return value.AsReader(), nil
 }
 
 func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
@@ -738,16 +756,26 @@ func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.
 	b.Derived.Idempotency.Put(key.Key, value)
 }
 
-func (b *WriteSet) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
-	return b.Derived.References.Get(key)
+func (b *WriteSet) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
+	v, err := b.Derived.References.Get(key)
+	if err != nil || v == nil {
+		return nil, err
+	}
+
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	b.Derived.References.Put(key, value)
 }
 
-func (b *WriteSet) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
-	return b.Derived.Transactions.Get(key)
+func (b *WriteSet) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
+	v, err := b.Derived.Transactions.Get(key)
+	if err != nil || v == nil {
+		return nil, err
+	}
+
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
@@ -834,13 +862,13 @@ func (b *WriteSet) DeleteQueryCheckpointSchedule() {
 	b.pendingQueryCheckpointScheduleUpdate = &empty
 }
 
-func (b *WriteSet) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
+func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
 	cfg, err := b.Derived.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
-	if err != nil {
+	if err != nil || cfg == nil {
 		return nil, nil
 	}
 
-	return cfg, nil
+	return cfg.AsReader(), nil
 }
 
 func (b *WriteSet) AddSinkConfig(config *commonpb.SinkConfig) {
@@ -1143,7 +1171,7 @@ func (b *WriteSet) HasPurges() bool {
 	return len(b.purgeRanges) > 0
 }
 
-func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error) {
+func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error) {
 	pq, err := b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{LedgerName: ledgerName, Name: name})
 	// Treat a cache miss as "doesn't exist". A delete in an earlier entry of
 	// the same batch will have cleared the cache
@@ -1151,7 +1179,11 @@ func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (*commonpb.P
 		return nil, nil
 	}
 
-	return pq, err
+	if err != nil || pq == nil {
+		return nil, err
+	}
+
+	return pq.AsReader(), nil
 }
 
 func (b *WriteSet) PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery) {

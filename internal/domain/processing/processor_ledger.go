@@ -73,12 +73,12 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 }
 
 func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
-	l, ok := s.GetLedger(order.GetName())
+	lReader, ok := s.GetLedger(order.GetName())
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetName()}
 	}
 
-	l = l.CloneVT()
+	l := lReader.Mutate()
 
 	l.DeletedAt = s.GetDate()
 

@@ -241,8 +241,12 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 
 	// Order 2: CreateTransaction on "myled"
 	// After order 1 runs, GetLedger should return the stored info.
-	mockStore.EXPECT().GetLedger("myled").DoAndReturn(func(_ string) (*commonpb.LedgerInfo, bool) {
-		return storedLedgerInfo, storedLedgerInfo != nil
+	mockStore.EXPECT().GetLedger("myled").DoAndReturn(func(_ string) (commonpb.LedgerInfoReader, bool) {
+		if storedLedgerInfo == nil {
+			return nil, false
+		}
+
+		return storedLedgerInfo.AsReader(), true
 	}).AnyTimes()
 	mockStore.EXPECT().GetBoundaries("myled").Return((&raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,

@@ -340,10 +340,13 @@ type inMemoryStore struct {
 	reverted map[string]bool
 }
 
-func (s *inMemoryStore) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
+func (s *inMemoryStore) GetLedger(name string) (commonpb.LedgerInfoReader, bool) {
 	info, ok := s.engine.ledgers[name]
+	if !ok || info == nil {
+		return nil, false
+	}
 
-	return info, ok
+	return info.AsReader(), true
 }
 
 func (s *inMemoryStore) PutLedger(name string, info *commonpb.LedgerInfo) {
@@ -382,13 +385,13 @@ func (s *inMemoryStore) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumeP
 	s.modifiedVolumes[k] = struct{}{}
 }
 
-func (s *inMemoryStore) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
+func (s *inMemoryStore) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
 	v, ok := s.engine.metadata[string(key.Bytes())]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v, nil
+	return v.AsReader(), nil
 }
 
 func (s *inMemoryStore) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
@@ -403,7 +406,7 @@ func (s *inMemoryStore) DeleteAccountMetadata(key domain.MetadataKey) {
 	s.modifiedMetadata[k] = struct{}{}
 }
 
-func (s *inMemoryStore) GetLedgerMetadata(_ domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
+func (s *inMemoryStore) GetLedgerMetadata(_ domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
 	return nil, domain.ErrNotFound
 }
 func (s *inMemoryStore) PutLedgerMetadata(_ domain.LedgerMetadataKey, _ *commonpb.MetadataValue) {}
@@ -417,34 +420,39 @@ func (s *inMemoryStore) PutReverted(key domain.TransactionKey, reverted bool) {
 	s.reverted[string(key.Bytes())] = reverted
 }
 
-func (s *inMemoryStore) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (s *inMemoryStore) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
 	v, ok := s.engine.idempotency[key.Key]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v, nil
+	return v.AsReader(), nil
 }
 
 func (s *inMemoryStore) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	s.engine.idempotency[key.Key] = value
 }
 
-func (s *inMemoryStore) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+func (s *inMemoryStore) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
 	v, ok := s.engine.references[string(key.Bytes())]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v, nil
+	return v.AsReader(), nil
 }
 
 func (s *inMemoryStore) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	s.engine.references[string(key.Bytes())] = value
 }
 
-func (s *inMemoryStore) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
-	return s.engine.transactionStates[string(key.Bytes())], nil
+func (s *inMemoryStore) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
+	v := s.engine.transactionStates[string(key.Bytes())]
+	if v == nil {
+		return nil, nil
+	}
+
+	return v.AsReader(), nil
 }
 
 func (s *inMemoryStore) PutTransactionState(key domain.TransactionKey, txState *commonpb.TransactionState) {
@@ -453,16 +461,16 @@ func (s *inMemoryStore) PutTransactionState(key domain.TransactionKey, txState *
 	s.modifiedTxStates[k] = struct{}{}
 }
 
-func (s *inMemoryStore) AddSigningKey(_ string, _ []byte, _ string)           {}
-func (s *inMemoryStore) RemoveSigningKey(_ string)                            {}
-func (s *inMemoryStore) GetSigningKeyChildren(_ string) []string              { return nil }
-func (s *inMemoryStore) SetRequireSignatures(_ bool)                          {}
-func (s *inMemoryStore) SetMaintenanceMode(_ bool)                            {}
-func (s *inMemoryStore) SetPeriodSchedule(_ string)                           {}
-func (s *inMemoryStore) DeletePeriodSchedule()                                {}
-func (s *inMemoryStore) GetSinkConfig(_ string) (*commonpb.SinkConfig, error) { return nil, nil }
-func (s *inMemoryStore) AddSinkConfig(_ *commonpb.SinkConfig)                 {}
-func (s *inMemoryStore) RemoveSinkConfig(_ string)                            {}
+func (s *inMemoryStore) AddSigningKey(_ string, _ []byte, _ string)                {}
+func (s *inMemoryStore) RemoveSigningKey(_ string)                                 {}
+func (s *inMemoryStore) GetSigningKeyChildren(_ string) []string                   { return nil }
+func (s *inMemoryStore) SetRequireSignatures(_ bool)                               {}
+func (s *inMemoryStore) SetMaintenanceMode(_ bool)                                 {}
+func (s *inMemoryStore) SetPeriodSchedule(_ string)                                {}
+func (s *inMemoryStore) DeletePeriodSchedule()                                     {}
+func (s *inMemoryStore) GetSinkConfig(_ string) (commonpb.SinkConfigReader, error) { return nil, nil }
+func (s *inMemoryStore) AddSinkConfig(_ *commonpb.SinkConfig)                      {}
+func (s *inMemoryStore) RemoveSinkConfig(_ string)                                 {}
 
 func (s *inMemoryStore) GetLastLogHash() []byte {
 	return s.engine.lastLogHash
@@ -564,7 +572,7 @@ func (s *inMemoryStore) SetPendingArchive(_, _, _, _, _ uint64) {}
 func (s *inMemoryStore) AddMetadataConvertRequest(_ string, _ commonpb.TargetType, _ string, _ commonpb.MetadataType) {
 }
 
-func (s *inMemoryStore) GetPreparedQuery(_ string, _ string) (*commonpb.PreparedQuery, error) {
+func (s *inMemoryStore) GetPreparedQuery(_ string, _ string) (commonpb.PreparedQueryReader, error) {
 	return nil, nil
 }
 func (s *inMemoryStore) PutPreparedQuery(_ string, _ *commonpb.PreparedQuery)         {}
@@ -584,7 +592,7 @@ func (s *inMemoryStore) DeleteQueryCheckpointSchedule()                        {
 func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
 	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
 }
-func (s *inMemoryStore) ResolveNumscriptContent(_ string, _, _ string) (*commonpb.NumscriptInfo, error) {
+func (s *inMemoryStore) ResolveNumscriptContent(_ string, _, _ string) (commonpb.NumscriptInfoReader, error) {
 	return nil, nil
 }
 

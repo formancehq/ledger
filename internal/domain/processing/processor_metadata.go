@@ -67,6 +67,10 @@ func resolveTargetTransactionID(t *commonpb.TargetTransaction, ledgerName string
 			return 0, &domain.ErrStorageOperation{Operation: "resolving transaction reference", Cause: err}
 		}
 
+		if value == nil {
+			return 0, &domain.ErrTransactionReferenceNotFound{Reference: id.Reference}
+		}
+
 		return value.GetTransactionId(), nil
 	default:
 		return 0, domain.ErrTransactionTargetMissing
@@ -116,12 +120,12 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 			}
 
 			// Capture old value before overwriting (for log replay in indexbuilder).
-			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
+			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil && oldVal != nil {
 				if previousValues == nil {
 					previousValues = make(map[string]*commonpb.MetadataValue)
 				}
 
-				previousValues[key] = oldVal
+				previousValues[key] = oldVal.Mutate()
 			}
 
 			s.PutAccountMetadata(metaKey, value)
@@ -136,14 +140,16 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 
 		txKey := domain.TransactionKey{LedgerName: ledgerName, ID: txID}
 
-		state, err := s.GetTransactionState(txKey)
+		stateReader, err := s.GetTransactionState(txKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state", Cause: err}
 		}
 
-		if state == nil {
+		if stateReader == nil {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
+
+		state := stateReader.Mutate()
 
 		// Add metadata entries to the transaction state
 		if state.GetMetadata() == nil {
@@ -215,7 +221,9 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 			return nil, &domain.ErrStorageOperation{Operation: "checking account metadata", Cause: err}
 		}
 
-		previousValue = oldVal
+		if oldVal != nil {
+			previousValue = oldVal.Mutate()
+		}
 		s.DeleteAccountMetadata(metaKey)
 	case *commonpb.Target_Transaction:
 		txID, resolveErr := resolveTargetTransactionID(target.Transaction, ledgerName, boundaries, s)
@@ -227,14 +235,16 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 
 		txKey := domain.TransactionKey{LedgerName: ledgerName, ID: txID}
 
-		state, err := s.GetTransactionState(txKey)
+		stateReader, err := s.GetTransactionState(txKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state for delete", Cause: err}
 		}
 
-		if state == nil {
+		if stateReader == nil {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
+
+		state := stateReader.Mutate()
 
 		// Capture old value and remove the metadata key from the transaction state
 		if state.GetMetadata() != nil {
