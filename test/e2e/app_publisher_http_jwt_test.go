@@ -3,13 +3,15 @@
 package test_suite
 
 import (
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
 	. "github.com/formancehq/go-libs/v5/pkg/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 // Regression test for TS-456.
