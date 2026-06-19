@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-24 architecture documents organized into four topic areas.
+25 architecture documents organized into four topic areas.
 
 ## Core
 
@@ -11,6 +11,7 @@ Fundamental design: consensus, state machine, and timing guarantees.
 | [architecture.md](core/architecture.md) | System components, main interactions, and high-level design |
 | [raft-consensus.md](core/raft-consensus.md) | Raft consensus implementation and leader management |
 | [deterministic-fsm.md](core/deterministic-fsm.md) | Deterministic FSM with generation-based caching and preloading |
+| [fsm-cache-layers.md](core/fsm-cache-layers.md) | FSM-side read/write layering: WriteSet → DerivedKeyStore → Plan → KeyStore → AttributeCache |
 | [global-log.md](core/global-log.md) | Two-level log architecture enabling system-level atomic bulk operations |
 | [hybrid-logical-clock.md](core/hybrid-logical-clock.md) | Monotonic HLC timestamps across leader changes and clock skew |
 

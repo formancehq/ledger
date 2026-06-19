@@ -16,7 +16,10 @@ import (
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/v3/internal/application/events"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -61,6 +64,11 @@ type directProposer struct {
 }
 
 func (p *directProposer) Propose(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+	// Resolve the Raft-acceptance future embedded in the proposal so
+	// callers that wait on it (Builder.Run consumers) don't hang. The
+	// real etcd/raft Node resolves this when the entry is committed.
+	defer proposal.Resolve(nil, nil)
+
 	cmd := &raftcmdpb.Proposal{}
 
 	err := cmd.UnmarshalVT(proposal.Data())
@@ -72,7 +80,13 @@ func (p *directProposer) Propose(_ context.Context, proposal *node.Proposal) (*f
 	}
 
 	// Simulate FSM: apply per-sink updates
-	for _, update := range cmd.GetEventsSinkUpdates() {
+	for _, tu := range cmd.GetTechnicalUpdates() {
+		es, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_EventsSink)
+		if !ok {
+			continue
+		}
+
+		update := es.EventsSink
 		batch := p.store.OpenWriteSession()
 		if update.GetCursor() > 0 {
 			err := state.SetSinkCursor(batch, update.GetSinkName(), update.GetCursor())
@@ -210,7 +224,12 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 	// Start emitter — it should catch up on existing logs
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "test-sink", proposer, logger, cfg)
+
+	testCache, err := cache.New(100, noop.NewMeterProvider().Meter("test"))
+	require.NoError(t, err)
+	builder := plan.NewBuilder(node.NewIndexTracker(1), testCache, attributes.New(), store, nil, logger, 0)
+
+	emitter := events.NewEmitter(store, sink, "test-sink", proposer, builder, logger, cfg)
 	emitter.Start()
 
 	// Wait for the emitter to process
@@ -248,7 +267,7 @@ func TestEmitterIntegration_NotificationDrivenProcessing(t *testing.T) {
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
 	cfg.BatchDelay = 1 * time.Second // long delay so we test notification-driven path
-	emitter := events.NewEmitter(store, sink, "test-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "test-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 
 	emitter.Start()
 	defer emitter.Stop()
@@ -367,7 +386,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 	// First emitter run: processes all 3 logs
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter1 := events.NewEmitter(store, sink, "test-sink", proposer, logger, cfg)
+	emitter1 := events.NewEmitter(store, sink, "test-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter1.Start()
 
 	require.Eventually(t, func() bool {
@@ -406,7 +425,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 
 	// Second emitter (simulates leader restart): should only process log 4
 	sink2 := &recordingSink{}
-	emitter2 := events.NewEmitter(store, sink2, "test-sink", proposer, logger, cfg)
+	emitter2 := events.NewEmitter(store, sink2, "test-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter2.Start()
 
 	require.Eventually(t, func() bool {
@@ -553,7 +572,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "test-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "test-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
@@ -622,7 +641,7 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 	// Use small batch size to verify batching works
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 3
-	emitter := events.NewEmitter(store, sink, "test-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "test-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
@@ -721,7 +740,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 	cfg.EventTypes = map[commonpb.EventType]struct{}{
 		commonpb.EventType_COMMITTED_TRANSACTION: {},
 	}
-	emitter := events.NewEmitter(store, sink, "filter-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "filter-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
@@ -863,7 +882,7 @@ func TestEmitterIntegration_FilteredLogDoesNotSkipPendingBatchOnFailure(t *testi
 		commonpb.EventType_COMMITTED_TRANSACTION: {},
 	}
 
-	emitter := events.NewEmitter(store, sink, "lossy-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "lossy-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	// Both committed-transaction events MUST be published despite the
@@ -897,7 +916,7 @@ func TestEmitterIntegration_StartStopIdempotent(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := events.DefaultEmitterConfig()
-	emitter := events.NewEmitter(store, sink, "test-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "test-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 
 	// Start and stop multiple times — should not panic
 	emitter.Start()

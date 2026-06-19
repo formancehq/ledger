@@ -13,8 +13,7 @@ import (
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/infra/preload"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
@@ -52,7 +51,7 @@ type Worker struct {
 	source         v2.Source
 	store          *dal.Store
 	proposer       Proposer
-	preloader      *preload.Preloader
+	builder        *plan.Builder
 	logger         logging.Logger
 	sourceLogCount uint64
 
@@ -85,7 +84,7 @@ func NewWorker(
 	source v2.Source,
 	store *dal.Store,
 	proposer Proposer,
-	preloader *preload.Preloader,
+	builder *plan.Builder,
 	logger logging.Logger,
 	meterProvider metric.MeterProvider,
 ) *Worker {
@@ -127,7 +126,7 @@ func NewWorker(
 		source:     source,
 		store:      store,
 		proposer:   proposer,
-		preloader:  preloader,
+		builder:    builder,
 		logger:     logger.WithFields(map[string]any{"cmp": "mirror-worker", "ledger": ledgerName}),
 		notify:     signal.New(),
 
@@ -313,7 +312,7 @@ func (w *Worker) processBatch() (bool, error) {
 	// Load NextTransactionId from boundaries only once; subsequent batches use the in-memory value
 	// updated by TranslateBatch.
 	if !w.nextTxIDLoaded {
-		boundaries, err := w.preloader.ReadBoundaries(w.ledgerName)
+		boundaries, err := w.builder.ReadBoundaries(w.ledgerName)
 		if err != nil {
 			return false, fmt.Errorf("reading boundaries: %w", err)
 		}
@@ -350,9 +349,45 @@ func (w *Worker) processBatch() (bool, error) {
 
 	preloadStart := time.Now()
 
-	needs := w.extractMirrorNeeds(cmd)
+	_, perOrder := w.extractMirrorNeeds(cmd)
 
-	build, err := w.preloader.BuildPreloads(needs)
+	// Merge cursor update into the data proposal to avoid a second Raft round-trip.
+	// The FSM processes TechnicalUpdates on any proposal (machine.go).
+	lastV2LogID := v2Logs[len(v2Logs)-1].ID
+	cmd.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
+			MirrorSync: &raftcmdpb.MirrorSyncUpdate{
+				LedgerName:     w.ledgerName,
+				Cursor:         lastV2LogID,
+				ClearError:     true,
+				SourceLogCount: w.sourceLogCount,
+			},
+		},
+	}}
+
+	// One WriteOperation per Order + one for the cursor TU. The cursor
+	// TU reads Registry.Ledgers[w.ledgerName] in applyMirrorSyncUpdate.
+	tuNeeds := plan.NewNeeds()
+	tuNeeds.Ledgers[domain.LedgerKey{Name: w.ledgerName}] = struct{}{}
+
+	operations := make([]plan.WriteOperation, 0, len(orders)+1)
+	for i := range orders {
+		operations = append(operations, plan.WriteOperation{
+			Needs: perOrder[i],
+			SetCoverage: func(bits []byte) {
+				cmd.GetOrders()[i].CoverageBits = bits
+			},
+		})
+	}
+
+	operations = append(operations, plan.WriteOperation{
+		Needs: tuNeeds,
+		SetCoverage: func(bits []byte) {
+			cmd.GetTechnicalUpdates()[0].CoverageBits = bits
+		},
+	})
+
+	build, err := w.builder.Build(operations)
 	if err != nil {
 		build.ReleaseLoaders()
 
@@ -360,16 +395,6 @@ func (w *Worker) processBatch() (bool, error) {
 	}
 
 	w.preloadDuration.Record(ctx, time.Since(preloadStart).Microseconds(), attrs)
-
-	// Merge cursor update into the data proposal to avoid a second Raft round-trip.
-	// The FSM processes MirrorSyncUpdates on any proposal (machine.go).
-	lastV2LogID := v2Logs[len(v2Logs)-1].ID
-	cmd.MirrorSyncUpdates = []*raftcmdpb.MirrorSyncUpdate{{
-		LedgerName:     w.ledgerName,
-		Cursor:         lastV2LogID,
-		ClearError:     true,
-		SourceLogCount: w.sourceLogCount,
-	}}
 
 	// Run preload + propose via the shared runner. Mirror is a
 	// single-shot caller (no concurrent admissions sharing loaders),
@@ -385,7 +410,7 @@ func (w *Worker) processBatch() (bool, error) {
 		return data, nil
 	}
 
-	runResult, err := w.preloader.RunWithPreload(ctx, cmd, build, needs, marshalFn, w.proposer)
+	runResult, err := w.builder.Run(ctx, cmd, build, marshalFn, w.proposer)
 	if err != nil {
 		return false, err
 	}
@@ -472,36 +497,76 @@ func (w *Worker) drainPrefetch(ch chan prefetchResult) {
 }
 
 func (w *Worker) reportError(message string) {
-	update := &raftcmdpb.Proposal{
+	cmd := &raftcmdpb.Proposal{
 		Date: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
-		MirrorSyncUpdates: []*raftcmdpb.MirrorSyncUpdate{{
-			LedgerName: w.ledgerName,
-			Error: &commonpb.MirrorSyncError{
-				Message:    message,
-				OccurredAt: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+			Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
+				MirrorSync: &raftcmdpb.MirrorSyncUpdate{
+					LedgerName: w.ledgerName,
+					Error: &commonpb.MirrorSyncError{
+						Message:    message,
+						OccurredAt: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+					},
+				},
 			},
 		}},
 	}
 
-	size := update.SizeVT()
-	buf := make([]byte, size)
-	n, _ := update.MarshalToVT(buf)
+	// applyMirrorSyncUpdate reads Registry.Ledgers through the FSM-side
+	// Plan. Without a declared Ledgers key the gate rejects the
+	// read and the mirror status update silently skips — the FSM would
+	// emit no audit entry and the error would never reach the store.
+	// One WriteOperation for the error TU with its ledger needs declared.
+	needs := plan.NewNeeds()
+	needs.Ledgers[domain.LedgerKey{Name: w.ledgerName}] = struct{}{}
 
-	proposal := node.NewProposal(0, buf[:n])
+	operations := []plan.WriteOperation{{
+		Needs: needs,
+		SetCoverage: func(bits []byte) {
+			cmd.GetTechnicalUpdates()[0].CoverageBits = bits
+		},
+	}}
 
-	// Lock the tracker to serialize the Increment with guarded proposals,
-	// preventing preload boundary mismatches in the FSM.
-	w.preloader.LockTracker()
-	_, err := w.proposer.Propose(context.Background(), proposal)
-	w.preloader.UnlockTracker()
+	build, err := w.builder.Build(operations)
+	if err != nil {
+		if build != nil {
+			build.ReleaseLoaders()
+		}
 
+		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to build preloads for mirror error report")
+
+		return
+	}
+
+	runResult, err := w.builder.Run(context.Background(), cmd, build, marshalMirrorCommand, w.proposer)
 	if err != nil {
 		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to report mirror error")
 
 		return
 	}
 
-	_, _ = proposal.Wait()
+	runResult.Guard.ReleaseLoaders()
+
+	// Wait for Raft acceptance THEN FSM apply. Without the FSM wait, the
+	// FSM could reject the proposal (ErrStaleProposal on tracker drift,
+	// for example) and reportError would return as if it succeeded — the
+	// mirror error status would never reach the store.
+	if _, err := runResult.Proposal.Wait(); err != nil {
+		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Mirror error report rejected by Raft")
+
+		return
+	}
+
+	result, fsmErr := runResult.FSMFuture.Wait()
+	if fsmErr != nil {
+		w.logger.WithFields(map[string]any{"error": fsmErr.Error()}).Errorf("Mirror error report rejected by FSM")
+
+		return
+	}
+
+	if result.Error != nil {
+		w.logger.WithFields(map[string]any{"error": result.Error.Error()}).Errorf("Mirror error report apply returned business error")
+	}
 }
 
 // marshalMirrorCommand marshals a proposal command into a newly allocated byte
@@ -510,18 +575,27 @@ func marshalMirrorCommand(cmd *raftcmdpb.Proposal) ([]byte, error) {
 	return vtmarshal.MarshalCopy(cmd)
 }
 
-// extractMirrorNeeds builds preload.Needs from a mirror proposal's orders.
-// Mirror only needs ledger info, boundaries, and volumes.
-func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
-	needs := preload.NewNeeds()
+// extractMirrorNeeds builds plan.Needs from a mirror proposal's orders.
+// Returns the proposal-wide aggregate Needs alongside a parallel slice with
+// one Needs per order, used to compute Order.coverage_bits after
+// Build. Mirror only touches ledger info, boundaries, volumes and
+// account metadata.
+func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Needs, []*plan.Needs) {
+	aggregate := plan.NewNeeds()
+	perOrder := make([]*plan.Needs, len(cmd.GetOrders()))
 
 	ledgerKey := domain.LedgerKey{Name: w.ledgerName}
-	needs.Ledgers[ledgerKey] = struct{}{}
-	needs.Boundaries[ledgerKey] = struct{}{}
 
-	for _, order := range cmd.GetOrders() {
+	for orderIdx, order := range cmd.GetOrders() {
+		p := plan.NewNeeds()
+		p.Ledgers[ledgerKey] = struct{}{}
+		p.Boundaries[ledgerKey] = struct{}{}
+
 		mi := order.GetMirrorIngest()
 		if mi == nil {
+			perOrder[orderIdx] = p
+			aggregate.Merge(p)
+
 			continue
 		}
 
@@ -537,7 +611,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetSource()}, Asset: posting.GetAsset()},
 				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetDestination()}, Asset: posting.GetAsset()},
 			} {
-				needs.Volumes[volKey] = struct{}{}
+				p.Volumes[volKey] = struct{}{}
 			}
 		}
 
@@ -545,7 +619,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
 			for account, mm := range ct.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					needs.Metadata[domain.MetadataKey{
+					p.Metadata[domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: account},
 						Key:        key,
 					}] = struct{}{}
@@ -554,25 +628,38 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 		}
 
 		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
-			if target, ok := sm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+			switch target := sm.GetTarget().GetTarget().(type) {
+			case *commonpb.Target_Account:
 				for key := range sm.GetMetadata() {
-					needs.Metadata[domain.MetadataKey{
+					p.Metadata[domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
 						Key:        key,
 					}] = struct{}{}
 				}
+			case *commonpb.Target_TransactionId:
+				p.Transactions[domain.TransactionKey{LedgerName: w.ledgerName, ID: target.TransactionId}] = struct{}{}
 			}
 		}
 
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
-			if target, ok := dm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
-				needs.Metadata[domain.MetadataKey{
+			switch target := dm.GetTarget().GetTarget().(type) {
+			case *commonpb.Target_Account:
+				p.Metadata[domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
 					Key:        dm.GetKey(),
 				}] = struct{}{}
+			case *commonpb.Target_TransactionId:
+				p.Transactions[domain.TransactionKey{LedgerName: w.ledgerName, ID: target.TransactionId}] = struct{}{}
 			}
 		}
+
+		if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
+			p.Transactions[domain.TransactionKey{LedgerName: w.ledgerName, ID: rt.GetRevertedTransactionId()}] = struct{}{}
+		}
+
+		perOrder[orderIdx] = p
+		aggregate.Merge(p)
 	}
 
-	return needs
+	return aggregate, perOrder
 }

@@ -169,9 +169,12 @@ type Config struct {
 	RestoreDownloadParallelism int
 	// SpoolSegmentMaxBytes caps the size of a spool segment before rotation
 	// (sealing). 0 means use the spool default (256Mi).
-	SpoolSegmentMaxBytes        int64
-	NumscriptCacheSize          int
-	MirrorMaxBatchSize          int
+	SpoolSegmentMaxBytes int64
+	NumscriptCacheSize   int
+	MirrorMaxBatchSize   int
+	// MaxExecutionPlanSize caps the number of AttributePlan entries an
+	// ExecutionPlan may carry. 0 disables the cap. See plan.Builder.
+	MaxExecutionPlanSize        int
 	UnsafeSkipConfigValidation  bool
 	SentinelMode                bool
 	ReadIndexConfig             ReadIndexConfig

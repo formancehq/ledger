@@ -11,14 +11,14 @@ import (
 func (p *RequestProcessor) processAddAccountType(
 	ledgerName string,
 	order *raftcmdpb.AddAccountTypeOrder,
-	s InMemoryStore,
+	s Scope,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	infoReader, ok := s.GetLedger(ledgerName)
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
+	info, loadErr := loadLedger(s, ledgerName)
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
-	info := infoReader.Mutate()
+	info = info.CloneVT()
 
 	at := order.GetAccountType()
 	if at == nil || at.GetName() == "" {
@@ -75,14 +75,14 @@ func (p *RequestProcessor) processAddAccountType(
 func (p *RequestProcessor) processRemoveAccountType(
 	ledgerName string,
 	order *raftcmdpb.RemoveAccountTypeOrder,
-	s InMemoryStore,
+	s Scope,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	infoReader, ok := s.GetLedger(ledgerName)
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
+	info, loadErr := loadLedger(s, ledgerName)
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
-	info := infoReader.Mutate()
+	info = info.CloneVT()
 
 	if _, exists := info.GetAccountTypes()[order.GetName()]; !exists {
 		return nil, &domain.ErrAccountTypeNotFound{Name: order.GetName()}
@@ -165,14 +165,14 @@ func validateAccountAgainstAccountTypes(
 func (p *RequestProcessor) processUpdateDefaultEnforcementMode(
 	ledgerName string,
 	order *raftcmdpb.UpdateDefaultEnforcementModeOrder,
-	s InMemoryStore,
+	s Scope,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	infoReader, ok := s.GetLedger(ledgerName)
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
+	info, loadErr := loadLedger(s, ledgerName)
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
-	info := infoReader.Mutate()
+	info = info.CloneVT()
 
 	info.DefaultEnforcementMode = order.GetEnforcementMode()
 	s.PutLedger(ledgerName, info)

@@ -25,7 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/infra/preload"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/receipt"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -57,7 +57,7 @@ type Admission struct {
 	keyStore           *keystore.KeyStore
 	sharedState        *state.SharedState
 	receiptSigner      *receipt.Signer
-	preloader          *preload.Preloader
+	builder            *plan.Builder
 	attrs              *attributes.Attributes
 	numscriptCache     *numscript.NumscriptCache
 	coldStorageEnabled bool
@@ -107,7 +107,7 @@ func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
 	proposer Proposer,
-	preloader *preload.Preloader,
+	builder *plan.Builder,
 	meterProvider metric.MeterProvider,
 	healthChecker health.Checker,
 	keyStore *keystore.KeyStore,
@@ -121,7 +121,7 @@ func NewAdmission(
 		store:           store,
 		logger:          logger,
 		proposer:        proposer,
-		preloader:       preloader,
+		builder:         builder,
 		healthChecker:   healthChecker,
 		keyStore:        keyStore,
 		sharedState:     sharedState,
@@ -328,27 +328,18 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 	}
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
-	needs, err := a.extractPreloadNeeds(ctx, orders)
+	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders)
 	if err != nil {
 		return nil, err
 	}
 
 	// Step 2: Resolve script references and discover script dependencies.
 	// This enriches needs with volumes/metadata discovered from scripts.
-	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs); err != nil {
+	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder); err != nil {
 		return nil, err
 	}
 
-	// Step 2b: Resolve transaction references on metadata orders so the
-	// FSM cache can be warmed with the corresponding TransactionState.
-	// Without this enrichment, SET/DELETE METADATA by reference on a
-	// committed transaction whose state has rotated out of the cache
-	// would surface as ErrTransactionNotFound at apply time.
-	if err := a.resolveMetadataReferencesAndEnrichNeeds(ctx, orders, needs); err != nil {
-		return nil, err
-	}
-
-	// Step 3-5: Build preloads via shared Preloader (no lock)
+	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
 
 	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
@@ -361,8 +352,22 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 			attribute.Int("preload.metadata", len(needs.Metadata)),
 		))
 
+	// Build the per-order WriteOperation slice. Each operation carries
+	// its Needs (for preload aggregation) and a SetCoverage closure
+	// that the runner invokes at marshal time to write the computed
+	// bitset onto Order.CoverageBits.
+	operations := make([]plan.WriteOperation, len(orders))
+	for i := range orders {
+		operations[i] = plan.WriteOperation{
+			Needs: perOrder[i],
+			SetCoverage: func(bits []byte) {
+				cmd.GetOrders()[i].CoverageBits = bits
+			},
+		}
+	}
+
 	preloadStart := time.Now()
-	build, err := a.preloader.BuildPreloads(needs)
+	build, err := a.builder.Build(operations)
 	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds())
 	if err != nil {
 		preloadSpan.End()
@@ -372,21 +377,36 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 	}
 
 	totalKeys := int64(needs.TotalKeys())
-	storeReads := int64(len(build.PreloadSet.GetPreloads()))
+
+	var storeReads int64
+	for _, plan := range build.ExecutionPlan.GetAttributes() {
+		if _, ok := plan.GetIntent().(*raftcmdpb.AttributePlan_Value); ok {
+			storeReads++
+		}
+	}
+
 	cacheHits := totalKeys - storeReads
 
 	a.preloadCounter.Add(ctx, 1)
 	a.preloadKeysNeededCounter.Add(ctx, totalKeys)
 	a.preloadCacheHitsCounter.Add(ctx, cacheHits)
 
-	cmd.Preload = build.PreloadSet
+	cmd.ExecutionPlan = build.ExecutionPlan
 	cmd.CallerSnapshot = auth.ResolveCallerSnapshot(ctx)
+
 	preloadSpan.End()
 
 	// Step 5: Marshal + acquire proposal guard + set PredictedIndex
 	// + propose, all via the shared preload runner. The runner also
 	// patches PredictedIndex onto the pre-marshaled buffer (or
 	// re-marshals on the rare boundary-shift rebuild).
+	//
+	// Per-order coverage bits depend on the final AttributePlan slice
+	// (positions in cmd.ExecutionPlan.Attributes), and AcquireProposalGuard may
+	// swap cmd.ExecutionPlan for a rebuilt ExecutionPlan on a generation shift.
+	// Compute the bits inside marshalFn so every (re-)marshal sees the
+	// current Preload — the runner calls marshalFn again after the
+	// rebuild, keeping bits and plans in sync.
 	start := time.Now()
 
 	defer func() {
@@ -395,9 +415,14 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 
 	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
 
-	runResult, err := a.preloader.RunWithPreload(
-		ctx, cmd, build, needs,
-		func(c *raftcmdpb.Proposal) ([]byte, error) { return a.marshalCommand(ctx, c) },
+	runResult, err := a.builder.Run(
+		ctx, cmd, build,
+		func(c *raftcmdpb.Proposal) ([]byte, error) {
+			// Coverage and productions are already assigned by the
+			// runner before this callback runs. We just marshal + emit
+			// admission metrics.
+			return a.marshalCommand(ctx, c)
+		},
 		a.proposer,
 	)
 	if err != nil {
@@ -407,7 +432,7 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 		// marshal / guard errors via the runner's phase sentinels.
 		// The marshal and guard wrappers carry their own diagnostic
 		// already; the bare propose error is the queue-full case.
-		if !errors.Is(err, preload.ErrMarshalProposal) && !errors.Is(err, preload.ErrAcquireProposalGuard) {
+		if !errors.Is(err, plan.ErrMarshalProposal) && !errors.Is(err, plan.ErrAcquireProposalGuard) {
 			a.logger.WithFields(map[string]any{
 				"channel": "raft.node.propose",
 			}).Errorf("Proposal failed: %v", err)
@@ -493,9 +518,9 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.
-	a.preloader.LockTracker()
+	a.builder.LockTracker()
 	fsmFuture, err := a.proposer.Propose(ctx, proposal)
-	a.preloader.UnlockTracker()
+	a.builder.UnlockTracker()
 
 	if err != nil {
 		return 0, err
@@ -686,43 +711,31 @@ func allRequestsAreMaintenanceMode(verified []verifiedRequest) bool {
 }
 
 // addVolumeNeed adds a volume key to the preload needs.
-func addVolumeNeed(p *preload.Needs, ledgerName string, account, asset string) {
+func addVolumeNeed(p *plan.Needs, ledgerName string, account, asset string) {
 	p.Volumes[domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Asset:      asset,
 	}] = struct{}{}
 }
 
-// addTransactionTargetNeeds preloads the right entry for a TargetTransaction.
-// When the identifier carries an id, the corresponding TransactionState is
-// preloaded so the FSM can read it from cache. When it carries a reference,
-// only the reference entry is preloaded — the FSM resolves it against the
-// WriteSet, which sees both committed references (via this preload) and
-// references just written by an earlier order in the same batch.
-func addTransactionTargetNeeds(p *preload.Needs, ledgerName string, target *commonpb.TargetTransaction) {
-	switch id := target.GetIdentifier().(type) {
-	case *commonpb.TargetTransaction_Id:
-		p.Transactions[domain.TransactionKey{
-			LedgerName: ledgerName,
-			ID:         id.Id,
-		}] = struct{}{}
-	case *commonpb.TargetTransaction_Reference:
-		if id.Reference == "" {
-			return
-		}
-
-		p.References[domain.TransactionReferenceKey{
-			LedgerName: ledgerName,
-			Reference:  id.Reference,
-		}] = struct{}{}
-	}
+// addTransactionTargetNeeds preloads the TransactionState entry for a
+// TargetTransaction so the FSM can read it from cache.
+func addTransactionTargetNeeds(p *plan.Needs, ledgerName string, txID uint64) {
+	p.Transactions[domain.TransactionKey{
+		LedgerName: ledgerName,
+		ID:         txID,
+	}] = struct{}{}
 }
 
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
-func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*preload.Needs, error) {
-	p := preload.NewNeeds()
+// Returns the proposal-wide aggregate Needs and a parallel slice with one
+// Needs per order (used to compute Order.coverage_bits after Build).
+func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*plan.Needs, []*plan.Needs, error) {
+	aggregate := plan.NewNeeds()
+	perOrder := make([]*plan.Needs, len(orders))
 
-	for _, order := range orders {
+	for orderIdx, order := range orders {
+		p := plan.NewNeeds()
 		// Idempotency keys apply to all order types.
 		if order.GetIdempotency() != nil && order.GetIdempotency().GetKey() != "" {
 			p.IdempotencyKeys[domain.IdempotencyKey{Key: order.GetIdempotency().GetKey()}] = struct{}{}
@@ -769,23 +782,48 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 			}
 
 			if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
-				if target, ok := sm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+				switch target := sm.GetTarget().GetTarget().(type) {
+				case *commonpb.Target_Account:
 					for key := range sm.GetMetadata() {
 						p.Metadata[domain.MetadataKey{
 							AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 							Key:        key,
 						}] = struct{}{}
 					}
+				case *commonpb.Target_TransactionId:
+					// processMirrorSavedMetadata reads the target tx state to
+					// merge metadata onto it; declare it so the View admits it.
+					p.Transactions[domain.TransactionKey{
+						LedgerName: ledgerName,
+						ID:         target.TransactionId,
+					}] = struct{}{}
 				}
 			}
 
 			if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
-				if target, ok := dm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+				switch target := dm.GetTarget().GetTarget().(type) {
+				case *commonpb.Target_Account:
 					p.Metadata[domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 						Key:        dm.GetKey(),
 					}] = struct{}{}
+				case *commonpb.Target_TransactionId:
+					// processMirrorDeletedMetadata reads the target tx state
+					// to strip the deleted key.
+					p.Transactions[domain.TransactionKey{
+						LedgerName: ledgerName,
+						ID:         target.TransactionId,
+					}] = struct{}{}
 				}
+			}
+
+			if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
+				// processMirrorRevertedTransaction reads the original tx state
+				// to stamp RevertedByTransaction on it.
+				p.Transactions[domain.TransactionKey{
+					LedgerName: ledgerName,
+					ID:         rt.GetRevertedTransactionId(),
+				}] = struct{}{}
 			}
 		case *raftcmdpb.Order_CreatePreparedQuery:
 			ledgerName := orderType.CreatePreparedQuery.GetQuery().GetLedger()
@@ -848,16 +886,16 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				// Volumes for script-based orders are discovered in a separate
 				// pass (resolveScriptsAndEnrichNeeds) after extractPreloadNeeds
 				// returns. Skip the posting-driven volume preload for those.
-				if applyData.CreateTransaction.GetNumscriptReference() != nil ||
+				scriptBacked := applyData.CreateTransaction.GetNumscriptReference() != nil ||
 					(applyData.CreateTransaction.GetScript() != nil &&
 						applyData.CreateTransaction.GetScript().GetPlain() != "" &&
-						len(applyData.CreateTransaction.GetPostings()) == 0) {
-					continue
-				}
+						len(applyData.CreateTransaction.GetPostings()) == 0)
 
-				for _, posting := range applyData.CreateTransaction.GetPostings() {
-					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
-					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+				if !scriptBacked {
+					for _, posting := range applyData.CreateTransaction.GetPostings() {
+						addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
+						addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+					}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
@@ -881,8 +919,8 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					}
 				}
 
-				if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction); ok {
-					addTransactionTargetNeeds(p, ledgerName, target.Transaction)
+				if tx, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+					addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
@@ -893,8 +931,8 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					}] = struct{}{}
 				}
 
-				if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction); ok {
-					addTransactionTargetNeeds(p, ledgerName, target.Transaction)
+				if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+					addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
 				}
 			}
 		case *raftcmdpb.Order_SaveLedgerMetadata:
@@ -915,19 +953,22 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				Key:        orderType.DeleteLedgerMetadata.GetKey(),
 			}] = struct{}{}
 		}
+
+		perOrder[orderIdx] = p
+		aggregate.Merge(p)
 	}
 
-	return p, nil
+	return aggregate, perOrder, nil
 }
 
 // resolveScriptsAndEnrichNeeds resolves ScriptReferences and discovers volume/metadata
 // dependencies from all script-based CreateTransaction orders. It enriches the given
-// Needs with the discovered dependencies so that a single BuildPreloads call covers everything.
+// Needs with the discovered dependencies so that a single Build call covers everything.
 //
 // This runs after extractPreloadNeeds (which preloads caller-supplied accountMetadata
-// keys but skips posting-driven volumes for script-based orders) and before BuildPreloads.
-func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *preload.Needs) error {
-	for _, order := range orders {
+// keys but skips posting-driven volumes for script-based orders) and before Build.
+func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Needs, perOrder []*plan.Needs) error {
+	for orderIdx, order := range orders {
 		applyOrder, ok := order.GetType().(*raftcmdpb.Order_Apply)
 		if !ok {
 			continue
@@ -937,6 +978,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		if !ok {
 			continue
 		}
+
+		// Script-discovered keys belong to this order's coverage. perOrder
+		// is initialized by extractPreloadNeeds with one entry per input
+		// order, so the index lookup is safe.
+		orderNeeds := perOrder[orderIdx]
 
 		ledgerName := applyOrder.Apply.GetLedger()
 
@@ -990,14 +1036,17 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		if discovered != nil {
 			for key := range discovered.SourceVolumes {
 				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset)
+				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset)
 			}
 
 			for key := range discovered.DestinationVolumes {
 				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset)
+				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset)
 			}
 
 			for key := range discovered.WrittenMetadata {
 				p.Metadata[key] = struct{}{}
+				orderNeeds.Metadata[key] = struct{}{}
 			}
 		}
 
@@ -1006,13 +1055,13 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// For inline scripts: the text stays in the order as-is, no preload needed.
 		if isReference {
 			ref := createTx.CreateTransaction.GetNumscriptReference()
-			p.NumscriptContents[domain.NumscriptEntryKey{
+			contentKey := domain.NumscriptEntryKey{
 				LedgerName: ledgerName,
 				Name:       ref.GetName(),
 				Version:    resolvedVersion,
-			}] = struct{}{}
-			// Ensure the order's reference has the resolved version for FSM cache lookup.
-			_ = ref
+			}
+			p.NumscriptContents[contentKey] = struct{}{}
+			orderNeeds.NumscriptContents[contentKey] = struct{}{}
 		}
 	}
 
@@ -1589,137 +1638,20 @@ func (a *Admission) requestsToOrders(ctx context.Context, verified []verifiedReq
 	return orders, overlay, nil
 }
 
-// resolveRevertTarget resolves the target transaction id of a Revert action.
-// When the payload carries a numeric id, it is returned as-is. When it
-// carries a reference, the reference is looked up against the committed
-// store (Pebble) — Revert by reference is therefore only supported for
-// transactions that have been committed in a previous Raft entry, never for
-// transactions created in the current batch.
-func (a *Admission) resolveRevertTarget(ctx context.Context, ledgerName string, payload *servicepb.RevertTransactionPayload) (uint64, error) {
-	switch identifier := payload.GetIdentifier().(type) {
-	case *servicepb.RevertTransactionPayload_TransactionId:
-		return identifier.TransactionId, nil
-	case *servicepb.RevertTransactionPayload_TransactionReference:
-		if identifier.TransactionReference == "" {
-			return 0, &domain.BusinessError{Err: domain.ErrTransactionTargetMissing}
-		}
-
-		return a.lookupTransactionByReference(ctx, ledgerName, identifier.TransactionReference)
-	default:
+// resolveRevertTarget returns the target transaction id of a Revert action.
+func (a *Admission) resolveRevertTarget(_ context.Context, _ string, payload *servicepb.RevertTransactionPayload) (uint64, error) {
+	id := payload.GetTransactionId()
+	if id == 0 {
 		return 0, &domain.BusinessError{Err: domain.ErrTransactionTargetMissing}
 	}
-}
 
-// lookupTransactionByReference resolves a transaction reference against the
-// committed primary store. Returns ErrTransactionReferenceNotFound when the
-// reference does not exist. The provided context is honoured: if it is
-// already cancelled, the lookup is short-circuited before opening a Pebble
-// handle.
-func (a *Admission) lookupTransactionByReference(ctx context.Context, ledgerName, reference string) (uint64, error) {
-	if err := ctx.Err(); err != nil {
-		return 0, err
-	}
-
-	_, ok := a.preloader.ResolveLedgerID(ledgerName)
-	if !ok {
-		return 0, &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: ledgerName}}
-	}
-
-	handle, err := a.store.NewDirectReadHandle()
-	if err != nil {
-		return 0, fmt.Errorf("creating read handle: %w", err)
-	}
-
-	defer func() { _ = handle.Close() }()
-
-	key := domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: reference}
-
-	value, err := a.attrs.References.Get(handle, key.Bytes())
-	if err != nil {
-		return 0, fmt.Errorf("reading transaction reference: %w", err)
-	}
-
-	if value == nil {
-		return 0, &domain.BusinessError{Err: &domain.ErrTransactionReferenceNotFound{Reference: reference}}
-	}
-
-	return value.GetTransactionId(), nil
-}
-
-// resolveMetadataReferencesAndEnrichNeeds walks SaveMetadata / DeleteMetadata
-// orders whose Target.Transaction carries a Reference (rather than an Id) and
-// preloads the corresponding TransactionState. If the reference cannot be
-// resolved in the committed store (typically because the transaction is being
-// created in the same batch), the preload is skipped — the FSM will read the
-// state directly from the WriteSet.
-func (a *Admission) resolveMetadataReferencesAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, p *preload.Needs) error {
-	for _, order := range orders {
-		applyOrder, ok := order.GetType().(*raftcmdpb.Order_Apply)
-		if !ok {
-			continue
-		}
-
-		var target *commonpb.TargetTransaction
-
-		switch data := applyOrder.Apply.GetData().(type) {
-		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-			tx, isTx := data.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction)
-			if isTx {
-				target = tx.Transaction
-			}
-		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-			tx, isTx := data.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction)
-			if isTx {
-				target = tx.Transaction
-			}
-		}
-
-		if target == nil {
-			continue
-		}
-
-		ref, isRef := target.GetIdentifier().(*commonpb.TargetTransaction_Reference)
-		if !isRef || ref.Reference == "" {
-			continue
-		}
-
-		ledgerName := applyOrder.Apply.GetLedger()
-
-		txID, err := a.lookupTransactionByReference(ctx, ledgerName, ref.Reference)
-		if err != nil {
-			// Intra-batch references that have not yet been committed
-			// to the store surface as ErrTransactionReferenceNotFound.
-			// The FSM resolves them through the WriteSet, so we silently
-			// skip the preload — the FSM either succeeds via the
-			// WriteSet, or it returns the same NotFound error.
-			//
-			// ErrLedgerNotFound is handled symmetrically: the targeted
-			// ledger may be created in the same batch. The FSM will
-			// return the appropriate error if the ledger is missing at
-			// apply time, so we skip the preload here.
-			var refNotFound *domain.ErrTransactionReferenceNotFound
-			var ledgerNotFound *domain.ErrLedgerNotFound
-			if errors.As(err, &refNotFound) || errors.As(err, &ledgerNotFound) {
-				continue
-			}
-
-			return err
-		}
-
-		if _, ok := a.preloader.ResolveLedgerID(ledgerName); !ok {
-			continue
-		}
-
-		p.Transactions[domain.TransactionKey{LedgerName: ledgerName, ID: txID}] = struct{}{}
-	}
-
-	return nil
+	return id, nil
 }
 
 // getTransactionPostings retrieves the postings of an original transaction from the store.
 // It uses FindTransactionCreationLog to locate the creation log and extract postings.
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
-	_, ok := a.preloader.ResolveLedgerID(ledgerName)
+	_, ok := a.builder.ResolveLedgerID(ledgerName)
 	if !ok {
 		return nil, &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: ledgerName}}
 	}

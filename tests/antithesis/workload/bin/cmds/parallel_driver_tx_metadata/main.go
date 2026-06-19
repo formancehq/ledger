@@ -55,11 +55,7 @@ func main() {
 						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 							AddMetadata: &commonpb.SaveMetadataCommand{
 								Target: &commonpb.Target{
-									Target: &commonpb.Target_Transaction{
-										Transaction: &commonpb.TargetTransaction{
-											Identifier: &commonpb.TargetTransaction_Id{Id: txID},
-										},
-									},
+									Target: &commonpb.Target_TransactionId{TransactionId: txID},
 								},
 								Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
 							},
@@ -99,11 +95,7 @@ func main() {
 						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 							DeleteMetadata: &commonpb.DeleteMetadataCommand{
 								Target: &commonpb.Target{
-									Target: &commonpb.Target_Transaction{
-										Transaction: &commonpb.TargetTransaction{
-											Identifier: &commonpb.TargetTransaction_Id{Id: txID},
-										},
-									},
+									Target: &commonpb.Target_TransactionId{TransactionId: txID},
 								},
 								Key: key,
 							},

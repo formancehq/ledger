@@ -42,6 +42,21 @@ message Order {
     DeleteLedgerMetadataOrder delete_ledger_metadata = 31;
   }
   signature.SignedRequest signature = 5;
+  // coverage_bits is a packed bitset over ExecutionPlan.attributes restricting
+  // which entries this single order may read. Bit i (byteIdx = i/8,
+  // bit-within-byte = i%8, LSB-first) is set iff attributes[i] covers a key
+  // this order may read. The FSM constructs the per-order scope from this
+  // bitset so a key declared by another order in the same batch is not
+  // transparently readable (closes the batch-level vs order-level coverage gap).
+  //
+  // Length = ceil(len(attributes)/8). Empty bytes admit NO plan — every read
+  // surfaces as *ErrCoverageMiss. Proposal-wide scopes (used by the FSM's
+  // ValidateTransientVolumes) go through state.ScopeFactory.NewProposalScope
+  // instead, not through an "empty bits means admit all" convention.
+  bytes coverage_bits = 32;
+
+  reserved 33;
+  reserved "production_bits";
 }
 
 message CreatePreparedQueryOrder {
@@ -380,21 +395,14 @@ message Proposal {
   fixed64 id = 1;                    // Random proposal ID
   repeated Order orders = 2;        // List of orders to execute atomically
   common.Timestamp date = 3;        // Creation date in UTC
-  PreloadSet preload = 4;
-  repeated EventsSinkUpdate events_sink_updates = 5;  // Per-sink cursor and error updates (Raft-replicated)
-  repeated MirrorSyncUpdate mirror_sync_updates = 6;  // Per-ledger mirror cursor and error updates (Raft-replicated)
+  ExecutionPlan execution_plan = 4;
   // predicted_index is the Raft log index predicted by the IndexTracker at
   // admission time. The FSM compares it with the actual entry.Index: a mismatch
   // means the tracker was stale (e.g. after a leadership transition) and the
-  // preloadSet is invalid. The entry is rejected without audit and the caller
+  // executionPlan is invalid. The entry is rejected without audit and the caller
   // receives Unavailable so it can retry with fresh preloads.
   // A value of 0 means no prediction (e.g. barrier, mirror sync).
   fixed64 predicted_index = 7;
-  IdempotencyEviction idempotency_eviction = 8;
-  common.ClusterConfig cluster_config = 9;  // Cluster-wide config update (technical, no log entry)
-  repeated MetadataConversionBatch metadata_conversion_batches = 10;  // Background metadata conversion batches (no log entry)
-  repeated MetadataConversionCompletion metadata_conversions_complete = 11;  // Background metadata conversion completions (no log entry)
-  repeated IndexReadyUpdate index_ready_updates = 12;  // Index ready signals from index builder (no log entry)
   // Field 13 previously held `common.CallerIdentity caller` (subject + scopes + god + source).
   // The type was split into `CallerIdentity` (identification only) and
   // `CallerSnapshot` (admission-time identity + scopes + god). Reusing the
@@ -405,6 +413,40 @@ message Proposal {
   reserved 13;
   reserved "caller";
   common.CallerSnapshot caller_snapshot = 14;  // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
+  // technical_updates carries every FSM-level update that bypasses the
+  // Order/Log channel. Each entry wraps a single payload (sink update,
+  // mirror sync, metadata conversion, …) with its own coverage_bits so
+  // the FSM applies per-update isolation, exactly like Order.coverage_bits.
+  repeated TechnicalUpdate technical_updates = 15;
+  // Fields 5, 6, 8, 9, 10, 11, 12 previously held the seven dedicated
+  // technical-update channels (events_sink_updates, mirror_sync_updates,
+  // idempotency_eviction, cluster_config, metadata_conversion_batches,
+  // metadata_conversions_complete, index_ready_updates). They were folded
+  // into the TechnicalUpdate wrapper at field 15. Keep reserved so old
+  // wire payloads don't silently mis-decode.
+  reserved 5, 6, 8, 9, 10, 11, 12;
+  reserved "events_sink_updates", "mirror_sync_updates", "idempotency_eviction",
+           "cluster_config", "metadata_conversion_batches",
+           "metadata_conversions_complete", "index_ready_updates";
+}
+
+// TechnicalUpdate is the per-update envelope that carries the coverage
+// gate alongside one of the supported tech-update payloads. Mirrors the
+// Order shape: a bytes coverage_bits bitset over ExecutionPlan.attributes
+// + the actual payload. Empty bits mean "no read coverage admitted" —
+// payloads that don't read cache state (EventsSinkUpdate,
+// IdempotencyEviction, ClusterConfig) ship with empty bits.
+message TechnicalUpdate {
+  bytes coverage_bits = 1;
+  oneof kind {
+    MirrorSyncUpdate mirror_sync = 2;
+    EventsSinkUpdate events_sink = 3;
+    IdempotencyEviction idempotency_eviction = 4;
+    common.ClusterConfig cluster_config = 5;
+    MetadataConversionBatch metadata_batch = 6;
+    MetadataConversionCompletion metadata_completion = 7;
+    IndexReadyUpdate index_ready = 8;
+  }
 }
 
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.
@@ -465,95 +507,85 @@ message VolumePair {
   common.Uint256 output = 2;
 }
 
-message PreloadSet {
+// ExecutionPlan is the apply-time recipe admission attaches to a proposal:
+// the keys the FSM is allowed to read, the values to seed in the cache, the
+// idempotency entries to restore, and the intra-batch producer→consumer
+// dependencies. It is the single source of truth the FSM consults during
+// apply — every cache read is checked against it, and any mutation that
+// would expand the readable surface beyond what was declared is a
+// proposer bug.
+message ExecutionPlan {
   fixed64 lastPersistedIndex = 1;
-  repeated Preload preloads = 2;
-  repeated CacheTouch touches = 3;
-  fixed64 cache_epoch = 4;  // Cache epoch at admission time; FSM rejects on mismatch (cache was reset)
+  // Cache epoch at admission time; FSM rejects on mismatch (cache was reset)
+  fixed64 cache_epoch = 4;
+  // Per-attribute plans produced by admission. Each entry is either a
+  // value preload, a Gen1→Gen0 promotion, or a pure coverage declaration —
+  // every plan also feeds the FSM-side state.Plan coverage set, so the
+  // admission layer is the single source of truth for what the FSM may
+  // read during apply.
+  repeated AttributePlan attributes = 6;
+
+  // Idempotency keys preloaded for this proposal. They live outside the
+  // AttributePlan list because they are NOT a cache attribute: the FSM
+  // applies them to the dedicated IdempotencyStore and the state.Plan
+  // does not track their coverage. Kept as a top-level field instead of
+  // an AttributePlan variant to make that distinction visible at the
+  // wire level.
+  repeated ReloadIdempotencyKey idempotency_keys = 7;
+
+  reserved 2, 3, 5, 8;
+  reserved "preloads", "touches", "declared", "productions";
 }
 
-// CacheTouch tells the FSM to promote a key from Gen1 to Gen0 (no value payload).
-// Used when a key is still in cache (Gen1) but would not survive the next rotation.
-message CacheTouch {
-  bytes id = 1;     // 16-byte U128 identifier
-  uint32 attr_type = 2;  // attribute code byte (dal.AttributeCode*)
-}
-
-message Preload {
-  oneof type {
-     PreloadVolume volume = 1;
-     PreloadIdempotencyKey idempotency_key = 2;
-     PreloadLedger ledger = 3;
-     PreloadBoundary boundary = 4;
-     PreloadTransactionReference transaction_reference = 5;
-     PreloadSinkConfig sink_config = 6;
-     PreloadAccountMetadata account_metadata = 7;
-     PreloadNumscriptVersion numscript_version = 8;
-     PreloadTransactionState transaction_state = 10;
-     PreloadNumscriptContent numscript_content = 11;
-     PreloadPreparedQuery prepared_query = 12;
-     PreloadLedgerMetadata ledger_metadata = 13;
+// AttributePlan describes what the FSM must do with a single attribute key
+// on apply. attr_code (dal.SubAttrXxx) lives on the plan itself, not on
+// the intent, so the kind/code can be read uniformly without inspecting
+// the oneof — keeps coverage indexing, dispatch, and unmarshal routing
+// all on the same field. Exactly one of declare/touch/value is set; that
+// choice tells the cache-mutation path (Touch promotes, AttributeValue
+// writes, Declare is a no-op) what to do.
+message AttributePlan {
+  AttributeID id = 1;
+  uint32 attr_code = 2;
+  oneof intent {
+    // Declare: the key was already CacheGuaranteed (Gen0) at admission time.
+    // No FSM-side cache mutation; pure coverage declaration so state.Plan
+    // admits reads on hot keys without a false-positive miss.
+    Declare declare = 3;
+    // Touch: the key is in Gen1 and would not survive the next rotation.
+    // The FSM mirrors the promotion via MirrorTouch.
+    Touch touch = 4;
+    // AttributeValue: load the value into Gen0 cache. Carries the typed value.
+    AttributeValue value = 5;
   }
 }
 
-message PreloadVolume {
-  AttributeID id = 1;
-  VolumePair value = 2;
+// Declare is the sentinel intent for AttributePlan. Empty by design — the
+// presence of the field is the entire signal.
+message Declare {}
+
+// Touch is the sentinel intent for AttributePlan. Empty by design — the
+// presence of the field plus AttributePlan.attr_code drive the Gen1→Gen0
+// promotion on the FSM side.
+message Touch {}
+
+// AttributeValue carries the typed value to write into the FSM-side cache
+// for one AttributePlan. The value is type-erased on the wire (a vtproto-
+// marshaled blob) and the FSM dispatches the typed unmarshal via the
+// parent AttributePlan.attr_code (dal.SubAttrXxx) — kept off this message
+// to avoid carrying the kind in two places.
+message AttributeValue {
+  bytes raw_value = 1;
 }
 
-message PreloadIdempotencyKey {
+// ReloadIdempotencyKey rides on ExecutionPlan.idempotency_keys, not on the
+// AttributePlan list. Idempotency keys are not cache attributes: the FSM
+// restores them into the dedicated IdempotencyStore on apply, hence
+// "Reload" rather than the cache-attribute pre-loading the AttributePlan
+// variants feed.
+message ReloadIdempotencyKey {
   string key = 1;
   common.IdempotencyKeyValue value = 2;
-}
-
-message PreloadLedger {
-  AttributeID id = 1;
-  common.LedgerInfo value = 2;
-}
-
-message PreloadBoundary {
-  AttributeID id = 1;
-  LedgerBoundaries value = 2;
-}
-
-message PreloadTransactionReference {
-  AttributeID id = 1;
-  common.TransactionReferenceValue value = 2;
-}
-
-message PreloadSinkConfig {
-  AttributeID id = 1;
-  common.SinkConfig value = 2;
-}
-
-message PreloadAccountMetadata {
-  AttributeID id = 1;
-  common.MetadataValue value = 2;
-}
-
-message PreloadNumscriptVersion {
-  AttributeID id = 1;
-  common.NumscriptVersionValue value = 2;
-}
-
-message PreloadTransactionState {
-  AttributeID id = 1;
-  common.TransactionState value = 2;
-}
-
-message PreloadNumscriptContent {
-  AttributeID id = 1;
-  common.NumscriptInfo value = 2;
-}
-
-message PreloadPreparedQuery {
-  AttributeID id = 1;
-  common.PreparedQuery value = 2;
-}
-
-message PreloadLedgerMetadata {
-  AttributeID id = 1;
-  common.MetadataValue value = 2;
 }
 
 // ============================================================================

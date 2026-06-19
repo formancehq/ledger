@@ -1,15 +1,21 @@
 package processing
 
 import (
+	"errors"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
-	existing, ok := s.GetLedger(order.GetName())
-	if ok {
+func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	existing, err := s.GetLedger(order.GetName())
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: err}
+	}
+
+	if err == nil {
 		if existing.GetDeletedAt() != nil {
 			return nil, &domain.ErrLedgerDeleted{Name: order.GetName()}
 		}
@@ -72,13 +78,13 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
-	lReader, ok := s.GetLedger(order.GetName())
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: order.GetName()}
+func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	l, loadErr := loadLedger(s, order.GetName())
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
-	l := lReader.Mutate()
+	l = l.CloneVT()
 
 	l.DeletedAt = s.GetDate()
 

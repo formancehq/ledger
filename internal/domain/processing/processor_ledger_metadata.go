@@ -8,18 +8,17 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerMetadataOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerMetadataOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	ledger := order.GetLedger()
 	if ledger == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
 
-	infoReader, ok := s.GetLedger(ledger)
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: ledger}
+	info, loadErr := loadLedger(s, ledger)
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
-	info := infoReader.Mutate()
 	enforceSchemaMap(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_LEDGER, order.GetMetadata())
 
 	var previousValues map[string]*commonpb.MetadataValue
@@ -30,12 +29,17 @@ func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerM
 			Key:        key,
 		}
 
-		if oldVal, err := s.GetLedgerMetadata(metaKey); err == nil && oldVal != nil {
+		oldVal, err := s.GetLedgerMetadata(metaKey)
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.ErrStorageOperation{Operation: "reading previous ledger metadata", Cause: err}
+		}
+
+		if err == nil {
 			if previousValues == nil {
 				previousValues = make(map[string]*commonpb.MetadataValue)
 			}
 
-			previousValues[key] = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_LEDGER, key, oldVal.Mutate())
+			previousValues[key] = oldVal
 		}
 
 		s.PutLedgerMetadata(metaKey, value)
@@ -52,7 +56,7 @@ func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerM
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLedgerMetadataOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLedgerMetadataOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	ledger := order.GetLedger()
 	if ledger == "" {
 		return nil, domain.ErrLedgerNameRequired
@@ -62,12 +66,10 @@ func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLe
 		return nil, domain.ErrMetadataKeyRequired
 	}
 
-	infoReader, ok := s.GetLedger(ledger)
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: ledger}
+	info, loadErr := loadLedger(s, ledger)
+	if loadErr != nil {
+		return nil, loadErr
 	}
-
-	info := infoReader.Mutate()
 
 	metaKey := domain.LedgerMetadataKey{
 		LedgerName: info.GetName(),
@@ -88,17 +90,12 @@ func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLe
 
 	s.DeleteLedgerMetadata(metaKey)
 
-	var previousValue *commonpb.MetadataValue
-	if oldVal != nil {
-		previousValue = oldVal.Mutate()
-	}
-
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedLedgerMetadata{
 			DeletedLedgerMetadata: &commonpb.DeletedLedgerMetadataLog{
 				Ledger:        ledger,
 				Key:           order.GetKey(),
-				PreviousValue: coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_LEDGER, order.GetKey(), previousValue),
+				PreviousValue: oldVal,
 			},
 		},
 	}, nil

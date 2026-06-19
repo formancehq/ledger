@@ -1330,9 +1330,11 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 		i--
 		dAtA[i] = 0x10
 	}
-	if vtmsg, ok := m.Identifier.(interface{ MarshalToSizedBufferVT([]byte) (int, error) }); ok {
-		size, _ := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
+	if m.TransactionId != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransactionId))
+		i--
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }

@@ -1,4 +1,4 @@
-package preload
+package plan
 
 import "github.com/formancehq/ledger/v3/internal/pkg/protowireutil"
 

@@ -1,4 +1,4 @@
-package preload
+package plan
 
 import (
 	"fmt"
@@ -13,43 +13,59 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/preload"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// Preloader manages the shared preload infrastructure used by both admission
+// Builder manages the shared preload infrastructure used by both admission
 // and mirror. It uses the Node's IndexTracker for accurate Raft index prediction
-// and the Loaders for deduplication.
+// and the preload.Loaders for deduplication.
 //
 // The proposal lock is the IndexTracker's own mutex (tracker.Lock/Unlock),
 // which also serializes with IndexTracker.Decrement. This prevents a race
 // where a dropped proposal shifts the tracker across a generation boundary
 // between AcquireProposalGuard's validation and Node.Propose.
-type Preloader struct {
+type Builder struct {
 	tracker      *node.IndexTracker
 	cache        *cache.Cache
 	attrs        *attributes.Attributes
 	store        *dal.Store
-	loaders      *Loaders
+	loaders      *preload.Loaders
 	bloomFilters *bloom.FilterSet
 	logger       logging.Logger
+
+	// maxPlanSize is the cap on the number of AttributePlan entries an
+	// ExecutionPlan may carry. Build returns domain.ErrExecutionPlanTooLarge
+	// past this threshold so admission rejects pathological payloads up
+	// front rather than paying for proportionally-large coverage slices
+	// on every NewScope downstream. 0 disables the cap.
+	maxPlanSize int
 }
 
-// PreloadBuild carries the result of an optimistic BuildPreloads call.
-// The caller uses PreloadSet for marshalling outside the lock, then passes
+// BuildResult carries the result of an optimistic Build call.
+// The caller uses ExecutionPlan for marshalling outside the lock, then passes
 // the build to AcquireProposalGuard for generation validation.
-type PreloadBuild struct {
-	PreloadSet   *raftcmdpb.PreloadSet
-	token        *CleanupToken
-	nextIndex    uint64
-	nextIndexGen uint64 // gen(nextIndex, threshold) — the future generation used by CheckCache
+//
+// operations is captured here so Run can iterate them right before each
+// (re-)marshal without the caller re-passing the slice. aggregate is the
+// merged Needs across all operations — used for preload boundary
+// validation under the guard.
+type BuildResult struct {
+	ExecutionPlan *raftcmdpb.ExecutionPlan
+	token         *preload.CleanupToken
+	nextIndex     uint64
+	nextIndexGen  uint64 // gen(nextIndex, threshold) — the future generation used by CheckCache
+	operations    []WriteOperation
+	aggregate     *Needs
 }
 
 // ReleaseLoaders releases the loader cleanup token from the build.
 // Use this on error paths when AcquireProposalGuard was never called.
 // Safe to call multiple times (idempotent via nil check).
-func (b *PreloadBuild) ReleaseLoaders() {
+func (b *BuildResult) ReleaseLoaders() {
 	if b.token != nil {
 		b.token.Release()
 		b.token = nil
@@ -65,8 +81,8 @@ func (b *PreloadBuild) ReleaseLoaders() {
 // after the FSM applies (or immediately if loader dedup is not needed, e.g.
 // mirror). ReleaseAll is a convenience for error paths.
 type ProposalGuard struct {
-	p     *Preloader
-	token *CleanupToken
+	p     *Builder
+	token *preload.CleanupToken
 }
 
 // Release releases the proposal lock. Must be called after Propose (success or
@@ -93,29 +109,32 @@ func (g *ProposalGuard) ReleaseAll() {
 	g.ReleaseLoaders()
 }
 
-// New creates a Preloader using the given IndexTracker for Raft index prediction.
-func New(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger) *Preloader {
-	return &Preloader{
+// NewBuilder creates a Builder using the given IndexTracker for Raft index
+// prediction. maxPlanSize caps the number of AttributePlan entries an
+// ExecutionPlan may carry (0 = unlimited); see Builder.maxPlanSize.
+func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger, maxPlanSize int) *Builder {
+	return &Builder{
 		tracker:      tracker,
 		cache:        c,
 		attrs:        attrs,
 		store:        store,
-		loaders:      NewLoaders(),
+		loaders:      preload.NewLoaders(),
 		bloomFilters: bloomFilters,
 		logger:       logger,
+		maxPlanSize:  maxPlanSize,
 	}
 }
 
-// Loaders returns the shared Loaders instance, allowing callers to release
-// tokens from a PreloadBuild on error paths.
-func (p *Preloader) Loaders() *Loaders {
+// Loaders returns the shared preload.Loaders instance, allowing callers to
+// release tokens from a BuildResult on error paths.
+func (p *Builder) Loaders() *preload.Loaders {
 	return p.loaders
 }
 
 // ResolveLedgerID resolves a ledger name to its uint32 ID using the standard
 // attribute resolution path: bloom → cache → Pebble.
 // Returns (0, false) if the ledger does not exist.
-func (p *Preloader) ResolveLedgerID(name string) (uint32, bool) {
+func (p *Builder) ResolveLedgerID(name string) (uint32, bool) {
 	canonical := domain.LedgerKey{Name: name}.Bytes()
 	id, _ := attributes.MakeKey(canonical)
 
@@ -164,7 +183,7 @@ func (p *Preloader) ResolveLedgerID(name string) (uint32, bool) {
 
 // ReadBoundaries reads the current LedgerBoundaries for the given ledger
 // directly from Pebble (not from the cache overlay).
-func (p *Preloader) ReadBoundaries(ledgerName string) (*raftcmdpb.LedgerBoundaries, error) {
+func (p *Builder) ReadBoundaries(ledgerName string) (*raftcmdpb.LedgerBoundaries, error) {
 	reader, err := p.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -175,42 +194,60 @@ func (p *Preloader) ReadBoundaries(ledgerName string) (*raftcmdpb.LedgerBoundari
 }
 
 // TrackerNext returns the predicted next Raft index from the IndexTracker.
-func (p *Preloader) TrackerNext() uint64 { return p.tracker.Next() }
+func (p *Builder) TrackerNext() uint64 { return p.tracker.Next() }
 
 // LockTracker acquires the IndexTracker's mutex. Used by non-guard callers
 // (mirror error reporting, admission barrier) that Propose without going
 // through AcquireProposalGuard, to serialize the tracker Increment with
 // guarded proposals.
-func (p *Preloader) LockTracker() { p.tracker.Lock() }
+func (p *Builder) LockTracker() { p.tracker.Lock() }
 
 // UnlockTracker releases the IndexTracker's mutex.
-func (p *Preloader) UnlockTracker() { p.tracker.Unlock() }
+func (p *Builder) UnlockTracker() { p.tracker.Unlock() }
 
-// BuildPreloads resolves all preload needs optimistically without holding the
-// proposal lock. The returned PreloadBuild contains the PreloadSet for
-// marshalling and internal state for boundary validation.
+// Build resolves all preload needs optimistically without holding the
+// proposal lock. operations contribute their per-operation Needs to a
+// single aggregate that drives the preload; the slice is retained on
+// the BuildResult so Run can assign each operation's coverage_bits at
+// marshal time.
 //
 // On error, the caller must call build.ReleaseLoaders().
-func (p *Preloader) BuildPreloads(needs *Needs) (*PreloadBuild, error) {
+func (p *Builder) Build(operations []WriteOperation) (*BuildResult, error) {
+	aggregate := NewNeeds()
+	for _, op := range operations {
+		if op.Needs != nil {
+			aggregate.Merge(op.Needs)
+		}
+	}
+
 	nextIndex := p.tracker.Next()
 	snap := p.cache.Snapshot()
 	nextIndexGen := cache.Gen(nextIndex, snap.GenerationThreshold)
 
-	preloadSet, token, err := p.buildPreloadsAt(nextIndex, snap, needs)
+	executionPlan, token, err := p.buildPreloadsAt(nextIndex, snap, aggregate)
 	if err != nil {
-		return &PreloadBuild{token: token, nextIndex: nextIndex, nextIndexGen: nextIndexGen}, err
+		return &BuildResult{token: token, nextIndex: nextIndex, nextIndexGen: nextIndexGen, operations: operations, aggregate: aggregate}, err
 	}
 
-	return &PreloadBuild{
-		PreloadSet:   preloadSet,
-		token:        token,
-		nextIndex:    nextIndex,
-		nextIndexGen: nextIndexGen,
+	if p.maxPlanSize > 0 {
+		if size := len(executionPlan.GetAttributes()); size > p.maxPlanSize {
+			return &BuildResult{token: token, nextIndex: nextIndex, nextIndexGen: nextIndexGen, operations: operations, aggregate: aggregate},
+				&domain.ErrExecutionPlanTooLarge{Size: size, Limit: p.maxPlanSize}
+		}
+	}
+
+	return &BuildResult{
+		ExecutionPlan: executionPlan,
+		token:         token,
+		nextIndex:     nextIndex,
+		nextIndexGen:  nextIndexGen,
+		operations:    operations,
+		aggregate:     aggregate,
 	}, nil
 }
 
 // AcquireProposalGuard acquires the proposal lock and validates that
-// gen(nextIndex) has not changed since the optimistic BuildPreloads call.
+// gen(nextIndex) has not changed since the optimistic Build call.
 //
 // CheckCache uses gen(nextIndex) as the future generation to decide whether
 // cached data will survive. Under the proposal lock, nextIndex is stable
@@ -219,11 +256,11 @@ func (p *Preloader) BuildPreloads(needs *Needs) (*PreloadBuild, error) {
 // advance at any time and is read atomically by CheckCache itself.
 //
 // Returns (updatedPreloadSet, guard, error):
-//   - updatedPreloadSet is nil when stable (common case) — use build.PreloadSet.
+//   - updatedPreloadSet is nil when stable (common case) — use build.ExecutionPlan.
 //   - updatedPreloadSet is non-nil when stale (rare) — re-marshal with it.
 //
 // On error, the caller must call guard.ReleaseAll() if guard is non-nil.
-func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*raftcmdpb.PreloadSet, *ProposalGuard, error) {
+func (p *Builder) AcquireProposalGuard(build *BuildResult) (*raftcmdpb.ExecutionPlan, *ProposalGuard, error) {
 	p.tracker.Lock()
 
 	snap := p.cache.Snapshot()
@@ -235,7 +272,7 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 	}
 
 	// --- Stale: re-build under lock ---
-	// nextIndex crossed a generation boundary since BuildPreloads, so the
+	// nextIndex crossed a generation boundary since Build, so the
 	// CheckCache decisions (hit/miss/touch) may be wrong. Under the tracker
 	// lock, nextIndex is stable for the duration of the rebuild (Decrement
 	// also acquires this lock, preventing the race).
@@ -257,7 +294,7 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 		"nextIndexGenAfter":  nextIndexGenAfter,
 	})
 
-	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), snap, needs)
+	executionPlan, token, err := p.buildPreloadsAt(p.tracker.Next(), snap, build.aggregate)
 	if err != nil {
 		// Keep the tracker lock held: we return a non-nil guard so the
 		// caller can `guard.ReleaseAll()` to unlock and release the
@@ -267,7 +304,7 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 		return nil, &ProposalGuard{p: p, token: token}, err
 	}
 
-	return preloadSet, &ProposalGuard{p: p, token: token}, nil
+	return executionPlan, &ProposalGuard{p: p, token: token}, nil
 }
 
 // bloomFilter returns the bloom filter for the given attribute type, or nil
@@ -276,7 +313,7 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 // from one revision paired with a freshly-swapped empty snapshot from the
 // next — that race injected zero-volume preloads after a bloom config
 // change (#317).
-func (p *Preloader) bloomFilter(attrType byte) *bloom.Filter {
+func (p *Builder) bloomFilter(attrType byte) *bloom.Filter {
 	if p.bloomFilters == nil {
 		return nil
 	}
@@ -293,13 +330,13 @@ func (p *Preloader) bloomFilter(attrType byte) *bloom.Filter {
 type buildResult struct {
 	resolve *resolveResult
 	err     error
-	loader  LoaderOps // which loader the tracker keys should be released from
+	loader  preload.LoaderOps // which loader the tracker keys should be released from
 }
 
 // buildPreloadsAt resolves all preload needs at the given nextIndex.
 // Each attribute type uses independent caches and loaders, so they are resolved
 // in parallel to reduce wall-clock time and shard lock hold duration.
-func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Needs) (*raftcmdpb.PreloadSet, *CleanupToken, error) {
+func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Needs) (*raftcmdpb.ExecutionPlan, *preload.CleanupToken, error) {
 	boundary := cache.BoundaryIndex(nextIndex, snap.GenerationThreshold)
 
 	if p.logger.Enabled(logging.TraceLevel) {
@@ -308,7 +345,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 			"boundary":            boundary,
 			"generationThreshold": snap.GenerationThreshold,
 			"gen":                 cache.Gen(nextIndex, snap.GenerationThreshold),
-		}).Tracef("Preloader: buildPreloadsAt")
+		}).Tracef("Builder: buildPreloadsAt")
 	}
 
 	// Each goroutine writes to a distinct results[slot].
@@ -336,7 +373,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.Ledgers, nextIndex, boundary, snap.Epoch,
 				p.cache.Ledgers, p.loaders.Ledgers,
 				p.attrs.Ledger.Get, p.store,
-				buildLedgerPreload, false,
+				nil, false,
 				dal.SubAttrLedger, nil,
 				p.bloomFilter(dal.SubAttrLedger),
 				p.logger, "ledgers",
@@ -353,7 +390,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.Boundaries, nextIndex, boundary, snap.Epoch,
 				p.cache.Boundaries, p.loaders.Boundaries,
 				p.attrs.Boundary.Get, p.store,
-				buildBoundaryPreload, false,
+				nil, false,
 				dal.SubAttrBoundary, nil,
 				p.bloomFilter(dal.SubAttrBoundary),
 				p.logger, "boundaries",
@@ -370,7 +407,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.Volumes, nextIndex, boundary, snap.Epoch,
 				p.cache.Volumes, p.loaders.Volumes,
 				p.attrs.Volume.Get, p.store,
-				buildVolumePreload, true,
+				newZeroVolumePair, true,
 				dal.SubAttrVolume, nil,
 				p.bloomFilter(dal.SubAttrVolume),
 				p.logger, "volumes",
@@ -390,7 +427,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 			}
 			defer func() { _ = reader.Close() }()
 
-			var preloads []*raftcmdpb.Preload
+			var keys []*raftcmdpb.ReloadIdempotencyKey
 			for ik := range needs.IdempotencyKeys {
 				value, err := state.LoadIdempotencyKey(reader, ik.Key)
 				if err != nil {
@@ -400,17 +437,13 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				}
 
 				if value != nil {
-					preloads = append(preloads, &raftcmdpb.Preload{
-						Type: &raftcmdpb.Preload_IdempotencyKey{
-							IdempotencyKey: &raftcmdpb.PreloadIdempotencyKey{
-								Key:   ik.Key,
-								Value: value,
-							},
-						},
+					keys = append(keys, &raftcmdpb.ReloadIdempotencyKey{
+						Key:   ik.Key,
+						Value: value,
 					})
 				}
 			}
-			results[i].resolve = &resolveResult{preloads: preloads}
+			results[i].resolve = &resolveResult{idempotencyKeys: keys}
 		})
 	}
 
@@ -421,7 +454,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.References, nextIndex, boundary, snap.Epoch,
 				p.cache.References, p.loaders.References,
 				p.attrs.References.Get, p.store,
-				buildReferencePreload, false,
+				nil, false,
 				dal.SubAttrReference, nil,
 				p.bloomFilter(dal.SubAttrReference),
 				p.logger, "references",
@@ -438,7 +471,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.SinkConfigs, nextIndex, boundary, snap.Epoch,
 				p.cache.SinkConfigs, p.loaders.SinkConfigs,
 				p.attrs.SinkConfig.Get, p.store,
-				buildSinkConfigPreload, false,
+				nil, false,
 				dal.SubAttrSinkConfig, nil,
 				p.bloomFilter(dal.SubAttrSinkConfig),
 				p.logger, "sink_configs",
@@ -455,7 +488,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.NumscriptVersions, nextIndex, boundary, snap.Epoch,
 				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
 				p.attrs.NumscriptVersion.Get, p.store,
-				buildNumscriptVersionPreload, true,
+				nil, true,
 				dal.SubAttrNumscriptVersion, nil,
 				p.bloomFilter(dal.SubAttrNumscriptVersion),
 				p.logger, "numscript_versions",
@@ -472,7 +505,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.NumscriptContents, nextIndex, boundary, snap.Epoch,
 				p.cache.NumscriptContents, p.loaders.NumscriptContents,
 				p.attrs.NumscriptContent.Get, p.store,
-				buildNumscriptContentPreload, true,
+				nil, true,
 				dal.SubAttrNumscriptContent, nil,
 				p.bloomFilter(dal.SubAttrNumscriptContent),
 				p.logger, "numscript_contents",
@@ -489,7 +522,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.Transactions, nextIndex, boundary, snap.Epoch,
 				p.cache.Transactions, p.loaders.Transactions,
 				p.attrs.Transaction.Get, p.store,
-				buildTransactionStatePreload, false,
+				nil, false,
 				dal.SubAttrTransaction, nil,
 				p.bloomFilter(dal.SubAttrTransaction),
 				p.logger, "transactions",
@@ -506,7 +539,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.Metadata, nextIndex, boundary, snap.Epoch,
 				p.cache.AccountMetadata, p.loaders.AccountMetadata,
 				p.attrs.Metadata.Get, p.store,
-				buildMetadataPreload, false,
+				nil, false,
 				dal.SubAttrMetadata, nil,
 				p.bloomFilter(dal.SubAttrMetadata),
 				p.logger, "metadata",
@@ -523,7 +556,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.PreparedQueries, nextIndex, boundary, snap.Epoch,
 				p.cache.PreparedQueries, p.loaders.PreparedQueries,
 				p.attrs.PreparedQuery.Get, p.store,
-				buildPreparedQueryPreload, true,
+				nil, true,
 				dal.SubAttrPreparedQuery, nil,
 				p.bloomFilter(dal.SubAttrPreparedQuery),
 				p.logger, "prepared_queries",
@@ -540,7 +573,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 				needs.LedgerMetadata, nextIndex, boundary, snap.Epoch,
 				p.cache.LedgerMetadata, p.loaders.LedgerMetadata,
 				p.attrs.LedgerMetadata.Get, p.store,
-				buildLedgerMetadataPreload, false,
+				nil, false,
 				dal.SubAttrLedgerMetadata, nil,
 				p.bloomFilter(dal.SubAttrLedgerMetadata),
 				p.logger, "ledger_metadata",
@@ -552,30 +585,49 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 
 	wg.Wait()
 
-	// Build CleanupToken and merge results, returning first error encountered.
-	token := &CleanupToken{}
-	preloadSet := &raftcmdpb.PreloadSet{
+	// Build preload.CleanupToken and merge results, returning first error encountered.
+	token := &preload.CleanupToken{}
+	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: boundary,
 		CacheEpoch:         snap.Epoch,
 	}
 
 	for i := range slot {
+		// Always promote any tracker entries into the cleanup token,
+		// even when the slot returned an error. resolveAttributePreload
+		// can populate the tracker for keys that loaded successfully
+		// before a concurrent sibling set firstErr; if we returned
+		// before draining them, the caller's ReleaseLoaders would skip
+		// them and the loader would leak the partial-load entries
+		// across every retry.
+		if results[i].resolve != nil && results[i].loader != nil && len(results[i].resolve.tracker) > 0 {
+			token.Tracked = append(token.Tracked, preload.TrackedLoader{
+				Loader: results[i].loader,
+				Keys:   results[i].resolve.tracker,
+			})
+		}
+
 		if results[i].err != nil {
 			return nil, token, results[i].err
 		}
 
 		if results[i].resolve != nil {
-			preloadSet.Preloads = append(preloadSet.Preloads, results[i].resolve.preloads...)
-			preloadSet.Touches = append(preloadSet.Touches, results[i].resolve.touches...)
-
-			if results[i].loader != nil && len(results[i].resolve.tracker) > 0 {
-				token.tracked = append(token.tracked, trackedLoader{
-					loader: results[i].loader,
-					keys:   results[i].resolve.tracker,
-				})
-			}
+			executionPlan.Attributes = append(executionPlan.Attributes, results[i].resolve.attributes...)
+			executionPlan.IdempotencyKeys = append(executionPlan.IdempotencyKeys, results[i].resolve.idempotencyKeys...)
 		}
 	}
 
-	return preloadSet, token, nil
+	return executionPlan, token, nil
+}
+
+// newZeroVolumePair seeds the bloom-confirmed-absent volume preload with
+// {Input:0, Output:0}. Other attribute kinds use a nil-zero T directly (an
+// empty proto marshals to empty bytes and the FSM unmarshal restores a
+// fresh zero proto), but volumes need the explicit Uint256(0) sentinels
+// so postings against fresh accounts find a balance to debit/credit.
+func newZeroVolumePair() *raftcmdpb.VolumePair {
+	return &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
 }

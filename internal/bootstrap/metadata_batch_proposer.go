@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/preload"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -22,14 +22,14 @@ import (
 // import preload: preload depends on state for ApplyResult, which
 // would create a cycle. The adapter is a thin glue layer.
 type metadataBatchProposer struct {
-	preloader *preload.Preloader
-	proposer  preload.Proposer
+	builder  *plan.Builder
+	proposer plan.Proposer
 }
 
-func newMetadataBatchProposer(preloader *preload.Preloader, proposer preload.Proposer) *metadataBatchProposer {
+func newMetadataBatchProposer(builder *plan.Builder, proposer plan.Proposer) *metadataBatchProposer {
 	return &metadataBatchProposer{
-		preloader: preloader,
-		proposer:  proposer,
+		builder:  builder,
+		proposer: proposer,
 	}
 }
 
@@ -39,22 +39,23 @@ func (m *metadataBatchProposer) Propose(
 	canonicalKeys [][]byte,
 	target commonpb.TargetType,
 ) error {
-	needs := preload.NewNeeds()
+	needs := plan.NewNeeds()
 
 	// `applyMetadataConversionBatch` and `applyMetadataConversionCompletion`
 	// both read `fsm.Registry.Ledgers.Get(ledgerKey)` (staleness check on
 	// the schema field, and saving Status=COMPLETE for the completion
 	// path). Declare the ledger so the preload populates the cache with
 	// the fresh Pebble value at propose time.
-	for _, b := range cmd.GetMetadataConversionBatches() {
-		if name := b.GetLedger(); name != "" {
-			needs.Ledgers[domain.LedgerKey{Name: name}] = struct{}{}
-		}
-	}
-
-	for _, c := range cmd.GetMetadataConversionsComplete() {
-		if name := c.GetLedger(); name != "" {
-			needs.Ledgers[domain.LedgerKey{Name: name}] = struct{}{}
+	for _, tu := range cmd.GetTechnicalUpdates() {
+		switch kind := tu.GetKind().(type) {
+		case *raftcmdpb.TechnicalUpdate_MetadataBatch:
+			if name := kind.MetadataBatch.GetLedger(); name != "" {
+				needs.Ledgers[domain.LedgerKey{Name: name}] = struct{}{}
+			}
+		case *raftcmdpb.TechnicalUpdate_MetadataCompletion:
+			if name := kind.MetadataCompletion.GetLedger(); name != "" {
+				needs.Ledgers[domain.LedgerKey{Name: name}] = struct{}{}
+			}
 		}
 	}
 
@@ -88,7 +89,23 @@ func (m *metadataBatchProposer) Propose(
 		}
 	}
 
-	build, err := m.preloader.BuildPreloads(needs)
+	// One WriteOperation per TU in the proposal — each TU declared its
+	// reads above when we walked the TechnicalUpdates list. The proposer
+	// only ever ships one TU per cmd today (MetadataBatch xor
+	// MetadataCompletion), but the per-TU mapping keeps the path safe
+	// for future multi-TU batches.
+	tus := cmd.GetTechnicalUpdates()
+	operations := make([]plan.WriteOperation, 0, len(tus))
+	for i := range tus {
+		operations = append(operations, plan.WriteOperation{
+			Needs: needs,
+			SetCoverage: func(bits []byte) {
+				cmd.GetTechnicalUpdates()[i].CoverageBits = bits
+			},
+		})
+	}
+
+	build, err := m.builder.Build(operations)
 	if err != nil {
 		if build != nil {
 			build.ReleaseLoaders()
@@ -97,8 +114,8 @@ func (m *metadataBatchProposer) Propose(
 		return fmt.Errorf("building preloads for metadata batch: %w", err)
 	}
 
-	result, err := m.preloader.RunWithPreload(
-		ctx, cmd, build, needs,
+	result, err := m.builder.Run(
+		ctx, cmd, build,
 		func(c *raftcmdpb.Proposal) ([]byte, error) { return c.MarshalVT() },
 		m.proposer,
 	)

@@ -16,7 +16,7 @@ func TestProcessSetQueryCheckpointSchedule_ValidCron(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -45,7 +45,7 @@ func TestProcessSetQueryCheckpointSchedule_InvalidCron(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -72,7 +72,7 @@ func TestProcessDeleteQueryCheckpointSchedule(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

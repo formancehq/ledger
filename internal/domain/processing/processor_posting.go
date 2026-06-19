@@ -45,7 +45,7 @@ func cachedVolumeKey(ledgerName string, account, asset string, assetCache map[st
 // increases Output for source and Input for destination.
 // All volumes must be preloaded by the admission layer — nil volumes return an error.
 // assetCache, if non-nil, avoids redundant ParseAssetPrecision calls across postings.
-func applyPosting(s InMemoryStore, ledgerName string, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.Describable {
+func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.Describable {
 	sourceKey := cachedVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), assetCache)
 
 	// Decode posting amount into stack variable to avoid heap allocation

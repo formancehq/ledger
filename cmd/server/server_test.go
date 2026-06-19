@@ -123,7 +123,7 @@ func TestLoadConfig_DefaultsApplyWhenFlagUnset(t *testing.T) {
 	// Regression: --cache-rotation-threshold (cobra default 1000) used to
 	// regress to 0 when the call site's local fallback (0) was preferred
 	// to cobra's registered default. Zero rotation threshold triggers a
-	// divide-by-zero in cache/generation.go via Preloader.BuildPreloads.
+	// divide-by-zero in cache/generation.go via Builder.Build.
 	require.Equal(t, uint64(1000), cfg.RaftConfig.RotationThreshold,
 		"--cache-rotation-threshold unset must yield the 1000 cobra default, not 0")
 	// Regression: same divergence pattern on raft tick flags — cobra

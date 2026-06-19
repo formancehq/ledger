@@ -22,6 +22,34 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+// extractBatches walks a proposal's TechnicalUpdates and returns the
+// embedded MetadataConversionBatch payloads in order. Test-only convenience
+// after the TechnicalUpdate envelope refactor — production code dispatches
+// on the oneof in machine_technical_updates.go.
+func extractBatches(cmd *raftcmdpb.Proposal) []*raftcmdpb.MetadataConversionBatch {
+	var out []*raftcmdpb.MetadataConversionBatch
+	for _, tu := range cmd.GetTechnicalUpdates() {
+		if b, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_MetadataBatch); ok {
+			out = append(out, b.MetadataBatch)
+		}
+	}
+
+	return out
+}
+
+// extractCompletions walks a proposal's TechnicalUpdates and returns the
+// embedded MetadataConversionCompletion payloads in order.
+func extractCompletions(cmd *raftcmdpb.Proposal) []*raftcmdpb.MetadataConversionCompletion {
+	var out []*raftcmdpb.MetadataConversionCompletion
+	for _, tu := range cmd.GetTechnicalUpdates() {
+		if c, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_MetadataCompletion); ok {
+			out = append(out, c.MetadataCompletion)
+		}
+	}
+
+	return out
+}
+
 // newConverterTestStore creates a fresh Pebble-backed dal.Store for testing.
 func newConverterTestStore(t *testing.T) *dal.Store {
 	t.Helper()
@@ -239,7 +267,7 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 	lastProposal := capturedProposals[len(capturedProposals)-1]
 	mu.Unlock()
 
-	assert.NotEmpty(t, lastProposal.GetMetadataConversionsComplete(), "expected MetadataConversionsComplete in proposal")
+	assert.NotEmpty(t, extractCompletions(lastProposal), "expected MetadataConversionsComplete in proposal")
 }
 
 // seedAccountMetadata writes account metadata entries through the same
@@ -304,8 +332,8 @@ func TestMetadataConverterProposesOnlyKeysNeedingConversion(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 
-			batches = append(batches, cmd.GetMetadataConversionBatches()...)
-			completes += len(cmd.GetMetadataConversionsComplete())
+			batches = append(batches, extractBatches(cmd)...)
+			completes += len(extractCompletions(cmd))
 
 			return nil
 		}).AnyTimes()
@@ -368,8 +396,8 @@ func TestMetadataConverterProposesOnlyKeysNeedingConversion(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 
-			batches += len(cmd.GetMetadataConversionBatches())
-			completes += len(cmd.GetMetadataConversionsComplete())
+			batches += len(extractBatches(cmd))
+			completes += len(extractCompletions(cmd))
 
 			return nil
 		}).AnyTimes()
@@ -432,8 +460,8 @@ func TestMetadataConverterProposesOnlyKeysNeedingConversion(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 
-			batches += len(cmd.GetMetadataConversionBatches())
-			completes += len(cmd.GetMetadataConversionsComplete())
+			batches += len(extractBatches(cmd))
+			completes += len(extractCompletions(cmd))
 
 			return nil
 		}).AnyTimes()
@@ -493,7 +521,7 @@ func TestMetadataConverterProposesOnlyKeysNeedingConversion(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 
-			batches = append(batches, cmd.GetMetadataConversionBatches()...)
+			batches = append(batches, extractBatches(cmd)...)
 
 			return nil
 		}).AnyTimes()

@@ -558,13 +558,19 @@ func buildProposalWithLeaderPreloads(
 
 	boundary := cache.BoundaryIndex(nextIndex, threshold)
 
-	var preloads []*raftcmdpb.Preload
-	var touches []*raftcmdpb.CacheTouch
+	var plans []*raftcmdpb.AttributePlan
 
 	// For CreateLedger, we need to preload the ledger key (it won't be in cache)
 	for _, order := range orders {
 		if cl := order.GetCreateLedger(); cl != nil {
-			// CreateLedger: the ledger doesn't exist yet, no preload needed
+			// CreateLedger: the ledger does not exist yet, so its LedgerKey
+			// is missing from Pebble. The FSM still needs to *read* that key
+			// to confirm the slot is empty before writing the new ledger,
+			// so the proposer must declare it. With crash semantics on the
+			// View, omitting the declaration would panic the node here.
+			ledgerU128, _ := attributes.MakeKey(domain.LedgerKey{Name: cl.GetName()}.Bytes())
+			plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrLedger))
+
 			continue
 		}
 
@@ -582,32 +588,32 @@ func buildProposalWithLeaderPreloads(
 
 		switch leader.Registry.Cache.Ledgers.CheckCache(nextIndex, ledgerU128) {
 		case cache.CacheGuaranteed:
-			// Nothing - leader guarantees it's in cache
+			plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrLedger))
 		case cache.CacheNeedsTouch:
-			touches = append(touches, &raftcmdpb.CacheTouch{
-				Id:       ledgerU128[:],
-				AttrType: uint32(dal.SubAttrLedger),
-			})
+			plans = append(plans, touchTestPlan(ledgerU128, dal.SubAttrLedger))
 		case cache.CacheMiss:
-			// Load from leader's Pebble
 			info, _, err := leader.Registry.Ledgers.Get(ledgerCanonical)
 			if err == nil && info != nil {
-				preloads = append(preloads, buildLedgerPreloadForTest(ledgerU128, ledgerTag, info))
+				attrID := &raftcmdpb.AttributeID{Id: ledgerU128[:], Tag: ledgerTag}
+				plans = append(plans, preloadTestPlan(attrID, dal.SubAttrLedger, rawPreloadNoT(dal.SubAttrLedger, info)))
+			} else {
+				plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrLedger))
 			}
 		}
 
 		// Check Boundaries in leader's cache
 		switch leader.Registry.Cache.Boundaries.CheckCache(nextIndex, ledgerU128) {
 		case cache.CacheGuaranteed:
+			plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrBoundary))
 		case cache.CacheNeedsTouch:
-			touches = append(touches, &raftcmdpb.CacheTouch{
-				Id:       ledgerU128[:],
-				AttrType: uint32(dal.SubAttrBoundary),
-			})
+			plans = append(plans, touchTestPlan(ledgerU128, dal.SubAttrBoundary))
 		case cache.CacheMiss:
 			boundaries, _, err := leader.Registry.Boundaries.Get(ledgerCanonical)
 			if err == nil && boundaries != nil {
-				preloads = append(preloads, buildBoundaryPreloadForTest(ledgerU128, ledgerTag, boundaries))
+				attrID := &raftcmdpb.AttributeID{Id: ledgerU128[:], Tag: ledgerTag}
+				plans = append(plans, preloadTestPlan(attrID, dal.SubAttrBoundary, rawPreloadNoT(dal.SubAttrBoundary, boundaries)))
+			} else {
+				plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrBoundary))
 			}
 		}
 
@@ -617,7 +623,7 @@ func buildProposalWithLeaderPreloads(
 			if ledgerInfo == nil {
 				// Try from parent store
 				if direct, _, _ := leader.Registry.Ledgers.GetKey(ledgerKey); direct != nil {
-					ledgerInfo = direct.AsReader()
+					ledgerInfo = direct
 				}
 			}
 
@@ -637,12 +643,9 @@ func buildProposalWithLeaderPreloads(
 
 					switch leader.Registry.Cache.Volumes.CheckCache(nextIndex, volU128) {
 					case cache.CacheGuaranteed:
-						// Nothing
+						plans = append(plans, declareTestPlan(volU128, dal.SubAttrVolume))
 					case cache.CacheNeedsTouch:
-						touches = append(touches, &raftcmdpb.CacheTouch{
-							Id:       volU128[:],
-							AttrType: uint32(dal.SubAttrVolume),
-						})
+						plans = append(plans, touchTestPlan(volU128, dal.SubAttrVolume))
 					case cache.CacheMiss:
 						vol, _, err := leader.Registry.Volumes.Get(volCanonical)
 						if err != nil || vol == nil {
@@ -651,14 +654,8 @@ func buildProposalWithLeaderPreloads(
 								Output: commonpb.NewUint256FromUint64(0),
 							}
 						}
-						preloads = append(preloads, &raftcmdpb.Preload{
-							Type: &raftcmdpb.Preload_Volume{
-								Volume: &raftcmdpb.PreloadVolume{
-									Id:    &raftcmdpb.AttributeID{Id: volU128[:], Tag: volTag},
-									Value: vol,
-								},
-							},
-						})
+						attrID := &raftcmdpb.AttributeID{Id: volU128[:], Tag: volTag}
+						plans = append(plans, preloadTestPlan(attrID, dal.SubAttrVolume, rawPreloadNoT(dal.SubAttrVolume, vol)))
 					}
 				}
 			}
@@ -670,32 +667,9 @@ func buildProposalWithLeaderPreloads(
 		PredictedIndex: nextIndex,
 		Orders:         orders,
 		Date:           &commonpb.Timestamp{Data: 1700000000 + nextIndex},
-		Preload: &raftcmdpb.PreloadSet{
-			Preloads:           preloads,
-			Touches:            touches,
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{
+			Attributes:         plans,
 			LastPersistedIndex: boundary,
-		},
-	}
-}
-
-func buildLedgerPreloadForTest(u128 attributes.U128, tag uint64, info *commonpb.LedgerInfo) *raftcmdpb.Preload {
-	return &raftcmdpb.Preload{
-		Type: &raftcmdpb.Preload_Ledger{
-			Ledger: &raftcmdpb.PreloadLedger{
-				Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: tag},
-				Value: info,
-			},
-		},
-	}
-}
-
-func buildBoundaryPreloadForTest(u128 attributes.U128, tag uint64, boundaries *raftcmdpb.LedgerBoundaries) *raftcmdpb.Preload {
-	return &raftcmdpb.Preload{
-		Type: &raftcmdpb.Preload_Boundary{
-			Boundary: &raftcmdpb.PreloadBoundary{
-				Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: tag},
-				Value: boundaries,
-			},
 		},
 	}
 }

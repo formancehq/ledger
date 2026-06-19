@@ -195,23 +195,25 @@ type LoaderOps interface {
 	Release(attributes.U128)
 }
 
-// trackedLoader pairs a loader with the keys that were loaded through it.
-type trackedLoader struct {
-	loader LoaderOps
-	keys   []attributes.U128
+// TrackedLoader pairs a loader with the keys that were loaded through it.
+type TrackedLoader struct {
+	Loader LoaderOps
+	Keys   []attributes.U128
 }
 
 // CleanupToken tracks which keys were loaded for each attribute type.
-// Used to clean up loaded entries after a command is applied.
+// Used to clean up loaded entries after a command is applied. Tracked is
+// exposed so callers in other packages (notably plan.Builder) can
+// append entries directly; Release walks the slice in order.
 type CleanupToken struct {
-	tracked []trackedLoader
+	Tracked []TrackedLoader
 }
 
 // Release cleans up all tracked keys from their respective loaders.
 func (t *CleanupToken) Release() {
-	for i := range t.tracked {
-		for _, key := range t.tracked[i].keys {
-			t.tracked[i].loader.Release(key)
+	for i := range t.Tracked {
+		for _, key := range t.Tracked[i].Keys {
+			t.Tracked[i].Loader.Release(key)
 		}
 	}
 }

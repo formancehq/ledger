@@ -50,7 +50,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/infra/preload"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/receipt"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -315,10 +315,12 @@ func Module() fx.Option {
 				return state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 			},
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
-			// Uses LockedProposer to serialize the tracker Increment with guarded proposals,
-			// preventing preload boundary mismatches in the FSM.
+			// Events go through Builder.Run, which already holds the IndexTracker
+			// mutex around its proposer.Propose call. Wrapping the node in a
+			// LockedProposer would re-lock the same mutex (sync.Mutex is
+			// non-reentrant) and deadlock the emitter.
 			func(n *node.Node) events.Proposer {
-				return node.NewLockedProposer(n)
+				return n
 			},
 			func(cfg node.NodeConfig, store *dal.Store, meterProvider metric.MeterProvider) (*cache.Cache, error) {
 				threshold := cfg.RotationThreshold
@@ -331,8 +333,8 @@ func Module() fx.Option {
 			func(cfg Config, meterProvider metric.MeterProvider) *bloom.FilterSet {
 				return bloom.NewFilterSet(cfg.BloomConfig, meterProvider.Meter("bloom"))
 			},
-			func(n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger) *preload.Preloader {
-				return preload.New(n.IndexTracker(), c, attrs, store, bloomFilters, logger)
+			func(cfg Config, n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger) *plan.Builder {
+				return plan.NewBuilder(n.IndexTracker(), c, attrs, store, bloomFilters, logger, cfg.MaxExecutionPlanSize)
 			},
 			fx.Annotate(func(
 				cfg Config,
@@ -551,11 +553,11 @@ func Module() fx.Option {
 			keystore.NewKeyStore,
 			state.NewSharedState,
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"events"`)),
-			fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, ``, `name:"events"`)),
+			fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, ``, ``, `name:"events"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"mirror"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"index"`)),
-			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, preloader *preload.Preloader, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
-				return mirror.NewManager(store, proposer, preloader, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
+			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
+				return mirror.NewManager(store, proposer, builder, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
 			}, fx.ParamTags(``, ``, ``, ``, `name:"mirror"`, ``, ``)),
 			// Provide mirror.Proposer from the Raft node
 			func(n *node.Node) mirror.Proposer {
@@ -586,7 +588,7 @@ func Module() fx.Option {
 				node *node.Node,
 				store *dal.Store,
 				logger logging.Logger,
-				preloader *preload.Preloader,
+				builder *plan.Builder,
 				meterProvider metric.MeterProvider,
 				hc *clusterhealth.HealthChecker,
 				ks *keystore.KeyStore,
@@ -611,7 +613,7 @@ func Module() fx.Option {
 					store,
 					logger,
 					node,
-					preloader,
+					builder,
 					meterProvider,
 					hc,
 					ks,
@@ -695,14 +697,14 @@ func Module() fx.Option {
 				machine *state.Machine,
 				recovery *state.Recovery,
 				raftNode *node.Node,
-				preloader *preload.Preloader,
+				builder *plan.Builder,
 			) *state.MetadataConverter {
 				return state.NewMetadataConverter(
 					logger,
 					store,
 					attrs,
 					machine.MetadataConvertRequestCh(),
-					newMetadataBatchProposer(preloader, raftNode),
+					newMetadataBatchProposer(builder, raftNode),
 					raftNode.IsLeader,
 					100, // batchSize
 					4,   // poolSize — max concurrent field conversions
@@ -960,7 +962,7 @@ func Module() fx.Option {
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				store *dal.Store,
-				preloader *preload.Preloader,
+				builder *plan.Builder,
 				cfg Config,
 				logger logging.Logger,
 				eventsManager *events.Manager,
@@ -978,7 +980,7 @@ func Module() fx.Option {
 						// and stalling the readiness probe.
 						go handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
-						proposeClusterConfigIfNeeded(n, preloader, store, cfg, logger)
+						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
@@ -1172,18 +1174,22 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, scheduler *state.PeriodScheduler) {
 				lc.Append(worker.FxHook(scheduler))
 			},
-			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, preloader *preload.Preloader) {
+			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, builder *plan.Builder) {
 				if cfg.IdempotencyTTL > 0 && cfg.IdempotencyEvictionInterval > 0 {
 					scheduler := state.NewIdempotencyEvictionScheduler(
 						logger,
 						raftNode.IsLeader,
 						func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) {
 							proposal := commands.NewCommand()
-							proposal.IdempotencyEviction = &raftcmdpb.IdempotencyEviction{
-								CutoffMicros:            cutoffMicros,
-								PebbleKeyHashes:         pebbleKeyHashes,
-								LastScannedTimeIndexKey: lastScannedTimeIndexKey,
-							}
+							proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+								Kind: &raftcmdpb.TechnicalUpdate_IdempotencyEviction{
+									IdempotencyEviction: &raftcmdpb.IdempotencyEviction{
+										CutoffMicros:            cutoffMicros,
+										PebbleKeyHashes:         pebbleKeyHashes,
+										LastScannedTimeIndexKey: lastScannedTimeIndexKey,
+									},
+								},
+							}}
 							// ctx comes from the scheduler's loop and is
 							// cancelled by Stop(). No bounded timeout: a
 							// timeout firing after Raft has accepted the
@@ -1195,8 +1201,16 @@ func Module() fx.Option {
 							//
 							// applyIdempotencyEviction works through
 							// Registry.Idempotency.Evict (no cache-keyed
-							// Registry.Get); no preload needed.
-							if err := proposeTechnical(ctx, preloader, raftNode, proposal, nil); err != nil {
+							// Registry.Get); no preload needed. One
+							// WriteOperation with nil Needs so the runner
+							// takes the fast path.
+							operations := []plan.WriteOperation{{
+								SetCoverage: func(bits []byte) {
+									proposal.GetTechnicalUpdates()[0].CoverageBits = bits
+								},
+							}}
+
+							if err := proposeTechnical(ctx, builder, raftNode, proposal, operations); err != nil {
 								logger.Errorf("Failed to propose idempotency eviction: %v", err)
 							}
 						},
@@ -1252,10 +1266,10 @@ func Module() fx.Option {
 			// Start and stop the index builder.
 			// The builder has its own dedicated Notifications signal to receive
 			// log-committed events from the FSM without competing with other consumers.
-			fx.Annotate(func(lc fx.Lifecycle, builder *indexbuilder.Builder, notifications *signal.Notifications, raftNode *node.Node, preloader *preload.Preloader) {
-				builder.SetNotifications(notifications)
-				builder.SetProposer(&indexReadyProposerAdapter{preloader: preloader, proposer: raftNode}, raftNode.IsLeader)
-				lc.Append(worker.FxHook(builder))
+			fx.Annotate(func(lc fx.Lifecycle, indexBuilder *indexbuilder.Builder, notifications *signal.Notifications, raftNode *node.Node, planBuilder *plan.Builder) {
+				indexBuilder.SetNotifications(notifications)
+				indexBuilder.SetProposer(&indexReadyProposerAdapter{builder: planBuilder, proposer: raftNode}, raftNode.IsLeader)
+				lc.Append(worker.FxHook(indexBuilder))
 			}, fx.ParamTags(``, ``, `name:"index"`, ``, ``)),
 		),
 	)
@@ -1364,7 +1378,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 // proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble
 // and proposes an update if the CLI-desired config differs. Called when the
 // node becomes leader and the FSM is caught up (LeaderReadyEvent).
-func proposeClusterConfigIfNeeded(n *node.Node, preloader *preload.Preloader, store *dal.Store, cfg Config, logger logging.Logger) {
+func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *dal.Store, cfg Config, logger logging.Logger) {
 	clusterState, _ := query.ReadClusterState(store)
 
 	desiredCfg := cfg.BloomConfig
@@ -1383,7 +1397,9 @@ func proposeClusterConfigIfNeeded(n *node.Node, preloader *preload.Preloader, st
 	logger.Infof("Proposing cluster config update on leadership acquisition")
 
 	proposal := commands.NewCommand()
-	proposal.ClusterConfig = desiredCfg
+	proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: desiredCfg},
+	}}
 
 	// Bounded timeout: the observer event handler runs without a
 	// stop-derived context, and a shutdown / leadership loss landing
@@ -1394,7 +1410,13 @@ func proposeClusterConfigIfNeeded(n *node.Node, preloader *preload.Preloader, st
 
 	// applyClusterConfig reads cache-level configuration (Cache.GenerationThreshold,
 	// Cache.Epoch) but no keyed Registry.X.Get; no preload needed.
-	if err := proposeTechnical(ctx, preloader, n, proposal, nil); err != nil {
+	operations := []plan.WriteOperation{{
+		SetCoverage: func(bits []byte) {
+			proposal.GetTechnicalUpdates()[0].CoverageBits = bits
+		},
+	}}
+
+	if err := proposeTechnical(ctx, builder, n, proposal, operations); err != nil {
 		logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Failed to propose cluster config update")

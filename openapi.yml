@@ -2326,6 +2326,7 @@ components:
       type: object
       required:
         - targetType
+        - targetId
         - metadata
       properties:
         targetType:
@@ -2339,16 +2340,7 @@ components:
             - type: string
             - type: integer
           description: |
-            ID of the target (account address or transaction ID).
-            For TRANSACTION targets, this is mutually exclusive with `targetReference`.
-            Required for ACCOUNT targets.
-        targetReference:
-          type: string
-          description: |
-            Business reference of the transaction to target. Only valid when
-            `targetType` is TRANSACTION. Mutually exclusive with `targetId`.
-            Resolved by the server against the transaction reference index
-            (visible across the current batch).
+            ID of the target (account address or transaction ID). Required.
         metadata:
           type: object
           additionalProperties:
@@ -2357,20 +2349,13 @@ components:
 
     RevertTransactionRequest:
       type: object
+      required:
+        - id
       properties:
         id:
           type: integer
           format: int64
-          description: |
-            Transaction ID to revert. Mutually exclusive with `reference`.
-            Exactly one of `id` or `reference` must be set.
-        reference:
-          type: string
-          description: |
-            Business reference of the transaction to revert. Resolved by the
-            server against the transaction reference index of a previously
-            committed batch. Mutually exclusive with `id`. Exactly one of
-            `id` or `reference` must be set.
+          description: Transaction ID to revert. Required.
         force:
           type: boolean
           default: false
@@ -2414,6 +2399,7 @@ components:
       type: object
       required:
         - targetType
+        - targetId
         - key
       properties:
         targetType:
@@ -2427,14 +2413,7 @@ components:
             - type: string
             - type: integer
           description: |
-            ID of the target (account address or transaction ID).
-            For TRANSACTION targets, this is mutually exclusive with `targetReference`.
-            Required for ACCOUNT targets.
-        targetReference:
-          type: string
-          description: |
-            Business reference of the transaction to target. Only valid when
-            `targetType` is TRANSACTION. Mutually exclusive with `targetId`.
+            ID of the target (account address or transaction ID). Required.
         key:
           type: string
           description: Metadata key to delete

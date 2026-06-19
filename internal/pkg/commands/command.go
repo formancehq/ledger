@@ -27,9 +27,9 @@ func GenerateRandomID() uint64 {
 // NewCommand creates a new Proposal with the given orders.
 func NewCommand(orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 	return &raftcmdpb.Proposal{
-		Id:      GenerateRandomID(),
-		Orders:  orders,
-		Date:    commonpb.NewTimestamp(time.Now()),
-		Preload: &raftcmdpb.PreloadSet{},
+		Id:            GenerateRandomID(),
+		Orders:        orders,
+		Date:          commonpb.NewTimestamp(time.Now()),
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
 	}
 }

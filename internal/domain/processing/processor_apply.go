@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -8,33 +9,30 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	// Check deletion status before boundaries: MarkLedgerForCleanup removes
-	// boundaries on delete, so GetBoundaries would return false and we'd
-	// incorrectly return ErrLedgerNotFound instead of ErrLedgerDeleted.
-	ledgerInfoReader, infoOk := s.GetLedger(apply.GetLedger())
-	if infoOk && ledgerInfoReader.GetDeletedAt() != nil {
+	// boundaries on delete, so loadBoundaries would surface ErrLedgerNotFound
+	// even though the ledger is just deleted.
+	ledgerInfo, infoErr := s.GetLedger(apply.GetLedger())
+	if infoErr != nil && !errors.Is(infoErr, domain.ErrNotFound) {
+		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: infoErr}
+	}
+
+	infoOk := infoErr == nil
+	if infoOk && ledgerInfo.GetDeletedAt() != nil {
 		return nil, &domain.ErrLedgerDeleted{Name: apply.GetLedger()}
 	}
 
-	boundariesReader, ok := s.GetBoundaries(apply.GetLedger())
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: apply.GetLedger()}
+	boundariesReader, loadErr := loadBoundaries(s, apply.GetLedger())
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	boundaries := boundariesReader.Mutate()
 
 	// Block writes on mirror-mode ledgers.
-	if infoOk && ledgerInfoReader.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
+	if infoOk && ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
 		return nil, &domain.ErrLedgerInMirrorMode{Name: apply.GetLedger()}
-	}
-
-	// Mutate() once at the boundary so sub-processors receive a *LedgerInfo
-	// they can read freely. The clone is discarded if no PutLedger happens;
-	// writes to the cache still go through s.PutLedger.
-	var ledgerInfo *commonpb.LedgerInfo
-	if infoOk {
-		ledgerInfo = ledgerInfoReader.Mutate()
 	}
 
 	var (

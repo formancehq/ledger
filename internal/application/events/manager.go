@@ -9,6 +9,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -32,6 +33,7 @@ type Manager struct {
 	store          *dal.Store
 	sinkConfigAttr *attributes.Attribute[*commonpb.SinkConfig]
 	proposer       Proposer
+	builder        *plan.Builder
 	logger         logging.Logger
 	notifications  *signal.Notifications
 
@@ -44,11 +46,12 @@ type Manager struct {
 }
 
 // NewManager creates a new event Manager.
-func NewManager(store *dal.Store, attrs *attributes.Attributes, proposer Proposer, logger logging.Logger, notifications *signal.Notifications) *Manager {
+func NewManager(store *dal.Store, attrs *attributes.Attributes, proposer Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications) *Manager {
 	return &Manager{
 		store:          store,
 		sinkConfigAttr: attrs.SinkConfig,
 		proposer:       proposer,
+		builder:        builder,
 		logger:         logger.WithFields(map[string]any{"cmp": "event-manager"}),
 		notifications:  notifications,
 		emitters:       make(map[string]*managedSink),
@@ -196,7 +199,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 		return nil
 	}
 
-	emitter := NewEmitter(m.store, sink, sc.GetName(), m.proposer, m.logger, emitterCfg)
+	emitter := NewEmitter(m.store, sink, sc.GetName(), m.proposer, m.builder, m.logger, emitterCfg)
 	emitter.Start()
 	if err := emitter.WaitStarted(context.Background()); err != nil {
 		m.logger.Errorf("Failed to start sink %q: %v", sc.GetName(), err)

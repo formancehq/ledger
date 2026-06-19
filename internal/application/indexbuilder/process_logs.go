@@ -474,7 +474,10 @@ func (b *Builder) indexCreatedTransaction(
 		}
 	}
 
-	// Account metadata from account_metadata map
+	// Account metadata from account_metadata map. Look up the previous
+	// encoding via the reverse-map (overlay + committed state) instead of
+	// the log's PreviousValues so a same-batch create-then-overwrite
+	// resolves correctly even when the schema rewrite is mid-flight.
 	for account, metadataMap := range ct.GetAccountMetadata() {
 		if metadataMap != nil {
 			for key, value := range metadataMap.GetValues() {
@@ -671,8 +674,8 @@ func (b *Builder) indexPostingAddressMappings(
 // entity+key (its reverse-map entry) — the authoritative target to delete on an
 // overwrite. It reads the uncommitted-batch overlay first, then committed state.
 // Returns nil when the entity has no current entry. Unlike the log's previous
-// value, this matches the index's actual encoding even while a schema rewrite is
-// re-encoding entries in the background.
+// value, this matches the index's actual encoding even while a schema rewrite
+// is re-encoding entries in the background.
 func (b *Builder) reverseMapValue(reverseKey []byte) ([]byte, error) {
 	if v, ok := b.wb.ReverseMapOverlay(reverseKey); ok {
 		return v, nil
@@ -730,8 +733,8 @@ func (b *Builder) indexSavedMetadata(
 				return err
 			}
 		}
-	case *commonpb.Target_Transaction:
-		txID := t.Transaction.GetId()
+	case *commonpb.Target_TransactionId:
+		txID := t.TransactionId
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
 
@@ -788,21 +791,17 @@ func (b *Builder) indexDeletedMetadata(
 			return err
 		}
 
-		if err := wb.DeleteMetadataEntryWithPrevious(
+		return wb.DeleteMetadataEntryWithPrevious(
 			kb, reverseKey,
 			ledger, readstore.NamespaceAccount, dm.GetKey(),
 			oldEncoded, []byte(account),
-		); err != nil {
-			return err
-		}
-
-		return nil
-	case *commonpb.Target_Transaction:
+		)
+	case *commonpb.Target_TransactionId:
 		if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, dm.GetKey()) {
 			return nil
 		}
 
-		txID := t.Transaction.GetId()
+		txID := t.TransactionId
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
 		reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, dm.GetKey())
@@ -812,15 +811,11 @@ func (b *Builder) indexDeletedMetadata(
 			return err
 		}
 
-		if err := wb.DeleteMetadataEntryWithPrevious(
+		return wb.DeleteMetadataEntryWithPrevious(
 			kb, reverseKey,
 			ledger, readstore.NamespaceTransaction, dm.GetKey(),
 			oldEncoded, txIDBytes,
-		); err != nil {
-			return err
-		}
-
-		return nil
+		)
 	}
 
 	return nil

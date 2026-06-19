@@ -873,7 +873,9 @@ func (b *Builder) proposeIndexReady(ctx context.Context, task *backfillTask) boo
 	}
 
 	if err := b.proposer.Propose(ctx, &raftcmdpb.Proposal{
-		IndexReadyUpdates: []*raftcmdpb.IndexReadyUpdate{update},
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+			Kind: &raftcmdpb.TechnicalUpdate_IndexReady{IndexReady: update},
+		}},
 	}); err != nil {
 		b.logger.WithFields(map[string]any{
 			"ledger": task.ledger,
@@ -912,7 +914,9 @@ func (b *Builder) proposeSchemaRewriteIndexReady(ctx context.Context, task *sche
 	}
 
 	if err := b.proposer.Propose(ctx, &raftcmdpb.Proposal{
-		IndexReadyUpdates: []*raftcmdpb.IndexReadyUpdate{update},
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+			Kind: &raftcmdpb.TechnicalUpdate_IndexReady{IndexReady: update},
+		}},
 	}); err != nil {
 		b.logger.WithFields(map[string]any{
 			"ledger": task.ledger,

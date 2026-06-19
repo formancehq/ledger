@@ -12,8 +12,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Revert transaction | ✅ | ✅ | |
 | Revert with `force` | ✅ | ✅ | |
 | Revert with `atEffectiveDate` | ✅ | ✅ | |
-| Revert by reference | ✅ | ❌ | Resolves transaction reference via store; mutually exclusive with `id` |
-| Set/delete tx metadata by reference | ✅ | ❌ | TargetTransaction accepts a `reference` (resolved by the FSM via the WriteSet, so it sees writes from earlier orders in the same batch) |
+| Revert by reference | ❌ | ❌ | Not supported — only numeric `id` targets are accepted |
+| Set/delete tx metadata by reference | ❌ | ❌ | Not supported — only numeric `targetId` is accepted |
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |

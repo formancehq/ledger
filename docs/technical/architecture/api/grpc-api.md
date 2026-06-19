@@ -160,8 +160,8 @@ All write operations go through the unified `Apply` method, which accepts a batc
 > `Envelope` and rejected at admission. Clients **must** be regenerated
 > against the new proto; mixed client/server versions and rolling wire-format
 > upgrades are not supported for this change. Same posture as
-> `TargetTransaction.reference` (see `common.proto` for the same single-version
-> cluster contract).
+> the drop of `Target.transaction` / `RevertTransactionPayload.transaction_reference`
+> (see `common.proto` for the same single-version cluster contract).
 
 ```protobuf
 message ApplyRequest {
@@ -366,8 +366,8 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
                 Data: &servicepb.LedgerApplyRequest_AddMetadata{
                     AddMetadata: &commonpb.SaveMetadataCommand{
                         Target: &commonpb.Target{
-                            Target: &commonpb.Target_Transaction{
-                                Transaction: &commonpb.TargetTransaction{Id: 1},
+                            Target: &commonpb.Target_TransactionId{
+                                TransactionId: 1,
                             },
                         },
                         Metadata: &commonpb.MetadataSet{

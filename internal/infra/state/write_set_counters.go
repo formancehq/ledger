@@ -125,8 +125,8 @@ func (b *WriteSet) updateBoundaryCounters(
 	}
 
 	for ledgerName := range affected {
-		boundariesReader, ok := b.GetBoundaries(ledgerName)
-		if !ok {
+		boundariesReader, err := b.GetBoundaries(ledgerName)
+		if err != nil {
 			continue
 		}
 

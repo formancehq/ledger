@@ -17,7 +17,7 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -58,7 +58,7 @@ func TestProcessAddEventsSink_BatchSizeTooLarge(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -92,7 +92,7 @@ func TestProcessAddEventsSink_BatchSizeAtMaxAccepted(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -122,12 +122,12 @@ func TestProcessAddEventsSink_AlreadyExists(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	existingConfig := &commonpb.SinkConfig{Name: "my-nats-sink"}
-	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig.AsReader(), nil)
+	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig, nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_AddEventsSink{
@@ -154,12 +154,12 @@ func TestProcessRemoveEventsSink_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	existingConfig := &commonpb.SinkConfig{Name: "my-nats-sink"}
-	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig.AsReader(), nil)
+	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig, nil)
 	mockStore.EXPECT().RemoveSinkConfig("my-nats-sink")
 
 	order := &raftcmdpb.Order{
@@ -185,7 +185,7 @@ func TestProcessRemoveEventsSink_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

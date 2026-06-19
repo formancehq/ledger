@@ -1,4 +1,4 @@
-package preload
+package plan
 
 import (
 	"testing"
@@ -14,15 +14,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/preload"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+const testCacheEpoch uint64 = 1
+
 func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 	t.Parallel()
 
-	loaders := NewLoaders()
+	loaders := preload.NewLoaders()
 
 	// Load a value so we can verify it gets cleaned up
 	key := attributes.NewU128(10, 20)
@@ -34,12 +37,12 @@ func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 
 	// Create a guard with a token tracking that key
 	tracker := node.NewIndexTracker(1)
-	p := &Preloader{loaders: loaders, tracker: tracker}
+	p := &Builder{loaders: loaders, tracker: tracker}
 	tracker.Lock() // simulate AcquireProposalGuard having locked
 
 	guard := &ProposalGuard{
 		p:     p,
-		token: &CleanupToken{tracked: []trackedLoader{{loader: loaders.Volumes, keys: []attributes.U128{key}}}},
+		token: &preload.CleanupToken{Tracked: []preload.TrackedLoader{{Loader: loaders.Volumes, Keys: []attributes.U128{key}}}},
 	}
 
 	// Release loaders
@@ -68,7 +71,7 @@ func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 func TestProposalGuard_ReleaseAll(t *testing.T) {
 	t.Parallel()
 
-	loaders := NewLoaders()
+	loaders := preload.NewLoaders()
 
 	key := attributes.NewU128(30, 40)
 
@@ -78,12 +81,12 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 	require.NoError(t, err)
 
 	tracker := node.NewIndexTracker(1)
-	p := &Preloader{loaders: loaders, tracker: tracker}
+	p := &Builder{loaders: loaders, tracker: tracker}
 	tracker.Lock()
 
 	guard := &ProposalGuard{
 		p:     p,
-		token: &CleanupToken{tracked: []trackedLoader{{loader: loaders.References, keys: []attributes.U128{key}}}},
+		token: &preload.CleanupToken{Tracked: []preload.TrackedLoader{{Loader: loaders.References, Keys: []attributes.U128{key}}}},
 	}
 
 	// ReleaseAll should release both the lock and the loaders
@@ -105,7 +108,7 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 	t.Parallel()
 
-	loaders := NewLoaders()
+	loaders := preload.NewLoaders()
 
 	key := attributes.NewU128(50, 60)
 
@@ -114,8 +117,8 @@ func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	build := &PreloadBuild{
-		token: &CleanupToken{tracked: []trackedLoader{{loader: loaders.References, keys: []attributes.U128{key}}}},
+	build := &BuildResult{
+		token: &preload.CleanupToken{Tracked: []preload.TrackedLoader{{Loader: loaders.References, Keys: []attributes.U128{key}}}},
 	}
 
 	build.ReleaseLoaders()
@@ -140,7 +143,7 @@ func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 func TestPreloadBuild_ReleaseLoaders_NilToken(t *testing.T) {
 	t.Parallel()
 
-	build := &PreloadBuild{token: nil}
+	build := &BuildResult{token: nil}
 
 	// Should not panic with nil token
 	build.ReleaseLoaders()
@@ -149,7 +152,7 @@ func TestPreloadBuild_ReleaseLoaders_NilToken(t *testing.T) {
 func TestPreloader_Loaders(t *testing.T) {
 	t.Parallel()
 
-	p := &Preloader{loaders: NewLoaders()}
+	p := &Builder{loaders: preload.NewLoaders()}
 
 	loaders := p.Loaders()
 	assert.NotNil(t, loaders)
@@ -166,7 +169,7 @@ func TestPreloader_Loaders(t *testing.T) {
 	assert.Same(t, p.loaders, loaders)
 }
 
-// TestResolveLedgerID verifies the Preloader.ResolveLedgerID resolution path:
+// TestResolveLedgerID verifies the Builder.ResolveLedgerID resolution path:
 // bloom miss, Pebble fallback, and cache hit.
 func TestResolveLedgerID(t *testing.T) {
 	t.Parallel()
@@ -194,7 +197,7 @@ func TestResolveLedgerID(t *testing.T) {
 
 	tracker := node.NewIndexTracker(1)
 
-	p := New(tracker, c, attrs, store, nil, logger)
+	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
 
 	// 1. Bloom miss: resolve a name that does not exist.
 	id, ok := p.ResolveLedgerID("nonexistent")
@@ -258,7 +261,7 @@ func TestResolveLedgerID_BloomNotReadyFallsThrough(t *testing.T) {
 	require.False(t, bfs.IsReady(), "precondition: bloom must be in the populating window")
 
 	tracker := node.NewIndexTracker(1)
-	p := New(tracker, c, attrs, store, bfs, logger)
+	p := NewBuilder(tracker, c, attrs, store, bfs, logger, 0)
 
 	// Pre-fix the call short-circuited on the empty bloom and returned
 	// (0, false). Post-fix the IsReady guard skips the bloom, the lookup
@@ -267,4 +270,58 @@ func TestResolveLedgerID_BloomNotReadyFallsThrough(t *testing.T) {
 	require.True(t, ok,
 		"ResolveLedgerID must fall through to Pebble while the bloom is still populating (#318)")
 	require.Equal(t, uint32(42), id)
+}
+
+// TestBuildPreloads_DeclaresAbsentNonZeroKey pins the coverage-gap fix
+// reported on #451: a proposer that requests a key for a kind without
+// zero-value semantics (e.g. transaction references, prepared queries) and
+// finds it absent from both bloom and Pebble previously emitted nothing in
+// the ExecutionPlan. With the strict Plan the FSM-side read would
+// crash the node on the missing declaration, breaking common create paths
+// (new transaction reference, new prepared query). Post-fix the resolve
+// loop emits a Declare-intent AttributePlan so the View admits the read
+// and the underlying KeyStore returns ErrNotFound for legitimate absence.
+func TestBuildPreloads_DeclaresAbsentNonZeroKey(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	tracker := node.NewIndexTracker(1)
+	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
+
+	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "fresh-ref"}
+	needs := NewNeeds()
+	needs.References[refKey] = struct{}{}
+
+	build, err := p.Build([]WriteOperation{{Needs: needs}})
+	require.NoError(t, err)
+	defer build.ReleaseLoaders()
+
+	ps := build.ExecutionPlan
+	require.NotNil(t, ps)
+
+	// Pebble has nothing for this key and no zero-value preload exists for
+	// references — the resolver must emit a Declare-intent AttributePlan to
+	// keep the key covered. Without this the FSM Plan would crash
+	// the node on read.
+	require.Len(t, ps.GetAttributes(), 1,
+		"absent non-zero-valued key must still be declared so the FSM-side View admits the read")
+
+	plan := ps.GetAttributes()[0]
+	_, isDeclare := plan.GetIntent().(*raftcmdpb.AttributePlan_Declare)
+	require.True(t, isDeclare, "intent must be Declare for an absent reference")
+	require.Equal(t, uint32(dal.SubAttrReference), plan.GetAttrCode())
+
+	expectedID, _ := attributes.MakeKey(refKey.Bytes())
+	require.Equal(t, expectedID[:], plan.GetId().GetId())
 }

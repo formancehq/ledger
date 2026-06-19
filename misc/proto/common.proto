@@ -136,28 +136,10 @@ message TargetAccount {
   string addr = 1;
 }
 
-message TargetTransaction {
-  // Exactly one of id or reference must be set.
-  // Reference is resolved by the FSM via the in-memory transaction
-  // reference index, so a transaction created earlier in the same batch
-  // can be addressed by its reference.
-  //
-  // Cluster-version safety: this oneof is committed to the Raft log, so a
-  // mixed-version cluster (old nodes that pre-date `reference = 2`) would
-  // decode the field as unknown and diverge from new nodes at the same
-  // applied index. Rollouts MUST proceed via a full cluster restart on the
-  // new binary before any client sends a reference-typed target. The POC
-  // assumes a single-version cluster; partial upgrades are not supported.
-  oneof identifier {
-    fixed64 id = 1;
-    string reference = 2;
-  }
-}
-
 message Target {
   oneof target {
     TargetAccount account = 1;
-    TargetTransaction transaction = 2;
+    fixed64 transaction_id = 2;
   }
 }
 

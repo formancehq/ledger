@@ -98,9 +98,7 @@ func TestTranslateBatch_SetMetadata_Transaction(t *testing.T) {
 	sm := orders[0].GetMirrorIngest().GetEntry().GetSavedMetadata()
 	require.NotNil(t, sm)
 
-	tx := sm.GetTarget().GetTransaction()
-	require.NotNil(t, tx)
-	require.Equal(t, uint64(42), tx.GetId())
+	require.Equal(t, uint64(42), sm.GetTarget().GetTransactionId())
 }
 
 func TestTranslateBatch_SetMetadata_StringMetadataPreserved(t *testing.T) {
@@ -373,7 +371,7 @@ func TestTranslateTarget_TransactionString(t *testing.T) {
 	// v2 sometimes encodes transaction IDs as strings
 	target, err := translateTarget("TRANSACTION", json.RawMessage(`"42"`))
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), target.GetTransaction().GetId())
+	require.Equal(t, uint64(42), target.GetTransactionId())
 }
 
 func TestTranslateTarget_TransactionUint(t *testing.T) {
@@ -381,7 +379,7 @@ func TestTranslateTarget_TransactionUint(t *testing.T) {
 
 	target, err := translateTarget("TRANSACTION", json.RawMessage(`42`))
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), target.GetTransaction().GetId())
+	require.Equal(t, uint64(42), target.GetTransactionId())
 }
 
 func TestTranslateTarget_Account(t *testing.T) {

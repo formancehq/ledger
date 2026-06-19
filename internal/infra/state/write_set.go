@@ -104,6 +104,17 @@ type WriteSet struct {
 	pendingArchives                []ArchiveRequest
 	pendingMetadataConvertRequests []MetadataConvertRequest
 
+	// pendingMirrorSyncs queues mirror cursor / source-head / status
+	// writes produced by applyMirrorSyncUpdate. They are drained into
+	// the Pebble batch by Merge, which only runs when ProcessOrders +
+	// ValidateTransientVolumes succeed — so a business-rejected order
+	// in the same proposal as a mirror-sync TU never advances the
+	// cursor (mirror worker bundles ingest orders + cursor TU in a
+	// single proposal; without this gate the cursor would commit via
+	// the failure audit batch path and the worker would skip source
+	// logs on the next batch).
+	pendingMirrorSyncs []MirrorSyncWrite
+
 	// pendingLedgerDeletions holds ledger names scheduled for data cleanup during Merge.
 	pendingLedgerDeletions []string
 
@@ -142,6 +153,26 @@ type purgeRange struct {
 	closeSequence      uint64 // log sequence range end
 	startAuditSequence uint64 // audit sequence range start
 	closeAuditSequence uint64 // audit sequence range end
+}
+
+// MirrorSyncWrite captures one queued mirror-sync update. applyMirrorSyncUpdate
+// builds it from a TechnicalUpdate_MirrorSync; Merge drains the queue into
+// the Pebble batch via SetMirrorCursor / SetMirrorSourceHead / SetMirrorStatus /
+// clearMirrorStatus. Zero-valued Cursor and SourceLogCount mean "no write"
+// for that field (matches the proto convention used by MirrorSyncUpdate).
+type MirrorSyncWrite struct {
+	LedgerName     string
+	Cursor         uint64
+	SourceLogCount uint64
+	ClearError     bool
+	Error          *commonpb.MirrorSyncError
+}
+
+// QueueMirrorSync enqueues a mirror-sync write so it lands in Pebble only if
+// the proposal's orders + transient-volume validation succeed (Merge is the
+// commit gate). See pendingMirrorSyncs for context.
+func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
+	b.pendingMirrorSyncs = append(b.pendingMirrorSyncs, w)
 }
 
 func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
@@ -464,6 +495,30 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 		}
 	}
 
+	for _, w := range b.pendingMirrorSyncs {
+		if w.Cursor > 0 {
+			if err := SetMirrorCursor(batch, w.LedgerName, w.Cursor); err != nil {
+				return fmt.Errorf("setting mirror cursor for %q: %w", w.LedgerName, err)
+			}
+		}
+
+		if w.SourceLogCount > 0 {
+			if err := SetMirrorSourceHead(batch, w.LedgerName, w.SourceLogCount); err != nil {
+				return fmt.Errorf("setting mirror source head for %q: %w", w.LedgerName, err)
+			}
+		}
+
+		if w.ClearError {
+			if err := clearMirrorStatus(batch, w.LedgerName); err != nil {
+				return fmt.Errorf("clearing mirror status for %q: %w", w.LedgerName, err)
+			}
+		} else if w.Error != nil {
+			if err := SetMirrorStatus(batch, w.LedgerName, w.Error); err != nil {
+				return fmt.Errorf("setting mirror status for %q: %w", w.LedgerName, err)
+			}
+		}
+	}
+
 	// Register pending ledger data cleanups (deferred to purge time).
 	// Find the delete sequence for each pending deletion from the logs.
 	if len(b.pendingLedgerDeletions) > 0 {
@@ -478,7 +533,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 		for _, ledgerName := range b.pendingLedgerDeletions {
 			seq := deleteSequences[ledgerName]
 
-			if _, ok := b.GetLedger(ledgerName); !ok {
+			if _, err := b.GetLedger(ledgerName); err != nil {
 				// The ledger name comes from a DeleteLedger order the
 				// processor already validated against b.GetLedger — a
 				// miss here means the WriteSet's view of ledgers became
@@ -554,7 +609,9 @@ func NewWriteSet(fsm *Machine) *WriteSet {
 }
 
 // Reset prepares the WriteSet for a new proposal, clearing all per-proposal
-// state while preserving allocated maps and slice backing arrays.
+// state while preserving allocated maps and slice backing arrays. The
+// coverage gate lives one layer up on gatedScope; WriteSet itself is the
+// raw engine (Derived → KeyStore → cache).
 func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.Date = at
 	b.NextSequenceID = b.fsm.State.NextSequenceID
@@ -574,6 +631,7 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.purgeRanges = b.purgeRanges[:0]
 	b.pendingArchives = b.pendingArchives[:0]
 	b.pendingMetadataConvertRequests = b.pendingMetadataConvertRequests[:0]
+	b.pendingMirrorSyncs = b.pendingMirrorSyncs[:0]
 	b.pendingLedgerDeletions = b.pendingLedgerDeletions[:0]
 	b.allVolumeUpdates = b.allVolumeUpdates[:0]
 	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
@@ -584,15 +642,22 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.pendingQueryCheckpointDeletes = b.pendingQueryCheckpointDeletes[:0]
 }
 
-// Store interface implementation for WriteSet
+// Engine surface: the read/write/counter/period methods that gatedScope
+// forwards via embedding. The coverage gate method (CheckCoverage) is
+// deliberately absent here — it lives on gatedScope, which embeds
+// *WriteSet and overrides the cache-attribute Get* to insert the gate.
 
-func (b *WriteSet) GetLedger(name string) (commonpb.LedgerInfoReader, bool) {
+func (b *WriteSet) GetLedger(name string) (*commonpb.LedgerInfo, error) {
 	info, err := b.Derived.Ledgers.Get(domain.LedgerKey{Name: name})
-	if err != nil || info == nil {
-		return nil, false
+	if err != nil {
+		return nil, err
 	}
 
-	return info.AsReader(), true
+	if info == nil {
+		return nil, domain.ErrNotFound
+	}
+
+	return info, nil
 }
 
 func (b *WriteSet) PutLedger(name string, info *commonpb.LedgerInfo) {
@@ -602,27 +667,26 @@ func (b *WriteSet) PutLedger(name string, info *commonpb.LedgerInfo) {
 func (b *WriteSet) MarkLedgerForCleanup(ledger string) {
 	b.pendingLedgerDeletions = append(b.pendingLedgerDeletions, ledger)
 	// Remove boundary from the in-memory overlay so that subsequent
-	// GetBoundaries calls return (nil, false) — both within this proposal
-	// and in future proposals after Merge propagates the deletion.
+	// GetBoundaries calls return domain.ErrNotFound — both within this
+	// proposal and in future proposals after Merge propagates the deletion.
 	b.Derived.Boundaries.Delete(domain.LedgerKey{Name: ledger})
 }
 
-func (b *WriteSet) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, bool) {
+func (b *WriteSet) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, error) {
 	boundaries, err := b.Derived.Boundaries.Get(domain.LedgerKey{Name: ledger})
-	if err != nil || boundaries == nil {
-		return nil, false
-	}
-
-	return boundaries.AsReader(), true
-}
-
-func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error) {
-	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
-	if err != nil || info == nil {
+	if err != nil {
 		return nil, err
 	}
 
-	return info.AsReader(), nil
+	if boundaries == nil {
+		return nil, domain.ErrNotFound
+	}
+
+	return boundaries.AsReader(), nil
+}
+
+func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (*commonpb.NumscriptInfo, error) {
+	return b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
 }
 
 func (b *WriteSet) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
@@ -652,21 +716,27 @@ func (b *WriteSet) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) 
 // the account) are exempt: partitionVolumes routes those batches to the ephemeral-
 // mirror lifecycle (kept while unbalanced, purged once the running cumulative
 // returns to zero), so a balance check here would double-up with that flow.
-func (b *WriteSet) ValidateTransientVolumes() domain.Describable {
+//
+// The scope parameter is the gated processing.Scope the rest of the proposal
+// used — coverage checks on ledger reads here go through the same gate as
+// every handler-level read so a missing ledger declaration surfaces as
+// *ErrCoverageMiss instead of an opaque "ledger not found" skip.
+func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Describable {
 	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
 	for key, vol := range b.Derived.Volumes.DirtyValues() {
 		compiled, ok := ledgerTypes[key.LedgerName]
 		if !ok {
-			infoReader, infoOK := b.GetLedger(key.LedgerName)
-			if !infoOK {
+			info, err := scope.GetLedger(key.LedgerName)
+			if errors.Is(err, domain.ErrNotFound) {
 				continue
 			}
 
-			// Mutate() to access the concrete AccountTypes map. Acceptable
-			// here: ValidateTransientVolumes is called once per batch on a
-			// rare path; the per-ledger result is cached locally below.
-			compiled = accounttype.CompileTypes(infoReader.Mutate().GetAccountTypes())
+			if err != nil {
+				return &domain.ErrStorageOperation{Operation: "loading ledger for transient volume validation", Cause: err}
+			}
+
+			compiled = accounttype.CompileTypes(info.GetAccountTypes())
 			ledgerTypes[key.LedgerName] = compiled
 		}
 
@@ -676,8 +746,19 @@ func (b *WriteSet) ValidateTransientVolumes() domain.Describable {
 		}
 
 		// Check if the parent KeyStore has a pre-existing non-zero volume.
-		// If so, the account had volumes before being marked transient — skip validation.
-		baseVol, _, baseErr := b.fsm.Registry.Volumes.GetKey(key)
+		// If so, the account had volumes before being marked transient —
+		// skip the zero-balance assertion.
+		//
+		// We need the BASE volume (pre-batch), not the in-batch overlay,
+		// so we read via Derived.Volumes.Parent() rather than scope.
+		// The gate is enforced explicitly via scope.CheckCoverage to
+		// preserve the coverage invariant on this otherwise-engine-
+		// internal read.
+		if err := scope.CheckCoverage(dal.SubAttrVolume, key.Bytes()); err != nil {
+			return &domain.ErrStorageOperation{Operation: "coverage check on transient base volume", Cause: err}
+		}
+
+		baseVol, _, baseErr := b.Derived.Volumes.Parent().GetKey(key)
 		if baseErr == nil && !isVolumeZeroBalance(baseVol) {
 			continue
 		}
@@ -693,13 +774,22 @@ func (b *WriteSet) ValidateTransientVolumes() domain.Describable {
 	return nil
 }
 
-func (b *WriteSet) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
-	v, err := b.Derived.AccountMetadata.Get(key)
-	if err != nil || v == nil {
-		return nil, err
+func (b *WriteSet) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
+	return b.Derived.AccountMetadata.Get(key)
+}
+
+// GetAccountMetadataEntry returns the raw cache Entry (tombstone flag
+// exposed) for an account metadata canonical key. The metadata-conversion
+// path inspects entry.Deleted to skip stale conversions for keys deleted
+// after the converter scan. Coverage is enforced by the gatedScope
+// wrapper above the engine, not here.
+func (b *WriteSet) GetAccountMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
+	entry, ok := b.fsm.Registry.AccountMetadata.KeyStore().GetEntry(canonical)
+	if !ok {
+		return attributes.Entry[*commonpb.MetadataValue]{}, domain.ErrNotFound
 	}
 
-	return v.AsReader(), nil
+	return entry, nil
 }
 
 func (b *WriteSet) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
@@ -710,13 +800,21 @@ func (b *WriteSet) DeleteAccountMetadata(key domain.MetadataKey) {
 	b.Derived.AccountMetadata.Delete(key)
 }
 
-func (b *WriteSet) GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
-	v, err := b.Derived.LedgerMetadata.Get(key)
-	if err != nil || v == nil {
-		return nil, err
+func (b *WriteSet) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
+	return b.Derived.LedgerMetadata.Get(key)
+}
+
+// GetLedgerMetadataEntry returns the raw cache Entry for a ledger
+// metadata canonical key. Mirrors GetAccountMetadataEntry for the
+// per-ledger metadata zone. Coverage is enforced by the gatedScope
+// wrapper above the engine, not here.
+func (b *WriteSet) GetLedgerMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
+	entry, ok := b.fsm.Registry.LedgerMetadata.KeyStore().GetEntry(canonical)
+	if !ok {
+		return attributes.Entry[*commonpb.MetadataValue]{}, domain.ErrNotFound
 	}
 
-	return v.AsReader(), nil
+	return entry, nil
 }
 
 func (b *WriteSet) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
@@ -737,7 +835,7 @@ func (b *WriteSet) PutReverted(key domain.TransactionKey, reverted bool) {
 	}
 }
 
-func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
+func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
 	value, err := b.Derived.Idempotency.Get(key.Key)
 	if err != nil || value == nil {
 		return nil, err
@@ -748,7 +846,7 @@ func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.Idempo
 		return nil, nil
 	}
 
-	return value.AsReader(), nil
+	return value, nil
 }
 
 func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
@@ -756,26 +854,16 @@ func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.
 	b.Derived.Idempotency.Put(key.Key, value)
 }
 
-func (b *WriteSet) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
-	v, err := b.Derived.References.Get(key)
-	if err != nil || v == nil {
-		return nil, err
-	}
-
-	return v.AsReader(), nil
+func (b *WriteSet) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+	return b.Derived.References.Get(key)
 }
 
 func (b *WriteSet) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	b.Derived.References.Put(key, value)
 }
 
-func (b *WriteSet) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
-	v, err := b.Derived.Transactions.Get(key)
-	if err != nil || v == nil {
-		return nil, err
-	}
-
-	return v.AsReader(), nil
+func (b *WriteSet) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
+	return b.Derived.Transactions.Get(key)
 }
 
 func (b *WriteSet) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
@@ -862,13 +950,13 @@ func (b *WriteSet) DeleteQueryCheckpointSchedule() {
 	b.pendingQueryCheckpointScheduleUpdate = &empty
 }
 
-func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
+func (b *WriteSet) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
 	cfg, err := b.Derived.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
-	if err != nil || cfg == nil {
+	if err != nil {
 		return nil, nil
 	}
 
-	return cfg.AsReader(), nil
+	return cfg, nil
 }
 
 func (b *WriteSet) AddSinkConfig(config *commonpb.SinkConfig) {
@@ -925,6 +1013,15 @@ func (b *WriteSet) IncrementNextLedgerID() uint32 {
 
 func (b *WriteSet) GetDate() *commonpb.Timestamp {
 	return b.Date
+}
+
+// SetDate updates the proposal date late in the apply cycle. The technical-
+// update phase runs with `proposal.GetDate()` (raw, no HLC advance); when
+// orders follow, applyProposal computes the HLC-advanced effective date and
+// pushes it here so order handlers see the monotonic timestamp. The overlay
+// (Derived) is preserved — only the timestamp field is rewired.
+func (b *WriteSet) SetDate(date *commonpb.Timestamp) {
+	b.Date = date
 }
 
 // addVolumeSideDelta extracts the net delta for one side (input or output) of a VolumePair update.
@@ -1171,7 +1268,7 @@ func (b *WriteSet) HasPurges() bool {
 	return len(b.purgeRanges) > 0
 }
 
-func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error) {
+func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error) {
 	pq, err := b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{LedgerName: ledgerName, Name: name})
 	// Treat a cache miss as "doesn't exist". A delete in an earlier entry of
 	// the same batch will have cleared the cache
@@ -1179,11 +1276,7 @@ func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (commonpb.Pr
 		return nil, nil
 	}
 
-	if err != nil || pq == nil {
-		return nil, err
-	}
-
-	return pq.AsReader(), nil
+	return pq, err
 }
 
 func (b *WriteSet) PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery) {
@@ -1301,5 +1394,8 @@ func collectUniqueAccounts(updates []attributes.Update[domain.VolumeKey, *raftcm
 	return result
 }
 
-// Ensure WriteSet implements InMemoryStore.
-var _ processing.InMemoryStore = (*WriteSet)(nil)
+// WriteSet is the raw engine — it does NOT implement processing.Scope by
+// itself (no CheckCoverage). Handlers always see a gatedScope wrapping
+// a *WriteSet (built via NewScopeFactory). Keeping the coverage concept
+// off the engine means a future engine implementation (or a test fake)
+// cannot accidentally route around the gate.

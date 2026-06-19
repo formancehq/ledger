@@ -103,26 +103,21 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON implements json.Marshaler for RevertTransactionPayload.
-// Exactly one of the identifier variants is emitted: transactionId for the
-// numeric id, transactionReference for the reference. Both carry omitempty so
-// only the variant actually set appears in the output.
 func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		TransactionId        uint64         `json:"transactionId,omitempty"`
-		TransactionReference string         `json:"transactionReference,omitempty"`
-		Force                bool           `json:"force,omitempty"`
-		AtEffectiveDate      bool           `json:"atEffectiveDate,omitempty"`
-		Metadata             map[string]any `json:"metadata,omitempty"`
-		Receipt              string         `json:"receipt,omitempty"`
-		ExpandVolumes        bool           `json:"expandVolumes,omitempty"`
+		TransactionId   uint64         `json:"transactionId,omitempty"`
+		Force           bool           `json:"force,omitempty"`
+		AtEffectiveDate bool           `json:"atEffectiveDate,omitempty"`
+		Metadata        map[string]any `json:"metadata,omitempty"`
+		Receipt         string         `json:"receipt,omitempty"`
+		ExpandVolumes   bool           `json:"expandVolumes,omitempty"`
 	}{
-		TransactionId:        x.GetTransactionId(),
-		TransactionReference: x.GetTransactionReference(),
-		Force:                x.GetForce(),
-		AtEffectiveDate:      x.GetAtEffectiveDate(),
-		Metadata:             commonpb.MetadataToAnyMap(x.GetMetadata()),
-		Receipt:              x.GetReceipt(),
-		ExpandVolumes:        x.GetExpandVolumes(),
+		TransactionId:   x.GetTransactionId(),
+		Force:           x.GetForce(),
+		AtEffectiveDate: x.GetAtEffectiveDate(),
+		Metadata:        commonpb.MetadataToAnyMap(x.GetMetadata()),
+		Receipt:         x.GetReceipt(),
+		ExpandVolumes:   x.GetExpandVolumes(),
 	})
 }
 
@@ -279,10 +274,9 @@ func GetLedgerActionType(action *LedgerAction) string {
 // unmarshalSaveMetadataCommand unmarshals JSON into SaveMetadataCommand.
 func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCommand, error) {
 	type rawReq struct {
-		TargetType      string         `json:"targetType"`
-		TargetID        json.RawValue  `json:"targetId"`
-		TargetReference string         `json:"targetReference"`
-		Metadata        map[string]any `json:"metadata"`
+		TargetType string         `json:"targetType"`
+		TargetID   json.RawValue  `json:"targetId"`
+		Metadata   map[string]any `json:"metadata"`
 	}
 
 	var raw rawReq
@@ -295,7 +289,7 @@ func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCom
 		return nil, fmt.Errorf("invalid metadata: %w", err)
 	}
 
-	target, err := commonpb.ParseTarget(raw.TargetType, raw.TargetID, raw.TargetReference)
+	target, err := commonpb.ParseTarget(raw.TargetType, raw.TargetID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid target: %w", err)
 	}
@@ -307,11 +301,9 @@ func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCom
 }
 
 // unmarshalRevertTransactionPayload unmarshals JSON into RevertTransactionPayload.
-// Exactly one of id or reference must be set; when both are present, reference wins.
 func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPayload, error) {
 	type rawReq struct {
 		ID              uint64         `json:"id"`
-		Reference       string         `json:"reference"`
 		Force           bool           `json:"force"`
 		AtEffectiveDate bool           `json:"atEffectiveDate"`
 		Metadata        map[string]any `json:"metadata"`
@@ -327,21 +319,12 @@ func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPa
 		return nil, fmt.Errorf("invalid metadata: %w", err)
 	}
 
-	var identifier isRevertTransactionPayload_Identifier
-
-	switch {
-	case raw.Reference != "" && raw.ID != 0:
-		return nil, errors.New("revert payload must set either id or reference, not both")
-	case raw.Reference != "":
-		identifier = &RevertTransactionPayload_TransactionReference{TransactionReference: raw.Reference}
-	case raw.ID != 0:
-		identifier = &RevertTransactionPayload_TransactionId{TransactionId: raw.ID}
-	default:
-		return nil, errors.New("revert payload requires either id or reference")
+	if raw.ID == 0 {
+		return nil, errors.New("revert payload requires id")
 	}
 
 	return &RevertTransactionPayload{
-		Identifier:      identifier,
+		TransactionId:   raw.ID,
 		Force:           raw.Force,
 		AtEffectiveDate: raw.AtEffectiveDate,
 		Metadata:        ms,
@@ -351,10 +334,9 @@ func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPa
 // unmarshalDeleteMetadataCommand unmarshals JSON into DeleteMetadataCommand.
 func unmarshalDeleteMetadataCommand(data json.RawValue) (*commonpb.DeleteMetadataCommand, error) {
 	type rawReq struct {
-		TargetType      string        `json:"targetType"`
-		TargetID        json.RawValue `json:"targetId"`
-		TargetReference string        `json:"targetReference"`
-		Key             string        `json:"key"`
+		TargetType string        `json:"targetType"`
+		TargetID   json.RawValue `json:"targetId"`
+		Key        string        `json:"key"`
 	}
 
 	var raw rawReq
@@ -364,7 +346,7 @@ func unmarshalDeleteMetadataCommand(data json.RawValue) (*commonpb.DeleteMetadat
 		return nil, err
 	}
 
-	target, err := commonpb.ParseTarget(raw.TargetType, raw.TargetID, raw.TargetReference)
+	target, err := commonpb.ParseTarget(raw.TargetType, raw.TargetID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid target: %w", err)
 	}

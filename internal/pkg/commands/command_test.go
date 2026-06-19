@@ -29,7 +29,7 @@ func TestNewCommand(t *testing.T) {
 	require.NotZero(t, cmd.GetId())
 	require.Len(t, cmd.GetOrders(), 1)
 	require.NotNil(t, cmd.GetDate())
-	require.NotNil(t, cmd.GetPreload())
+	require.NotNil(t, cmd.GetExecutionPlan())
 }
 
 func TestNewCommandMultipleOrders(t *testing.T) {
@@ -49,5 +49,5 @@ func TestNewCommandNoOrders(t *testing.T) {
 	require.NotZero(t, cmd.GetId())
 	require.Empty(t, cmd.GetOrders())
 	require.NotNil(t, cmd.GetDate())
-	require.NotNil(t, cmd.GetPreload())
+	require.NotNil(t, cmd.GetExecutionPlan())
 }

@@ -136,12 +136,12 @@ func ReplayLedgerLog(
 					}
 				}
 			}
-		case *commonpb.Target_Transaction:
+		case *commonpb.Target_TransactionId:
 			if len(p.SavedMetadata.GetMetadata()) > 0 {
-				txCanonical := domain.TransactionKey{LedgerName: ledger, ID: target.Transaction.GetId()}.Bytes()
+				txCanonical := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}.Bytes()
 
 				if err := w.SaveTxMetadata(txCanonical, p.SavedMetadata.GetMetadata()); err != nil {
-					return fmt.Errorf("saving tx metadata for tx %d: %w", target.Transaction.GetId(), err)
+					return fmt.Errorf("saving tx metadata for tx %d: %w", target.TransactionId, err)
 				}
 			}
 		}
@@ -164,11 +164,11 @@ func ReplayLedgerLog(
 			if err := w.DeleteMetadata(mk.Bytes()); err != nil {
 				return fmt.Errorf("deleting metadata: %w", err)
 			}
-		case *commonpb.Target_Transaction:
-			txCanonical := domain.TransactionKey{LedgerName: ledger, ID: target.Transaction.GetId()}.Bytes()
+		case *commonpb.Target_TransactionId:
+			txCanonical := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}.Bytes()
 
 			if err := w.DeleteTxMetadata(txCanonical, p.DeletedMetadata.GetKey()); err != nil {
-				return fmt.Errorf("deleting tx metadata for tx %d: %w", target.Transaction.GetId(), err)
+				return fmt.Errorf("deleting tx metadata for tx %d: %w", target.TransactionId, err)
 			}
 		}
 

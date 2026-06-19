@@ -8,7 +8,7 @@ import (
 
 // processClosePeriod handles the ClosePeriod order.
 // It transitions the current OPEN period to CLOSING and creates a new OPEN period.
-func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	currentPeriod, ok := s.GetCurrentOpenPeriod()
 	if !ok {
 		return nil, domain.ErrNoPeriodOpen
@@ -54,7 +54,7 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 
 // processSealPeriod handles the SealPeriod order.
 // It transitions a CLOSING period to CLOSED and sets the sealing hash.
-func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	closingPeriod, ok := s.GetClosingPeriodByID(order.GetPeriodId())
 	if !ok {
 		return nil, &domain.ErrPeriodNotFound{PeriodID: order.GetPeriodId()}
@@ -83,7 +83,7 @@ func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s
 // processArchivePeriod handles the ArchivePeriod order.
 // It transitions the period from CLOSED → ARCHIVING and returns an ArchivedPeriodLog
 // to signal the background Archiver (leader-only dispatch happens in Node).
-func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	period, ok := s.GetPeriodByID(order.GetPeriodId())
 	if !ok {
 		return nil, &domain.ErrPeriodNotFound{PeriodID: order.GetPeriodId()}
@@ -111,7 +111,7 @@ func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOr
 
 // processConfirmArchivePeriod handles the ConfirmArchivePeriod order.
 // It transitions an ARCHIVING period to ARCHIVED and signals a purge of logs and audit entries.
-func (p *RequestProcessor) processConfirmArchivePeriod(order *raftcmdpb.ConfirmArchivePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processConfirmArchivePeriod(order *raftcmdpb.ConfirmArchivePeriodOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	period, ok := s.GetPeriodByID(order.GetPeriodId())
 	if !ok {
 		return nil, &domain.ErrPeriodNotFound{PeriodID: order.GetPeriodId()}

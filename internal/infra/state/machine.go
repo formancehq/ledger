@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -120,6 +121,7 @@ type Machine struct {
 	logsAppendedCounter       metric.Int64Counter
 	rotationDurationHistogram metric.Int64Histogram
 	batchCommitHistogram      metric.Int64Histogram
+	preloadMissCounter        metric.Int64Counter
 
 	// lastPersistedIndex is the highest Raft index whose FSM batch has been
 	// committed to Pebble's memtable and WAL with pebble.NoSync. It is NOT
@@ -207,6 +209,15 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
 	}
 
+	preloadMissCounter, err := meter.Int64Counter(
+		"ledger.preload.coverage_miss",
+		metric.WithDescription("Reads on the FSM hot path of keys not declared in the proposal's ExecutionPlan. Labeled by attribute kind. The order observing the miss is rejected with a business error."),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating preload_coverage_miss counter: %w", err)
+	}
+
 	processor, err := processing.NewRequestProcessor(meter, numscriptCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
@@ -221,6 +232,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		logsAppendedCounter:            logsAppendedCounter,
 		rotationDurationHistogram:      rotationDurationHistogram,
 		batchCommitHistogram:           batchCommitHistogram,
+		preloadMissCounter:             preloadMissCounter,
 		processor:                      processor,
 		notifier:                       notifier,
 		keyStore:                       ks,
@@ -534,7 +546,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 			return nil, err
 		}
 
-		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 && len(cmd.GetMetadataConversionBatches()) == 0 && len(cmd.GetMetadataConversionsComplete()) == 0 && len(cmd.GetIndexReadyUpdates()) == 0 && cmd.GetIdempotencyEviction() == nil && cmd.GetClusterConfig() == nil {
+		if len(cmd.GetOrders()) == 0 && len(cmd.GetTechnicalUpdates()) == 0 {
 			if fsm.sentinelMode && fsm.logger.Enabled(logging.TraceLevel) {
 				fsm.logger.WithFields(map[string]any{
 					"raftIndex":  entry.Index,
@@ -851,15 +863,45 @@ func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
 
 // Preload applies preloaded data to the Machine's volatile state.
 // batch and genByte are used for incremental 0xFF persistence of NumscriptParsed entries.
-func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.WriteSession, genByte byte) error {
-	if preloadSet == nil || (len(preloadSet.GetPreloads()) == 0 && len(preloadSet.GetTouches()) == 0) {
+func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte) error {
+	if executionPlan == nil {
 		return nil
+	}
+
+	// Idempotency keys live outside the AttributePlan stream — they are not
+	// a cache attribute (the FSM applies them to the dedicated Idempotency-
+	// Store, not the per-kind cache). Apply them first and unconditionally:
+	// a proposal carrying only idempotency keys (idempotent maintenance /
+	// signature orders with no attribute needs) must still restore the
+	// IdempotencyStore, otherwise at-most-once breaks on replay.
+	for _, ik := range executionPlan.GetIdempotencyKeys() {
+		if ik.GetValue() != nil && ik.GetValue().GetLogSequence() > 0 {
+			fsm.Registry.Idempotency.Put(ik.GetKey(), ik.GetValue())
+		}
+	}
+
+	if len(executionPlan.GetAttributes()) == 0 {
+		return nil
+	}
+
+	// Pre-validate every AttributePlan envelope before touching the
+	// cache. Without this, a forged plan with a nil/short AttributeID
+	// or no intent would silently zero-pad through MirrorTouch /
+	// MirrorPreload, mutating both the in-memory cache and the 0xFF
+	// Pebble writes. A later business rejection from the scope path
+	// commits its failure audit batch — and the cache mutations would
+	// commit with it. Run the same validation the scope path uses
+	// here, so a malformed plan is caught before the first MirrorTouch.
+	for i, plan := range executionPlan.GetAttributes() {
+		if err := validatePlan(plan, i); err != nil {
+			return err
+		}
 	}
 
 	// The preloads must target gen0 or gen1. The admission uses the
 	// IndexTracker to predict the next Raft index and compute the boundary.
 	// A mismatch here indicates a bug in the preload/cache coordination.
-	switch preloadSet.GetLastPersistedIndex() {
+	switch executionPlan.GetLastPersistedIndex() {
 	case fsm.Registry.Cache.BaseIndex.Gen0:
 		if fsm.logger.Enabled(logging.DebugLevel) {
 			fsm.logger.Debug("Selecting cache generation 0")
@@ -870,21 +912,20 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.WriteSe
 		}
 	default:
 		details := map[string]any{
-			"lastPersistedIndex":  preloadSet.GetLastPersistedIndex(),
+			"lastPersistedIndex":  executionPlan.GetLastPersistedIndex(),
 			"gen0":                fsm.Registry.Cache.BaseIndex.Gen0,
 			"gen1":                fsm.Registry.Cache.BaseIndex.Gen1,
 			"currentGeneration":   fsm.Registry.Cache.CurrentGeneration(),
 			"generationThreshold": fsm.Registry.Cache.GenerationThreshold(),
 			"lastAppliedIndex":    fsm.State.LastAppliedIndex,
-			"preloadCount":        len(preloadSet.GetPreloads()),
-			"touchCount":          len(preloadSet.GetTouches()),
+			"attributeCount":      len(executionPlan.GetAttributes()),
 		}
 		fsm.logger.WithFields(details).Errorf("Preload boundary mismatch: LastPersistedIndex does not match Gen0 or Gen1")
 		assert.Unreachable("preload boundary mismatch should be prevented by predicted_index check", details)
 		lifecycle.SendEvent("preload_boundary_mismatch", details)
 
 		return fmt.Errorf("preloading preloaded index is invalid: lastPersistedIndex=%d gen0=%d gen1=%d currentGen=%d lastApplied=%d",
-			preloadSet.GetLastPersistedIndex(),
+			executionPlan.GetLastPersistedIndex(),
 			fsm.Registry.Cache.BaseIndex.Gen0,
 			fsm.Registry.Cache.BaseIndex.Gen1,
 			fsm.Registry.Cache.CurrentGeneration(),
@@ -893,26 +934,23 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.WriteSe
 	}
 
 	gen1Byte := genByte ^ 1
-	for _, preload := range preloadSet.GetPreloads() {
-		// Handle idempotency keys separately — they use the dedicated store, not the cache.
-		if ik, ok := preload.GetType().(*raftcmdpb.Preload_IdempotencyKey); ok {
-			ikData := ik.IdempotencyKey
-			if ikData.GetValue() != nil && ikData.GetValue().GetLogSequence() > 0 {
-				fsm.Registry.Idempotency.Put(ikData.GetKey(), ikData.GetValue())
+	for _, plan := range executionPlan.GetAttributes() {
+		switch intent := plan.GetIntent().(type) {
+		case *raftcmdpb.AttributePlan_Declare:
+			// Pure coverage declaration: the value is already in Gen0 on
+			// every node. No FSM-side mutation; the Plan consumes
+			// the declaration separately.
+
+		case *raftcmdpb.AttributePlan_Touch:
+			id := attributes.U128FromBytes(plan.GetId().GetId())
+			if err := fsm.cacheSnapshotter.MirrorTouch(batch, byte(plan.GetAttrCode()), genByte, id); err != nil {
+				return err
 			}
 
-			continue
-		}
-
-		if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, preload); err != nil {
-			return err
-		}
-	}
-
-	for _, touch := range preloadSet.GetTouches() {
-		id := attributes.U128FromBytes(touch.GetId())
-		if err := fsm.cacheSnapshotter.MirrorTouch(batch, byte(touch.GetAttrType()), genByte, id); err != nil {
-			return err
+		case *raftcmdpb.AttributePlan_Value:
+			if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, plan.GetId(), byte(plan.GetAttrCode()), intent.Value); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -957,7 +995,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 		return domain.ErrStaleProposal
 	}
 
-	if preloadEpoch := proposal.GetPreload().GetCacheEpoch(); preloadEpoch != 0 && preloadEpoch != fsm.Registry.Cache.Epoch() {
+	if preloadEpoch := proposal.GetExecutionPlan().GetCacheEpoch(); preloadEpoch != 0 && preloadEpoch != fsm.Registry.Cache.Epoch() {
 		if fsm.logger.Enabled(logging.TraceLevel) {
 			fsm.logger.WithFields(map[string]any{
 				"preloadEpoch": preloadEpoch,
@@ -991,6 +1029,31 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 // so technical-only proposals (the converter, cluster config,
 // idempotency eviction, index-ready) silently ignored any PredictedIndex
 // or Preload they carried.
+// planInvariantDescribable extracts the Describable wrapped in err when
+// it is a coverage / execution-plan invariant violation. Returns nil
+// when err is some other kind of error (Pebble write failure, etc.) so
+// the caller can fall through to the FSM-killing path.
+//
+// Admission ships bits that don't match the AttributePlan slice →
+// *ErrCoverageMiss or *domain.ErrInvalidExecutionPlan. Both implement
+// Describable with KindInternal. Surfacing them via ApplyResult.Error
+// rejects the proposal as a business error instead of wedging the FSM
+// apply loop; the proposal is malformed, but the FSM state is not (no
+// cache mutation lands before Merge).
+func planInvariantDescribable(err error) domain.Describable {
+	var miss *ErrCoverageMiss
+	if errors.As(err, &miss) {
+		return miss
+	}
+
+	var invalid *domain.ErrInvalidExecutionPlan
+	if errors.As(err, &invalid) {
+		return invalid
+	}
+
+	return nil
+}
+
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.WriteSession, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
 	// FSM-level safety net mirroring the admission check: a checkpoint trigger
 	// (CreateQueryCheckpoint or ClosePeriod) must be the last order. The
@@ -1019,17 +1082,69 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}, nil
 	}
 
-	// Preload is a no-op when the proposal carries no PreloadSet.
+	// Preload is a no-op when the proposal carries no ExecutionPlan.
 	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
-	if err := fsm.Preload(proposal.GetPreload(), batch, genByte); err != nil {
+	if err := fsm.Preload(proposal.GetExecutionPlan(), batch, genByte); err != nil {
+		if invariant := planInvariantDescribable(err); invariant != nil {
+			// Malformed AttributePlan caught before any MirrorTouch /
+			// MirrorPreload — no cache mutation landed. Surface as a
+			// business rejection in the same shape as scope-level plan
+			// invariants so the admission side can diagnose its bug.
+			return &ApplyResult{
+				ProposalID: proposal.GetId(),
+				Error:      &domain.BusinessError{Err: invariant},
+			}, nil
+		}
+
 		return nil, fmt.Errorf("raftIndex=%d: %w", raftIndex, err)
 	}
 
-	if err := fsm.applyTechnicalUpdates(batch, raftIndex, proposal); err != nil {
+	// Reset the reusable WriteSet up-front with proposal.GetDate() so the
+	// technical-update phase queues its writes through the same overlay
+	// the order phase will eventually drain via Merge. The Date will be
+	// re-pointed to the HLC-advanced effective date below before
+	// ProcessOrders runs (idempotency reads/writes use it; tech updates
+	// do not).
+	fsm.writeSet.Reset(proposal.GetDate())
+	buffer := fsm.writeSet
+
+	// scopeFactory is the Scope factory used by both ProcessOrders (one scope
+	// per order, narrowed by Order.coverage_bits) and applyTechnicalUpdates
+	// (one scope per TechnicalUpdate, narrowed by tu.coverage_bits). The
+	// post-orders ValidateTransientVolumes uses scopeFactory(nil, nil) — full
+	// proposal coverage — since the validation is cross-order by nature.
+	scopeFactory := NewScopeFactory(buffer, proposal.GetExecutionPlan(), fsm.logger, fsm.preloadMissCounter, raftIndex)
+
+	if err := fsm.applyTechnicalUpdates(scopeFactory, batch, raftIndex, proposal); err != nil {
+		if invariant := planInvariantDescribable(err); invariant != nil {
+			// Coverage miss or malformed execution plan in a TU handler
+			// — same model as orders: surface as a business rejection,
+			// not as an FSM-killing error. The overlay accumulated by
+			// earlier TUs is discarded with the WriteSet when the
+			// caller cancels the batch, so cache and Pebble stay in
+			// lockstep for the next proposal. The audit chain is not
+			// extended here: TU-only proposals don't appear in the
+			// audit log at all, and a mixed proposal that fails before
+			// reaching the orders phase already has its preload-miss
+			// recorded by the gatedScope counter + structured log.
+			return &ApplyResult{
+				ProposalID: proposal.GetId(),
+				Error:      &domain.BusinessError{Err: invariant},
+			}, nil
+		}
+
 		return nil, err
 	}
 
 	if len(proposal.GetOrders()) == 0 {
+		// Technical-only proposal: still drain the overlay through Merge so
+		// any tech-update writes (PutLedger, PutAccountMetadata, …) reach
+		// the cache + Pebble. With no orders there is no log to append; the
+		// audit-entry path is skipped entirely.
+		if err := buffer.Merge(batch, nil); err != nil {
+			return nil, fmt.Errorf("merging technical-update writes: %w", err)
+		}
+
 		return &ApplyResult{ProposalID: proposal.GetId()}, nil
 	}
 
@@ -1059,9 +1174,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, err
 	}
 
-	// Reset the reusable WriteSet for this proposal.
-	fsm.writeSet.Reset(effectiveDate)
-	buffer := fsm.writeSet
+	// Re-point the WriteSet at the HLC-advanced effective date. The overlay
+	// (Derived) populated by the technical-update phase is preserved — only
+	// the timestamp field is rewired so order handlers see the monotonic
+	// effective date (used by idempotency TTL checks and CreatedAt stamping).
+	buffer.SetDate(effectiveDate)
 
 	orders := proposal.GetOrders()
 
@@ -1082,8 +1199,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		})
 	}
 
-	// Process the proposal
-	logs, err := fsm.processor.ProcessOrders(orders, buffer)
+	// Process the proposal — handlers see only the gated Scope facade.
+	logs, err := fsm.processor.ProcessOrders(orders, scopeFactory)
 
 	// Pre-marshal each order once. The same byte slices are (a) bound in
 	// the audit hash chain via buildPerItemPayload and (b) persisted to
@@ -1183,9 +1300,39 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}, nil
 	}
 
-	// Validate transient volumes have zero balance. This is a business error
-	// (rejected proposal), not a fatal FSM error, so it must be checked before Commit.
-	if err := buffer.ValidateTransientVolumes(); err != nil {
+	// ValidateTransientVolumes runs after the per-order RestrictTo passes
+	// ProcessOrders ran with per-order scopes; the proposal `scope` itself
+	// was never narrowed, so the cross-order ledger probe below goes
+	// through the proposal-wide coverage the proposer shipped.
+	//
+	// Validate transient volumes have zero balance. This is a business
+	// error (rejected proposal), not a fatal FSM error, so it must be
+	// checked before Commit.
+	validateScope, scopeErr := scopeFactory.NewProposalScope()
+	if scopeErr != nil {
+		// Building the proposal-wide scope failed only when the
+		// ExecutionPlan is malformed (unknown attr_code). Treat as
+		// business rejection — same model as orders/TU coverage misses.
+		// NewScope's contract guarantees the error is
+		// *domain.ErrInvalidExecutionPlan.
+		invariant := planInvariantDescribable(scopeErr)
+		if invariant == nil {
+			invariant = &domain.ErrInvalidExecutionPlan{Reason_: scopeErr.Error()}
+		}
+
+		if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(scopeErr)}}, nil, "validate-scope construction failure"); appendErr != nil {
+			return nil, appendErr
+		}
+
+		return &ApplyResult{
+			ProposalID: proposal.GetId(),
+			Error:      &domain.BusinessError{Err: invariant},
+		}, nil
+	}
+
+	transientErr := buffer.ValidateTransientVolumes(validateScope)
+
+	if err := transientErr; err != nil {
 		if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}}, nil, "transient validation failure"); appendErr != nil {
 			return nil, appendErr
 		}

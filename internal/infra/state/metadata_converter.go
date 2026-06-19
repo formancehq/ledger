@@ -21,8 +21,8 @@ import (
 
 // MetadataBatchProposer abstracts the preload + propose path for the
 // metadata converter. The implementation (in bootstrap) constructs a
-// preload.Needs from the canonical keys, runs the proposal through
-// preload.Preloader.RunWithPreload, and waits for the FSM apply.
+// plan.Needs from the canonical keys, runs the proposal through
+// plan.Builder.RunWithPreload, and waits for the FSM apply.
 //
 // The interface is defined here rather than importing preload because
 // preload depends on state (for ApplyResult), which would create an
@@ -233,7 +233,7 @@ func (mc *MetadataConverter) convertWithRetry(ctx context.Context, req MetadataC
 
 // proposeBatch submits a MetadataConversionBatch through the
 // MetadataBatchProposer. The implementation runs the proposal through
-// preload.Preloader.RunWithPreload so each canonical key is in the
+// plan.Builder.RunWithPreload so each canonical key is in the
 // FSM cache before applyMetadataConversionBatch runs its per-entry
 // compare-and-set — eliminating the cache-miss path that previously
 // caused conversions to be silently skipped while progress was still
@@ -247,12 +247,16 @@ func (mc *MetadataConverter) proposeBatch(
 	entries []*raftcmdpb.ConvertMetadataEntry,
 ) error {
 	cmd := &raftcmdpb.Proposal{
-		MetadataConversionBatches: []*raftcmdpb.MetadataConversionBatch{{
-			Ledger:       ledgerName,
-			TargetType:   targetType,
-			Key:          key,
-			ExpectedType: expectedType,
-			Entries:      entries,
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+			Kind: &raftcmdpb.TechnicalUpdate_MetadataBatch{
+				MetadataBatch: &raftcmdpb.MetadataConversionBatch{
+					Ledger:       ledgerName,
+					TargetType:   targetType,
+					Key:          key,
+					ExpectedType: expectedType,
+					Entries:      entries,
+				},
+			},
 		}},
 	}
 
@@ -283,11 +287,15 @@ func (mc *MetadataConverter) proposeComplete(
 	expectedType commonpb.MetadataType,
 ) error {
 	cmd := &raftcmdpb.Proposal{
-		MetadataConversionsComplete: []*raftcmdpb.MetadataConversionCompletion{{
-			Ledger:       ledgerName,
-			TargetType:   targetType,
-			Key:          key,
-			ExpectedType: expectedType,
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+			Kind: &raftcmdpb.TechnicalUpdate_MetadataCompletion{
+				MetadataCompletion: &raftcmdpb.MetadataConversionCompletion{
+					Ledger:       ledgerName,
+					TargetType:   targetType,
+					Key:          key,
+					ExpectedType: expectedType,
+				},
+			},
 		}},
 	}
 

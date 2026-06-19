@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 
@@ -61,33 +62,215 @@ func newTestMachine(t *testing.T) (*Machine, *dal.Store, *attributes.Attributes)
 }
 
 // makeProposal builds a Proposal protobuf with the given orders.
-// It automatically generates volume preloads with zero values for all
-// accounts referenced in postings (simulating what the admission layer does).
+// It automatically generates a ExecutionPlan that declares every key the FSM
+// will read during apply (simulating what the admission layer does):
+//   - Volumes preloaded with zero values for each posting source/destination.
+//   - Ledgers / Boundaries / Transactions / Metadata declared (no value
+//     payload) so the Plan admits reads on them.
 func makeProposal(id uint64, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
-	// The FSM assigns ledger IDs starting from 1. In single-ledger tests,
-	// the first ledger always gets ID 1.
-	preloads := buildVolumePreloads(orders, "test")
-
 	return &raftcmdpb.Proposal{
-		Id:      id,
-		Orders:  orders,
-		Date:    &commonpb.Timestamp{Data: 1700000000 + id},
-		Preload: &raftcmdpb.PreloadSet{Preloads: preloads},
+		Id:     id,
+		Orders: orders,
+		Date:   &commonpb.Timestamp{Data: 1700000000 + id},
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{
+			Attributes: append(buildVolumePreloads(orders), buildOrderDeclarations(orders)...),
+		},
 	}
+}
+
+// sealProposal stamps every order's CoverageBits to flag every
+// AttributePlan in the proposal's ExecutionPlan. This is the
+// "admit-all per order" shortcut tests rely on: production goes
+// through plan.Builder.Run which derives per-order bits from each
+// order's declared Needs via plan.bitsForNeeds. Rebuilding that path
+// here would require pulling admission.extractPreloadNeeds (and its
+// 200+ lines of order-type switch) into a shared package. Tracked
+// for a follow-up. None of the existing tests exercise per-order
+// isolation, so the shortcut is acceptable.
+func sealProposal(p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
+	plans := p.GetExecutionPlan().GetAttributes()
+	if len(plans) == 0 {
+		return p
+	}
+
+	bits := make([]byte, (len(plans)+7)/8)
+	for i := range plans {
+		bits[i/8] |= 1 << (i % 8)
+	}
+
+	for _, order := range p.GetOrders() {
+		order.CoverageBits = bits
+	}
+
+	for _, tu := range p.GetTechnicalUpdates() {
+		tu.CoverageBits = bits
+	}
+
+	return p
+}
+
+// declareTestPlan builds a Declare-intent AttributePlan over an attribute
+// (code, U128) pair. Used by tests that simulate what admission's resolve
+// layer emits when a key is already CacheGuaranteed (Gen0).
+func declareTestPlan(id attributes.U128, attrCode byte) *raftcmdpb.AttributePlan {
+	return &raftcmdpb.AttributePlan{
+		Id:       &raftcmdpb.AttributeID{Id: id[:]},
+		AttrCode: uint32(attrCode),
+		Intent:   &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
+	}
+}
+
+// touchTestPlan builds a Touch-intent AttributePlan: Gen1→Gen0 promotion.
+func touchTestPlan(id attributes.U128, attrCode byte) *raftcmdpb.AttributePlan {
+	return &raftcmdpb.AttributePlan{
+		Id:       &raftcmdpb.AttributeID{Id: id[:]},
+		AttrCode: uint32(attrCode),
+		Intent:   &raftcmdpb.AttributePlan_Touch{Touch: &raftcmdpb.Touch{}},
+	}
+}
+
+// preloadTestPlan wraps an AttributeValue payload into an AttributePlan.
+// attrID carries the canonical U128 + xxh3 collision tag; attrCode
+// (dal.SubAttrXxx) drives the unmarshal dispatch.
+func preloadTestPlan(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) *raftcmdpb.AttributePlan {
+	return &raftcmdpb.AttributePlan{
+		Id:       attrID,
+		AttrCode: uint32(attrCode),
+		Intent:   &raftcmdpb.AttributePlan_Value{Value: value},
+	}
+}
+
+// rawPreload marshals value into a fresh Preload{attr_code, raw_value}
+// using vtproto's encoding. Tests use this to assemble ExecutionPlan entries
+// without re-typing the (now wire-erased) variant scaffolding every time.
+// Marshal errors on a fresh proto indicate the test fixture itself is
+// broken — panic rather than threading t.Helper through every helper.
+func rawPreload[V interface {
+	MarshalVT() ([]byte, error)
+}](_ *testing.T, attrCode byte, value V) *raftcmdpb.AttributeValue {
+	return rawPreloadNoT(attrCode, value)
+}
+
+func rawPreloadNoT[V interface {
+	MarshalVT() ([]byte, error)
+}](attrCode byte, value V) *raftcmdpb.AttributeValue {
+	raw, err := value.MarshalVT()
+	if err != nil {
+		panic(fmt.Errorf("rawPreload: marshal attrCode=0x%x: %w", attrCode, err))
+	}
+
+	_ = attrCode // attr_code lives on the parent AttributePlan now
+
+	return &raftcmdpb.AttributeValue{
+		RawValue: raw,
+	}
+}
+
+// buildOrderDeclarations emits Declare-intent AttributePlans for the
+// side-channel keys the FSM reads while applying orders but that
+// buildVolumePreloads does not cover: the ledger itself, its boundaries,
+// target transactions for reverts, and metadata keys.
+//
+// The ledger name comes from the order itself (apply.GetLedger()), matching
+// the LedgerName-based canonical key layout introduced by #469.
+func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePlan {
+	type acctMetaKey struct {
+		ledgerName string
+		account    string
+		key        string
+	}
+
+	ledgers := map[string]struct{}{}
+	type txKeyT struct {
+		ledgerName string
+		id         uint64
+	}
+	txs := map[txKeyT]struct{}{}
+	accMeta := map[acctMetaKey]struct{}{}
+
+	for _, order := range orders {
+		// Non-apply orders also touch the cache (CreateLedger reads the
+		// LedgerKey to confirm the slot is empty before writing).
+		switch t := order.GetType().(type) {
+		case *raftcmdpb.Order_CreateLedger:
+			ledgers[t.CreateLedger.GetName()] = struct{}{}
+		case *raftcmdpb.Order_DeleteLedger:
+			ledgers[t.DeleteLedger.GetName()] = struct{}{}
+		case *raftcmdpb.Order_PromoteLedger:
+			ledgers[t.PromoteLedger.GetLedger()] = struct{}{}
+		case *raftcmdpb.Order_MirrorIngest:
+			ledgers[t.MirrorIngest.GetLedger()] = struct{}{}
+		}
+
+		apply := order.GetApply()
+		if apply == nil {
+			continue
+		}
+
+		ledgerName := apply.GetLedger()
+		if ledgerName != "" {
+			ledgers[ledgerName] = struct{}{}
+		}
+
+		if rt := apply.GetRevertTransaction(); rt != nil {
+			txs[txKeyT{ledgerName: ledgerName, id: rt.GetTransactionId()}] = struct{}{}
+		}
+
+		if sm := apply.GetAddMetadata(); sm != nil {
+			if acc := sm.GetTarget().GetAccount(); acc != nil {
+				for key := range sm.GetMetadata() {
+					accMeta[acctMetaKey{ledgerName: ledgerName, account: acc.GetAddr(), key: key}] = struct{}{}
+				}
+			}
+		}
+
+		if dm := apply.GetDeleteMetadata(); dm != nil {
+			if acc := dm.GetTarget().GetAccount(); acc != nil {
+				accMeta[acctMetaKey{ledgerName: ledgerName, account: acc.GetAddr(), key: dm.GetKey()}] = struct{}{}
+			}
+		}
+	}
+
+	var declared []*raftcmdpb.AttributePlan
+
+	for name := range ledgers {
+		ledgerKeyID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
+		declared = append(declared,
+			declareTestPlan(ledgerKeyID, dal.SubAttrLedger),
+			declareTestPlan(ledgerKeyID, dal.SubAttrBoundary),
+		)
+	}
+
+	for tk := range txs {
+		txKey := domain.TransactionKey{LedgerName: tk.ledgerName, ID: tk.id}
+		txID, _ := attributes.MakeKey(txKey.Bytes())
+		declared = append(declared, declareTestPlan(txID, dal.SubAttrTransaction))
+	}
+
+	for k := range accMeta {
+		mkBytes := domain.MetadataKey{
+			AccountKey: domain.AccountKey{LedgerName: k.ledgerName, Account: k.account},
+			Key:        k.key,
+		}.Bytes()
+		mkID, _ := attributes.MakeKey(mkBytes)
+		declared = append(declared, declareTestPlan(mkID, dal.SubAttrMetadata))
+	}
+
+	return declared
 }
 
 // buildVolumePreloads extracts all (ledger, account, asset) tuples from posting
 // orders and creates zero-value volume preloads for each unique combination.
 // The second parameter is the default ledger name for orders that do not carry
 // one (none in practice today, but kept for callers passing a literal sentinel).
-func buildVolumePreloads(orders []*raftcmdpb.Order, _ string) []*raftcmdpb.Preload {
+func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePlan {
 	type volumeKey struct {
 		ledger  string
 		account string
 		asset   string
 	}
 	seen := make(map[volumeKey]struct{})
-	var preloads []*raftcmdpb.Preload
+	var plans []*raftcmdpb.AttributePlan
 
 	zero := commonpb.NewUint256FromUint64(0)
 
@@ -121,24 +304,25 @@ func buildVolumePreloads(orders []*raftcmdpb.Order, _ string) []*raftcmdpb.Prelo
 				}
 				id, tag := attributes.MakeKey(canonicalKey.Bytes())
 
-				preloads = append(preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_Volume{
-						Volume: &raftcmdpb.PreloadVolume{
-							Id:    &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
-							Value: &raftcmdpb.VolumePair{Input: zero, Output: zero},
-						},
-					},
-				})
+				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
+				plans = append(plans, preloadTestPlan(attrID, dal.SubAttrVolume,
+					rawPreloadNoT(dal.SubAttrVolume, &raftcmdpb.VolumePair{Input: zero, Output: zero})))
 			}
 		}
 	}
 
-	return preloads
+	return plans
 }
 
 // makeEntry marshals a proposal into a raft entry at the given index.
+// sealProposal is applied first so every order's CoverageBits flags
+// every AttributePlan in the proposal, matching what the admission
+// runner does for production proposals — tests built inline would
+// otherwise hit *ErrCoverageMiss on the first cache read.
 func makeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) raftpb.Entry {
 	t.Helper()
+
+	sealProposal(proposal)
 
 	entryData, err := proto.Marshal(proposal)
 	require.NoError(t, err)

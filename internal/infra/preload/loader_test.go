@@ -388,9 +388,9 @@ func TestCleanupToken_Release(t *testing.T) {
 
 	// Create tracker with the loaded keys
 	token := &CleanupToken{
-		tracked: []trackedLoader{
-			{loader: loaders.Volumes, keys: []attributes.U128{key1, key2}},
-			{loader: loaders.References, keys: []attributes.U128{key4}},
+		Tracked: []TrackedLoader{
+			{Loader: loaders.Volumes, Keys: []attributes.U128{key1, key2}},
+			{Loader: loaders.References, Keys: []attributes.U128{key4}},
 		},
 	}
 

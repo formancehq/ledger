@@ -1191,6 +1191,11 @@ func (in *LedgerServiceSpec) DeepCopyInto(out *LedgerServiceSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.MaxExecutionPlanSize != nil {
+		in, out := &in.MaxExecutionPlanSize, &out.MaxExecutionPlanSize
+		*out = new(int32)
+		**out = **in
+	}
 	if in.UnsafeSkipConfigValidation != nil {
 		in, out := &in.UnsafeSkipConfigValidation, &out.UnsafeSkipConfigValidation
 		*out = new(bool)

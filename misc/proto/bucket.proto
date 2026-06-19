@@ -482,20 +482,15 @@ message CreateTransactionPayload {
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction.
-// Exactly one of transaction_id or transaction_reference must be set.
-// When transaction_reference is set, admission resolves it against the
-// store before proposing the Raft order; the order itself always carries
-// the resolved numeric id.
 message RevertTransactionPayload {
-  oneof identifier {
-    fixed64 transaction_id = 1;
-    string transaction_reference = 7;
-  }
+  fixed64 transaction_id = 1;
   bool force = 2;
   bool at_effective_date = 3;
   map<string, common.MetadataValue> metadata = 4;
   string receipt = 5;
   bool expand_volumes = 6;
+  reserved 7;
+  reserved "transaction_reference";
 }
 
 // LedgerAction represents a single ledger action.

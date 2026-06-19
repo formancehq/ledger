@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	checkpointID := s.IncrementNextQueryCheckpointID()
 
 	cp := &raftcmdpb.QueryCheckpointState{
@@ -27,7 +27,7 @@ func (p *RequestProcessor) processCreateQueryCheckpoint(order *raftcmdpb.CreateQ
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	if order.GetCheckpointId() == 0 {
 		return nil, domain.ErrCheckpointIDRequired
 	}

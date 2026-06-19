@@ -6,10 +6,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
-	info, ok := s.GetLedger(order.GetQuery().GetLedger())
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: order.GetQuery().GetLedger()}
+func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePreparedQueryOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	info, loadErr := loadLedger(s, order.GetQuery().GetLedger())
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	ledgerName := info.GetName()
@@ -37,10 +37,10 @@ func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePre
 	}, nil
 }
 
-func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
-	info, ok := s.GetLedger(order.GetLedger())
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
+func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePreparedQueryOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	info, loadErr := loadLedger(s, order.GetLedger())
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	ledgerName := info.GetName()
@@ -74,10 +74,10 @@ func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePre
 	}, nil
 }
 
-func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
-	info, ok := s.GetLedger(order.GetLedger())
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
+func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePreparedQueryOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	info, loadErr := loadLedger(s, order.GetLedger())
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	ledgerName := info.GetName()

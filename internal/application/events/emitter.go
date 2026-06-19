@@ -11,12 +11,13 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -58,6 +59,7 @@ type Emitter struct {
 	sink     Sink
 	sinkName string
 	proposer Proposer
+	builder  *plan.Builder
 	config   EmitterConfig
 	logger   logging.Logger
 
@@ -87,7 +89,7 @@ type Emitter struct {
 }
 
 // NewEmitter creates a new event emitter for a named sink.
-func NewEmitter(store *dal.Store, sink Sink, sinkName string, proposer Proposer, logger logging.Logger, config EmitterConfig) *Emitter {
+func NewEmitter(store *dal.Store, sink Sink, sinkName string, proposer Proposer, builder *plan.Builder, logger logging.Logger, config EmitterConfig) *Emitter {
 	if config.BatchSize <= 0 {
 		config.BatchSize = 64
 	}
@@ -101,6 +103,7 @@ func NewEmitter(store *dal.Store, sink Sink, sinkName string, proposer Proposer,
 		sink:     sink,
 		sinkName: sinkName,
 		proposer: proposer,
+		builder:  builder,
 		config:   config,
 		logger:   logger.WithFields(map[string]any{"cmp": "event-emitter", "sink": sinkName}),
 		notify:   signal.New(),
@@ -432,32 +435,100 @@ func (e *Emitter) reportError(ctx context.Context, publishErr error) {
 	}
 }
 
+// maxSinkUpdateStaleRetries bounds the number of times proposeSinkUpdate
+// will retry an ErrStaleProposal rejection before giving up. Stale
+// rejections fire when the IndexTracker is inflated from a dropped
+// proposal (typically a leadership transition); a fresh PredictedIndex
+// is computed on every re-attempt, so once the tracker catches up the
+// next try succeeds. Matches bootstrap.proposeTechnical's bound.
+const maxSinkUpdateStaleRetries = 5
+
 // proposeSinkUpdate proposes a Raft command to update per-sink state.
+// Routed through Builder.Run so PredictedIndex, IndexTracker mutex
+// ordering and the (fast-path) no-preload flow are identical to every
+// other proposer.
+//
+// Stale rejections must be retried here, not returned to the caller:
+// publishBatch has already delivered the events to the external sink
+// before this function is reached, so a returned error makes the
+// emitter restart from the unchanged cursor and re-publish the same
+// batch. Mirror bootstrap.proposeTechnical's bounded retry.
 func (e *Emitter) proposeSinkUpdate(ctx context.Context, update *raftcmdpb.EventsSinkUpdate) error {
-	cmdID := commands.GenerateRandomID()
+	var lastErr error
 
+	for range maxSinkUpdateStaleRetries {
+		err := e.proposeSinkUpdateOnce(ctx, update)
+		if err == nil {
+			return nil
+		}
+
+		if !errors.Is(err, domain.ErrStaleProposal) {
+			return err
+		}
+
+		lastErr = err
+	}
+
+	return fmt.Errorf("proposeSinkUpdate: giving up after %d stale retries: %w", maxSinkUpdateStaleRetries, lastErr)
+}
+
+func (e *Emitter) proposeSinkUpdateOnce(ctx context.Context, update *raftcmdpb.EventsSinkUpdate) error {
+	// Reset every per-attempt field so Run assigns a fresh ID and
+	// PredictedIndex; the previous stale rejection left them populated.
 	e.proposal.Reset()
-	e.proposal.Id = cmdID
-	e.proposal.EventsSinkUpdates = []*raftcmdpb.EventsSinkUpdate{update}
+	e.proposal.Id = commands.GenerateRandomID()
+	e.proposal.ExecutionPlan = nil
+	e.proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_EventsSink{EventsSink: update},
+	}}
 
-	// MarshalCopy returns a freshly allocated slice safe for Raft retention.
-	// Reusing a per-Emitter buffer here would be unsafe: etcd/raft keeps the
-	// proposal bytes in its in-memory log and may re-read them when replicating
-	// to a slow follower after local apply. A subsequent proposeSinkUpdate
-	// would overwrite the buffer mid-replication, corrupting the entry
-	// observed by the lagging node and violating cross-node determinism (#311).
-	data, err := vtmarshal.MarshalCopy(&e.proposal)
+	// One WriteOperation per TU. applyEventsSinkUpdate reads no cache
+	// state, so Needs stays nil and the runner takes the fast path
+	// (tracker mutex held just long enough to inject PredictedIndex +
+	// proposer.Propose).
+	operations := []plan.WriteOperation{{
+		SetCoverage: func(bits []byte) {
+			e.proposal.GetTechnicalUpdates()[0].CoverageBits = bits
+		},
+	}}
+
+	build, err := e.builder.Build(operations)
+	if err != nil {
+		if build != nil {
+			build.ReleaseLoaders()
+		}
+
+		return fmt.Errorf("building preloads for sink update: %w", err)
+	}
+
+	result, err := e.builder.Run(
+		ctx, &e.proposal, build,
+		func(c *raftcmdpb.Proposal) ([]byte, error) { return c.MarshalVT() },
+		e.proposer,
+	)
 	if err != nil {
 		return err
 	}
 
-	future, err := e.proposer.Propose(ctx, node.NewProposal(cmdID, data))
-	if err != nil {
-		return err
+	result.Guard.ReleaseLoaders()
+
+	if _, err := result.Proposal.WaitContext(ctx); err != nil {
+		return fmt.Errorf("waiting for raft acceptance: %w", err)
 	}
 
-	// Wait for the update to be applied by the FSM
-	_, err = future.WaitContext(ctx)
+	applyResult, err := result.FSMFuture.WaitContext(ctx)
+	if err != nil {
+		return fmt.Errorf("waiting for FSM apply: %w", err)
+	}
 
-	return err
+	// The FSM apply succeeded transport-wise but may have rejected the
+	// proposal as a business error (ErrStaleProposal from a stale
+	// IndexTracker after leadership churn, ErrCoverageMiss on a
+	// malformed plan, etc.). Wrap with %w so the caller retry loop
+	// can detect ErrStaleProposal via errors.Is.
+	if applyResult.Error != nil {
+		return fmt.Errorf("applying sink update: %w", applyResult.Error)
+	}
+
+	return nil
 }

@@ -165,6 +165,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, ag
 	envs = appendIfStr(envs, "GRPC_SLOW_THRESHOLD", spec.GrpcSlowThreshold)
 	envs = appendIfInt32(envs, "NUMSCRIPT_CACHE_SIZE", spec.NumscriptCacheSize)
 	envs = appendIfInt32(envs, "MIRROR_MAX_BATCH_SIZE", spec.MirrorMaxBatchSize)
+	envs = appendIfInt32(envs, "MAX_EXECUTION_PLAN_SIZE", spec.MaxExecutionPlanSize)
 	envs = appendIfStr(envs, "IDEMPOTENCY_TTL", spec.IdempotencyTTL)
 	envs = appendIfStr(envs, "IDEMPOTENCY_EVICTION_INTERVAL", spec.IdempotencyEvictionInterval)
 	envs = appendIfStr(envs, "HASH_ALGORITHM", spec.HashAlgorithm)

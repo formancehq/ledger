@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	if err := domain.ValidateNumscriptName(order.GetName()); err != nil {
 		return nil, err
 	}
@@ -22,9 +22,9 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 		return nil, &domain.ErrNumscriptParse{Details: err.Error()}
 	}
 
-	ledgerInfo, ok := s.GetLedger(order.GetLedger())
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
+	ledgerInfo, loadErr := loadLedger(s, order.GetLedger())
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	ledgerName := ledgerInfo.GetName()
@@ -75,14 +75,14 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscriptOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	if err := domain.ValidateNumscriptName(order.GetName()); err != nil {
 		return nil, err
 	}
 
-	ledgerInfo, ok := s.GetLedger(order.GetLedger())
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
+	ledgerInfo, loadErr := loadLedger(s, order.GetLedger())
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	ledgerName := ledgerInfo.GetName()

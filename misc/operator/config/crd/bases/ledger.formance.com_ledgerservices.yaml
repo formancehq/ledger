@@ -1788,6 +1788,13 @@ spec:
                 - info
                 - error
                 type: string
+              maxExecutionPlanSize:
+                description: |-
+                  MaxExecutionPlanSize caps the number of AttributePlan entries an
+                  ExecutionPlan may carry. Admission rejects proposals beyond this
+                  (0 = unlimited). Default: 4096.
+                format: int32
+                type: integer
               mirrorMaxBatchSize:
                 description: MirrorMaxBatchSize is the maximum allowed batch size
                   for mirror sync.

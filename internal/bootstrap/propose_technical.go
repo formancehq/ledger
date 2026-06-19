@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/preload"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -17,10 +17,10 @@ import (
 // re-attempt, so once the tracker catches up the next try succeeds.
 const maxTechnicalStaleRetries = 5
 
-// proposeTechnical submits a technical Raft proposal through the preload
-// runner. It blocks until the FSM applies. Used by callers that previously
-// went through NodeProposer.ProposeProposal — cluster config updates,
-// idempotency eviction, IndexReady notifications.
+// proposeTechnical submits a technical Raft proposal through the
+// preload runner. It blocks until the FSM applies. Used by callers
+// that previously went through NodeProposer.ProposeProposal — cluster
+// config updates, idempotency eviction, IndexReady notifications.
 //
 // Why route technical proposals through the preload runner:
 //   - PredictedIndex is set as a backstop: a stale tracker (e.g. a
@@ -30,29 +30,25 @@ const maxTechnicalStaleRetries = 5
 //   - All proposals go through one canonical path, so the IndexTracker
 //     lock and Raft propose are serialized identically everywhere.
 //
-// The caller is responsible for declaring `needs` — every key its FSM
-// apply path will read from `Registry.X.Get(...)` must be in there. A
-// missing entry turns the apply into a silent no-op (cache miss returns
-// nil) and the proposal effectively does nothing. Use a fresh
-// `preload.NewNeeds()` and add the keys your apply path needs; pass nil
-// or an empty Needs if your apply path does no cache-keyed reads (e.g.
-// cluster config, idempotency eviction).
-func proposeTechnical(ctx context.Context, preloader *preload.Preloader, proposer preload.Proposer, cmd *raftcmdpb.Proposal, needs *preload.Needs) error {
-	if needs == nil {
-		needs = preload.NewNeeds()
-	}
-
+// The caller passes one plan.WriteOperation per TechnicalUpdate in the
+// proposal. Each operation declares the cache keys its handler will
+// read (or nil/empty Needs for handlers that read nothing — cluster
+// config, idempotency eviction) and a SetCoverage closure that the
+// runner uses to write the bitset onto the corresponding
+// TechnicalUpdate. Per-TU isolation is therefore structural even when
+// a future batch carries multiple heterogeneous TUs.
+func proposeTechnical(ctx context.Context, builder *plan.Builder, proposer plan.Proposer, cmd *raftcmdpb.Proposal, operations []plan.WriteOperation) error {
 	var lastErr error
 
 	for attempt := range maxTechnicalStaleRetries {
-		// Reset the per-attempt fields so RunWithPreload assigns a
-		// fresh ID and PredictedIndex on each retry (the previous
-		// stale rejection left them populated).
+		// Reset the per-attempt fields so Run assigns a fresh ID and
+		// PredictedIndex on each retry (the previous stale rejection
+		// left them populated).
 		cmd.Id = 0
 		cmd.PredictedIndex = 0
-		cmd.Preload = nil
+		cmd.ExecutionPlan = nil
 
-		err := proposeTechnicalOnce(ctx, preloader, proposer, cmd, needs)
+		err := proposeTechnicalOnce(ctx, builder, proposer, cmd, operations)
 		if err == nil {
 			return nil
 		}
@@ -68,8 +64,8 @@ func proposeTechnical(ctx context.Context, preloader *preload.Preloader, propose
 	return fmt.Errorf("proposeTechnical: giving up after %d stale retries: %w", maxTechnicalStaleRetries, lastErr)
 }
 
-func proposeTechnicalOnce(ctx context.Context, preloader *preload.Preloader, proposer preload.Proposer, cmd *raftcmdpb.Proposal, needs *preload.Needs) error {
-	build, err := preloader.BuildPreloads(needs)
+func proposeTechnicalOnce(ctx context.Context, builder *plan.Builder, proposer plan.Proposer, cmd *raftcmdpb.Proposal, operations []plan.WriteOperation) error {
+	build, err := builder.Build(operations)
 	if err != nil {
 		if build != nil {
 			build.ReleaseLoaders()
@@ -78,8 +74,8 @@ func proposeTechnicalOnce(ctx context.Context, preloader *preload.Preloader, pro
 		return fmt.Errorf("building preloads for technical proposal: %w", err)
 	}
 
-	result, err := preloader.RunWithPreload(
-		ctx, cmd, build, needs,
+	result, err := builder.Run(
+		ctx, cmd, build,
 		func(c *raftcmdpb.Proposal) ([]byte, error) { return c.MarshalVT() },
 		proposer,
 	)
@@ -89,11 +85,15 @@ func proposeTechnicalOnce(ctx context.Context, preloader *preload.Preloader, pro
 
 	result.Guard.ReleaseLoaders()
 
-	// WaitContext (not Wait): callers running in lifecycle workers thread
-	// a stop-derived context, and a node stopping or losing leadership
-	// after Raft acceptance but before FSM apply would otherwise hang
-	// these waits forever. Cancelling unblocks both and lets the caller
-	// observe the shutdown / leadership change.
+	return waitTechnical(ctx, result)
+}
+
+// waitTechnical blocks on Raft acceptance then FSM apply, returning the
+// first error encountered. WaitContext (not Wait) is used so a node
+// stopping or losing leadership after Raft acceptance but before FSM
+// apply cancels the wait and lets the caller observe the shutdown
+// instead of hanging forever.
+func waitTechnical(ctx context.Context, result *plan.RunResult) error {
 	if _, err := result.Proposal.WaitContext(ctx); err != nil {
 		return fmt.Errorf("waiting for raft acceptance: %w", err)
 	}
@@ -118,20 +118,32 @@ func proposeTechnicalOnce(ctx context.Context, preloader *preload.Preloader, pro
 // indexbuilder) because preload depends on state for ApplyResult and the
 // indexbuilder package shouldn't have to know about preload internals.
 type indexReadyProposerAdapter struct {
-	preloader *preload.Preloader
-	proposer  preload.Proposer
+	builder  *plan.Builder
+	proposer plan.Proposer
 }
 
 func (a *indexReadyProposerAdapter) Propose(ctx context.Context, cmd *raftcmdpb.Proposal) error {
-	// applyIndexReady reads `fsm.Registry.Ledgers.Get(ledgerKey)`; declare
-	// the ledger names this proposal touches so the preload populates the
-	// cache before apply.
-	needs := preload.NewNeeds()
-	for _, r := range cmd.GetIndexReadyUpdates() {
-		if name := r.GetLedger(); name != "" {
-			needs.Ledgers[domain.LedgerKey{Name: name}] = struct{}{}
+	// applyIndexReady reads `fsm.Registry.Ledgers.Get(ledgerKey)`. One
+	// WriteOperation per TU with its own ledger declared so the gate
+	// rejects any cross-ledger read at FSM time.
+	tus := cmd.GetTechnicalUpdates()
+	operations := make([]plan.WriteOperation, 0, len(tus))
+	for i, tu := range tus {
+		var needs *plan.Needs
+		if kind, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_IndexReady); ok {
+			if name := kind.IndexReady.GetLedger(); name != "" {
+				needs = plan.NewNeeds()
+				needs.Ledgers[domain.LedgerKey{Name: name}] = struct{}{}
+			}
 		}
+
+		operations = append(operations, plan.WriteOperation{
+			Needs: needs,
+			SetCoverage: func(bits []byte) {
+				cmd.GetTechnicalUpdates()[i].CoverageBits = bits
+			},
+		})
 	}
 
-	return proposeTechnical(ctx, a.preloader, a.proposer, cmd, needs)
+	return proposeTechnical(ctx, a.builder, a.proposer, cmd, operations)
 }

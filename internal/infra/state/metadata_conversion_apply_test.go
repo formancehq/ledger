@@ -6,8 +6,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -56,18 +60,67 @@ func mustMarshal(t *testing.T, v *commonpb.MetadataValue) []byte {
 	return b
 }
 
+// runTechApply wires a fresh WriteSet around a single tech-update handler
+// call and drains the resulting overlay via Merge so the test observes the
+// same post-apply state production sees. Mirrors what applyProposal does
+// minus the order processing. The handler argument is `processing.Scope`
+// — the same interface tech updates receive in production — so the test
+// can't accidentally reach for engine fields.
+func runTechApply(t *testing.T, fsm *Machine, batch *dal.WriteSession, plan *raftcmdpb.ExecutionPlan, fn func(scope processing.Scope) error) {
+	t.Helper()
+
+	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1700000000})
+	buffer := fsm.writeSet
+
+	ctx := logging.TestingContext()
+	meter := noop.NewMeterProvider().Meter("test")
+	miss, err := meter.Int64Counter("ledger.preload.coverage_miss")
+	require.NoError(t, err)
+
+	scope, err := NewScopeFactory(buffer, plan, logging.FromContext(ctx), miss, 0).NewProposalScope()
+	require.NoError(t, err)
+
+	require.NoError(t, fn(scope))
+	require.NoError(t, buffer.Merge(batch, nil))
+}
+
 func applyConversion(t *testing.T, fsm *Machine, dataStore *dal.Store, canonicalKey []byte, entry *raftcmdpb.ConvertMetadataEntry) {
 	t.Helper()
 
 	applyBatch := dataStore.OpenWriteSession()
-	require.NoError(t, fsm.applyMetadataConversionBatch(applyBatch, &raftcmdpb.MetadataConversionBatch{
-		Ledger:       "L",
-		TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-		Key:          "role",
-		ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
-		Entries:      []*raftcmdpb.ConvertMetadataEntry{entry},
-	}))
+	plan := buildConvertPlan(t, "L", canonicalKey, commonpb.TargetType_TARGET_TYPE_ACCOUNT)
+	runTechApply(t, fsm, applyBatch, plan, func(scope processing.Scope) error {
+		return fsm.applyMetadataConversionBatch(scope, applyBatch, &raftcmdpb.MetadataConversionBatch{
+			Ledger:       "L",
+			TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:          "role",
+			ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
+			Entries:      []*raftcmdpb.ConvertMetadataEntry{entry},
+		})
+	})
 	require.NoError(t, applyBatch.Commit())
+}
+
+// buildConvertPlan declares the keys read by applyMetadataConversionBatch /
+// applyMetadataConversionCompletion: the ledger (always) plus the canonical
+// metadata key dispatched on targetType.
+func buildConvertPlan(t *testing.T, ledger string, canonicalKey []byte, targetType commonpb.TargetType) *raftcmdpb.ExecutionPlan {
+	t.Helper()
+
+	ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: ledger}.Bytes())
+	metaID, _ := attributes.MakeKey(canonicalKey)
+
+	attrCode := dal.SubAttrMetadata
+	if targetType == commonpb.TargetType_TARGET_TYPE_LEDGER {
+		attrCode = dal.SubAttrLedgerMetadata
+	}
+
+	return &raftcmdpb.ExecutionPlan{
+		Attributes: []*raftcmdpb.AttributePlan{
+			declareTestPlan(ledgerID, dal.SubAttrLedger),
+			declareTestPlan(metaID, attrCode),
+		},
+	}
 }
 
 // TestApplyMetadataConversionBatch_WritesWhenCacheMatchesScan is the
@@ -200,18 +253,20 @@ func TestApplyMetadataConversionBatch_SkipsOnCacheMiss(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	applyBatch := dataStore.OpenWriteSession()
-	require.NoError(t, fsm.applyMetadataConversionBatch(applyBatch, &raftcmdpb.MetadataConversionBatch{
-		Ledger:       "L",
-		TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-		Key:          "role",
-		ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
-		Entries: []*raftcmdpb.ConvertMetadataEntry{{
-			CanonicalKey:   canonicalKey,
-			ConvertedValue: commonpb.NewStringValue("ghost"),
-			ExpectedValue:  mustMarshal(t, commonpb.NewStringValue("1")),
-		}},
-	}),
-		"cache miss on a conversion entry must be tolerated as a scan-vs-apply race (#359 flemzord review)")
+	plan := buildConvertPlan(t, "L", canonicalKey, commonpb.TargetType_TARGET_TYPE_ACCOUNT)
+	runTechApply(t, fsm, applyBatch, plan, func(buffer processing.Scope) error {
+		return fsm.applyMetadataConversionBatch(buffer, applyBatch, &raftcmdpb.MetadataConversionBatch{
+			Ledger:       "L",
+			TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:          "role",
+			ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
+			Entries: []*raftcmdpb.ConvertMetadataEntry{{
+				CanonicalKey:   canonicalKey,
+				ConvertedValue: commonpb.NewStringValue("ghost"),
+				ExpectedValue:  mustMarshal(t, commonpb.NewStringValue("1")),
+			}},
+		})
+	})
 	require.NoError(t, applyBatch.Commit())
 
 	// Sanity: nothing was written — the conversion was silently
@@ -277,12 +332,16 @@ func TestApplyMetadataConversionCompletion_FlipsStatusComplete(t *testing.T) {
 	fsm, dataStore, _ := metaConvertFixture(t)
 
 	applyBatch := dataStore.OpenWriteSession()
-	require.NoError(t, fsm.applyMetadataConversionCompletion(applyBatch, &raftcmdpb.MetadataConversionCompletion{
-		Ledger:       "L",
-		TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-		Key:          "role",
-		ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
-	}))
+	canonicalKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "alice"}, Key: "role"}.Bytes()
+	plan := buildConvertPlan(t, "L", canonicalKey, commonpb.TargetType_TARGET_TYPE_ACCOUNT)
+	runTechApply(t, fsm, applyBatch, plan, func(buffer processing.Scope) error {
+		return fsm.applyMetadataConversionCompletion(buffer, &raftcmdpb.MetadataConversionCompletion{
+			Ledger:       "L",
+			TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:          "role",
+			ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
+		})
+	})
 	require.NoError(t, applyBatch.Commit())
 
 	info, _, err := fsm.Registry.Ledgers.Get(domain.LedgerKey{Name: "L"}.Bytes())
@@ -324,15 +383,18 @@ func TestApplyMetadataConversionBatch_StaleSchemaStillSkips(t *testing.T) {
 	canonicalKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"}.Bytes()
 
 	applyBatch := dataStore.OpenWriteSession()
-	require.NoError(t, fsm.applyMetadataConversionBatch(applyBatch, &raftcmdpb.MetadataConversionBatch{
-		Ledger:       "L",
-		TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-		Key:          "role",
-		ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
-		Entries: []*raftcmdpb.ConvertMetadataEntry{
-			{CanonicalKey: canonicalKey, ConvertedValue: commonpb.NewStringValue("ghost")},
-		},
-	}))
+	plan := buildConvertPlan(t, "L", canonicalKey, commonpb.TargetType_TARGET_TYPE_ACCOUNT)
+	runTechApply(t, fsm, applyBatch, plan, func(buffer processing.Scope) error {
+		return fsm.applyMetadataConversionBatch(buffer, applyBatch, &raftcmdpb.MetadataConversionBatch{
+			Ledger:       "L",
+			TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:          "role",
+			ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
+			Entries: []*raftcmdpb.ConvertMetadataEntry{
+				{CanonicalKey: canonicalKey, ConvertedValue: commonpb.NewStringValue("ghost")},
+			},
+		})
+	})
 	require.NoError(t, applyBatch.Commit())
 
 	_, _, err := fsm.Registry.AccountMetadata.Get(canonicalKey)
@@ -376,29 +438,39 @@ func TestApplyProposal_PreloadPopulatesCacheBeforeConvert(t *testing.T) {
 	u128, tag := attributes.MakeKey(canonicalKey)
 	attrID := &raftcmdpb.AttributeID{Id: u128.Bytes(), Tag: tag}
 
+	// applyMetadataConversionBatch also reads the ledger info via the
+	// Plan, so the proposal must declare it — without a Declare
+	// entry the View crashes the node on the read.
+	ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
+
 	proposal := &raftcmdpb.Proposal{
 		Id: 1,
-		Preload: &raftcmdpb.PreloadSet{
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
-			Preloads: []*raftcmdpb.Preload{{
-				Type: &raftcmdpb.Preload_AccountMetadata{
-					AccountMetadata: &raftcmdpb.PreloadAccountMetadata{
-						Id:    attrID,
-						Value: original,
-					},
-				},
-			}},
+			Attributes: []*raftcmdpb.AttributePlan{
+				preloadTestPlan(attrID, dal.SubAttrMetadata, rawPreload(t, dal.SubAttrMetadata, original)),
+				declareTestPlan(ledgerID, dal.SubAttrLedger),
+			},
 		},
-		MetadataConversionBatches: []*raftcmdpb.MetadataConversionBatch{{
-			Ledger:       "L",
-			TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-			Key:          "role",
-			ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
-			Entries: []*raftcmdpb.ConvertMetadataEntry{{
-				CanonicalKey:   canonicalKey,
-				ConvertedValue: commonpb.NewStringValue("converted"),
-				ExpectedValue:  mustMarshal(t, original),
-			}},
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+			// Coverage bits flag both plans[0] (account metadata) and
+			// plans[1] (ledger). The MetadataBatch handler reads the
+			// canonical key through scope.GetAccountMetadataEntry AND
+			// reads Registry.Ledgers["L"] for the schema check.
+			CoverageBits: []byte{0b00000011},
+			Kind: &raftcmdpb.TechnicalUpdate_MetadataBatch{
+				MetadataBatch: &raftcmdpb.MetadataConversionBatch{
+					Ledger:       "L",
+					TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:          "role",
+					ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
+					Entries: []*raftcmdpb.ConvertMetadataEntry{{
+						CanonicalKey:   canonicalKey,
+						ConvertedValue: commonpb.NewStringValue("converted"),
+						ExpectedValue:  mustMarshal(t, original),
+					}},
+				},
+			},
 		}},
 	}
 
@@ -472,29 +544,36 @@ func TestApplyProposal_PreloadDoesNotResurrectTombstone(t *testing.T) {
 	u128, tag := attributes.MakeKey(canonicalKey)
 	attrID := &raftcmdpb.AttributeID{Id: u128.Bytes(), Tag: tag}
 
+	// applyMetadataConversionBatch reads view.Ledgers; declare the ledger
+	// key so the view admits the read instead of crashing on coverage miss.
+	ledgerU128, _ := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
+
 	proposal := &raftcmdpb.Proposal{
 		Id: 1,
-		Preload: &raftcmdpb.PreloadSet{
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
-			Preloads: []*raftcmdpb.Preload{{
-				Type: &raftcmdpb.Preload_AccountMetadata{
-					AccountMetadata: &raftcmdpb.PreloadAccountMetadata{
-						Id:    attrID,
-						Value: original,
-					},
-				},
-			}},
+			Attributes: []*raftcmdpb.AttributePlan{
+				declareTestPlan(ledgerU128, dal.SubAttrLedger),
+				preloadTestPlan(attrID, dal.SubAttrMetadata, rawPreload(t, dal.SubAttrMetadata, original)),
+			},
 		},
-		MetadataConversionBatches: []*raftcmdpb.MetadataConversionBatch{{
-			Ledger:       "L",
-			TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-			Key:          "role",
-			ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
-			Entries: []*raftcmdpb.ConvertMetadataEntry{{
-				CanonicalKey:   canonicalKey,
-				ConvertedValue: commonpb.NewStringValue("must-not-resurrect"),
-				ExpectedValue:  mustMarshal(t, original),
-			}},
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+			// Coverage bits flag both plans[0] (ledger) and plans[1] (account
+			// metadata). The MetadataBatch handler reads both through scope.
+			CoverageBits: []byte{0b00000011},
+			Kind: &raftcmdpb.TechnicalUpdate_MetadataBatch{
+				MetadataBatch: &raftcmdpb.MetadataConversionBatch{
+					Ledger:       "L",
+					TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:          "role",
+					ExpectedType: commonpb.MetadataType_METADATA_TYPE_STRING,
+					Entries: []*raftcmdpb.ConvertMetadataEntry{{
+						CanonicalKey:   canonicalKey,
+						ConvertedValue: commonpb.NewStringValue("must-not-resurrect"),
+						ExpectedValue:  mustMarshal(t, original),
+					}},
+				},
+			},
 		}},
 	}
 
@@ -553,16 +632,11 @@ func TestApplyProposal_PreloadOverColliderTombstoneIsApplied(t *testing.T) {
 
 	proposal := &raftcmdpb.Proposal{
 		Id: 1,
-		Preload: &raftcmdpb.PreloadSet{
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
-			Preloads: []*raftcmdpb.Preload{{
-				Type: &raftcmdpb.Preload_AccountMetadata{
-					AccountMetadata: &raftcmdpb.PreloadAccountMetadata{
-						Id:    attrID,
-						Value: preloaded,
-					},
-				},
-			}},
+			Attributes: []*raftcmdpb.AttributePlan{
+				preloadTestPlan(attrID, dal.SubAttrMetadata, rawPreload(t, dal.SubAttrMetadata, preloaded)),
+			},
 		},
 	}
 

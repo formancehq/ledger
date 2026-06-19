@@ -10,14 +10,14 @@ import (
 func (p *RequestProcessor) processSetMetadataFieldType(
 	ledgerName string,
 	order *raftcmdpb.SetMetadataFieldTypeOrder,
-	s InMemoryStore,
+	s Scope,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	infoReader, ok := s.GetLedger(ledgerName)
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
+	info, loadErr := loadLedger(s, ledgerName)
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
-	info := infoReader.Mutate()
+	info = info.CloneVT()
 
 	if metadataFieldConverting(info, order.GetTargetType(), order.GetKey()) {
 		return nil, &domain.ErrMetadataConversionInProgress{
@@ -85,14 +85,14 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 func (p *RequestProcessor) processRemoveMetadataFieldType(
 	ledgerName string,
 	order *raftcmdpb.RemoveMetadataFieldTypeOrder,
-	s InMemoryStore,
+	s Scope,
 ) (*commonpb.LedgerLogPayload, domain.Describable) {
-	infoReader, ok := s.GetLedger(ledgerName)
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
+	info, loadErr := loadLedger(s, ledgerName)
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
-	info := infoReader.Mutate()
+	info = info.CloneVT()
 
 	if metadataFieldConverting(info, order.GetTargetType(), order.GetKey()) {
 		return nil, &domain.ErrMetadataConversionInProgress{

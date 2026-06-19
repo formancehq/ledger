@@ -61,9 +61,11 @@ type cacheSnapshotSlot interface {
 	// is in neither generation.
 	MirrorTouch(batch *dal.WriteSession, gen0Byte byte, id attributes.U128) error
 	// MirrorPreload puts value into both in-memory generations and mirrors
-	// to 0xFF at both byte positions. value is type-erased; the concrete
-	// implementation re-asserts to V.
-	MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, value any) error
+	// to 0xFF at both byte positions. rawValue is the vtproto-marshaled
+	// blob carried by Preload.raw_value; the concrete implementation
+	// unmarshals it into its V before applying the tombstone/Gen1-wins
+	// rules.
+	MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, rawValue []byte) error
 	// IterKeys iterates all U128 keys in the given generation.
 	IterKeys(genIndex int) iter.Seq[attributes.U128]
 }
@@ -153,11 +155,23 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	batch *dal.WriteSession,
 	gen0Byte, gen1Byte byte,
 	attrID *raftcmdpb.AttributeID,
-	value any,
+	rawValue []byte,
 ) error {
-	typed, ok := value.(V)
-	if !ok {
-		return fmt.Errorf("MirrorPreload: value type %T does not match slot's V", value)
+	// Empty rawValue is the bloom-confirmed-absent signal: the proposer told
+	// the FSM "this key has no value in Pebble". The cache must hold a
+	// typed-nil so read paths that gate on `entry.Data != nil` (e.g.
+	// ResolveLedgerID) fall through to Pebble — a non-nil zero-proto would
+	// instead surface a phantom "id=0" hit.
+	//
+	// The dual on disk is a tombstone row: writeCacheRaw with empty bytes is
+	// what RestoreEntry interprets as Deleted=true, so a restart rebuilds
+	// the same nil-entry semantics.
+	var typed V
+	if len(rawValue) > 0 {
+		typed = s.newValue()
+		if err := typed.UnmarshalVT(rawValue); err != nil {
+			return fmt.Errorf("MirrorPreload: unmarshal cacheType=0x%x (%d bytes): %w", s.cacheType, len(rawValue), err)
+		}
 	}
 
 	id := attributes.U128FromBytes(attrID.GetId())
@@ -192,9 +206,16 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 		return nil
 	}
 
-	valueBytes, err := s.marshalValue(effective)
-	if err != nil {
-		return fmt.Errorf("marshaling preloaded value: %w", err)
+	// Common path (Gen1 was empty, effective == typed): reuse the rawValue
+	// bytes that arrived on the wire instead of re-marshaling. The cold
+	// path (Gen1 won, effective is its older entry) re-serializes.
+	valueBytes := rawValue
+	if !gen1Set {
+		var err error
+		valueBytes, err = s.marshalValue(effective)
+		if err != nil {
+			return fmt.Errorf("marshaling preloaded value: %w", err)
+		}
 	}
 
 	if gen0Set {
@@ -342,11 +363,11 @@ func (s *CacheSnapshotter) MirrorTouch(batch *dal.WriteSession, attrType byte, g
 }
 
 // MirrorPreload populates both in-memory generations and mirrors to 0xFF
-// at both byte positions, matching what preloadToCache used to do
-// in-memory only.
-func (s *CacheSnapshotter) MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, preload *raftcmdpb.Preload) error {
-	attrCode, attrID, value := extractPreload(preload)
-	if attrID == nil {
+// at both byte positions. attrCode (from the parent AttributePlan) picks
+// the slot; value.raw_value carries the typed value bytes (vtproto-
+// marshaled), and attrID carries the U128 + the xxh3 collision tag.
+func (s *CacheSnapshotter) MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) error {
+	if attrID == nil || value == nil {
 		return nil
 	}
 
@@ -355,43 +376,7 @@ func (s *CacheSnapshotter) MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1
 		return nil
 	}
 
-	return slot.MirrorPreload(batch, gen0Byte, gen1Byte, attrID, value)
-}
-
-// extractPreload pulls the attribute code, AttributeID and typed value out
-// of a Preload variant. One case per variant — no way to express this
-// generically because each variant is a distinct concrete struct.
-func extractPreload(p *raftcmdpb.Preload) (byte, *raftcmdpb.AttributeID, any) {
-	switch v := p.GetType().(type) {
-	case *raftcmdpb.Preload_Volume:
-		return dal.SubAttrVolume, v.Volume.GetId(), v.Volume.GetValue()
-	case *raftcmdpb.Preload_IdempotencyKey:
-		// Idempotency keys are no longer stored in the cache system.
-		// They are handled separately via the dedicated IdempotencyStore.
-		return 0, nil, nil
-	case *raftcmdpb.Preload_Ledger:
-		return dal.SubAttrLedger, v.Ledger.GetId(), v.Ledger.GetValue()
-	case *raftcmdpb.Preload_Boundary:
-		return dal.SubAttrBoundary, v.Boundary.GetId(), v.Boundary.GetValue()
-	case *raftcmdpb.Preload_TransactionReference:
-		return dal.SubAttrReference, v.TransactionReference.GetId(), v.TransactionReference.GetValue()
-	case *raftcmdpb.Preload_SinkConfig:
-		return dal.SubAttrSinkConfig, v.SinkConfig.GetId(), v.SinkConfig.GetValue()
-	case *raftcmdpb.Preload_AccountMetadata:
-		return dal.SubAttrMetadata, v.AccountMetadata.GetId(), v.AccountMetadata.GetValue()
-	case *raftcmdpb.Preload_NumscriptVersion:
-		return dal.SubAttrNumscriptVersion, v.NumscriptVersion.GetId(), v.NumscriptVersion.GetValue()
-	case *raftcmdpb.Preload_TransactionState:
-		return dal.SubAttrTransaction, v.TransactionState.GetId(), v.TransactionState.GetValue()
-	case *raftcmdpb.Preload_NumscriptContent:
-		return dal.SubAttrNumscriptContent, v.NumscriptContent.GetId(), v.NumscriptContent.GetValue()
-	case *raftcmdpb.Preload_PreparedQuery:
-		return dal.SubAttrPreparedQuery, v.PreparedQuery.GetId(), v.PreparedQuery.GetValue()
-	case *raftcmdpb.Preload_LedgerMetadata:
-		return dal.SubAttrLedgerMetadata, v.LedgerMetadata.GetId(), v.LedgerMetadata.GetValue()
-	}
-
-	return 0, nil, nil
+	return slot.MirrorPreload(batch, gen0Byte, gen1Byte, attrID, value.GetRawValue())
 }
 
 // persistLeanProtoEntries writes all entries from a KV store to 0xFF in lean format.

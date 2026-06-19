@@ -16,6 +16,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -155,13 +156,27 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (raftpb.Entry, uint64) {
 	t.Helper()
 
-	cmd := commands.NewCommand(&raftcmdpb.Order{
+	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
 				Name: name,
 			},
 		},
-	})
+	}
+	cmd := commands.NewCommand(order)
+
+	// Declare the LedgerKey so the FSM-side Plan admits the read
+	// processCreateLedger performs on WriteSet.GetLedger before writing.
+	ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
+	cmd.ExecutionPlan = &raftcmdpb.ExecutionPlan{
+		Attributes: []*raftcmdpb.AttributePlan{{
+			Id: &raftcmdpb.AttributeID{Id: ledgerID[:]}, AttrCode: uint32(dal.SubAttrLedger),
+			Intent: &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
+		}},
+	}
+
+	// Single-order coverage: every bit set.
+	order.CoverageBits = []byte{0b1}
 
 	data, err := cmd.MarshalVT()
 	require.NoError(t, err)
@@ -430,13 +445,23 @@ func TestApplierFutureResolution(t *testing.T) {
 func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string) (raftpb.Entry, uint64) {
 	t.Helper()
 
-	cmd := commands.NewCommand(&raftcmdpb.Order{
+	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
 				Name: name,
 			},
 		},
-	})
+	}
+	cmd := commands.NewCommand(order)
+
+	ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
+	cmd.ExecutionPlan = &raftcmdpb.ExecutionPlan{
+		Attributes: []*raftcmdpb.AttributePlan{{
+			Id: &raftcmdpb.AttributeID{Id: ledgerID[:]}, AttrCode: uint32(dal.SubAttrLedger),
+			Intent: &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
+		}},
+	}
+	order.CoverageBits = []byte{0b1}
 
 	data, err := cmd.MarshalVT()
 	require.NoError(t, err)

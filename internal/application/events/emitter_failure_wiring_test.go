@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
@@ -46,10 +47,15 @@ func TestEmitter_PublishBatch_ReportError_Dedups(t *testing.T) {
 	// the test if Propose is called any other number of times.
 	proposer.EXPECT().
 		Propose(gomock.Any(), gomock.Any()).
-		Return(resolvedFuture(), nil).
+		DoAndReturn(func(_ context.Context, p *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+			p.Resolve(nil, nil)
+
+			return resolvedFuture(), nil
+		}).
 		Times(2)
 
-	emitter := NewEmitter(nil, sink, "test", proposer, logger, DefaultEmitterConfig())
+	builder, store := newTestBuilder(t)
+	emitter := NewEmitter(store, sink, "test", proposer, builder, logger, DefaultEmitterConfig())
 
 	clock := time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC)
 	emitter.now = func() time.Time { return clock }
@@ -88,10 +94,15 @@ func TestEmitter_PublishBatch_ReportError_ReportsOnMessageChange(t *testing.T) {
 	)
 	proposer.EXPECT().
 		Propose(gomock.Any(), gomock.Any()).
-		Return(resolvedFuture(), nil).
+		DoAndReturn(func(_ context.Context, p *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+			p.Resolve(nil, nil)
+
+			return resolvedFuture(), nil
+		}).
 		Times(2)
 
-	emitter := NewEmitter(nil, sink, "test", proposer, logger, DefaultEmitterConfig())
+	builder, store := newTestBuilder(t)
+	emitter := NewEmitter(store, sink, "test", proposer, builder, logger, DefaultEmitterConfig())
 
 	clock := time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC)
 	emitter.now = func() time.Time { return clock }
@@ -130,10 +141,15 @@ func TestEmitter_PublishBatch_RecoverClearsFailureState(t *testing.T) {
 	// be deduped against the 1st and Times(3) would fail.
 	proposer.EXPECT().
 		Propose(gomock.Any(), gomock.Any()).
-		Return(resolvedFuture(), nil).
+		DoAndReturn(func(_ context.Context, p *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+			p.Resolve(nil, nil)
+
+			return resolvedFuture(), nil
+		}).
 		Times(3)
 
-	emitter := NewEmitter(nil, sink, "test", proposer, logger, DefaultEmitterConfig())
+	builder, store := newTestBuilder(t)
+	emitter := NewEmitter(store, sink, "test", proposer, builder, logger, DefaultEmitterConfig())
 	emitter.now = func() time.Time { return time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC) }
 
 	batch := []*eventspb.Event{{LogSequence: 1}}

@@ -186,8 +186,16 @@ type Entry[T any] struct {
 	Deleted bool
 }
 
+// DerivedKeyStore overlays a local map of writes/deletions on top of a
+// ParentReader for reads and a *KeyStore for the eventual Merge writes.
+//
+// The two roles are split so the read side can be wrapped by the
+// coverage gate (state.gatedScope) without touching the writer path.
+// Writes always go through the concrete *KeyStore: Merge mutates the
+// parent registry directly, not via the interface.
 type DerivedKeyStore[K Key, T any] struct {
-	*KeyStore[K, T]
+	parent ParentReader[K, T]
+	writer *KeyStore[K, T]
 
 	values    map[K]T
 	deletions map[K]struct{}
@@ -199,10 +207,16 @@ func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
 	s.values[canonical] = value
 }
 
-// Get returns a value from local writes, or falls back to the parent store. A
-// key deleted in this batch returns ErrNotFound, like a committed tombstone in
-// the parent store. The returned value MUST NOT be mutated in place — use
-// AsReader()/Mutate() on the proto type to obtain a safe mutable clone.
+// Get returns a value from local writes, or falls back to the parent
+// KeyStore. A key deleted in this batch returns ErrNotFound, like a
+// committed tombstone in the parent store. The returned value MUST NOT
+// be mutated in place — use AsReader()/Mutate() on the proto type to
+// obtain a safe mutable clone.
+//
+// The coverage gate is enforced one layer up (state.gatedScope wrapping
+// the WriteSet that owns this DerivedKeyStore), so the read here does
+// not double-check coverage. parent is the underlying KeyStore — a
+// fallthrough miss returns the bare ErrNotFound, not *ErrCoverageMiss.
 func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
 	if _, ok := s.deletions[canonical]; ok {
 		var zero T
@@ -216,7 +230,7 @@ func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
 
 	s.scratch = canonical.AppendBytes(s.scratch[:0])
 
-	v, _, err := s.KeyStore.Get(s.scratch)
+	v, _, err := s.parent.Get(s.scratch)
 
 	return v, err
 }
@@ -237,7 +251,7 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 		s.scratch = k.AppendBytes(s.scratch[:0])
 		canonical := append([]byte(nil), s.scratch...)
 
-		overwrite, idWithTag, err := s.KeyStore.Put(canonical, v)
+		overwrite, idWithTag, err := s.writer.Put(canonical, v)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -257,7 +271,7 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 		s.scratch = k.AppendBytes(s.scratch[:0])
 		canonical := append([]byte(nil), s.scratch...)
 
-		id, tag, err := s.KeyStore.Delete(canonical)
+		id, tag, err := s.writer.Delete(canonical)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, err
 		}
@@ -278,14 +292,21 @@ func (s *DerivedKeyStore[K, T]) DirtyValues() map[K]T {
 	return s.values
 }
 
-// Parent returns the underlying KeyStore.
-func (s *DerivedKeyStore[K, T]) Parent() *KeyStore[K, T] {
-	return s.KeyStore
+// Parent returns the read-side parent of this overlay. May be a *KeyStore
+// (recovery/sync) or a preload.View sub-reader (FSM hot path).
+func (s *DerivedKeyStore[K, T]) Parent() ParentReader[K, T] {
+	return s.parent
 }
 
+// NewDerivedKeyStore builds a DerivedKeyStore whose read-side parent is the
+// underlying KeyStore directly. The coverage gate is enforced one layer up
+// (state.gatedScope) rather than threaded through the parent, so the
+// DerivedKeyStore stays a pure in-batch overlay that falls through to the
+// underlying store on miss.
 func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T]) *DerivedKeyStore[K, T] {
 	return &DerivedKeyStore[K, T]{
-		KeyStore:  store,
+		parent:    store,
+		writer:    store,
 		values:    make(map[K]T),
 		deletions: make(map[K]struct{}),
 	}

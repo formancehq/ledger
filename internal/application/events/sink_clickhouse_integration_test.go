@@ -147,7 +147,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "ch-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "ch-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
@@ -249,7 +249,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "typed-sub", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "typed-sub", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {

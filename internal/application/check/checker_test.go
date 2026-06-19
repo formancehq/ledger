@@ -117,7 +117,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	modifiedMetadata := make(map[string]struct{})
 	modifiedTxStates := make(map[string]struct{})
 
-	store := &inMemoryStore{
+	store := &scopeImpl{
 		engine:           e,
 		date:             proposal.GetDate(),
 		modifiedVolumes:  modifiedVolumes,
@@ -125,7 +125,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		modifiedTxStates: modifiedTxStates,
 		reverted:         make(map[string]bool),
 	}
-	resp, procErr := e.processor.ProcessOrders(proposal.GetOrders(), store)
+	resp, procErr := e.processor.ProcessOrders(proposal.GetOrders(), constantCheckScopeFactory{scope: store})
 	require.NoError(e.t, procErr)
 
 	// Collect actual logs from the response
@@ -329,8 +329,8 @@ func testAuditItems(serializedOrders [][]byte, results []*raftcmdpb.CreatedLogOr
 	return items
 }
 
-// inMemoryStore implements processing.InMemoryStore using the testEngine's in-memory state.
-type inMemoryStore struct {
+// scopeImpl implements processing.Scope using the testEngine's in-memory state.
+type scopeImpl struct {
 	engine           *testEngine
 	date             *commonpb.Timestamp
 	modifiedVolumes  map[string]struct{}
@@ -340,33 +340,55 @@ type inMemoryStore struct {
 	reverted map[string]bool
 }
 
-func (s *inMemoryStore) GetLedger(name string) (commonpb.LedgerInfoReader, bool) {
-	info, ok := s.engine.ledgers[name]
-	if !ok || info == nil {
-		return nil, false
-	}
+// constantCheckScopeFactory yields the same Scope for every NewScope call.
+// The checker's per-order coverage is enforced upstream (proposal.Validate);
+// here we just need a stub that returns the test's scopeImpl.
+type constantCheckScopeFactory struct{ scope processing.Scope }
 
-	return info.AsReader(), true
+func (f constantCheckScopeFactory) NewScope(_ []byte) (processing.Scope, error) {
+	return f.scope, nil
 }
 
-func (s *inMemoryStore) PutLedger(name string, info *commonpb.LedgerInfo) {
+func (f constantCheckScopeFactory) NewProposalScope() (processing.Scope, error) {
+	return f.scope, nil
+}
+
+func (s *scopeImpl) GetLedger(name string) (*commonpb.LedgerInfo, error) {
+	info, ok := s.engine.ledgers[name]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	return info, nil
+}
+
+// ForOrder is a no-op for the test scopeImpl: the checker runs without
+// an FSM-side coverage gate, so per-order narrowing returns the same
+// scope (all keys remain admitted).
+func (s *scopeImpl) ForOrder(_, _ []byte) processing.Scope { return s }
+
+// CheckCoverage is a no-op for the test scopeImpl: there is no coverage
+// to enforce, every read is admitted.
+func (s *scopeImpl) CheckCoverage(_ byte, _ []byte) error { return nil }
+
+func (s *scopeImpl) PutLedger(name string, info *commonpb.LedgerInfo) {
 	s.engine.ledgers[name] = info
 }
 
-func (s *inMemoryStore) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, bool) {
+func (s *scopeImpl) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, error) {
 	b, ok := s.engine.boundaries[ledger]
 	if !ok {
-		return nil, false
+		return nil, domain.ErrNotFound
 	}
 
-	return b.AsReader(), true
+	return b.AsReader(), nil
 }
 
-func (s *inMemoryStore) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
+func (s *scopeImpl) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
 	s.engine.boundaries[ledger] = boundaries
 }
 
-func (s *inMemoryStore) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
+func (s *scopeImpl) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
 	vp, ok := s.engine.volumes[string(key.Bytes())]
 	if !ok {
 		// Simulate preloaded zero volumes (in production, admission always preloads)
@@ -379,134 +401,137 @@ func (s *inMemoryStore) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairRea
 	return vp.AsReader(), nil
 }
 
-func (s *inMemoryStore) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
+func (s *scopeImpl) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 	k := string(key.Bytes())
 	s.engine.volumes[k] = value
 	s.modifiedVolumes[k] = struct{}{}
 }
 
-func (s *inMemoryStore) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
+func (s *scopeImpl) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
 	v, ok := s.engine.metadata[string(key.Bytes())]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v.AsReader(), nil
+	return v, nil
 }
 
-func (s *inMemoryStore) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
+func (s *scopeImpl) GetAccountMetadataEntry(_ []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
+	return attributes.Entry[*commonpb.MetadataValue]{}, domain.ErrNotFound
+}
+
+func (s *scopeImpl) GetLedgerMetadataEntry(_ []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
+	return attributes.Entry[*commonpb.MetadataValue]{}, domain.ErrNotFound
+}
+
+func (s *scopeImpl) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
 	k := string(key.Bytes())
 	s.engine.metadata[k] = value
 	s.modifiedMetadata[k] = struct{}{}
 }
 
-func (s *inMemoryStore) DeleteAccountMetadata(key domain.MetadataKey) {
+func (s *scopeImpl) DeleteAccountMetadata(key domain.MetadataKey) {
 	k := string(key.Bytes())
 	delete(s.engine.metadata, k)
 	s.modifiedMetadata[k] = struct{}{}
 }
 
-func (s *inMemoryStore) GetLedgerMetadata(_ domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
+func (s *scopeImpl) GetLedgerMetadata(_ domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
 	return nil, domain.ErrNotFound
 }
-func (s *inMemoryStore) PutLedgerMetadata(_ domain.LedgerMetadataKey, _ *commonpb.MetadataValue) {}
-func (s *inMemoryStore) DeleteLedgerMetadata(_ domain.LedgerMetadataKey)                         {}
+func (s *scopeImpl) PutLedgerMetadata(_ domain.LedgerMetadataKey, _ *commonpb.MetadataValue) {}
+func (s *scopeImpl) DeleteLedgerMetadata(_ domain.LedgerMetadataKey)                         {}
 
-func (s *inMemoryStore) GetReverted(key domain.TransactionKey) (bool, error) {
+func (s *scopeImpl) GetReverted(key domain.TransactionKey) (bool, error) {
 	return s.reverted[string(key.Bytes())], nil
 }
 
-func (s *inMemoryStore) PutReverted(key domain.TransactionKey, reverted bool) {
+func (s *scopeImpl) PutReverted(key domain.TransactionKey, reverted bool) {
 	s.reverted[string(key.Bytes())] = reverted
 }
 
-func (s *inMemoryStore) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
+func (s *scopeImpl) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
 	v, ok := s.engine.idempotency[key.Key]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v.AsReader(), nil
+	return v, nil
 }
 
-func (s *inMemoryStore) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+func (s *scopeImpl) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	s.engine.idempotency[key.Key] = value
 }
 
-func (s *inMemoryStore) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
+func (s *scopeImpl) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
 	v, ok := s.engine.references[string(key.Bytes())]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v.AsReader(), nil
+	return v, nil
 }
 
-func (s *inMemoryStore) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+func (s *scopeImpl) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	s.engine.references[string(key.Bytes())] = value
 }
 
-func (s *inMemoryStore) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
-	v := s.engine.transactionStates[string(key.Bytes())]
-	if v == nil {
-		return nil, nil
-	}
-
-	return v.AsReader(), nil
+func (s *scopeImpl) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
+	return s.engine.transactionStates[string(key.Bytes())], nil
 }
 
-func (s *inMemoryStore) PutTransactionState(key domain.TransactionKey, txState *commonpb.TransactionState) {
+func (s *scopeImpl) PutTransactionState(key domain.TransactionKey, txState *commonpb.TransactionState) {
 	k := string(key.Bytes())
 	s.engine.transactionStates[k] = txState
 	s.modifiedTxStates[k] = struct{}{}
 }
 
-func (s *inMemoryStore) AddSigningKey(_ string, _ []byte, _ string)                {}
-func (s *inMemoryStore) RemoveSigningKey(_ string)                                 {}
-func (s *inMemoryStore) GetSigningKeyChildren(_ string) []string                   { return nil }
-func (s *inMemoryStore) SetRequireSignatures(_ bool)                               {}
-func (s *inMemoryStore) SetMaintenanceMode(_ bool)                                 {}
-func (s *inMemoryStore) SetPeriodSchedule(_ string)                                {}
-func (s *inMemoryStore) DeletePeriodSchedule()                                     {}
-func (s *inMemoryStore) GetSinkConfig(_ string) (commonpb.SinkConfigReader, error) { return nil, nil }
-func (s *inMemoryStore) AddSinkConfig(_ *commonpb.SinkConfig)                      {}
-func (s *inMemoryStore) RemoveSinkConfig(_ string)                                 {}
+func (s *scopeImpl) AddSigningKey(_ string, _ []byte, _ string)           {}
+func (s *scopeImpl) RemoveSigningKey(_ string)                            {}
+func (s *scopeImpl) GetSigningKeyChildren(_ string) []string              { return nil }
+func (s *scopeImpl) SetRequireSignatures(_ bool)                          {}
+func (s *scopeImpl) SetMaintenanceMode(_ bool)                            {}
+func (s *scopeImpl) SetPeriodSchedule(_ string)                           {}
+func (s *scopeImpl) DeletePeriodSchedule()                                {}
+func (s *scopeImpl) GetSinkConfig(_ string) (*commonpb.SinkConfig, error) { return nil, nil }
+func (s *scopeImpl) AddSinkConfig(_ *commonpb.SinkConfig)                 {}
+func (s *scopeImpl) RemoveSinkConfig(_ string)                            {}
 
-func (s *inMemoryStore) GetLastLogHash() []byte {
+func (s *scopeImpl) GetLastLogHash() []byte {
 	return s.engine.lastLogHash
 }
 
-func (s *inMemoryStore) SetLastLogHash(hash []byte) {
+func (s *scopeImpl) SetLastLogHash(hash []byte) {
 	s.engine.lastLogHash = hash
 }
 
-func (s *inMemoryStore) GetNextSequenceID() uint64 {
+func (s *scopeImpl) GetNextSequenceID() uint64 {
 	return s.engine.nextSequenceID
 }
 
-func (s *inMemoryStore) IncrementNextSequenceID() uint64 {
+func (s *scopeImpl) IncrementNextSequenceID() uint64 {
 	id := s.engine.nextSequenceID
 	s.engine.nextSequenceID++
 
 	return id
 }
 
-func (s *inMemoryStore) GetNextLedgerID() uint32 {
+func (s *scopeImpl) GetNextLedgerID() uint32 {
 	return s.engine.nextLedgerID
 }
 
-func (s *inMemoryStore) IncrementNextLedgerID() uint32 {
+func (s *scopeImpl) IncrementNextLedgerID() uint32 {
 	id := s.engine.nextLedgerID
 	s.engine.nextLedgerID++
 
 	return id
 }
 
-func (s *inMemoryStore) GetDate() *commonpb.Timestamp {
+func (s *scopeImpl) GetDate() *commonpb.Timestamp {
 	return s.date
 }
 
-func (s *inMemoryStore) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
+func (s *scopeImpl) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
 	if s.engine.currentOpenPeriod != nil {
 		return s.engine.currentOpenPeriod, true
 	}
@@ -514,11 +539,11 @@ func (s *inMemoryStore) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
 	return nil, false
 }
 
-func (s *inMemoryStore) GetClosingPeriods() []*commonpb.Period {
+func (s *scopeImpl) GetClosingPeriods() []*commonpb.Period {
 	return s.engine.closingPeriods
 }
 
-func (s *inMemoryStore) GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool) {
+func (s *scopeImpl) GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool) {
 	for _, p := range s.engine.closingPeriods {
 		if p.GetId() == periodID {
 			return p, true
@@ -528,15 +553,15 @@ func (s *inMemoryStore) GetClosingPeriodByID(periodID uint64) (*commonpb.Period,
 	return nil, false
 }
 
-func (s *inMemoryStore) SetCurrentOpenPeriod(period *commonpb.Period) {
+func (s *scopeImpl) SetCurrentOpenPeriod(period *commonpb.Period) {
 	s.engine.currentOpenPeriod = period
 }
 
-func (s *inMemoryStore) AddClosingPeriod(period *commonpb.Period) {
+func (s *scopeImpl) AddClosingPeriod(period *commonpb.Period) {
 	s.engine.closingPeriods = append(s.engine.closingPeriods, period)
 }
 
-func (s *inMemoryStore) RemoveClosingPeriod(periodID uint64) {
+func (s *scopeImpl) RemoveClosingPeriod(periodID uint64) {
 	for i, p := range s.engine.closingPeriods {
 		if p.GetId() == periodID {
 			s.engine.closingPeriods = append(s.engine.closingPeriods[:i], s.engine.closingPeriods[i+1:]...)
@@ -546,53 +571,53 @@ func (s *inMemoryStore) RemoveClosingPeriod(periodID uint64) {
 	}
 }
 
-func (s *inMemoryStore) GetNextPeriodID() uint64 {
+func (s *scopeImpl) GetNextPeriodID() uint64 {
 	return s.engine.nextPeriodID
 }
 
-func (s *inMemoryStore) IncrementNextPeriodID() uint64 {
+func (s *scopeImpl) IncrementNextPeriodID() uint64 {
 	id := s.engine.nextPeriodID
 	s.engine.nextPeriodID++
 
 	return id
 }
 
-func (s *inMemoryStore) GetPeriodByID(_ uint64) (*commonpb.Period, bool) {
+func (s *scopeImpl) GetPeriodByID(_ uint64) (*commonpb.Period, bool) {
 	return nil, false
 }
 
-func (s *inMemoryStore) GetNextAuditSequenceID() uint64 { return 0 }
+func (s *scopeImpl) GetNextAuditSequenceID() uint64 { return 0 }
 
-func (s *inMemoryStore) UpdatePeriod(_ *commonpb.Period) {}
+func (s *scopeImpl) UpdatePeriod(_ *commonpb.Period) {}
 
-func (s *inMemoryStore) SetPurgeRange(_, _, _, _, _ uint64) {}
+func (s *scopeImpl) SetPurgeRange(_, _, _, _, _ uint64) {}
 
-func (s *inMemoryStore) SetPendingArchive(_, _, _, _, _ uint64) {}
+func (s *scopeImpl) SetPendingArchive(_, _, _, _, _ uint64) {}
 
-func (s *inMemoryStore) AddMetadataConvertRequest(_ string, _ commonpb.TargetType, _ string, _ commonpb.MetadataType) {
+func (s *scopeImpl) AddMetadataConvertRequest(_ string, _ commonpb.TargetType, _ string, _ commonpb.MetadataType) {
 }
 
-func (s *inMemoryStore) GetPreparedQuery(_ string, _ string) (commonpb.PreparedQueryReader, error) {
+func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (*commonpb.PreparedQuery, error) {
 	return nil, nil
 }
-func (s *inMemoryStore) PutPreparedQuery(_ string, _ *commonpb.PreparedQuery)         {}
-func (s *inMemoryStore) DeletePreparedQuery(_ string, _ string)                       {}
-func (s *inMemoryStore) GetNumscriptLatestVersion(_ string, _ string) (string, error) { return "", nil }
-func (s *inMemoryStore) NumscriptVersionExists(_ string, _, _ string) (bool, error) {
+func (s *scopeImpl) PutPreparedQuery(_ string, _ *commonpb.PreparedQuery)         {}
+func (s *scopeImpl) DeletePreparedQuery(_ string, _ string)                       {}
+func (s *scopeImpl) GetNumscriptLatestVersion(_ string, _ string) (string, error) { return "", nil }
+func (s *scopeImpl) NumscriptVersionExists(_ string, _, _ string) (bool, error) {
 	return false, nil
 }
-func (s *inMemoryStore) PutNumscript(_ string, _ *commonpb.NumscriptInfo)      {}
-func (s *inMemoryStore) DeleteNumscriptLatest(_ string, _ string)              {}
-func (s *inMemoryStore) GetNextQueryCheckpointID() uint64                      { return 1 }
-func (s *inMemoryStore) IncrementNextQueryCheckpointID() uint64                { return 1 }
-func (s *inMemoryStore) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
-func (s *inMemoryStore) DeleteQueryCheckpoint(_ uint64)                        {}
-func (s *inMemoryStore) SetQueryCheckpointSchedule(_ string)                   {}
-func (s *inMemoryStore) DeleteQueryCheckpointSchedule()                        {}
-func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
+func (s *scopeImpl) PutNumscript(_ string, _ *commonpb.NumscriptInfo)      {}
+func (s *scopeImpl) DeleteNumscriptLatest(_ string, _ string)              {}
+func (s *scopeImpl) GetNextQueryCheckpointID() uint64                      { return 1 }
+func (s *scopeImpl) IncrementNextQueryCheckpointID() uint64                { return 1 }
+func (s *scopeImpl) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
+func (s *scopeImpl) DeleteQueryCheckpoint(_ uint64)                        {}
+func (s *scopeImpl) SetQueryCheckpointSchedule(_ string)                   {}
+func (s *scopeImpl) DeleteQueryCheckpointSchedule()                        {}
+func (s *scopeImpl) MarkLedgerForCleanup(ledger string) {
 	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
 }
-func (s *inMemoryStore) ResolveNumscriptContent(_ string, _, _ string) (commonpb.NumscriptInfoReader, error) {
+func (s *scopeImpl) ResolveNumscriptContent(_ string, _, _ string) (*commonpb.NumscriptInfo, error) {
 	return nil, nil
 }
 
@@ -1159,11 +1184,7 @@ func saveTransactionMetadataOrder(ledger string, txID uint64, metadata map[strin
 				Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 					AddMetadata: &raftcmdpb.SaveMetadataOrder{
 						Target: &commonpb.Target{
-							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{
-									Identifier: &commonpb.TargetTransaction_Id{Id: txID},
-								},
-							},
+							Target: &commonpb.Target_TransactionId{TransactionId: txID},
 						},
 						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
@@ -1181,11 +1202,7 @@ func deleteTransactionMetadataOrder(ledger string, txID uint64, key string) *raf
 				Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 					DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
 						Target: &commonpb.Target{
-							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{
-									Identifier: &commonpb.TargetTransaction_Id{Id: txID},
-								},
-							},
+							Target: &commonpb.Target_TransactionId{TransactionId: txID},
 						},
 						Key: key,
 					},

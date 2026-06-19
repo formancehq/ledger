@@ -160,7 +160,7 @@ message Proposal {
   fixed64 id = 1;                   // Random proposal ID
   repeated Order orders = 2;        // List of orders to execute atomically
   Timestamp date = 3;               // Creation date in UTC
-  PreloadSet preload = 4;           // Preloaded attributes for deterministic execution
+  ExecutionPlan preload = 4;           // Preloaded attributes for deterministic execution
   // ... other fields ...
   repeated MetadataConversionBatch metadata_conversion_batches = 10;   // Background metadata conversion (no log entry)
   repeated MetadataConversionCompletion metadata_conversions_complete = 11; // Conversion complete signals (no log entry)

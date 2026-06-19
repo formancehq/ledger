@@ -105,7 +105,7 @@ The key hash is a 16-byte BLAKE3 truncation of the idempotency key string.
 An in-memory map (`IdempotencyStore`) bridges state between consecutive proposals. A key written by proposal N must be visible to proposal N+1 even if N+1's preload ran before N was applied to Pebble.
 
 ```
-Admission (preload) ─── direct Pebble Get ──> PreloadSet
+Admission (preload) ─── direct Pebble Get ──> ExecutionPlan
                                                   │
 FSM (apply) ─── in-memory map (bridge) ──────────>│
                 │                                  │
@@ -114,7 +114,7 @@ FSM (apply) ─── in-memory map (bridge) ──────────>│
 
 ### Preloading
 
-During admission, idempotency keys are loaded directly from Pebble (no bloom filter, no dual-generation cache). The preload logic is in `internal/infra/preload/preloader.go`:
+During admission, idempotency keys are loaded directly from Pebble (no bloom filter, no dual-generation cache). The preload logic is in `internal/infra/preload/preloader.go` and emits a `ReloadIdempotencyKey` on a dedicated channel of `ExecutionPlan` (separate from the `AttributePlan` channel that drives the coverage gate):
 
 ```go
 value, err := state.LoadIdempotencyKey(reader, ik.Key)
@@ -124,15 +124,13 @@ if err != nil {
 }
 
 if value != nil {
-    preloads = append(preloads, &raftcmdpb.Preload{
-        Type: &raftcmdpb.Preload_IdempotencyKey{
-            IdempotencyKey: &raftcmdpb.PreloadIdempotencyKey{
-                Key:   ik.Key,
-                Value: value,
-            },
-        },
+    keys = append(keys, &raftcmdpb.ReloadIdempotencyKey{
+        Key:   ik.Key,
+        Value: value,
     })
 }
+// ...
+ps.IdempotencyKeys = keys
 ```
 
 ## API Usage

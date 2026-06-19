@@ -2,26 +2,35 @@ package processing
 
 import (
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source=store.go -destination=store_generated_test.go -typed -package=processing -mock_names=InMemoryStore=MockInMemoryStore
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source=store.go -destination=store_generated_test.go -typed -package=processing -mock_names=Scope=MockScope
 
-// InMemoryStore is the interface used by RequestProcessor to access data.
-// It abstracts the underlying storage mechanism (e.g., WriteSet).
+// Scope is the FSM-apply read/write facade — the only surface order
+// handlers and technical-update handlers should touch. Two
+// implementations:
 //
-// Cache-backed Get* methods return a Reader view over the cache entry so
-// processors cannot accidentally mutate cached state in place. Use
-// Reader.Mutate() to obtain a writeable clone before modifying, then write
-// the result back through the matching Put* method.
-type InMemoryStore interface {
+//   - *state.gatedScope (production): every cache-attribute read passes
+//     through CheckCoverage before reaching the engine; the coverage map
+//     is immutable for the lifetime of the scope.
+//   - *state.WriteSet (recovery/tests): bare engine, no coverage gate —
+//     CheckCoverage and ResolveProductions are no-ops.
+type Scope interface {
 	// Ledger operations
-	GetLedger(name string) (commonpb.LedgerInfoReader, bool)
+	//
+	// Get* methods that read cache-attribute keys return (zero,
+	// domain.ErrNotFound) when the key is absent, (zero, *ErrCoverageMiss)
+	// when the proposer did not declare the key in this scope's
+	// coverage_bits / production_bits (gatedScope only), or (value, nil)
+	// on a hit.
+	GetLedger(name string) (*commonpb.LedgerInfo, error)
 	PutLedger(name string, info *commonpb.LedgerInfo)
 
 	// Boundaries operations
-	GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, bool)
+	GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, error)
 	PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries)
 
 	// Volume operations (merged Input+Output)
@@ -29,12 +38,14 @@ type InMemoryStore interface {
 	PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair)
 
 	// Account metadata operations
-	GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error)
+	GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error)
+	GetAccountMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error)
 	PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue)
 	DeleteAccountMetadata(key domain.MetadataKey)
 
 	// Ledger metadata operations
-	GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error)
+	GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error)
+	GetLedgerMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error)
 	PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue)
 	DeleteLedgerMetadata(key domain.LedgerMetadataKey)
 
@@ -43,15 +54,15 @@ type InMemoryStore interface {
 	PutReverted(key domain.TransactionKey, reverted bool)
 
 	// Idempotency key operations
-	GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error)
+	GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)
 	PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue)
 
 	// Transaction reference operations
-	GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error)
+	GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)
 	PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
 
 	// Transaction state operations
-	GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error)
+	GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error)
 	PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState)
 
 	// Signing key operations
@@ -68,7 +79,7 @@ type InMemoryStore interface {
 	DeletePeriodSchedule()
 
 	// Events sink operations
-	GetSinkConfig(name string) (commonpb.SinkConfigReader, error)
+	GetSinkConfig(name string) (*commonpb.SinkConfig, error)
 	AddSinkConfig(config *commonpb.SinkConfig)
 	RemoveSinkConfig(name string)
 
@@ -100,7 +111,7 @@ type InMemoryStore interface {
 	AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType)
 
 	// Prepared query operations
-	GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error)
+	GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error)
 	PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery)
 	DeletePreparedQuery(ledgerName string, name string)
 
@@ -124,5 +135,46 @@ type InMemoryStore interface {
 	MarkLedgerForCleanup(ledger string)
 
 	// Numscript content resolution
-	ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error)
+	ResolveNumscriptContent(ledgerName string, name, version string) (*commonpb.NumscriptInfo, error)
+
+	// CheckCoverage exposes the gate for paths that read state directly
+	// (bypassing the engine overlay) and still want the coverage
+	// invariant enforced. Used by ValidateTransientVolumes which reads
+	// Derived.Volumes.Parent() directly to fetch the pre-batch base
+	// volume. No-op on the bare *WriteSet implementation.
+	CheckCoverage(kind byte, canonical []byte) error
+}
+
+// ScopeFactory builds a per-order Scope from the order's coverage_bits.
+// Each call returns an independent Scope with its own immutable coverage
+// map; successive calls do not mutate previously returned scopes.
+// ProcessOrders invokes the factory once per order so per-order
+// isolation is structural — order N's scope cannot reach keys declared
+// by order M because the two coverage maps were built from different
+// bits over the same ExecutionPlan.
+//
+// An interface (not a func) so production implementations can carry
+// per-proposal state (ExecutionPlan, Resolver, logger, miss counter)
+// without each call site re-binding it through a closure — and so test
+// doubles can be substituted via the standard mockgen path. The mock
+// is generated by the file-level mockgen directive above.
+//
+// NewScope returns an error when the ExecutionPlan / bits combination
+// is structurally inconsistent (e.g. a bit indexes past the
+// AttributePlan slice, an unknown attr_code is declared). This is
+// surfaced as a business-level rejection: detection happens BEFORE any
+// cache mutation so the in-memory state stays in lockstep with Pebble.
+type ScopeFactory interface {
+	// NewScope returns a per-order or per-TU scope narrowed by the
+	// caller's coverage_bits. nil or empty bits admits no plan —
+	// every CheckCoverage call will miss. Callers that need a
+	// proposal-wide scope (admit every declared AttributePlan, e.g.
+	// for ValidateTransientVolumes) must use NewProposalScope.
+	NewScope(coverageBits []byte) (Scope, error)
+
+	// NewProposalScope returns a scope that admits every AttributePlan
+	// the proposal declared. Distinct from NewScope(nil) so a per-order
+	// caller passing empty bits (no declared needs) does not silently
+	// inherit coverage from other orders' plans in the same proposal.
+	NewProposalScope() (Scope, error)
 }

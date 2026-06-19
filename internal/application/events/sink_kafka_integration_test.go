@@ -110,7 +110,7 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "kafka-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "kafka-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
@@ -190,7 +190,7 @@ func TestKafkaSinkIntegration_MessageKeyIsLedger(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "kafka-key-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "kafka-key-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
@@ -254,7 +254,7 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "kafka-proto-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "kafka-proto-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {

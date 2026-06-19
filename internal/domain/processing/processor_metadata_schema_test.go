@@ -17,7 +17,7 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -25,8 +25,8 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.NotNil(t, info.GetMetadataSchema())
@@ -75,7 +75,7 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -83,8 +83,8 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.NotNil(t, info.GetMetadataSchema())
@@ -124,7 +124,7 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -132,8 +132,8 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.NotNil(t, info.GetMetadataSchema())
@@ -182,13 +182,13 @@ func TestProcessSetMetadataFieldType_LedgerNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	mockStore.EXPECT().GetBoundaries("missing").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("missing").Return(nil, false).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("missing").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("missing").Return(nil, domain.ErrNotFound).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -219,7 +219,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -235,8 +235,8 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			_, exists := info.GetMetadataSchema().GetAccountFields()["amount"]
@@ -278,7 +278,7 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -294,8 +294,8 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -325,7 +325,7 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -341,8 +341,8 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			_, exists := info.GetMetadataSchema().GetLedgerFields()["env"]
@@ -384,7 +384,7 @@ func TestProcessSetMetadataFieldType_RejectedWhileConverting(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -402,8 +402,8 @@ func TestProcessSetMetadataFieldType_RejectedWhileConverting(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	// No PutLedger / AddMetadataConvertRequest / PutBoundaries: the order is rejected.
 
 	order := &raftcmdpb.Order{
@@ -437,7 +437,7 @@ func TestProcessRemoveMetadataFieldType_RejectedWhileConverting(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -455,8 +455,8 @@ func TestProcessRemoveMetadataFieldType_RejectedWhileConverting(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	// No PutLedger / PutBoundaries: the order is rejected.
 
 	order := &raftcmdpb.Order{

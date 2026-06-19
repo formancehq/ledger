@@ -70,13 +70,36 @@ func (p *RequestProcessor) invalidateCompiledTypes(ledger string) {
 }
 
 // ProcessOrders processes a list of orders and returns the resulting logs.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, domain.Describable) {
+// scopeFactory is invoked once per order to build an independent gatedScope
+// whose coverage map is the union of:
+//   - the AttributePlans flagged by order.coverage_bits, and
+//   - the resolved Productions flagged by order.production_bits.
+//
+// Successive calls return independent scopes — the previous scope's
+// coverage map is never mutated. Per-order isolation is therefore
+// structural: order N's scope cannot read keys declared by order M.
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory) ([]*raftcmdpb.CreatedLogOrReference, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
 	logs := make([]*raftcmdpb.CreatedLogOrReference, len(orders))
 
 	for i, order := range orders {
+		orderScope, scopeErr := scopeFactory.NewScope(order.GetCoverageBits())
+		if scopeErr != nil {
+			// Invariant violation surfaced by the FSM: the execution plan
+			// shipped by admission is structurally inconsistent. Detected
+			// BEFORE any cache mutation lands so the proposal is rejected
+			// cleanly and the next one can apply. NewScope's contract is
+			// to return *ErrInvalidExecutionPlan only.
+			var invalid *domain.ErrInvalidExecutionPlan
+			if !errors.As(scopeErr, &invalid) {
+				return nil, &domain.ErrInvalidExecutionPlan{Reason_: scopeErr.Error()}
+			}
+
+			return nil, invalid
+		}
+
 		// Compute idempotency hash once if needed (reused for check + store).
 		hasIdempotency := order.GetIdempotency() != nil && order.GetIdempotency().GetKey() != ""
 
@@ -86,7 +109,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 
 			ikKey := domain.IdempotencyKey{Key: order.GetIdempotency().GetKey()}
 
-			storedValue, err := s.GetIdempotencyKey(ikKey)
+			storedValue, err := orderScope.GetIdempotencyKey(ikKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrIdempotencyCheckFailed{Cause: err}
 			}
@@ -109,12 +132,12 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		}
 
 		// No idempotency key or key not found - process normally
-		payload, err := p.ProcessOrder(order, s)
+		payload, err := p.ProcessOrder(order, orderScope)
 		if err != nil {
 			return nil, err
 		}
 
-		nextSequenceID := s.IncrementNextSequenceID()
+		nextSequenceID := orderScope.IncrementNextSequenceID()
 		log := &commonpb.Log{
 			Sequence:    nextSequenceID,
 			Payload:     payload,
@@ -130,7 +153,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 
 		// Store idempotency key (hash was computed before ProcessOrder)
 		if hasIdempotency {
-			s.PutIdempotencyKey(
+			orderScope.PutIdempotencyKey(
 				domain.IdempotencyKey{
 					Key: order.GetIdempotency().GetKey(),
 				},
@@ -145,18 +168,32 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 	return logs, nil
 }
 
-// computeOrderHash computes a blake3 hash of the order content (excluding
-// idempotency) for idempotency checking. It reuses p.hashBuf across calls
-// to avoid allocations. Safe because ProcessOrders is single-threaded.
+// computeOrderHash computes a blake3 hash of the order content for
+// idempotency checking. Per-attempt fields that admission derives from
+// the proposal context (not from the user request) are excluded:
+//   - Idempotency: nonce changes per attempt by definition.
+//   - CoverageBits: admission rebuilds it from the proposal-wide
+//     ExecutionPlan, so the same logical request in a different batch
+//     produces a different bitset.
+//   - ProductionBits: same as CoverageBits — admission rebuilds it from
+//     ExecutionPlan.productions, which depends on which producer orders
+//     happen to share the batch.
+//
+// Two retries of the same logical request MUST hash identically even
+// when they land in different batches. Reuses p.hashBuf across calls
+// to avoid allocations; safe because ProcessOrders is single-threaded.
 func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
-	// Temporarily nil the idempotency field to exclude it from the hash,
-	// then restore it. This avoids a full CloneVT of the order.
-	saved := order.GetIdempotency()
+	// Temporarily nil the per-attempt fields, marshal, then restore them.
+	// This avoids a full CloneVT of the order.
+	savedIdempotency := order.GetIdempotency()
+	savedCoverage := order.GetCoverageBits()
 	order.Idempotency = nil
+	order.CoverageBits = nil
 
 	p.hashBuf = order.MarshalDeterministicVT(p.hashBuf[:0])
 
-	order.Idempotency = saved
+	order.Idempotency = savedIdempotency
+	order.CoverageBits = savedCoverage
 
 	hash := blake3.Sum256(p.hashBuf)
 
@@ -164,7 +201,7 @@ func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 }
 
 // ProcessOrder processes an Order and returns the resulting LogPayload.
-func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	switch orderType := order.GetType().(type) {
 	case *raftcmdpb.Order_Apply:
 		return p.processApply(orderType.Apply, s)

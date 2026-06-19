@@ -13,7 +13,7 @@ import (
 // pairs involved in the given postings. It reads the current volume state from the
 // in-memory store (after postings have been applied) and converts Known values
 // into concrete Input/Output values as big integer strings.
-func buildPostCommitVolumes(s InMemoryStore, ledgerName string, postings []*commonpb.Posting) *commonpb.PostCommitVolumes {
+func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) *commonpb.PostCommitVolumes {
 	// Collect unique (account, asset) pairs
 	type accountAsset struct {
 		account string

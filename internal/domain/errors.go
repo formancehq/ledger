@@ -178,6 +178,9 @@ const (
 	ErrReasonFilterCompilation             = "FILTER_COMPILATION_ERROR"
 	ErrReasonInvalidOrderType              = "INVALID_ORDER_TYPE"
 	ErrReasonInvalidApplyType              = "INVALID_APPLY_TYPE"
+	ErrReasonInvalidExecutionPlan          = "INVALID_EXECUTION_PLAN"
+	ErrReasonExecutionPlanTooLarge         = "EXECUTION_PLAN_TOO_LARGE"
+	ErrReasonCoverageMiss                  = "COVERAGE_MISS"
 	ErrReasonIdempotencyCheckFailed        = "IDEMPOTENCY_CHECK_FAILED"
 	ErrReasonStorageOperation              = "STORAGE_OPERATION_FAILED"
 	ErrReasonTransactionStateInconsistent  = "TRANSACTION_STATE_INCONSISTENT"
@@ -1218,4 +1221,51 @@ func (e *ErrAccountValidation) Metadata() map[string]string {
 	maps.Copy(out, e.Cause.Metadata())
 
 	return out
+}
+
+// ErrInvalidExecutionPlan signals that the ExecutionPlan shipped by
+// admission is structurally inconsistent with itself — a coverage_bits
+// or production_bits bit flags a position past the slice it indexes,
+// or an AttributePlan/Production declares an attr_code the FSM does
+// not handle.
+//
+// Detected at scope construction in the FSM, BEFORE any cache mutation
+// lands: returning an error lets the proposal be rejected as a business
+// error without dirtying the in-memory cache. Categorized as
+// KindInternal — the client can't fix it; the admission side that built
+// the plan has the bug.
+type ErrInvalidExecutionPlan struct {
+	Reason_ string
+}
+
+func (e *ErrInvalidExecutionPlan) Error() string { return "invalid execution plan: " + e.Reason_ }
+func (*ErrInvalidExecutionPlan) Kind() ErrorKind { return KindInternal }
+func (*ErrInvalidExecutionPlan) Reason() string  { return ErrReasonInvalidExecutionPlan }
+func (e *ErrInvalidExecutionPlan) Metadata() map[string]string {
+	return map[string]string{"reason": e.Reason_}
+}
+
+// ErrExecutionPlanTooLarge is raised by plan.Builder.Build when the
+// aggregated ExecutionPlan exceeds the configured cap. The cap is a
+// safeguard against pathological proposals (very large Numscript
+// scripts, or a malicious payload) that would otherwise force NewScope
+// to allocate proportionally-large coverage slices on the apply path.
+//
+// Categorized as KindValidation — the client can shrink the request
+// (split the script, reduce the touched accounts) and retry.
+type ErrExecutionPlanTooLarge struct {
+	Size  int
+	Limit int
+}
+
+func (e *ErrExecutionPlanTooLarge) Error() string {
+	return fmt.Sprintf("execution plan too large: %d attributes (limit %d)", e.Size, e.Limit)
+}
+func (*ErrExecutionPlanTooLarge) Kind() ErrorKind { return KindValidation }
+func (*ErrExecutionPlanTooLarge) Reason() string  { return ErrReasonExecutionPlanTooLarge }
+func (e *ErrExecutionPlanTooLarge) Metadata() map[string]string {
+	return map[string]string{
+		"size":  strconv.Itoa(e.Size),
+		"limit": strconv.Itoa(e.Limit),
+	}
 }

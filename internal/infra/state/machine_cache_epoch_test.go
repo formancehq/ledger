@@ -29,7 +29,7 @@ func TestCheckStaleProposal_CacheEpochMismatchAfterFirstReset(t *testing.T) {
 	// A proposal admitted under the fresh epoch.
 	proposal := &raftcmdpb.Proposal{
 		Id: 1,
-		Preload: &raftcmdpb.PreloadSet{
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			CacheEpoch: fsm.Registry.Cache.Epoch(),
 		},
 	}
@@ -65,7 +65,7 @@ func TestCheckStaleProposal_PreloadWithoutEpochIsAccepted(t *testing.T) {
 
 	proposal := &raftcmdpb.Proposal{
 		Id: 1,
-		Preload: &raftcmdpb.PreloadSet{
+		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			CacheEpoch: 0, // pre-upgrade entry
 		},
 	}

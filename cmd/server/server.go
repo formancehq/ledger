@@ -132,6 +132,7 @@ func NewRunCommand() *cobra.Command {
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "spool-segment-max-bytes", 0, "Maximum spool segment size before rotation/sealing (0 = use default 256Mi)")
 	runCmd.Flags().Int("numscript-cache-size", 1024, "Maximum number of parsed Numscript programs to cache (LRU eviction)")
 	runCmd.Flags().Int("mirror-max-batch-size", 500, "Maximum allowed batch size for mirror sync (server-side cap on user-configured batch size)")
+	runCmd.Flags().Int("max-execution-plan-size", 4096, "Maximum number of AttributePlan entries an ExecutionPlan may carry; admission rejects proposals beyond this (0 = unlimited)")
 
 	// Health check configuration flags
 	runCmd.Flags().Duration("health-check-interval", 30*time.Second, "Interval between health checks (default: 30s)")
@@ -527,6 +528,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.SpoolSegmentMaxBytes = bytesize.Get(cmd, "spool-segment-max-bytes").Int64()
 	cfg.NumscriptCacheSize = getInt("numscript-cache-size", 1024)
 	cfg.MirrorMaxBatchSize = getInt("mirror-max-batch-size", 500)
+	cfg.MaxExecutionPlanSize = getInt("max-execution-plan-size", 4096)
 
 	// Health check configuration
 	cfg.HealthConfig.Interval = getDuration("health-check-interval", 30*time.Second)

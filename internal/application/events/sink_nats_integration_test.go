@@ -176,7 +176,7 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "nats-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "nats-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	// Wait for cursor to advance
@@ -274,7 +274,7 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "proto-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "proto-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
@@ -412,7 +412,7 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "routing-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "routing-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {

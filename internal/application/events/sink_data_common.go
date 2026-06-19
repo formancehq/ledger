@@ -231,10 +231,10 @@ func sinkConvertTarget(target *commonpb.Target) (*string, any) {
 		tt := "account"
 
 		return &tt, t.Account.GetAddr()
-	case *commonpb.Target_Transaction:
+	case *commonpb.Target_TransactionId:
 		tt := "transaction"
 
-		return &tt, t.Transaction.GetId()
+		return &tt, t.TransactionId
 	default:
 		return nil, nil
 	}

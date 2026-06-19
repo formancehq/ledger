@@ -23,7 +23,7 @@ const DefaultBatchSize = 1000
 
 // Proposer submits a technical Raft proposal (no orders, no preload
 // payload) and blocks until the FSM applies. Implemented in bootstrap
-// via a closure that routes the proposal through preload.RunWithPreload
+// via a closure that routes the proposal through plan.RunWithPreload
 // with empty Needs.
 type Proposer interface {
 	Propose(ctx context.Context, cmd *raftcmdpb.Proposal) error

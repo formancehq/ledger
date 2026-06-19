@@ -59,7 +59,7 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 				newPosting("world", account, "COIN", 1000),
 			),
 		)
-		proposal.Preload.LastPersistedIndex = machine.Registry.Cache.BaseIndex.Gen0
+		proposal.ExecutionPlan.LastPersistedIndex = machine.Registry.Cache.BaseIndex.Gen0
 
 		_, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, index, proposal),
@@ -104,7 +104,7 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 				newPosting("world", account, "USD", 500),
 			),
 		)
-		proposal.Preload.LastPersistedIndex = machine.Registry.Cache.BaseIndex.Gen0
+		proposal.ExecutionPlan.LastPersistedIndex = machine.Registry.Cache.BaseIndex.Gen0
 
 		_, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, index, proposal),

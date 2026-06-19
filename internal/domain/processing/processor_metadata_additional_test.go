@@ -18,13 +18,13 @@ func TestProcessAddMetadata_NilTarget(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -52,7 +52,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -72,8 +72,8 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().GetAccountMetadata(gomock.Any()).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutAccountMetadata(gomock.Any(), gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now)
@@ -110,14 +110,14 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -126,11 +126,7 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
-							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{
-									Identifier: &commonpb.TargetTransaction_Id{Id: 99},
-								}, // Beyond NextTransactionId=5
-							},
+							Target: &commonpb.Target_TransactionId{TransactionId: 99}, // Beyond NextTransactionId=5
 						},
 						Metadata: map[string]*commonpb.MetadataValue{
 							"status": commonpb.NewStringValue("done"),
@@ -156,13 +152,13 @@ func TestProcessDeleteMetadata_NilTarget(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -190,13 +186,13 @@ func TestProcessDeleteMetadata_EmptyKey(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -228,7 +224,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -244,9 +240,9 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), true).AnyTimes()
-	mockStore.EXPECT().GetTransactionState(txKey).Return(existingState.AsReader(), nil)
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
+	mockStore.EXPECT().GetTransactionState(txKey).Return(existingState, nil)
 	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any()).Do(
 		func(_ domain.TransactionKey, state *commonpb.TransactionState) {
 			// "category" should be removed, only "status" remains
@@ -265,11 +261,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
-							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{
-									Identifier: &commonpb.TargetTransaction_Id{Id: 3},
-								},
-							},
+							Target: &commonpb.Target_TransactionId{TransactionId: 3},
 						},
 						Key: "category",
 					},
@@ -296,13 +288,13 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1}
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -311,11 +303,7 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
-							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{
-									Identifier: &commonpb.TargetTransaction_Id{Id: 99},
-								},
-							},
+							Target: &commonpb.Target_TransactionId{TransactionId: 99},
 						},
 						Key: "status",
 					},

@@ -20,8 +20,7 @@ func TestGetBalances_ForceMode(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	adapter := &numscriptStoreAdapter{
 		store:      mockStore,
 		ledgerName: "test",
@@ -48,8 +47,7 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	adapter := &numscriptStoreAdapter{
 		store:      mockStore,
 		ledgerName: "test",
@@ -80,8 +78,7 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	adapter := &numscriptStoreAdapter{
 		store:      mockStore,
 		ledgerName: "test",
@@ -108,8 +105,7 @@ func TestGetBalances_VolumeNotFound_ReturnsError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	adapter := &numscriptStoreAdapter{
 		store:      mockStore,
 		ledgerName: "test",
@@ -140,8 +136,7 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	adapter := &numscriptStoreAdapter{
 		store:      mockStore,
 		ledgerName: "test",
@@ -171,8 +166,7 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	adapter := &numscriptStoreAdapter{
 		store:      mockStore,
 		ledgerName: "test",
@@ -203,8 +197,7 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	adapter := &numscriptStoreAdapter{
 		store:      mockStore,
 		ledgerName: "test",
@@ -245,8 +238,7 @@ func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	adapter := &numscriptStoreAdapter{
 		store:      mockStore,
 		ledgerName: "test",

@@ -62,7 +62,7 @@ func TestManager_HTTPSink_StartStop(t *testing.T) {
 	// Pre-save an HTTP sink config
 	saveHTTPSinkConfig(t, store, "http-sink", server.URL)
 
-	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, newPlanBuilder(t, store), logger, notifications)
 	manager.Start()
 
 	// Become leader -- triggers reconcile which creates and starts the HTTP sink
@@ -96,7 +96,7 @@ func TestManager_HTTPSink_ConfigChangeRemovesSink(t *testing.T) {
 	// Pre-save an HTTP sink config
 	saveHTTPSinkConfig(t, store, "http-sink", server.URL)
 
-	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, newPlanBuilder(t, store), logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()
@@ -189,7 +189,7 @@ func TestManager_HTTPSink_LeadershipLossDuringInitialCatchup(t *testing.T) {
 	})
 	saveHTTPSinkConfig(t, store, "http-sink", server.URL)
 
-	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, newPlanBuilder(t, store), logger, notifications)
 	manager.Start()
 	defer manager.Stop()
 

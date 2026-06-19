@@ -3402,22 +3402,14 @@ func (x *CreateTransactionPayload) GetScriptReference() *ScriptReference {
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction.
-// Exactly one of transaction_id or transaction_reference must be set.
-// When transaction_reference is set, admission resolves it against the
-// store before proposing the Raft order; the order itself always carries
-// the resolved numeric id.
 type RevertTransactionPayload struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Identifier:
-	//
-	//	*RevertTransactionPayload_TransactionId
-	//	*RevertTransactionPayload_TransactionReference
-	Identifier      isRevertTransactionPayload_Identifier `protobuf_oneof:"identifier"`
-	Force           bool                                  `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
-	AtEffectiveDate bool                                  `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
-	Metadata        map[string]*commonpb.MetadataValue    `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Receipt         string                                `protobuf:"bytes,5,opt,name=receipt,proto3" json:"receipt,omitempty"`
-	ExpandVolumes   bool                                  `protobuf:"varint,6,opt,name=expand_volumes,json=expandVolumes,proto3" json:"expand_volumes,omitempty"`
+	state           protoimpl.MessageState             `protogen:"open.v1"`
+	TransactionId   uint64                             `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	Force           bool                               `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
+	AtEffectiveDate bool                               `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
+	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Receipt         string                             `protobuf:"bytes,5,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	ExpandVolumes   bool                               `protobuf:"varint,6,opt,name=expand_volumes,json=expandVolumes,proto3" json:"expand_volumes,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -3452,29 +3444,11 @@ func (*RevertTransactionPayload) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{50}
 }
 
-func (x *RevertTransactionPayload) GetIdentifier() isRevertTransactionPayload_Identifier {
-	if x != nil {
-		return x.Identifier
-	}
-	return nil
-}
-
 func (x *RevertTransactionPayload) GetTransactionId() uint64 {
 	if x != nil {
-		if x, ok := x.Identifier.(*RevertTransactionPayload_TransactionId); ok {
-			return x.TransactionId
-		}
+		return x.TransactionId
 	}
 	return 0
-}
-
-func (x *RevertTransactionPayload) GetTransactionReference() string {
-	if x != nil {
-		if x, ok := x.Identifier.(*RevertTransactionPayload_TransactionReference); ok {
-			return x.TransactionReference
-		}
-	}
-	return ""
 }
 
 func (x *RevertTransactionPayload) GetForce() bool {
@@ -3511,22 +3485,6 @@ func (x *RevertTransactionPayload) GetExpandVolumes() bool {
 	}
 	return false
 }
-
-type isRevertTransactionPayload_Identifier interface {
-	isRevertTransactionPayload_Identifier()
-}
-
-type RevertTransactionPayload_TransactionId struct {
-	TransactionId uint64 `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3,oneof"`
-}
-
-type RevertTransactionPayload_TransactionReference struct {
-	TransactionReference string `protobuf:"bytes,7,opt,name=transaction_reference,json=transactionReference,proto3,oneof"`
-}
-
-func (*RevertTransactionPayload_TransactionId) isRevertTransactionPayload_Identifier() {}
-
-func (*RevertTransactionPayload_TransactionReference) isRevertTransactionPayload_Identifier() {}
 
 // LedgerAction represents a single ledger action.
 type LedgerAction struct {
@@ -8680,10 +8638,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xab\x03\n" +
-	"\x18RevertTransactionPayload\x12'\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x06H\x00R\rtransactionId\x125\n" +
-	"\x15transaction_reference\x18\a \x01(\tH\x00R\x14transactionReference\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\x81\x03\n" +
+	"\x18RevertTransactionPayload\x12%\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
 	"\x11at_effective_date\x18\x03 \x01(\bR\x0fatEffectiveDate\x12J\n" +
 	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x12\x18\n" +
@@ -8691,9 +8648,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0eexpand_volumes\x18\x06 \x01(\bR\rexpandVolumes\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01B\f\n" +
-	"\n" +
-	"identifier\"\xd4\x04\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01J\x04\b\a\x10\bR\x15transaction_reference\"\xd4\x04\n" +
 	"\fLedgerAction\x12Q\n" +
 	"\x12create_transaction\x18\x01 \x01(\v2 .ledger.CreateTransactionPayloadH\x00R\x11createTransaction\x12@\n" +
 	"\fadd_metadata\x18\x02 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12Q\n" +
@@ -9591,10 +9546,6 @@ func file_bucket_proto_init() {
 		(*Request_DeleteQueryCheckpointSchedule)(nil),
 		(*Request_SaveLedgerMetadata)(nil),
 		(*Request_DeleteLedgerMetadata)(nil),
-	}
-	file_bucket_proto_msgTypes[50].OneofWrappers = []any{
-		(*RevertTransactionPayload_TransactionId)(nil),
-		(*RevertTransactionPayload_TransactionReference)(nil),
 	}
 	file_bucket_proto_msgTypes[51].OneofWrappers = []any{
 		(*LedgerAction_CreateTransaction)(nil),

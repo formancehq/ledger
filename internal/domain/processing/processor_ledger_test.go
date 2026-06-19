@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -17,14 +18,14 @@ func TestProcessCreateLedger(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
 
 	// Setup expectations
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
@@ -65,12 +66,12 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
-	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger, nil)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
@@ -92,14 +93,14 @@ func TestProcessDeleteLedger(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger, nil)
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().MarkLedgerForCleanup("test-ledger")
@@ -128,11 +129,11 @@ func TestProcessDeleteLedger_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_DeleteLedger{

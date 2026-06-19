@@ -38,11 +38,7 @@ func (s *Server) handleDeleteTransactionMetadata(w http.ResponseWriter, r *http.
 					Data: &servicepb.LedgerAction_DeleteMetadata{
 						DeleteMetadata: &commonpb.DeleteMetadataCommand{
 							Target: &commonpb.Target{
-								Target: &commonpb.Target_Transaction{
-									Transaction: &commonpb.TargetTransaction{
-										Identifier: &commonpb.TargetTransaction_Id{Id: transactionID},
-									},
-								},
+								Target: &commonpb.Target_TransactionId{TransactionId: transactionID},
 							},
 							Key: key,
 						},

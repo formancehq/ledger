@@ -16,7 +16,7 @@ func TestProcessRegisterSigningKey(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -49,7 +49,7 @@ func TestProcessRevokeSigningKey_NoCascade(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -80,7 +80,7 @@ func TestProcessRevokeSigningKey_WithCascade(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -143,7 +143,7 @@ func TestProcessRegisterSigningKey_RejectsInvalidIDs(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockStore := NewMockInMemoryStore(ctrl)
+			mockStore := NewMockScope(ctrl)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
@@ -187,7 +187,7 @@ func TestProcessRevokeSigningKey_RejectsInvalidIDs(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockStore := NewMockInMemoryStore(ctrl)
+			mockStore := NewMockScope(ctrl)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
@@ -217,7 +217,7 @@ func TestProcessSetSigningConfig(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

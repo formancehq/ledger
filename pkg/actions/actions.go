@@ -226,11 +226,7 @@ func SaveTransactionMetadataAction(ledgerName string, transactionID uint64, meta
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
-							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{
-									Identifier: &commonpb.TargetTransaction_Id{Id: transactionID},
-								},
-							},
+							Target: &commonpb.Target_TransactionId{TransactionId: transactionID},
 						},
 						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
@@ -249,11 +245,7 @@ func DeleteTransactionMetadataAction(ledgerName string, transactionID uint64, ke
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
-							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{
-									Identifier: &commonpb.TargetTransaction_Id{Id: transactionID},
-								},
-							},
+							Target: &commonpb.Target_TransactionId{TransactionId: transactionID},
 						},
 						Key: key,
 					},
@@ -295,7 +287,7 @@ func RevertTransactionAction(ledgerName string, transactionID uint64, force, atE
 				Ledger: ledgerName,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
 					RevertTransaction: &servicepb.RevertTransactionPayload{
-						Identifier:      &servicepb.RevertTransactionPayload_TransactionId{TransactionId: transactionID},
+						TransactionId:   transactionID,
 						Force:           force,
 						AtEffectiveDate: atEffectiveDate,
 						Metadata:        commonpb.MetadataFromGoMap(metadata),
@@ -500,11 +492,7 @@ func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
-							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{
-									Identifier: &commonpb.TargetTransaction_Id{Id: txID},
-								},
-							},
+							Target: &commonpb.Target_TransactionId{TransactionId: txID},
 						},
 						Metadata: metadata,
 					},

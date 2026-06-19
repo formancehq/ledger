@@ -12,7 +12,7 @@ import (
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/infra/preload"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
@@ -33,7 +33,7 @@ type Proposer interface {
 type Manager struct {
 	store         *dal.Store
 	proposer      Proposer
-	preloader     *preload.Preloader
+	builder       *plan.Builder
 	logger        logging.Logger
 	notifications *signal.Notifications
 	meterProvider metric.MeterProvider
@@ -47,11 +47,11 @@ type Manager struct {
 }
 
 // NewManager creates a new mirror Manager.
-func NewManager(store *dal.Store, proposer Proposer, preloader *preload.Preloader, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, maxBatchSize int) *Manager {
+func NewManager(store *dal.Store, proposer Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, maxBatchSize int) *Manager {
 	return &Manager{
 		store:         store,
 		proposer:      proposer,
-		preloader:     preloader,
+		builder:       builder,
 		logger:        logger.WithFields(map[string]any{"cmp": "mirror-manager"}),
 		notifications: notifications,
 		meterProvider: meterProvider,
@@ -170,7 +170,7 @@ func (m *Manager) reconcile() {
 			batchSize = m.maxBatchSize
 		}
 
-		w := NewWorker(name, batchSize, source, m.store, m.proposer, m.preloader, m.logger, m.meterProvider)
+		w := NewWorker(name, batchSize, source, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
 		w.Start()
 		m.workers[name] = w
 	}

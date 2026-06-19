@@ -86,11 +86,13 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		const ledgerName = "hlc-test"
 
 		// Create ledger with a high timestamp
+		ledgerOrders := []*raftcmdpb.Order{createLedgerOrder(ledgerName)}
 		result, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
-				Id:     1,
-				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
-				Date:   &commonpb.Timestamp{Data: 1000000},
+				Id:            1,
+				Orders:        ledgerOrders,
+				Date:          &commonpb.Timestamp{Data: 1000000},
+				ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: buildOrderDeclarations(ledgerOrders)},
 			}),
 		)
 		require.NoError(t, err)
@@ -106,10 +108,12 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		}
 		result, err = machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 2, &raftcmdpb.Proposal{
-				Id:      2,
-				Orders:  txOrders,
-				Date:    &commonpb.Timestamp{Data: 500000}, // Behind last applied
-				Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders, "test")},
+				Id:     2,
+				Orders: txOrders,
+				Date:   &commonpb.Timestamp{Data: 500000}, // Behind last applied
+				ExecutionPlan: &raftcmdpb.ExecutionPlan{
+					Attributes: append(buildVolumePreloads(txOrders), buildOrderDeclarations(txOrders)...),
+				},
 			}),
 		)
 		require.NoError(t, err)
@@ -136,11 +140,13 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		const ledgerName = "hlc-ahead-test"
 
 		// Create ledger with timestamp 1000
+		ledgerOrders := []*raftcmdpb.Order{createLedgerOrder(ledgerName)}
 		result, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
-				Id:     1,
-				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
-				Date:   &commonpb.Timestamp{Data: 1000},
+				Id:            1,
+				Orders:        ledgerOrders,
+				Date:          &commonpb.Timestamp{Data: 1000},
+				ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: buildOrderDeclarations(ledgerOrders)},
 			}),
 		)
 		require.NoError(t, err)
@@ -154,10 +160,12 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		}
 		result, err = machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 2, &raftcmdpb.Proposal{
-				Id:      2,
-				Orders:  txOrders,
-				Date:    &commonpb.Timestamp{Data: 5000},
-				Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders, "test")},
+				Id:     2,
+				Orders: txOrders,
+				Date:   &commonpb.Timestamp{Data: 5000},
+				ExecutionPlan: &raftcmdpb.ExecutionPlan{
+					Attributes: append(buildVolumePreloads(txOrders), buildOrderDeclarations(txOrders)...),
+				},
 			}),
 		)
 		require.NoError(t, err)
@@ -181,11 +189,13 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		const ledgerName = "hlc-snapshot-test"
 
 		// Apply an entry to advance the HLC
+		ledgerOrders := []*raftcmdpb.Order{createLedgerOrder(ledgerName)}
 		result, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
-				Id:     1,
-				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
-				Date:   &commonpb.Timestamp{Data: 9999999},
+				Id:            1,
+				Orders:        ledgerOrders,
+				Date:          &commonpb.Timestamp{Data: 9999999},
+				ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: buildOrderDeclarations(ledgerOrders)},
 			}),
 		)
 		require.NoError(t, err)
@@ -207,11 +217,13 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		const ledgerName = "hlc-mono-test"
 
 		// Create ledger
+		ledgerOrders := []*raftcmdpb.Order{createLedgerOrder(ledgerName)}
 		result, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
-				Id:     1,
-				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
-				Date:   &commonpb.Timestamp{Data: 1000},
+				Id:            1,
+				Orders:        ledgerOrders,
+				Date:          &commonpb.Timestamp{Data: 1000},
+				ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: buildOrderDeclarations(ledgerOrders)},
 			}),
 		)
 		require.NoError(t, err)
@@ -230,10 +242,12 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			}
 			result, err := machine.ApplyEntries(ctx, dataStore,
 				makeEntry(t, uint64(i+2), &raftcmdpb.Proposal{
-					Id:      uint64(i + 2),
-					Orders:  txOrders,
-					Date:    &commonpb.Timestamp{Data: date},
-					Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders, "test")},
+					Id:     uint64(i + 2),
+					Orders: txOrders,
+					Date:   &commonpb.Timestamp{Data: date},
+					ExecutionPlan: &raftcmdpb.ExecutionPlan{
+						Attributes: append(buildVolumePreloads(txOrders), buildOrderDeclarations(txOrders)...),
+					},
 				}),
 			)
 			require.NoError(t, err)

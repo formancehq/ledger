@@ -125,7 +125,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "http-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "http-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
@@ -211,7 +211,7 @@ func TestHTTPSinkIntegration_HMACSignature(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "http-hmac-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "http-hmac-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
@@ -279,7 +279,7 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 
 	cfg := events.DefaultEmitterConfig()
 	cfg.BatchSize = 10
-	emitter := events.NewEmitter(store, sink, "http-proto-sink", proposer, logger, cfg)
+	emitter := events.NewEmitter(store, sink, "http-proto-sink", proposer, newPlanBuilder(t, store), logger, cfg)
 	emitter.Start()
 
 	require.Eventually(t, func() bool {

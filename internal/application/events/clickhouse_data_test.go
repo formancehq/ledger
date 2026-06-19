@@ -313,11 +313,7 @@ func TestEventToClickHouseJSON_DeletedMetadata_Transaction(t *testing.T) {
 								Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 									DeletedMetadata: &commonpb.DeletedMetadata{
 										Target: &commonpb.Target{
-											Target: &commonpb.Target_Transaction{
-												Transaction: &commonpb.TargetTransaction{
-													Identifier: &commonpb.TargetTransaction_Id{Id: 42},
-												},
-											},
+											Target: &commonpb.Target_TransactionId{TransactionId: 42},
 										},
 										Key: "some-key",
 									},
@@ -580,11 +576,7 @@ func TestSinkConvertTarget_Transaction(t *testing.T) {
 	t.Parallel()
 
 	target := &commonpb.Target{
-		Target: &commonpb.Target_Transaction{
-			Transaction: &commonpb.TargetTransaction{
-				Identifier: &commonpb.TargetTransaction_Id{Id: 42},
-			},
-		},
+		Target: &commonpb.Target_TransactionId{TransactionId: 42},
 	}
 
 	tt, id := sinkConvertTarget(target)

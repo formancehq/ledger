@@ -18,8 +18,7 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	sourceKey := domain.NewVolumeKey("test", "world", "USD")
 	destKey := domain.NewVolumeKey("test", "users:001", "USD")
 
@@ -51,8 +50,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
 
 	// Source has input=100, output=50, balance=50, but posting is 200
@@ -85,8 +83,7 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
 
 	// Source has zero input balance, Output=0
@@ -120,8 +117,7 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
 	destKey := domain.NewVolumeKey("test", "users:001", "USD")
 
@@ -157,8 +153,7 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
 
 	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, nil) //nolint:nilnil // test: nil volume
@@ -196,8 +191,7 @@ func TestApplyPosting_DestinationInputOverflow_Rejects(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	sourceKey := domain.NewVolumeKey("test", "world", "USD")
 	destKey := domain.NewVolumeKey("test", "users:001", "USD")
 
@@ -247,8 +241,7 @@ func TestApplyPosting_SourceOutputOverflow_Rejects(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
-
+	mockStore := NewMockScope(ctrl)
 	sourceKey := domain.NewVolumeKey("test", "world", "USD")
 
 	worldVol := &raftcmdpb.VolumePair{

@@ -43,7 +43,7 @@ func TestManager_AddRemoveSink(t *testing.T) {
 	logger := logging.Testing()
 	notifications := signal.NewNotifications()
 
-	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, newPlanBuilder(t, store), logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()
@@ -89,7 +89,7 @@ func TestManager_LeadershipChange(t *testing.T) {
 		Format: "json",
 	})
 
-	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, newPlanBuilder(t, store), logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()
@@ -112,7 +112,7 @@ func TestManager_ConfigChangeWhileFollower(t *testing.T) {
 	logger := logging.Testing()
 	notifications := signal.NewNotifications()
 
-	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, newPlanBuilder(t, store), logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()
@@ -142,7 +142,7 @@ func TestManager_StopWithoutStart(t *testing.T) {
 	logger := logging.Testing()
 	notifications := signal.NewNotifications()
 
-	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, newPlanBuilder(t, store), logger, notifications)
 	manager.Start()
 	// Stop immediately — should not hang
 	manager.Stop()
@@ -162,7 +162,7 @@ func TestManager_LogNotificationForwarding(t *testing.T) {
 		Format: "json",
 	})
 
-	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, newPlanBuilder(t, store), logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()

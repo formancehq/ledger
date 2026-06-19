@@ -15,7 +15,8 @@ func TestEmitter_StopIdempotent(t *testing.T) {
 	sink := NewMockSink(ctrl)
 
 	logger := logging.Testing()
-	emitter := NewEmitter(nil, sink, "test-sink", nil, logger, DefaultEmitterConfig())
+	builder, store := newTestBuilder(t)
+	emitter := NewEmitter(store, sink, "test-sink", nil, builder, logger, DefaultEmitterConfig())
 
 	// Stop on a never-started emitter should be a no-op
 	emitter.Stop()
@@ -29,7 +30,8 @@ func TestEmitter_NonBlockingNotification(t *testing.T) {
 	sink := NewMockSink(ctrl)
 
 	logger := logging.Testing()
-	emitter := NewEmitter(nil, sink, "test-sink", nil, logger, DefaultEmitterConfig())
+	builder, store := newTestBuilder(t)
+	emitter := NewEmitter(store, sink, "test-sink", nil, builder, logger, DefaultEmitterConfig())
 
 	// Non-blocking notify should not panic even when emitter is not running
 	emitter.Notify()

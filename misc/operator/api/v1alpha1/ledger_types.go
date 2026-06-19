@@ -157,6 +157,12 @@ type LedgerServiceSpec struct {
 	// +optional
 	MirrorMaxBatchSize *int32 `json:"mirrorMaxBatchSize,omitempty"`
 
+	// MaxExecutionPlanSize caps the number of AttributePlan entries an
+	// ExecutionPlan may carry. Admission rejects proposals beyond this
+	// (0 = unlimited). Default: 4096.
+	// +optional
+	MaxExecutionPlanSize *int32 `json:"maxExecutionPlanSize,omitempty"`
+
 	// IdempotencyTTL is the time-to-live for idempotency keys (0 = never expire).
 	// Default: 24h.
 	// +optional

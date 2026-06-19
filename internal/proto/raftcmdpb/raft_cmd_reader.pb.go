@@ -15,6 +15,7 @@ import (
 type OrderReader interface {
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedRequestReader
+	GetCoverageBits() []byte
 	GetType() isOrder_Type
 	Mutate() *Order
 }
@@ -35,6 +36,10 @@ func (r *orderReadonly) GetSignature() signaturepb.SignedRequestReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *orderReadonly) GetCoverageBits() []byte {
+	return bytes.Clone(r.v.GetCoverageBits())
 }
 
 func (r *orderReadonly) GetType() isOrder_Type {
@@ -4241,16 +4246,10 @@ type ProposalReader interface {
 	GetId() uint64
 	GetOrders() OrderListReader
 	GetDate() commonpb.TimestampReader
-	GetPreload() PreloadSetReader
-	GetEventsSinkUpdates() EventsSinkUpdateListReader
-	GetMirrorSyncUpdates() MirrorSyncUpdateListReader
+	GetExecutionPlan() ExecutionPlanReader
 	GetPredictedIndex() uint64
-	GetIdempotencyEviction() IdempotencyEvictionReader
-	GetClusterConfig() commonpb.ClusterConfigReader
-	GetMetadataConversionBatches() MetadataConversionBatchListReader
-	GetMetadataConversionsComplete() MetadataConversionCompletionListReader
-	GetIndexReadyUpdates() IndexReadyUpdateListReader
 	GetCallerSnapshot() commonpb.CallerSnapshotReader
+	GetTechnicalUpdates() TechnicalUpdateListReader
 	Mutate() *Proposal
 }
 
@@ -4272,52 +4271,16 @@ func (r *proposalReadonly) GetDate() commonpb.TimestampReader {
 	return v.AsReader()
 }
 
-func (r *proposalReadonly) GetPreload() PreloadSetReader {
-	v := r.v.GetPreload()
+func (r *proposalReadonly) GetExecutionPlan() ExecutionPlanReader {
+	v := r.v.GetExecutionPlan()
 	if v == nil {
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *proposalReadonly) GetEventsSinkUpdates() EventsSinkUpdateListReader {
-	return NewEventsSinkUpdateListReader(r.v.GetEventsSinkUpdates())
-}
-
-func (r *proposalReadonly) GetMirrorSyncUpdates() MirrorSyncUpdateListReader {
-	return NewMirrorSyncUpdateListReader(r.v.GetMirrorSyncUpdates())
 }
 
 func (r *proposalReadonly) GetPredictedIndex() uint64 {
 	return r.v.GetPredictedIndex()
-}
-
-func (r *proposalReadonly) GetIdempotencyEviction() IdempotencyEvictionReader {
-	v := r.v.GetIdempotencyEviction()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *proposalReadonly) GetClusterConfig() commonpb.ClusterConfigReader {
-	v := r.v.GetClusterConfig()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *proposalReadonly) GetMetadataConversionBatches() MetadataConversionBatchListReader {
-	return NewMetadataConversionBatchListReader(r.v.GetMetadataConversionBatches())
-}
-
-func (r *proposalReadonly) GetMetadataConversionsComplete() MetadataConversionCompletionListReader {
-	return NewMetadataConversionCompletionListReader(r.v.GetMetadataConversionsComplete())
-}
-
-func (r *proposalReadonly) GetIndexReadyUpdates() IndexReadyUpdateListReader {
-	return NewIndexReadyUpdateListReader(r.v.GetIndexReadyUpdates())
 }
 
 func (r *proposalReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
@@ -4326,6 +4289,10 @@ func (r *proposalReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *proposalReadonly) GetTechnicalUpdates() TechnicalUpdateListReader {
+	return NewTechnicalUpdateListReader(r.v.GetTechnicalUpdates())
 }
 
 func (r *proposalReadonly) Mutate() *Proposal {
@@ -4379,6 +4346,78 @@ func (l proposalListReadonly) Range(yield func(int, ProposalReader) bool) {
 // NewProposalListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewProposalListReader(s []*Proposal) ProposalListReader { return proposalListReadonly(s) }
+
+// TechnicalUpdateReader provides read-only access to TechnicalUpdate.
+// Call Mutate() to obtain a mutable clone.
+type TechnicalUpdateReader interface {
+	GetCoverageBits() []byte
+	GetKind() isTechnicalUpdate_Kind
+	Mutate() *TechnicalUpdate
+}
+
+type technicalUpdateReadonly struct{ v *TechnicalUpdate }
+
+func (r *technicalUpdateReadonly) GetCoverageBits() []byte {
+	return bytes.Clone(r.v.GetCoverageBits())
+}
+
+func (r *technicalUpdateReadonly) GetKind() isTechnicalUpdate_Kind {
+	return r.v.GetKind()
+}
+
+func (r *technicalUpdateReadonly) Mutate() *TechnicalUpdate {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this TechnicalUpdate.
+func (m *TechnicalUpdate) AsReader() TechnicalUpdateReader {
+	if m == nil {
+		return nil
+	}
+	return &technicalUpdateReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this TechnicalUpdate.
+func (m *TechnicalUpdate) Mutate() *TechnicalUpdate {
+	return m.CloneVT()
+}
+
+// TechnicalUpdateListReader provides read-only iteration over []*TechnicalUpdate.
+type TechnicalUpdateListReader interface {
+	Len() int
+	Get(i int) TechnicalUpdateReader
+	Range(yield func(int, TechnicalUpdateReader) bool)
+}
+
+type technicalUpdateListReadonly []*TechnicalUpdate
+
+func (l technicalUpdateListReadonly) Len() int { return len(l) }
+
+func (l technicalUpdateListReadonly) Get(i int) TechnicalUpdateReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l technicalUpdateListReadonly) Range(yield func(int, TechnicalUpdateReader) bool) {
+	for i, v := range l {
+		var r TechnicalUpdateReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTechnicalUpdateListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTechnicalUpdateListReader(s []*TechnicalUpdate) TechnicalUpdateListReader {
+	return technicalUpdateListReadonly(s)
+}
 
 // IdempotencyEvictionReader provides read-only access to IdempotencyEviction.
 // Call Mutate() to obtain a mutable clone.
@@ -4899,63 +4938,63 @@ func (l volumePairListReadonly) Range(yield func(int, VolumePairReader) bool) {
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewVolumePairListReader(s []*VolumePair) VolumePairListReader { return volumePairListReadonly(s) }
 
-// PreloadSetReader provides read-only access to PreloadSet.
+// ExecutionPlanReader provides read-only access to ExecutionPlan.
 // Call Mutate() to obtain a mutable clone.
-type PreloadSetReader interface {
+type ExecutionPlanReader interface {
 	GetLastPersistedIndex() uint64
-	GetPreloads() PreloadListReader
-	GetTouches() CacheTouchListReader
 	GetCacheEpoch() uint64
-	Mutate() *PreloadSet
+	GetAttributes() AttributePlanListReader
+	GetIdempotencyKeys() ReloadIdempotencyKeyListReader
+	Mutate() *ExecutionPlan
 }
 
-type preloadSetReadonly struct{ v *PreloadSet }
+type executionPlanReadonly struct{ v *ExecutionPlan }
 
-func (r *preloadSetReadonly) GetLastPersistedIndex() uint64 {
+func (r *executionPlanReadonly) GetLastPersistedIndex() uint64 {
 	return r.v.GetLastPersistedIndex()
 }
 
-func (r *preloadSetReadonly) GetPreloads() PreloadListReader {
-	return NewPreloadListReader(r.v.GetPreloads())
-}
-
-func (r *preloadSetReadonly) GetTouches() CacheTouchListReader {
-	return NewCacheTouchListReader(r.v.GetTouches())
-}
-
-func (r *preloadSetReadonly) GetCacheEpoch() uint64 {
+func (r *executionPlanReadonly) GetCacheEpoch() uint64 {
 	return r.v.GetCacheEpoch()
 }
 
-func (r *preloadSetReadonly) Mutate() *PreloadSet {
+func (r *executionPlanReadonly) GetAttributes() AttributePlanListReader {
+	return NewAttributePlanListReader(r.v.GetAttributes())
+}
+
+func (r *executionPlanReadonly) GetIdempotencyKeys() ReloadIdempotencyKeyListReader {
+	return NewReloadIdempotencyKeyListReader(r.v.GetIdempotencyKeys())
+}
+
+func (r *executionPlanReadonly) Mutate() *ExecutionPlan {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this PreloadSet.
-func (m *PreloadSet) AsReader() PreloadSetReader {
+// AsReader returns a read-only view of this ExecutionPlan.
+func (m *ExecutionPlan) AsReader() ExecutionPlanReader {
 	if m == nil {
 		return nil
 	}
-	return &preloadSetReadonly{v: m}
+	return &executionPlanReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this PreloadSet.
-func (m *PreloadSet) Mutate() *PreloadSet {
+// Mutate returns a mutable deep clone of this ExecutionPlan.
+func (m *ExecutionPlan) Mutate() *ExecutionPlan {
 	return m.CloneVT()
 }
 
-// PreloadSetListReader provides read-only iteration over []*PreloadSet.
-type PreloadSetListReader interface {
+// ExecutionPlanListReader provides read-only iteration over []*ExecutionPlan.
+type ExecutionPlanListReader interface {
 	Len() int
-	Get(i int) PreloadSetReader
-	Range(yield func(int, PreloadSetReader) bool)
+	Get(i int) ExecutionPlanReader
+	Range(yield func(int, ExecutionPlanReader) bool)
 }
 
-type preloadSetListReadonly []*PreloadSet
+type executionPlanListReadonly []*ExecutionPlan
 
-func (l preloadSetListReadonly) Len() int { return len(l) }
+func (l executionPlanListReadonly) Len() int { return len(l) }
 
-func (l preloadSetListReadonly) Get(i int) PreloadSetReader {
+func (l executionPlanListReadonly) Get(i int) ExecutionPlanReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -4963,9 +5002,9 @@ func (l preloadSetListReadonly) Get(i int) PreloadSetReader {
 	return v.AsReader()
 }
 
-func (l preloadSetListReadonly) Range(yield func(int, PreloadSetReader) bool) {
+func (l executionPlanListReadonly) Range(yield func(int, ExecutionPlanReader) bool) {
 	for i, v := range l {
-		var r PreloadSetReader
+		var r ExecutionPlanReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -4975,156 +5014,24 @@ func (l preloadSetListReadonly) Range(yield func(int, PreloadSetReader) bool) {
 	}
 }
 
-// NewPreloadSetListReader wraps s for read-only iteration. The returned
+// NewExecutionPlanListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadSetListReader(s []*PreloadSet) PreloadSetListReader { return preloadSetListReadonly(s) }
+func NewExecutionPlanListReader(s []*ExecutionPlan) ExecutionPlanListReader {
+	return executionPlanListReadonly(s)
+}
 
-// CacheTouchReader provides read-only access to CacheTouch.
+// AttributePlanReader provides read-only access to AttributePlan.
 // Call Mutate() to obtain a mutable clone.
-type CacheTouchReader interface {
-	GetId() []byte
-	GetAttrType() uint32
-	Mutate() *CacheTouch
-}
-
-type cacheTouchReadonly struct{ v *CacheTouch }
-
-func (r *cacheTouchReadonly) GetId() []byte {
-	return bytes.Clone(r.v.GetId())
-}
-
-func (r *cacheTouchReadonly) GetAttrType() uint32 {
-	return r.v.GetAttrType()
-}
-
-func (r *cacheTouchReadonly) Mutate() *CacheTouch {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this CacheTouch.
-func (m *CacheTouch) AsReader() CacheTouchReader {
-	if m == nil {
-		return nil
-	}
-	return &cacheTouchReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this CacheTouch.
-func (m *CacheTouch) Mutate() *CacheTouch {
-	return m.CloneVT()
-}
-
-// CacheTouchListReader provides read-only iteration over []*CacheTouch.
-type CacheTouchListReader interface {
-	Len() int
-	Get(i int) CacheTouchReader
-	Range(yield func(int, CacheTouchReader) bool)
-}
-
-type cacheTouchListReadonly []*CacheTouch
-
-func (l cacheTouchListReadonly) Len() int { return len(l) }
-
-func (l cacheTouchListReadonly) Get(i int) CacheTouchReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l cacheTouchListReadonly) Range(yield func(int, CacheTouchReader) bool) {
-	for i, v := range l {
-		var r CacheTouchReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewCacheTouchListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewCacheTouchListReader(s []*CacheTouch) CacheTouchListReader { return cacheTouchListReadonly(s) }
-
-// PreloadReader provides read-only access to Preload.
-// Call Mutate() to obtain a mutable clone.
-type PreloadReader interface {
-	GetType() isPreload_Type
-	Mutate() *Preload
-}
-
-type preloadReadonly struct{ v *Preload }
-
-func (r *preloadReadonly) GetType() isPreload_Type {
-	return r.v.GetType()
-}
-
-func (r *preloadReadonly) Mutate() *Preload {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this Preload.
-func (m *Preload) AsReader() PreloadReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this Preload.
-func (m *Preload) Mutate() *Preload {
-	return m.CloneVT()
-}
-
-// PreloadListReader provides read-only iteration over []*Preload.
-type PreloadListReader interface {
-	Len() int
-	Get(i int) PreloadReader
-	Range(yield func(int, PreloadReader) bool)
-}
-
-type preloadListReadonly []*Preload
-
-func (l preloadListReadonly) Len() int { return len(l) }
-
-func (l preloadListReadonly) Get(i int) PreloadReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadListReadonly) Range(yield func(int, PreloadReader) bool) {
-	for i, v := range l {
-		var r PreloadReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadListReader(s []*Preload) PreloadListReader { return preloadListReadonly(s) }
-
-// PreloadVolumeReader provides read-only access to PreloadVolume.
-// Call Mutate() to obtain a mutable clone.
-type PreloadVolumeReader interface {
+type AttributePlanReader interface {
 	GetId() AttributeIDReader
-	GetValue() VolumePairReader
-	Mutate() *PreloadVolume
+	GetAttrCode() uint32
+	GetIntent() isAttributePlan_Intent
+	Mutate() *AttributePlan
 }
 
-type preloadVolumeReadonly struct{ v *PreloadVolume }
+type attributePlanReadonly struct{ v *AttributePlan }
 
-func (r *preloadVolumeReadonly) GetId() AttributeIDReader {
+func (r *attributePlanReadonly) GetId() AttributeIDReader {
 	v := r.v.GetId()
 	if v == nil {
 		return nil
@@ -5132,43 +5039,43 @@ func (r *preloadVolumeReadonly) GetId() AttributeIDReader {
 	return v.AsReader()
 }
 
-func (r *preloadVolumeReadonly) GetValue() VolumePairReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *attributePlanReadonly) GetAttrCode() uint32 {
+	return r.v.GetAttrCode()
 }
 
-func (r *preloadVolumeReadonly) Mutate() *PreloadVolume {
+func (r *attributePlanReadonly) GetIntent() isAttributePlan_Intent {
+	return r.v.GetIntent()
+}
+
+func (r *attributePlanReadonly) Mutate() *AttributePlan {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this PreloadVolume.
-func (m *PreloadVolume) AsReader() PreloadVolumeReader {
+// AsReader returns a read-only view of this AttributePlan.
+func (m *AttributePlan) AsReader() AttributePlanReader {
 	if m == nil {
 		return nil
 	}
-	return &preloadVolumeReadonly{v: m}
+	return &attributePlanReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this PreloadVolume.
-func (m *PreloadVolume) Mutate() *PreloadVolume {
+// Mutate returns a mutable deep clone of this AttributePlan.
+func (m *AttributePlan) Mutate() *AttributePlan {
 	return m.CloneVT()
 }
 
-// PreloadVolumeListReader provides read-only iteration over []*PreloadVolume.
-type PreloadVolumeListReader interface {
+// AttributePlanListReader provides read-only iteration over []*AttributePlan.
+type AttributePlanListReader interface {
 	Len() int
-	Get(i int) PreloadVolumeReader
-	Range(yield func(int, PreloadVolumeReader) bool)
+	Get(i int) AttributePlanReader
+	Range(yield func(int, AttributePlanReader) bool)
 }
 
-type preloadVolumeListReadonly []*PreloadVolume
+type attributePlanListReadonly []*AttributePlan
 
-func (l preloadVolumeListReadonly) Len() int { return len(l) }
+func (l attributePlanListReadonly) Len() int { return len(l) }
 
-func (l preloadVolumeListReadonly) Get(i int) PreloadVolumeReader {
+func (l attributePlanListReadonly) Get(i int) AttributePlanReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -5176,9 +5083,9 @@ func (l preloadVolumeListReadonly) Get(i int) PreloadVolumeReader {
 	return v.AsReader()
 }
 
-func (l preloadVolumeListReadonly) Range(yield func(int, PreloadVolumeReader) bool) {
+func (l attributePlanListReadonly) Range(yield func(int, AttributePlanReader) bool) {
 	for i, v := range l {
-		var r PreloadVolumeReader
+		var r AttributePlanReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -5188,27 +5095,214 @@ func (l preloadVolumeListReadonly) Range(yield func(int, PreloadVolumeReader) bo
 	}
 }
 
-// NewPreloadVolumeListReader wraps s for read-only iteration. The returned
+// NewAttributePlanListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadVolumeListReader(s []*PreloadVolume) PreloadVolumeListReader {
-	return preloadVolumeListReadonly(s)
+func NewAttributePlanListReader(s []*AttributePlan) AttributePlanListReader {
+	return attributePlanListReadonly(s)
 }
 
-// PreloadIdempotencyKeyReader provides read-only access to PreloadIdempotencyKey.
+// DeclareReader provides read-only access to Declare.
 // Call Mutate() to obtain a mutable clone.
-type PreloadIdempotencyKeyReader interface {
+type DeclareReader interface {
+	Mutate() *Declare
+}
+
+type declareReadonly struct{ v *Declare }
+
+func (r *declareReadonly) Mutate() *Declare {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this Declare.
+func (m *Declare) AsReader() DeclareReader {
+	if m == nil {
+		return nil
+	}
+	return &declareReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this Declare.
+func (m *Declare) Mutate() *Declare {
+	return m.CloneVT()
+}
+
+// DeclareListReader provides read-only iteration over []*Declare.
+type DeclareListReader interface {
+	Len() int
+	Get(i int) DeclareReader
+	Range(yield func(int, DeclareReader) bool)
+}
+
+type declareListReadonly []*Declare
+
+func (l declareListReadonly) Len() int { return len(l) }
+
+func (l declareListReadonly) Get(i int) DeclareReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l declareListReadonly) Range(yield func(int, DeclareReader) bool) {
+	for i, v := range l {
+		var r DeclareReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeclareListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeclareListReader(s []*Declare) DeclareListReader { return declareListReadonly(s) }
+
+// TouchReader provides read-only access to Touch.
+// Call Mutate() to obtain a mutable clone.
+type TouchReader interface {
+	Mutate() *Touch
+}
+
+type touchReadonly struct{ v *Touch }
+
+func (r *touchReadonly) Mutate() *Touch {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this Touch.
+func (m *Touch) AsReader() TouchReader {
+	if m == nil {
+		return nil
+	}
+	return &touchReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this Touch.
+func (m *Touch) Mutate() *Touch {
+	return m.CloneVT()
+}
+
+// TouchListReader provides read-only iteration over []*Touch.
+type TouchListReader interface {
+	Len() int
+	Get(i int) TouchReader
+	Range(yield func(int, TouchReader) bool)
+}
+
+type touchListReadonly []*Touch
+
+func (l touchListReadonly) Len() int { return len(l) }
+
+func (l touchListReadonly) Get(i int) TouchReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l touchListReadonly) Range(yield func(int, TouchReader) bool) {
+	for i, v := range l {
+		var r TouchReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTouchListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTouchListReader(s []*Touch) TouchListReader { return touchListReadonly(s) }
+
+// AttributeValueReader provides read-only access to AttributeValue.
+// Call Mutate() to obtain a mutable clone.
+type AttributeValueReader interface {
+	GetRawValue() []byte
+	Mutate() *AttributeValue
+}
+
+type attributeValueReadonly struct{ v *AttributeValue }
+
+func (r *attributeValueReadonly) GetRawValue() []byte {
+	return bytes.Clone(r.v.GetRawValue())
+}
+
+func (r *attributeValueReadonly) Mutate() *AttributeValue {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this AttributeValue.
+func (m *AttributeValue) AsReader() AttributeValueReader {
+	if m == nil {
+		return nil
+	}
+	return &attributeValueReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this AttributeValue.
+func (m *AttributeValue) Mutate() *AttributeValue {
+	return m.CloneVT()
+}
+
+// AttributeValueListReader provides read-only iteration over []*AttributeValue.
+type AttributeValueListReader interface {
+	Len() int
+	Get(i int) AttributeValueReader
+	Range(yield func(int, AttributeValueReader) bool)
+}
+
+type attributeValueListReadonly []*AttributeValue
+
+func (l attributeValueListReadonly) Len() int { return len(l) }
+
+func (l attributeValueListReadonly) Get(i int) AttributeValueReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l attributeValueListReadonly) Range(yield func(int, AttributeValueReader) bool) {
+	for i, v := range l {
+		var r AttributeValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAttributeValueListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAttributeValueListReader(s []*AttributeValue) AttributeValueListReader {
+	return attributeValueListReadonly(s)
+}
+
+// ReloadIdempotencyKeyReader provides read-only access to ReloadIdempotencyKey.
+// Call Mutate() to obtain a mutable clone.
+type ReloadIdempotencyKeyReader interface {
 	GetKey() string
 	GetValue() commonpb.IdempotencyKeyValueReader
-	Mutate() *PreloadIdempotencyKey
+	Mutate() *ReloadIdempotencyKey
 }
 
-type preloadIdempotencyKeyReadonly struct{ v *PreloadIdempotencyKey }
+type reloadIdempotencyKeyReadonly struct{ v *ReloadIdempotencyKey }
 
-func (r *preloadIdempotencyKeyReadonly) GetKey() string {
+func (r *reloadIdempotencyKeyReadonly) GetKey() string {
 	return r.v.GetKey()
 }
 
-func (r *preloadIdempotencyKeyReadonly) GetValue() commonpb.IdempotencyKeyValueReader {
+func (r *reloadIdempotencyKeyReadonly) GetValue() commonpb.IdempotencyKeyValueReader {
 	v := r.v.GetValue()
 	if v == nil {
 		return nil
@@ -5216,35 +5310,35 @@ func (r *preloadIdempotencyKeyReadonly) GetValue() commonpb.IdempotencyKeyValueR
 	return v.AsReader()
 }
 
-func (r *preloadIdempotencyKeyReadonly) Mutate() *PreloadIdempotencyKey {
+func (r *reloadIdempotencyKeyReadonly) Mutate() *ReloadIdempotencyKey {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this PreloadIdempotencyKey.
-func (m *PreloadIdempotencyKey) AsReader() PreloadIdempotencyKeyReader {
+// AsReader returns a read-only view of this ReloadIdempotencyKey.
+func (m *ReloadIdempotencyKey) AsReader() ReloadIdempotencyKeyReader {
 	if m == nil {
 		return nil
 	}
-	return &preloadIdempotencyKeyReadonly{v: m}
+	return &reloadIdempotencyKeyReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this PreloadIdempotencyKey.
-func (m *PreloadIdempotencyKey) Mutate() *PreloadIdempotencyKey {
+// Mutate returns a mutable deep clone of this ReloadIdempotencyKey.
+func (m *ReloadIdempotencyKey) Mutate() *ReloadIdempotencyKey {
 	return m.CloneVT()
 }
 
-// PreloadIdempotencyKeyListReader provides read-only iteration over []*PreloadIdempotencyKey.
-type PreloadIdempotencyKeyListReader interface {
+// ReloadIdempotencyKeyListReader provides read-only iteration over []*ReloadIdempotencyKey.
+type ReloadIdempotencyKeyListReader interface {
 	Len() int
-	Get(i int) PreloadIdempotencyKeyReader
-	Range(yield func(int, PreloadIdempotencyKeyReader) bool)
+	Get(i int) ReloadIdempotencyKeyReader
+	Range(yield func(int, ReloadIdempotencyKeyReader) bool)
 }
 
-type preloadIdempotencyKeyListReadonly []*PreloadIdempotencyKey
+type reloadIdempotencyKeyListReadonly []*ReloadIdempotencyKey
 
-func (l preloadIdempotencyKeyListReadonly) Len() int { return len(l) }
+func (l reloadIdempotencyKeyListReadonly) Len() int { return len(l) }
 
-func (l preloadIdempotencyKeyListReadonly) Get(i int) PreloadIdempotencyKeyReader {
+func (l reloadIdempotencyKeyListReadonly) Get(i int) ReloadIdempotencyKeyReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -5252,9 +5346,9 @@ func (l preloadIdempotencyKeyListReadonly) Get(i int) PreloadIdempotencyKeyReade
 	return v.AsReader()
 }
 
-func (l preloadIdempotencyKeyListReadonly) Range(yield func(int, PreloadIdempotencyKeyReader) bool) {
+func (l reloadIdempotencyKeyListReadonly) Range(yield func(int, ReloadIdempotencyKeyReader) bool) {
 	for i, v := range l {
-		var r PreloadIdempotencyKeyReader
+		var r ReloadIdempotencyKeyReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -5264,810 +5358,10 @@ func (l preloadIdempotencyKeyListReadonly) Range(yield func(int, PreloadIdempote
 	}
 }
 
-// NewPreloadIdempotencyKeyListReader wraps s for read-only iteration. The returned
+// NewReloadIdempotencyKeyListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadIdempotencyKeyListReader(s []*PreloadIdempotencyKey) PreloadIdempotencyKeyListReader {
-	return preloadIdempotencyKeyListReadonly(s)
-}
-
-// PreloadLedgerReader provides read-only access to PreloadLedger.
-// Call Mutate() to obtain a mutable clone.
-type PreloadLedgerReader interface {
-	GetId() AttributeIDReader
-	GetValue() commonpb.LedgerInfoReader
-	Mutate() *PreloadLedger
-}
-
-type preloadLedgerReadonly struct{ v *PreloadLedger }
-
-func (r *preloadLedgerReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadLedgerReadonly) GetValue() commonpb.LedgerInfoReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadLedgerReadonly) Mutate() *PreloadLedger {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadLedger.
-func (m *PreloadLedger) AsReader() PreloadLedgerReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadLedgerReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadLedger.
-func (m *PreloadLedger) Mutate() *PreloadLedger {
-	return m.CloneVT()
-}
-
-// PreloadLedgerListReader provides read-only iteration over []*PreloadLedger.
-type PreloadLedgerListReader interface {
-	Len() int
-	Get(i int) PreloadLedgerReader
-	Range(yield func(int, PreloadLedgerReader) bool)
-}
-
-type preloadLedgerListReadonly []*PreloadLedger
-
-func (l preloadLedgerListReadonly) Len() int { return len(l) }
-
-func (l preloadLedgerListReadonly) Get(i int) PreloadLedgerReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadLedgerListReadonly) Range(yield func(int, PreloadLedgerReader) bool) {
-	for i, v := range l {
-		var r PreloadLedgerReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadLedgerListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadLedgerListReader(s []*PreloadLedger) PreloadLedgerListReader {
-	return preloadLedgerListReadonly(s)
-}
-
-// PreloadBoundaryReader provides read-only access to PreloadBoundary.
-// Call Mutate() to obtain a mutable clone.
-type PreloadBoundaryReader interface {
-	GetId() AttributeIDReader
-	GetValue() LedgerBoundariesReader
-	Mutate() *PreloadBoundary
-}
-
-type preloadBoundaryReadonly struct{ v *PreloadBoundary }
-
-func (r *preloadBoundaryReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadBoundaryReadonly) GetValue() LedgerBoundariesReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadBoundaryReadonly) Mutate() *PreloadBoundary {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadBoundary.
-func (m *PreloadBoundary) AsReader() PreloadBoundaryReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadBoundaryReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadBoundary.
-func (m *PreloadBoundary) Mutate() *PreloadBoundary {
-	return m.CloneVT()
-}
-
-// PreloadBoundaryListReader provides read-only iteration over []*PreloadBoundary.
-type PreloadBoundaryListReader interface {
-	Len() int
-	Get(i int) PreloadBoundaryReader
-	Range(yield func(int, PreloadBoundaryReader) bool)
-}
-
-type preloadBoundaryListReadonly []*PreloadBoundary
-
-func (l preloadBoundaryListReadonly) Len() int { return len(l) }
-
-func (l preloadBoundaryListReadonly) Get(i int) PreloadBoundaryReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadBoundaryListReadonly) Range(yield func(int, PreloadBoundaryReader) bool) {
-	for i, v := range l {
-		var r PreloadBoundaryReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadBoundaryListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadBoundaryListReader(s []*PreloadBoundary) PreloadBoundaryListReader {
-	return preloadBoundaryListReadonly(s)
-}
-
-// PreloadTransactionReferenceReader provides read-only access to PreloadTransactionReference.
-// Call Mutate() to obtain a mutable clone.
-type PreloadTransactionReferenceReader interface {
-	GetId() AttributeIDReader
-	GetValue() commonpb.TransactionReferenceValueReader
-	Mutate() *PreloadTransactionReference
-}
-
-type preloadTransactionReferenceReadonly struct{ v *PreloadTransactionReference }
-
-func (r *preloadTransactionReferenceReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadTransactionReferenceReadonly) GetValue() commonpb.TransactionReferenceValueReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadTransactionReferenceReadonly) Mutate() *PreloadTransactionReference {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadTransactionReference.
-func (m *PreloadTransactionReference) AsReader() PreloadTransactionReferenceReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadTransactionReferenceReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadTransactionReference.
-func (m *PreloadTransactionReference) Mutate() *PreloadTransactionReference {
-	return m.CloneVT()
-}
-
-// PreloadTransactionReferenceListReader provides read-only iteration over []*PreloadTransactionReference.
-type PreloadTransactionReferenceListReader interface {
-	Len() int
-	Get(i int) PreloadTransactionReferenceReader
-	Range(yield func(int, PreloadTransactionReferenceReader) bool)
-}
-
-type preloadTransactionReferenceListReadonly []*PreloadTransactionReference
-
-func (l preloadTransactionReferenceListReadonly) Len() int { return len(l) }
-
-func (l preloadTransactionReferenceListReadonly) Get(i int) PreloadTransactionReferenceReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadTransactionReferenceListReadonly) Range(yield func(int, PreloadTransactionReferenceReader) bool) {
-	for i, v := range l {
-		var r PreloadTransactionReferenceReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadTransactionReferenceListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadTransactionReferenceListReader(s []*PreloadTransactionReference) PreloadTransactionReferenceListReader {
-	return preloadTransactionReferenceListReadonly(s)
-}
-
-// PreloadSinkConfigReader provides read-only access to PreloadSinkConfig.
-// Call Mutate() to obtain a mutable clone.
-type PreloadSinkConfigReader interface {
-	GetId() AttributeIDReader
-	GetValue() commonpb.SinkConfigReader
-	Mutate() *PreloadSinkConfig
-}
-
-type preloadSinkConfigReadonly struct{ v *PreloadSinkConfig }
-
-func (r *preloadSinkConfigReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadSinkConfigReadonly) GetValue() commonpb.SinkConfigReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadSinkConfigReadonly) Mutate() *PreloadSinkConfig {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadSinkConfig.
-func (m *PreloadSinkConfig) AsReader() PreloadSinkConfigReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadSinkConfigReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadSinkConfig.
-func (m *PreloadSinkConfig) Mutate() *PreloadSinkConfig {
-	return m.CloneVT()
-}
-
-// PreloadSinkConfigListReader provides read-only iteration over []*PreloadSinkConfig.
-type PreloadSinkConfigListReader interface {
-	Len() int
-	Get(i int) PreloadSinkConfigReader
-	Range(yield func(int, PreloadSinkConfigReader) bool)
-}
-
-type preloadSinkConfigListReadonly []*PreloadSinkConfig
-
-func (l preloadSinkConfigListReadonly) Len() int { return len(l) }
-
-func (l preloadSinkConfigListReadonly) Get(i int) PreloadSinkConfigReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadSinkConfigListReadonly) Range(yield func(int, PreloadSinkConfigReader) bool) {
-	for i, v := range l {
-		var r PreloadSinkConfigReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadSinkConfigListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadSinkConfigListReader(s []*PreloadSinkConfig) PreloadSinkConfigListReader {
-	return preloadSinkConfigListReadonly(s)
-}
-
-// PreloadAccountMetadataReader provides read-only access to PreloadAccountMetadata.
-// Call Mutate() to obtain a mutable clone.
-type PreloadAccountMetadataReader interface {
-	GetId() AttributeIDReader
-	GetValue() commonpb.MetadataValueReader
-	Mutate() *PreloadAccountMetadata
-}
-
-type preloadAccountMetadataReadonly struct{ v *PreloadAccountMetadata }
-
-func (r *preloadAccountMetadataReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadAccountMetadataReadonly) GetValue() commonpb.MetadataValueReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadAccountMetadataReadonly) Mutate() *PreloadAccountMetadata {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadAccountMetadata.
-func (m *PreloadAccountMetadata) AsReader() PreloadAccountMetadataReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadAccountMetadataReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadAccountMetadata.
-func (m *PreloadAccountMetadata) Mutate() *PreloadAccountMetadata {
-	return m.CloneVT()
-}
-
-// PreloadAccountMetadataListReader provides read-only iteration over []*PreloadAccountMetadata.
-type PreloadAccountMetadataListReader interface {
-	Len() int
-	Get(i int) PreloadAccountMetadataReader
-	Range(yield func(int, PreloadAccountMetadataReader) bool)
-}
-
-type preloadAccountMetadataListReadonly []*PreloadAccountMetadata
-
-func (l preloadAccountMetadataListReadonly) Len() int { return len(l) }
-
-func (l preloadAccountMetadataListReadonly) Get(i int) PreloadAccountMetadataReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadAccountMetadataListReadonly) Range(yield func(int, PreloadAccountMetadataReader) bool) {
-	for i, v := range l {
-		var r PreloadAccountMetadataReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadAccountMetadataListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadAccountMetadataListReader(s []*PreloadAccountMetadata) PreloadAccountMetadataListReader {
-	return preloadAccountMetadataListReadonly(s)
-}
-
-// PreloadNumscriptVersionReader provides read-only access to PreloadNumscriptVersion.
-// Call Mutate() to obtain a mutable clone.
-type PreloadNumscriptVersionReader interface {
-	GetId() AttributeIDReader
-	GetValue() commonpb.NumscriptVersionValueReader
-	Mutate() *PreloadNumscriptVersion
-}
-
-type preloadNumscriptVersionReadonly struct{ v *PreloadNumscriptVersion }
-
-func (r *preloadNumscriptVersionReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadNumscriptVersionReadonly) GetValue() commonpb.NumscriptVersionValueReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadNumscriptVersionReadonly) Mutate() *PreloadNumscriptVersion {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadNumscriptVersion.
-func (m *PreloadNumscriptVersion) AsReader() PreloadNumscriptVersionReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadNumscriptVersionReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadNumscriptVersion.
-func (m *PreloadNumscriptVersion) Mutate() *PreloadNumscriptVersion {
-	return m.CloneVT()
-}
-
-// PreloadNumscriptVersionListReader provides read-only iteration over []*PreloadNumscriptVersion.
-type PreloadNumscriptVersionListReader interface {
-	Len() int
-	Get(i int) PreloadNumscriptVersionReader
-	Range(yield func(int, PreloadNumscriptVersionReader) bool)
-}
-
-type preloadNumscriptVersionListReadonly []*PreloadNumscriptVersion
-
-func (l preloadNumscriptVersionListReadonly) Len() int { return len(l) }
-
-func (l preloadNumscriptVersionListReadonly) Get(i int) PreloadNumscriptVersionReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadNumscriptVersionListReadonly) Range(yield func(int, PreloadNumscriptVersionReader) bool) {
-	for i, v := range l {
-		var r PreloadNumscriptVersionReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadNumscriptVersionListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadNumscriptVersionListReader(s []*PreloadNumscriptVersion) PreloadNumscriptVersionListReader {
-	return preloadNumscriptVersionListReadonly(s)
-}
-
-// PreloadTransactionStateReader provides read-only access to PreloadTransactionState.
-// Call Mutate() to obtain a mutable clone.
-type PreloadTransactionStateReader interface {
-	GetId() AttributeIDReader
-	GetValue() commonpb.TransactionStateReader
-	Mutate() *PreloadTransactionState
-}
-
-type preloadTransactionStateReadonly struct{ v *PreloadTransactionState }
-
-func (r *preloadTransactionStateReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadTransactionStateReadonly) GetValue() commonpb.TransactionStateReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadTransactionStateReadonly) Mutate() *PreloadTransactionState {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadTransactionState.
-func (m *PreloadTransactionState) AsReader() PreloadTransactionStateReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadTransactionStateReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadTransactionState.
-func (m *PreloadTransactionState) Mutate() *PreloadTransactionState {
-	return m.CloneVT()
-}
-
-// PreloadTransactionStateListReader provides read-only iteration over []*PreloadTransactionState.
-type PreloadTransactionStateListReader interface {
-	Len() int
-	Get(i int) PreloadTransactionStateReader
-	Range(yield func(int, PreloadTransactionStateReader) bool)
-}
-
-type preloadTransactionStateListReadonly []*PreloadTransactionState
-
-func (l preloadTransactionStateListReadonly) Len() int { return len(l) }
-
-func (l preloadTransactionStateListReadonly) Get(i int) PreloadTransactionStateReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadTransactionStateListReadonly) Range(yield func(int, PreloadTransactionStateReader) bool) {
-	for i, v := range l {
-		var r PreloadTransactionStateReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadTransactionStateListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadTransactionStateListReader(s []*PreloadTransactionState) PreloadTransactionStateListReader {
-	return preloadTransactionStateListReadonly(s)
-}
-
-// PreloadNumscriptContentReader provides read-only access to PreloadNumscriptContent.
-// Call Mutate() to obtain a mutable clone.
-type PreloadNumscriptContentReader interface {
-	GetId() AttributeIDReader
-	GetValue() commonpb.NumscriptInfoReader
-	Mutate() *PreloadNumscriptContent
-}
-
-type preloadNumscriptContentReadonly struct{ v *PreloadNumscriptContent }
-
-func (r *preloadNumscriptContentReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadNumscriptContentReadonly) GetValue() commonpb.NumscriptInfoReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadNumscriptContentReadonly) Mutate() *PreloadNumscriptContent {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadNumscriptContent.
-func (m *PreloadNumscriptContent) AsReader() PreloadNumscriptContentReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadNumscriptContentReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadNumscriptContent.
-func (m *PreloadNumscriptContent) Mutate() *PreloadNumscriptContent {
-	return m.CloneVT()
-}
-
-// PreloadNumscriptContentListReader provides read-only iteration over []*PreloadNumscriptContent.
-type PreloadNumscriptContentListReader interface {
-	Len() int
-	Get(i int) PreloadNumscriptContentReader
-	Range(yield func(int, PreloadNumscriptContentReader) bool)
-}
-
-type preloadNumscriptContentListReadonly []*PreloadNumscriptContent
-
-func (l preloadNumscriptContentListReadonly) Len() int { return len(l) }
-
-func (l preloadNumscriptContentListReadonly) Get(i int) PreloadNumscriptContentReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadNumscriptContentListReadonly) Range(yield func(int, PreloadNumscriptContentReader) bool) {
-	for i, v := range l {
-		var r PreloadNumscriptContentReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadNumscriptContentListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadNumscriptContentListReader(s []*PreloadNumscriptContent) PreloadNumscriptContentListReader {
-	return preloadNumscriptContentListReadonly(s)
-}
-
-// PreloadPreparedQueryReader provides read-only access to PreloadPreparedQuery.
-// Call Mutate() to obtain a mutable clone.
-type PreloadPreparedQueryReader interface {
-	GetId() AttributeIDReader
-	GetValue() commonpb.PreparedQueryReader
-	Mutate() *PreloadPreparedQuery
-}
-
-type preloadPreparedQueryReadonly struct{ v *PreloadPreparedQuery }
-
-func (r *preloadPreparedQueryReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadPreparedQueryReadonly) GetValue() commonpb.PreparedQueryReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadPreparedQueryReadonly) Mutate() *PreloadPreparedQuery {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadPreparedQuery.
-func (m *PreloadPreparedQuery) AsReader() PreloadPreparedQueryReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadPreparedQueryReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadPreparedQuery.
-func (m *PreloadPreparedQuery) Mutate() *PreloadPreparedQuery {
-	return m.CloneVT()
-}
-
-// PreloadPreparedQueryListReader provides read-only iteration over []*PreloadPreparedQuery.
-type PreloadPreparedQueryListReader interface {
-	Len() int
-	Get(i int) PreloadPreparedQueryReader
-	Range(yield func(int, PreloadPreparedQueryReader) bool)
-}
-
-type preloadPreparedQueryListReadonly []*PreloadPreparedQuery
-
-func (l preloadPreparedQueryListReadonly) Len() int { return len(l) }
-
-func (l preloadPreparedQueryListReadonly) Get(i int) PreloadPreparedQueryReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadPreparedQueryListReadonly) Range(yield func(int, PreloadPreparedQueryReader) bool) {
-	for i, v := range l {
-		var r PreloadPreparedQueryReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadPreparedQueryListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadPreparedQueryListReader(s []*PreloadPreparedQuery) PreloadPreparedQueryListReader {
-	return preloadPreparedQueryListReadonly(s)
-}
-
-// PreloadLedgerMetadataReader provides read-only access to PreloadLedgerMetadata.
-// Call Mutate() to obtain a mutable clone.
-type PreloadLedgerMetadataReader interface {
-	GetId() AttributeIDReader
-	GetValue() commonpb.MetadataValueReader
-	Mutate() *PreloadLedgerMetadata
-}
-
-type preloadLedgerMetadataReadonly struct{ v *PreloadLedgerMetadata }
-
-func (r *preloadLedgerMetadataReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadLedgerMetadataReadonly) GetValue() commonpb.MetadataValueReader {
-	v := r.v.GetValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *preloadLedgerMetadataReadonly) Mutate() *PreloadLedgerMetadata {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this PreloadLedgerMetadata.
-func (m *PreloadLedgerMetadata) AsReader() PreloadLedgerMetadataReader {
-	if m == nil {
-		return nil
-	}
-	return &preloadLedgerMetadataReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this PreloadLedgerMetadata.
-func (m *PreloadLedgerMetadata) Mutate() *PreloadLedgerMetadata {
-	return m.CloneVT()
-}
-
-// PreloadLedgerMetadataListReader provides read-only iteration over []*PreloadLedgerMetadata.
-type PreloadLedgerMetadataListReader interface {
-	Len() int
-	Get(i int) PreloadLedgerMetadataReader
-	Range(yield func(int, PreloadLedgerMetadataReader) bool)
-}
-
-type preloadLedgerMetadataListReadonly []*PreloadLedgerMetadata
-
-func (l preloadLedgerMetadataListReadonly) Len() int { return len(l) }
-
-func (l preloadLedgerMetadataListReadonly) Get(i int) PreloadLedgerMetadataReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l preloadLedgerMetadataListReadonly) Range(yield func(int, PreloadLedgerMetadataReader) bool) {
-	for i, v := range l {
-		var r PreloadLedgerMetadataReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewPreloadLedgerMetadataListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewPreloadLedgerMetadataListReader(s []*PreloadLedgerMetadata) PreloadLedgerMetadataListReader {
-	return preloadLedgerMetadataListReadonly(s)
+func NewReloadIdempotencyKeyListReader(s []*ReloadIdempotencyKey) ReloadIdempotencyKeyListReader {
+	return reloadIdempotencyKeyListReadonly(s)
 }
 
 // NodeSnapshotReader provides read-only access to NodeSnapshot.

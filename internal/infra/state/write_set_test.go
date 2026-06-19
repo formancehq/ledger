@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -27,15 +28,15 @@ func TestWriteSetGetPutLedger(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	// Non-existent ledger returns nil
-	info, ok := buf.GetLedger("nonexistent")
-	require.False(t, ok)
+	// Non-existent ledger returns ErrNotFound
+	info, err := buf.GetLedger("nonexistent")
+	require.ErrorIs(t, err, domain.ErrNotFound)
 	require.Nil(t, info)
 
 	// Put and get
 	buf.PutLedger("test", &commonpb.LedgerInfo{Name: "test"})
-	info, ok = buf.GetLedger("test")
-	require.True(t, ok)
+	info, err = buf.GetLedger("test")
+	require.NoError(t, err)
 	require.Equal(t, "test", info.GetName())
 }
 
@@ -44,8 +45,8 @@ func TestWriteSetGetPutBoundaries(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	// Non-existent
-	b, ok := buf.GetBoundaries("nonexistent")
-	require.False(t, ok)
+	b, err := buf.GetBoundaries("nonexistent")
+	require.ErrorIs(t, err, domain.ErrNotFound)
 	require.Nil(t, b)
 
 	// Put and get
@@ -53,8 +54,8 @@ func TestWriteSetGetPutBoundaries(t *testing.T) {
 		NextTransactionId: 10,
 		NextLogId:         20,
 	})
-	b, ok = buf.GetBoundaries("ledger-1")
-	require.True(t, ok)
+	b, err = buf.GetBoundaries("ledger-1")
+	require.NoError(t, err)
 	require.Equal(t, uint64(10), b.GetNextTransactionId())
 	require.Equal(t, uint64(20), b.GetNextLogId())
 }
@@ -486,15 +487,17 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.SetPurgeRange(1, 10, 50, 5, 25)
 	buf.SetPendingArchive(1, 10, 50, 5, 25)
 	buf.AddMetadataConvertRequest("ledger-1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "email", commonpb.MetadataType_METADATA_TYPE_STRING)
+	buf.QueueMirrorSync(MirrorSyncWrite{LedgerName: "leaked", Cursor: 42, ClearError: true})
 
 	// Verify data is present before Reset
-	_, ok := buf.GetLedger("leaked")
-	require.True(t, ok, "ledger should exist before Reset")
+	_, err := buf.GetLedger("leaked")
+	require.NoError(t, err, "ledger should exist before Reset")
 	require.True(t, buf.HasPurges(), "purges should exist before Reset")
 	require.Len(t, buf.pendingSigningKeyUpdates, 1)
 	require.NotNil(t, buf.pendingMaintenanceModeUpdate)
 	require.NotNil(t, buf.pendingSigningConfigUpdate)
 	require.NotNil(t, buf.pendingPeriodScheduleUpdate)
+	require.Len(t, buf.pendingMirrorSyncs, 1)
 
 	// --- Reset for proposal N+1 ---
 	buf.Reset(&commonpb.Timestamp{Data: 1700000001})
@@ -502,13 +505,13 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	// --- Verify complete isolation ---
 
 	// Derived stores must be empty
-	_, ok = buf.GetLedger("leaked")
-	require.False(t, ok, "ledger from previous proposal must not be visible after Reset")
+	_, err = buf.GetLedger("leaked")
+	require.ErrorIs(t, err, domain.ErrNotFound, "ledger from previous proposal must not be visible after Reset")
 
-	_, ok = buf.GetBoundaries("leaked")
-	require.False(t, ok, "boundaries from previous proposal must not be visible after Reset")
+	_, err = buf.GetBoundaries("leaked")
+	require.ErrorIs(t, err, domain.ErrNotFound, "boundaries from previous proposal must not be visible after Reset")
 
-	_, err := buf.GetAccountMetadata(domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"})
+	_, err = buf.GetAccountMetadata(domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"})
 	require.ErrorIs(t, err, domain.ErrNotFound, "account metadata from previous proposal must not be visible after Reset")
 
 	_, err = buf.GetIdempotencyKey(domain.IdempotencyKey{Key: "ik-leak"})
@@ -525,7 +528,46 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	require.False(t, buf.HasPurges(), "purges must be cleared after Reset")
 	require.Empty(t, buf.pendingArchives, "archives must be cleared after Reset")
 	require.Empty(t, buf.MetadataConvertRequests(), "metadata convert requests must be cleared after Reset")
+	require.Empty(t, buf.pendingMirrorSyncs, "mirror syncs must be cleared after Reset")
 
 	// Scalar state must be refreshed
 	require.Equal(t, uint64(1700000001), buf.GetDate().GetData(), "date must be updated after Reset")
+}
+
+// TestWriteSetMergeDrainsMirrorSyncs pins the gating semantics that motivate
+// pendingMirrorSyncs: QueueMirrorSync stages the writes, and only buffer.Merge
+// (the commit gate that runs when ProcessOrders + ValidateTransientVolumes
+// succeed) actually emits them. Reading back through query.ReadMirrorCursor
+// closes the loop end-to-end.
+func TestWriteSetMergeDrainsMirrorSyncs(t *testing.T) {
+	t.Parallel()
+	buf, _, dataStore := newTestBuffer(t)
+
+	buf.QueueMirrorSync(MirrorSyncWrite{
+		LedgerName:     "test",
+		Cursor:         99,
+		SourceLogCount: 120,
+		ClearError:     true,
+	})
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, buf.Merge(batch, nil))
+	require.NoError(t, batch.Commit())
+
+	rh, err := dataStore.NewReadHandle()
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = rh.Close() })
+
+	cursor, err := query.ReadMirrorCursor(rh, "test")
+	require.NoError(t, err)
+	require.Equal(t, uint64(99), cursor, "cursor must be persisted after Merge")
+
+	head, err := query.ReadMirrorSourceHead(rh, "test")
+	require.NoError(t, err)
+	require.Equal(t, uint64(120), head, "source head must be persisted after Merge")
+
+	status, err := query.ReadMirrorStatus(rh, "test")
+	require.NoError(t, err)
+	require.Nil(t, status, "status must be cleared by ClearError")
 }

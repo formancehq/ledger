@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
+func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s Scope, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
 	txKey := domain.TransactionKey{
 		LedgerName: ledgerName,
 		ID:         order.GetTransactionId(),

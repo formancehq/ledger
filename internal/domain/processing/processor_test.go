@@ -17,7 +17,7 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -43,7 +43,7 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 	mockStore.EXPECT().GetIdempotencyKey(domain.IdempotencyKey{Key: "unique-key-123"}).Return(nil, domain.ErrNotFound)
 
 	// Process the order normally
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
@@ -59,7 +59,7 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 		require.NotEmpty(t, value.GetHash())
 	})
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore))
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 1)
@@ -78,7 +78,7 @@ func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -112,7 +112,7 @@ func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 
 	// No other calls should be made - the order should not be processed
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore))
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 1)
@@ -122,13 +122,43 @@ func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 	require.Equal(t, uint64(42), refSequence)
 }
 
+// TestComputeOrderHash_ExcludesPerAttemptFields pins the contract that
+// the idempotency hash is computed over only the user-supplied request
+// content — never the per-attempt fields admission rebuilds from the
+// proposal context. A retry of the same logical request that lands in
+// a different batch (and therefore gets different CoverageBits /
+// Idempotency nonce) MUST hash identically; otherwise the idempotency
+// check would reject a legitimate retry.
+func TestComputeOrderHash_ExcludesPerAttemptFields(t *testing.T) {
+	t.Parallel()
+
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	base := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_CreateLedger{
+			CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "L"},
+		},
+		Idempotency: &commonpb.Idempotency{Key: "unique-key-123"},
+	}
+	baseHash := processor.computeOrderHash(base)
+
+	withCoverage := &raftcmdpb.Order{
+		Type:         base.GetType(),
+		Idempotency:  &commonpb.Idempotency{Key: "different-attempt"},
+		CoverageBits: []byte{0b0101},
+	}
+	require.Equal(t, baseHash, processor.computeOrderHash(withCoverage),
+		"CoverageBits + Idempotency nonce must not change the idempotency hash")
+}
+
 func TestProcessOrders_WithIdempotencyKey_Conflict(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -159,7 +189,7 @@ func TestProcessOrders_WithIdempotencyKey_Conflict(t *testing.T) {
 
 	// No other calls should be made - should fail immediately
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore))
 	require.Error(t, err)
 	require.Nil(t, response)
 	require.ErrorAs(t, err, new(*domain.ErrIdempotencyKeyConflict))
@@ -171,7 +201,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -193,14 +223,14 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 
 	// No idempotency check should be made
 	// Process the order normally
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore))
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 1)
@@ -219,7 +249,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockInMemoryStore(ctrl)
+	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -229,7 +259,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	var storedLedgerInfo *commonpb.LedgerInfo
 
 	// Order 1: CreateLedger("myled")
-	mockStore.EXPECT().GetLedger("myled").Return(nil, false) // does not exist yet
+	mockStore.EXPECT().GetLedger("myled").Return(nil, domain.ErrNotFound) // does not exist yet
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutLedger("myled", gomock.Any()).Do(
@@ -241,17 +271,17 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 
 	// Order 2: CreateTransaction on "myled"
 	// After order 1 runs, GetLedger should return the stored info.
-	mockStore.EXPECT().GetLedger("myled").DoAndReturn(func(_ string) (commonpb.LedgerInfoReader, bool) {
+	mockStore.EXPECT().GetLedger("myled").DoAndReturn(func(_ string) (*commonpb.LedgerInfo, error) {
 		if storedLedgerInfo == nil {
-			return nil, false
+			return nil, domain.ErrNotFound
 		}
 
-		return storedLedgerInfo.AsReader(), true
+		return storedLedgerInfo, nil
 	}).AnyTimes()
 	mockStore.EXPECT().GetBoundaries("myled").Return((&raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,
 		NextLogId:         1,
-	}).AsReader(), true)
+	}).AsReader(), nil)
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("myled", gomock.Any())
 
@@ -294,7 +324,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 		}}},
 	}
 
-	response, err := processor.ProcessOrders(orders, mockStore)
+	response, err := processor.ProcessOrders(orders, mockFactory(mockStore))
 	require.NoError(t, err)
 	require.Len(t, response, 2)
 

@@ -513,11 +513,7 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 	// 2. Same batch: overwrite the same key to v2 before the batch commits.
 	sm := &commonpb.SavedMetadata{
 		Target: &commonpb.Target{
-			Target: &commonpb.Target_Transaction{
-				Transaction: &commonpb.TargetTransaction{
-					Identifier: &commonpb.TargetTransaction_Id{Id: txID},
-				},
-			},
+			Target: &commonpb.Target_TransactionId{TransactionId: txID},
 		},
 		Metadata: map[string]*commonpb.MetadataValue{key: v2},
 	}

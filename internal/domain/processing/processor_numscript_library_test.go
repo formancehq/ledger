@@ -33,7 +33,7 @@ func TestProcessSaveNumscript_RejectsInvalidNames(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockStore := NewMockInMemoryStore(ctrl)
+			mockStore := NewMockScope(ctrl)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
@@ -77,7 +77,7 @@ func TestProcessDeleteNumscript_RejectsInvalidNames(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockStore := NewMockInMemoryStore(ctrl)
+			mockStore := NewMockScope(ctrl)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 

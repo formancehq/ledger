@@ -292,6 +292,8 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrAccountValidation":             &ErrAccountValidation{},
 		"ErrMetadataKeyValidation":         &ErrMetadataKeyValidation{},
 		"ErrInvalidApplyType":              &ErrInvalidApplyType{},
+		"ErrInvalidExecutionPlan":          &ErrInvalidExecutionPlan{},
+		"ErrExecutionPlanTooLarge":         &ErrExecutionPlanTooLarge{},
 		"ErrStorageOperation":              &ErrStorageOperation{},
 		"ErrTransactionStateInconsistent":  &ErrTransactionStateInconsistent{},
 		"ErrNumscriptRuntime":              &ErrNumscriptRuntime{},

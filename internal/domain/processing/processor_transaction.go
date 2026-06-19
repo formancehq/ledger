@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
+func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s Scope, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
 	// Check transaction reference uniqueness if reference is provided
 	if order.GetReference() != "" {
 		refKey := domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: order.GetReference()}
@@ -169,10 +169,13 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 				Key:        key,
 			}
 
-			// Capture old value before overwriting; the log records it for downstream consumers.
-			// Coerce it to the declared type so it matches what a read returned,
-			// regardless of whether the background conversion rewrote it yet.
-			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil && oldVal != nil {
+			// Capture old value before overwriting (for log replay in indexbuilder).
+			oldVal, err := s.GetAccountMetadata(metaKey)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return nil, &domain.ErrStorageOperation{Operation: "reading previous account metadata", Cause: err}
+			}
+
+			if err == nil {
 				if previousAccountMetadata == nil {
 					previousAccountMetadata = make(map[string]*commonpb.MetadataMap)
 				}
@@ -183,7 +186,11 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 					previousAccountMetadata[account] = prevMap
 				}
 
-				prevMap.Values[key] = coerceToDeclaredType(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, oldVal.Mutate())
+				// Coerce captured previous value to the declared
+				// schema type — even when the stored value is still
+				// the raw string written before the type was
+				// declared (master #481).
+				prevMap.Values[key] = coerceToDeclaredType(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, oldVal)
 			}
 
 			s.PutAccountMetadata(metaKey, value)
@@ -267,14 +274,14 @@ type produceResult struct {
 }
 
 type postingProducer interface {
-	produce(s InMemoryStore, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable)
+	produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable)
 }
 
 type stdPostingProducer struct {
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *stdPostingProducer) produce(s InMemoryStore, ledgerName string, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, domain.Describable) {
+func (p *stdPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, domain.Describable) {
 	for _, posting := range order.GetPostings() {
 		// Skip balance check when Force is true
 		err := applyPosting(s, ledgerName, posting, order.GetForce(), p.assetCache)

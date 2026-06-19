@@ -24,6 +24,11 @@ type capturingProposer struct {
 func (p *capturingProposer) Propose(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 	p.captured = append(p.captured, proposal.Data())
 
+	// Resolve the Raft-acceptance future embedded in the proposal so
+	// callers that wait on it (Builder.Run consumers) don't hang. The
+	// real etcd/raft Node does this when the entry is committed.
+	proposal.Resolve(nil, nil)
+
 	f := futures.New[state.ApplyResult]()
 	f.Resolve(state.ApplyResult{}, nil)
 
@@ -46,7 +51,8 @@ func TestProposeSinkUpdate_DoesNotMutateEarlierProposalBytes(t *testing.T) {
 	sink := NewMockSink(ctrl)
 
 	prop := &capturingProposer{}
-	emitter := NewEmitter(nil, sink, "test-sink", prop, logging.Testing(), DefaultEmitterConfig())
+	builder, store := newTestBuilder(t)
+	emitter := NewEmitter(store, sink, "test-sink", prop, builder, logging.Testing(), DefaultEmitterConfig())
 
 	const firstCursor uint64 = 42
 	const secondCursor uint64 = 99
@@ -69,12 +75,12 @@ func TestProposeSinkUpdate_DoesNotMutateEarlierProposalBytes(t *testing.T) {
 	// Cursor=secondCursor).
 	first := &raftcmdpb.Proposal{}
 	require.NoError(t, first.UnmarshalVT(prop.captured[0]))
-	require.Len(t, first.GetEventsSinkUpdates(), 1)
-	require.Equal(t, firstCursor, first.GetEventsSinkUpdates()[0].GetCursor(),
+	require.Len(t, first.GetTechnicalUpdates(), 1)
+	require.Equal(t, firstCursor, first.GetTechnicalUpdates()[0].GetEventsSink().GetCursor(),
 		"first proposal bytes were overwritten by the second proposeSinkUpdate (#311)")
 
 	second := &raftcmdpb.Proposal{}
 	require.NoError(t, second.UnmarshalVT(prop.captured[1]))
-	require.Len(t, second.GetEventsSinkUpdates(), 1)
-	require.Equal(t, secondCursor, second.GetEventsSinkUpdates()[0].GetCursor())
+	require.Len(t, second.GetTechnicalUpdates(), 1)
+	require.Equal(t, secondCursor, second.GetTechnicalUpdates()[0].GetEventsSink().GetCursor())
 }

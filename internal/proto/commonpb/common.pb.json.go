@@ -218,8 +218,8 @@ func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
 	switch v := x.GetTarget().GetTarget().(type) {
 	case *Target_Account:
 		aux.AccountId = v.Account.GetAddr()
-	case *Target_Transaction:
-		aux.TransactionId = v.Transaction.GetId()
+	case *Target_TransactionId:
+		aux.TransactionId = v.TransactionId
 	}
 
 	return json.Marshal(aux)
@@ -241,8 +241,8 @@ func (x *DeletedMetadata) MarshalJSON() ([]byte, error) {
 	switch v := x.GetTarget().GetTarget().(type) {
 	case *Target_Account:
 		aux.AccountId = v.Account.GetAddr()
-	case *Target_Transaction:
-		aux.TransactionId = v.Transaction.GetId()
+	case *Target_TransactionId:
+		aux.TransactionId = v.TransactionId
 	}
 
 	return json.Marshal(aux)
@@ -286,11 +286,7 @@ func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
 		txID, err = strconv.ParseUint(string(x.TargetID), 10, 64)
 		if err == nil {
 			dm.Target = &Target{
-				Target: &Target_Transaction{
-					Transaction: &TargetTransaction{
-						Identifier: &TargetTransaction_Id{Id: txID},
-					},
-				},
+				Target: &Target_TransactionId{TransactionId: txID},
 			}
 		}
 	default:
@@ -343,11 +339,7 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 		txID, err = strconv.ParseUint(string(x.TargetID), 10, 64)
 		if err == nil {
 			sm.Target = &Target{
-				Target: &Target_Transaction{
-					Transaction: &TargetTransaction{
-						Identifier: &TargetTransaction_Id{Id: txID},
-					},
-				},
+				Target: &Target_TransactionId{TransactionId: txID},
 			}
 		}
 	default:
@@ -537,12 +529,9 @@ func (x *Period) MarshalJSON() ([]byte, error) {
 }
 
 // ParseTarget parses targetType and targetId/targetReference into a Target.
-// For TRANSACTION targets, the caller may provide either a numeric targetID
-// or a non-empty targetReference (resolved against the transaction reference
-// index). targetReference is ignored for ACCOUNT targets. Returns an error
-// when the inputs cannot be parsed instead of silently returning nil — the
-// caller should surface this to the client.
-func ParseTarget(targetType string, targetID json.RawValue, targetReference string) (*Target, error) {
+// Returns an error when the inputs cannot be parsed instead of silently
+// returning nil — the caller should surface this to the client.
+func ParseTarget(targetType string, targetID json.RawValue) (*Target, error) {
 	switch strings.ToUpper(targetType) {
 	case MetaTargetTypeAccount:
 		if len(targetID) == 0 {
@@ -561,22 +550,8 @@ func ParseTarget(targetType string, targetID json.RawValue, targetReference stri
 		}, nil
 
 	case MetaTargetTypeTransaction:
-		if targetReference != "" {
-			if len(targetID) != 0 {
-				return nil, errors.New("transaction target must set either targetId or targetReference, not both")
-			}
-
-			return &Target{
-				Target: &Target_Transaction{
-					Transaction: &TargetTransaction{
-						Identifier: &TargetTransaction_Reference{Reference: targetReference},
-					},
-				},
-			}, nil
-		}
-
 		if len(targetID) == 0 {
-			return nil, errors.New("transaction target requires either targetId or targetReference")
+			return nil, errors.New("transaction target requires targetId")
 		}
 
 		var id uint64
@@ -585,11 +560,7 @@ func ParseTarget(targetType string, targetID json.RawValue, targetReference stri
 		}
 
 		return &Target{
-			Target: &Target_Transaction{
-				Transaction: &TargetTransaction{
-					Identifier: &TargetTransaction_Id{Id: id},
-				},
-			},
+			Target: &Target_TransactionId{TransactionId: id},
 		}, nil
 	}
 

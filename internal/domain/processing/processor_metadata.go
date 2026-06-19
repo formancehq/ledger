@@ -9,83 +9,25 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// canonicalizeTarget returns a Target whose Transaction identifier is always
-// expressed as a numeric id, even when the caller supplied a reference. The
-// log payload stored downstream (sinks, indexbuilder, replay, mirror, audit)
-// reads `Target.Transaction.GetId()` directly; without this rewrite, every
-// consumer would see id=0 for reference-typed targets and silently corrupt
-// derived state. The user's original reference is dropped from the log; if
-// it matters downstream, callers should embed it in the metadata payload.
-func canonicalizeTarget(target *commonpb.Target, resolvedTxID uint64) *commonpb.Target {
-	if target == nil {
-		return nil
+// validateTransactionTarget verifies that txID is non-zero and below the
+// ledger's next-id boundary. Returns the proper Describable on failure.
+func validateTransactionTarget(txID uint64, boundaries *raftcmdpb.LedgerBoundaries) domain.Describable {
+	if txID == 0 {
+		return domain.ErrTransactionTargetMissing
 	}
 
-	tx, ok := target.GetTarget().(*commonpb.Target_Transaction)
-	if !ok || tx.Transaction == nil {
-		return target
+	if txID >= boundaries.GetNextTransactionId() {
+		return &domain.ErrTransactionNotFound{TransactionID: txID}
 	}
 
-	if _, isRef := tx.Transaction.GetIdentifier().(*commonpb.TargetTransaction_Reference); !isRef {
-		return target
-	}
-
-	return &commonpb.Target{
-		Target: &commonpb.Target_Transaction{
-			Transaction: &commonpb.TargetTransaction{
-				Identifier: &commonpb.TargetTransaction_Id{Id: resolvedTxID},
-			},
-		},
-	}
+	return nil
 }
 
-// resolveTargetTransactionID returns the numeric transaction id for the given
-// TargetTransaction. When the target carries a reference, it is resolved
-// against the in-memory transaction reference index (which sees writes from
-// previous orders in the same batch, including just-created transactions).
-// The id path additionally validates against the ledger boundary; the
-// reference path does not need that check because PutTransactionReference is
-// only set when a transaction is actually allocated.
-func resolveTargetTransactionID(t *commonpb.TargetTransaction, ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, s InMemoryStore) (uint64, domain.Describable) {
-	switch id := t.GetIdentifier().(type) {
-	case *commonpb.TargetTransaction_Id:
-		if id.Id >= boundaries.GetNextTransactionId() {
-			return 0, &domain.ErrTransactionNotFound{TransactionID: id.Id}
-		}
-
-		return id.Id, nil
-	case *commonpb.TargetTransaction_Reference:
-		if id.Reference == "" {
-			return 0, domain.ErrTransactionTargetMissing
-		}
-
-		value, err := s.GetTransactionReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: id.Reference})
-		if err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				return 0, &domain.ErrTransactionReferenceNotFound{Reference: id.Reference}
-			}
-
-			return 0, &domain.ErrStorageOperation{Operation: "resolving transaction reference", Cause: err}
-		}
-
-		if value == nil {
-			return 0, &domain.ErrTransactionReferenceNotFound{Reference: id.Reference}
-		}
-
-		return value.GetTransactionId(), nil
-	default:
-		return 0, domain.ErrTransactionTargetMissing
-	}
-}
-
-func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
+func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s Scope, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
 
-	// loggedTarget defaults to the original target; the Target_Transaction
-	// branch rewrites it to a canonical id-based variant so the log stays
-	// usable across downstream consumers.
 	loggedTarget := order.GetTarget()
 
 	// Validate account address against account types.
@@ -97,13 +39,15 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 		}
 	}
 
-	targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-	if _, isTx := order.GetTarget().GetTarget().(*commonpb.Target_Transaction); isTx {
-		targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
-	}
-
 	// Enforce schema: convert metadata values to declared types.
-	enforceSchemaMap(info.GetMetadataSchema(), targetType, order.GetMetadata())
+	if len(order.GetMetadata()) > 0 && info != nil && info.GetMetadataSchema() != nil {
+		targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+		if _, isTx := order.GetTarget().GetTarget().(*commonpb.Target_TransactionId); isTx {
+			targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+		}
+
+		enforceSchemaMap(info.GetMetadataSchema(), targetType, order.GetMetadata())
+	}
 
 	var previousValues map[string]*commonpb.MetadataValue
 
@@ -118,39 +62,44 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 				Key: key,
 			}
 
-			// Capture old value before overwriting; the log records it for downstream consumers.
-			// Coerce it to the declared type so it matches what a read returned,
-			// regardless of whether the background conversion rewrote it yet.
-			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil && oldVal != nil {
+			// Capture old value before overwriting (for log replay in indexbuilder).
+			oldVal, err := s.GetAccountMetadata(metaKey)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return nil, &domain.ErrStorageOperation{Operation: "reading previous account metadata", Cause: err}
+			}
+
+			if err == nil {
 				if previousValues == nil {
 					previousValues = make(map[string]*commonpb.MetadataValue)
 				}
 
-				previousValues[key] = coerceToDeclaredType(info.GetMetadataSchema(), targetType, key, oldVal.Mutate())
+				previousValues[key] = oldVal
 			}
 
 			s.PutAccountMetadata(metaKey, value)
 		}
-	case *commonpb.Target_Transaction:
-		txID, resolveErr := resolveTargetTransactionID(target.Transaction, ledgerName, boundaries, s)
-		if resolveErr != nil {
+	case *commonpb.Target_TransactionId:
+		txID := target.TransactionId
+		if resolveErr := validateTransactionTarget(txID, boundaries); resolveErr != nil {
 			return nil, resolveErr
 		}
 
-		loggedTarget = canonicalizeTarget(order.GetTarget(), txID)
-
 		txKey := domain.TransactionKey{LedgerName: ledgerName, ID: txID}
 
-		stateReader, err := s.GetTransactionState(txKey)
+		state, err := s.GetTransactionState(txKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state", Cause: err}
 		}
 
-		if stateReader == nil {
+		if state == nil {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
 
-		state := stateReader.Mutate()
+		// Clone before mutating — GetTransactionState may return the
+		// cached proto pointer when the key falls through to the parent
+		// KeyStore. Mutating its Metadata map in place would write
+		// through the cache before the proposal reached Merge.
+		state = state.CloneVT()
 
 		// Add metadata entries to the transaction state
 		if state.GetMetadata() == nil {
@@ -158,14 +107,13 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 		}
 
 		for key, value := range order.GetMetadata() {
-			// Capture old value before overwriting, coerced to the declared type
-			// so it matches what a read returned, independent of conversion progress.
+			// Capture old value before overwriting.
 			if existing, ok := state.GetMetadata()[key]; ok {
 				if previousValues == nil {
 					previousValues = make(map[string]*commonpb.MetadataValue)
 				}
 
-				previousValues[key] = coerceToDeclaredType(info.GetMetadataSchema(), targetType, key, existing)
+				previousValues[key] = existing
 			}
 
 			state.Metadata[key] = value
@@ -185,7 +133,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
+func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s Scope, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
@@ -196,9 +144,6 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 
 	var previousValue *commonpb.MetadataValue
 
-	// loggedTarget defaults to the original target; the Target_Transaction
-	// branch rewrites it to a canonical id-based variant so the log stays
-	// usable across downstream consumers.
 	loggedTarget := order.GetTarget()
 
 	switch target := order.GetTarget().GetTarget().(type) {
@@ -224,32 +169,35 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 		}
 
 		if oldVal != nil {
-			previousValue = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_ACCOUNT, order.GetKey(), oldVal.Mutate())
+			previousValue = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_ACCOUNT, order.GetKey(), oldVal)
 		}
+
 		s.DeleteAccountMetadata(metaKey)
-	case *commonpb.Target_Transaction:
-		txID, resolveErr := resolveTargetTransactionID(target.Transaction, ledgerName, boundaries, s)
-		if resolveErr != nil {
+	case *commonpb.Target_TransactionId:
+		txID := target.TransactionId
+		if resolveErr := validateTransactionTarget(txID, boundaries); resolveErr != nil {
 			return nil, resolveErr
 		}
 
-		loggedTarget = canonicalizeTarget(order.GetTarget(), txID)
-
 		txKey := domain.TransactionKey{LedgerName: ledgerName, ID: txID}
 
-		stateReader, err := s.GetTransactionState(txKey)
+		state, err := s.GetTransactionState(txKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state for delete", Cause: err}
 		}
 
-		if stateReader == nil {
+		if state == nil {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
 
-		state := stateReader.Mutate()
+		// Clone before mutating — GetTransactionState may return the
+		// cached proto pointer when the key falls through to the parent
+		// KeyStore. See the matching note in processSaveMetadata.
+		state = state.CloneVT()
 
-		// Capture old value and remove the metadata key from the transaction
-		// state. A missing key is rejected with METADATA_NOT_FOUND.
+		// Reject a missing key with METADATA_NOT_FOUND (master #492):
+		// callers that delete a key they never set get an explicit
+		// rejection instead of a silent skip.
 		val, ok := state.GetMetadata()[order.GetKey()]
 		if !ok {
 			return nil, &domain.ErrMetadataNotFound{

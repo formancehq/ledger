@@ -24,7 +24,7 @@ type numscriptPostingProducer struct {
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
+func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
 	if script == nil || script.GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
@@ -223,7 +223,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerName string, o
 
 // numscriptStoreAdapter adapts the Store interface to the numscript.Store interface.
 type numscriptStoreAdapter struct {
-	store      InMemoryStore
+	store      Scope
 	ledgerName string
 	force      bool // When true, return unlimited balances to bypass balance checks
 	schema     *commonpb.MetadataSchema
