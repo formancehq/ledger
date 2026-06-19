@@ -96,15 +96,13 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 		}
 	}
 
-	// Enforce schema: convert metadata values to declared types.
-	if len(order.GetMetadata()) > 0 && info != nil && info.GetMetadataSchema() != nil {
-		targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-		if _, isTx := order.GetTarget().GetTarget().(*commonpb.Target_Transaction); isTx {
-			targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
-		}
-
-		enforceSchemaMap(info.GetMetadataSchema(), targetType, order.GetMetadata())
+	targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+	if _, isTx := order.GetTarget().GetTarget().(*commonpb.Target_Transaction); isTx {
+		targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
 	}
+
+	// Enforce schema: convert metadata values to declared types.
+	enforceSchemaMap(info.GetMetadataSchema(), targetType, order.GetMetadata())
 
 	var previousValues map[string]*commonpb.MetadataValue
 
@@ -119,13 +117,15 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 				Key: key,
 			}
 
-			// Capture old value before overwriting (for log replay in indexbuilder).
+			// Capture old value before overwriting; the log records it for downstream consumers.
+			// Coerce it to the declared type so it matches what a read returned,
+			// regardless of whether the background conversion rewrote it yet.
 			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil && oldVal != nil {
 				if previousValues == nil {
 					previousValues = make(map[string]*commonpb.MetadataValue)
 				}
 
-				previousValues[key] = oldVal.Mutate()
+				previousValues[key] = coerceToDeclaredType(info.GetMetadataSchema(), targetType, key, oldVal.Mutate())
 			}
 
 			s.PutAccountMetadata(metaKey, value)
@@ -157,13 +157,14 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 		}
 
 		for key, value := range order.GetMetadata() {
-			// Capture old value before overwriting.
+			// Capture old value before overwriting, coerced to the declared type
+			// so it matches what a read returned, independent of conversion progress.
 			if existing, ok := state.GetMetadata()[key]; ok {
 				if previousValues == nil {
 					previousValues = make(map[string]*commonpb.MetadataValue)
 				}
 
-				previousValues[key] = existing
+				previousValues[key] = coerceToDeclaredType(info.GetMetadataSchema(), targetType, key, existing)
 			}
 
 			state.Metadata[key] = value
@@ -183,7 +184,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, domain.Describable) {
+func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
@@ -222,7 +223,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 		}
 
 		if oldVal != nil {
-			previousValue = oldVal.Mutate()
+			previousValue = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_ACCOUNT, order.GetKey(), oldVal.Mutate())
 		}
 		s.DeleteAccountMetadata(metaKey)
 	case *commonpb.Target_Transaction:
@@ -249,7 +250,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 		// Capture old value and remove the metadata key from the transaction state
 		if state.GetMetadata() != nil {
 			if val, ok := state.GetMetadata()[order.GetKey()]; ok {
-				previousValue = val
+				previousValue = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_TRANSACTION, order.GetKey(), val)
 				delete(state.GetMetadata(), order.GetKey())
 			}
 		}

@@ -35,7 +35,7 @@ func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerM
 				previousValues = make(map[string]*commonpb.MetadataValue)
 			}
 
-			previousValues[key] = oldVal.Mutate()
+			previousValues[key] = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_LEDGER, key, oldVal.Mutate())
 		}
 
 		s.PutLedgerMetadata(metaKey, value)
@@ -67,8 +67,10 @@ func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLe
 		return nil, &domain.ErrLedgerNotFound{Name: ledger}
 	}
 
+	info := infoReader.Mutate()
+
 	metaKey := domain.LedgerMetadataKey{
-		LedgerName: infoReader.GetName(),
+		LedgerName: info.GetName(),
 		Key:        order.GetKey(),
 	}
 
@@ -96,7 +98,7 @@ func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLe
 			DeletedLedgerMetadata: &commonpb.DeletedLedgerMetadataLog{
 				Ledger:        ledger,
 				Key:           order.GetKey(),
-				PreviousValue: previousValue,
+				PreviousValue: coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_LEDGER, order.GetKey(), previousValue),
 			},
 		},
 	}, nil

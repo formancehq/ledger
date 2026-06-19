@@ -30,12 +30,13 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 		case *servicepb.LedgerAction_CreateTransaction:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 				CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-					Postings:  data.CreateTransaction.GetPostings(),
-					Script:    data.CreateTransaction.GetScript(),
-					Timestamp: data.CreateTransaction.GetTimestamp(),
-					Reference: data.CreateTransaction.GetReference(),
-					Metadata:  data.CreateTransaction.GetMetadata(),
-					Force:     data.CreateTransaction.GetForce(),
+					Postings:        data.CreateTransaction.GetPostings(),
+					Script:          data.CreateTransaction.GetScript(),
+					Timestamp:       data.CreateTransaction.GetTimestamp(),
+					Reference:       data.CreateTransaction.GetReference(),
+					Metadata:        data.CreateTransaction.GetMetadata(),
+					AccountMetadata: data.CreateTransaction.GetAccountMetadata(),
+					Force:           data.CreateTransaction.GetForce(),
 				},
 			}
 		case *servicepb.LedgerAction_AddMetadata:

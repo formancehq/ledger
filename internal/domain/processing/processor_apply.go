@@ -48,7 +48,7 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
 		logPayload, err = p.processAddMetadata(ledgerName, boundaries, applyData.AddMetadata, s, ledgerInfo)
 	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-		logPayload, err = p.processDeleteMetadata(ledgerName, boundaries, applyData.DeleteMetadata, s)
+		logPayload, err = p.processDeleteMetadata(ledgerName, boundaries, applyData.DeleteMetadata, s, ledgerInfo)
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		logPayload, err = p.processCreateTransaction(ledgerName, boundaries, applyData.CreateTransaction, s, ledgerInfo)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:

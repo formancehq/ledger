@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -252,78 +251,6 @@ func TestExtractEntityIDFromReverseMap_TransactionShort(t *testing.T) {
 	assert.Equal(t, []byte{1, 2, 3}, result)
 }
 
-func TestLookupPreviousAccountValue_NilMap(t *testing.T) {
-	t.Parallel()
-
-	result := lookupPreviousAccountValue(nil, "acct", "key")
-	assert.Nil(t, result)
-}
-
-func TestLookupPreviousAccountValue_AccountNotFound(t *testing.T) {
-	t.Parallel()
-
-	prevMeta := map[string]*commonpb.MetadataMap{
-		"other": {Values: map[string]*commonpb.MetadataValue{
-			"key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "val"}},
-		}},
-	}
-
-	result := lookupPreviousAccountValue(prevMeta, "acct", "key")
-	assert.Nil(t, result)
-}
-
-func TestLookupPreviousAccountValue_NilSet(t *testing.T) {
-	t.Parallel()
-
-	prevMeta := map[string]*commonpb.MetadataMap{
-		"acct": nil,
-	}
-
-	result := lookupPreviousAccountValue(prevMeta, "acct", "key")
-	assert.Nil(t, result)
-}
-
-func TestLookupPreviousAccountValue_KeyNotFound(t *testing.T) {
-	t.Parallel()
-
-	prevMeta := map[string]*commonpb.MetadataMap{
-		"acct": {Values: map[string]*commonpb.MetadataValue{
-			"other": {Type: &commonpb.MetadataValue_StringValue{StringValue: "val"}},
-		}},
-	}
-
-	result := lookupPreviousAccountValue(prevMeta, "acct", "key")
-	assert.Nil(t, result)
-}
-
-func TestLookupPreviousAccountValue_Found(t *testing.T) {
-	t.Parallel()
-
-	mv := &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "hello"}}
-	prevMeta := map[string]*commonpb.MetadataMap{
-		"users:alice": {Values: map[string]*commonpb.MetadataValue{
-			"role": mv,
-		}},
-	}
-
-	result := lookupPreviousAccountValue(prevMeta, "users:alice", "role")
-	expected := readstore.EncodeMetadataValue(nil, mv)
-	assert.Equal(t, expected, result)
-}
-
-func TestLookupPreviousAccountValue_FoundAmongMultiple(t *testing.T) {
-	t.Parallel()
-
-	mv1 := &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 42}}
-	mv2 := &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}}
-	prevMeta := map[string]*commonpb.MetadataMap{
-		"acct": {Values: map[string]*commonpb.MetadataValue{
-			"count":  mv1,
-			"active": mv2,
-		}},
-	}
-
-	result := lookupPreviousAccountValue(prevMeta, "acct", "active")
-	expected := readstore.EncodeMetadataValue(nil, mv2)
-	assert.Equal(t, expected, result)
-}
+// Incremental metadata index updates resolve the old value to delete from the
+// index's own reverse map (see reverseMapValue), not the log's previous value,
+// so the previous-value lookup helper no longer exists.

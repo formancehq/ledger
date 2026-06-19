@@ -1519,3 +1519,82 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 	require.NotNil(t, createdTx)
 	require.Equal(t, uint64(0), createdTx.GetPeriodId(), "PeriodId should be 0 when no open period exists")
 }
+
+func TestProcessCreateTransaction_CoercesPreviousAccountMetadata(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	// "age" is declared INT64 and still converting; the account's stored value is
+	// the raw string written before the type was declared.
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "test-ledger",
+		Id:   1,
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"age": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			},
+		},
+	}
+
+	worldKey := domain.NewVolumeKey("test-ledger", "world", "USD")
+	destKey := domain.NewVolumeKey("test-ledger", "users:123", "USD")
+	zero := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
+		Key:        "age",
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now).Times(4)
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	mockStore.EXPECT().GetVolume(worldKey).Return(zero.AsReader(), nil)
+	mockStore.EXPECT().PutVolume(worldKey, gomock.Any())
+	mockStore.EXPECT().GetVolume(destKey).Return(zero.AsReader(), nil)
+	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, gomock.Any())
+	// Stored value is still the raw string (conversion has not rewritten it yet).
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("30"), nil)
+	mockStore.EXPECT().PutAccountMetadata(metaKey, gomock.Any())
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings: []*commonpb.Posting{
+							{Source: "world", Destination: "users:123", Amount: commonpb.NewUint256FromUint64(1000), Asset: "USD"},
+						},
+						AccountMetadata: map[string]*commonpb.MetadataMap{
+							"users:123": {Values: map[string]*commonpb.MetadataValue{"age": commonpb.NewStringValue("40")}},
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	created := result.GetApply().GetLog().GetData().GetCreatedTransaction()
+	require.NotNil(t, created)
+	prev := created.GetPreviousAccountMetadata()["users:123"].GetValues()["age"]
+	require.NotNil(t, prev)
+	require.Equal(t, int64(30), prev.GetIntValue(),
+		"previous account metadata must be coerced to the declared INT64 type, not left as raw string")
+}

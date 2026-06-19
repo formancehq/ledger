@@ -169,7 +169,9 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 				Key:        key,
 			}
 
-			// Capture old value before overwriting (for log replay in indexbuilder).
+			// Capture old value before overwriting; the log records it for downstream consumers.
+			// Coerce it to the declared type so it matches what a read returned,
+			// regardless of whether the background conversion rewrote it yet.
 			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil && oldVal != nil {
 				if previousAccountMetadata == nil {
 					previousAccountMetadata = make(map[string]*commonpb.MetadataMap)
@@ -181,7 +183,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 					previousAccountMetadata[account] = prevMap
 				}
 
-				prevMap.Values[key] = oldVal.Mutate()
+				prevMap.Values[key] = coerceToDeclaredType(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, oldVal.Mutate())
 			}
 
 			s.PutAccountMetadata(metaKey, value)

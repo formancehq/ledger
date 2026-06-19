@@ -378,6 +378,109 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	require.Equal(t, "env", removeLog.GetKey())
 }
 
+func TestProcessSetMetadataFieldType_RejectedWhileConverting(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "test-ledger",
+		Id:   1,
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"amount": {
+					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
+					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
+				},
+			},
+		},
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	// No PutLedger / AddMetadataConvertRequest / PutBoundaries: the order is rejected.
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: "test-ledger",
+				Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+					SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						Key:        "amount",
+						Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+					},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	var inProgress *domain.ErrMetadataConversionInProgress
+	require.ErrorAs(t, err, &inProgress)
+	require.Equal(t, "account", inProgress.Target)
+	require.Equal(t, "amount", inProgress.Key)
+}
+
+func TestProcessRemoveMetadataFieldType_RejectedWhileConverting(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "test-ledger",
+		Id:   1,
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"amount": {
+					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
+					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
+				},
+			},
+		},
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	// No PutLedger / PutBoundaries: the order is rejected.
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: "test-ledger",
+				Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+					RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						Key:        "amount",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	var inProgress *domain.ErrMetadataConversionInProgress
+	require.ErrorAs(t, err, &inProgress)
+}
+
 func TestEnforceSchema(t *testing.T) {
 	t.Parallel()
 

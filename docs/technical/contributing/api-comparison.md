@@ -733,6 +733,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Period not archiving | `FAILED_PRECONDITION` | `PERIOD_NOT_ARCHIVING` | `periodId` |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
 | Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
+| Metadata conversion in progress | `UNAVAILABLE` | `METADATA_CONVERSION_IN_PROGRESS` | `target`, `key` |
 | Invalid receipt | `INVALID_ARGUMENT` | `INVALID_RECEIPT` | `reason` |
 | Invalid cron expression | `INVALID_ARGUMENT` | `INVALID_CRON_EXPRESSION` | `expression`, `details` |
 | Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `ledger`, `name` |

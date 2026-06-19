@@ -130,6 +130,136 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	require.NotNil(t, result)
 }
 
+func TestProcessAddMetadata_CoercesPreviousValue(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "test-ledger",
+		Id:   1,
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"age": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			},
+		},
+	}
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
+		Key:        "age",
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	// The stored value is still raw (written before the type was declared; the
+	// background conversion has not rewritten it yet).
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("30"), nil)
+	mockStore.EXPECT().PutAccountMetadata(metaKey, gomock.Any())
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Account{
+								Account: &commonpb.TargetAccount{Addr: "users:123"},
+							},
+						},
+						Metadata: map[string]*commonpb.MetadataValue{
+							"age": commonpb.NewStringValue("40"),
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	saved := result.GetApply().GetLog().GetData().GetSavedMetadata()
+	require.NotNil(t, saved)
+	prev := saved.GetPreviousValues()["age"]
+	require.NotNil(t, prev)
+	require.Equal(t, int64(30), prev.GetIntValue(),
+		"previous value must be coerced to the declared INT64 type, not left as raw string")
+}
+
+func TestProcessDeleteMetadata_CoercesPreviousValue(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "test-ledger",
+		Id:   1,
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"age": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			},
+		},
+	}
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
+		Key:        "age",
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("30"), nil)
+	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	mockStore.EXPECT().DeleteAccountMetadata(metaKey)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+					DeleteMetadata: &commonpb.DeleteMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Account{
+								Account: &commonpb.TargetAccount{Addr: "users:123"},
+							},
+						},
+						Key: "age",
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	deleted := result.GetApply().GetLog().GetData().GetDeletedMetadata()
+	require.NotNil(t, deleted)
+	require.Equal(t, int64(30), deleted.GetPreviousValue().GetIntValue(),
+		"previous value must be coerced to the declared INT64 type, not left as raw string")
+}
+
 func TestProcessDeleteMetadata_Account(t *testing.T) {
 	t.Parallel()
 

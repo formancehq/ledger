@@ -296,6 +296,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrTransactionStateInconsistent":  &ErrTransactionStateInconsistent{},
 		"ErrNumscriptRuntime":              &ErrNumscriptRuntime{},
 		"ErrVolumeNotMaterialized":         &ErrVolumeNotMaterialized{},
+		"ErrMetadataConversionInProgress":  &ErrMetadataConversionInProgress{},
 		"errCheckpointIDRequired":          errCheckpointIDRequired{},
 		// Unexported sentinel struct types; each is exposed once via a
 		// package-level Describable var (ErrColdStorageDisabled, etc.)

@@ -154,7 +154,7 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 					Key:        key,
 				}
 
-				// Capture old value before overwriting (for log replay in indexbuilder).
+				// Capture old value before overwriting; the log records it for downstream consumers.
 				if oldVal, err := s.GetAccountMetadata(metaKey); err == nil && oldVal != nil {
 					if previousAccountMetadata == nil {
 						previousAccountMetadata = make(map[string]*commonpb.MetadataMap)

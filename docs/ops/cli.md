@@ -438,6 +438,7 @@ ledgerctl ledgers set-metadata-type [flags]
 - If `--ledger` is not provided and only one ledger exists, it will be used automatically
 - If multiple ledgers exist, you will be prompted to select one
 - Missing flags will be prompted interactively
+- While a previous conversion of the same field is still running (status `CONVERTING` in `get-schema`), changing its type is rejected with a transient error — wait for `COMPLETE` and retry
 
 **Example:**
 
@@ -477,6 +478,7 @@ ledgerctl ledgers remove-metadata-type [flags]
 - If multiple ledgers exist, you will be prompted to select one
 - Prompts for confirmation before removing (use `-y` to skip)
 - Missing flags will be prompted interactively
+- While the field's conversion is still running (status `CONVERTING` in `get-schema`), removal is rejected with a transient error — wait for `COMPLETE` and retry
 
 **Example:**
 

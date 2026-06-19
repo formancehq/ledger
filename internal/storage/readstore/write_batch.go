@@ -1,6 +1,7 @@
 package readstore
 
 import (
+	"bytes"
 	"encoding/binary"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -10,6 +11,15 @@ import (
 type WriteBatch struct {
 	batch *dal.WriteSession
 	count int // number of operations buffered
+
+	// rmapOverlay is a read-your-writes view of the reverse-map mutations made in
+	// the current (uncommitted) batch: reverseKey -> encoded value last written
+	// (nil = deleted). It is reset by Init so it always matches the bound batch,
+	// and is written by ReplaceMetadataIndex/DeleteMetadataEntryWithPrevious
+	// themselves — so a reverse-map write that is not mirrored is unrepresentable.
+	// Callers resolve the index's current value for a key via ReverseMapOverlay
+	// (uncommitted batch) before falling back to committed state.
+	rmapOverlay map[string][]byte
 }
 
 // NewWriteBatch creates a new WriteBatch.
@@ -17,9 +27,22 @@ func NewWriteBatch() *WriteBatch {
 	return &WriteBatch{}
 }
 
-// Init binds the batch to a dal.WriteSession.
+// Init binds the batch to a dal.WriteSession and resets the read-your-writes
+// reverse-map overlay. This is the only place a batch is bound, so the overlay
+// can never be left stale relative to the batch it tracks.
 func (wb *WriteBatch) Init(batch *dal.WriteSession) {
 	wb.batch = batch
+	wb.rmapOverlay = make(map[string][]byte)
+}
+
+// ReverseMapOverlay returns the encoded value this batch last wrote for
+// reverseKey and whether the key was touched in the current batch. A (nil, true)
+// result means the key was deleted in this batch; (nil, false) means untouched —
+// the caller should consult committed state.
+func (wb *WriteBatch) ReverseMapOverlay(reverseKey []byte) ([]byte, bool) {
+	v, ok := wb.rmapOverlay[string(reverseKey)]
+
+	return v, ok
 }
 
 // Batch returns the underlying dal.WriteSession for direct operations (e.g., range deletes).
@@ -36,6 +59,7 @@ func (wb *WriteBatch) Empty() bool {
 func (wb *WriteBatch) Reset() {
 	wb.batch = nil
 	wb.count = 0
+	wb.rmapOverlay = nil
 }
 
 // put sets a key-value pair in the batch.
@@ -150,7 +174,13 @@ func (wb *WriteBatch) ReplaceMetadataIndex(
 		return err
 	}
 
-	return wb.put(reverseKey, newEncodedValue)
+	if err := wb.put(reverseKey, newEncodedValue); err != nil {
+		return err
+	}
+
+	wb.rmapOverlay[string(reverseKey)] = bytes.Clone(newEncodedValue)
+
+	return nil
 }
 
 // DeleteMetadataEntryWithPrevious removes both the forward index and reverse map entries
@@ -171,7 +201,13 @@ func (wb *WriteBatch) DeleteMetadataEntryWithPrevious(
 		}
 	}
 
-	return wb.del(reverseKey)
+	if err := wb.del(reverseKey); err != nil {
+		return err
+	}
+
+	wb.rmapOverlay[string(reverseKey)] = nil
+
+	return nil
 }
 
 // WriteTransactionReferenceIndex inserts an entry in the transaction reference index.

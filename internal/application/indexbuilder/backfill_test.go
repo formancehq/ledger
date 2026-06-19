@@ -390,6 +390,147 @@ func readStoreKeyExists(t *testing.T, store *readstore.Store, key []byte) bool {
 	return false
 }
 
+// TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding guards the
+// fix for an index desync during the BUILDING window. The incremental update
+// deletes the old entry using the index's own reverse-map value, not the log's
+// previous value: while the schema-rewrite backfill has not yet rewritten an
+// entity's entry, the index still holds the pre-conversion (raw) encoding, which
+// differs from the coerced previous value in the log. Here the log carries the
+// coerced Int64(30) but the index entry is the raw String "30"; the delete must
+// still hit, leaving no stale entry.
+func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.kb = dal.NewKeyBuilder()
+	b.wb = readstore.NewWriteBatch()
+
+	kb := b.kb
+	const (
+		ledger  = "test"
+		account = "acct-001"
+		key     = "age"
+	)
+	entityID := []byte(account)
+
+	// Pre-conversion index state: age was written as a string before the INT64
+	// type was declared, and the schema-rewrite backfill has not yet rewritten
+	// this entity's entry — so both the reverse map and the forward index hold
+	// the raw string encoding.
+	rawEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("30"))
+	reverseKey := cloneBytes(readstore.AccountReverseMapKey(kb, ledger, account, key))
+	rawForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceAccount, key, rawEncoded, entityID))
+
+	seed := b.readStore.NewBatch()
+	require.NoError(t, seed.SetBytes(reverseKey, rawEncoded))
+	require.NoError(t, seed.SetBytes(rawForwardKey, nil))
+	require.NoError(t, seed.Commit())
+
+	// The "age" account index is BUILDING; incremental writes still flow to it.
+	cfg := newLedgerIndexConfig()
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{
+		Id:          id,
+		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+	}
+
+	// Incremental write age="40". The FSM coerces both the new value and the
+	// captured previous value to the declared INT64 type.
+	sm := &commonpb.SavedMetadata{
+		Target: &commonpb.Target{
+			Target: &commonpb.Target_Account{
+				Account: &commonpb.TargetAccount{Addr: account},
+			},
+		},
+		Metadata:       map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(40)},
+		PreviousValues: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(30)},
+	}
+
+	batch := b.readStore.NewBatch()
+	b.wb.Init(batch)
+	require.NoError(t, b.indexSavedMetadata(kb, cfg, ledger, sm))
+	require.NoError(t, b.wb.Flush())
+
+	// New entry exists and the reverse map points at it.
+	newForwardKey := readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceAccount, key,
+		readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(40)), entityID)
+	assertReadStoreValue(t, b, newForwardKey, nil)
+	assertReadStoreValue(t, b, reverseKey, readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(40)))
+
+	// The pre-conversion entry is gone: the delete was located via the reverse
+	// map (raw String "30"), not the log's coerced Int64(30), so a query for the
+	// old value no longer returns acct-001.
+	assertReadStoreMissing(t, b, rawForwardKey)
+}
+
+// TestIndexCreatedThenOverwrittenTxMetadataSameBatch guards the overlay against
+// the create-then-overwrite-in-one-batch interleaving: a transaction sets indexed
+// metadata at creation (first write, no previous value), and a later SaveMetadata
+// in the SAME uncommitted batch overwrites the same key. The create write is not
+// yet committed, so the overwrite can only find the entry to delete via the
+// overlay — the create path must mirror its reverse-map write there.
+func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.kb = dal.NewKeyBuilder()
+	b.wb = readstore.NewWriteBatch()
+	b.accounts = make(map[string]struct{})
+
+	kb := b.kb
+	const (
+		ledger = "test"
+		txID   = uint64(7)
+		key    = "category"
+	)
+	txIDBytes := readstore.EncodeTxID(make([]byte, 0, 8), txID)
+
+	cfg := newLedgerIndexConfig()
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	v1 := commonpb.NewStringValue("v1")
+	v2 := commonpb.NewStringValue("v2")
+	// Clone: KeyBuilder returns buffer-backed slices that later index calls reuse.
+	v1Key := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceTransaction, key,
+		readstore.EncodeMetadataValue(nil, v1), txIDBytes))
+	v2Key := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceTransaction, key,
+		readstore.EncodeMetadataValue(nil, v2), txIDBytes))
+	reverseKey := cloneBytes(readstore.TransactionReverseMapKey(kb, ledger, txID, key))
+
+	batch := b.readStore.NewBatch()
+	b.wb.Init(batch)
+
+	// 1. CreateTransaction sets indexed tx metadata key=v1 (first write).
+	ct := &commonpb.CreatedTransaction{
+		Transaction: &commonpb.Transaction{
+			Id:       txID,
+			Metadata: map[string]*commonpb.MetadataValue{key: v1},
+		},
+	}
+	require.NoError(t, b.indexCreatedTransaction(kb, cfg, ledger, ct, nil))
+
+	// 2. Same batch: overwrite the same key to v2 before the batch commits.
+	sm := &commonpb.SavedMetadata{
+		Target: &commonpb.Target{
+			Target: &commonpb.Target_Transaction{
+				Transaction: &commonpb.TargetTransaction{
+					Identifier: &commonpb.TargetTransaction_Id{Id: txID},
+				},
+			},
+		},
+		Metadata: map[string]*commonpb.MetadataValue{key: v2},
+	}
+	require.NoError(t, b.indexSavedMetadata(kb, cfg, ledger, sm))
+
+	require.NoError(t, b.wb.Flush())
+
+	// v2 is indexed and the stale v1 entry from the create is gone.
+	assertReadStoreValue(t, b, v2Key, nil)
+	assertReadStoreValue(t, b, reverseKey, readstore.EncodeMetadataValue(nil, v2))
+	assertReadStoreMissing(t, b, v1Key)
+}
+
 func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *testing.T) {
 	t.Parallel()
 

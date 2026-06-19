@@ -19,6 +19,13 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 
 	info := infoReader.Mutate()
 
+	if metadataFieldConverting(info, order.GetTargetType(), order.GetKey()) {
+		return nil, &domain.ErrMetadataConversionInProgress{
+			Target: commonpb.TargetTypeToString(order.GetTargetType()),
+			Key:    order.GetKey(),
+		}
+	}
+
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
@@ -87,6 +94,13 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 
 	info := infoReader.Mutate()
 
+	if metadataFieldConverting(info, order.GetTargetType(), order.GetKey()) {
+		return nil, &domain.ErrMetadataConversionInProgress{
+			Target: commonpb.TargetTypeToString(order.GetTargetType()),
+			Key:    order.GetKey(),
+		}
+	}
+
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
@@ -134,31 +148,27 @@ func enforceSchemaMap(schema *commonpb.MetadataSchema, targetType commonpb.Targe
 		return
 	}
 
-	var fields map[string]*commonpb.MetadataFieldSchema
-
-	switch targetType {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		fields = schema.GetAccountFields()
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		fields = schema.GetTransactionFields()
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		fields = schema.GetLedgerFields()
-	}
-
-	if len(fields) == 0 {
-		return
-	}
-
 	for key, value := range metadata {
-		fieldSchema, ok := fields[key]
-		if !ok || value == nil {
-			continue
-		}
-
-		if !commonpb.TypeMatches(value, fieldSchema.GetType()) {
-			metadata[key] = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
-		}
+		metadata[key] = coerceToDeclaredType(schema, targetType, key, value)
 	}
+}
+
+// coerceToDeclaredType returns v coerced to the metadata field's declared type
+// for (targetType, key) — the same value a read of that key returns. v is
+// returned unchanged when it is nil or the key has no declared type. Captured
+// previous values pass through this so they stay independent of whether the
+// background conversion has already rewritten the stored value.
+func coerceToDeclaredType(schema *commonpb.MetadataSchema, targetType commonpb.TargetType, key string, v *commonpb.MetadataValue) *commonpb.MetadataValue {
+	if v == nil {
+		return v
+	}
+
+	_, fs := SchemaFieldForTarget(schema, targetType, key)
+	if fs == nil || commonpb.TypeMatches(v, fs.GetType()) {
+		return v
+	}
+
+	return commonpb.ConvertMetadataValue(v, fs.GetType())
 }
 
 // populateInitialSchema builds a MetadataSchema from initial_schema commands
@@ -199,6 +209,15 @@ func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *co
 	}
 
 	return schema
+}
+
+// metadataFieldConverting reports whether the (target, key) field is declared
+// in the ledger schema and its background conversion is still running. A field
+// that is absent or COMPLETE (the zero status) returns false.
+func metadataFieldConverting(info *commonpb.LedgerInfo, targetType commonpb.TargetType, key string) bool {
+	_, fs := SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
+
+	return fs.GetStatus() == commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING
 }
 
 // SchemaFieldForTarget returns the field map and field schema for the given
