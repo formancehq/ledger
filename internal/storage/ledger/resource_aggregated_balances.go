@@ -80,7 +80,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 					Where("accounts.address = moves.accounts_address")
 
 				ret = ret.
-					Join(`left join lateral (?) accounts on true`, subQuery).
+					Join(`left join lateral (?) accounts_metadata on true`, subQuery).
 					Column("metadata")
 			}
 		}
