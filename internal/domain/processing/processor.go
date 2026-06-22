@@ -201,65 +201,93 @@ func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 }
 
 // ProcessOrder processes an Order and returns the resulting LogPayload.
+// Dispatch is two-level: first the wrapper (ledger-scoped vs system-scoped),
+// then the payload inside the wrapper. The wrapper-level split is the
+// structural invariant that lets the audit log attribute each entry to a
+// ledger via a single accessor.
 func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	switch orderType := order.GetType().(type) {
-	case *raftcmdpb.Order_Apply:
-		return p.processApply(orderType.Apply, s)
-	case *raftcmdpb.Order_CreateLedger:
-		return p.processCreateLedger(orderType.CreateLedger, s)
-	case *raftcmdpb.Order_DeleteLedger:
-		return p.processDeleteLedger(orderType.DeleteLedger, s)
-	case *raftcmdpb.Order_RegisterSigningKey:
-		return p.processRegisterSigningKey(orderType.RegisterSigningKey, s)
-	case *raftcmdpb.Order_RevokeSigningKey:
-		return p.processRevokeSigningKey(orderType.RevokeSigningKey, s)
-	case *raftcmdpb.Order_SetSigningConfig:
-		return p.processSetSigningConfig(orderType.SetSigningConfig, s)
-	case *raftcmdpb.Order_SetMaintenanceMode:
-		return p.processSetMaintenanceMode(orderType.SetMaintenanceMode, s)
-	case *raftcmdpb.Order_AddEventsSink:
-		return p.processAddEventsSink(orderType.AddEventsSink, s)
-	case *raftcmdpb.Order_RemoveEventsSink:
-		return p.processRemoveEventsSink(orderType.RemoveEventsSink, s)
-	case *raftcmdpb.Order_CloseChapter:
-		return p.processCloseChapter(orderType.CloseChapter, s)
-	case *raftcmdpb.Order_SealChapter:
-		return p.processSealChapter(orderType.SealChapter, s)
-	case *raftcmdpb.Order_ArchiveChapter:
-		return p.processArchiveChapter(orderType.ArchiveChapter, s)
-	case *raftcmdpb.Order_ConfirmArchiveChapter:
-		return p.processConfirmArchiveChapter(orderType.ConfirmArchiveChapter, s)
-	case *raftcmdpb.Order_SetChapterSchedule:
-		return p.processSetChapterSchedule(orderType.SetChapterSchedule, s)
-	case *raftcmdpb.Order_DeleteChapterSchedule:
-		return p.processDeleteChapterSchedule(s)
-	case *raftcmdpb.Order_MirrorIngest:
-		return p.processMirrorIngest(orderType.MirrorIngest, s)
-	case *raftcmdpb.Order_PromoteLedger:
-		return p.processPromoteLedger(orderType.PromoteLedger, s)
-	case *raftcmdpb.Order_CreatePreparedQuery:
-		return p.processCreatePreparedQuery(orderType.CreatePreparedQuery, s)
-	case *raftcmdpb.Order_UpdatePreparedQuery:
-		return p.processUpdatePreparedQuery(orderType.UpdatePreparedQuery, s)
-	case *raftcmdpb.Order_DeletePreparedQuery:
-		return p.processDeletePreparedQuery(orderType.DeletePreparedQuery, s)
-	case *raftcmdpb.Order_SaveNumscript:
-		return p.processSaveNumscript(orderType.SaveNumscript, s)
-	case *raftcmdpb.Order_DeleteNumscript:
-		return p.processDeleteNumscript(orderType.DeleteNumscript, s)
-	case *raftcmdpb.Order_CreateQueryCheckpoint:
-		return p.processCreateQueryCheckpoint(orderType.CreateQueryCheckpoint, s)
-	case *raftcmdpb.Order_DeleteQueryCheckpoint:
-		return p.processDeleteQueryCheckpoint(orderType.DeleteQueryCheckpoint, s)
-	case *raftcmdpb.Order_SetQueryCheckpointSchedule:
-		return p.processSetQueryCheckpointSchedule(orderType.SetQueryCheckpointSchedule, s)
-	case *raftcmdpb.Order_DeleteQueryCheckpointSchedule:
-		return p.processDeleteQueryCheckpointSchedule(s)
-	case *raftcmdpb.Order_SaveLedgerMetadata:
-		return p.processAddLedgerMetadata(orderType.SaveLedgerMetadata, s)
-	case *raftcmdpb.Order_DeleteLedgerMetadata:
-		return p.processDeleteLedgerMetadata(orderType.DeleteLedgerMetadata, s)
+	case *raftcmdpb.Order_LedgerScoped:
+		return p.processLedgerScoped(orderType.LedgerScoped, s)
+	case *raftcmdpb.Order_SystemScoped:
+		return p.processSystemScoped(orderType.SystemScoped, s)
 	default:
 		return nil, &domain.ErrInvalidOrderType{TypeName: fmt.Sprintf("%T", order.GetType())}
+	}
+}
+
+// processLedgerScoped dispatches a ledger-scoped order payload, threading the
+// wrapper-level ledger name down to each processor (the sub-messages no
+// longer carry it themselves).
+func (p *RequestProcessor) processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	ledger := ls.GetLedger()
+	switch payload := ls.GetPayload().(type) {
+	case *raftcmdpb.LedgerScopedOrder_Apply:
+		return p.processApply(ledger, payload.Apply, s)
+	case *raftcmdpb.LedgerScopedOrder_CreateLedger:
+		return p.processCreateLedger(ledger, payload.CreateLedger, s)
+	case *raftcmdpb.LedgerScopedOrder_DeleteLedger:
+		return p.processDeleteLedger(ledger, s)
+	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
+		return p.processMirrorIngest(ledger, payload.MirrorIngest, s)
+	case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
+		return p.processPromoteLedger(ledger, s)
+	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
+		return p.processAddLedgerMetadata(ledger, payload.SaveLedgerMetadata, s)
+	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
+		return p.processDeleteLedgerMetadata(ledger, payload.DeleteLedgerMetadata, s)
+	case *raftcmdpb.LedgerScopedOrder_SaveNumscript:
+		return p.processSaveNumscript(ledger, payload.SaveNumscript, s)
+	case *raftcmdpb.LedgerScopedOrder_DeleteNumscript:
+		return p.processDeleteNumscript(ledger, payload.DeleteNumscript, s)
+	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
+		return p.processCreatePreparedQuery(ledger, payload.CreatePreparedQuery, s)
+	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
+		return p.processUpdatePreparedQuery(ledger, payload.UpdatePreparedQuery, s)
+	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
+		return p.processDeletePreparedQuery(ledger, payload.DeletePreparedQuery, s)
+	default:
+		return nil, &domain.ErrInvalidOrderType{TypeName: fmt.Sprintf("%T", ls.GetPayload())}
+	}
+}
+
+// processSystemScoped dispatches a system-scoped order payload. These commands
+// affect cluster or global state and are never attributed to a single ledger.
+func (p *RequestProcessor) processSystemScoped(ss *raftcmdpb.SystemScopedOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	switch payload := ss.GetPayload().(type) {
+	case *raftcmdpb.SystemScopedOrder_RegisterSigningKey:
+		return p.processRegisterSigningKey(payload.RegisterSigningKey, s)
+	case *raftcmdpb.SystemScopedOrder_RevokeSigningKey:
+		return p.processRevokeSigningKey(payload.RevokeSigningKey, s)
+	case *raftcmdpb.SystemScopedOrder_SetSigningConfig:
+		return p.processSetSigningConfig(payload.SetSigningConfig, s)
+	case *raftcmdpb.SystemScopedOrder_SetMaintenanceMode:
+		return p.processSetMaintenanceMode(payload.SetMaintenanceMode, s)
+	case *raftcmdpb.SystemScopedOrder_AddEventsSink:
+		return p.processAddEventsSink(payload.AddEventsSink, s)
+	case *raftcmdpb.SystemScopedOrder_RemoveEventsSink:
+		return p.processRemoveEventsSink(payload.RemoveEventsSink, s)
+	case *raftcmdpb.SystemScopedOrder_CloseChapter:
+		return p.processCloseChapter(payload.CloseChapter, s)
+	case *raftcmdpb.SystemScopedOrder_SealChapter:
+		return p.processSealChapter(payload.SealChapter, s)
+	case *raftcmdpb.SystemScopedOrder_ArchiveChapter:
+		return p.processArchiveChapter(payload.ArchiveChapter, s)
+	case *raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter:
+		return p.processConfirmArchiveChapter(payload.ConfirmArchiveChapter, s)
+	case *raftcmdpb.SystemScopedOrder_SetChapterSchedule:
+		return p.processSetChapterSchedule(payload.SetChapterSchedule, s)
+	case *raftcmdpb.SystemScopedOrder_DeleteChapterSchedule:
+		return p.processDeleteChapterSchedule(s)
+	case *raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint:
+		return p.processCreateQueryCheckpoint(payload.CreateQueryCheckpoint, s)
+	case *raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint:
+		return p.processDeleteQueryCheckpoint(payload.DeleteQueryCheckpoint, s)
+	case *raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule:
+		return p.processSetQueryCheckpointSchedule(payload.SetQueryCheckpointSchedule, s)
+	case *raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule:
+		return p.processDeleteQueryCheckpointSchedule(s)
+	default:
+		return nil, &domain.ErrInvalidOrderType{TypeName: fmt.Sprintf("%T", ss.GetPayload())}
 	}
 }

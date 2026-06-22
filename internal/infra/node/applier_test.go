@@ -158,9 +158,12 @@ func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (raftpb.Entr
 	t.Helper()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name: name,
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: name,
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
 			},
 		},
 	}
@@ -447,9 +450,12 @@ func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string
 	t.Helper()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name: name,
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: name,
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
 			},
 		},
 	}
@@ -768,8 +774,12 @@ func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (raftpb.Entry, u
 	t.Helper()
 
 	cmd := commands.NewCommand(&raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateQueryCheckpoint{
-			CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+				},
+			},
 		},
 	})
 

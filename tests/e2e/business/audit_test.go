@@ -228,8 +228,9 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
 		firstOrder := decodeOrder(full.GetItems()[0])
-		Expect(firstOrder.GetCreateLedger()).NotTo(BeNil())
-		Expect(firstOrder.GetCreateLedger().GetName()).To(Equal(ledgerForOrders))
+		Expect(firstOrder.GetLedgerScoped()).NotTo(BeNil())
+		Expect(firstOrder.GetLedgerScoped().GetLedger()).To(Equal(ledgerForOrders))
+		Expect(firstOrder.GetLedgerScoped().GetCreateLedger()).NotTo(BeNil())
 
 		// Create a transaction — produces an Apply/CreateTransaction order
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
@@ -252,9 +253,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
-		apply := decodeOrder(full.GetItems()[0]).GetApply()
+		ls := decodeOrder(full.GetItems()[0]).GetLedgerScoped()
+		Expect(ls).NotTo(BeNil())
+		Expect(ls.GetLedger()).To(Equal(ledgerForOrders))
+		apply := ls.GetApply()
 		Expect(apply).NotTo(BeNil())
-		Expect(apply.GetLedger()).To(Equal(ledgerForOrders))
 		Expect(apply.GetCreateTransaction()).NotTo(BeNil())
 	})
 
@@ -336,8 +339,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(2))
-		Expect(decodeOrder(full.GetItems()[0]).GetApply()).NotTo(BeNil())
-		Expect(decodeOrder(full.GetItems()[1]).GetApply()).NotTo(BeNil())
+		Expect(decodeOrder(full.GetItems()[0]).GetLedgerScoped().GetApply()).NotTo(BeNil())
+		Expect(decodeOrder(full.GetItems()[1]).GetLedgerScoped().GetApply()).NotTo(BeNil())
 	})
 
 	It("Should get a single entry with items populated", func() {

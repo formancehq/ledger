@@ -36,9 +36,13 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	mockStore.EXPECT().AddSinkConfig(sinkConfig)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_AddEventsSink{
-			AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-				Config: sinkConfig,
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
+					AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
+						Config: sinkConfig,
+					},
+				},
 			},
 		},
 	}
@@ -65,11 +69,15 @@ func TestProcessAddEventsSink_BatchSizeTooLarge(t *testing.T) {
 	// No mockStore expectations: validation must short-circuit before any
 	// store access so the persisted state is never touched.
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_AddEventsSink{
-			AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-				Config: &commonpb.SinkConfig{
-					Name:      "huge-sink",
-					BatchSize: domain.MaxSinkBatchSize + 1,
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
+					AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
+						Config: &commonpb.SinkConfig{
+							Name:      "huge-sink",
+							BatchSize: domain.MaxSinkBatchSize + 1,
+						},
+					},
 				},
 			},
 		},
@@ -104,9 +112,13 @@ func TestProcessAddEventsSink_BatchSizeAtMaxAccepted(t *testing.T) {
 	mockStore.EXPECT().AddSinkConfig(cfg)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_AddEventsSink{
-			AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-				Config: cfg,
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
+					AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
+						Config: cfg,
+					},
+				},
 			},
 		},
 	}
@@ -130,10 +142,14 @@ func TestProcessAddEventsSink_AlreadyExists(t *testing.T) {
 	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig, nil)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_AddEventsSink{
-			AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-				Config: &commonpb.SinkConfig{
-					Name: "my-nats-sink",
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
+					AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
+						Config: &commonpb.SinkConfig{
+							Name: "my-nats-sink",
+						},
+					},
 				},
 			},
 		},
@@ -163,9 +179,13 @@ func TestProcessRemoveEventsSink_Success(t *testing.T) {
 	mockStore.EXPECT().RemoveSinkConfig("my-nats-sink")
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_RemoveEventsSink{
-			RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
-				Name: "my-nats-sink",
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{
+					RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
+						Name: "my-nats-sink",
+					},
+				},
 			},
 		},
 	}
@@ -192,9 +212,13 @@ func TestProcessRemoveEventsSink_NotFound(t *testing.T) {
 	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(nil, nil)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_RemoveEventsSink{
-			RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
-				Name: "my-nats-sink",
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{
+					RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
+						Name: "my-nats-sink",
+					},
+				},
 			},
 		},
 	}

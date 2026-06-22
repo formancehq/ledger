@@ -24,9 +24,12 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name: "test-ledger",
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
 			},
 		},
 		Idempotency: &commonpb.Idempotency{
@@ -83,9 +86,12 @@ func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name: "test-ledger",
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
 			},
 		},
 		Idempotency: &commonpb.Idempotency{
@@ -136,8 +142,13 @@ func TestComputeOrderHash_ExcludesPerAttemptFields(t *testing.T) {
 	require.NoError(t, err)
 
 	base := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "L"},
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
+			},
 		},
 		Idempotency: &commonpb.Idempotency{Key: "unique-key-123"},
 	}
@@ -163,9 +174,12 @@ func TestProcessOrders_WithIdempotencyKey_Conflict(t *testing.T) {
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name: "test-ledger",
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
 			},
 		},
 		Idempotency: &commonpb.Idempotency{
@@ -208,9 +222,12 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name: "test-ledger",
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
 			},
 		},
 		// No idempotency key
@@ -305,23 +322,35 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(2))
 
 	orders := []*raftcmdpb.Order{
-		{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "myled"}}},
-		{Type: &raftcmdpb.Order_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
-			Ledger: "myled",
-			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-				CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-					Postings: []*commonpb.Posting{
-						{
-							Source:      "world",
-							Destination: "users:bob",
-							Amount:      commonpb.NewUint256FromUint64(100),
-							Asset:       "USD",
-						},
-					},
-					Force: true,
+		{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "myled",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
 				},
 			},
-		}}},
+		}},
+		{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "myled",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+							Postings: []*commonpb.Posting{
+								{
+									Source:      "world",
+									Destination: "users:bob",
+									Amount:      commonpb.NewUint256FromUint64(100),
+									Asset:       "USD",
+								},
+							},
+							Force: true,
+						},
+					},
+					},
+				},
+			},
+		}},
 	}
 
 	response, err := processor.ProcessOrders(orders, mockFactory(mockStore))

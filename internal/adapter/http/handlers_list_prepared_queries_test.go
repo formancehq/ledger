@@ -20,8 +20,8 @@ func TestHandleListPreparedQueries_Success(t *testing.T) {
 	backend.EXPECT().ListPreparedQueries(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
 			return []*commonpb.PreparedQuery{
-				{Name: "query1", Ledger: "ledger1"},
-				{Name: "query2", Ledger: "ledger1"},
+				{Name: "query1"},
+				{Name: "query2"},
 			}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -68,7 +68,6 @@ func TestHandleListPreparedQueries_CamelCaseBodyShape(t *testing.T) {
 		func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
 			return []*commonpb.PreparedQuery{{
 				Name:   "q1",
-				Ledger: "ledger1",
 				Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 				Filter: &commonpb.QueryFilter{
 					Filter: &commonpb.QueryFilter_Reference{

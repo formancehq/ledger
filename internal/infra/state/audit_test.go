@@ -387,6 +387,132 @@ func TestBuildAuditFailure(t *testing.T) {
 	})
 }
 
+// TestExtractLedgers_WrapperCoversAllLedgerScopedPayloads guards the
+// regression reported in #511: numscript and prepared-query orders were
+// recorded with an empty `Ledgers` list in the audit entry, so they never
+// surfaced in ledger-scoped audit queries. With the wrapper-based design
+// extractLedgers reads the ledger off the LedgerScopedOrder envelope, so
+// every payload variant under that wrapper contributes its ledger — adding
+// a new payload variant cannot regress audit attribution.
+func TestExtractLedgers_WrapperCoversAllLedgerScopedPayloads(t *testing.T) {
+	t.Parallel()
+
+	// Each entry is the LedgerScopedOrder wrapper carrying one payload
+	// variant. Pre-built rather than expressed via a helper because the
+	// generated `Payload` interface is unexported, so callers must spell out
+	// the wrapper construction in-place.
+	wrappers := map[string]*raftcmdpb.LedgerScopedOrder{
+		"apply": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}},
+		},
+		"create_ledger": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+		},
+		"delete_ledger": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{DeleteLedger: &raftcmdpb.DeleteLedgerOrder{}},
+		},
+		"mirror_ingest": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{}},
+		},
+		"promote_ledger": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{}},
+		},
+		"save_ledger_metadata": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{}},
+		},
+		"delete_ledger_metadata": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata{DeleteLedgerMetadata: &raftcmdpb.DeleteLedgerMetadataOrder{}},
+		},
+		"save_numscript": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{SaveNumscript: &raftcmdpb.SaveNumscriptOrder{}},
+		},
+		"delete_numscript": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_DeleteNumscript{DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{}},
+		},
+		"create_prepared_query": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{}},
+		},
+		"update_prepared_query": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery{UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{}},
+		},
+		"delete_prepared_query": {
+			Ledger:  "books",
+			Payload: &raftcmdpb.LedgerScopedOrder_DeletePreparedQuery{DeletePreparedQuery: &raftcmdpb.DeletePreparedQueryOrder{}},
+		},
+	}
+
+	for label, ls := range wrappers {
+		t.Run(label, func(t *testing.T) {
+			t.Parallel()
+
+			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: ls}}
+			ledgers := extractLedgers([]*raftcmdpb.Order{order})
+			require.Equal(t, []string{"books"}, ledgers,
+				"%s must attribute its audit entry to the wrapper ledger", label)
+		})
+	}
+}
+
+// TestExtractLedgers_SystemScopedPayloadsAreNotAttributed pins the other
+// side of the invariant: system-scoped orders never contribute a ledger to
+// the audit entry.
+func TestExtractLedgers_SystemScopedPayloadsAreNotAttributed(t *testing.T) {
+	t.Parallel()
+
+	wraps := []*raftcmdpb.SystemScopedOrder{
+		{Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{}}},
+		{Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{}}},
+		{Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{CloseChapter: &raftcmdpb.CloseChapterOrder{}}},
+		{Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
+	}
+
+	orders := make([]*raftcmdpb.Order, len(wraps))
+	for i, w := range wraps {
+		orders[i] = &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: w}}
+	}
+
+	require.Nil(t, extractLedgers(orders),
+		"system-scoped orders must never contribute a ledger to the audit entry")
+}
+
+// TestExtractLedgers_MixedBatchDeduplicatesAndSorts checks the aggregation
+// across a heterogeneous batch — ledger names are deduplicated and returned
+// in a stable (sorted) order, and system-scoped orders mixed in are ignored.
+func TestExtractLedgers_MixedBatchDeduplicatesAndSorts(t *testing.T) {
+	t.Parallel()
+
+	orders := []*raftcmdpb.Order{
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger:  "zeta",
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}},
+		}}},
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger:  "alpha",
+			Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{SaveNumscript: &raftcmdpb.SaveNumscriptOrder{}},
+		}}},
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger:  "zeta",
+			Payload: &raftcmdpb.LedgerScopedOrder_DeletePreparedQuery{DeletePreparedQuery: &raftcmdpb.DeletePreparedQueryOrder{}},
+		}}},
+		{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{}},
+		}}},
+	}
+
+	require.Equal(t, []string{"alpha", "zeta"}, extractLedgers(orders))
+}
+
 func TestExtractLogSequenceRange(t *testing.T) {
 	t.Parallel()
 

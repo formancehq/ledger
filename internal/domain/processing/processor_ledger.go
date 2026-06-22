@@ -9,18 +9,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
-	existing, err := s.GetLedger(order.GetName())
+func (p *RequestProcessor) processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	existing, err := s.GetLedger(ledger)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: err}
 	}
 
 	if err == nil {
 		if existing.GetDeletedAt() != nil {
-			return nil, &domain.ErrLedgerDeleted{Name: order.GetName()}
+			return nil, &domain.ErrLedgerDeleted{Name: ledger}
 		}
 
-		return nil, &domain.ErrLedgerAlreadyExists{Name: order.GetName()}
+		return nil, &domain.ErrLedgerAlreadyExists{Name: ledger}
 	}
 
 	// Validate initial account types if provided
@@ -35,7 +35,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	ledgerID := s.IncrementNextLedgerID()
 
 	info := &commonpb.LedgerInfo{
-		Name:                   order.GetName(),
+		Name:                   ledger,
 		Id:                     ledgerID,
 		CreatedAt:              createdAt,
 		MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
@@ -44,8 +44,8 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 		AccountTypes:           order.GetAccountTypes(),
 		DefaultEnforcementMode: order.GetDefaultEnforcementMode(),
 	}
-	s.PutLedger(order.GetName(), info)
-	s.PutBoundaries(order.GetName(), &raftcmdpb.LedgerBoundaries{
+	s.PutLedger(ledger, info)
+	s.PutBoundaries(ledger, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,
 		NextLogId:         1,
 	})
@@ -65,7 +65,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreatedLedgerLog{
-				Name:                   order.GetName(),
+				Name:                   ledger,
 				Id:                     ledgerID,
 				CreatedAt:              createdAt,
 				MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
@@ -78,8 +78,8 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
-	l, loadErr := loadLedger(s, order.GetName())
+func (p *RequestProcessor) processDeleteLedger(ledger string, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	l, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -88,8 +88,8 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 
 	l.DeletedAt = s.GetDate()
 
-	s.PutLedger(order.GetName(), l)
-	s.MarkLedgerForCleanup(order.GetName())
+	s.PutLedger(ledger, l)
+	s.MarkLedgerForCleanup(ledger)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteLedger{

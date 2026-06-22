@@ -21,6 +21,10 @@ const maxLedgerNameLength = dal.LedgerNameFixedSize
 // ledger names — they are addressed the same way in CLI/UI/RPC.
 const maxNumscriptNameLength = 256
 
+// maxPreparedQueryNameLength caps prepared-query identifiers. Same envelope
+// as numscript names — they are addressed the same way in CLI/UI/RPC.
+const maxPreparedQueryNameLength = 256
+
 // maxSigningKeyIDLength caps signing-key identifiers. Operators usually
 // reuse a short slug ("admin-key-1"); the same 256-byte envelope as the
 // other named resources is plenty.
@@ -37,6 +41,10 @@ var (
 	ErrLedgerNameTooLong             = newValidationSentinel(fmt.Sprintf("ledger name exceeds maximum length of %d bytes", maxLedgerNameLength))
 	ErrNumscriptNameInvalidChar      = newValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
 	ErrNumscriptNameTooLong          = newValidationSentinel(fmt.Sprintf("numscript name exceeds maximum length of %d bytes", maxNumscriptNameLength))
+	ErrPreparedQueryNameRequired     = newValidationSentinel("prepared query name is required")
+	ErrPreparedQueryNameInvalidChar  = newValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
+	ErrPreparedQueryNameTooLong      = newValidationSentinel(fmt.Sprintf("prepared query name exceeds maximum length of %d bytes", maxPreparedQueryNameLength))
+	ErrPreparedQueryRequired         = newValidationSentinel("prepared query payload is required")
 	ErrSigningKeyIDRequired          = newValidationSentinel("signing key id is required")
 	ErrSigningKeyIDInvalidChar       = newValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
 	ErrSigningKeyIDTooLong           = newValidationSentinel(fmt.Sprintf("signing key id exceeds maximum length of %d bytes", maxSigningKeyIDLength))
@@ -106,6 +114,31 @@ func ValidateNumscriptName(name string) Describable {
 
 	if len(name) > maxNumscriptNameLength {
 		return ErrNumscriptNameTooLong
+	}
+
+	return nil
+}
+
+// ValidatePreparedQueryName mirrors ValidateNumscriptName for prepared-query
+// identifiers. They are the resume-cursor key for `prepared queries list`
+// pagination and must survive the same gRPC metadata round-trip.
+//
+// After moving the ledger off `PreparedQuery` onto the surrounding
+// `CreatePreparedQueryRequest` (PR #522), a request with a valid top-level
+// ledger but a missing/empty `query` no longer fails at `loadLedger("")`;
+// it would silently persist an empty-named prepared query. Calling this
+// validator at admission/FSM closes that hole loudly.
+func ValidatePreparedQueryName(name string) Describable {
+	if name == "" {
+		return ErrPreparedQueryNameRequired
+	}
+
+	if !isPrintableASCII(name) {
+		return ErrPreparedQueryNameInvalidChar
+	}
+
+	if len(name) > maxPreparedQueryNameLength {
+		return ErrPreparedQueryNameTooLong
 	}
 
 	return nil

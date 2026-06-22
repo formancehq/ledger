@@ -18,20 +18,23 @@ import (
 // (users:XXXXXX -> merchants:shop-42, EUR/2).
 func makeRealisticOrder(i int) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "bench-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-						Postings: []*commonpb.Posting{
-							{
-								Source:      fmt.Sprintf("users:%06d", i),
-								Destination: "merchants:shop-42",
-								Amount:      commonpb.NewUint256FromUint64(100),
-								Asset:       "EUR/2",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+							Postings: []*commonpb.Posting{
+								{
+									Source:      fmt.Sprintf("users:%06d", i),
+									Destination: "merchants:shop-42",
+									Amount:      commonpb.NewUint256FromUint64(100),
+									Asset:       "EUR/2",
+								},
 							},
+							Force: true,
 						},
-						Force: true,
+					},
 					},
 				},
 			},

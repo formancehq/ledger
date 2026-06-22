@@ -194,19 +194,22 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Postings: []*commonpb.Posting{
-									{
-										Source:      "world",
-										Destination: "user:alice",
-										Amount:      commonpb.NewUint256FromUint64(100),
-										Asset:       "USD",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Postings: []*commonpb.Posting{
+										{
+											Source:      "world",
+											Destination: "user:alice",
+											Amount:      commonpb.NewUint256FromUint64(100),
+											Asset:       "USD",
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -246,20 +249,23 @@ func TestExtractNeededVolumes(t *testing.T) {
 		// Revert: alice -> world (alice needs balance check, world receives credit)
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-								TransactionId: 1,
-								OriginalPostings: []*commonpb.Posting{
-									{
-										Source:      "world",
-										Destination: "user:alice",
-										Amount:      commonpb.NewUint256FromUint64(100),
-										Asset:       "USD",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+									TransactionId: 1,
+									OriginalPostings: []*commonpb.Posting{
+										{
+											Source:      "world",
+											Destination: "user:alice",
+											Amount:      commonpb.NewUint256FromUint64(100),
+											Asset:       "USD",
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -296,26 +302,29 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-								TransactionId: 1,
-								OriginalPostings: []*commonpb.Posting{
-									{
-										Source:      "world",
-										Destination: "user:alice",
-										Amount:      commonpb.NewUint256FromUint64(100),
-										Asset:       "USD",
-									},
-									{
-										Source:      "user:alice",
-										Destination: "user:bob",
-										Amount:      commonpb.NewUint256FromUint64(50),
-										Asset:       "USD",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+									TransactionId: 1,
+									OriginalPostings: []*commonpb.Posting{
+										{
+											Source:      "world",
+											Destination: "user:alice",
+											Amount:      commonpb.NewUint256FromUint64(100),
+											Asset:       "USD",
+										},
+										{
+											Source:      "user:alice",
+											Destination: "user:bob",
+											Amount:      commonpb.NewUint256FromUint64(50),
+											Asset:       "USD",
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -360,17 +369,20 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
-							AddMetadata: &raftcmdpb.SaveMetadataOrder{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_TransactionId{TransactionId: 7},
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+								AddMetadata: &raftcmdpb.SaveMetadataOrder{
+									Target: &commonpb.Target{
+										Target: &commonpb.Target_TransactionId{TransactionId: 7},
+									},
+									Metadata: map[string]*commonpb.MetadataValue{
+										"status": commonpb.NewStringValue("paid"),
+									},
 								},
-								Metadata: map[string]*commonpb.MetadataValue{
-									"status": commonpb.NewStringValue("paid"),
-								},
+							},
 							},
 						},
 					},
@@ -498,20 +510,23 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Force: true,
-								Postings: []*commonpb.Posting{
-									{
-										Source:      "users:alice",
-										Destination: "users:bob",
-										Amount:      commonpb.NewUint256FromUint64(100),
-										Asset:       "USD",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Force: true,
+									Postings: []*commonpb.Posting{
+										{
+											Source:      "users:alice",
+											Destination: "users:bob",
+											Amount:      commonpb.NewUint256FromUint64(100),
+											Asset:       "USD",
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -548,20 +563,23 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Force: false, // Default behavior
-								Postings: []*commonpb.Posting{
-									{
-										Source:      "users:alice",
-										Destination: "users:bob",
-										Amount:      commonpb.NewUint256FromUint64(100),
-										Asset:       "USD",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Force: false, // Default behavior
+									Postings: []*commonpb.Posting{
+										{
+											Source:      "users:alice",
+											Destination: "users:bob",
+											Amount:      commonpb.NewUint256FromUint64(100),
+											Asset:       "USD",
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -599,20 +617,23 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		orders := []*raftcmdpb.Order{
 			// First order with force=true - volumes are still extracted
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Force: true,
-								Postings: []*commonpb.Posting{
-									{
-										Source:      "users:force_source",
-										Destination: "users:force_dest",
-										Amount:      commonpb.NewUint256FromUint64(100),
-										Asset:       "USD",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Force: true,
+									Postings: []*commonpb.Posting{
+										{
+											Source:      "users:force_source",
+											Destination: "users:force_dest",
+											Amount:      commonpb.NewUint256FromUint64(100),
+											Asset:       "USD",
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -620,20 +641,23 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 			// Second order with force=false - volumes are also extracted
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Force: false,
-								Postings: []*commonpb.Posting{
-									{
-										Source:      "users:normal_source",
-										Destination: "users:normal_dest",
-										Amount:      commonpb.NewUint256FromUint64(200),
-										Asset:       "EUR",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Force: false,
+									Postings: []*commonpb.Posting{
+										{
+											Source:      "users:normal_source",
+											Destination: "users:normal_dest",
+											Amount:      commonpb.NewUint256FromUint64(200),
+											Asset:       "EUR",
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -685,21 +709,24 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		// force=true on revert still preloads all volumes
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-								TransactionId: 1,
-								Force:         true,
-								OriginalPostings: []*commonpb.Posting{
-									{
-										Source:      "world",
-										Destination: "user:alice",
-										Amount:      commonpb.NewUint256FromUint64(100),
-										Asset:       "USD",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+									TransactionId: 1,
+									Force:         true,
+									OriginalPostings: []*commonpb.Posting{
+										{
+											Source:      "world",
+											Destination: "user:alice",
+											Amount:      commonpb.NewUint256FromUint64(100),
+											Asset:       "USD",
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -791,11 +818,14 @@ func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 
 			orders := []*raftcmdpb.Order{
 				{
-					Type: &raftcmdpb.Order_Apply{
-						Apply: &raftcmdpb.LedgerApplyOrder{
+					Type: &raftcmdpb.Order_LedgerScoped{
+						LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 							Ledger: testLedgerName,
-							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-								CreateTransaction: tc.ct,
+							Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+								Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+									CreateTransaction: tc.ct,
+								},
+								},
 							},
 						},
 					},
@@ -908,8 +938,10 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		require.NotNil(t, order.GetIdempotency())
 		require.Equal(t, "revert-tx-42", order.GetIdempotency().GetKey())
 
-		applyOrder := order.GetType().(*raftcmdpb.Order_Apply).Apply
-		require.Equal(t, testLedgerName, applyOrder.GetLedger())
+		ls := order.GetLedgerScoped()
+		require.NotNil(t, ls)
+		require.Equal(t, testLedgerName, ls.GetLedger())
+		applyOrder := ls.GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply).Apply
 
 		revertOrder := applyOrder.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
 		require.Equal(t, uint64(42), revertOrder.GetTransactionId())
@@ -931,20 +963,23 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &commonpb.Script{
-									Plain: `
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Script: &commonpb.Script{
+										Plain: `
 										send [USD/2 1000] (
 											source = @users:alice
 											destination = @users:bob
 										)
 									`,
+									},
+									// No explicit postings — Numscript emulation should discover them
 								},
-								// No explicit postings — Numscript emulation should discover them
+							},
 							},
 						},
 					},
@@ -984,20 +1019,23 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Force: true,
-								Script: &commonpb.Script{
-									Plain: `
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Force: true,
+									Script: &commonpb.Script{
+										Plain: `
 										send [USD/2 1000] (
 											source = @users:alice
 											destination = @users:bob
 										)
 									`,
+									},
 								},
+							},
 							},
 						},
 					},
@@ -1036,18 +1074,21 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								NumscriptReference: &raftcmdpb.NumscriptReference{
-									Name: "pay",
-									Vars: map[string]string{
-										"account": "users:alice",
-										"amount":  "USD/2 1000",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									NumscriptReference: &raftcmdpb.NumscriptReference{
+										Name: "pay",
+										Vars: map[string]string{
+											"account": "users:alice",
+											"amount":  "USD/2 1000",
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -1078,7 +1119,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}]
 		require.True(t, hasAlice, "should discover destination account from reference vars")
 
-		ref := orders[0].GetApply().GetCreateTransaction().GetNumscriptReference()
+		ref := orders[0].GetLedgerScoped().GetApply().GetCreateTransaction().GetNumscriptReference()
 		require.Equal(t, "v1", ref.GetVersion())
 		require.Equal(t, "users:alice", ref.GetVars()["account"])
 	})
@@ -1090,14 +1131,17 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &commonpb.Script{
-									Plain: `send [USD/2 invalid] ( source = @world destination = @users:alice )`,
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Script: &commonpb.Script{
+										Plain: `send [USD/2 invalid] ( source = @world destination = @users:alice )`,
+									},
 								},
+							},
 							},
 						},
 					},
@@ -1130,13 +1174,14 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &commonpb.Script{
-									Plain: `
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Script: &commonpb.Script{
+										Plain: `
 										vars {
 											monetary $amount
 										}
@@ -1145,7 +1190,9 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 											destination = @users:alice
 										)
 									`,
+									},
 								},
+							},
 							},
 						},
 					},
@@ -1179,22 +1226,25 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		// When both Script and Postings are present, explicit Postings take precedence
 		orders := []*raftcmdpb.Order{
 			{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: testLedgerName,
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &commonpb.Script{
-									Plain: `send [USD/2 1000] ( source = @world destination = @treasury )`,
-								},
-								Postings: []*commonpb.Posting{
-									{
-										Source:      "bank",
-										Destination: "merchant",
-										Amount:      commonpb.NewUint256FromUint64(100),
-										Asset:       "EUR",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Script: &commonpb.Script{
+										Plain: `send [USD/2 1000] ( source = @world destination = @treasury )`,
+									},
+									Postings: []*commonpb.Posting{
+										{
+											Source:      "bank",
+											Destination: "merchant",
+											Amount:      commonpb.NewUint256FromUint64(100),
+											Asset:       "EUR",
+										},
 									},
 								},
+							},
 							},
 						},
 					},

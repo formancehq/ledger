@@ -63,20 +63,23 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-					RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-						TransactionId: 3,
-						OriginalPostings: []*commonpb.Posting{
-							{
-								Source:      "bank",
-								Destination: "users:123",
-								Amount:      commonpb.NewUint256FromUint64(100),
-								Asset:       "USD",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+						RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+							TransactionId: 3,
+							OriginalPostings: []*commonpb.Posting{
+								{
+									Source:      "bank",
+									Destination: "users:123",
+									Amount:      commonpb.NewUint256FromUint64(100),
+									Asset:       "USD",
+								},
 							},
 						},
+					},
 					},
 				},
 			},
@@ -148,19 +151,23 @@ func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-					RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-						TransactionId:   3,
-						AtEffectiveDate: true,
-						OriginalPostings: []*commonpb.Posting{
-							{
-								Source:      "bank",
-								Destination: "users:123",
-								Amount:      commonpb.NewUint256FromUint64(100),
-								Asset:       "USD",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+								TransactionId:   3,
+								AtEffectiveDate: true,
+								OriginalPostings: []*commonpb.Posting{
+									{
+										Source:      "bank",
+										Destination: "users:123",
+										Amount:      commonpb.NewUint256FromUint64(100),
+										Asset:       "USD",
+									},
+								},
 							},
 						},
 					},
@@ -219,19 +226,23 @@ func TestProcessRevertTransaction_AtEffectiveDate_MissingOriginalTimestamp(t *te
 	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any())
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-					RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-						TransactionId:   3,
-						AtEffectiveDate: true,
-						OriginalPostings: []*commonpb.Posting{
-							{
-								Source:      "bank",
-								Destination: "users:123",
-								Amount:      commonpb.NewUint256FromUint64(100),
-								Asset:       "USD",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+								TransactionId:   3,
+								AtEffectiveDate: true,
+								OriginalPostings: []*commonpb.Posting{
+									{
+										Source:      "bank",
+										Destination: "users:123",
+										Amount:      commonpb.NewUint256FromUint64(100),
+										Asset:       "USD",
+									},
+								},
 							},
 						},
 					},
@@ -266,12 +277,15 @@ func TestProcessRevertTransaction_NotFound(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-					RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-						TransactionId: 99, // Beyond NextTransactionId=5
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+						RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+							TransactionId: 99, // Beyond NextTransactionId=5
+						},
+					},
 					},
 				},
 			},
@@ -305,12 +319,15 @@ func TestProcessRevertTransaction_AlreadyReverted(t *testing.T) {
 	mockStore.EXPECT().GetReverted(txKey).Return(true, nil)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-					RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-						TransactionId: 3,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+						RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+							TransactionId: 3,
+						},
+					},
 					},
 				},
 			},

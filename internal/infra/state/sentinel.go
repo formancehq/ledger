@@ -356,24 +356,24 @@ func verifyVolumeDeltasMatchPostings(
 }
 
 // collectLedgerNames extracts the unique ledger names touched by the given
-// proposal orders.
+// proposal orders. Only Apply/CreateLedger orders (the ones that touch
+// volumes) need to be aggregated for the post-commit balance invariant.
 func collectLedgerNames(orders []*raftcmdpb.Order) []string {
 	seen := make(map[string]struct{})
 
 	for _, order := range orders {
-		var name string
-		switch {
-		case order.GetCreateLedger() != nil:
-			name = order.GetCreateLedger().GetName()
-		case order.GetApply() != nil:
-			name = order.GetApply().GetLedger()
-		}
-
-		if name == "" {
+		ls := order.GetLedgerScoped()
+		if ls == nil {
 			continue
 		}
 
-		seen[name] = struct{}{}
+		switch ls.GetPayload().(type) {
+		case *raftcmdpb.LedgerScopedOrder_Apply,
+			*raftcmdpb.LedgerScopedOrder_CreateLedger:
+			if name := ls.GetLedger(); name != "" {
+				seen[name] = struct{}{}
+			}
+		}
 	}
 
 	names := make([]string, 0, len(seen))

@@ -6835,7 +6835,8 @@ func (x *AssetVolumeStats) GetTransactionCount() uint64 {
 
 type CreatePreparedQueryRequest struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Query         *commonpb.PreparedQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Ledger        string                  `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Query         *commonpb.PreparedQuery `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6868,6 +6869,13 @@ func (x *CreatePreparedQueryRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use CreatePreparedQueryRequest.ProtoReflect.Descriptor instead.
 func (*CreatePreparedQueryRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{101}
+}
+
+func (x *CreatePreparedQueryRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
 }
 
 func (x *CreatePreparedQueryRequest) GetQuery() *commonpb.PreparedQuery {
@@ -8906,9 +8914,10 @@ const file_bucket_proto_rawDesc = "" +
 	"min_volume\x18\x04 \x01(\tR\tminVolume\x12\x1d\n" +
 	"\n" +
 	"max_volume\x18\x05 \x01(\tR\tmaxVolume\x12+\n" +
-	"\x11transaction_count\x18\x06 \x01(\x06R\x10transactionCount\"I\n" +
-	"\x1aCreatePreparedQueryRequest\x12+\n" +
-	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\x1d\n" +
+	"\x11transaction_count\x18\x06 \x01(\x06R\x10transactionCount\"a\n" +
+	"\x1aCreatePreparedQueryRequest\x12\x16\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
+	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query\"\x1d\n" +
 	"\x1bCreatePreparedQueryResponse\"u\n" +
 	"\x1aUpdatePreparedQueryRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +

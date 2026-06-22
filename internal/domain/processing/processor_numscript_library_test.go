@@ -41,11 +41,14 @@ func TestProcessSaveNumscript_RejectsInvalidNames(t *testing.T) {
 			// gomock fails the test if PutNumscript/GetLedger is hit.
 
 			order := &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_SaveNumscript{
-					SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
-						Name:    tt.input,
-						Content: "send [USD 1] (source = @world allocate { @bob })",
-						Ledger:  "main",
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "main",
+						Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{
+							SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
+								Name:    tt.input,
+								Content: "send [USD 1] (source = @world allocate { @bob })"},
+						},
 					},
 				},
 			}
@@ -82,10 +85,13 @@ func TestProcessDeleteNumscript_RejectsInvalidNames(t *testing.T) {
 			require.NoError(t, err)
 
 			order := &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_DeleteNumscript{
-					DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
-						Name:   tt.input,
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "main",
+						Payload: &raftcmdpb.LedgerScopedOrder_DeleteNumscript{
+							DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
+								Name: tt.input},
+						},
 					},
 				},
 			}

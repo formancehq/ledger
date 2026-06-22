@@ -3798,7 +3798,8 @@ func (*DeletedChapterScheduleLog) Descriptor() ([]byte, []int) {
 // CreatedPreparedQueryLog records the creation of a prepared query.
 type CreatedPreparedQueryLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Query         *PreparedQuery         `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Query         *PreparedQuery         `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3831,6 +3832,13 @@ func (x *CreatedPreparedQueryLog) ProtoReflect() protoreflect.Message {
 // Deprecated: Use CreatedPreparedQueryLog.ProtoReflect.Descriptor instead.
 func (*CreatedPreparedQueryLog) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *CreatedPreparedQueryLog) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
 }
 
 func (x *CreatedPreparedQueryLog) GetQuery() *PreparedQuery {
@@ -9039,13 +9047,15 @@ func (*AddressMatch_ParamPrefix) isAddressMatch_Match() {}
 
 func (*AddressMatch_ParamExact) isAddressMatch_Match() {}
 
-// PreparedQuery is a named, parameterized query template stored in the primary store.
+// PreparedQuery is a named, parameterized query template stored in the primary
+// store. The ledger the query belongs to lives on the storage key prefix and
+// (where the query is being created or invoked) on the surrounding request /
+// LedgerScopedOrder; it is intentionally NOT a field on the value itself.
 type PreparedQuery struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Filter        *QueryFilter           `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
-	Target        QueryTarget            `protobuf:"varint,4,opt,name=target,proto3,enum=common.QueryTarget" json:"target,omitempty"`
+	Filter        *QueryFilter           `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	Target        QueryTarget            `protobuf:"varint,3,opt,name=target,proto3,enum=common.QueryTarget" json:"target,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9083,13 +9093,6 @@ func (*PreparedQuery) Descriptor() ([]byte, []int) {
 func (x *PreparedQuery) GetName() string {
 	if x != nil {
 		return x.Name
-	}
-	return ""
-}
-
-func (x *PreparedQuery) GetLedger() string {
-	if x != nil {
-		return x.Ledger
 	}
 	return ""
 }
@@ -10339,9 +10342,10 @@ const file_common_proto_rawDesc = "" +
 	"cacheEpoch\"+\n" +
 	"\x15SetChapterScheduleLog\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x1b\n" +
-	"\x19DeletedChapterScheduleLog\"F\n" +
-	"\x17CreatedPreparedQueryLog\x12+\n" +
-	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb7\x01\n" +
+	"\x19DeletedChapterScheduleLog\"^\n" +
+	"\x17CreatedPreparedQueryLog\x12\x16\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
+	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb7\x01\n" +
 	"\x17UpdatedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12<\n" +
@@ -10737,12 +10741,11 @@ const file_common_proto_rawDesc = "" +
 	"\vparam_exact\x18\x04 \x01(\tH\x00R\n" +
 	"paramExact\x12'\n" +
 	"\x04role\x18\x05 \x01(\x0e2\x13.common.AddressRoleR\x04roleB\a\n" +
-	"\x05match\"\x95\x01\n" +
+	"\x05match\"}\n" +
 	"\rPreparedQuery\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
-	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12+\n" +
-	"\x06filter\x18\x03 \x01(\v2\x13.common.QueryFilterR\x06filter\x12+\n" +
-	"\x06target\x18\x04 \x01(\x0e2\x13.common.QueryTargetR\x06target\"x\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
+	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12+\n" +
+	"\x06target\x18\x03 \x01(\x0e2\x13.common.QueryTargetR\x06target\"x\n" +
 	"\x10AggregatedVolume\x12\x14\n" +
 	"\x05asset\x18\x01 \x01(\tR\x05asset\x12%\n" +
 	"\x05input\x18\x02 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +

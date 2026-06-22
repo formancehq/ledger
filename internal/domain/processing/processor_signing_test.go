@@ -23,11 +23,15 @@ func TestProcessRegisterSigningKey(t *testing.T) {
 	mockStore.EXPECT().AddSigningKey("key-001", []byte{0xAB, 0xCD}, "parent-key")
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_RegisterSigningKey{
-			RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
-				KeyId:       "key-001",
-				PublicKey:   []byte{0xAB, 0xCD},
-				ParentKeyId: "parent-key",
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{
+					RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
+						KeyId:       "key-001",
+						PublicKey:   []byte{0xAB, 0xCD},
+						ParentKeyId: "parent-key",
+					},
+				},
 			},
 		},
 	}
@@ -56,10 +60,14 @@ func TestProcessRevokeSigningKey_NoCascade(t *testing.T) {
 	mockStore.EXPECT().RemoveSigningKey("key-001")
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_RevokeSigningKey{
-			RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
-				KeyId:   "key-001",
-				Cascade: false,
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_RevokeSigningKey{
+					RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
+						KeyId:   "key-001",
+						Cascade: false,
+					},
+				},
 			},
 		},
 	}
@@ -98,10 +106,14 @@ func TestProcessRevokeSigningKey_WithCascade(t *testing.T) {
 	mockStore.EXPECT().RemoveSigningKey("grandchild-c")
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_RevokeSigningKey{
-			RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
-				KeyId:   "key-001",
-				Cascade: true,
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_RevokeSigningKey{
+					RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
+						KeyId:   "key-001",
+						Cascade: true,
+					},
+				},
 			},
 		},
 	}
@@ -151,11 +163,15 @@ func TestProcessRegisterSigningKey_RejectsInvalidIDs(t *testing.T) {
 			// EXPECT, so gomock will fail the test if the validator is bypassed.
 
 			order := &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_RegisterSigningKey{
-					RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
-						KeyId:       tt.keyID,
-						PublicKey:   []byte{0xAB, 0xCD},
-						ParentKeyId: tt.parentKeyID,
+				Type: &raftcmdpb.Order_SystemScoped{
+					SystemScoped: &raftcmdpb.SystemScopedOrder{
+						Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{
+							RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
+								KeyId:       tt.keyID,
+								PublicKey:   []byte{0xAB, 0xCD},
+								ParentKeyId: tt.parentKeyID,
+							},
+						},
 					},
 				},
 			}
@@ -195,10 +211,14 @@ func TestProcessRevokeSigningKey_RejectsInvalidIDs(t *testing.T) {
 			// gomock will fail if the validator does not short-circuit.
 
 			order := &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_RevokeSigningKey{
-					RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
-						KeyId:   tt.keyID,
-						Cascade: false,
+				Type: &raftcmdpb.Order_SystemScoped{
+					SystemScoped: &raftcmdpb.SystemScopedOrder{
+						Payload: &raftcmdpb.SystemScopedOrder_RevokeSigningKey{
+							RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
+								KeyId:   tt.keyID,
+								Cascade: false,
+							},
+						},
 					},
 				},
 			}
@@ -224,9 +244,13 @@ func TestProcessSetSigningConfig(t *testing.T) {
 	mockStore.EXPECT().SetRequireSignatures(true)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_SetSigningConfig{
-			SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
-				RequireSignatures: true,
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_SetSigningConfig{
+					SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
+						RequireSignatures: true,
+					},
+				},
 			},
 		},
 	}

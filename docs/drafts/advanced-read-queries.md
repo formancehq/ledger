@@ -607,12 +607,12 @@ message NotFilter {
 
 message PreparedQuery {
   string name = 1;                           // unique within ledger
-  string ledger = 2;
-  QueryFilter filter = 3;                    // recursive filter tree
+  QueryFilter filter = 2;                    // recursive filter tree
 }
 
 message CreatePreparedQueryRequest {
-  PreparedQuery query = 1;
+  string ledger = 1;                         // ledger this query belongs to
+  PreparedQuery query = 2;
 }
 
 message ExecutePreparedQueryRequest {

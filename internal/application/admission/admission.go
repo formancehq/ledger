@@ -710,6 +710,20 @@ func allRequestsAreMaintenanceMode(verified []verifiedRequest) bool {
 	return true
 }
 
+// wrapLedgerScoped sets order.Type to a LedgerScopedOrder wrapper carrying the
+// given ledger name and payload variant. The helper exists to keep the request
+// dispatch readable — the unexported payload interface forces callers to build
+// the wrapper struct in-place.
+func wrapLedgerScoped(order *raftcmdpb.Order, ls *raftcmdpb.LedgerScopedOrder) {
+	order.Type = &raftcmdpb.Order_LedgerScoped{LedgerScoped: ls}
+}
+
+// wrapSystemScoped sets order.Type to a SystemScopedOrder wrapper carrying
+// the given payload variant.
+func wrapSystemScoped(order *raftcmdpb.Order, ss *raftcmdpb.SystemScopedOrder) {
+	order.Type = &raftcmdpb.Order_SystemScoped{SystemScoped: ss}
+}
+
 // addVolumeNeed adds a volume key to the preload needs.
 func addVolumeNeed(p *plan.Needs, ledgerName string, account, asset string) {
 	p.Volumes[domain.VolumeKey{
@@ -727,6 +741,255 @@ func addTransactionTargetNeeds(p *plan.Needs, ledgerName string, txID uint64) {
 	}] = struct{}{}
 }
 
+// extractLedgerScopedNeeds populates the preload Needs for a ledger-scoped
+// order. The ledger lives once on the wrapper; every payload variant reads it
+// from there instead of carrying its own field.
+func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
+	ledgerName := ls.GetLedger()
+	ledgerKey := domain.LedgerKey{Name: ledgerName}
+
+	switch payload := ls.GetPayload().(type) {
+	case *raftcmdpb.LedgerScopedOrder_CreateLedger:
+		p.Ledgers[ledgerKey] = struct{}{}
+	case *raftcmdpb.LedgerScopedOrder_DeleteLedger:
+		p.Ledgers[ledgerKey] = struct{}{}
+	case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
+		p.Ledgers[ledgerKey] = struct{}{}
+	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
+		p.Ledgers[ledgerKey] = struct{}{}
+		p.Boundaries[ledgerKey] = struct{}{}
+
+		mi := payload.MirrorIngest
+
+		var postings []*commonpb.Posting
+		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
+			postings = ct.GetPostings()
+		} else if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
+			postings = rt.GetReversePostings()
+		}
+
+		for _, posting := range postings {
+			addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
+			addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+		}
+
+		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
+			for account, mm := range ct.GetAccountMetadata() {
+				for key := range mm.GetValues() {
+					p.Metadata[domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+						Key:        key,
+					}] = struct{}{}
+				}
+			}
+		}
+
+		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
+			switch target := sm.GetTarget().GetTarget().(type) {
+			case *commonpb.Target_Account:
+				for key := range sm.GetMetadata() {
+					p.Metadata[domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
+						Key:        key,
+					}] = struct{}{}
+				}
+			case *commonpb.Target_TransactionId:
+				p.Transactions[domain.TransactionKey{
+					LedgerName: ledgerName,
+					ID:         target.TransactionId,
+				}] = struct{}{}
+			}
+		}
+
+		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
+			switch target := dm.GetTarget().GetTarget().(type) {
+			case *commonpb.Target_Account:
+				p.Metadata[domain.MetadataKey{
+					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
+					Key:        dm.GetKey(),
+				}] = struct{}{}
+			case *commonpb.Target_TransactionId:
+				p.Transactions[domain.TransactionKey{
+					LedgerName: ledgerName,
+					ID:         target.TransactionId,
+				}] = struct{}{}
+			}
+		}
+
+		if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
+			p.Transactions[domain.TransactionKey{
+				LedgerName: ledgerName,
+				ID:         rt.GetRevertedTransactionId(),
+			}] = struct{}{}
+		}
+	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
+		p.Ledgers[ledgerKey] = struct{}{}
+		p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.CreatePreparedQuery.GetQuery().GetName()}] = struct{}{}
+	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
+		p.Ledgers[ledgerKey] = struct{}{}
+		p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.UpdatePreparedQuery.GetName()}] = struct{}{}
+	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
+		p.Ledgers[ledgerKey] = struct{}{}
+		p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.DeletePreparedQuery.GetName()}] = struct{}{}
+	case *raftcmdpb.LedgerScopedOrder_SaveNumscript:
+		p.Ledgers[ledgerKey] = struct{}{}
+		p.NumscriptVersions[domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName()}] = struct{}{}
+
+		// For semver saves, preload the specific version content for immutability check.
+		version := payload.SaveNumscript.GetVersion()
+		if version != "" && version != "latest" {
+			p.NumscriptContents[domain.NumscriptEntryKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName(), Version: version}] = struct{}{}
+		}
+	case *raftcmdpb.LedgerScopedOrder_DeleteNumscript:
+		p.Ledgers[ledgerKey] = struct{}{}
+		p.NumscriptVersions[domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.DeleteNumscript.GetName()}] = struct{}{}
+	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
+		p.Ledgers[ledgerKey] = struct{}{}
+		for key := range payload.SaveLedgerMetadata.GetMetadata() {
+			p.LedgerMetadata[domain.LedgerMetadataKey{LedgerName: ledgerName, Key: key}] = struct{}{}
+		}
+	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
+		p.Ledgers[ledgerKey] = struct{}{}
+		p.LedgerMetadata[domain.LedgerMetadataKey{LedgerName: ledgerName, Key: payload.DeleteLedgerMetadata.GetKey()}] = struct{}{}
+	case *raftcmdpb.LedgerScopedOrder_Apply:
+		p.Boundaries[ledgerKey] = struct{}{}
+		p.Ledgers[ledgerKey] = struct{}{}
+
+		switch applyData := payload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+			if applyData.CreateTransaction.GetReference() != "" {
+				p.References[domain.TransactionReferenceKey{
+					LedgerName: ledgerName,
+					Reference:  applyData.CreateTransaction.GetReference(),
+				}] = struct{}{}
+			}
+
+			// Caller-supplied account metadata always preloads here,
+			// regardless of whether the transaction is posting-based or
+			// script-based. processCreateTransaction reads previous values
+			// to compute previousAccountMetadata for index replay, so the
+			// keys must be in the preload set even when the postings
+			// themselves are discovered later by the script pass.
+			for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
+				for key := range mm.GetValues() {
+					p.Metadata[domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+						Key:        key,
+					}] = struct{}{}
+				}
+			}
+
+			// Volumes for script-based orders are discovered in a separate
+			// pass (resolveScriptsAndEnrichNeeds) after extractPreloadNeeds
+			// returns. Skip the posting-driven volume preload for those.
+			scriptBacked := applyData.CreateTransaction.GetNumscriptReference() != nil ||
+				(applyData.CreateTransaction.GetScript() != nil &&
+					applyData.CreateTransaction.GetScript().GetPlain() != "" &&
+					len(applyData.CreateTransaction.GetPostings()) == 0)
+
+			if !scriptBacked {
+				for _, posting := range applyData.CreateTransaction.GetPostings() {
+					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
+					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+				}
+			}
+
+		case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
+			p.Transactions[domain.TransactionKey{
+				LedgerName: ledgerName,
+				ID:         applyData.RevertTransaction.GetTransactionId(),
+			}] = struct{}{}
+
+			for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
+				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
+			}
+
+		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
+			if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+				for key := range applyData.AddMetadata.GetMetadata() {
+					p.Metadata[domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
+						Key:        key,
+					}] = struct{}{}
+				}
+			}
+
+			if tx, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+				addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
+			}
+
+		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
+			if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+				p.Metadata[domain.MetadataKey{
+					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
+					Key:        applyData.DeleteMetadata.GetKey(),
+				}] = struct{}{}
+			}
+
+			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+				addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
+			}
+		}
+	default:
+		// Loud failure for an unmapped ledger-scoped payload. The processor
+		// dispatch's matching default catches the case where no handler
+		// exists; this branch catches the more dangerous asymmetry: a new
+		// payload variant *with* a handler whose preload-needs case is
+		// missing. Per invariant 6 the FSM apply path would then read a key
+		// that was never seeded, which under invariant 7 must surface
+		// loudly rather than degrade to a silent cache miss (a no-op that
+		// desyncs nodes).
+		assert.Unreachable("admission: unmapped LedgerScopedOrder payload in extractLedgerScopedNeeds — add a needs case", map[string]any{
+			"payload_type": fmt.Sprintf("%T", ls.GetPayload()),
+			"ledger":       ledgerName,
+		})
+	}
+}
+
+// extractSystemScopedNeeds populates the preload Needs for a system-scoped
+// order. Only sink-config orders contribute preload keys today; every other
+// variant is enumerated as an explicit no-op so adding a new payload
+// without a matching case here trips the loud default — matching the
+// invariant-7 contract that an unmapped wrapper variant must fail loudly
+// rather than degrade to a silent cache miss at apply time.
+func extractSystemScopedNeeds(p *plan.Needs, ss *raftcmdpb.SystemScopedOrder) {
+	switch payload := ss.GetPayload().(type) {
+	case *raftcmdpb.SystemScopedOrder_AddEventsSink:
+		p.SinkConfigs[domain.SinkConfigKey{Name: payload.AddEventsSink.GetConfig().GetName()}] = struct{}{}
+	case *raftcmdpb.SystemScopedOrder_RemoveEventsSink:
+		p.SinkConfigs[domain.SinkConfigKey{Name: payload.RemoveEventsSink.GetName()}] = struct{}{}
+
+	// Explicit no-op cases: every other system-scoped variant intentionally
+	// touches no cache attribute. Listed individually (not lumped into
+	// default) so the compiler/test layer flags new variants — see default
+	// below.
+	case *raftcmdpb.SystemScopedOrder_RegisterSigningKey,
+		*raftcmdpb.SystemScopedOrder_RevokeSigningKey,
+		*raftcmdpb.SystemScopedOrder_SetSigningConfig,
+		*raftcmdpb.SystemScopedOrder_SetMaintenanceMode,
+		*raftcmdpb.SystemScopedOrder_CloseChapter,
+		*raftcmdpb.SystemScopedOrder_SealChapter,
+		*raftcmdpb.SystemScopedOrder_ArchiveChapter,
+		*raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter,
+		*raftcmdpb.SystemScopedOrder_SetChapterSchedule,
+		*raftcmdpb.SystemScopedOrder_DeleteChapterSchedule,
+		*raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint,
+		*raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint,
+		*raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule,
+		*raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule:
+		// Nothing to preload; payload identifier silenced via underscore
+		// — the case exists purely so the default catches genuinely new
+		// variants.
+		_ = payload
+
+	default:
+		assert.Unreachable("admission: unmapped SystemScopedOrder payload in extractSystemScopedNeeds — add an explicit case (preload or no-op)", map[string]any{
+			"payload_type": fmt.Sprintf("%T", ss.GetPayload()),
+		})
+	}
+}
+
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
 // Returns the proposal-wide aggregate Needs and a parallel slice with one
 // Needs per order (used to compute Order.coverage_bits after Build).
@@ -742,216 +1005,10 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 		}
 
 		switch orderType := order.GetType().(type) {
-		case *raftcmdpb.Order_CreateLedger:
-			p.Ledgers[domain.LedgerKey{Name: orderType.CreateLedger.GetName()}] = struct{}{}
-		case *raftcmdpb.Order_DeleteLedger:
-			p.Ledgers[domain.LedgerKey{Name: orderType.DeleteLedger.GetName()}] = struct{}{}
-		case *raftcmdpb.Order_AddEventsSink:
-			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.AddEventsSink.GetConfig().GetName()}] = struct{}{}
-		case *raftcmdpb.Order_RemoveEventsSink:
-			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.RemoveEventsSink.GetName()}] = struct{}{}
-		case *raftcmdpb.Order_MirrorIngest:
-			p.Ledgers[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
-			p.Boundaries[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
-
-			ledgerName := orderType.MirrorIngest.GetLedger()
-
-			var postings []*commonpb.Posting
-			if ct := orderType.MirrorIngest.GetEntry().GetCreatedTransaction(); ct != nil {
-				postings = ct.GetPostings()
-			} else if rt := orderType.MirrorIngest.GetEntry().GetRevertedTransaction(); rt != nil {
-				postings = rt.GetReversePostings()
-			}
-
-			for _, posting := range postings {
-				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
-				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
-			}
-
-			// Preload account metadata for previous value capture in logs.
-			mi := orderType.MirrorIngest
-			if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
-				for account, mm := range ct.GetAccountMetadata() {
-					for key := range mm.GetValues() {
-						p.Metadata[domain.MetadataKey{
-							AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
-							Key:        key,
-						}] = struct{}{}
-					}
-				}
-			}
-
-			if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
-				switch target := sm.GetTarget().GetTarget().(type) {
-				case *commonpb.Target_Account:
-					for key := range sm.GetMetadata() {
-						p.Metadata[domain.MetadataKey{
-							AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
-							Key:        key,
-						}] = struct{}{}
-					}
-				case *commonpb.Target_TransactionId:
-					// processMirrorSavedMetadata reads the target tx state to
-					// merge metadata onto it; declare it so the View admits it.
-					p.Transactions[domain.TransactionKey{
-						LedgerName: ledgerName,
-						ID:         target.TransactionId,
-					}] = struct{}{}
-				}
-			}
-
-			if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
-				switch target := dm.GetTarget().GetTarget().(type) {
-				case *commonpb.Target_Account:
-					p.Metadata[domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
-						Key:        dm.GetKey(),
-					}] = struct{}{}
-				case *commonpb.Target_TransactionId:
-					// processMirrorDeletedMetadata reads the target tx state
-					// to strip the deleted key.
-					p.Transactions[domain.TransactionKey{
-						LedgerName: ledgerName,
-						ID:         target.TransactionId,
-					}] = struct{}{}
-				}
-			}
-
-			if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
-				// processMirrorRevertedTransaction reads the original tx state
-				// to stamp RevertedByTransaction on it.
-				p.Transactions[domain.TransactionKey{
-					LedgerName: ledgerName,
-					ID:         rt.GetRevertedTransactionId(),
-				}] = struct{}{}
-			}
-		case *raftcmdpb.Order_CreatePreparedQuery:
-			ledgerName := orderType.CreatePreparedQuery.GetQuery().GetLedger()
-			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
-			p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: orderType.CreatePreparedQuery.GetQuery().GetName()}] = struct{}{}
-		case *raftcmdpb.Order_UpdatePreparedQuery:
-			ledgerName := orderType.UpdatePreparedQuery.GetLedger()
-			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
-			p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: orderType.UpdatePreparedQuery.GetName()}] = struct{}{}
-		case *raftcmdpb.Order_DeletePreparedQuery:
-			ledgerName := orderType.DeletePreparedQuery.GetLedger()
-			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
-			p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: orderType.DeletePreparedQuery.GetName()}] = struct{}{}
-		case *raftcmdpb.Order_PromoteLedger:
-			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
-		case *raftcmdpb.Order_SaveNumscript:
-			ledgerName := orderType.SaveNumscript.GetLedger()
-			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
-			p.NumscriptVersions[domain.NumscriptVersionKey{LedgerName: ledgerName, Name: orderType.SaveNumscript.GetName()}] = struct{}{}
-			// For semver saves, preload the specific version content for immutability check
-			version := orderType.SaveNumscript.GetVersion()
-			if version != "" && version != "latest" {
-				p.NumscriptContents[domain.NumscriptEntryKey{LedgerName: ledgerName, Name: orderType.SaveNumscript.GetName(), Version: version}] = struct{}{}
-			}
-		case *raftcmdpb.Order_DeleteNumscript:
-			ledgerName := orderType.DeleteNumscript.GetLedger()
-			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
-			p.NumscriptVersions[domain.NumscriptVersionKey{LedgerName: ledgerName, Name: orderType.DeleteNumscript.GetName()}] = struct{}{}
-		case *raftcmdpb.Order_Apply:
-			ledgerKey := domain.LedgerKey{Name: orderType.Apply.GetLedger()}
-			p.Boundaries[ledgerKey] = struct{}{}
-			p.Ledgers[ledgerKey] = struct{}{}
-
-			ledgerName := orderType.Apply.GetLedger()
-
-			switch applyData := orderType.Apply.GetData().(type) {
-			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-				if applyData.CreateTransaction.GetReference() != "" {
-					p.References[domain.TransactionReferenceKey{
-						LedgerName: ledgerName,
-						Reference:  applyData.CreateTransaction.GetReference(),
-					}] = struct{}{}
-				}
-
-				// Caller-supplied account metadata always preloads here,
-				// regardless of whether the transaction is posting-based or
-				// script-based. processCreateTransaction reads previous values
-				// to compute previousAccountMetadata for index replay, so the
-				// keys must be in the preload set even when the postings
-				// themselves are discovered later by the script pass.
-				for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
-					for key := range mm.GetValues() {
-						p.Metadata[domain.MetadataKey{
-							AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
-							Key:        key,
-						}] = struct{}{}
-					}
-				}
-
-				// Volumes for script-based orders are discovered in a separate
-				// pass (resolveScriptsAndEnrichNeeds) after extractPreloadNeeds
-				// returns. Skip the posting-driven volume preload for those.
-				scriptBacked := applyData.CreateTransaction.GetNumscriptReference() != nil ||
-					(applyData.CreateTransaction.GetScript() != nil &&
-						applyData.CreateTransaction.GetScript().GetPlain() != "" &&
-						len(applyData.CreateTransaction.GetPostings()) == 0)
-
-				if !scriptBacked {
-					for _, posting := range applyData.CreateTransaction.GetPostings() {
-						addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
-						addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
-					}
-				}
-
-			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-				p.Transactions[domain.TransactionKey{
-					LedgerName: ledgerName,
-					ID:         applyData.RevertTransaction.GetTransactionId(),
-				}] = struct{}{}
-
-				for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
-					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
-					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
-				}
-
-			case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-				if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
-					for key := range applyData.AddMetadata.GetMetadata() {
-						p.Metadata[domain.MetadataKey{
-							AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
-							Key:        key,
-						}] = struct{}{}
-					}
-				}
-
-				if tx, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
-					addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
-				}
-
-			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-				if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
-					p.Metadata[domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
-						Key:        applyData.DeleteMetadata.GetKey(),
-					}] = struct{}{}
-				}
-
-				if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
-					addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
-				}
-			}
-		case *raftcmdpb.Order_SaveLedgerMetadata:
-			ledgerName := orderType.SaveLedgerMetadata.GetLedger()
-			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
-
-			for key := range orderType.SaveLedgerMetadata.GetMetadata() {
-				p.LedgerMetadata[domain.LedgerMetadataKey{
-					LedgerName: ledgerName,
-					Key:        key,
-				}] = struct{}{}
-			}
-		case *raftcmdpb.Order_DeleteLedgerMetadata:
-			ledgerName := orderType.DeleteLedgerMetadata.GetLedger()
-			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
-			p.LedgerMetadata[domain.LedgerMetadataKey{
-				LedgerName: ledgerName,
-				Key:        orderType.DeleteLedgerMetadata.GetKey(),
-			}] = struct{}{}
+		case *raftcmdpb.Order_LedgerScoped:
+			extractLedgerScopedNeeds(p, orderType.LedgerScoped)
+		case *raftcmdpb.Order_SystemScoped:
+			extractSystemScopedNeeds(p, orderType.SystemScoped)
 		}
 
 		perOrder[orderIdx] = p
@@ -969,12 +1026,17 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 // keys but skips posting-driven volumes for script-based orders) and before Build.
 func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Needs, perOrder []*plan.Needs) error {
 	for orderIdx, order := range orders {
-		applyOrder, ok := order.GetType().(*raftcmdpb.Order_Apply)
+		ls := order.GetLedgerScoped()
+		if ls == nil {
+			continue
+		}
+
+		applyPayload, ok := ls.GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
 		if !ok {
 			continue
 		}
 
-		createTx, ok := applyOrder.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
+		createTx, ok := applyPayload.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
 		if !ok {
 			continue
 		}
@@ -984,7 +1046,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// order, so the index lookup is safe.
 		orderNeeds := perOrder[orderIdx]
 
-		ledgerName := applyOrder.Apply.GetLedger()
+		ledgerName := ls.GetLedger()
 
 		var scriptText string
 		var scriptVars map[string]string
@@ -1076,196 +1138,244 @@ func (a *Admission) requestToOrder(ctx context.Context, vr verifiedRequest, over
 
 	switch reqType := req.GetType().(type) {
 	case *servicepb.Request_CreateLedger:
-		order.Type = &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:                   reqType.CreateLedger.GetName(),
-				InitialSchema:          reqType.CreateLedger.GetInitialSchema(),
-				Mode:                   reqType.CreateLedger.GetMode(),
-				MirrorSource:           reqType.CreateLedger.GetMirrorSource(),
-				AccountTypes:           reqType.CreateLedger.GetAccountTypes(),
-				DefaultEnforcementMode: reqType.CreateLedger.GetDefaultEnforcementMode(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.CreateLedger.GetName(),
+			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+				CreateLedger: &raftcmdpb.CreateLedgerOrder{
+					InitialSchema:          reqType.CreateLedger.GetInitialSchema(),
+					Mode:                   reqType.CreateLedger.GetMode(),
+					MirrorSource:           reqType.CreateLedger.GetMirrorSource(),
+					AccountTypes:           reqType.CreateLedger.GetAccountTypes(),
+					DefaultEnforcementMode: reqType.CreateLedger.GetDefaultEnforcementMode(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_DeleteLedger:
-		order.Type = &raftcmdpb.Order_DeleteLedger{
-			DeleteLedger: &raftcmdpb.DeleteLedgerOrder{
-				Name: reqType.DeleteLedger.GetName(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.DeleteLedger.GetName(),
+			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{
+				DeleteLedger: &raftcmdpb.DeleteLedgerOrder{},
 			},
-		}
+		})
 	case *servicepb.Request_Apply:
 		applyOrder, err := a.convertApplyRequest(ctx, reqType.Apply)
 		if err != nil {
 			return nil, err
 		}
 
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: applyOrder,
-		}
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.Apply.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: applyOrder,
+			},
+		})
 	case *servicepb.Request_RegisterSigningKey:
 		var parentKeyID string
 		if vr.sig != nil {
 			parentKeyID = vr.sig.GetKeyId()
 		}
 
-		order.Type = &raftcmdpb.Order_RegisterSigningKey{
-			RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
-				KeyId:       reqType.RegisterSigningKey.GetKeyId(),
-				PublicKey:   reqType.RegisterSigningKey.GetPublicKey(),
-				ParentKeyId: parentKeyID,
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{
+				RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
+					KeyId:       reqType.RegisterSigningKey.GetKeyId(),
+					PublicKey:   reqType.RegisterSigningKey.GetPublicKey(),
+					ParentKeyId: parentKeyID,
+				},
 			},
-		}
+		})
 	case *servicepb.Request_RevokeSigningKey:
-		order.Type = &raftcmdpb.Order_RevokeSigningKey{
-			RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
-				KeyId:   reqType.RevokeSigningKey.GetKeyId(),
-				Cascade: reqType.RevokeSigningKey.GetCascade(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_RevokeSigningKey{
+				RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
+					KeyId:   reqType.RevokeSigningKey.GetKeyId(),
+					Cascade: reqType.RevokeSigningKey.GetCascade(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_SetSigningConfig:
-		order.Type = &raftcmdpb.Order_SetSigningConfig{
-			SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
-				RequireSignatures: reqType.SetSigningConfig.GetRequireSignatures(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetSigningConfig{
+				SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
+					RequireSignatures: reqType.SetSigningConfig.GetRequireSignatures(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_AddEventsSink:
-		order.Type = &raftcmdpb.Order_AddEventsSink{
-			AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-				Config: reqType.AddEventsSink.GetConfig(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
+				AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
+					Config: reqType.AddEventsSink.GetConfig(),
+				},
 			},
-		}
+		})
 
 		overlay.sinks.Put(reqType.AddEventsSink.GetConfig().GetName(), reqType.AddEventsSink.GetConfig())
 	case *servicepb.Request_RemoveEventsSink:
-		order.Type = &raftcmdpb.Order_RemoveEventsSink{
-			RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
-				Name: reqType.RemoveEventsSink.GetName(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{
+				RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
+					Name: reqType.RemoveEventsSink.GetName(),
+				},
 			},
-		}
+		})
 
 		overlay.sinks.Delete(reqType.RemoveEventsSink.GetName())
 	case *servicepb.Request_CloseChapter:
-		order.Type = &raftcmdpb.Order_CloseChapter{
-			CloseChapter: &raftcmdpb.CloseChapterOrder{},
-		}
-	case *servicepb.Request_SealChapter:
-		order.Type = &raftcmdpb.Order_SealChapter{
-			SealChapter: &raftcmdpb.SealChapterOrder{
-				ChapterId:   reqType.SealChapter.GetChapterId(),
-				SealingHash: reqType.SealChapter.GetSealingHash(),
-				StateHash:   reqType.SealChapter.GetStateHash(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{
+				CloseChapter: &raftcmdpb.CloseChapterOrder{},
 			},
-		}
+		})
+	case *servicepb.Request_SealChapter:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SealChapter{
+				SealChapter: &raftcmdpb.SealChapterOrder{
+					ChapterId:   reqType.SealChapter.GetChapterId(),
+					SealingHash: reqType.SealChapter.GetSealingHash(),
+					StateHash:   reqType.SealChapter.GetStateHash(),
+				},
+			},
+		})
 	case *servicepb.Request_ArchiveChapter:
 		if !a.coldStorageEnabled {
 			return nil, domain.ErrColdStorageDisabled
 		}
 
-		order.Type = &raftcmdpb.Order_ArchiveChapter{
-			ArchiveChapter: &raftcmdpb.ArchiveChapterOrder{
-				ChapterId: reqType.ArchiveChapter.GetChapterId(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_ArchiveChapter{
+				ArchiveChapter: &raftcmdpb.ArchiveChapterOrder{
+					ChapterId: reqType.ArchiveChapter.GetChapterId(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_ConfirmArchiveChapter:
-		order.Type = &raftcmdpb.Order_ConfirmArchiveChapter{
-			ConfirmArchiveChapter: &raftcmdpb.ConfirmArchiveChapterOrder{
-				ChapterId: reqType.ConfirmArchiveChapter.GetChapterId(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter{
+				ConfirmArchiveChapter: &raftcmdpb.ConfirmArchiveChapterOrder{
+					ChapterId: reqType.ConfirmArchiveChapter.GetChapterId(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_SetMaintenanceMode:
-		order.Type = &raftcmdpb.Order_SetMaintenanceMode{
-			SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
-				Enabled: reqType.SetMaintenanceMode.GetEnabled(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
+				SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
+					Enabled: reqType.SetMaintenanceMode.GetEnabled(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_SetChapterSchedule:
-		order.Type = &raftcmdpb.Order_SetChapterSchedule{
-			SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
-				Cron: reqType.SetChapterSchedule.GetCron(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetChapterSchedule{
+				SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
+					Cron: reqType.SetChapterSchedule.GetCron(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_DeleteChapterSchedule:
-		order.Type = &raftcmdpb.Order_DeleteChapterSchedule{
-			DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{},
-		}
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_DeleteChapterSchedule{
+				DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{},
+			},
+		})
 	case *servicepb.Request_PromoteLedger:
-		order.Type = &raftcmdpb.Order_PromoteLedger{
-			PromoteLedger: &raftcmdpb.PromoteLedgerOrder{
-				Ledger: reqType.PromoteLedger.GetLedger(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.PromoteLedger.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
+				PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
 			},
-		}
+		})
 	case *servicepb.Request_CreatePreparedQuery:
-		order.Type = &raftcmdpb.Order_CreatePreparedQuery{
-			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-				Query: reqType.CreatePreparedQuery.GetQuery(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.CreatePreparedQuery.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+				CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
+					Query: reqType.CreatePreparedQuery.GetQuery(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_UpdatePreparedQuery:
-		order.Type = &raftcmdpb.Order_UpdatePreparedQuery{
-			UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{
-				Ledger: reqType.UpdatePreparedQuery.GetLedger(),
-				Name:   reqType.UpdatePreparedQuery.GetName(),
-				Filter: reqType.UpdatePreparedQuery.GetFilter(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.UpdatePreparedQuery.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery{
+				UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{
+					Name:   reqType.UpdatePreparedQuery.GetName(),
+					Filter: reqType.UpdatePreparedQuery.GetFilter(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_DeletePreparedQuery:
-		order.Type = &raftcmdpb.Order_DeletePreparedQuery{
-			DeletePreparedQuery: &raftcmdpb.DeletePreparedQueryOrder{
-				Ledger: reqType.DeletePreparedQuery.GetLedger(),
-				Name:   reqType.DeletePreparedQuery.GetName(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.DeletePreparedQuery.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_DeletePreparedQuery{
+				DeletePreparedQuery: &raftcmdpb.DeletePreparedQueryOrder{
+					Name: reqType.DeletePreparedQuery.GetName(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_SetMetadataFieldType:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.SetMetadataFieldType.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
-					SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-						TargetType: reqType.SetMetadataFieldType.GetTargetType(),
-						Key:        reqType.SetMetadataFieldType.GetKey(),
-						Type:       reqType.SetMetadataFieldType.GetType(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.SetMetadataFieldType.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: reqType.SetMetadataFieldType.GetTargetType(),
+							Key:        reqType.SetMetadataFieldType.GetKey(),
+							Type:       reqType.SetMetadataFieldType.GetType(),
+						},
 					},
 				},
 			},
-		}
+		})
 	case *servicepb.Request_RemoveMetadataFieldType:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.RemoveMetadataFieldType.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
-					RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-						TargetType: reqType.RemoveMetadataFieldType.GetTargetType(),
-						Key:        reqType.RemoveMetadataFieldType.GetKey(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.RemoveMetadataFieldType.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+							TargetType: reqType.RemoveMetadataFieldType.GetTargetType(),
+							Key:        reqType.RemoveMetadataFieldType.GetKey(),
+						},
 					},
 				},
 			},
-		}
+		})
 	case *servicepb.Request_CreateIndex:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.CreateIndex.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_CreateIndex{CreateIndex: &raftcmdpb.CreateIndexOrder{
-					Id: reqType.CreateIndex.GetId(),
-				}},
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.CreateIndex.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_CreateIndex{CreateIndex: &raftcmdpb.CreateIndexOrder{
+						Id: reqType.CreateIndex.GetId(),
+					}},
+				},
 			},
-		}
+		})
 	case *servicepb.Request_DropIndex:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.DropIndex.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_DropIndex{DropIndex: &raftcmdpb.DropIndexOrder{
-					Id: reqType.DropIndex.GetId(),
-				}},
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.DropIndex.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_DropIndex{DropIndex: &raftcmdpb.DropIndexOrder{
+						Id: reqType.DropIndex.GetId(),
+					}},
+				},
 			},
-		}
+		})
 	case *servicepb.Request_SaveNumscript:
-		order.Type = &raftcmdpb.Order_SaveNumscript{
-			SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
-				Name:    reqType.SaveNumscript.GetName(),
-				Content: reqType.SaveNumscript.GetContent(),
-				Version: reqType.SaveNumscript.GetVersion(),
-				Ledger:  reqType.SaveNumscript.GetLedger(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.SaveNumscript.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{
+				SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
+					Name:    reqType.SaveNumscript.GetName(),
+					Content: reqType.SaveNumscript.GetContent(),
+					Version: reqType.SaveNumscript.GetVersion(),
+				},
 			},
-		}
+		})
 
 		overlay.recordNumscriptSave(
 			reqType.SaveNumscript.GetLedger(),
@@ -1274,81 +1384,101 @@ func (a *Admission) requestToOrder(ctx context.Context, vr verifiedRequest, over
 			reqType.SaveNumscript.GetContent(),
 		)
 	case *servicepb.Request_DeleteNumscript:
-		order.Type = &raftcmdpb.Order_DeleteNumscript{
-			DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
-				Name:   reqType.DeleteNumscript.GetName(),
-				Ledger: reqType.DeleteNumscript.GetLedger(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.DeleteNumscript.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_DeleteNumscript{
+				DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
+					Name: reqType.DeleteNumscript.GetName(),
+				},
 			},
-		}
+		})
 
 		overlay.recordNumscriptDelete(reqType.DeleteNumscript.GetLedger(), reqType.DeleteNumscript.GetName())
 	case *servicepb.Request_CreateQueryCheckpoint:
-		order.Type = &raftcmdpb.Order_CreateQueryCheckpoint{
-			CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
-		}
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+			},
+		})
 	case *servicepb.Request_DeleteQueryCheckpoint:
-		order.Type = &raftcmdpb.Order_DeleteQueryCheckpoint{
-			DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{
-				CheckpointId: reqType.DeleteQueryCheckpoint.GetCheckpointId(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint{
+				DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{
+					CheckpointId: reqType.DeleteQueryCheckpoint.GetCheckpointId(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_SetQueryCheckpointSchedule:
-		order.Type = &raftcmdpb.Order_SetQueryCheckpointSchedule{
-			SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
-				Cron: reqType.SetQueryCheckpointSchedule.GetCron(),
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{
+				SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
+					Cron: reqType.SetQueryCheckpointSchedule.GetCron(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_DeleteQueryCheckpointSchedule:
-		order.Type = &raftcmdpb.Order_DeleteQueryCheckpointSchedule{
-			DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{},
-		}
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule{
+				DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{},
+			},
+		})
 	case *servicepb.Request_AddAccountType:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.AddAccountType.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
-					AddAccountType: &raftcmdpb.AddAccountTypeOrder{
-						AccountType: reqType.AddAccountType.GetAccountType(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.AddAccountType.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
+						AddAccountType: &raftcmdpb.AddAccountTypeOrder{
+							AccountType: reqType.AddAccountType.GetAccountType(),
+						},
 					},
 				},
 			},
-		}
+		})
 	case *servicepb.Request_RemoveAccountType:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.RemoveAccountType.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
-					RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{
-						Name: reqType.RemoveAccountType.GetName(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.RemoveAccountType.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
+						RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{
+							Name: reqType.RemoveAccountType.GetName(),
+						},
 					},
 				},
 			},
-		}
+		})
 	case *servicepb.Request_SetDefaultEnforcementMode:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.SetDefaultEnforcementMode.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode{
-					UpdateDefaultEnforcementMode: &raftcmdpb.UpdateDefaultEnforcementModeOrder{
-						EnforcementMode: reqType.SetDefaultEnforcementMode.GetEnforcementMode(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.SetDefaultEnforcementMode.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode{
+						UpdateDefaultEnforcementMode: &raftcmdpb.UpdateDefaultEnforcementModeOrder{
+							EnforcementMode: reqType.SetDefaultEnforcementMode.GetEnforcementMode(),
+						},
 					},
 				},
 			},
-		}
+		})
 	case *servicepb.Request_SaveLedgerMetadata:
-		order.Type = &raftcmdpb.Order_SaveLedgerMetadata{
-			SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{
-				Ledger:   reqType.SaveLedgerMetadata.GetLedger(),
-				Metadata: reqType.SaveLedgerMetadata.GetMetadata(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.SaveLedgerMetadata.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{
+				SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{
+					Metadata: reqType.SaveLedgerMetadata.GetMetadata(),
+				},
 			},
-		}
+		})
 	case *servicepb.Request_DeleteLedgerMetadata:
-		order.Type = &raftcmdpb.Order_DeleteLedgerMetadata{
-			DeleteLedgerMetadata: &raftcmdpb.DeleteLedgerMetadataOrder{
-				Ledger: reqType.DeleteLedgerMetadata.GetLedger(),
-				Key:    reqType.DeleteLedgerMetadata.GetKey(),
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.DeleteLedgerMetadata.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata{
+				DeleteLedgerMetadata: &raftcmdpb.DeleteLedgerMetadataOrder{
+					Key: reqType.DeleteLedgerMetadata.GetKey(),
+				},
 			},
-		}
+		})
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
@@ -1379,11 +1509,11 @@ func (a *Admission) requestToOrder(ctx context.Context, vr verifiedRequest, over
 	return order, nil
 }
 
-// convertApplyRequest converts a servicepb.LedgerApplyRequest to raftcmdpb.LedgerApplyOrder.
+// convertApplyRequest converts a servicepb.LedgerApplyRequest to a
+// raftcmdpb.LedgerApplyOrder payload. The ledger name lives on the
+// surrounding LedgerScopedOrder wrapper; callers must set it there.
 func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.LedgerApplyRequest) (*raftcmdpb.LedgerApplyOrder, error) {
-	order := &raftcmdpb.LedgerApplyOrder{
-		Ledger: apply.GetLedger(),
-	}
+	order := &raftcmdpb.LedgerApplyOrder{}
 
 	switch data := apply.GetAction().GetData().(type) {
 	case *servicepb.LedgerAction_CreateTransaction:

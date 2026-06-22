@@ -269,7 +269,6 @@ func renderConfigurationPreparedQueries(queries []*commonpb.PreparedQuery, expan
 		pterm.Printf("  %s %s\n", pterm.Cyan(q.GetName()), pterm.Gray("─────────────────────────"))
 		pterm.Printf("    Name:   %s\n", q.GetName())
 		pterm.Printf("    Target: %s\n", queryTargetString(q.GetTarget()))
-		pterm.Printf("    Ledger: %s\n", q.GetLedger())
 
 		if q.GetFilter() != nil {
 			pterm.Printf("    Filter: %s\n", filterexpr.Format(q.GetFilter()))

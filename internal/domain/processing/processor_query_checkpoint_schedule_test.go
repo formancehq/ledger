@@ -23,9 +23,13 @@ func TestProcessSetQueryCheckpointSchedule_ValidCron(t *testing.T) {
 	mockStore.EXPECT().SetQueryCheckpointSchedule("0 0 1 * *")
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_SetQueryCheckpointSchedule{
-			SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
-				Cron: "0 0 1 * *",
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{
+					SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
+						Cron: "0 0 1 * *",
+					},
+				},
 			},
 		},
 	}
@@ -50,9 +54,13 @@ func TestProcessSetQueryCheckpointSchedule_InvalidCron(t *testing.T) {
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_SetQueryCheckpointSchedule{
-			SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
-				Cron: "not-a-cron",
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{
+					SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
+						Cron: "not-a-cron",
+					},
+				},
 			},
 		},
 	}
@@ -79,8 +87,12 @@ func TestProcessDeleteQueryCheckpointSchedule(t *testing.T) {
 	mockStore.EXPECT().DeleteQueryCheckpointSchedule()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_DeleteQueryCheckpointSchedule{
-			DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{},
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule{
+					DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{},
+				},
+			},
 		},
 	}
 

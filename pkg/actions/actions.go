@@ -646,9 +646,9 @@ func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget,
 	return &servicepb.Request{
 		Type: &servicepb.Request_CreatePreparedQuery{
 			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledger,
 				Query: &commonpb.PreparedQuery{
 					Name:   name,
-					Ledger: ledger,
 					Target: target,
 					Filter: filter,
 				},

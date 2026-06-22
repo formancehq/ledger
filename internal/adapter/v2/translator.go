@@ -70,10 +70,14 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 
 func makeMirrorOrder(ledger string, entry *raftcmdpb.MirrorLogEntry) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_MirrorIngest{
-			MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Entry:  entry,
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Entry: entry,
+					},
+				},
 			},
 		},
 	}

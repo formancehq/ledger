@@ -21,16 +21,26 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 		{
 			name: "valid CreateLedger",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_CreateLedger{
-					CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "default"},
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "default",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
 				},
 			},
 		},
 		{
 			name: "null byte in CreateLedger name",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_CreateLedger{
-					CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "ledger\x00evil"},
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "ledger\x00evil",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
 				},
 			},
 			wantErr: domain.ErrLedgerNameContainsNullByte,
@@ -38,8 +48,13 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 		{
 			name: "empty CreateLedger name",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_CreateLedger{
-					CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: ""},
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
 				},
 			},
 			wantErr: domain.ErrLedgerNameRequired,
@@ -47,8 +62,13 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 		{
 			name: "null byte in Apply ledger",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{Ledger: "bad\x00name"},
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "bad\x00name",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{},
+						},
+					},
 				},
 			},
 			wantErr: domain.ErrLedgerNameContainsNullByte,
@@ -56,8 +76,13 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 		{
 			name: "null byte in SaveNumscript ledger",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_SaveNumscript{
-					SaveNumscript: &raftcmdpb.SaveNumscriptOrder{Ledger: "ns\x00bad"},
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "ns\x00bad",
+						Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{
+							SaveNumscript: &raftcmdpb.SaveNumscriptOrder{},
+						},
+					},
 				},
 			},
 			wantErr: domain.ErrLedgerNameContainsNullByte,
@@ -65,9 +90,120 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 		{
 			name: "valid order without ledger (CloseChapter)",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_CloseChapter{
-					CloseChapter: &raftcmdpb.CloseChapterOrder{},
+				Type: &raftcmdpb.Order_SystemScoped{
+					SystemScoped: &raftcmdpb.SystemScopedOrder{
+						Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{
+							CloseChapter: &raftcmdpb.CloseChapterOrder{},
+						},
+					},
 				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateOrder(tt.order)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateOrder_PreparedQueryPayload pins the regression flagged on
+// PR #522: after moving `ledger` off `common.PreparedQuery` onto the
+// wrapper, a Create with a valid wrapper ledger but a missing/empty
+// `query` would otherwise reach the FSM and persist a nameless prepared
+// query. The validator gate (mirrored on the FSM side) must reject these
+// malformed payloads at admission.
+func TestValidateOrder_PreparedQueryPayload(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		order   *raftcmdpb.Order
+		wantErr error
+	}{
+		{
+			name: "create rejects nil query",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{},
+					},
+				}},
+			},
+			wantErr: domain.ErrPreparedQueryRequired,
+		},
+		{
+			name: "create rejects empty name",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
+							Query: &commonpb.PreparedQuery{}, // empty name
+						},
+					},
+				}},
+			},
+			wantErr: domain.ErrPreparedQueryNameRequired,
+		},
+		{
+			name: "update rejects empty name",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery{
+						UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{},
+					},
+				}},
+			},
+			wantErr: domain.ErrPreparedQueryNameRequired,
+		},
+		{
+			name: "delete rejects empty name",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_DeletePreparedQuery{
+						DeletePreparedQuery: &raftcmdpb.DeletePreparedQueryOrder{},
+					},
+				}},
+			},
+			wantErr: domain.ErrPreparedQueryNameRequired,
+		},
+		{
+			name: "create rejects name with control character",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
+							Query: &commonpb.PreparedQuery{Name: "bad\nname"},
+						},
+					},
+				}},
+			},
+			wantErr: domain.ErrPreparedQueryNameInvalidChar,
+		},
+		{
+			name: "create accepts a well-formed name",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
+							Query: &commonpb.PreparedQuery{Name: "ok"},
+						},
+					},
+				}},
 			},
 		},
 	}
@@ -97,23 +233,26 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 		{
 			name: "valid metadata in CreateTransaction",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								// Content source required so the structural gate
-								// (validateOrderContent) doesn't reject the order
-								// before metadata is even looked at.
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: "users:alice",
-									Amount:      commonpb.NewUint256FromUint64(1),
-									Asset:       "USD",
-								}},
-								Metadata: map[string]*commonpb.MetadataValue{
-									"category": {Type: &commonpb.MetadataValue_StringValue{StringValue: "test"}},
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									// Content source required so the structural gate
+									// (validateOrderContent) doesn't reject the order
+									// before metadata is even looked at.
+									Postings: []*commonpb.Posting{{
+										Source:      "world",
+										Destination: "users:alice",
+										Amount:      commonpb.NewUint256FromUint64(1),
+										Asset:       "USD",
+									}},
+									Metadata: map[string]*commonpb.MetadataValue{
+										"category": {Type: &commonpb.MetadataValue_StringValue{StringValue: "test"}},
+									},
 								},
+							},
 							},
 						},
 					},
@@ -123,14 +262,17 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 		{
 			name: "null byte in CreateTransaction metadata key",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Metadata: map[string]*commonpb.MetadataValue{
-									"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Metadata: map[string]*commonpb.MetadataValue{
+										"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+									},
 								},
+							},
 							},
 						},
 					},
@@ -141,11 +283,14 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 		{
 			name: "null byte in SaveLedgerMetadata key",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_SaveLedgerMetadata{
-					SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Metadata: map[string]*commonpb.MetadataValue{
-							"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+						Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{
+							SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*commonpb.MetadataValue{
+								"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+							},
+							},
 						},
 					},
 				},
@@ -155,11 +300,14 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 		{
 			name: "empty metadata key in DeleteMetadata",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
-							DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{Key: ""},
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
+								DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{Key: ""},
+							},
+							},
 						},
 					},
 				},
@@ -169,18 +317,21 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 		{
 			name: "null byte in account metadata key",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								AccountMetadata: map[string]*commonpb.MetadataMap{
-									"users:001": {
-										Values: map[string]*commonpb.MetadataValue{
-											"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									AccountMetadata: map[string]*commonpb.MetadataMap{
+										"users:001": {
+											Values: map[string]*commonpb.MetadataValue{
+												"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+											},
 										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -195,15 +346,18 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 		{
 			name: "null byte in RevertTransaction metadata key",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-								TransactionId: 1,
-								Metadata: map[string]*commonpb.MetadataValue{
-									"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+									TransactionId: 1,
+									Metadata: map[string]*commonpb.MetadataValue{
+										"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+									},
 								},
+							},
 							},
 						},
 					},
@@ -214,15 +368,18 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 		{
 			name: "empty metadata key in RevertTransaction",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-								TransactionId: 1,
-								Metadata: map[string]*commonpb.MetadataValue{
-									"": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+									TransactionId: 1,
+									Metadata: map[string]*commonpb.MetadataValue{
+										"": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+									},
 								},
+							},
 							},
 						},
 					},
@@ -233,15 +390,18 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 		{
 			name: "valid metadata in RevertTransaction",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-								TransactionId: 1,
-								Metadata: map[string]*commonpb.MetadataValue{
-									"reason": {Type: &commonpb.MetadataValue_StringValue{StringValue: "wrong amount"}},
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+									TransactionId: 1,
+									Metadata: map[string]*commonpb.MetadataValue{
+										"reason": {Type: &commonpb.MetadataValue_StringValue{StringValue: "wrong amount"}},
+									},
 								},
+							},
 							},
 						},
 					},
@@ -275,14 +435,17 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "null byte in CreateTransaction metadata value",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Metadata: map[string]*commonpb.MetadataValue{
-									"category": commonpb.NewStringValue("safe\x00poison"),
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Metadata: map[string]*commonpb.MetadataValue{
+										"category": commonpb.NewStringValue("safe\x00poison"),
+									},
 								},
+							},
 							},
 						},
 					},
@@ -293,18 +456,21 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "null byte in CreateTransaction account metadata value",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								AccountMetadata: map[string]*commonpb.MetadataMap{
-									"users:001": {
-										Values: map[string]*commonpb.MetadataValue{
-											"role": commonpb.NewStringValue("admin\x00poison"),
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									AccountMetadata: map[string]*commonpb.MetadataMap{
+										"users:001": {
+											Values: map[string]*commonpb.MetadataValue{
+												"role": commonpb.NewStringValue("admin\x00poison"),
+											},
 										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -315,14 +481,17 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "null byte in AddMetadata null original",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
-							AddMetadata: &raftcmdpb.SaveMetadataOrder{
-								Metadata: map[string]*commonpb.MetadataValue{
-									"score": commonpb.NewNullValue("not\x00numeric"),
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+								AddMetadata: &raftcmdpb.SaveMetadataOrder{
+									Metadata: map[string]*commonpb.MetadataValue{
+										"score": commonpb.NewNullValue("not\x00numeric"),
+									},
 								},
+							},
 							},
 						},
 					},
@@ -333,15 +502,18 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "null byte in RevertTransaction metadata value",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-								TransactionId: 1,
-								Metadata: map[string]*commonpb.MetadataValue{
-									"reason": commonpb.NewStringValue("bad\x00reason"),
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+									TransactionId: 1,
+									Metadata: map[string]*commonpb.MetadataValue{
+										"reason": commonpb.NewStringValue("bad\x00reason"),
+									},
 								},
+							},
 							},
 						},
 					},
@@ -352,11 +524,14 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "null byte in SaveLedgerMetadata value",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_SaveLedgerMetadata{
-					SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Metadata: map[string]*commonpb.MetadataValue{
-							"region": commonpb.NewStringValue("eu\x00west"),
+						Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{
+							SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*commonpb.MetadataValue{
+								"region": commonpb.NewStringValue("eu\x00west"),
+							},
+							},
 						},
 					},
 				},
@@ -366,16 +541,19 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "null byte in MirrorIngest created transaction metadata value",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_MirrorIngest{
-					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Entry: &raftcmdpb.MirrorLogEntry{
-							Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
-								CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-									Metadata: map[string]*commonpb.MetadataValue{
-										"category": commonpb.NewStringValue("safe\x00poison"),
+						Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+							MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+								Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+									CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+										Metadata: map[string]*commonpb.MetadataValue{
+											"category": commonpb.NewStringValue("safe\x00poison"),
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -386,20 +564,23 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "null byte in MirrorIngest account metadata value",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_MirrorIngest{
-					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Entry: &raftcmdpb.MirrorLogEntry{
-							Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
-								CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-									AccountMetadata: map[string]*commonpb.MetadataMap{
-										"users:001": {
-											Values: map[string]*commonpb.MetadataValue{
-												"role": commonpb.NewStringValue("admin\x00poison"),
+						Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+							MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+								Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+									CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+										AccountMetadata: map[string]*commonpb.MetadataMap{
+											"users:001": {
+												Values: map[string]*commonpb.MetadataValue{
+													"role": commonpb.NewStringValue("admin\x00poison"),
+												},
 											},
 										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -410,16 +591,19 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "null byte in MirrorIngest saved metadata value",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_MirrorIngest{
-					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Entry: &raftcmdpb.MirrorLogEntry{
-							Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
-								SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-									Metadata: map[string]*commonpb.MetadataValue{
-										"status": commonpb.NewStringValue("active\x00poison"),
+						Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+							MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+								Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
+									SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
+										Metadata: map[string]*commonpb.MetadataValue{
+											"status": commonpb.NewStringValue("active\x00poison"),
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -430,16 +614,19 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "null byte in MirrorIngest reverted transaction metadata value",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_MirrorIngest{
-					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Entry: &raftcmdpb.MirrorLogEntry{
-							Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
-								RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
-									Metadata: map[string]*commonpb.MetadataValue{
-										"reason": commonpb.NewStringValue("bad\x00reason"),
+						Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+							MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+								Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
+									RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
+										Metadata: map[string]*commonpb.MetadataValue{
+											"reason": commonpb.NewStringValue("bad\x00reason"),
+										},
 									},
 								},
+							},
 							},
 						},
 					},
@@ -450,16 +637,19 @@ func TestValidateOrder_MetadataValues(t *testing.T) {
 		{
 			name: "valid typed metadata values",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
-							AddMetadata: &raftcmdpb.SaveMetadataOrder{
-								Metadata: map[string]*commonpb.MetadataValue{
-									"name":   commonpb.NewStringValue("alice"),
-									"age":    commonpb.NewIntValue(42),
-									"active": commonpb.NewBoolValue(true),
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+								AddMetadata: &raftcmdpb.SaveMetadataOrder{
+									Metadata: map[string]*commonpb.MetadataValue{
+										"name":   commonpb.NewStringValue("alice"),
+										"age":    commonpb.NewIntValue(42),
+										"active": commonpb.NewBoolValue(true),
+									},
 								},
+							},
 							},
 						},
 					},
@@ -590,11 +780,14 @@ func TestValidateOrderContent(t *testing.T) {
 			t.Parallel()
 
 			order := &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 						Ledger: "default",
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: tt.ct,
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: tt.ct,
+							},
+							},
 						},
 					},
 				},

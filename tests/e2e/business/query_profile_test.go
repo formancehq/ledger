@@ -188,9 +188,10 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "find-admins",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.StringMetadataFilter("role", "admin"),
 				},

@@ -46,7 +46,6 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 		query := func(name string) *commonpb.PreparedQuery {
 			return &commonpb.PreparedQuery{
 				Name:   name,
-				Ledger: ledgerName,
 				Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 				Filter: &commonpb.QueryFilter{
 					Filter: &commonpb.QueryFilter_Address{
@@ -68,7 +67,8 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 			// Seed: pre-create the query so it lives in the leader's cache
 			// at the moment admission inspects CheckCache for the racing ops.
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Query: query(name),
+				Ledger: ledgerName,
+				Query:  query(name),
 			})
 			Expect(err).To(Succeed())
 
@@ -94,7 +94,8 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 				defer wg.Done()
 				<-barrier
 				_, errCreate = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-					Query: query(name),
+					Ledger: ledgerName,
+					Query:  query(name),
 				})
 			}()
 

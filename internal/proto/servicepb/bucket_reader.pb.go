@@ -7992,11 +7992,16 @@ func NewAssetVolumeStatsListReader(s []*AssetVolumeStats) AssetVolumeStatsListRe
 // CreatePreparedQueryRequestReader provides read-only access to CreatePreparedQueryRequest.
 // Call Mutate() to obtain a mutable clone.
 type CreatePreparedQueryRequestReader interface {
+	GetLedger() string
 	GetQuery() commonpb.PreparedQueryReader
 	Mutate() *CreatePreparedQueryRequest
 }
 
 type createPreparedQueryRequestReadonly struct{ v *CreatePreparedQueryRequest }
+
+func (r *createPreparedQueryRequestReadonly) GetLedger() string {
+	return r.v.GetLedger()
+}
 
 func (r *createPreparedQueryRequestReadonly) GetQuery() commonpb.PreparedQueryReader {
 	v := r.v.GetQuery()

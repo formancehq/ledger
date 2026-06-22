@@ -11,21 +11,21 @@ import (
 // processMirrorIngest processes a single MirrorIngestOrder.
 // It handles one v2 log entry: fill gaps, create transactions, save/delete metadata, reverts.
 // The ledger must be in MIRROR mode.
-func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
-	info, loadErr := loadLedger(s, order.GetLedger())
+func (p *RequestProcessor) processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	info, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
 
 	if info.GetMode() != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-		return nil, &domain.ErrLedgerNotInMirrorMode{Name: order.GetLedger()}
+		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
 	// Re-touch ledger info so it enters the Merge buffer and gets propagated
 	// back to Gen0 on commit. Without this, ledger info is evicted after two
 	// cache rotations because mirror proposals bypass the admission preloader.
-	s.PutLedger(order.GetLedger(), info)
+	s.PutLedger(ledger, info)
 
-	boundariesReader, loadErr := loadBoundaries(s, order.GetLedger())
+	boundariesReader, loadErr := loadBoundaries(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -34,21 +34,19 @@ func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrde
 
 	entry := order.GetEntry()
 	if entry == nil {
-		return nil, &domain.ErrLedgerNotInMirrorMode{Name: order.GetLedger()}
+		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
-
-	ledgerName := order.GetLedger()
 
 	var logPayload *commonpb.LedgerLogPayload
 
 	switch data := entry.GetData().(type) {
 	case *raftcmdpb.MirrorLogEntry_FillGap:
-		logPayload = p.processMirrorFillGap(ledgerName, boundaries, data.FillGap, entry.GetV2LogId(), s)
+		logPayload = p.processMirrorFillGap(ledger, boundaries, data.FillGap, entry.GetV2LogId(), s)
 
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
 		var err domain.Describable
 
-		logPayload, err = p.processMirrorCreatedTransaction(ledgerName, boundaries, data.CreatedTransaction, s)
+		logPayload, err = p.processMirrorCreatedTransaction(ledger, boundaries, data.CreatedTransaction, s)
 		if err != nil {
 			return nil, err
 		}
@@ -56,7 +54,7 @@ func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrde
 	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
 		var err domain.Describable
 
-		logPayload, err = p.processMirrorSavedMetadata(ledgerName, data.SavedMetadata, s)
+		logPayload, err = p.processMirrorSavedMetadata(ledger, data.SavedMetadata, s)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +62,7 @@ func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrde
 	case *raftcmdpb.MirrorLogEntry_DeletedMetadata:
 		var err domain.Describable
 
-		logPayload, err = p.processMirrorDeletedMetadata(ledgerName, data.DeletedMetadata, s)
+		logPayload, err = p.processMirrorDeletedMetadata(ledger, data.DeletedMetadata, s)
 		if err != nil {
 			return nil, err
 		}
@@ -72,24 +70,24 @@ func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrde
 	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
 		var err domain.Describable
 
-		logPayload, err = p.processMirrorRevertedTransaction(ledgerName, boundaries, data.RevertedTransaction, s)
+		logPayload, err = p.processMirrorRevertedTransaction(ledger, boundaries, data.RevertedTransaction, s)
 		if err != nil {
 			return nil, err
 		}
 
 	default:
-		return nil, &domain.ErrLedgerNotInMirrorMode{Name: order.GetLedger()}
+		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
 
 	// Assign per-ledger log ID and advance boundaries
 	nextLogID := boundaries.GetNextLogId()
 	boundaries.NextLogId = nextLogID + 1
-	s.PutBoundaries(order.GetLedger(), boundaries)
+	s.PutBoundaries(ledger, boundaries)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{
-				LedgerName: order.GetLedger(),
+				LedgerName: ledger,
 				Log: &commonpb.LedgerLog{
 					Data: logPayload,
 					Date: s.GetDate(),
@@ -416,20 +414,20 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledgerName string, b
 }
 
 // processPromoteLedger promotes a mirror ledger to normal mode.
-func (p *RequestProcessor) processPromoteLedger(order *raftcmdpb.PromoteLedgerOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
-	info, loadErr := loadLedger(s, order.GetLedger())
+func (p *RequestProcessor) processPromoteLedger(ledger string, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	info, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
 
 	if info.GetMode() != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-		return nil, &domain.ErrLedgerNotInMirrorMode{Name: order.GetLedger()}
+		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
 
 	info = info.CloneVT()
 	info.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
 	info.MirrorSource = nil
-	s.PutLedger(order.GetLedger(), info)
+	s.PutLedger(ledger, info)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_PromoteLedger{

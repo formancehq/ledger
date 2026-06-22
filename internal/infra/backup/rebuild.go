@@ -252,7 +252,7 @@ func RebuildDelta(
 
 		case *commonpb.LogPayload_CreatedPreparedQuery:
 			if p.CreatedPreparedQuery != nil && p.CreatedPreparedQuery.GetQuery() != nil {
-				if err := state.SavePreparedQuery(batch, p.CreatedPreparedQuery.GetQuery()); err != nil {
+				if err := state.SavePreparedQuery(batch, p.CreatedPreparedQuery.GetLedger(), p.CreatedPreparedQuery.GetQuery()); err != nil {
 					_ = batch.Cancel()
 
 					return fmt.Errorf("saving prepared query at log %d: %w", seq, err)

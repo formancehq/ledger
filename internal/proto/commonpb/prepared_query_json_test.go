@@ -21,7 +21,6 @@ func TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString(t *testing.T) {
 
 	pq := &PreparedQuery{
 		Name:   "q1",
-		Ledger: "test",
 		Target: QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		Filter: &QueryFilter{
 			Filter: &QueryFilter_Reference{
@@ -39,13 +38,19 @@ func TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString(t *testing.T) {
 
 	out := string(data)
 	require.Contains(t, out, `"name":"q1"`)
-	require.Contains(t, out, `"ledger":"test"`)
 	require.Contains(t, out, `"target":"QUERY_TARGET_TRANSACTIONS"`,
 		"enum must be emitted as its string constant, not a raw int")
 	require.Contains(t, out, `"reference"`,
 		"oneof variants must be lowercased per protojson")
 	require.Contains(t, out, `"hardcoded":"order-123"`,
 		"nested oneof variants must be camelCase too")
+
+	// The PreparedQuery value no longer carries a ledger field — the ledger
+	// lives on the storage key, on the surrounding RPC request, and (for
+	// write commands) on the LedgerScopedOrder wrapper. The marshalled
+	// payload must not leak the field, even transiently.
+	require.False(t, strings.Contains(out, `"ledger"`),
+		"ledger field must not appear in the marshalled PreparedQuery")
 
 	// Belt-and-braces: the broken shape must not survive.
 	require.False(t, strings.Contains(out, `"Filter"`),

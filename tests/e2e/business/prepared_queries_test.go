@@ -65,9 +65,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("Should create a prepared query", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "admins",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.StringMetadataFilter("role", "admin"),
 				},
@@ -87,9 +88,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("Should reject duplicate prepared query creation", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "admins",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.StringMetadataFilter("role", "admin"),
 				},
@@ -200,9 +202,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 			// Create prepared query
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "find-admins",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.StringMetadataFilter("role", "admin"),
 				},
@@ -296,9 +299,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "users-by-prefix",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.AddressPrefixFilter("users:"),
 				},
@@ -390,9 +394,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("AND: should return intersection (admin AND premium)", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "admin-premium",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.AndFilter(
 						actions.StringMetadataFilter("role", "admin"),
@@ -420,9 +425,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("OR: should return union (admin OR user = all with role)", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "admin-or-user",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.OrFilter(
 						actions.StringMetadataFilter("role", "admin"),
@@ -450,9 +456,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("NOT: should return complement (NOT admin = user accounts)", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "not-admin",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.NotFilter(actions.StringMetadataFilter("role", "admin")),
 				},
@@ -521,9 +528,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-role",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.ParamStringMetadataFilter("role", "role_value"),
 				},
@@ -644,9 +652,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "score-in-range",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.ParamInt64RangeMetadataFilter("score", "min", "max"),
 				},
@@ -726,9 +735,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "alice-txs",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.AddressExactFilter("alice"),
 				},
@@ -808,9 +818,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "admin-volumes",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.StringMetadataFilter("role", "admin"),
 				},
@@ -893,9 +904,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("Should return error when missing a required parameter", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "param-query",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.ParamStringMetadataFilter("role", "role_value"),
 				},
@@ -913,9 +925,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("Should return error for AGGREGATE_VOLUMES on TRANSACTIONS target", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "tx-query",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.AddressExactFilter("alice"),
 				},
@@ -1003,9 +1016,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "roles-in",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: filter,
 				},
@@ -1034,9 +1048,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "roles-in-and-tier-in",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: filter,
 				},
@@ -1065,9 +1080,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "tier-in-quoted",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: filter,
 				},
@@ -1131,9 +1147,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "addr-in-txs",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: filter,
 				},
@@ -1212,9 +1229,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "age-between-30-60",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: filter,
 				},

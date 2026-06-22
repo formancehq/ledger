@@ -98,6 +98,145 @@ func (l orderListReadonly) Range(yield func(int, OrderReader) bool) {
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewOrderListReader(s []*Order) OrderListReader { return orderListReadonly(s) }
 
+// LedgerScopedOrderReader provides read-only access to LedgerScopedOrder.
+// Call Mutate() to obtain a mutable clone.
+type LedgerScopedOrderReader interface {
+	GetLedger() string
+	GetPayload() isLedgerScopedOrder_Payload
+	Mutate() *LedgerScopedOrder
+}
+
+type ledgerScopedOrderReadonly struct{ v *LedgerScopedOrder }
+
+func (r *ledgerScopedOrderReadonly) GetLedger() string {
+	return r.v.GetLedger()
+}
+
+func (r *ledgerScopedOrderReadonly) GetPayload() isLedgerScopedOrder_Payload {
+	return r.v.GetPayload()
+}
+
+func (r *ledgerScopedOrderReadonly) Mutate() *LedgerScopedOrder {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this LedgerScopedOrder.
+func (m *LedgerScopedOrder) AsReader() LedgerScopedOrderReader {
+	if m == nil {
+		return nil
+	}
+	return &ledgerScopedOrderReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this LedgerScopedOrder.
+func (m *LedgerScopedOrder) Mutate() *LedgerScopedOrder {
+	return m.CloneVT()
+}
+
+// LedgerScopedOrderListReader provides read-only iteration over []*LedgerScopedOrder.
+type LedgerScopedOrderListReader interface {
+	Len() int
+	Get(i int) LedgerScopedOrderReader
+	Range(yield func(int, LedgerScopedOrderReader) bool)
+}
+
+type ledgerScopedOrderListReadonly []*LedgerScopedOrder
+
+func (l ledgerScopedOrderListReadonly) Len() int { return len(l) }
+
+func (l ledgerScopedOrderListReadonly) Get(i int) LedgerScopedOrderReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l ledgerScopedOrderListReadonly) Range(yield func(int, LedgerScopedOrderReader) bool) {
+	for i, v := range l {
+		var r LedgerScopedOrderReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLedgerScopedOrderListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLedgerScopedOrderListReader(s []*LedgerScopedOrder) LedgerScopedOrderListReader {
+	return ledgerScopedOrderListReadonly(s)
+}
+
+// SystemScopedOrderReader provides read-only access to SystemScopedOrder.
+// Call Mutate() to obtain a mutable clone.
+type SystemScopedOrderReader interface {
+	GetPayload() isSystemScopedOrder_Payload
+	Mutate() *SystemScopedOrder
+}
+
+type systemScopedOrderReadonly struct{ v *SystemScopedOrder }
+
+func (r *systemScopedOrderReadonly) GetPayload() isSystemScopedOrder_Payload {
+	return r.v.GetPayload()
+}
+
+func (r *systemScopedOrderReadonly) Mutate() *SystemScopedOrder {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this SystemScopedOrder.
+func (m *SystemScopedOrder) AsReader() SystemScopedOrderReader {
+	if m == nil {
+		return nil
+	}
+	return &systemScopedOrderReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this SystemScopedOrder.
+func (m *SystemScopedOrder) Mutate() *SystemScopedOrder {
+	return m.CloneVT()
+}
+
+// SystemScopedOrderListReader provides read-only iteration over []*SystemScopedOrder.
+type SystemScopedOrderListReader interface {
+	Len() int
+	Get(i int) SystemScopedOrderReader
+	Range(yield func(int, SystemScopedOrderReader) bool)
+}
+
+type systemScopedOrderListReadonly []*SystemScopedOrder
+
+func (l systemScopedOrderListReadonly) Len() int { return len(l) }
+
+func (l systemScopedOrderListReadonly) Get(i int) SystemScopedOrderReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l systemScopedOrderListReadonly) Range(yield func(int, SystemScopedOrderReader) bool) {
+	for i, v := range l {
+		var r SystemScopedOrderReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSystemScopedOrderListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSystemScopedOrderListReader(s []*SystemScopedOrder) SystemScopedOrderListReader {
+	return systemScopedOrderListReadonly(s)
+}
+
 // CreatePreparedQueryOrderReader provides read-only access to CreatePreparedQueryOrder.
 // Call Mutate() to obtain a mutable clone.
 type CreatePreparedQueryOrderReader interface {
@@ -172,17 +311,12 @@ func NewCreatePreparedQueryOrderListReader(s []*CreatePreparedQueryOrder) Create
 // UpdatePreparedQueryOrderReader provides read-only access to UpdatePreparedQueryOrder.
 // Call Mutate() to obtain a mutable clone.
 type UpdatePreparedQueryOrderReader interface {
-	GetLedger() string
 	GetName() string
 	GetFilter() commonpb.QueryFilterReader
 	Mutate() *UpdatePreparedQueryOrder
 }
 
 type updatePreparedQueryOrderReadonly struct{ v *UpdatePreparedQueryOrder }
-
-func (r *updatePreparedQueryOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
-}
 
 func (r *updatePreparedQueryOrderReadonly) GetName() string {
 	return r.v.GetName()
@@ -253,16 +387,11 @@ func NewUpdatePreparedQueryOrderListReader(s []*UpdatePreparedQueryOrder) Update
 // DeletePreparedQueryOrderReader provides read-only access to DeletePreparedQueryOrder.
 // Call Mutate() to obtain a mutable clone.
 type DeletePreparedQueryOrderReader interface {
-	GetLedger() string
 	GetName() string
 	Mutate() *DeletePreparedQueryOrder
 }
 
 type deletePreparedQueryOrderReadonly struct{ v *DeletePreparedQueryOrder }
-
-func (r *deletePreparedQueryOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
-}
 
 func (r *deletePreparedQueryOrderReadonly) GetName() string {
 	return r.v.GetName()
@@ -1151,7 +1280,6 @@ type SaveNumscriptOrderReader interface {
 	GetName() string
 	GetContent() string
 	GetVersion() string
-	GetLedger() string
 	Mutate() *SaveNumscriptOrder
 }
 
@@ -1167,10 +1295,6 @@ func (r *saveNumscriptOrderReadonly) GetContent() string {
 
 func (r *saveNumscriptOrderReadonly) GetVersion() string {
 	return r.v.GetVersion()
-}
-
-func (r *saveNumscriptOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
 }
 
 func (r *saveNumscriptOrderReadonly) Mutate() *SaveNumscriptOrder {
@@ -1231,7 +1355,6 @@ func NewSaveNumscriptOrderListReader(s []*SaveNumscriptOrder) SaveNumscriptOrder
 // Call Mutate() to obtain a mutable clone.
 type DeleteNumscriptOrderReader interface {
 	GetName() string
-	GetLedger() string
 	Mutate() *DeleteNumscriptOrder
 }
 
@@ -1239,10 +1362,6 @@ type deleteNumscriptOrderReadonly struct{ v *DeleteNumscriptOrder }
 
 func (r *deleteNumscriptOrderReadonly) GetName() string {
 	return r.v.GetName()
-}
-
-func (r *deleteNumscriptOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
 }
 
 func (r *deleteNumscriptOrderReadonly) Mutate() *DeleteNumscriptOrder {
@@ -1645,7 +1764,6 @@ func NewDeleteQueryCheckpointScheduleOrderListReader(s []*DeleteQueryCheckpointS
 // CreateLedgerOrderReader provides read-only access to CreateLedgerOrder.
 // Call Mutate() to obtain a mutable clone.
 type CreateLedgerOrderReader interface {
-	GetName() string
 	GetInitialSchema() commonpb.SetMetadataFieldTypeCommandListReader
 	GetMode() commonpb.LedgerMode
 	GetMirrorSource() commonpb.MirrorSourceConfigReader
@@ -1655,10 +1773,6 @@ type CreateLedgerOrderReader interface {
 }
 
 type createLedgerOrderReadonly struct{ v *CreateLedgerOrder }
-
-func (r *createLedgerOrderReadonly) GetName() string {
-	return r.v.GetName()
-}
 
 func (r *createLedgerOrderReadonly) GetInitialSchema() commonpb.SetMetadataFieldTypeCommandListReader {
 	return commonpb.NewSetMetadataFieldTypeCommandListReader(r.v.GetInitialSchema())
@@ -1772,16 +1886,11 @@ func (m createLedgerOrder_accountTypesMapReadonly) Range(yield func(string, comm
 // MirrorIngestOrderReader provides read-only access to MirrorIngestOrder.
 // Call Mutate() to obtain a mutable clone.
 type MirrorIngestOrderReader interface {
-	GetLedger() string
 	GetEntry() MirrorLogEntryReader
 	Mutate() *MirrorIngestOrder
 }
 
 type mirrorIngestOrderReadonly struct{ v *MirrorIngestOrder }
-
-func (r *mirrorIngestOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
-}
 
 func (r *mirrorIngestOrderReadonly) GetEntry() MirrorLogEntryReader {
 	v := r.v.GetEntry()
@@ -2450,15 +2559,10 @@ func NewMirrorDeletedMetadataListReader(s []*MirrorDeletedMetadata) MirrorDelete
 // PromoteLedgerOrderReader provides read-only access to PromoteLedgerOrder.
 // Call Mutate() to obtain a mutable clone.
 type PromoteLedgerOrderReader interface {
-	GetLedger() string
 	Mutate() *PromoteLedgerOrder
 }
 
 type promoteLedgerOrderReadonly struct{ v *PromoteLedgerOrder }
-
-func (r *promoteLedgerOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
-}
 
 func (r *promoteLedgerOrderReadonly) Mutate() *PromoteLedgerOrder {
 	return r.v.CloneVT()
@@ -2517,15 +2621,10 @@ func NewPromoteLedgerOrderListReader(s []*PromoteLedgerOrder) PromoteLedgerOrder
 // DeleteLedgerOrderReader provides read-only access to DeleteLedgerOrder.
 // Call Mutate() to obtain a mutable clone.
 type DeleteLedgerOrderReader interface {
-	GetName() string
 	Mutate() *DeleteLedgerOrder
 }
 
 type deleteLedgerOrderReadonly struct{ v *DeleteLedgerOrder }
-
-func (r *deleteLedgerOrderReadonly) GetName() string {
-	return r.v.GetName()
-}
 
 func (r *deleteLedgerOrderReadonly) Mutate() *DeleteLedgerOrder {
 	return r.v.CloneVT()
@@ -2584,16 +2683,11 @@ func NewDeleteLedgerOrderListReader(s []*DeleteLedgerOrder) DeleteLedgerOrderLis
 // LedgerApplyOrderReader provides read-only access to LedgerApplyOrder.
 // Call Mutate() to obtain a mutable clone.
 type LedgerApplyOrderReader interface {
-	GetLedger() string
 	GetData() isLedgerApplyOrder_Data
 	Mutate() *LedgerApplyOrder
 }
 
 type ledgerApplyOrderReadonly struct{ v *LedgerApplyOrder }
-
-func (r *ledgerApplyOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
-}
 
 func (r *ledgerApplyOrderReadonly) GetData() isLedgerApplyOrder_Data {
 	return r.v.GetData()
@@ -4068,16 +4162,11 @@ func NewDeleteMetadataOrderListReader(s []*DeleteMetadataOrder) DeleteMetadataOr
 // SaveLedgerMetadataOrderReader provides read-only access to SaveLedgerMetadataOrder.
 // Call Mutate() to obtain a mutable clone.
 type SaveLedgerMetadataOrderReader interface {
-	GetLedger() string
 	GetMetadata() SaveLedgerMetadataOrder_MetadataMapReader
 	Mutate() *SaveLedgerMetadataOrder
 }
 
 type saveLedgerMetadataOrderReadonly struct{ v *SaveLedgerMetadataOrder }
-
-func (r *saveLedgerMetadataOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
-}
 
 func (r *saveLedgerMetadataOrderReadonly) GetMetadata() SaveLedgerMetadataOrder_MetadataMapReader {
 	return saveLedgerMetadataOrder_metadataMapReadonly(r.v.GetMetadata())
@@ -4171,16 +4260,11 @@ func (m saveLedgerMetadataOrder_metadataMapReadonly) Range(yield func(string, co
 // DeleteLedgerMetadataOrderReader provides read-only access to DeleteLedgerMetadataOrder.
 // Call Mutate() to obtain a mutable clone.
 type DeleteLedgerMetadataOrderReader interface {
-	GetLedger() string
 	GetKey() string
 	Mutate() *DeleteLedgerMetadataOrder
 }
 
 type deleteLedgerMetadataOrderReadonly struct{ v *DeleteLedgerMetadataOrder }
-
-func (r *deleteLedgerMetadataOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
-}
 
 func (r *deleteLedgerMetadataOrderReadonly) GetKey() string {
 	return r.v.GetKey()

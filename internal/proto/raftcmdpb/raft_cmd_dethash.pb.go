@@ -34,16 +34,14 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.CoverageBits)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.CoverageBits)))
 		i--
-		dAtA[i] = 0x2
-		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0x2a
 	}
 	if m.Signature != nil {
 		size, _ := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x22
 	}
 	if m.Idempotency != nil {
 		size, _ := m.Idempotency.MarshalToSizedBufferVT(dAtA[:i])
@@ -53,7 +51,54 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0xa
 	}
 	switch v := m.Type.(type) {
-	case *Order_Apply:
+	case *Order_LedgerScoped:
+		if v.LedgerScoped != nil {
+			size, _ := v.LedgerScoped.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+		}
+	case *Order_SystemScoped:
+		if v.SystemScoped != nil {
+			size, _ := v.SystemScoped.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LedgerScopedOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *LedgerScopedOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
+	}
+	switch v := m.Payload.(type) {
+	case *LedgerScopedOrder_Apply:
 		if v.Apply != nil {
 			size, _ := v.Apply.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
@@ -61,7 +106,7 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0x12
 		}
-	case *Order_CreateLedger:
+	case *LedgerScopedOrder_CreateLedger:
 		if v.CreateLedger != nil {
 			size, _ := v.CreateLedger.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
@@ -69,7 +114,7 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0x1a
 		}
-	case *Order_DeleteLedger:
+	case *LedgerScopedOrder_DeleteLedger:
 		if v.DeleteLedger != nil {
 			size, _ := v.DeleteLedger.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
@@ -77,238 +122,91 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0x22
 		}
-	case *Order_RegisterSigningKey:
-		if v.RegisterSigningKey != nil {
-			size, _ := v.RegisterSigningKey.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x32
-		}
-	case *Order_RevokeSigningKey:
-		if v.RevokeSigningKey != nil {
-			size, _ := v.RevokeSigningKey.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x3a
-		}
-	case *Order_SetSigningConfig:
-		if v.SetSigningConfig != nil {
-			size, _ := v.SetSigningConfig.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x42
-		}
-	case *Order_AddEventsSink:
-		if v.AddEventsSink != nil {
-			size, _ := v.AddEventsSink.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x4a
-		}
-	case *Order_RemoveEventsSink:
-		if v.RemoveEventsSink != nil {
-			size, _ := v.RemoveEventsSink.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x52
-		}
-	case *Order_CloseChapter:
-		if v.CloseChapter != nil {
-			size, _ := v.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x5a
-		}
-	case *Order_SealChapter:
-		if v.SealChapter != nil {
-			size, _ := v.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x62
-		}
-	case *Order_ArchiveChapter:
-		if v.ArchiveChapter != nil {
-			size, _ := v.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x6a
-		}
-	case *Order_ConfirmArchiveChapter:
-		if v.ConfirmArchiveChapter != nil {
-			size, _ := v.ConfirmArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x72
-		}
-	case *Order_SetMaintenanceMode:
-		if v.SetMaintenanceMode != nil {
-			size, _ := v.SetMaintenanceMode.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x7a
-		}
-	case *Order_SetChapterSchedule:
-		if v.SetChapterSchedule != nil {
-			size, _ := v.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x82
-		}
-	case *Order_DeleteChapterSchedule:
-		if v.DeleteChapterSchedule != nil {
-			size, _ := v.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x8a
-		}
-	case *Order_MirrorIngest:
+	case *LedgerScopedOrder_MirrorIngest:
 		if v.MirrorIngest != nil {
 			size, _ := v.MirrorIngest.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x9a
+			dAtA[i] = 0x2a
 		}
-	case *Order_PromoteLedger:
+	case *LedgerScopedOrder_PromoteLedger:
 		if v.PromoteLedger != nil {
 			size, _ := v.PromoteLedger.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xa2
+			dAtA[i] = 0x32
 		}
-	case *Order_CreatePreparedQuery:
-		if v.CreatePreparedQuery != nil {
-			size, _ := v.CreatePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xaa
-		}
-	case *Order_UpdatePreparedQuery:
-		if v.UpdatePreparedQuery != nil {
-			size, _ := v.UpdatePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xb2
-		}
-	case *Order_DeletePreparedQuery:
-		if v.DeletePreparedQuery != nil {
-			size, _ := v.DeletePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xba
-		}
-	case *Order_SaveNumscript:
-		if v.SaveNumscript != nil {
-			size, _ := v.SaveNumscript.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xc2
-		}
-	case *Order_DeleteNumscript:
-		if v.DeleteNumscript != nil {
-			size, _ := v.DeleteNumscript.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xca
-		}
-	case *Order_CreateQueryCheckpoint:
-		if v.CreateQueryCheckpoint != nil {
-			size, _ := v.CreateQueryCheckpoint.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xd2
-		}
-	case *Order_DeleteQueryCheckpoint:
-		if v.DeleteQueryCheckpoint != nil {
-			size, _ := v.DeleteQueryCheckpoint.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xda
-		}
-	case *Order_SetQueryCheckpointSchedule:
-		if v.SetQueryCheckpointSchedule != nil {
-			size, _ := v.SetQueryCheckpointSchedule.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xe2
-		}
-	case *Order_DeleteQueryCheckpointSchedule:
-		if v.DeleteQueryCheckpointSchedule != nil {
-			size, _ := v.DeleteQueryCheckpointSchedule.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xea
-		}
-	case *Order_SaveLedgerMetadata:
+	case *LedgerScopedOrder_SaveLedgerMetadata:
 		if v.SaveLedgerMetadata != nil {
 			size, _ := v.SaveLedgerMetadata.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xf2
+			dAtA[i] = 0x3a
 		}
-	case *Order_DeleteLedgerMetadata:
+	case *LedgerScopedOrder_DeleteLedgerMetadata:
 		if v.DeleteLedgerMetadata != nil {
 			size, _ := v.DeleteLedgerMetadata.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
+			dAtA[i] = 0x42
+		}
+	case *LedgerScopedOrder_SaveNumscript:
+		if v.SaveNumscript != nil {
+			size, _ := v.SaveNumscript.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0xfa
+			dAtA[i] = 0x4a
+		}
+	case *LedgerScopedOrder_DeleteNumscript:
+		if v.DeleteNumscript != nil {
+			size, _ := v.DeleteNumscript.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x52
+		}
+	case *LedgerScopedOrder_CreatePreparedQuery:
+		if v.CreatePreparedQuery != nil {
+			size, _ := v.CreatePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x5a
+		}
+	case *LedgerScopedOrder_UpdatePreparedQuery:
+		if v.UpdatePreparedQuery != nil {
+			size, _ := v.UpdatePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x62
+		}
+	case *LedgerScopedOrder_DeletePreparedQuery:
+		if v.DeletePreparedQuery != nil {
+			size, _ := v.DeletePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x6a
 		}
 	}
 	return len(dAtA) - i, nil
+}
+
+func (m *SystemScopedOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
 }
 
 func (m *CreatePreparedQueryOrder) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -575,7 +473,7 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 	if m.DefaultEnforcementMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultEnforcementMode))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x28
 	}
 	if len(m.AccountTypes) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.AccountTypes)) {
@@ -593,7 +491,7 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x22
 		}
 	}
 	if m.MirrorSource != nil {
@@ -601,12 +499,12 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x1a
 	}
 	if m.Mode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Mode))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x10
 	}
 	if len(m.InitialSchema) > 0 {
 		for iNdEx := len(m.InitialSchema) - 1; iNdEx >= 0; iNdEx-- {
@@ -614,15 +512,8 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0xa
 		}
-	}
-	if len(m.Name) > 0 {
-		i -= len(m.Name)
-		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -650,13 +541,6 @@ func (m *MirrorIngestOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		size, _ := m.Entry.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -1002,13 +886,6 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
-	}
 	switch v := m.Data.(type) {
 	case *LedgerApplyOrder_CreateTransaction:
 		if v.CreateTransaction != nil {
@@ -1016,7 +893,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0xa
 		}
 	case *LedgerApplyOrder_AddMetadata:
 		if v.AddMetadata != nil {
@@ -1024,7 +901,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1a
+			dAtA[i] = 0x12
 		}
 	case *LedgerApplyOrder_RevertTransaction:
 		if v.RevertTransaction != nil {
@@ -1032,7 +909,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x22
+			dAtA[i] = 0x1a
 		}
 	case *LedgerApplyOrder_DeleteMetadata:
 		if v.DeleteMetadata != nil {
@@ -1040,7 +917,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x22
 		}
 	case *LedgerApplyOrder_SetMetadataFieldType:
 		if v.SetMetadataFieldType != nil {
@@ -1048,7 +925,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x32
+			dAtA[i] = 0x2a
 		}
 	case *LedgerApplyOrder_RemoveMetadataFieldType:
 		if v.RemoveMetadataFieldType != nil {
@@ -1056,7 +933,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x3a
+			dAtA[i] = 0x32
 		}
 	case *LedgerApplyOrder_CreateIndex:
 		if v.CreateIndex != nil {
@@ -1064,7 +941,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x52
+			dAtA[i] = 0x3a
 		}
 	case *LedgerApplyOrder_DropIndex:
 		if v.DropIndex != nil {
@@ -1072,7 +949,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x5a
+			dAtA[i] = 0x42
 		}
 	case *LedgerApplyOrder_AddAccountType:
 		if v.AddAccountType != nil {
@@ -1080,7 +957,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x6a
+			dAtA[i] = 0x4a
 		}
 	case *LedgerApplyOrder_RemoveAccountType:
 		if v.RemoveAccountType != nil {
@@ -1088,7 +965,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x72
+			dAtA[i] = 0x52
 		}
 	case *LedgerApplyOrder_UpdateDefaultEnforcementMode:
 		if v.UpdateDefaultEnforcementMode != nil {
@@ -1096,7 +973,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x7a
+			dAtA[i] = 0x5a
 		}
 	}
 	return len(dAtA) - i, nil
@@ -1593,15 +1470,8 @@ func (m *SaveLedgerMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byt
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0xa
 		}
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }

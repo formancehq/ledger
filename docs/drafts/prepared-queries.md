@@ -370,15 +370,19 @@ Each leaf node opens a bbolt cursor. Recommended limits, validated at **query cr
 A prepared query is a **named resource** scoped to a ledger.
 
 ```protobuf
+// The ledger this query belongs to lives on the storage key prefix and on
+// the surrounding RPC request — it is intentionally NOT a field on the
+// PreparedQuery value itself, to avoid duplicating the ledger between the
+// envelope and the payload.
 message PreparedQuery {
   string name = 1;                           // unique within ledger
-  string ledger = 2;
-  QueryFilter filter = 3;                    // recursive filter tree
-  QueryTarget target = 4;                    // ACCOUNTS or TRANSACTIONS
+  QueryFilter filter = 2;                    // recursive filter tree
+  QueryTarget target = 3;                    // ACCOUNTS or TRANSACTIONS
 }
 
 message CreatePreparedQueryRequest {
-  PreparedQuery query = 1;
+  string ledger = 1;                         // ledger this query belongs to
+  PreparedQuery query = 2;
 }
 
 message ExecutePreparedQueryRequest {

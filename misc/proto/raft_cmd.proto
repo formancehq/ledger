@@ -7,41 +7,21 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb";
 import "common.proto";
 import "signature.proto";
 
-// Order represents a request to be processed by the FSM
-// The FSM is responsible for interpreting the request and applying the changes
+// Order represents a request to be processed by the FSM.
+// The FSM is responsible for interpreting the request and applying the changes.
+//
+// Every Order is either ledger-scoped (acts on a single ledger; the ledger
+// name lives once on the LedgerScopedOrder wrapper) or system-scoped (cluster
+// or global state). This split is the structural invariant that the audit
+// log relies on to attribute entries to a ledger — extracting the targeted
+// ledger is a single accessor on the wrapper instead of a per-payload switch.
 message Order {
   common.Idempotency idempotency = 1;
   oneof type {
-    LedgerApplyOrder apply = 2;
-    CreateLedgerOrder create_ledger = 3;
-    DeleteLedgerOrder delete_ledger = 4;
-    RegisterSigningKeyOrder register_signing_key = 6;
-    RevokeSigningKeyOrder revoke_signing_key = 7;
-    SetSigningConfigOrder set_signing_config = 8;
-    AddEventsSinkOrder add_events_sink = 9;
-    RemoveEventsSinkOrder remove_events_sink = 10;
-    CloseChapterOrder close_chapter = 11;
-    SealChapterOrder seal_chapter = 12;
-    ArchiveChapterOrder archive_chapter = 13;
-    ConfirmArchiveChapterOrder confirm_archive_chapter = 14;
-    SetMaintenanceModeOrder set_maintenance_mode = 15;
-    SetChapterScheduleOrder set_chapter_schedule = 16;
-    DeleteChapterScheduleOrder delete_chapter_schedule = 17;
-    MirrorIngestOrder mirror_ingest = 19;
-    PromoteLedgerOrder promote_ledger = 20;
-    CreatePreparedQueryOrder create_prepared_query = 21;
-    UpdatePreparedQueryOrder update_prepared_query = 22;
-    DeletePreparedQueryOrder delete_prepared_query = 23;
-    SaveNumscriptOrder save_numscript = 24;
-    DeleteNumscriptOrder delete_numscript = 25;
-    CreateQueryCheckpointOrder create_query_checkpoint = 26;
-    DeleteQueryCheckpointOrder delete_query_checkpoint = 27;
-    SetQueryCheckpointScheduleOrder set_query_checkpoint_schedule = 28;
-    DeleteQueryCheckpointScheduleOrder delete_query_checkpoint_schedule = 29;
-    SaveLedgerMetadataOrder save_ledger_metadata = 30;
-    DeleteLedgerMetadataOrder delete_ledger_metadata = 31;
+    LedgerScopedOrder ledger_scoped = 2;
+    SystemScopedOrder system_scoped = 3;
   }
-  signature.SignedRequest signature = 5;
+  signature.SignedRequest signature = 4;
   // coverage_bits is a packed bitset over ExecutionPlan.attributes restricting
   // which entries this single order may read. Bit i (byteIdx = i/8,
   // bit-within-byte = i%8, LSB-first) is set iff attributes[i] covers a key
@@ -53,10 +33,53 @@ message Order {
   // surfaces as *ErrCoverageMiss. Proposal-wide scopes (used by the FSM's
   // ValidateTransientVolumes) go through state.ScopeFactory.NewProposalScope
   // instead, not through an "empty bits means admit all" convention.
-  bytes coverage_bits = 32;
+  bytes coverage_bits = 5;
+}
 
-  reserved 33;
-  reserved "production_bits";
+// LedgerScopedOrder is the wrapper for every Order variant that targets a
+// single ledger. The `ledger` field is the single source of truth for audit
+// attribution and admission scope checks; payload sub-messages must not carry
+// their own ledger field.
+message LedgerScopedOrder {
+  string ledger = 1;
+  oneof payload {
+    LedgerApplyOrder apply = 2;
+    CreateLedgerOrder create_ledger = 3;
+    DeleteLedgerOrder delete_ledger = 4;
+    MirrorIngestOrder mirror_ingest = 5;
+    PromoteLedgerOrder promote_ledger = 6;
+    SaveLedgerMetadataOrder save_ledger_metadata = 7;
+    DeleteLedgerMetadataOrder delete_ledger_metadata = 8;
+    SaveNumscriptOrder save_numscript = 9;
+    DeleteNumscriptOrder delete_numscript = 10;
+    CreatePreparedQueryOrder create_prepared_query = 11;
+    UpdatePreparedQueryOrder update_prepared_query = 12;
+    DeletePreparedQueryOrder delete_prepared_query = 13;
+  }
+}
+
+// SystemScopedOrder is the wrapper for cluster- or global-scoped commands.
+// These commands do not target a specific ledger and never contribute a
+// ledger name to the audit entry.
+message SystemScopedOrder {
+  oneof payload {
+    RegisterSigningKeyOrder register_signing_key = 1;
+    RevokeSigningKeyOrder revoke_signing_key = 2;
+    SetSigningConfigOrder set_signing_config = 3;
+    AddEventsSinkOrder add_events_sink = 4;
+    RemoveEventsSinkOrder remove_events_sink = 5;
+    CloseChapterOrder close_chapter = 6;
+    SealChapterOrder seal_chapter = 7;
+    ArchiveChapterOrder archive_chapter = 8;
+    ConfirmArchiveChapterOrder confirm_archive_chapter = 9;
+    SetMaintenanceModeOrder set_maintenance_mode = 10;
+    SetChapterScheduleOrder set_chapter_schedule = 11;
+    DeleteChapterScheduleOrder delete_chapter_schedule = 12;
+    CreateQueryCheckpointOrder create_query_checkpoint = 13;
+    DeleteQueryCheckpointOrder delete_query_checkpoint = 14;
+    SetQueryCheckpointScheduleOrder set_query_checkpoint_schedule = 15;
+    DeleteQueryCheckpointScheduleOrder delete_query_checkpoint_schedule = 16;
+  }
 }
 
 message CreatePreparedQueryOrder {
@@ -64,14 +87,12 @@ message CreatePreparedQueryOrder {
 }
 
 message UpdatePreparedQueryOrder {
-  string ledger = 1;
-  string name = 2;
-  common.QueryFilter filter = 3;
+  string name = 1;
+  common.QueryFilter filter = 2;
 }
 
 message DeletePreparedQueryOrder {
-  string ledger = 1;
-  string name = 2;
+  string name = 1;
 }
 
 message AddEventsSinkOrder {
@@ -128,12 +149,10 @@ message SaveNumscriptOrder {
   string name = 1;
   string content = 2;
   string version = 3;
-  string ledger = 4;
 }
 
 message DeleteNumscriptOrder {
   string name = 1;
-  string ledger = 2;
 }
 
 // CreateQueryCheckpointOrder triggers a physical Pebble checkpoint via Raft.
@@ -163,17 +182,15 @@ message SetQueryCheckpointScheduleOrder {
 message DeleteQueryCheckpointScheduleOrder {}
 
 message CreateLedgerOrder {
-  string name = 1;
-  repeated common.SetMetadataFieldTypeCommand initial_schema = 2;
-  common.LedgerMode mode = 3;
-  common.MirrorSourceConfig mirror_source = 4;
-  map<string, common.AccountType> account_types = 5;  // Initial account types
-  common.ChartEnforcementMode default_enforcement_mode = 6;  // Default enforcement for unmatched accounts
+  repeated common.SetMetadataFieldTypeCommand initial_schema = 1;
+  common.LedgerMode mode = 2;
+  common.MirrorSourceConfig mirror_source = 3;
+  map<string, common.AccountType> account_types = 4;  // Initial account types
+  common.ChartEnforcementMode default_enforcement_mode = 5;  // Default enforcement for unmatched accounts
 }
 
 message MirrorIngestOrder {
-  string ledger = 1;
-  MirrorLogEntry entry = 2;
+  MirrorLogEntry entry = 1;
 }
 
 message MirrorLogEntry {
@@ -218,28 +235,23 @@ message MirrorDeletedMetadata {
   string key = 2;
 }
 
-message PromoteLedgerOrder {
-  string ledger = 1;
-}
+message PromoteLedgerOrder {}
 
-message DeleteLedgerOrder {
-  string name = 1;
-}
+message DeleteLedgerOrder {}
 
 message LedgerApplyOrder {
-  string ledger = 1;
   oneof data {
-    CreateTransactionOrder create_transaction = 2;
-    SaveMetadataOrder add_metadata = 3;
-    RevertTransactionOrder revert_transaction = 4;
-    DeleteMetadataOrder delete_metadata = 5;
-    SetMetadataFieldTypeOrder set_metadata_field_type = 6;
-    RemoveMetadataFieldTypeOrder remove_metadata_field_type = 7;
-    CreateIndexOrder create_index = 10;
-    DropIndexOrder drop_index = 11;
-    AddAccountTypeOrder add_account_type = 13;
-    RemoveAccountTypeOrder remove_account_type = 14;
-    UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 15;
+    CreateTransactionOrder create_transaction = 1;
+    SaveMetadataOrder add_metadata = 2;
+    RevertTransactionOrder revert_transaction = 3;
+    DeleteMetadataOrder delete_metadata = 4;
+    SetMetadataFieldTypeOrder set_metadata_field_type = 5;
+    RemoveMetadataFieldTypeOrder remove_metadata_field_type = 6;
+    CreateIndexOrder create_index = 7;
+    DropIndexOrder drop_index = 8;
+    AddAccountTypeOrder add_account_type = 9;
+    RemoveAccountTypeOrder remove_account_type = 10;
+    UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 11;
   }
 }
 
@@ -375,14 +387,12 @@ message DeleteMetadataOrder {
 
 // SaveLedgerMetadataOrder sets metadata key-value pairs on a ledger.
 message SaveLedgerMetadataOrder {
-  string ledger = 1;
-  map<string, common.MetadataValue> metadata = 2;
+  map<string, common.MetadataValue> metadata = 1;
 }
 
 // DeleteLedgerMetadataOrder removes a single metadata key from a ledger.
 message DeleteLedgerMetadataOrder {
-  string ledger = 1;
-  string key = 2;
+  string key = 1;
 }
 
 // ============================================================================

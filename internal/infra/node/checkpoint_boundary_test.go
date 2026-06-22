@@ -20,8 +20,13 @@ func TestFindCheckpointBoundary(t *testing.T) {
 	apply := func(t *testing.T, index uint64) raftpb.Entry {
 		t.Helper()
 		cmd := commands.NewCommand(&raftcmdpb.Order{
-			Type: &raftcmdpb.Order_CreateLedger{
-				CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "ledger"},
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "ledger",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+						CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+					},
+				},
 			},
 		})
 		data, err := cmd.MarshalVT()
@@ -33,8 +38,12 @@ func TestFindCheckpointBoundary(t *testing.T) {
 	checkpoint := func(t *testing.T, index uint64) raftpb.Entry {
 		t.Helper()
 		cmd := commands.NewCommand(&raftcmdpb.Order{
-			Type: &raftcmdpb.Order_CreateQueryCheckpoint{
-				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+			Type: &raftcmdpb.Order_SystemScoped{
+				SystemScoped: &raftcmdpb.SystemScopedOrder{
+					Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+						CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+					},
+				},
 			},
 		})
 		data, err := cmd.MarshalVT()

@@ -27,13 +27,16 @@ func TestProcessAddMetadata_NilTarget(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
-					AddMetadata: &raftcmdpb.SaveMetadataOrder{
-						Target:   nil,
-						Metadata: map[string]*commonpb.MetadataValue{},
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+						AddMetadata: &raftcmdpb.SaveMetadataOrder{
+							Target:   nil,
+							Metadata: map[string]*commonpb.MetadataValue{},
+						},
+					},
 					},
 				},
 			},
@@ -161,13 +164,16 @@ func TestProcessDeleteMetadata_NilTarget(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
-					DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-						Target: nil,
-						Key:    "status",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
+						DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+							Target: nil,
+							Key:    "status",
+						},
+					},
 					},
 				},
 			},
@@ -195,17 +201,20 @@ func TestProcessDeleteMetadata_EmptyKey(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
-					DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-						Target: &commonpb.Target{
-							Target: &commonpb.Target_Account{
-								Account: &commonpb.TargetAccount{Addr: "users:123"},
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
+						DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{Addr: "users:123"},
+								},
 							},
+							Key: "",
 						},
-						Key: "",
+					},
 					},
 				},
 			},

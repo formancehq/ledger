@@ -49,255 +49,316 @@ func (m *Order) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *Order_Apply) CloneVT() isOrder_Type {
+func (m *Order_LedgerScoped) CloneVT() isOrder_Type {
 	if m == nil {
-		return (*Order_Apply)(nil)
+		return (*Order_LedgerScoped)(nil)
 	}
-	r := new(Order_Apply)
+	r := new(Order_LedgerScoped)
+	r.LedgerScoped = m.LedgerScoped.CloneVT()
+	return r
+}
+
+func (m *Order_SystemScoped) CloneVT() isOrder_Type {
+	if m == nil {
+		return (*Order_SystemScoped)(nil)
+	}
+	r := new(Order_SystemScoped)
+	r.SystemScoped = m.SystemScoped.CloneVT()
+	return r
+}
+
+func (m *LedgerScopedOrder) CloneVT() *LedgerScopedOrder {
+	if m == nil {
+		return (*LedgerScopedOrder)(nil)
+	}
+	r := new(LedgerScopedOrder)
+	r.Ledger = m.Ledger
+	if m.Payload != nil {
+		r.Payload = m.Payload.(interface {
+			CloneVT() isLedgerScopedOrder_Payload
+		}).CloneVT()
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *LedgerScopedOrder) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *LedgerScopedOrder_Apply) CloneVT() isLedgerScopedOrder_Payload {
+	if m == nil {
+		return (*LedgerScopedOrder_Apply)(nil)
+	}
+	r := new(LedgerScopedOrder_Apply)
 	r.Apply = m.Apply.CloneVT()
 	return r
 }
 
-func (m *Order_CreateLedger) CloneVT() isOrder_Type {
+func (m *LedgerScopedOrder_CreateLedger) CloneVT() isLedgerScopedOrder_Payload {
 	if m == nil {
-		return (*Order_CreateLedger)(nil)
+		return (*LedgerScopedOrder_CreateLedger)(nil)
 	}
-	r := new(Order_CreateLedger)
+	r := new(LedgerScopedOrder_CreateLedger)
 	r.CreateLedger = m.CreateLedger.CloneVT()
 	return r
 }
 
-func (m *Order_DeleteLedger) CloneVT() isOrder_Type {
+func (m *LedgerScopedOrder_DeleteLedger) CloneVT() isLedgerScopedOrder_Payload {
 	if m == nil {
-		return (*Order_DeleteLedger)(nil)
+		return (*LedgerScopedOrder_DeleteLedger)(nil)
 	}
-	r := new(Order_DeleteLedger)
+	r := new(LedgerScopedOrder_DeleteLedger)
 	r.DeleteLedger = m.DeleteLedger.CloneVT()
 	return r
 }
 
-func (m *Order_RegisterSigningKey) CloneVT() isOrder_Type {
+func (m *LedgerScopedOrder_MirrorIngest) CloneVT() isLedgerScopedOrder_Payload {
 	if m == nil {
-		return (*Order_RegisterSigningKey)(nil)
+		return (*LedgerScopedOrder_MirrorIngest)(nil)
 	}
-	r := new(Order_RegisterSigningKey)
-	r.RegisterSigningKey = m.RegisterSigningKey.CloneVT()
-	return r
-}
-
-func (m *Order_RevokeSigningKey) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_RevokeSigningKey)(nil)
-	}
-	r := new(Order_RevokeSigningKey)
-	r.RevokeSigningKey = m.RevokeSigningKey.CloneVT()
-	return r
-}
-
-func (m *Order_SetSigningConfig) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_SetSigningConfig)(nil)
-	}
-	r := new(Order_SetSigningConfig)
-	r.SetSigningConfig = m.SetSigningConfig.CloneVT()
-	return r
-}
-
-func (m *Order_AddEventsSink) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_AddEventsSink)(nil)
-	}
-	r := new(Order_AddEventsSink)
-	r.AddEventsSink = m.AddEventsSink.CloneVT()
-	return r
-}
-
-func (m *Order_RemoveEventsSink) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_RemoveEventsSink)(nil)
-	}
-	r := new(Order_RemoveEventsSink)
-	r.RemoveEventsSink = m.RemoveEventsSink.CloneVT()
-	return r
-}
-
-func (m *Order_CloseChapter) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_CloseChapter)(nil)
-	}
-	r := new(Order_CloseChapter)
-	r.CloseChapter = m.CloseChapter.CloneVT()
-	return r
-}
-
-func (m *Order_SealChapter) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_SealChapter)(nil)
-	}
-	r := new(Order_SealChapter)
-	r.SealChapter = m.SealChapter.CloneVT()
-	return r
-}
-
-func (m *Order_ArchiveChapter) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_ArchiveChapter)(nil)
-	}
-	r := new(Order_ArchiveChapter)
-	r.ArchiveChapter = m.ArchiveChapter.CloneVT()
-	return r
-}
-
-func (m *Order_ConfirmArchiveChapter) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_ConfirmArchiveChapter)(nil)
-	}
-	r := new(Order_ConfirmArchiveChapter)
-	r.ConfirmArchiveChapter = m.ConfirmArchiveChapter.CloneVT()
-	return r
-}
-
-func (m *Order_SetMaintenanceMode) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_SetMaintenanceMode)(nil)
-	}
-	r := new(Order_SetMaintenanceMode)
-	r.SetMaintenanceMode = m.SetMaintenanceMode.CloneVT()
-	return r
-}
-
-func (m *Order_SetChapterSchedule) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_SetChapterSchedule)(nil)
-	}
-	r := new(Order_SetChapterSchedule)
-	r.SetChapterSchedule = m.SetChapterSchedule.CloneVT()
-	return r
-}
-
-func (m *Order_DeleteChapterSchedule) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_DeleteChapterSchedule)(nil)
-	}
-	r := new(Order_DeleteChapterSchedule)
-	r.DeleteChapterSchedule = m.DeleteChapterSchedule.CloneVT()
-	return r
-}
-
-func (m *Order_MirrorIngest) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_MirrorIngest)(nil)
-	}
-	r := new(Order_MirrorIngest)
+	r := new(LedgerScopedOrder_MirrorIngest)
 	r.MirrorIngest = m.MirrorIngest.CloneVT()
 	return r
 }
 
-func (m *Order_PromoteLedger) CloneVT() isOrder_Type {
+func (m *LedgerScopedOrder_PromoteLedger) CloneVT() isLedgerScopedOrder_Payload {
 	if m == nil {
-		return (*Order_PromoteLedger)(nil)
+		return (*LedgerScopedOrder_PromoteLedger)(nil)
 	}
-	r := new(Order_PromoteLedger)
+	r := new(LedgerScopedOrder_PromoteLedger)
 	r.PromoteLedger = m.PromoteLedger.CloneVT()
 	return r
 }
 
-func (m *Order_CreatePreparedQuery) CloneVT() isOrder_Type {
+func (m *LedgerScopedOrder_SaveLedgerMetadata) CloneVT() isLedgerScopedOrder_Payload {
 	if m == nil {
-		return (*Order_CreatePreparedQuery)(nil)
+		return (*LedgerScopedOrder_SaveLedgerMetadata)(nil)
 	}
-	r := new(Order_CreatePreparedQuery)
-	r.CreatePreparedQuery = m.CreatePreparedQuery.CloneVT()
-	return r
-}
-
-func (m *Order_UpdatePreparedQuery) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_UpdatePreparedQuery)(nil)
-	}
-	r := new(Order_UpdatePreparedQuery)
-	r.UpdatePreparedQuery = m.UpdatePreparedQuery.CloneVT()
-	return r
-}
-
-func (m *Order_DeletePreparedQuery) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_DeletePreparedQuery)(nil)
-	}
-	r := new(Order_DeletePreparedQuery)
-	r.DeletePreparedQuery = m.DeletePreparedQuery.CloneVT()
-	return r
-}
-
-func (m *Order_SaveNumscript) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_SaveNumscript)(nil)
-	}
-	r := new(Order_SaveNumscript)
-	r.SaveNumscript = m.SaveNumscript.CloneVT()
-	return r
-}
-
-func (m *Order_DeleteNumscript) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_DeleteNumscript)(nil)
-	}
-	r := new(Order_DeleteNumscript)
-	r.DeleteNumscript = m.DeleteNumscript.CloneVT()
-	return r
-}
-
-func (m *Order_CreateQueryCheckpoint) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_CreateQueryCheckpoint)(nil)
-	}
-	r := new(Order_CreateQueryCheckpoint)
-	r.CreateQueryCheckpoint = m.CreateQueryCheckpoint.CloneVT()
-	return r
-}
-
-func (m *Order_DeleteQueryCheckpoint) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_DeleteQueryCheckpoint)(nil)
-	}
-	r := new(Order_DeleteQueryCheckpoint)
-	r.DeleteQueryCheckpoint = m.DeleteQueryCheckpoint.CloneVT()
-	return r
-}
-
-func (m *Order_SetQueryCheckpointSchedule) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_SetQueryCheckpointSchedule)(nil)
-	}
-	r := new(Order_SetQueryCheckpointSchedule)
-	r.SetQueryCheckpointSchedule = m.SetQueryCheckpointSchedule.CloneVT()
-	return r
-}
-
-func (m *Order_DeleteQueryCheckpointSchedule) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_DeleteQueryCheckpointSchedule)(nil)
-	}
-	r := new(Order_DeleteQueryCheckpointSchedule)
-	r.DeleteQueryCheckpointSchedule = m.DeleteQueryCheckpointSchedule.CloneVT()
-	return r
-}
-
-func (m *Order_SaveLedgerMetadata) CloneVT() isOrder_Type {
-	if m == nil {
-		return (*Order_SaveLedgerMetadata)(nil)
-	}
-	r := new(Order_SaveLedgerMetadata)
+	r := new(LedgerScopedOrder_SaveLedgerMetadata)
 	r.SaveLedgerMetadata = m.SaveLedgerMetadata.CloneVT()
 	return r
 }
 
-func (m *Order_DeleteLedgerMetadata) CloneVT() isOrder_Type {
+func (m *LedgerScopedOrder_DeleteLedgerMetadata) CloneVT() isLedgerScopedOrder_Payload {
 	if m == nil {
-		return (*Order_DeleteLedgerMetadata)(nil)
+		return (*LedgerScopedOrder_DeleteLedgerMetadata)(nil)
 	}
-	r := new(Order_DeleteLedgerMetadata)
+	r := new(LedgerScopedOrder_DeleteLedgerMetadata)
 	r.DeleteLedgerMetadata = m.DeleteLedgerMetadata.CloneVT()
+	return r
+}
+
+func (m *LedgerScopedOrder_SaveNumscript) CloneVT() isLedgerScopedOrder_Payload {
+	if m == nil {
+		return (*LedgerScopedOrder_SaveNumscript)(nil)
+	}
+	r := new(LedgerScopedOrder_SaveNumscript)
+	r.SaveNumscript = m.SaveNumscript.CloneVT()
+	return r
+}
+
+func (m *LedgerScopedOrder_DeleteNumscript) CloneVT() isLedgerScopedOrder_Payload {
+	if m == nil {
+		return (*LedgerScopedOrder_DeleteNumscript)(nil)
+	}
+	r := new(LedgerScopedOrder_DeleteNumscript)
+	r.DeleteNumscript = m.DeleteNumscript.CloneVT()
+	return r
+}
+
+func (m *LedgerScopedOrder_CreatePreparedQuery) CloneVT() isLedgerScopedOrder_Payload {
+	if m == nil {
+		return (*LedgerScopedOrder_CreatePreparedQuery)(nil)
+	}
+	r := new(LedgerScopedOrder_CreatePreparedQuery)
+	r.CreatePreparedQuery = m.CreatePreparedQuery.CloneVT()
+	return r
+}
+
+func (m *LedgerScopedOrder_UpdatePreparedQuery) CloneVT() isLedgerScopedOrder_Payload {
+	if m == nil {
+		return (*LedgerScopedOrder_UpdatePreparedQuery)(nil)
+	}
+	r := new(LedgerScopedOrder_UpdatePreparedQuery)
+	r.UpdatePreparedQuery = m.UpdatePreparedQuery.CloneVT()
+	return r
+}
+
+func (m *LedgerScopedOrder_DeletePreparedQuery) CloneVT() isLedgerScopedOrder_Payload {
+	if m == nil {
+		return (*LedgerScopedOrder_DeletePreparedQuery)(nil)
+	}
+	r := new(LedgerScopedOrder_DeletePreparedQuery)
+	r.DeletePreparedQuery = m.DeletePreparedQuery.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder) CloneVT() *SystemScopedOrder {
+	if m == nil {
+		return (*SystemScopedOrder)(nil)
+	}
+	r := new(SystemScopedOrder)
+	if m.Payload != nil {
+		r.Payload = m.Payload.(interface {
+			CloneVT() isSystemScopedOrder_Payload
+		}).CloneVT()
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *SystemScopedOrder) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *SystemScopedOrder_RegisterSigningKey) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_RegisterSigningKey)(nil)
+	}
+	r := new(SystemScopedOrder_RegisterSigningKey)
+	r.RegisterSigningKey = m.RegisterSigningKey.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_RevokeSigningKey) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_RevokeSigningKey)(nil)
+	}
+	r := new(SystemScopedOrder_RevokeSigningKey)
+	r.RevokeSigningKey = m.RevokeSigningKey.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_SetSigningConfig) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_SetSigningConfig)(nil)
+	}
+	r := new(SystemScopedOrder_SetSigningConfig)
+	r.SetSigningConfig = m.SetSigningConfig.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_AddEventsSink) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_AddEventsSink)(nil)
+	}
+	r := new(SystemScopedOrder_AddEventsSink)
+	r.AddEventsSink = m.AddEventsSink.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_RemoveEventsSink) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_RemoveEventsSink)(nil)
+	}
+	r := new(SystemScopedOrder_RemoveEventsSink)
+	r.RemoveEventsSink = m.RemoveEventsSink.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_CloseChapter) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_CloseChapter)(nil)
+	}
+	r := new(SystemScopedOrder_CloseChapter)
+	r.CloseChapter = m.CloseChapter.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_SealChapter) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_SealChapter)(nil)
+	}
+	r := new(SystemScopedOrder_SealChapter)
+	r.SealChapter = m.SealChapter.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_ArchiveChapter) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_ArchiveChapter)(nil)
+	}
+	r := new(SystemScopedOrder_ArchiveChapter)
+	r.ArchiveChapter = m.ArchiveChapter.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_ConfirmArchiveChapter) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_ConfirmArchiveChapter)(nil)
+	}
+	r := new(SystemScopedOrder_ConfirmArchiveChapter)
+	r.ConfirmArchiveChapter = m.ConfirmArchiveChapter.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_SetMaintenanceMode) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_SetMaintenanceMode)(nil)
+	}
+	r := new(SystemScopedOrder_SetMaintenanceMode)
+	r.SetMaintenanceMode = m.SetMaintenanceMode.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_SetChapterSchedule) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_SetChapterSchedule)(nil)
+	}
+	r := new(SystemScopedOrder_SetChapterSchedule)
+	r.SetChapterSchedule = m.SetChapterSchedule.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_DeleteChapterSchedule) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_DeleteChapterSchedule)(nil)
+	}
+	r := new(SystemScopedOrder_DeleteChapterSchedule)
+	r.DeleteChapterSchedule = m.DeleteChapterSchedule.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_CreateQueryCheckpoint) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_CreateQueryCheckpoint)(nil)
+	}
+	r := new(SystemScopedOrder_CreateQueryCheckpoint)
+	r.CreateQueryCheckpoint = m.CreateQueryCheckpoint.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_DeleteQueryCheckpoint) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_DeleteQueryCheckpoint)(nil)
+	}
+	r := new(SystemScopedOrder_DeleteQueryCheckpoint)
+	r.DeleteQueryCheckpoint = m.DeleteQueryCheckpoint.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_SetQueryCheckpointSchedule) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_SetQueryCheckpointSchedule)(nil)
+	}
+	r := new(SystemScopedOrder_SetQueryCheckpointSchedule)
+	r.SetQueryCheckpointSchedule = m.SetQueryCheckpointSchedule.CloneVT()
+	return r
+}
+
+func (m *SystemScopedOrder_DeleteQueryCheckpointSchedule) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_DeleteQueryCheckpointSchedule)(nil)
+	}
+	r := new(SystemScopedOrder_DeleteQueryCheckpointSchedule)
+	r.DeleteQueryCheckpointSchedule = m.DeleteQueryCheckpointSchedule.CloneVT()
 	return r
 }
 
@@ -323,7 +384,6 @@ func (m *UpdatePreparedQueryOrder) CloneVT() *UpdatePreparedQueryOrder {
 		return (*UpdatePreparedQueryOrder)(nil)
 	}
 	r := new(UpdatePreparedQueryOrder)
-	r.Ledger = m.Ledger
 	r.Name = m.Name
 	r.Filter = m.Filter.CloneVT()
 	if len(m.unknownFields) > 0 {
@@ -342,7 +402,6 @@ func (m *DeletePreparedQueryOrder) CloneVT() *DeletePreparedQueryOrder {
 		return (*DeletePreparedQueryOrder)(nil)
 	}
 	r := new(DeletePreparedQueryOrder)
-	r.Ledger = m.Ledger
 	r.Name = m.Name
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -582,7 +641,6 @@ func (m *SaveNumscriptOrder) CloneVT() *SaveNumscriptOrder {
 	r.Name = m.Name
 	r.Content = m.Content
 	r.Version = m.Version
-	r.Ledger = m.Ledger
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -600,7 +658,6 @@ func (m *DeleteNumscriptOrder) CloneVT() *DeleteNumscriptOrder {
 	}
 	r := new(DeleteNumscriptOrder)
 	r.Name = m.Name
-	r.Ledger = m.Ledger
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -702,7 +759,6 @@ func (m *CreateLedgerOrder) CloneVT() *CreateLedgerOrder {
 		return (*CreateLedgerOrder)(nil)
 	}
 	r := new(CreateLedgerOrder)
-	r.Name = m.Name
 	r.Mode = m.Mode
 	r.MirrorSource = m.MirrorSource.CloneVT()
 	r.DefaultEnforcementMode = m.DefaultEnforcementMode
@@ -736,7 +792,6 @@ func (m *MirrorIngestOrder) CloneVT() *MirrorIngestOrder {
 		return (*MirrorIngestOrder)(nil)
 	}
 	r := new(MirrorIngestOrder)
-	r.Ledger = m.Ledger
 	r.Entry = m.Entry.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -955,7 +1010,6 @@ func (m *PromoteLedgerOrder) CloneVT() *PromoteLedgerOrder {
 		return (*PromoteLedgerOrder)(nil)
 	}
 	r := new(PromoteLedgerOrder)
-	r.Ledger = m.Ledger
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -972,7 +1026,6 @@ func (m *DeleteLedgerOrder) CloneVT() *DeleteLedgerOrder {
 		return (*DeleteLedgerOrder)(nil)
 	}
 	r := new(DeleteLedgerOrder)
-	r.Name = m.Name
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -989,7 +1042,6 @@ func (m *LedgerApplyOrder) CloneVT() *LedgerApplyOrder {
 		return (*LedgerApplyOrder)(nil)
 	}
 	r := new(LedgerApplyOrder)
-	r.Ledger = m.Ledger
 	if m.Data != nil {
 		r.Data = m.Data.(interface {
 			CloneVT() isLedgerApplyOrder_Data
@@ -1468,7 +1520,6 @@ func (m *SaveLedgerMetadataOrder) CloneVT() *SaveLedgerMetadataOrder {
 		return (*SaveLedgerMetadataOrder)(nil)
 	}
 	r := new(SaveLedgerMetadataOrder)
-	r.Ledger = m.Ledger
 	if rhs := m.Metadata; rhs != nil {
 		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
 		for k, v := range rhs {
@@ -1492,7 +1543,6 @@ func (m *DeleteLedgerMetadataOrder) CloneVT() *DeleteLedgerMetadataOrder {
 		return (*DeleteLedgerMetadataOrder)(nil)
 	}
 	r := new(DeleteLedgerMetadataOrder)
-	r.Ledger = m.Ledger
 	r.Key = m.Key
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -2259,8 +2309,89 @@ func (this *Order) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *Order_Apply) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_Apply)
+func (this *Order_LedgerScoped) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_LedgerScoped)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.LedgerScoped, that.LedgerScoped; p != q {
+		if p == nil {
+			p = &LedgerScopedOrder{}
+		}
+		if q == nil {
+			q = &LedgerScopedOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Order_SystemScoped) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_SystemScoped)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SystemScoped, that.SystemScoped; p != q {
+		if p == nil {
+			p = &SystemScopedOrder{}
+		}
+		if q == nil {
+			q = &SystemScopedOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LedgerScopedOrder) EqualVT(that *LedgerScopedOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Payload == nil && that.Payload != nil {
+		return false
+	} else if this.Payload != nil {
+		if that.Payload == nil {
+			return false
+		}
+		if !this.Payload.(interface {
+			EqualVT(isLedgerScopedOrder_Payload) bool
+		}).EqualVT(that.Payload) {
+			return false
+		}
+	}
+	if this.Ledger != that.Ledger {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *LedgerScopedOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*LedgerScopedOrder)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *LedgerScopedOrder_Apply) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_Apply)
 	if !ok {
 		return false
 	}
@@ -2284,8 +2415,8 @@ func (this *Order_Apply) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_CreateLedger) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_CreateLedger)
+func (this *LedgerScopedOrder_CreateLedger) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_CreateLedger)
 	if !ok {
 		return false
 	}
@@ -2309,8 +2440,8 @@ func (this *Order_CreateLedger) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_DeleteLedger) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_DeleteLedger)
+func (this *LedgerScopedOrder_DeleteLedger) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_DeleteLedger)
 	if !ok {
 		return false
 	}
@@ -2334,308 +2465,8 @@ func (this *Order_DeleteLedger) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_RegisterSigningKey) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_RegisterSigningKey)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.RegisterSigningKey, that.RegisterSigningKey; p != q {
-		if p == nil {
-			p = &RegisterSigningKeyOrder{}
-		}
-		if q == nil {
-			q = &RegisterSigningKeyOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_RevokeSigningKey) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_RevokeSigningKey)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.RevokeSigningKey, that.RevokeSigningKey; p != q {
-		if p == nil {
-			p = &RevokeSigningKeyOrder{}
-		}
-		if q == nil {
-			q = &RevokeSigningKeyOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_SetSigningConfig) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_SetSigningConfig)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetSigningConfig, that.SetSigningConfig; p != q {
-		if p == nil {
-			p = &SetSigningConfigOrder{}
-		}
-		if q == nil {
-			q = &SetSigningConfigOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_AddEventsSink) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_AddEventsSink)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.AddEventsSink, that.AddEventsSink; p != q {
-		if p == nil {
-			p = &AddEventsSinkOrder{}
-		}
-		if q == nil {
-			q = &AddEventsSinkOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_RemoveEventsSink) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_RemoveEventsSink)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.RemoveEventsSink, that.RemoveEventsSink; p != q {
-		if p == nil {
-			p = &RemoveEventsSinkOrder{}
-		}
-		if q == nil {
-			q = &RemoveEventsSinkOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_CloseChapter) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_CloseChapter)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.CloseChapter, that.CloseChapter; p != q {
-		if p == nil {
-			p = &CloseChapterOrder{}
-		}
-		if q == nil {
-			q = &CloseChapterOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_SealChapter) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_SealChapter)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SealChapter, that.SealChapter; p != q {
-		if p == nil {
-			p = &SealChapterOrder{}
-		}
-		if q == nil {
-			q = &SealChapterOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_ArchiveChapter) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_ArchiveChapter)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.ArchiveChapter, that.ArchiveChapter; p != q {
-		if p == nil {
-			p = &ArchiveChapterOrder{}
-		}
-		if q == nil {
-			q = &ArchiveChapterOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_ConfirmArchiveChapter) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_ConfirmArchiveChapter)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.ConfirmArchiveChapter, that.ConfirmArchiveChapter; p != q {
-		if p == nil {
-			p = &ConfirmArchiveChapterOrder{}
-		}
-		if q == nil {
-			q = &ConfirmArchiveChapterOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_SetMaintenanceMode) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_SetMaintenanceMode)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetMaintenanceMode, that.SetMaintenanceMode; p != q {
-		if p == nil {
-			p = &SetMaintenanceModeOrder{}
-		}
-		if q == nil {
-			q = &SetMaintenanceModeOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_SetChapterSchedule) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_SetChapterSchedule)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetChapterSchedule, that.SetChapterSchedule; p != q {
-		if p == nil {
-			p = &SetChapterScheduleOrder{}
-		}
-		if q == nil {
-			q = &SetChapterScheduleOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_DeleteChapterSchedule) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_DeleteChapterSchedule)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.DeleteChapterSchedule, that.DeleteChapterSchedule; p != q {
-		if p == nil {
-			p = &DeleteChapterScheduleOrder{}
-		}
-		if q == nil {
-			q = &DeleteChapterScheduleOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_MirrorIngest) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_MirrorIngest)
+func (this *LedgerScopedOrder_MirrorIngest) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_MirrorIngest)
 	if !ok {
 		return false
 	}
@@ -2659,8 +2490,8 @@ func (this *Order_MirrorIngest) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_PromoteLedger) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_PromoteLedger)
+func (this *LedgerScopedOrder_PromoteLedger) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_PromoteLedger)
 	if !ok {
 		return false
 	}
@@ -2684,233 +2515,8 @@ func (this *Order_PromoteLedger) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_CreatePreparedQuery) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_CreatePreparedQuery)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.CreatePreparedQuery, that.CreatePreparedQuery; p != q {
-		if p == nil {
-			p = &CreatePreparedQueryOrder{}
-		}
-		if q == nil {
-			q = &CreatePreparedQueryOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_UpdatePreparedQuery) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_UpdatePreparedQuery)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.UpdatePreparedQuery, that.UpdatePreparedQuery; p != q {
-		if p == nil {
-			p = &UpdatePreparedQueryOrder{}
-		}
-		if q == nil {
-			q = &UpdatePreparedQueryOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_DeletePreparedQuery) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_DeletePreparedQuery)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.DeletePreparedQuery, that.DeletePreparedQuery; p != q {
-		if p == nil {
-			p = &DeletePreparedQueryOrder{}
-		}
-		if q == nil {
-			q = &DeletePreparedQueryOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_SaveNumscript) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_SaveNumscript)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SaveNumscript, that.SaveNumscript; p != q {
-		if p == nil {
-			p = &SaveNumscriptOrder{}
-		}
-		if q == nil {
-			q = &SaveNumscriptOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_DeleteNumscript) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_DeleteNumscript)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.DeleteNumscript, that.DeleteNumscript; p != q {
-		if p == nil {
-			p = &DeleteNumscriptOrder{}
-		}
-		if q == nil {
-			q = &DeleteNumscriptOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_CreateQueryCheckpoint) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_CreateQueryCheckpoint)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.CreateQueryCheckpoint, that.CreateQueryCheckpoint; p != q {
-		if p == nil {
-			p = &CreateQueryCheckpointOrder{}
-		}
-		if q == nil {
-			q = &CreateQueryCheckpointOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_DeleteQueryCheckpoint) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_DeleteQueryCheckpoint)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.DeleteQueryCheckpoint, that.DeleteQueryCheckpoint; p != q {
-		if p == nil {
-			p = &DeleteQueryCheckpointOrder{}
-		}
-		if q == nil {
-			q = &DeleteQueryCheckpointOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_SetQueryCheckpointSchedule) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_SetQueryCheckpointSchedule)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetQueryCheckpointSchedule, that.SetQueryCheckpointSchedule; p != q {
-		if p == nil {
-			p = &SetQueryCheckpointScheduleOrder{}
-		}
-		if q == nil {
-			q = &SetQueryCheckpointScheduleOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_DeleteQueryCheckpointSchedule) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_DeleteQueryCheckpointSchedule)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.DeleteQueryCheckpointSchedule, that.DeleteQueryCheckpointSchedule; p != q {
-		if p == nil {
-			p = &DeleteQueryCheckpointScheduleOrder{}
-		}
-		if q == nil {
-			q = &DeleteQueryCheckpointScheduleOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Order_SaveLedgerMetadata) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_SaveLedgerMetadata)
+func (this *LedgerScopedOrder_SaveLedgerMetadata) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_SaveLedgerMetadata)
 	if !ok {
 		return false
 	}
@@ -2934,8 +2540,8 @@ func (this *Order_SaveLedgerMetadata) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_DeleteLedgerMetadata) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_DeleteLedgerMetadata)
+func (this *LedgerScopedOrder_DeleteLedgerMetadata) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_DeleteLedgerMetadata)
 	if !ok {
 		return false
 	}
@@ -2951,6 +2557,559 @@ func (this *Order_DeleteLedgerMetadata) EqualVT(thatIface isOrder_Type) bool {
 		}
 		if q == nil {
 			q = &DeleteLedgerMetadataOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LedgerScopedOrder_SaveNumscript) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_SaveNumscript)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SaveNumscript, that.SaveNumscript; p != q {
+		if p == nil {
+			p = &SaveNumscriptOrder{}
+		}
+		if q == nil {
+			q = &SaveNumscriptOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LedgerScopedOrder_DeleteNumscript) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_DeleteNumscript)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.DeleteNumscript, that.DeleteNumscript; p != q {
+		if p == nil {
+			p = &DeleteNumscriptOrder{}
+		}
+		if q == nil {
+			q = &DeleteNumscriptOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LedgerScopedOrder_CreatePreparedQuery) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_CreatePreparedQuery)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.CreatePreparedQuery, that.CreatePreparedQuery; p != q {
+		if p == nil {
+			p = &CreatePreparedQueryOrder{}
+		}
+		if q == nil {
+			q = &CreatePreparedQueryOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LedgerScopedOrder_UpdatePreparedQuery) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_UpdatePreparedQuery)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.UpdatePreparedQuery, that.UpdatePreparedQuery; p != q {
+		if p == nil {
+			p = &UpdatePreparedQueryOrder{}
+		}
+		if q == nil {
+			q = &UpdatePreparedQueryOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LedgerScopedOrder_DeletePreparedQuery) EqualVT(thatIface isLedgerScopedOrder_Payload) bool {
+	that, ok := thatIface.(*LedgerScopedOrder_DeletePreparedQuery)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.DeletePreparedQuery, that.DeletePreparedQuery; p != q {
+		if p == nil {
+			p = &DeletePreparedQueryOrder{}
+		}
+		if q == nil {
+			q = &DeletePreparedQueryOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder) EqualVT(that *SystemScopedOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Payload == nil && that.Payload != nil {
+		return false
+	} else if this.Payload != nil {
+		if that.Payload == nil {
+			return false
+		}
+		if !this.Payload.(interface {
+			EqualVT(isSystemScopedOrder_Payload) bool
+		}).EqualVT(that.Payload) {
+			return false
+		}
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *SystemScopedOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SystemScopedOrder)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *SystemScopedOrder_RegisterSigningKey) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_RegisterSigningKey)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.RegisterSigningKey, that.RegisterSigningKey; p != q {
+		if p == nil {
+			p = &RegisterSigningKeyOrder{}
+		}
+		if q == nil {
+			q = &RegisterSigningKeyOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_RevokeSigningKey) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_RevokeSigningKey)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.RevokeSigningKey, that.RevokeSigningKey; p != q {
+		if p == nil {
+			p = &RevokeSigningKeyOrder{}
+		}
+		if q == nil {
+			q = &RevokeSigningKeyOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_SetSigningConfig) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_SetSigningConfig)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetSigningConfig, that.SetSigningConfig; p != q {
+		if p == nil {
+			p = &SetSigningConfigOrder{}
+		}
+		if q == nil {
+			q = &SetSigningConfigOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_AddEventsSink) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_AddEventsSink)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.AddEventsSink, that.AddEventsSink; p != q {
+		if p == nil {
+			p = &AddEventsSinkOrder{}
+		}
+		if q == nil {
+			q = &AddEventsSinkOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_RemoveEventsSink) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_RemoveEventsSink)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.RemoveEventsSink, that.RemoveEventsSink; p != q {
+		if p == nil {
+			p = &RemoveEventsSinkOrder{}
+		}
+		if q == nil {
+			q = &RemoveEventsSinkOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_CloseChapter) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_CloseChapter)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.CloseChapter, that.CloseChapter; p != q {
+		if p == nil {
+			p = &CloseChapterOrder{}
+		}
+		if q == nil {
+			q = &CloseChapterOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_SealChapter) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_SealChapter)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SealChapter, that.SealChapter; p != q {
+		if p == nil {
+			p = &SealChapterOrder{}
+		}
+		if q == nil {
+			q = &SealChapterOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_ArchiveChapter) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_ArchiveChapter)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.ArchiveChapter, that.ArchiveChapter; p != q {
+		if p == nil {
+			p = &ArchiveChapterOrder{}
+		}
+		if q == nil {
+			q = &ArchiveChapterOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_ConfirmArchiveChapter) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_ConfirmArchiveChapter)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.ConfirmArchiveChapter, that.ConfirmArchiveChapter; p != q {
+		if p == nil {
+			p = &ConfirmArchiveChapterOrder{}
+		}
+		if q == nil {
+			q = &ConfirmArchiveChapterOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_SetMaintenanceMode) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_SetMaintenanceMode)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetMaintenanceMode, that.SetMaintenanceMode; p != q {
+		if p == nil {
+			p = &SetMaintenanceModeOrder{}
+		}
+		if q == nil {
+			q = &SetMaintenanceModeOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_SetChapterSchedule) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_SetChapterSchedule)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetChapterSchedule, that.SetChapterSchedule; p != q {
+		if p == nil {
+			p = &SetChapterScheduleOrder{}
+		}
+		if q == nil {
+			q = &SetChapterScheduleOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_DeleteChapterSchedule) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_DeleteChapterSchedule)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.DeleteChapterSchedule, that.DeleteChapterSchedule; p != q {
+		if p == nil {
+			p = &DeleteChapterScheduleOrder{}
+		}
+		if q == nil {
+			q = &DeleteChapterScheduleOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_CreateQueryCheckpoint) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_CreateQueryCheckpoint)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.CreateQueryCheckpoint, that.CreateQueryCheckpoint; p != q {
+		if p == nil {
+			p = &CreateQueryCheckpointOrder{}
+		}
+		if q == nil {
+			q = &CreateQueryCheckpointOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_DeleteQueryCheckpoint) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_DeleteQueryCheckpoint)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.DeleteQueryCheckpoint, that.DeleteQueryCheckpoint; p != q {
+		if p == nil {
+			p = &DeleteQueryCheckpointOrder{}
+		}
+		if q == nil {
+			q = &DeleteQueryCheckpointOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_SetQueryCheckpointSchedule) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_SetQueryCheckpointSchedule)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetQueryCheckpointSchedule, that.SetQueryCheckpointSchedule; p != q {
+		if p == nil {
+			p = &SetQueryCheckpointScheduleOrder{}
+		}
+		if q == nil {
+			q = &SetQueryCheckpointScheduleOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SystemScopedOrder_DeleteQueryCheckpointSchedule) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_DeleteQueryCheckpointSchedule)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.DeleteQueryCheckpointSchedule, that.DeleteQueryCheckpointSchedule; p != q {
+		if p == nil {
+			p = &DeleteQueryCheckpointScheduleOrder{}
+		}
+		if q == nil {
+			q = &DeleteQueryCheckpointScheduleOrder{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -2984,9 +3143,6 @@ func (this *UpdatePreparedQueryOrder) EqualVT(that *UpdatePreparedQueryOrder) bo
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
 	if this.Name != that.Name {
 		return false
 	}
@@ -3007,9 +3163,6 @@ func (this *DeletePreparedQueryOrder) EqualVT(that *DeletePreparedQueryOrder) bo
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Ledger != that.Ledger {
 		return false
 	}
 	if this.Name != that.Name {
@@ -3277,9 +3430,6 @@ func (this *SaveNumscriptOrder) EqualVT(that *SaveNumscriptOrder) bool {
 	if this.Version != that.Version {
 		return false
 	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -3297,9 +3447,6 @@ func (this *DeleteNumscriptOrder) EqualVT(that *DeleteNumscriptOrder) bool {
 		return false
 	}
 	if this.Name != that.Name {
-		return false
-	}
-	if this.Ledger != that.Ledger {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -3413,9 +3560,6 @@ func (this *CreateLedgerOrder) EqualVT(that *CreateLedgerOrder) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Name != that.Name {
-		return false
-	}
 	if len(this.InitialSchema) != len(that.InitialSchema) {
 		return false
 	}
@@ -3476,9 +3620,6 @@ func (this *MirrorIngestOrder) EqualVT(that *MirrorIngestOrder) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Ledger != that.Ledger {
 		return false
 	}
 	if !this.Entry.EqualVT(that.Entry) {
@@ -3886,9 +4027,6 @@ func (this *PromoteLedgerOrder) EqualVT(that *PromoteLedgerOrder) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -3903,9 +4041,6 @@ func (this *DeleteLedgerOrder) EqualVT(that *DeleteLedgerOrder) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Name != that.Name {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -3935,9 +4070,6 @@ func (this *LedgerApplyOrder) EqualVT(that *LedgerApplyOrder) bool {
 		}).EqualVT(that.Data) {
 			return false
 		}
-	}
-	if this.Ledger != that.Ledger {
-		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -4743,9 +4875,6 @@ func (this *SaveLedgerMetadataOrder) EqualVT(that *SaveLedgerMetadataOrder) bool
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
 	if len(this.Metadata) != len(that.Metadata) {
 		return false
 	}
@@ -4780,9 +4909,6 @@ func (this *DeleteLedgerMetadataOrder) EqualVT(that *DeleteLedgerMetadataOrder) 
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Ledger != that.Ledger {
 		return false
 	}
 	if this.Key != that.Key {
@@ -5992,9 +6118,7 @@ func (m *Order) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.CoverageBits)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.CoverageBits)))
 		i--
-		dAtA[i] = 0x2
-		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0x2a
 	}
 	if m.Signature != nil {
 		size, err := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
@@ -6004,7 +6128,7 @@ func (m *Order) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x22
 	}
 	if m.Idempotency != nil {
 		size, err := m.Idempotency.MarshalToSizedBufferVT(dAtA[:i])
@@ -6019,12 +6143,99 @@ func (m *Order) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *Order_Apply) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Order_LedgerScoped) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_Apply) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Order_LedgerScoped) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.LedgerScoped != nil {
+		size, err := m.LedgerScoped.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Order_SystemScoped) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Order_SystemScoped) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SystemScoped != nil {
+		size, err := m.SystemScoped.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *LedgerScopedOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LedgerScopedOrder) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerScopedOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if vtmsg, ok := m.Payload.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LedgerScopedOrder_Apply) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerScopedOrder_Apply) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Apply != nil {
 		size, err := m.Apply.MarshalToSizedBufferVT(dAtA[:i])
@@ -6038,12 +6249,12 @@ func (m *Order_Apply) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_CreateLedger) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_CreateLedger) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_CreateLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_CreateLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.CreateLedger != nil {
 		size, err := m.CreateLedger.MarshalToSizedBufferVT(dAtA[:i])
@@ -6057,12 +6268,12 @@ func (m *Order_CreateLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_DeleteLedger) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_DeleteLedger) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_DeleteLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_DeleteLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.DeleteLedger != nil {
 		size, err := m.DeleteLedger.MarshalToSizedBufferVT(dAtA[:i])
@@ -6076,15 +6287,34 @@ func (m *Order_DeleteLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_RegisterSigningKey) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_MirrorIngest) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_RegisterSigningKey) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_MirrorIngest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.RegisterSigningKey != nil {
-		size, err := m.RegisterSigningKey.MarshalToSizedBufferVT(dAtA[:i])
+	if m.MirrorIngest != nil {
+		size, err := m.MirrorIngest.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *LedgerScopedOrder_PromoteLedger) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerScopedOrder_PromoteLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.PromoteLedger != nil {
+		size, err := m.PromoteLedger.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6095,15 +6325,15 @@ func (m *Order_RegisterSigningKey) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_RevokeSigningKey) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_SaveLedgerMetadata) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_RevokeSigningKey) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_SaveLedgerMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.RevokeSigningKey != nil {
-		size, err := m.RevokeSigningKey.MarshalToSizedBufferVT(dAtA[:i])
+	if m.SaveLedgerMetadata != nil {
+		size, err := m.SaveLedgerMetadata.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6114,15 +6344,15 @@ func (m *Order_RevokeSigningKey) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_SetSigningConfig) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_DeleteLedgerMetadata) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_SetSigningConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_DeleteLedgerMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.SetSigningConfig != nil {
-		size, err := m.SetSigningConfig.MarshalToSizedBufferVT(dAtA[:i])
+	if m.DeleteLedgerMetadata != nil {
+		size, err := m.DeleteLedgerMetadata.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6133,15 +6363,15 @@ func (m *Order_SetSigningConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_AddEventsSink) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_SaveNumscript) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_AddEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_SaveNumscript) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.AddEventsSink != nil {
-		size, err := m.AddEventsSink.MarshalToSizedBufferVT(dAtA[:i])
+	if m.SaveNumscript != nil {
+		size, err := m.SaveNumscript.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6152,15 +6382,15 @@ func (m *Order_AddEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_RemoveEventsSink) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_DeleteNumscript) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_RemoveEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_DeleteNumscript) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.RemoveEventsSink != nil {
-		size, err := m.RemoveEventsSink.MarshalToSizedBufferVT(dAtA[:i])
+	if m.DeleteNumscript != nil {
+		size, err := m.DeleteNumscript.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6171,15 +6401,15 @@ func (m *Order_RemoveEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_CloseChapter) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_CreatePreparedQuery) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_CloseChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_CreatePreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.CloseChapter != nil {
-		size, err := m.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
+	if m.CreatePreparedQuery != nil {
+		size, err := m.CreatePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6190,15 +6420,15 @@ func (m *Order_CloseChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_SealChapter) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_UpdatePreparedQuery) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_SealChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_UpdatePreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.SealChapter != nil {
-		size, err := m.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
+	if m.UpdatePreparedQuery != nil {
+		size, err := m.UpdatePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6209,15 +6439,15 @@ func (m *Order_SealChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_ArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_DeletePreparedQuery) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_ArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LedgerScopedOrder_DeletePreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.ArchiveChapter != nil {
-		size, err := m.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
+	if m.DeletePreparedQuery != nil {
+		size, err := m.DeletePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6228,15 +6458,304 @@ func (m *Order_ArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_ConfirmArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SystemScopedOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SystemScopedOrder) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_ConfirmArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SystemScopedOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if vtmsg, ok := m.Payload.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SystemScopedOrder_RegisterSigningKey) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_RegisterSigningKey) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.RegisterSigningKey != nil {
+		size, err := m.RegisterSigningKey.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_RevokeSigningKey) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_RevokeSigningKey) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.RevokeSigningKey != nil {
+		size, err := m.RevokeSigningKey.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_SetSigningConfig) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_SetSigningConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetSigningConfig != nil {
+		size, err := m.SetSigningConfig.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_AddEventsSink) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_AddEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AddEventsSink != nil {
+		size, err := m.AddEventsSink.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_RemoveEventsSink) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_RemoveEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.RemoveEventsSink != nil {
+		size, err := m.RemoveEventsSink.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_CloseChapter) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_CloseChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.CloseChapter != nil {
+		size, err := m.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_SealChapter) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_SealChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SealChapter != nil {
+		size, err := m.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_ArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_ArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.ArchiveChapter != nil {
+		size, err := m.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_ConfirmArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_ConfirmArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.ConfirmArchiveChapter != nil {
 		size, err := m.ConfirmArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x4a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_SetMaintenanceMode) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_SetMaintenanceMode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetMaintenanceMode != nil {
+		size, err := m.SetMaintenanceMode.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x52
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_SetChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_SetChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetChapterSchedule != nil {
+		size, err := m.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x5a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_DeleteChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_DeleteChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.DeleteChapterSchedule != nil {
+		size, err := m.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x62
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_CreateQueryCheckpoint) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_CreateQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.CreateQueryCheckpoint != nil {
+		size, err := m.CreateQueryCheckpoint.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *SystemScopedOrder_DeleteQueryCheckpoint) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_DeleteQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.DeleteQueryCheckpoint != nil {
+		size, err := m.DeleteQueryCheckpoint.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6247,15 +6766,15 @@ func (m *Order_ConfirmArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_SetMaintenanceMode) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SystemScopedOrder_SetQueryCheckpointSchedule) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_SetMaintenanceMode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SystemScopedOrder_SetQueryCheckpointSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.SetMaintenanceMode != nil {
-		size, err := m.SetMaintenanceMode.MarshalToSizedBufferVT(dAtA[:i])
+	if m.SetQueryCheckpointSchedule != nil {
+		size, err := m.SetQueryCheckpointSchedule.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6266,264 +6785,12 @@ func (m *Order_SetMaintenanceMode) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_SetChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SystemScopedOrder_DeleteQueryCheckpointSchedule) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_SetChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SetChapterSchedule != nil {
-		size, err := m.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x82
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_DeleteChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_DeleteChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.DeleteChapterSchedule != nil {
-		size, err := m.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x8a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_MirrorIngest) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_MirrorIngest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.MirrorIngest != nil {
-		size, err := m.MirrorIngest.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x9a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_PromoteLedger) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_PromoteLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.PromoteLedger != nil {
-		size, err := m.PromoteLedger.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xa2
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_CreatePreparedQuery) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_CreatePreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.CreatePreparedQuery != nil {
-		size, err := m.CreatePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xaa
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_UpdatePreparedQuery) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_UpdatePreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.UpdatePreparedQuery != nil {
-		size, err := m.UpdatePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xb2
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_DeletePreparedQuery) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_DeletePreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.DeletePreparedQuery != nil {
-		size, err := m.DeletePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xba
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_SaveNumscript) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_SaveNumscript) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SaveNumscript != nil {
-		size, err := m.SaveNumscript.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xc2
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_DeleteNumscript) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_DeleteNumscript) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.DeleteNumscript != nil {
-		size, err := m.DeleteNumscript.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xca
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_CreateQueryCheckpoint) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_CreateQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.CreateQueryCheckpoint != nil {
-		size, err := m.CreateQueryCheckpoint.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xd2
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_DeleteQueryCheckpoint) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_DeleteQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.DeleteQueryCheckpoint != nil {
-		size, err := m.DeleteQueryCheckpoint.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xda
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_SetQueryCheckpointSchedule) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_SetQueryCheckpointSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SetQueryCheckpointSchedule != nil {
-		size, err := m.SetQueryCheckpointSchedule.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xe2
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_DeleteQueryCheckpointSchedule) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_DeleteQueryCheckpointSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SystemScopedOrder_DeleteQueryCheckpointSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.DeleteQueryCheckpointSchedule != nil {
 		size, err := m.DeleteQueryCheckpointSchedule.MarshalToSizedBufferVT(dAtA[:i])
@@ -6535,49 +6802,7 @@ func (m *Order_DeleteQueryCheckpointSchedule) MarshalToSizedBufferVT(dAtA []byte
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xea
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_SaveLedgerMetadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_SaveLedgerMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SaveLedgerMetadata != nil {
-		size, err := m.SaveLedgerMetadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xf2
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Order_DeleteLedgerMetadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Order_DeleteLedgerMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.DeleteLedgerMetadata != nil {
-		size, err := m.DeleteLedgerMetadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -6662,19 +6887,12 @@ func (m *UpdatePreparedQueryOrder) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x12
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -6715,13 +6933,6 @@ func (m *DeletePreparedQueryOrder) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -7268,13 +7479,6 @@ func (m *SaveNumscriptOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0x22
-	}
 	if len(m.Version) > 0 {
 		i -= len(m.Version)
 		copy(dAtA[i:], m.Version)
@@ -7328,13 +7532,6 @@ func (m *DeleteNumscriptOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0x12
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
@@ -7579,7 +7776,7 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.DefaultEnforcementMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultEnforcementMode))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x28
 	}
 	if len(m.AccountTypes) > 0 {
 		for k := range m.AccountTypes {
@@ -7600,7 +7797,7 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x22
 		}
 	}
 	if m.MirrorSource != nil {
@@ -7611,12 +7808,12 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x1a
 	}
 	if m.Mode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Mode))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x10
 	}
 	if len(m.InitialSchema) > 0 {
 		for iNdEx := len(m.InitialSchema) - 1; iNdEx >= 0; iNdEx-- {
@@ -7627,15 +7824,8 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0xa
 		}
-	}
-	if len(m.Name) > 0 {
-		i -= len(m.Name)
-		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -7677,13 +7867,6 @@ func (m *MirrorIngestOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -8221,13 +8404,6 @@ func (m *PromoteLedgerOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -8260,13 +8436,6 @@ func (m *DeleteLedgerOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.Name) > 0 {
-		i -= len(m.Name)
-		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -8310,13 +8479,6 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -8335,7 +8497,7 @@ func (m *LedgerApplyOrder_CreateTransaction) MarshalToSizedBufferVT(dAtA []byte)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -8354,7 +8516,7 @@ func (m *LedgerApplyOrder_AddMetadata) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x12
 	}
 	return len(dAtA) - i, nil
 }
@@ -8373,7 +8535,7 @@ func (m *LedgerApplyOrder_RevertTransaction) MarshalToSizedBufferVT(dAtA []byte)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x1a
 	}
 	return len(dAtA) - i, nil
 }
@@ -8392,7 +8554,7 @@ func (m *LedgerApplyOrder_DeleteMetadata) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x22
 	}
 	return len(dAtA) - i, nil
 }
@@ -8411,7 +8573,7 @@ func (m *LedgerApplyOrder_SetMetadataFieldType) MarshalToSizedBufferVT(dAtA []by
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x2a
 	}
 	return len(dAtA) - i, nil
 }
@@ -8430,7 +8592,7 @@ func (m *LedgerApplyOrder_RemoveMetadataFieldType) MarshalToSizedBufferVT(dAtA [
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x32
 	}
 	return len(dAtA) - i, nil
 }
@@ -8449,7 +8611,7 @@ func (m *LedgerApplyOrder_CreateIndex) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x52
+		dAtA[i] = 0x3a
 	}
 	return len(dAtA) - i, nil
 }
@@ -8468,7 +8630,7 @@ func (m *LedgerApplyOrder_DropIndex) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x5a
+		dAtA[i] = 0x42
 	}
 	return len(dAtA) - i, nil
 }
@@ -8487,7 +8649,7 @@ func (m *LedgerApplyOrder_AddAccountType) MarshalToSizedBufferVT(dAtA []byte) (i
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x6a
+		dAtA[i] = 0x4a
 	}
 	return len(dAtA) - i, nil
 }
@@ -8506,7 +8668,7 @@ func (m *LedgerApplyOrder_RemoveAccountType) MarshalToSizedBufferVT(dAtA []byte)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x72
+		dAtA[i] = 0x52
 	}
 	return len(dAtA) - i, nil
 }
@@ -8525,7 +8687,7 @@ func (m *LedgerApplyOrder_UpdateDefaultEnforcementMode) MarshalToSizedBufferVT(d
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x7a
+		dAtA[i] = 0x5a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9543,15 +9705,8 @@ func (m *SaveLedgerMetadataOrder) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0xa
 		}
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -9590,13 +9745,6 @@ func (m *DeleteLedgerMetadataOrder) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i -= len(m.Key)
 		copy(dAtA[i:], m.Key)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -11583,13 +11731,54 @@ func (m *Order) SizeVT() (n int) {
 	}
 	l = len(m.CoverageBits)
 	if l > 0 {
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *Order_Apply) SizeVT() (n int) {
+func (m *Order_LedgerScoped) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.LedgerScoped != nil {
+		l = m.LedgerScoped.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Order_SystemScoped) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SystemScoped != nil {
+		l = m.SystemScoped.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LedgerScopedOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if vtmsg, ok := m.Payload.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *LedgerScopedOrder_Apply) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11601,7 +11790,7 @@ func (m *Order_Apply) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_CreateLedger) SizeVT() (n int) {
+func (m *LedgerScopedOrder_CreateLedger) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11613,7 +11802,7 @@ func (m *Order_CreateLedger) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_DeleteLedger) SizeVT() (n int) {
+func (m *LedgerScopedOrder_DeleteLedger) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11625,7 +11814,128 @@ func (m *Order_DeleteLedger) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_RegisterSigningKey) SizeVT() (n int) {
+func (m *LedgerScopedOrder_MirrorIngest) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.MirrorIngest != nil {
+		l = m.MirrorIngest.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LedgerScopedOrder_PromoteLedger) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PromoteLedger != nil {
+		l = m.PromoteLedger.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LedgerScopedOrder_SaveLedgerMetadata) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SaveLedgerMetadata != nil {
+		l = m.SaveLedgerMetadata.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LedgerScopedOrder_DeleteLedgerMetadata) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.DeleteLedgerMetadata != nil {
+		l = m.DeleteLedgerMetadata.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LedgerScopedOrder_SaveNumscript) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SaveNumscript != nil {
+		l = m.SaveNumscript.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LedgerScopedOrder_DeleteNumscript) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.DeleteNumscript != nil {
+		l = m.DeleteNumscript.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LedgerScopedOrder_CreatePreparedQuery) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.CreatePreparedQuery != nil {
+		l = m.CreatePreparedQuery.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LedgerScopedOrder_UpdatePreparedQuery) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UpdatePreparedQuery != nil {
+		l = m.UpdatePreparedQuery.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LedgerScopedOrder_DeletePreparedQuery) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.DeletePreparedQuery != nil {
+		l = m.DeletePreparedQuery.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *SystemScopedOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if vtmsg, ok := m.Payload.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SystemScopedOrder_RegisterSigningKey) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11637,7 +11947,7 @@ func (m *Order_RegisterSigningKey) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_RevokeSigningKey) SizeVT() (n int) {
+func (m *SystemScopedOrder_RevokeSigningKey) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11649,7 +11959,7 @@ func (m *Order_RevokeSigningKey) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_SetSigningConfig) SizeVT() (n int) {
+func (m *SystemScopedOrder_SetSigningConfig) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11661,7 +11971,7 @@ func (m *Order_SetSigningConfig) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_AddEventsSink) SizeVT() (n int) {
+func (m *SystemScopedOrder_AddEventsSink) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11673,7 +11983,7 @@ func (m *Order_AddEventsSink) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_RemoveEventsSink) SizeVT() (n int) {
+func (m *SystemScopedOrder_RemoveEventsSink) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11685,7 +11995,7 @@ func (m *Order_RemoveEventsSink) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_CloseChapter) SizeVT() (n int) {
+func (m *SystemScopedOrder_CloseChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11697,7 +12007,7 @@ func (m *Order_CloseChapter) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_SealChapter) SizeVT() (n int) {
+func (m *SystemScopedOrder_SealChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11709,7 +12019,7 @@ func (m *Order_SealChapter) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_ArchiveChapter) SizeVT() (n int) {
+func (m *SystemScopedOrder_ArchiveChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11721,7 +12031,7 @@ func (m *Order_ArchiveChapter) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_ConfirmArchiveChapter) SizeVT() (n int) {
+func (m *SystemScopedOrder_ConfirmArchiveChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11733,7 +12043,7 @@ func (m *Order_ConfirmArchiveChapter) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_SetMaintenanceMode) SizeVT() (n int) {
+func (m *SystemScopedOrder_SetMaintenanceMode) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11745,7 +12055,7 @@ func (m *Order_SetMaintenanceMode) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_SetChapterSchedule) SizeVT() (n int) {
+func (m *SystemScopedOrder_SetChapterSchedule) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11753,11 +12063,11 @@ func (m *Order_SetChapterSchedule) SizeVT() (n int) {
 	_ = l
 	if m.SetChapterSchedule != nil {
 		l = m.SetChapterSchedule.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *Order_DeleteChapterSchedule) SizeVT() (n int) {
+func (m *SystemScopedOrder_DeleteChapterSchedule) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11765,95 +12075,11 @@ func (m *Order_DeleteChapterSchedule) SizeVT() (n int) {
 	_ = l
 	if m.DeleteChapterSchedule != nil {
 		l = m.DeleteChapterSchedule.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *Order_MirrorIngest) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.MirrorIngest != nil {
-		l = m.MirrorIngest.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Order_PromoteLedger) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.PromoteLedger != nil {
-		l = m.PromoteLedger.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Order_CreatePreparedQuery) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.CreatePreparedQuery != nil {
-		l = m.CreatePreparedQuery.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Order_UpdatePreparedQuery) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.UpdatePreparedQuery != nil {
-		l = m.UpdatePreparedQuery.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Order_DeletePreparedQuery) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.DeletePreparedQuery != nil {
-		l = m.DeletePreparedQuery.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Order_SaveNumscript) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SaveNumscript != nil {
-		l = m.SaveNumscript.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Order_DeleteNumscript) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.DeleteNumscript != nil {
-		l = m.DeleteNumscript.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Order_CreateQueryCheckpoint) SizeVT() (n int) {
+func (m *SystemScopedOrder_CreateQueryCheckpoint) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11861,11 +12087,11 @@ func (m *Order_CreateQueryCheckpoint) SizeVT() (n int) {
 	_ = l
 	if m.CreateQueryCheckpoint != nil {
 		l = m.CreateQueryCheckpoint.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *Order_DeleteQueryCheckpoint) SizeVT() (n int) {
+func (m *SystemScopedOrder_DeleteQueryCheckpoint) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11873,11 +12099,11 @@ func (m *Order_DeleteQueryCheckpoint) SizeVT() (n int) {
 	_ = l
 	if m.DeleteQueryCheckpoint != nil {
 		l = m.DeleteQueryCheckpoint.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *Order_SetQueryCheckpointSchedule) SizeVT() (n int) {
+func (m *SystemScopedOrder_SetQueryCheckpointSchedule) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11885,11 +12111,11 @@ func (m *Order_SetQueryCheckpointSchedule) SizeVT() (n int) {
 	_ = l
 	if m.SetQueryCheckpointSchedule != nil {
 		l = m.SetQueryCheckpointSchedule.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *Order_DeleteQueryCheckpointSchedule) SizeVT() (n int) {
+func (m *SystemScopedOrder_DeleteQueryCheckpointSchedule) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -11897,30 +12123,6 @@ func (m *Order_DeleteQueryCheckpointSchedule) SizeVT() (n int) {
 	_ = l
 	if m.DeleteQueryCheckpointSchedule != nil {
 		l = m.DeleteQueryCheckpointSchedule.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Order_SaveLedgerMetadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SaveLedgerMetadata != nil {
-		l = m.SaveLedgerMetadata.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Order_DeleteLedgerMetadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.DeleteLedgerMetadata != nil {
-		l = m.DeleteLedgerMetadata.SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -11945,10 +12147,6 @@ func (m *UpdatePreparedQueryOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	l = len(m.Name)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -11967,10 +12165,6 @@ func (m *DeletePreparedQueryOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	l = len(m.Name)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -12171,10 +12365,6 @@ func (m *SaveNumscriptOrder) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -12186,10 +12376,6 @@ func (m *DeleteNumscriptOrder) SizeVT() (n int) {
 	var l int
 	_ = l
 	l = len(m.Name)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.Ledger)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -12270,10 +12456,6 @@ func (m *CreateLedgerOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Name)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if len(m.InitialSchema) > 0 {
 		for _, e := range m.InitialSchema {
 			l = e.SizeVT()
@@ -12313,10 +12495,6 @@ func (m *MirrorIngestOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if m.Entry != nil {
 		l = m.Entry.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -12557,10 +12735,6 @@ func (m *PromoteLedgerOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -12571,10 +12745,6 @@ func (m *DeleteLedgerOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Name)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -12585,10 +12755,6 @@ func (m *LedgerApplyOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if vtmsg, ok := m.Data.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
 	}
@@ -13110,10 +13276,6 @@ func (m *SaveLedgerMetadataOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if len(m.Metadata) > 0 {
 		for k, v := range m.Metadata {
 			_ = k
@@ -13137,10 +13299,6 @@ func (m *DeleteLedgerMetadataOrder) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	l = len(m.Key)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -13924,7 +14082,7 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Apply", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LedgerScoped", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -13951,21 +14109,21 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*Order_Apply); ok {
-				if err := oneof.Apply.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*Order_LedgerScoped); ok {
+				if err := oneof.LedgerScoped.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &LedgerApplyOrder{}
+				v := &LedgerScopedOrder{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &Order_Apply{Apply: v}
+				m.Type = &Order_LedgerScoped{LedgerScoped: v}
 			}
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CreateLedger", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field SystemScoped", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -13992,60 +14150,19 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*Order_CreateLedger); ok {
-				if err := oneof.CreateLedger.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*Order_SystemScoped); ok {
+				if err := oneof.SystemScoped.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &CreateLedgerOrder{}
+				v := &SystemScopedOrder{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &Order_CreateLedger{CreateLedger: v}
+				m.Type = &Order_SystemScoped{SystemScoped: v}
 			}
 			iNdEx = postIndex
 		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeleteLedger", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_DeleteLedger); ok {
-				if err := oneof.DeleteLedger.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &DeleteLedgerOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_DeleteLedger{DeleteLedger: v}
-			}
-			iNdEx = postIndex
-		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Signature", wireType)
 			}
@@ -14081,1032 +14198,7 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 6:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RegisterSigningKey", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_RegisterSigningKey); ok {
-				if err := oneof.RegisterSigningKey.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &RegisterSigningKeyOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_RegisterSigningKey{RegisterSigningKey: v}
-			}
-			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RevokeSigningKey", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_RevokeSigningKey); ok {
-				if err := oneof.RevokeSigningKey.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &RevokeSigningKeyOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_RevokeSigningKey{RevokeSigningKey: v}
-			}
-			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetSigningConfig", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_SetSigningConfig); ok {
-				if err := oneof.SetSigningConfig.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetSigningConfigOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_SetSigningConfig{SetSigningConfig: v}
-			}
-			iNdEx = postIndex
-		case 9:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddEventsSink", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_AddEventsSink); ok {
-				if err := oneof.AddEventsSink.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &AddEventsSinkOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_AddEventsSink{AddEventsSink: v}
-			}
-			iNdEx = postIndex
-		case 10:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RemoveEventsSink", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_RemoveEventsSink); ok {
-				if err := oneof.RemoveEventsSink.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &RemoveEventsSinkOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_RemoveEventsSink{RemoveEventsSink: v}
-			}
-			iNdEx = postIndex
-		case 11:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CloseChapter", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_CloseChapter); ok {
-				if err := oneof.CloseChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &CloseChapterOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_CloseChapter{CloseChapter: v}
-			}
-			iNdEx = postIndex
-		case 12:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SealChapter", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_SealChapter); ok {
-				if err := oneof.SealChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SealChapterOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_SealChapter{SealChapter: v}
-			}
-			iNdEx = postIndex
-		case 13:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ArchiveChapter", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_ArchiveChapter); ok {
-				if err := oneof.ArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &ArchiveChapterOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_ArchiveChapter{ArchiveChapter: v}
-			}
-			iNdEx = postIndex
-		case 14:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConfirmArchiveChapter", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_ConfirmArchiveChapter); ok {
-				if err := oneof.ConfirmArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &ConfirmArchiveChapterOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_ConfirmArchiveChapter{ConfirmArchiveChapter: v}
-			}
-			iNdEx = postIndex
-		case 15:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetMaintenanceMode", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_SetMaintenanceMode); ok {
-				if err := oneof.SetMaintenanceMode.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetMaintenanceModeOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_SetMaintenanceMode{SetMaintenanceMode: v}
-			}
-			iNdEx = postIndex
-		case 16:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetChapterSchedule", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_SetChapterSchedule); ok {
-				if err := oneof.SetChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetChapterScheduleOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_SetChapterSchedule{SetChapterSchedule: v}
-			}
-			iNdEx = postIndex
-		case 17:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeleteChapterSchedule", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_DeleteChapterSchedule); ok {
-				if err := oneof.DeleteChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &DeleteChapterScheduleOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_DeleteChapterSchedule{DeleteChapterSchedule: v}
-			}
-			iNdEx = postIndex
-		case 19:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MirrorIngest", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_MirrorIngest); ok {
-				if err := oneof.MirrorIngest.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &MirrorIngestOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_MirrorIngest{MirrorIngest: v}
-			}
-			iNdEx = postIndex
-		case 20:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PromoteLedger", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_PromoteLedger); ok {
-				if err := oneof.PromoteLedger.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &PromoteLedgerOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_PromoteLedger{PromoteLedger: v}
-			}
-			iNdEx = postIndex
-		case 21:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CreatePreparedQuery", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_CreatePreparedQuery); ok {
-				if err := oneof.CreatePreparedQuery.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &CreatePreparedQueryOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_CreatePreparedQuery{CreatePreparedQuery: v}
-			}
-			iNdEx = postIndex
-		case 22:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field UpdatePreparedQuery", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_UpdatePreparedQuery); ok {
-				if err := oneof.UpdatePreparedQuery.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &UpdatePreparedQueryOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_UpdatePreparedQuery{UpdatePreparedQuery: v}
-			}
-			iNdEx = postIndex
-		case 23:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeletePreparedQuery", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_DeletePreparedQuery); ok {
-				if err := oneof.DeletePreparedQuery.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &DeletePreparedQueryOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_DeletePreparedQuery{DeletePreparedQuery: v}
-			}
-			iNdEx = postIndex
-		case 24:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SaveNumscript", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_SaveNumscript); ok {
-				if err := oneof.SaveNumscript.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SaveNumscriptOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_SaveNumscript{SaveNumscript: v}
-			}
-			iNdEx = postIndex
-		case 25:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeleteNumscript", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_DeleteNumscript); ok {
-				if err := oneof.DeleteNumscript.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &DeleteNumscriptOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_DeleteNumscript{DeleteNumscript: v}
-			}
-			iNdEx = postIndex
-		case 26:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CreateQueryCheckpoint", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_CreateQueryCheckpoint); ok {
-				if err := oneof.CreateQueryCheckpoint.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &CreateQueryCheckpointOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_CreateQueryCheckpoint{CreateQueryCheckpoint: v}
-			}
-			iNdEx = postIndex
-		case 27:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpoint", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_DeleteQueryCheckpoint); ok {
-				if err := oneof.DeleteQueryCheckpoint.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &DeleteQueryCheckpointOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_DeleteQueryCheckpoint{DeleteQueryCheckpoint: v}
-			}
-			iNdEx = postIndex
-		case 28:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetQueryCheckpointSchedule", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_SetQueryCheckpointSchedule); ok {
-				if err := oneof.SetQueryCheckpointSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetQueryCheckpointScheduleOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: v}
-			}
-			iNdEx = postIndex
-		case 29:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpointSchedule", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_DeleteQueryCheckpointSchedule); ok {
-				if err := oneof.DeleteQueryCheckpointSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &DeleteQueryCheckpointScheduleOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: v}
-			}
-			iNdEx = postIndex
-		case 30:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SaveLedgerMetadata", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_SaveLedgerMetadata); ok {
-				if err := oneof.SaveLedgerMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SaveLedgerMetadataOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_SaveLedgerMetadata{SaveLedgerMetadata: v}
-			}
-			iNdEx = postIndex
-		case 31:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeleteLedgerMetadata", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Order_DeleteLedgerMetadata); ok {
-				if err := oneof.DeleteLedgerMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &DeleteLedgerMetadataOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Order_DeleteLedgerMetadata{DeleteLedgerMetadata: v}
-			}
-			iNdEx = postIndex
-		case 32:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CoverageBits", wireType)
 			}
@@ -15138,6 +14230,1288 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			m.CoverageBits = append(m.CoverageBits[:0], dAtA[iNdEx:postIndex]...)
 			if m.CoverageBits == nil {
 				m.CoverageBits = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LedgerScopedOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LedgerScopedOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LedgerScopedOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Apply", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_Apply); ok {
+				if err := oneof.Apply.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &LedgerApplyOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_Apply{Apply: v}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreateLedger", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_CreateLedger); ok {
+				if err := oneof.CreateLedger.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &CreateLedgerOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_CreateLedger{CreateLedger: v}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteLedger", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_DeleteLedger); ok {
+				if err := oneof.DeleteLedger.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeleteLedgerOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_DeleteLedger{DeleteLedger: v}
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MirrorIngest", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_MirrorIngest); ok {
+				if err := oneof.MirrorIngest.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &MirrorIngestOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_MirrorIngest{MirrorIngest: v}
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PromoteLedger", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_PromoteLedger); ok {
+				if err := oneof.PromoteLedger.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &PromoteLedgerOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_PromoteLedger{PromoteLedger: v}
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SaveLedgerMetadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_SaveLedgerMetadata); ok {
+				if err := oneof.SaveLedgerMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SaveLedgerMetadataOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_SaveLedgerMetadata{SaveLedgerMetadata: v}
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteLedgerMetadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_DeleteLedgerMetadata); ok {
+				if err := oneof.DeleteLedgerMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeleteLedgerMetadataOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_DeleteLedgerMetadata{DeleteLedgerMetadata: v}
+			}
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SaveNumscript", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_SaveNumscript); ok {
+				if err := oneof.SaveNumscript.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SaveNumscriptOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_SaveNumscript{SaveNumscript: v}
+			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteNumscript", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_DeleteNumscript); ok {
+				if err := oneof.DeleteNumscript.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeleteNumscriptOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_DeleteNumscript{DeleteNumscript: v}
+			}
+			iNdEx = postIndex
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreatePreparedQuery", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_CreatePreparedQuery); ok {
+				if err := oneof.CreatePreparedQuery.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &CreatePreparedQueryOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_CreatePreparedQuery{CreatePreparedQuery: v}
+			}
+			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UpdatePreparedQuery", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_UpdatePreparedQuery); ok {
+				if err := oneof.UpdatePreparedQuery.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &UpdatePreparedQueryOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_UpdatePreparedQuery{UpdatePreparedQuery: v}
+			}
+			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeletePreparedQuery", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerScopedOrder_DeletePreparedQuery); ok {
+				if err := oneof.DeletePreparedQuery.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeletePreparedQueryOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerScopedOrder_DeletePreparedQuery{DeletePreparedQuery: v}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SystemScopedOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SystemScopedOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SystemScopedOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RegisterSigningKey", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_RegisterSigningKey); ok {
+				if err := oneof.RegisterSigningKey.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &RegisterSigningKeyOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_RegisterSigningKey{RegisterSigningKey: v}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevokeSigningKey", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_RevokeSigningKey); ok {
+				if err := oneof.RevokeSigningKey.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &RevokeSigningKeyOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_RevokeSigningKey{RevokeSigningKey: v}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetSigningConfig", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_SetSigningConfig); ok {
+				if err := oneof.SetSigningConfig.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetSigningConfigOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_SetSigningConfig{SetSigningConfig: v}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AddEventsSink", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_AddEventsSink); ok {
+				if err := oneof.AddEventsSink.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AddEventsSinkOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_AddEventsSink{AddEventsSink: v}
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RemoveEventsSink", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_RemoveEventsSink); ok {
+				if err := oneof.RemoveEventsSink.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &RemoveEventsSinkOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_RemoveEventsSink{RemoveEventsSink: v}
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CloseChapter", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_CloseChapter); ok {
+				if err := oneof.CloseChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &CloseChapterOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_CloseChapter{CloseChapter: v}
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SealChapter", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_SealChapter); ok {
+				if err := oneof.SealChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SealChapterOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_SealChapter{SealChapter: v}
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ArchiveChapter", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_ArchiveChapter); ok {
+				if err := oneof.ArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &ArchiveChapterOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_ArchiveChapter{ArchiveChapter: v}
+			}
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConfirmArchiveChapter", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_ConfirmArchiveChapter); ok {
+				if err := oneof.ConfirmArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &ConfirmArchiveChapterOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_ConfirmArchiveChapter{ConfirmArchiveChapter: v}
+			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetMaintenanceMode", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_SetMaintenanceMode); ok {
+				if err := oneof.SetMaintenanceMode.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetMaintenanceModeOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_SetMaintenanceMode{SetMaintenanceMode: v}
+			}
+			iNdEx = postIndex
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetChapterSchedule", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_SetChapterSchedule); ok {
+				if err := oneof.SetChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetChapterScheduleOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_SetChapterSchedule{SetChapterSchedule: v}
+			}
+			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteChapterSchedule", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_DeleteChapterSchedule); ok {
+				if err := oneof.DeleteChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeleteChapterScheduleOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_DeleteChapterSchedule{DeleteChapterSchedule: v}
+			}
+			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreateQueryCheckpoint", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_CreateQueryCheckpoint); ok {
+				if err := oneof.CreateQueryCheckpoint.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &CreateQueryCheckpointOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_CreateQueryCheckpoint{CreateQueryCheckpoint: v}
+			}
+			iNdEx = postIndex
+		case 14:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpoint", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_DeleteQueryCheckpoint); ok {
+				if err := oneof.DeleteQueryCheckpoint.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeleteQueryCheckpointOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_DeleteQueryCheckpoint{DeleteQueryCheckpoint: v}
+			}
+			iNdEx = postIndex
+		case 15:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetQueryCheckpointSchedule", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_SetQueryCheckpointSchedule); ok {
+				if err := oneof.SetQueryCheckpointSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetQueryCheckpointScheduleOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: v}
+			}
+			iNdEx = postIndex
+		case 16:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpointSchedule", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_DeleteQueryCheckpointSchedule); ok {
+				if err := oneof.DeleteQueryCheckpointSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeleteQueryCheckpointScheduleOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -15280,38 +15654,6 @@ func (m *UpdatePreparedQueryOrder) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
 			}
 			var stringLen uint64
@@ -15342,7 +15684,7 @@ func (m *UpdatePreparedQueryOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Name = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 3:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Filter", wireType)
 			}
@@ -15430,38 +15772,6 @@ func (m *DeletePreparedQueryOrder) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
 			}
@@ -16640,38 +16950,6 @@ func (m *SaveNumscriptOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Version = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -16754,38 +17032,6 @@ func (m *DeleteNumscriptOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Name = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -17193,38 +17439,6 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Name = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InitialSchema", wireType)
 			}
 			var msglen int
@@ -17257,7 +17471,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 3:
+		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Mode", wireType)
 			}
@@ -17276,7 +17490,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MirrorSource", wireType)
 			}
@@ -17312,7 +17526,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 5:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountTypes", wireType)
 			}
@@ -17441,7 +17655,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.AccountTypes[mapkey] = mapvalue
 			iNdEx = postIndex
-		case 6:
+		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DefaultEnforcementMode", wireType)
 			}
@@ -17512,38 +17726,6 @@ func (m *MirrorIngestOrder) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Entry", wireType)
 			}
@@ -19025,38 +19207,6 @@ func (m *PromoteLedgerOrder) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: PromoteLedgerOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19108,38 +19258,6 @@ func (m *DeleteLedgerOrder) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: DeleteLedgerOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Name = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19193,38 +19311,6 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreateTransaction", wireType)
 			}
 			var msglen int
@@ -19264,7 +19350,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_CreateTransaction{CreateTransaction: v}
 			}
 			iNdEx = postIndex
-		case 3:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AddMetadata", wireType)
 			}
@@ -19305,7 +19391,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_AddMetadata{AddMetadata: v}
 			}
 			iNdEx = postIndex
-		case 4:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RevertTransaction", wireType)
 			}
@@ -19346,7 +19432,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_RevertTransaction{RevertTransaction: v}
 			}
 			iNdEx = postIndex
-		case 5:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeleteMetadata", wireType)
 			}
@@ -19387,7 +19473,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_DeleteMetadata{DeleteMetadata: v}
 			}
 			iNdEx = postIndex
-		case 6:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetMetadataFieldType", wireType)
 			}
@@ -19428,7 +19514,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_SetMetadataFieldType{SetMetadataFieldType: v}
 			}
 			iNdEx = postIndex
-		case 7:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveMetadataFieldType", wireType)
 			}
@@ -19469,7 +19555,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_RemoveMetadataFieldType{RemoveMetadataFieldType: v}
 			}
 			iNdEx = postIndex
-		case 10:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreateIndex", wireType)
 			}
@@ -19510,7 +19596,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_CreateIndex{CreateIndex: v}
 			}
 			iNdEx = postIndex
-		case 11:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DropIndex", wireType)
 			}
@@ -19551,7 +19637,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_DropIndex{DropIndex: v}
 			}
 			iNdEx = postIndex
-		case 13:
+		case 9:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AddAccountType", wireType)
 			}
@@ -19592,7 +19678,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_AddAccountType{AddAccountType: v}
 			}
 			iNdEx = postIndex
-		case 14:
+		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
 			}
@@ -19633,7 +19719,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_RemoveAccountType{RemoveAccountType: v}
 			}
 			iNdEx = postIndex
-		case 15:
+		case 11:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UpdateDefaultEnforcementMode", wireType)
 			}
@@ -22362,38 +22448,6 @@ func (m *SaveLedgerMetadataOrder) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
 			}
 			var msglen int
@@ -22573,38 +22627,6 @@ func (m *DeleteLedgerMetadataOrder) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
 			}

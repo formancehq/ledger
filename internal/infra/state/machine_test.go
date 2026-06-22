@@ -190,25 +190,27 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePla
 	accMeta := map[acctMetaKey]struct{}{}
 
 	for _, order := range orders {
-		// Non-apply orders also touch the cache (CreateLedger reads the
-		// LedgerKey to confirm the slot is empty before writing).
-		switch t := order.GetType().(type) {
-		case *raftcmdpb.Order_CreateLedger:
-			ledgers[t.CreateLedger.GetName()] = struct{}{}
-		case *raftcmdpb.Order_DeleteLedger:
-			ledgers[t.DeleteLedger.GetName()] = struct{}{}
-		case *raftcmdpb.Order_PromoteLedger:
-			ledgers[t.PromoteLedger.GetLedger()] = struct{}{}
-		case *raftcmdpb.Order_MirrorIngest:
-			ledgers[t.MirrorIngest.GetLedger()] = struct{}{}
+		ls := order.GetLedgerScoped()
+		if ls == nil {
+			continue
 		}
 
-		apply := order.GetApply()
+		// Non-apply ledger-scoped orders also touch the cache (CreateLedger
+		// reads the LedgerKey to confirm the slot is empty before writing).
+		switch ls.GetPayload().(type) {
+		case *raftcmdpb.LedgerScopedOrder_CreateLedger,
+			*raftcmdpb.LedgerScopedOrder_DeleteLedger,
+			*raftcmdpb.LedgerScopedOrder_PromoteLedger,
+			*raftcmdpb.LedgerScopedOrder_MirrorIngest:
+			ledgers[ls.GetLedger()] = struct{}{}
+		}
+
+		apply := ls.GetApply()
 		if apply == nil {
 			continue
 		}
 
-		ledgerName := apply.GetLedger()
+		ledgerName := ls.GetLedger()
 		if ledgerName != "" {
 			ledgers[ledgerName] = struct{}{}
 		}
@@ -276,11 +278,16 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePlan {
 	zero := commonpb.NewUint256FromUint64(0)
 
 	for _, order := range orders {
-		apply := order.GetApply()
+		ls := order.GetLedgerScoped()
+		if ls == nil {
+			continue
+		}
+
+		apply := ls.GetApply()
 		if apply == nil {
 			continue
 		}
-		ledger := apply.GetLedger()
+		ledger := ls.GetLedger()
 
 		var postings []*commonpb.Posting
 		if ct := apply.GetCreateTransaction(); ct != nil {
@@ -338,9 +345,12 @@ func makeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) raftpb.
 
 func createLedgerOrder(name string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name: name,
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: name,
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
 			},
 		},
 	}
@@ -348,13 +358,16 @@ func createLedgerOrder(name string) *raftcmdpb.Order {
 
 func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-						Postings: postings,
-						Force:    force,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+							Postings: postings,
+							Force:    force,
+						},
+					},
 					},
 				},
 			},
@@ -364,12 +377,15 @@ func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Pos
 
 func revertTransactionOrder(ledger string, txID uint64) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-					RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-						TransactionId: txID,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+						RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+							TransactionId: txID,
+						},
+					},
 					},
 				},
 			},

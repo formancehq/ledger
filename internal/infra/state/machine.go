@@ -966,7 +966,12 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 // authorizedInMaintenanceMode returns true if every order in the batch is a SetMaintenanceMode order.
 func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 	for _, order := range orders {
-		if _, ok := order.GetType().(*raftcmdpb.Order_SetMaintenanceMode); !ok {
+		system := order.GetSystemScoped()
+		if system == nil {
+			return false
+		}
+
+		if _, ok := system.GetPayload().(*raftcmdpb.SystemScopedOrder_SetMaintenanceMode); !ok {
 			return false
 		}
 	}
@@ -1442,7 +1447,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	for _, order := range proposal.GetOrders() {
-		if cp := order.GetDeleteQueryCheckpoint(); cp != nil {
+		if cp := order.GetSystemScoped().GetDeleteQueryCheckpoint(); cp != nil {
 			queryCheckpointDeleted = cp.GetCheckpointId()
 		}
 	}
@@ -1467,12 +1472,17 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 // hasMirrorConfigChange returns true if any order in the proposal creates or promotes a mirror ledger.
 func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 	for _, order := range proposal.GetOrders() {
-		switch o := order.GetType().(type) {
-		case *raftcmdpb.Order_CreateLedger:
-			if o.CreateLedger.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		ls := order.GetLedgerScoped()
+		if ls == nil {
+			continue
+		}
+
+		switch payload := ls.GetPayload().(type) {
+		case *raftcmdpb.LedgerScopedOrder_CreateLedger:
+			if payload.CreateLedger.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 				return true
 			}
-		case *raftcmdpb.Order_PromoteLedger:
+		case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
 			return true
 		}
 	}

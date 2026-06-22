@@ -26,57 +26,41 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
+	if err := validateOrderPreparedQuery(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
 	return nil
 }
 
-// validateOrderLedgerName extracts and validates the ledger name from any order type.
+// validateOrderLedgerName validates the ledger name carried by the LedgerScopedOrder
+// wrapper. System-scoped orders have no ledger to validate.
 func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
-	var name string
-
-	switch o := order.GetType().(type) {
-	case *raftcmdpb.Order_CreateLedger:
-		name = o.CreateLedger.GetName()
-	case *raftcmdpb.Order_DeleteLedger:
-		name = o.DeleteLedger.GetName()
-	case *raftcmdpb.Order_Apply:
-		name = o.Apply.GetLedger()
-	case *raftcmdpb.Order_SaveNumscript:
-		name = o.SaveNumscript.GetLedger()
-	case *raftcmdpb.Order_DeleteNumscript:
-		name = o.DeleteNumscript.GetLedger()
-	case *raftcmdpb.Order_PromoteLedger:
-		name = o.PromoteLedger.GetLedger()
-	case *raftcmdpb.Order_SaveLedgerMetadata:
-		name = o.SaveLedgerMetadata.GetLedger()
-	case *raftcmdpb.Order_DeleteLedgerMetadata:
-		name = o.DeleteLedgerMetadata.GetLedger()
-	case *raftcmdpb.Order_UpdatePreparedQuery:
-		name = o.UpdatePreparedQuery.GetLedger()
-	case *raftcmdpb.Order_DeletePreparedQuery:
-		name = o.DeletePreparedQuery.GetLedger()
-	case *raftcmdpb.Order_CreatePreparedQuery:
-		name = o.CreatePreparedQuery.GetQuery().GetLedger()
-	case *raftcmdpb.Order_MirrorIngest:
-		name = o.MirrorIngest.GetLedger()
-	default:
+	ls := order.GetLedgerScoped()
+	if ls == nil {
 		return nil
 	}
 
-	return domain.ValidateLedgerName(name)
+	return domain.ValidateLedgerName(ls.GetLedger())
 }
 
 // validateOrderMetadata validates that all metadata keys and values in the order
 // are safe for Pebble key encoding.
 func validateOrderMetadata(order *raftcmdpb.Order) domain.Describable {
-	switch o := order.GetType().(type) {
-	case *raftcmdpb.Order_Apply:
-		return validateApplyMetadata(o.Apply)
-	case *raftcmdpb.Order_SaveLedgerMetadata:
-		return validateMetadataMap(o.SaveLedgerMetadata.GetMetadata())
-	case *raftcmdpb.Order_DeleteLedgerMetadata:
-		return domain.ValidateMetadataKey(o.DeleteLedgerMetadata.GetKey())
-	case *raftcmdpb.Order_MirrorIngest:
-		return validateMirrorMetadata(o.MirrorIngest.GetEntry())
+	ls := order.GetLedgerScoped()
+	if ls == nil {
+		return nil
+	}
+
+	switch p := ls.GetPayload().(type) {
+	case *raftcmdpb.LedgerScopedOrder_Apply:
+		return validateApplyMetadata(p.Apply)
+	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
+		return validateMetadataMap(p.SaveLedgerMetadata.GetMetadata())
+	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
+		return domain.ValidateMetadataKey(p.DeleteLedgerMetadata.GetKey())
+	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
+		return validateMirrorMetadata(p.MirrorIngest.GetEntry())
 	default:
 		return nil
 	}
@@ -150,7 +134,7 @@ func validateMirrorMetadata(entry *raftcmdpb.MirrorLogEntry) domain.Describable 
 // (metadata targets). Transaction postings are validated in the processor after
 // Numscript resolution.
 func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
-	apply, ok := order.GetType().(*raftcmdpb.Order_Apply)
+	apply, ok := order.GetLedgerScoped().GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
 	if !ok {
 		return nil
 	}
@@ -183,7 +167,7 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 // that execute fine but emit no postings — lives on the FSM
 // (processCreateTransaction) because only it sees the post-producer result.
 func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
-	apply, ok := order.GetType().(*raftcmdpb.Order_Apply)
+	apply, ok := order.GetLedgerScoped().GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
 	if !ok {
 		return nil
 	}
@@ -214,6 +198,31 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	return nil
+}
+
+// validateOrderPreparedQuery rejects prepared-query orders whose payload is
+// malformed. After moving `ledger` off `common.PreparedQuery` onto the
+// surrounding wrapper (PR #522), a request with a valid wrapper ledger but
+// a nil/empty `query` (Create) or empty `name` (Update/Delete) no longer
+// fails at `loadLedger("")`; it would silently reach the FSM and store /
+// look up a nameless entry. This gate plus the matching FSM-side guard in
+// processor_prepared_query.go closes the regression flagged on #522.
+func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
+	switch p := order.GetLedgerScoped().GetPayload().(type) {
+	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
+		q := p.CreatePreparedQuery.GetQuery()
+		if q == nil {
+			return domain.ErrPreparedQueryRequired
+		}
+
+		return domain.ValidatePreparedQueryName(q.GetName())
+	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
+		return domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName())
+	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
+		return domain.ValidatePreparedQueryName(p.DeletePreparedQuery.GetName())
+	default:
+		return nil
+	}
 }
 
 // validateMetadataMap validates all keys and values in a metadata map.

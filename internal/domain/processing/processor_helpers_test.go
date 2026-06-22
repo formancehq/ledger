@@ -11,21 +11,25 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 
 	switch reqType := req.GetType().(type) {
 	case *servicepb.Request_CreateLedger:
-		order.Type = &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name: reqType.CreateLedger.GetName(),
+		order.Type = &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: reqType.CreateLedger.GetName(),
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
 			},
 		}
 	case *servicepb.Request_DeleteLedger:
-		order.Type = &raftcmdpb.Order_DeleteLedger{
-			DeleteLedger: &raftcmdpb.DeleteLedgerOrder{
-				Name: reqType.DeleteLedger.GetName(),
+		order.Type = &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: reqType.DeleteLedger.GetName(),
+				Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{
+					DeleteLedger: &raftcmdpb.DeleteLedgerOrder{},
+				},
 			},
 		}
 	case *servicepb.Request_Apply:
-		applyOrder := &raftcmdpb.LedgerApplyOrder{
-			Ledger: reqType.Apply.GetLedger(),
-		}
+		applyOrder := &raftcmdpb.LedgerApplyOrder{}
 		switch data := reqType.Apply.GetAction().GetData().(type) {
 		case *servicepb.LedgerAction_CreateTransaction:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
@@ -64,8 +68,11 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 			}
 		}
 
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: applyOrder,
+		order.Type = &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger:  reqType.Apply.GetLedger(),
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: applyOrder},
+			},
 		}
 	}
 

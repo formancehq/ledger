@@ -8,8 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerMetadataOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
-	ledger := order.GetLedger()
+func (p *RequestProcessor) processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadataOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	if ledger == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -56,8 +55,7 @@ func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerM
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLedgerMetadataOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
-	ledger := order.GetLedger()
+func (p *RequestProcessor) processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMetadataOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	if ledger == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}

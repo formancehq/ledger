@@ -13,13 +13,25 @@ func TestClassifyCheckpointOrderPosition(t *testing.T) {
 	t.Parallel()
 
 	apply := func() *raftcmdpb.Order {
-		return &raftcmdpb.Order{Type: &raftcmdpb.Order_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}}}
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}}}}}
 	}
 	chkpt := func() *raftcmdpb.Order {
-		return &raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}}
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+				},
+			},
+		}}
 	}
 	closeChapter := func() *raftcmdpb.Order {
-		return &raftcmdpb.Order{Type: &raftcmdpb.Order_CloseChapter{CloseChapter: &raftcmdpb.CloseChapterOrder{}}}
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{
+					CloseChapter: &raftcmdpb.CloseChapterOrder{},
+				},
+			},
+		}}
 	}
 
 	cases := []struct {
@@ -60,7 +72,7 @@ func TestValidateCheckpointEntryPositions(t *testing.T) {
 		t.Helper()
 		cmd := &raftcmdpb.Proposal{
 			Id:     idx,
-			Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}}}},
+			Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}}}}}},
 		}
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
@@ -70,8 +82,14 @@ func TestValidateCheckpointEntryPositions(t *testing.T) {
 	chkpt := func(t *testing.T, idx uint64) raftpb.Entry {
 		t.Helper()
 		cmd := &raftcmdpb.Proposal{
-			Id:     idx,
-			Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}}},
+			Id: idx,
+			Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_SystemScoped{
+				SystemScoped: &raftcmdpb.SystemScopedOrder{
+					Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+						CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+					},
+				},
+			}}},
 		}
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
@@ -118,8 +136,14 @@ func TestValidateCheckpointEntryPositions(t *testing.T) {
 func TestProposalRequiresCheckpoint(t *testing.T) {
 	t.Parallel()
 
-	apply := &raftcmdpb.Order{Type: &raftcmdpb.Order_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}}}
-	chkpt := &raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}}
+	apply := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "l", Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}}}}}
+	chkpt := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
+		SystemScoped: &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+			},
+		},
+	}}
 
 	require.False(t, ProposalRequiresCheckpoint(&raftcmdpb.Proposal{}))
 	require.False(t, ProposalRequiresCheckpoint(&raftcmdpb.Proposal{Orders: []*raftcmdpb.Order{apply}}))

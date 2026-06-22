@@ -27,7 +27,13 @@ func TestPrepareEntries_RejectsCheckpointMidProposal(t *testing.T) {
 	bad := &raftcmdpb.Proposal{
 		Id: 99,
 		Orders: []*raftcmdpb.Order{
-			{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
+			{Type: &raftcmdpb.Order_SystemScoped{
+				SystemScoped: &raftcmdpb.SystemScopedOrder{
+					Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+						CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+					},
+				},
+			}},
 			createLedgerOrder("ledger-b"),
 		},
 		Date: makeProposal(99).GetDate(),
@@ -54,7 +60,13 @@ func TestPrepareEntries_RejectsCheckpointMidBatch(t *testing.T) {
 
 	// Two entries: the first is a pure checkpoint, the second is a no-op.
 	checkpointEntry := makeEntry(t, 2, makeProposal(10,
-		&raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
+		&raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+				},
+			},
+		}},
 	))
 	followupEntry := makeEntry(t, 3, makeProposal(11, createLedgerOrder("ledger-y")))
 
@@ -81,7 +93,13 @@ func TestPrepareEntries_RejectsCheckpointMidBatchLeavesStateUntouched(t *testing
 	sequenceBefore := machine.State.NextSequenceID
 
 	checkpointEntry := makeEntry(t, 2, makeProposal(10,
-		&raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
+		&raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+				},
+			},
+		}},
 	))
 	tailEntry := makeEntry(t, 3, makeProposal(11, createLedgerOrder("ledger-tail")))
 
@@ -109,7 +127,13 @@ func TestPrepareEntries_AcceptsCheckpointAsLastEntry(t *testing.T) {
 
 	otherEntry := makeEntry(t, 2, makeProposal(2, createLedgerOrder("ledger-w")))
 	checkpointEntry := makeEntry(t, 3, makeProposal(3,
-		&raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
+		&raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+				},
+			},
+		}},
 	))
 
 	result, err := machine.ApplyEntries(ctx, dataStore, otherEntry, checkpointEntry)

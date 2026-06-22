@@ -42,14 +42,17 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
-					SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        "amount",
-						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "amount",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					},
 					},
 				},
 			},
@@ -99,14 +102,17 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
-					SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-						TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-						Key:        "priority",
-						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+							Key:        "priority",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					},
 					},
 				},
 			},
@@ -149,14 +155,17 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
-					SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-						TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
-						Key:        "env",
-						Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+							Key:        "env",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+					},
 					},
 				},
 			},
@@ -191,14 +200,17 @@ func TestProcessSetMetadataFieldType_LedgerNotFound(t *testing.T) {
 	mockStore.EXPECT().GetLedger("missing").Return(nil, domain.ErrNotFound).AnyTimes()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "missing",
-				Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
-					SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        "key",
-						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "key",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					},
 					},
 				},
 			},
@@ -247,13 +259,16 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
-					RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        "amount",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "amount",
+						},
+					},
 					},
 				},
 			},
@@ -301,13 +316,16 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
-					RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-						TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-						Key:        "priority",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+							Key:        "priority",
+						},
+					},
 					},
 				},
 			},
@@ -353,13 +371,16 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
-					RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-						TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
-						Key:        "env",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+							Key:        "env",
+						},
+					},
 					},
 				},
 			},
@@ -407,14 +428,17 @@ func TestProcessSetMetadataFieldType_RejectedWhileConverting(t *testing.T) {
 	// No PutLedger / AddMetadataConvertRequest / PutBoundaries: the order is rejected.
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
-					SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        "amount",
-						Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "amount",
+							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+						},
+					},
 					},
 				},
 			},
@@ -460,13 +484,16 @@ func TestProcessRemoveMetadataFieldType_RejectedWhileConverting(t *testing.T) {
 	// No PutLedger / PutBoundaries: the order is rejected.
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
-					RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        "amount",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "amount",
+						},
+					},
 					},
 				},
 			},

@@ -2523,6 +2523,7 @@ func (m *CreatePreparedQueryRequest) CloneVT() *CreatePreparedQueryRequest {
 		return (*CreatePreparedQueryRequest)(nil)
 	}
 	r := new(CreatePreparedQueryRequest)
+	r.Ledger = m.Ledger
 	r.Query = m.Query.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -7104,6 +7105,9 @@ func (this *CreatePreparedQueryRequest) EqualVT(that *CreatePreparedQueryRequest
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Ledger != that.Ledger {
 		return false
 	}
 	if !this.Query.EqualVT(that.Query) {
@@ -14318,6 +14322,13 @@ func (m *CreatePreparedQueryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
 		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
@@ -18364,6 +18375,10 @@ func (m *CreatePreparedQueryRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	if m.Query != nil {
 		l = m.Query.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -33274,6 +33289,38 @@ func (m *CreatePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Query", wireType)
 			}

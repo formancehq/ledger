@@ -84,30 +84,17 @@ func buildAuditItems(serializedOrders [][]byte, logs []*raftcmdpb.CreatedLogOrRe
 	return items
 }
 
-// extractLedgers returns the distinct ledger names targeted by a set of orders.
+// extractLedgers returns the distinct ledger names targeted by a set of
+// orders. The wrapper-level split makes attribution structural: ledger-scoped
+// orders expose their target via LedgerScopedOrder.ledger, and system-scoped
+// orders never contribute a ledger name. Adding a new ledger-scoped order
+// variant cannot regress audit attribution since the field lives on the
+// wrapper, not on each payload.
 func extractLedgers(orders []*raftcmdpb.Order) []string {
 	seen := make(map[string]struct{})
 
 	for _, order := range orders {
-		var ledger string
-
-		switch {
-		case order.GetApply() != nil:
-			ledger = order.GetApply().GetLedger()
-		case order.GetCreateLedger() != nil:
-			ledger = order.GetCreateLedger().GetName()
-		case order.GetDeleteLedger() != nil:
-			ledger = order.GetDeleteLedger().GetName()
-		case order.GetMirrorIngest() != nil:
-			ledger = order.GetMirrorIngest().GetLedger()
-		case order.GetPromoteLedger() != nil:
-			ledger = order.GetPromoteLedger().GetLedger()
-		case order.GetSaveLedgerMetadata() != nil:
-			ledger = order.GetSaveLedgerMetadata().GetLedger()
-		case order.GetDeleteLedgerMetadata() != nil:
-			ledger = order.GetDeleteLedgerMetadata().GetLedger()
-		}
-
+		ledger := order.GetLedgerScoped().GetLedger()
 		if ledger != "" {
 			seen[ledger] = struct{}{}
 		}

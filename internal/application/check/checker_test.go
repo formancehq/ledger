@@ -634,9 +634,12 @@ func newPosting(source, destination, asset string, amount int64) *commonpb.Posti
 
 func createLedgerOrder(name string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_CreateLedger{
-			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name: name,
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: name,
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
 			},
 		},
 	}
@@ -644,16 +647,19 @@ func createLedgerOrder(name string) *raftcmdpb.Order {
 
 func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.AccountTypePersistence) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
-					AddAccountType: &raftcmdpb.AddAccountTypeOrder{
-						AccountType: &commonpb.AccountType{
-							Name:        name,
-							Pattern:     pattern,
-							Persistence: persistence,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
+						AddAccountType: &raftcmdpb.AddAccountTypeOrder{
+							AccountType: &commonpb.AccountType{
+								Name:        name,
+								Pattern:     pattern,
+								Persistence: persistence,
+							},
 						},
+					},
 					},
 				},
 			},
@@ -663,9 +669,12 @@ func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.Acco
 
 func deleteLedgerOrder(name string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_DeleteLedger{
-			DeleteLedger: &raftcmdpb.DeleteLedgerOrder{
-				Name: name,
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: name,
+				Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{
+					DeleteLedger: &raftcmdpb.DeleteLedgerOrder{},
+				},
 			},
 		},
 	}
@@ -673,13 +682,16 @@ func deleteLedgerOrder(name string) *raftcmdpb.Order {
 
 func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-						Postings: postings,
-						Force:    force,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+							Postings: postings,
+							Force:    force,
+						},
+					},
 					},
 				},
 			},
@@ -689,15 +701,18 @@ func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Pos
 
 func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[string]string, accountMeta map[string]*commonpb.MetadataMap, postings ...*commonpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-						Postings:        postings,
-						Force:           force,
-						Metadata:        commonpb.MetadataFromGoMap(metadata),
-						AccountMetadata: accountMeta,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+							Postings:        postings,
+							Force:           force,
+							Metadata:        commonpb.MetadataFromGoMap(metadata),
+							AccountMetadata: accountMeta,
+						},
+					},
 					},
 				},
 			},
@@ -707,13 +722,16 @@ func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[
 
 func revertTransactionOrder(ledger string, txID uint64, originalPostings []*commonpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-					RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-						TransactionId:    txID,
-						OriginalPostings: originalPostings,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+						RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+							TransactionId:    txID,
+							OriginalPostings: originalPostings,
+						},
+					},
 					},
 				},
 			},
@@ -723,19 +741,22 @@ func revertTransactionOrder(ledger string, txID uint64, originalPostings []*comm
 
 func saveAccountMetadataOrder(ledger, account string, metadata map[string]string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
-					AddMetadata: &raftcmdpb.SaveMetadataOrder{
-						Target: &commonpb.Target{
-							Target: &commonpb.Target_Account{
-								Account: &commonpb.TargetAccount{
-									Addr: account,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+						AddMetadata: &raftcmdpb.SaveMetadataOrder{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{
+										Addr: account,
+									},
 								},
 							},
+							Metadata: commonpb.MetadataFromGoMap(metadata),
 						},
-						Metadata: commonpb.MetadataFromGoMap(metadata),
+					},
 					},
 				},
 			},
@@ -745,19 +766,22 @@ func saveAccountMetadataOrder(ledger, account string, metadata map[string]string
 
 func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
-					DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-						Target: &commonpb.Target{
-							Target: &commonpb.Target_Account{
-								Account: &commonpb.TargetAccount{
-									Addr: account,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
+						DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{
+										Addr: account,
+									},
 								},
 							},
+							Key: key,
 						},
-						Key: key,
+					},
 					},
 				},
 			},
@@ -1178,15 +1202,18 @@ func TestCheckerManyOperationTypes(t *testing.T) {
 
 func saveTransactionMetadataOrder(ledger string, txID uint64, metadata map[string]string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
-					AddMetadata: &raftcmdpb.SaveMetadataOrder{
-						Target: &commonpb.Target{
-							Target: &commonpb.Target_TransactionId{TransactionId: txID},
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+						AddMetadata: &raftcmdpb.SaveMetadataOrder{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_TransactionId{TransactionId: txID},
+							},
+							Metadata: commonpb.MetadataFromGoMap(metadata),
 						},
-						Metadata: commonpb.MetadataFromGoMap(metadata),
+					},
 					},
 				},
 			},
@@ -1196,15 +1223,18 @@ func saveTransactionMetadataOrder(ledger string, txID uint64, metadata map[strin
 
 func deleteTransactionMetadataOrder(ledger string, txID uint64, key string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
-				Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
-					DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-						Target: &commonpb.Target{
-							Target: &commonpb.Target_TransactionId{TransactionId: txID},
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
+						DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_TransactionId{TransactionId: txID},
+							},
+							Key: key,
 						},
-						Key: key,
+					},
 					},
 				},
 			},

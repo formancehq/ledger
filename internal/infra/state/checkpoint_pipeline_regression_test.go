@@ -71,7 +71,13 @@ func TestPipelinedApplyWithCheckpointDoesNotDiverge(t *testing.T) {
 	// which is the contract the applier pre-split must maintain.
 	createOther := makeEntry(t, 2, makeProposal(2, createLedgerOrder("ledger-b")))
 	checkpoint := makeEntry(t, 3, makeProposal(3,
-		&raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
+		&raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+				},
+			},
+		}},
 	))
 
 	result, err := machine.ApplyEntries(context.Background(), dataStore, createOther, checkpoint)
@@ -95,7 +101,13 @@ func TestPrepareEntries_RejectsTwoCheckpointsSameBatch(t *testing.T) {
 	require.NoError(t, err)
 
 	chkptOrder := func() *raftcmdpb.Order {
-		return &raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}}
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+				},
+			},
+		}}
 	}
 
 	first := makeEntry(t, 2, makeProposal(10, chkptOrder()))

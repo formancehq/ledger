@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	if err := domain.ValidateNumscriptName(order.GetName()); err != nil {
 		return nil, err
 	}
@@ -22,7 +22,7 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 		return nil, &domain.ErrNumscriptParse{Details: err.Error()}
 	}
 
-	ledgerInfo, loadErr := loadLedger(s, order.GetLedger())
+	ledgerInfo, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -61,7 +61,7 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 		Content:   order.GetContent(),
 		Version:   resolvedVersion,
 		CreatedAt: s.GetDate(),
-		Ledger:    order.GetLedger(),
+		Ledger:    ledger,
 	}
 
 	s.PutNumscript(ledgerName, info)
@@ -75,12 +75,12 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscriptOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processDeleteNumscript(ledger string, order *raftcmdpb.DeleteNumscriptOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	if err := domain.ValidateNumscriptName(order.GetName()); err != nil {
 		return nil, err
 	}
 
-	ledgerInfo, loadErr := loadLedger(s, order.GetLedger())
+	ledgerInfo, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -102,7 +102,7 @@ func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscri
 		Type: &commonpb.LogPayload_DeletedNumscript{
 			DeletedNumscript: &commonpb.DeletedNumscriptLog{
 				Name:   order.GetName(),
-				Ledger: order.GetLedger(),
+				Ledger: ledger,
 			},
 		},
 	}, nil

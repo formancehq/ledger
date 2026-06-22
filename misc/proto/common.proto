@@ -399,7 +399,8 @@ message DeletedChapterScheduleLog {}
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
 message CreatedPreparedQueryLog {
-  PreparedQuery query = 1;
+  string ledger = 1;
+  PreparedQuery query = 2;
 }
 
 // UpdatedPreparedQueryLog records the update of a prepared query filter.
@@ -1034,12 +1035,14 @@ enum QueryMode {
   QUERY_MODE_AGGREGATE_VOLUMES = 1;
 }
 
-// PreparedQuery is a named, parameterized query template stored in the primary store.
+// PreparedQuery is a named, parameterized query template stored in the primary
+// store. The ledger the query belongs to lives on the storage key prefix and
+// (where the query is being created or invoked) on the surrounding request /
+// LedgerScopedOrder; it is intentionally NOT a field on the value itself.
 message PreparedQuery {
   string name = 1;
-  string ledger = 2;
-  QueryFilter filter = 3;
-  QueryTarget target = 4;
+  QueryFilter filter = 2;
+  QueryTarget target = 3;
 }
 
 // AggregatedVolume represents per-asset aggregated input/output volumes.

@@ -301,13 +301,27 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 	}
 }
 
-// describeOrder returns the display description for a single order.
+// describeOrder returns the display description for a single order. For an
+// Apply payload the description bubbles up the inner data oneof (so the user
+// sees "create_transaction" rather than "apply") and prepends the ledger name
+// carried by the LedgerScopedOrder wrapper.
 func describeOrder(order *raftcmdpb.Order, verbose bool) cmdutil.OneofDescription {
-	if apply := order.GetApply(); apply != nil {
-		desc := cmdutil.DescribeOneofField(apply.ProtoReflect(), "data", "Order", verbose)
-		desc.PrependField("ledger", apply.GetLedger())
+	if ls := order.GetLedgerScoped(); ls != nil {
+		if apply := ls.GetApply(); apply != nil {
+			desc := cmdutil.DescribeOneofField(apply.ProtoReflect(), "data", "LedgerScopedOrder", verbose)
+			desc.PrependField("ledger", ls.GetLedger())
+
+			return desc
+		}
+
+		desc := cmdutil.DescribeOneofField(ls.ProtoReflect(), "payload", "LedgerScopedOrder", verbose)
+		desc.PrependField("ledger", ls.GetLedger())
 
 		return desc
+	}
+
+	if ss := order.GetSystemScoped(); ss != nil {
+		return cmdutil.DescribeOneofField(ss.ProtoReflect(), "payload", "SystemScopedOrder", verbose)
 	}
 
 	return cmdutil.DescribeOneofField(order.ProtoReflect(), "type", "Order", verbose)

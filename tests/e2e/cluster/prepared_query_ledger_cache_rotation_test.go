@@ -42,8 +42,8 @@ const numscriptTransfer = `
 // all correctly preload the ledger, so they are not affected.
 var _ = Describe("Prepared query and numscript work after ledger cache eviction", Ordered, func() {
 	const (
-		httpPort         = 9260
-		grpcPort         = 8260
+		httpPort          = 9260
+		grpcPort          = 8260
 		rotationThreshold = uint64(10)
 		// Enough no-op proposals to push the LedgerInfo past gen1 of the
 		// cache (needs > 2 * rotationThreshold beyond the CreateLedger
@@ -91,9 +91,10 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 
 	It("CreatePreparedQuery must succeed after the LedgerInfo is evicted from cache", func() {
 		_, err := client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+			Ledger: ledgerName,
+
 			Query: &commonpb.PreparedQuery{
 				Name:   "after-rotation",
-				Ledger: ledgerName,
 				Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 				Filter: actions.AddressPrefixFilter("users:"),
 			},

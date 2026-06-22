@@ -22,8 +22,20 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 		t.Parallel()
 
 		orders := []*raftcmdpb.Order{
-			{Type: &raftcmdpb.Order_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: true}}},
-			{Type: &raftcmdpb.Order_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: false}}},
+			{Type: &raftcmdpb.Order_SystemScoped{
+				SystemScoped: &raftcmdpb.SystemScopedOrder{
+					Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
+						SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: true},
+					},
+				},
+			}},
+			{Type: &raftcmdpb.Order_SystemScoped{
+				SystemScoped: &raftcmdpb.SystemScopedOrder{
+					Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
+						SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: false},
+					},
+				},
+			}},
 		}
 		require.True(t, authorizedInMaintenanceMode(orders))
 	})
@@ -32,8 +44,21 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 		t.Parallel()
 
 		orders := []*raftcmdpb.Order{
-			{Type: &raftcmdpb.Order_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: true}}},
-			{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "test"}}},
+			{Type: &raftcmdpb.Order_SystemScoped{
+				SystemScoped: &raftcmdpb.SystemScopedOrder{
+					Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
+						SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: true},
+					},
+				},
+			}},
+			{Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "test",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+						CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+					},
+				},
+			}},
 		}
 		require.False(t, authorizedInMaintenanceMode(orders))
 	})
@@ -42,7 +67,14 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 		t.Parallel()
 
 		orders := []*raftcmdpb.Order{
-			{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "a"}}},
+			{Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "a",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+						CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+					},
+				},
+			}},
 		}
 		require.False(t, authorizedInMaintenanceMode(orders))
 	})

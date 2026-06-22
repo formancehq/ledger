@@ -917,7 +917,8 @@ message AssetVolumeStats {
 // ============================================================================
 
 message CreatePreparedQueryRequest {
-  common.PreparedQuery query = 1;
+  string ledger = 1;
+  common.PreparedQuery query = 2;
 }
 
 message CreatePreparedQueryResponse {}

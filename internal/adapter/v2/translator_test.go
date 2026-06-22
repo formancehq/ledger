@@ -36,9 +36,12 @@ func TestTranslateBatch_NewTransaction(t *testing.T) {
 	require.Equal(t, uint64(2), nextLogID)
 	require.Equal(t, uint64(1), nextTxID)
 
-	ingest := orders[0].GetMirrorIngest()
+	ls := orders[0].GetLedgerScoped()
+	require.NotNil(t, ls)
+	require.Equal(t, "default", ls.GetLedger())
+
+	ingest := ls.GetMirrorIngest()
 	require.NotNil(t, ingest)
-	require.Equal(t, "default", ingest.GetLedger())
 
 	ct := ingest.GetEntry().GetCreatedTransaction()
 	require.NotNil(t, ct)
@@ -67,7 +70,7 @@ func TestTranslateBatch_SetMetadata_Account(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	sm := orders[0].GetMirrorIngest().GetEntry().GetSavedMetadata()
+	sm := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetSavedMetadata()
 	require.NotNil(t, sm)
 
 	account := sm.GetTarget().GetAccount()
@@ -95,7 +98,7 @@ func TestTranslateBatch_SetMetadata_Transaction(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	sm := orders[0].GetMirrorIngest().GetEntry().GetSavedMetadata()
+	sm := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetSavedMetadata()
 	require.NotNil(t, sm)
 
 	require.Equal(t, uint64(42), sm.GetTarget().GetTransactionId())
@@ -120,7 +123,7 @@ func TestTranslateBatch_SetMetadata_StringMetadataPreserved(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	metadata := orders[0].GetMirrorIngest().GetEntry().GetSavedMetadata().GetMetadata()
+	metadata := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetSavedMetadata().GetMetadata()
 	require.Contains(t, metadata, "unsafe")
 	require.Equal(t, "9007199254740993", metadata["unsafe"].GetStringValue())
 }
@@ -172,7 +175,7 @@ func TestTranslateBatch_RevertedTransaction(t *testing.T) {
 	require.Len(t, orders, 1)
 	require.Equal(t, uint64(6), nextTxID)
 
-	rt := orders[0].GetMirrorIngest().GetEntry().GetRevertedTransaction()
+	rt := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetRevertedTransaction()
 	require.NotNil(t, rt)
 	require.Equal(t, uint64(1), rt.GetRevertedTransactionId())
 	require.Equal(t, uint64(5), rt.GetNewTransactionId())
@@ -196,7 +199,7 @@ func TestTranslateBatch_DeleteMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	dm := orders[0].GetMirrorIngest().GetEntry().GetDeletedMetadata()
+	dm := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetDeletedMetadata()
 	require.NotNil(t, dm)
 	require.Equal(t, "role", dm.GetKey())
 	require.Equal(t, "users:001", dm.GetTarget().GetAccount().GetAddr())
@@ -215,7 +218,7 @@ func TestTranslateBatch_UnknownLogType_FillGap(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	gap := orders[0].GetMirrorIngest().GetEntry().GetFillGap()
+	gap := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetFillGap()
 	require.NotNil(t, gap)
 }
 
@@ -240,13 +243,13 @@ func TestTranslateBatch_LogIDGapDetection(t *testing.T) {
 	require.Equal(t, uint64(4), nextLogID)
 
 	// First two should be fill gaps
-	require.NotNil(t, orders[0].GetMirrorIngest().GetEntry().GetFillGap())
-	require.Equal(t, uint64(1), orders[0].GetMirrorIngest().GetEntry().GetV2LogId())
-	require.NotNil(t, orders[1].GetMirrorIngest().GetEntry().GetFillGap())
-	require.Equal(t, uint64(2), orders[1].GetMirrorIngest().GetEntry().GetV2LogId())
+	require.NotNil(t, orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetFillGap())
+	require.Equal(t, uint64(1), orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetV2LogId())
+	require.NotNil(t, orders[1].GetLedgerScoped().GetMirrorIngest().GetEntry().GetFillGap())
+	require.Equal(t, uint64(2), orders[1].GetLedgerScoped().GetMirrorIngest().GetEntry().GetV2LogId())
 
 	// Third should be the actual metadata
-	require.NotNil(t, orders[2].GetMirrorIngest().GetEntry().GetSavedMetadata())
+	require.NotNil(t, orders[2].GetLedgerScoped().GetMirrorIngest().GetEntry().GetSavedMetadata())
 }
 
 func TestTranslateBatch_EmptyInput(t *testing.T) {
@@ -290,8 +293,8 @@ func TestTranslateBatch_MultipleLogs(t *testing.T) {
 	require.Equal(t, uint64(3), nextLogID)
 	require.Equal(t, uint64(1), nextTxID)
 
-	require.NotNil(t, orders[0].GetMirrorIngest().GetEntry().GetCreatedTransaction())
-	require.NotNil(t, orders[1].GetMirrorIngest().GetEntry().GetSavedMetadata())
+	require.NotNil(t, orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetCreatedTransaction())
+	require.NotNil(t, orders[1].GetLedgerScoped().GetMirrorIngest().GetEntry().GetSavedMetadata())
 }
 
 func TestTranslateBatch_AccountMetadata(t *testing.T) {
@@ -315,7 +318,7 @@ func TestTranslateBatch_AccountMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	ct := orders[0].GetMirrorIngest().GetEntry().GetCreatedTransaction()
+	ct := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetCreatedTransaction()
 	require.NotNil(t, ct)
 	require.Contains(t, ct.GetAccountMetadata(), "a")
 }
@@ -489,8 +492,8 @@ func TestMakeMirrorOrder(t *testing.T) {
 	}
 
 	order := makeMirrorOrder("test-ledger", entry)
-	require.Equal(t, "test-ledger", order.GetMirrorIngest().GetLedger())
-	require.Equal(t, uint64(42), order.GetMirrorIngest().GetEntry().GetV2LogId())
+	require.Equal(t, "test-ledger", order.GetLedgerScoped().GetLedger())
+	require.Equal(t, uint64(42), order.GetLedgerScoped().GetMirrorIngest().GetEntry().GetV2LogId())
 }
 
 func mustMarshal(t *testing.T, v any) json.RawMessage {

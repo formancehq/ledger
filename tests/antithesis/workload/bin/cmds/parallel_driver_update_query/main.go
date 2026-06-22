@@ -24,9 +24,10 @@ func main() {
 			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_CreatePreparedQuery{
 					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+						Ledger: ledger,
+
 						Query: &commonpb.PreparedQuery{
 							Name:   queryName,
-							Ledger: ledger,
 							Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 							Filter: &commonpb.QueryFilter{
 								Filter: &commonpb.QueryFilter_Address{

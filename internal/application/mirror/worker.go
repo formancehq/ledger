@@ -591,7 +591,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Needs, []*pl
 		p.Ledgers[ledgerKey] = struct{}{}
 		p.Boundaries[ledgerKey] = struct{}{}
 
-		mi := order.GetMirrorIngest()
+		mi := order.GetLedgerScoped().GetMirrorIngest()
 		if mi == nil {
 			perOrder[orderIdx] = p
 			aggregate.Merge(p)

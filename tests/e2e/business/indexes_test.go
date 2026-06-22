@@ -42,9 +42,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		It("Should reject queries on non-indexed metadata fields", func() {
 			// Create a prepared query that filters on a non-indexed field
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "category-filter",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: actions.StringMetadataFilter("category", "premium"),
 				},
@@ -229,9 +230,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should reject reference filter queries when index does not exist", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-reference",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.ReferenceFilter("pay-001"),
 				},
@@ -338,9 +340,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		It("Should reject timestamp filter queries when index does not exist", func() {
 			minTs, maxTs := uint64(ts1.UnixMicro()), uint64(ts3.UnixMicro())
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-timestamp",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.TimestampRangeFilter(minTs, maxTs),
 				},
@@ -393,9 +396,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		It("Should return only transactions in a narrower timestamp range", func() {
 			minTs, maxTs := uint64(ts1.UnixMicro()), uint64(ts2.UnixMicro())
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-timestamp-narrow",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.TimestampRangeFilter(minTs, maxTs),
 				},
@@ -437,9 +441,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			// Use a wide range that covers any possible insertion time.
 			minTs, maxTs := uint64(0), uint64(time.Now().Add(time.Hour).UnixMicro())
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-inserted-at",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.InsertedAtRangeFilter(minTs, maxTs),
 				},
@@ -485,9 +490,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			minTs := uint64(beforeCreate.UnixMicro())
 			maxTs := uint64(time.Now().Add(time.Hour).UnixMicro())
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-inserted-at-all",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.InsertedAtRangeFilter(minTs, maxTs),
 				},
@@ -510,9 +516,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			pastMin := uint64(time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).UnixMicro())
 			pastMax := uint64(time.Date(2000, 1, 2, 0, 0, 0, 0, time.UTC).UnixMicro())
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-inserted-at-past",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.InsertedAtRangeFilter(pastMin, pastMax),
 				},
@@ -585,9 +592,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should filter by exact ID", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-id-exact",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.TxIDExactFilter(3),
 				},
@@ -607,9 +615,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should filter by ID range", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-id-range",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.TxIDRangeFilter(2, 4),
 				},
@@ -629,9 +638,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should return empty for a non-existent ID", func() {
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
 				Query: &commonpb.PreparedQuery{
 					Name:   "by-id-missing",
-					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: actions.TxIDExactFilter(999),
 				},

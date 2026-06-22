@@ -582,9 +582,9 @@ func ListTransactionsFiltered(ctx context.Context, client servicepb.BucketServic
 // CreatePreparedQuery creates a prepared query via the gRPC API.
 func CreatePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, name, ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) error {
 	_, err := client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+		Ledger: ledger,
 		Query: &commonpb.PreparedQuery{
 			Name:   name,
-			Ledger: ledger,
 			Target: target,
 			Filter: filter,
 		},

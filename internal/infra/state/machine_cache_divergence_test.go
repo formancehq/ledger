@@ -562,24 +562,29 @@ func buildProposalWithLeaderPreloads(
 
 	// For CreateLedger, we need to preload the ledger key (it won't be in cache)
 	for _, order := range orders {
-		if cl := order.GetCreateLedger(); cl != nil {
+		ls := order.GetLedgerScoped()
+		if ls == nil {
+			continue
+		}
+
+		if cl := ls.GetCreateLedger(); cl != nil {
 			// CreateLedger: the ledger does not exist yet, so its LedgerKey
 			// is missing from Pebble. The FSM still needs to *read* that key
 			// to confirm the slot is empty before writing the new ledger,
 			// so the proposer must declare it. With crash semantics on the
 			// View, omitting the declaration would panic the node here.
-			ledgerU128, _ := attributes.MakeKey(domain.LedgerKey{Name: cl.GetName()}.Bytes())
+			ledgerU128, _ := attributes.MakeKey(domain.LedgerKey{Name: ls.GetLedger()}.Bytes())
 			plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrLedger))
 
 			continue
 		}
 
-		apply := order.GetApply()
+		apply := ls.GetApply()
 		if apply == nil {
 			continue
 		}
 
-		ledger := apply.GetLedger()
+		ledger := ls.GetLedger()
 
 		// Check LedgerInfo in leader's cache
 		ledgerKey := domain.LedgerKey{Name: ledger}

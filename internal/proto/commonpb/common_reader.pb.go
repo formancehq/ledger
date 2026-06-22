@@ -3306,11 +3306,16 @@ func NewDeletedChapterScheduleLogListReader(s []*DeletedChapterScheduleLog) Dele
 // CreatedPreparedQueryLogReader provides read-only access to CreatedPreparedQueryLog.
 // Call Mutate() to obtain a mutable clone.
 type CreatedPreparedQueryLogReader interface {
+	GetLedger() string
 	GetQuery() PreparedQueryReader
 	Mutate() *CreatedPreparedQueryLog
 }
 
 type createdPreparedQueryLogReadonly struct{ v *CreatedPreparedQueryLog }
+
+func (r *createdPreparedQueryLogReadonly) GetLedger() string {
+	return r.v.GetLedger()
+}
 
 func (r *createdPreparedQueryLogReadonly) GetQuery() PreparedQueryReader {
 	v := r.v.GetQuery()
@@ -9675,7 +9680,6 @@ func NewAddressMatchListReader(s []*AddressMatch) AddressMatchListReader {
 // Call Mutate() to obtain a mutable clone.
 type PreparedQueryReader interface {
 	GetName() string
-	GetLedger() string
 	GetFilter() QueryFilterReader
 	GetTarget() QueryTarget
 	Mutate() *PreparedQuery
@@ -9685,10 +9689,6 @@ type preparedQueryReadonly struct{ v *PreparedQuery }
 
 func (r *preparedQueryReadonly) GetName() string {
 	return r.v.GetName()
-}
-
-func (r *preparedQueryReadonly) GetLedger() string {
-	return r.v.GetLedger()
 }
 
 func (r *preparedQueryReadonly) GetFilter() QueryFilterReader {

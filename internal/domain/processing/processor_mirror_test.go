@@ -39,15 +39,18 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_MirrorIngest{
-			MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "mirror-ledger",
-				Entry: &raftcmdpb.MirrorLogEntry{
-					V2LogId: 5,
-					Data: &raftcmdpb.MirrorLogEntry_FillGap{
-						FillGap: &raftcmdpb.MirrorFillGap{
-							SkippedTransactionIds: []uint64{10, 11},
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: 5,
+						Data: &raftcmdpb.MirrorLogEntry_FillGap{
+							FillGap: &raftcmdpb.MirrorFillGap{
+								SkippedTransactionIds: []uint64{10, 11},
+							},
 						},
+					},
 					},
 				},
 			},
@@ -129,18 +132,21 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	}}
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_MirrorIngest{
-			MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "mirror-ledger",
-				Entry: &raftcmdpb.MirrorLogEntry{
-					V2LogId: 1,
-					Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
-						CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-							TransactionId: 42,
-							Postings:      postings,
-							Reference:     "tx-ref-v2",
-							Timestamp:     &commonpb.Timestamp{Data: 1700000000},
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: 1,
+						Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+							CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+								TransactionId: 42,
+								Postings:      postings,
+								Reference:     "tx-ref-v2",
+								Timestamp:     &commonpb.Timestamp{Data: 1700000000},
+							},
 						},
+					},
 					},
 				},
 			},
@@ -182,13 +188,16 @@ func TestMirrorIngest_NotMirrorMode(t *testing.T) {
 	mockStore.EXPECT().GetLedger("normal-ledger").Return(ledgerInfo, nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_MirrorIngest{
-			MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "normal-ledger",
-				Entry: &raftcmdpb.MirrorLogEntry{
-					V2LogId: 1,
-					Data: &raftcmdpb.MirrorLogEntry_FillGap{
-						FillGap: &raftcmdpb.MirrorFillGap{},
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: 1,
+						Data: &raftcmdpb.MirrorLogEntry_FillGap{
+							FillGap: &raftcmdpb.MirrorFillGap{},
+						},
+					},
 					},
 				},
 			},
@@ -216,13 +225,16 @@ func TestMirrorIngest_LedgerNotFound(t *testing.T) {
 	mockStore.EXPECT().GetLedger("missing").Return(nil, domain.ErrNotFound)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_MirrorIngest{
-			MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "missing",
-				Entry: &raftcmdpb.MirrorLogEntry{
-					V2LogId: 1,
-					Data: &raftcmdpb.MirrorLogEntry_FillGap{
-						FillGap: &raftcmdpb.MirrorFillGap{},
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: 1,
+						Data: &raftcmdpb.MirrorLogEntry_FillGap{
+							FillGap: &raftcmdpb.MirrorFillGap{},
+						},
+					},
 					},
 				},
 			},
@@ -269,9 +281,12 @@ func TestPromoteLedger_Success(t *testing.T) {
 	)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_PromoteLedger{
-			PromoteLedger: &raftcmdpb.PromoteLedgerOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "mirror-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
+					PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
+				},
 			},
 		},
 	}
@@ -303,9 +318,12 @@ func TestPromoteLedger_NotMirrorMode(t *testing.T) {
 	mockStore.EXPECT().GetLedger("normal-ledger").Return(ledgerInfo, nil)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_PromoteLedger{
-			PromoteLedger: &raftcmdpb.PromoteLedgerOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "normal-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
+					PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
+				},
 			},
 		},
 	}
@@ -331,9 +349,12 @@ func TestPromoteLedger_NotFound(t *testing.T) {
 	mockStore.EXPECT().GetLedger("missing").Return(nil, domain.ErrNotFound)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_PromoteLedger{
-			PromoteLedger: &raftcmdpb.PromoteLedgerOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "missing",
+				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
+					PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
+				},
 			},
 		},
 	}
@@ -384,16 +405,19 @@ func TestMirrorIngest_CreatedTransaction_MissingVolumes(t *testing.T) {
 	}}
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_MirrorIngest{
-			MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "mirror-ledger",
-				Entry: &raftcmdpb.MirrorLogEntry{
-					V2LogId: 1,
-					Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
-						CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-							TransactionId: 42,
-							Postings:      postings,
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: 1,
+						Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+							CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+								TransactionId: 42,
+								Postings:      postings,
+							},
 						},
+					},
 					},
 				},
 			},
@@ -440,17 +464,20 @@ func TestMirrorIngest_RevertedTransaction_MissingVolumes(t *testing.T) {
 	}}
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_MirrorIngest{
-			MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "mirror-ledger",
-				Entry: &raftcmdpb.MirrorLogEntry{
-					V2LogId: 2,
-					Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
-						RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
-							RevertedTransactionId: 5,
-							NewTransactionId:      42,
-							ReversePostings:       reversePostings,
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: 2,
+						Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
+							RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
+								RevertedTransactionId: 5,
+								NewTransactionId:      42,
+								ReversePostings:       reversePostings,
+							},
 						},
+					},
 					},
 				},
 			},
@@ -484,17 +511,20 @@ func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {
 	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, nil)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "mirror-ledger",
-				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-						Postings: []*commonpb.Posting{{
-							Source:      "world",
-							Destination: "users:001",
-							Amount:      commonpb.NewUint256FromUint64(100),
-							Asset:       "USD/2",
-						}},
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: "users:001",
+								Amount:      commonpb.NewUint256FromUint64(100),
+								Asset:       "USD/2",
+							}},
+						},
+					},
 					},
 				},
 			},

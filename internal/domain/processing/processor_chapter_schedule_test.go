@@ -23,9 +23,13 @@ func TestProcessSetChapterSchedule_ValidCron(t *testing.T) {
 	mockStore.EXPECT().SetChapterSchedule("0 0 1 * *")
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_SetChapterSchedule{
-			SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
-				Cron: "0 0 1 * *",
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_SetChapterSchedule{
+					SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
+						Cron: "0 0 1 * *",
+					},
+				},
 			},
 		},
 	}
@@ -50,9 +54,13 @@ func TestProcessSetChapterSchedule_InvalidCron(t *testing.T) {
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_SetChapterSchedule{
-			SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
-				Cron: "not-a-cron",
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_SetChapterSchedule{
+					SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
+						Cron: "not-a-cron",
+					},
+				},
 			},
 		},
 	}
@@ -79,8 +87,12 @@ func TestProcessDeleteChapterSchedule(t *testing.T) {
 	mockStore.EXPECT().DeleteChapterSchedule()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_DeleteChapterSchedule{
-			DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{},
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_DeleteChapterSchedule{
+					DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{},
+				},
+			},
 		},
 	}
 

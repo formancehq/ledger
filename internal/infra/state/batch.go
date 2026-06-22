@@ -245,10 +245,12 @@ func buildLedgerScopedPrefixSuccessor(zone, sub byte, ledgerName string) []byte 
 	return out
 }
 
-// SavePreparedQuery stores a prepared query in the batch.
-func SavePreparedQuery(b *dal.WriteSession, pq *commonpb.PreparedQuery) error {
+// SavePreparedQuery stores a prepared query in the batch under the given
+// ledger. The ledger no longer lives on the PreparedQuery value itself —
+// it is part of the key prefix and provided by the caller.
+func SavePreparedQuery(b *dal.WriteSession, ledger string, pq *commonpb.PreparedQuery) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLPreparedQuery).
-		PutLedgerNameFixed(pq.GetLedger()).
+		PutLedgerNameFixed(ledger).
 		PutString(pq.GetName())
 
 	err := b.SetProto(b.KeyBuilder.Consume(), pq)

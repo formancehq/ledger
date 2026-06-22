@@ -22,9 +22,13 @@ func TestProcessSetMaintenanceMode_Enable(t *testing.T) {
 	mockStore.EXPECT().SetMaintenanceMode(true)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_SetMaintenanceMode{
-			SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
-				Enabled: true,
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
+					SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
+						Enabled: true,
+					},
+				},
 			},
 		},
 	}
@@ -51,9 +55,13 @@ func TestProcessSetMaintenanceMode_Disable(t *testing.T) {
 	mockStore.EXPECT().SetMaintenanceMode(false)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_SetMaintenanceMode{
-			SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
-				Enabled: false,
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
+					SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
+						Enabled: false,
+					},
+				},
 			},
 		},
 	}

@@ -17,9 +17,10 @@ func FuzzProposalUnmarshalVT(f *testing.F) {
 		Id: 42,
 		Orders: []*Order{
 			{
-				Type: &Order_CreateLedger{
-					CreateLedger: &CreateLedgerOrder{
-						Name: "default",
+				Type: &Order_LedgerScoped{
+					LedgerScoped: &LedgerScopedOrder{
+						Ledger:  "default",
+						Payload: &LedgerScopedOrder_CreateLedger{CreateLedger: &CreateLedgerOrder{}},
 					},
 				},
 			},
@@ -45,9 +46,18 @@ func FuzzProposalUnmarshalVT(f *testing.F) {
 // This targets the dispatch logic and nested message parsing.
 func FuzzOrderUnmarshalVT(f *testing.F) {
 	orders := []Order{
-		{Type: &Order_CreateLedger{CreateLedger: &CreateLedgerOrder{Name: "test"}}},
-		{Type: &Order_DeleteLedger{DeleteLedger: &DeleteLedgerOrder{Name: "test"}}},
-		{Type: &Order_Apply{Apply: &LedgerApplyOrder{Ledger: "test"}}},
+		{Type: &Order_LedgerScoped{LedgerScoped: &LedgerScopedOrder{
+			Ledger:  "test",
+			Payload: &LedgerScopedOrder_CreateLedger{CreateLedger: &CreateLedgerOrder{}},
+		}}},
+		{Type: &Order_LedgerScoped{LedgerScoped: &LedgerScopedOrder{
+			Ledger:  "test",
+			Payload: &LedgerScopedOrder_DeleteLedger{DeleteLedger: &DeleteLedgerOrder{}},
+		}}},
+		{Type: &Order_LedgerScoped{LedgerScoped: &LedgerScopedOrder{
+			Ledger:  "test",
+			Payload: &LedgerScopedOrder_Apply{Apply: &LedgerApplyOrder{}},
+		}}},
 	}
 	for i := range orders {
 		if data, err := orders[i].MarshalVT(); err == nil {

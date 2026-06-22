@@ -72,9 +72,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+		Ledger: ledgerName,
 		Query: &commonpb.PreparedQuery{
 			Name:   name,
-			Ledger: ledgerName,
 			Filter: filter,
 			Target: target,
 		},
