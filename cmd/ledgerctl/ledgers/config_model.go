@@ -671,9 +671,9 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 				Request: &servicepb.Request{
 					Type: &servicepb.Request_CreatePreparedQuery{
 						CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+							Ledger: ledgerName,
 							Query: &commonpb.PreparedQuery{
 								Name:   name,
-								Ledger: ledgerName,
 								Target: target,
 								Filter: filter,
 							},

@@ -52,11 +52,11 @@ func TestConfigStructuredRoundTrip(t *testing.T) {
 	}
 
 	queries := []*commonpb.PreparedQuery{
-		{Name: "btc-txs", Ledger: "bitcoin-mainnet", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		{Name: "btc-txs", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
 		// Logs target must round-trip — without the dedicated case in
 		// `queryTargetString`, export emitted `target: unknown` and apply
 		// silently fell back to ACCOUNTS, swapping the query target.
-		{Name: "audit-trail", Ledger: "bitcoin-mainnet", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		{Name: "audit-trail", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS},
 	}
 	numscripts := []*commonpb.NumscriptInfo{
 		{Name: "transfer", Content: "send 1 BTC from @user:alice to @user:bob", Version: "1"},

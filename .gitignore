@@ -57,6 +57,10 @@ misc/k6/archives/
 tests/e2e/data/
 tests/e2e/wal/
 
+# Local cluster runtime artifacts (Pebble data, WAL) created at repo root
+/data/
+/wal/
+
 worktrees
 /ledgerctl
 misc/operator/kubectl-ledger
