@@ -88,7 +88,8 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	t.Helper()
 
 	logger := logging.Testing()
-	meter := noop.Meter{}
+	meterProvider := noop.NewMeterProvider()
+	meter := meterProvider.Meter("test")
 
 	walDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -114,7 +115,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	nodeRegistry := state.NewStateRegistry(nodeCache, nodeAttrs, 0)
 	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
 	fsm, err := state.NewMachine(
-		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meter,
+		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
 		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
 	)
 	require.NoError(t, err)

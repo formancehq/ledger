@@ -45,6 +45,8 @@
             ffmpeg
             ginkgo
             gomarkdoc
+            go-jsonnet
+            jsonnet-bundler
             grpcurl
             jdk11
             jq

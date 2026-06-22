@@ -144,6 +144,16 @@ func NewRunCommand() *cobra.Command {
 	// Admission metrics (disabled by default to avoid contention under high concurrency)
 	runCmd.Flags().Bool("admission-metrics", false, "Enable admission metrics (histograms/counters in the admission hot path)")
 
+	// Naming convention for metrics emitted by the server. "otel" preserves
+	// dot-notation names (the OpenTelemetry default); "prom" prefixes every
+	// metric the server emits with "ledger_" and converts dots to underscores
+	// so the names are unambiguous after an OTLP→Prometheus collector that
+	// sanitizes "." into "_". OpenTelemetry semantic-convention
+	// auto-instrumentation (go.*, process.*, system.*, http.*) targets the
+	// global MeterProvider, bypasses the ledger factory, and is therefore
+	// never touched by this flag.
+	runCmd.Flags().String("metrics-naming", "otel", "Application metrics naming convention (otel|prom)")
+
 	// Receipt signing key for JWT transaction receipts
 	runCmd.Flags().String("receipt-signing-key", "", "HMAC key for signing JWT transaction receipts (empty = disabled)")
 
@@ -540,6 +550,9 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	// Admission metrics
 	cfg.AdmissionMetrics = getBool("admission-metrics", false)
+
+	// Metrics naming convention
+	cfg.MetricsNaming = getString("metrics-naming", "otel")
 
 	// Receipt signing key
 	cfg.ReceiptSigningKey = getString("receipt-signing-key", "")

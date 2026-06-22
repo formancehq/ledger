@@ -1,7 +1,23 @@
 set dotenv-load
 
-pre-commit: generate generate-proto operator-generate tidy lint
+pre-commit: generate generate-proto operator-generate generate-dashboards tidy lint
 pc: pre-commit
+
+# Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
+# sources under misc/devenv/monitoring-dashboards/jsonnet/. The output
+# is written under misc/devenv/monitoring-dashboards/config/dashboards/
+# and is consumed by Pulumi at deploy time.
+generate-dashboards:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd misc/devenv/monitoring-dashboards
+    if [ ! -d jsonnet/vendor ]; then
+        echo "==> jb install (fetching grafonnet)"
+        (cd jsonnet && jb install)
+    fi
+    echo "==> jsonnet -m config/dashboards jsonnet/main.jsonnet"
+    rm -f config/dashboards/ledger-metrics*.json
+    jsonnet -m config/dashboards -J jsonnet/vendor jsonnet/main.jsonnet
 
 lint:
     #!/usr/bin/env bash

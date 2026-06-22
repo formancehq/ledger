@@ -3965,6 +3965,42 @@ ledger run --admission-metrics [other flags...]
 
 ---
 
+### Server Metrics Naming Flag
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--metrics-naming` | string | `otel` | Application metrics naming convention (`otel` or `prom`) |
+
+Controls how the application's own metric names are emitted. Every
+instrument the server creates (admission, cache, wal, raft, pebble,
+…) is subject to the policy. OpenTelemetry semantic-convention
+auto-instrumentation (`http.*`, `go.*`, `process.*`, `system.*`)
+goes through the *global* MeterProvider and bypasses this flag, so
+those names always keep their canonical upstream form.
+
+- `otel` (default): preserves dot-notation names —
+  `admission.command.duration`, `raft.fsm.logs_appended`. Use this
+  when your OTLP→Prometheus collector preserves dots, or when you
+  query directly through OpenTelemetry tooling.
+- `prom`: rewrites our metric names to the Prometheus convention.
+  Names get the `ledger_` prefix and every dot becomes an
+  underscore, so `admission.command.duration` is emitted as
+  `ledger_admission_command_duration` and `raft.fsm.logs_appended`
+  as `ledger_raft_fsm_logs_appended`. Use this when the collector
+  in front of Prometheus sanitises dots (the default for recent OTel
+  collectors and most cloud Prometheus offerings).
+
+The two pre-built Grafana dashboards under
+`misc/devenv/monitoring-dashboards/config/dashboards/` match these
+two modes — pick `ledger-metrics-prom.json` if you run with
+`--metrics-naming=prom`.
+
+```bash
+ledger run --metrics-naming=prom [other flags...]
+```
+
+---
+
 ### Server Receipt Signing Flag
 
 | Flag | Type | Default | Description |

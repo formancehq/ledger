@@ -840,9 +840,20 @@ pulumi up
 
 The environment includes pre-configured Grafana dashboards:
 
-- **Ledger Metrics Dashboard**: Shows Raft metrics, transaction rates, latencies
+- **Ledger Metrics Dashboard**: Shows Raft metrics, transaction
+  rates, latencies. Ships in **seven variants** — one per
+  combination of *(server `--metrics-naming` flag, OTel→Prom
+  collector normalisation, histogram representation)*. The most
+  common pick on a default modern stack is
+  `ledger-metrics-prom-normalized.json` (server in `prom` mode +
+  collector with normalisation enabled + classic histograms) or
+  `ledger-metrics-prom-normalized-native.json` if you use
+  Prometheus 3.x native histograms. See
+  [`misc/devenv/monitoring-dashboards/README.md`](../../misc/devenv/monitoring-dashboards/README.md)
+  for the full matrix.
 - **k6 Dashboard**: Displays load test results in real-time
 
+All seven ledger variants are generated from the same Jsonnet source.
 Dashboards are automatically provisioned via ConfigMaps with the `grafana_dashboard: "1"` label.
 
 ### Accessing Services

@@ -132,6 +132,19 @@ type LedgerServiceSpec struct {
 	// +optional
 	AdmissionMetrics *bool `json:"admissionMetrics,omitempty"`
 
+	// MetricsNaming selects the convention for metric names emitted
+	// by the server: "otel" (the default, dot-notation) preserves
+	// the OpenTelemetry instrument names; "prom" rewrites every
+	// metric the server emits with a `ledger_` prefix and dots
+	// converted to underscores so the names are unambiguous after
+	// an OTLP→Prometheus collector that sanitises dots. OTel
+	// semantic-convention auto-instrumentation (`go.*`, `process.*`,
+	// `system.*`, `http.*`) uses the global MeterProvider and is
+	// never touched by this flag.
+	// +kubebuilder:validation:Enum=otel;prom
+	// +optional
+	MetricsNaming string `json:"metricsNaming,omitempty"`
+
 	// SentinelMode enables runtime volume consistency assertions
 	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
 	// +optional

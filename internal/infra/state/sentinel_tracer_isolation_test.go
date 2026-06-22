@@ -30,7 +30,8 @@ func TestSentinelTracerIsolatedAcrossBatches(t *testing.T) {
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
-	meter := noop.NewMeterProvider().Meter("test")
+	meterProvider := noop.NewMeterProvider()
+	meter := meterProvider.Meter("test")
 
 	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
@@ -42,7 +43,7 @@ func TestSentinelTracerIsolatedAcrossBatches(t *testing.T) {
 	reg := NewStateRegistry(c, attributes.New(), 0)
 	snap := NewCacheSnapshotter(logger, reg, nil)
 	machine, err := NewMachine(
-		logger, reg, snap, dataStore, dal.NewSentinelFactory(dataStore, true), meter,
+		logger, reg, snap, dataStore, dal.NewSentinelFactory(dataStore, true), meterProvider,
 		keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil,
 		"test-cluster",
 		0,

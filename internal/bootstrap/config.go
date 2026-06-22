@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -148,6 +149,7 @@ type Config struct {
 	HealthConfig           HealthConfig
 	ClusterID              string
 	AdmissionMetrics       bool
+	MetricsNaming          string
 	ReceiptSigningKey      string
 	ResponseSigningKeyFile string
 	ColdStorageConfig      coldstorage.Config
@@ -269,6 +271,10 @@ func (c Config) Validate() error {
 
 	if err := c.TransportConfig.Validate(); err != nil {
 		return err
+	}
+
+	if _, err := metrics.ParseNaming(c.MetricsNaming); err != nil {
+		return fmt.Errorf("--metrics-naming: %w", err)
 	}
 
 	return c.SnapshotSyncConfig.Validate()

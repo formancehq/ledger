@@ -1795,6 +1795,21 @@ spec:
                   (0 = unlimited). Default: 4096.
                 format: int32
                 type: integer
+              metricsNaming:
+                description: |-
+                  MetricsNaming selects the convention for metric names emitted
+                  by the server: "otel" (the default, dot-notation) preserves
+                  the OpenTelemetry instrument names; "prom" rewrites every
+                  metric the server emits with a `ledger_` prefix and dots
+                  converted to underscores so the names are unambiguous after
+                  an OTLP→Prometheus collector that sanitises dots. OTel
+                  semantic-convention auto-instrumentation (`go.*`, `process.*`,
+                  `system.*`, `http.*`) uses the global MeterProvider and is
+                  never touched by this flag.
+                enum:
+                - otel
+                - prom
+                type: string
               mirrorMaxBatchSize:
                 description: MirrorMaxBatchSize is the maximum allowed batch size
                   for mirror sync.

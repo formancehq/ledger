@@ -174,9 +174,15 @@ type Machine struct {
 // wiring those sub-objects up-front. NewMachine does NOT perform RecoverState;
 // callers must invoke Recovery.RecoverState() before the Machine applies
 // entries.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meter metric.Meter, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
-	logsAppendedCounter, err := meter.Int64Counter(
+	// raft.* metrics describe the consensus engine and follow the
+	// upstream etcd-raft naming convention; numscript.* metrics are
+	// application-specific so they live on a separate meter, which
+	// the metric-naming factory may prefix in `prom` mode.
+	raftMeter := meterProvider.Meter("raft.node")
+	numscriptMeter := meterProvider.Meter("numscript")
+	logsAppendedCounter, err := raftMeter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
 		metric.WithUnit("1"),
@@ -185,7 +191,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		return nil, fmt.Errorf("creating logs_appended counter: %w", err)
 	}
 
-	rotationDurationHistogram, err := meter.Int64Histogram(
+	rotationDurationHistogram, err := raftMeter.Int64Histogram(
 		"raft.fsm.rotation.duration",
 		metric.WithDescription("Time spent in generation rotation (volume compaction) during ApplyEntries"),
 		metric.WithUnit("us"),
@@ -197,7 +203,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		return nil, fmt.Errorf("creating rotation_duration histogram: %w", err)
 	}
 
-	batchCommitHistogram, err := meter.Int64Histogram(
+	batchCommitHistogram, err := raftMeter.Int64Histogram(
 		"raft.fsm.batch_commit.duration",
 		metric.WithDescription("Time spent in PebbleDB batch.Commit() during ApplyEntries"),
 		metric.WithUnit("us"),
@@ -209,7 +215,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
 	}
 
-	preloadMissCounter, err := meter.Int64Counter(
+	preloadMissCounter, err := raftMeter.Int64Counter(
 		"ledger.preload.coverage_miss",
 		metric.WithDescription("Reads on the FSM hot path of keys not declared in the proposal's ExecutionPlan. Labeled by attribute kind. The order observing the miss is rejected with a business error."),
 		metric.WithUnit("1"),
@@ -218,7 +224,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		return nil, fmt.Errorf("creating preload_coverage_miss counter: %w", err)
 	}
 
-	processor, err := processing.NewRequestProcessor(meter, numscriptCacheSize)
+	processor, err := processing.NewRequestProcessor(numscriptMeter, numscriptCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
 	}

@@ -1,0 +1,2 @@
+# Vendored Jsonnet dependencies (fetched on demand by `jb install`).
+vendor/

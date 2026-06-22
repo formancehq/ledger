@@ -48,6 +48,7 @@ import (
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
+	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -193,6 +194,25 @@ func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
 		attributes.Module(),
+		// Decorate the upstream MeterProvider so every instrument
+		// our code creates is renamed according to --metrics-naming.
+		// The decorator has no per-meter allowlist: anything the
+		// application requests from this provider (admission, cache,
+		// bloom, raft.*, pebble.*, numscript, …) goes through the
+		// rewrite in `prom` mode. OTel semantic-convention auto-
+		// instrumentation (go.*, process.*, system.*, http.*) targets
+		// the *global* MeterProvider, which we leave as the raw SDK
+		// provider — those metrics bypass this decorator entirely.
+		fx.Decorate(func(cfg Config, inner metric.MeterProvider) metric.MeterProvider {
+			naming, err := ledgermetrics.ParseNaming(cfg.MetricsNaming)
+			if err != nil {
+				// Config.Validate() has already rejected invalid values;
+				// fall back to the default so a misconfigured test fixture
+				// doesn't crash the fx graph.
+				naming = ledgermetrics.DefaultNaming
+			}
+			return ledgermetrics.NewFactory(inner, naming)
+		}),
 		fx.Provide(
 			fx.Annotate(func(
 				cfg Config,
@@ -368,7 +388,7 @@ func Module() fx.Option {
 					snapshotter,
 					store, // QueryCheckpoints
 					dal.NewSentinelFactory(store, cfg.SentinelMode),
-					meterProvider.Meter("raft.node"),
+					meterProvider,
 					ks,
 					ss,
 					fanOut,

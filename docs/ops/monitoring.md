@@ -15,6 +15,74 @@ Metrics are organized into several categories:
 
 For a complete reference, see the [Grafana Dashboard](#grafana-dashboards) section.
 
+## Naming Convention
+
+Metric names in this document use the **OpenTelemetry dot-notation**
+(`admission.command.duration`, `raft.fsm.logs_appended`,
+`service.cluster`). This is the canonical form the server emits in
+its default `--metrics-naming=otel` mode.
+
+The OTLP→Prometheus collector that fronts most cloud Prometheus
+backends sanitises dots in names: `service.cluster` becomes
+`service_cluster`, `raft.fsm.logs_appended` becomes
+`raft_fsm_logs_appended`. When the server is started with
+`--metrics-naming=prom`, **every metric the server emits** is also
+prefixed with `ledger_` at emission time so they are unambiguous in a
+Prometheus instance that also scrapes other services. This includes
+the metrics we name under `raft.*` and `pebble.*` — etcd-raft and
+Pebble do not export OpenTelemetry themselves; those names are our
+emissions about our integration with those libraries.
+
+| Source | OTel mode | Prom mode |
+| ------ | --------- | --------- |
+| `admission.command.duration` (we emit) | `admission.command.duration` | `ledger_admission_command_duration` |
+| `raft.fsm.logs_appended` (we emit, instruments etcd-raft) | `raft.fsm.logs_appended` | `ledger_raft_fsm_logs_appended` |
+| `pebble.flush.total` (we emit, instruments Pebble) | `pebble.flush.total` | `ledger_pebble_flush_total` |
+| `http.server.request.duration` (OTel auto-instr) | `http.server.request.duration` | `http_server_request_duration` |
+| `go.memory.allocated` (OTel auto-instr) | `go.memory.allocated` | `go_memory_allocated` |
+| `service.cluster` (attribute) | `service.cluster` | `service_cluster` |
+
+OpenTelemetry semantic-convention auto-instrumentation (`go.*`,
+`process.*`, `system.*`, `http.*`) is emitted via the global
+MeterProvider, which is left as the raw SDK provider — those metrics
+bypass the renaming policy entirely. The de-dotted form that appears
+in `prom` mode is what the OTel→Prometheus collector produces on its
+own; the server itself does not touch them.
+
+Seven pre-built Grafana dashboards ship under
+`misc/devenv/monitoring-dashboards/config/dashboards/`. Pick the
+one that matches your combination of *(server `--metrics-naming`
+flag, OTel→Prom collector normalisation, histogram representation)*:
+
+| Server | Collector | Histograms | File |
+| ------ | --------- | ---------- | ---- |
+| `otel` | preserves dots                       | classic | `ledger-metrics-otel.json` |
+| `prom` | dots → underscores only              | classic | `ledger-metrics-prom.json` |
+| `prom` | full normalisation (unit + `_total`) | classic | `ledger-metrics-prom-normalized.json` |
+| `prom` | full normalisation (unit + `_total`) | native  | `ledger-metrics-prom-normalized-native.json` |
+| `otel` | dots → underscores only              | classic | `ledger-metrics-prom-noprefix.json` |
+| `otel` | full normalisation (unit + `_total`) | classic | `ledger-metrics-prom-noprefix-normalized.json` |
+| `otel` | full normalisation (unit + `_total`) | native  | `ledger-metrics-prom-noprefix-normalized-native.json` |
+
+The **normalised** variants additionally embed the UCUM unit
+suffix the collector appends (`us` → `_microseconds`, `By` →
+`_bytes`, …), the `_total` suffix for monotonic counters, and the
+`_ratio` suffix for dimensionless gauges. This is the default
+behaviour of the contrib OTel collector, the Prometheus 3.x OTLP
+receiver, Thanos and VictoriaMetrics with `OTLP_NORMALIZE=true`.
+
+The **native** variants target Prometheus 3.x with the OTLP
+receiver in its default mode (or an OTel collector with
+`prometheusremotewrite.convertHistogramsToNHCB=true`): OTel
+histograms are stored as a single time series carrying the bucket
+data, without `_bucket` / `_count` / `_sum` split and without the
+`le` label. The dashboard uses `histogram_quantile(rate(metric))`
+and `histogram_avg` directly on those names.
+
+All seven are regenerated from the same Jsonnet source via
+`just generate-dashboards`. See
+[`misc/devenv/monitoring-dashboards/README.md`](../../misc/devenv/monitoring-dashboards/README.md).
+
 ## System Metrics
 
 System and Go runtime metrics are provided by the OpenTelemetry SDK and `go-libs` modules.
