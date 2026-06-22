@@ -2273,6 +2273,13 @@ func (m *TransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Timestamp != nil {
+		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	}
 	if len(m.Metadata) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
 			v := m.Metadata[k]

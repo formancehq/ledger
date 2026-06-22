@@ -206,7 +206,10 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 }
 
 // CreateTransaction records a transaction creation op via merge (no read).
-func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, metadata map[string]*commonpb.MetadataValue) error {
+// A 1-byte presence flag distinguishes a nil timestamp from a real
+// Timestamp{Data: 0} (Unix epoch) — the FSM persists the latter unchanged,
+// so collapsing both to 0 would surface as a CheckStore mismatch.
+func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	var metaBytes []byte
@@ -221,11 +224,15 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, metadat
 		}
 	}
 
-	// [txOpCreate][uint64 seq][metaBytes]
-	buf := make([]byte, 1+8+len(metaBytes))
+	// [txOpCreate][uint64 seq][uint8 hasTimestamp][uint64 timestamp.Data][metaBytes]
+	buf := make([]byte, 1+8+1+8+len(metaBytes))
 	buf[0] = txOpCreate
 	binary.BigEndian.PutUint64(buf[1:], seq)
-	copy(buf[9:], metaBytes)
+	if timestamp != nil {
+		buf[9] = 1
+		binary.BigEndian.PutUint64(buf[10:], timestamp.GetData())
+	}
+	copy(buf[18:], metaBytes)
 
 	return s.db.Merge(key, buf, pebble.NoSync)
 }
@@ -395,15 +402,19 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 
 		switch op[0] {
 		case txOpCreate:
-			if len(op) < 9 {
+			if len(op) < 18 {
 				return nil, nil, fmt.Errorf("txOpCreate too short: %d bytes", len(op))
 			}
 
 			state.CreatedByLog = binary.BigEndian.Uint64(op[1:9])
 
-			if len(op) > 9 {
+			if op[9] == 1 {
+				state.Timestamp = &commonpb.Timestamp{Data: binary.BigEndian.Uint64(op[10:18])}
+			}
+
+			if len(op) > 18 {
 				mm := &commonpb.MetadataMap{}
-				if err := mm.UnmarshalVT(op[9:]); err != nil {
+				if err := mm.UnmarshalVT(op[18:]); err != nil {
 					return nil, nil, fmt.Errorf("unmarshaling create metadata: %w", err)
 				}
 

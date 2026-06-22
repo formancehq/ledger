@@ -552,10 +552,11 @@ func (w *attributeReplayWriter) MoveMetadata(oldKey, newKey []byte) error {
 	return w.metadata.Delete(w.batch, oldKey)
 }
 
-func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, metadata map[string]*commonpb.MetadataValue) error {
+func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue) error {
 	txState := &commonpb.TransactionState{
 		CreatedByLog: seq,
 		Metadata:     metadata,
+		Timestamp:    timestamp,
 	}
 
 	_, err := w.tx.Set(w.batch, canonicalKey, txState)

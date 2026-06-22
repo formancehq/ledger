@@ -3,13 +3,14 @@
 package business
 
 import (
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -116,28 +117,64 @@ var _ = Describe("Reversions", Ordered, func() {
 			Expect(revertResp.Logs).To(HaveLen(1))
 		})
 
-		It("Should revert a transaction with atEffectiveDate flag", func() {
-			// Create a transaction
+		It("Should revert a transaction with atEffectiveDate flag and inherit the original timestamp", func() {
+			// Create a transaction with an explicit timestamp in the past so it
+			// cannot collide with the FSM clock at revert time.
+			originalTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
+			createReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-effective-date", big.NewInt(100), "USD"),
+			}, nil, nil)
+			actions.WithTimestamp(createReq, originalTime)
+
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
-					}, nil, nil),
-				),
+				Envelopes: servicepb.UnsignedEnvelopes(createReq),
 			})
 			Expect(err).To(Succeed())
 
-			log := createResp.Logs[0]
-			applyLog := log.Payload.GetApply()
-			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
+			createdTx := createResp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction
+			Expect(timestampToStdTime(createdTx.Timestamp)).To(BeTemporally("~", originalTime, time.Second))
 
-			// Revert the transaction with atEffectiveDate flag
+			// Revert the transaction with atEffectiveDate=true
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, true, nil)),
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, createdTx.Id, false, true, nil)),
 			})
 			Expect(err).To(Succeed())
-			Expect(revertResp).NotTo(BeNil())
 			Expect(revertResp.Logs).To(HaveLen(1))
+
+			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction().RevertTransaction
+			Expect(revertedTx).NotTo(BeNil())
+			Expect(revertedTx.Timestamp).NotTo(BeNil())
+			// Parity with formancehq/ledger: at_effective_date stamps the
+			// compensating transaction with the original transaction's timestamp.
+			Expect(revertedTx.Timestamp.GetData()).To(Equal(createdTx.Timestamp.GetData()))
+			// And it must NOT match the apply (log) date, which is "now".
+			Expect(revertedTx.Timestamp.GetData()).NotTo(Equal(revertResp.Logs[0].Payload.GetApply().Log.Date.GetData()))
+		})
+
+		It("Should stamp the revert with the FSM date when atEffectiveDate is not set", func() {
+			originalTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
+			createReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-fsm-date", big.NewInt(100), "USD"),
+			}, nil, nil)
+			actions.WithTimestamp(createReq, originalTime)
+
+			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Envelopes: servicepb.UnsignedEnvelopes(createReq),
+			})
+			Expect(err).To(Succeed())
+
+			createdTx := createResp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction
+
+			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, createdTx.Id, false, false, nil)),
+			})
+			Expect(err).To(Succeed())
+
+			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction().RevertTransaction
+			Expect(revertedTx.Timestamp).NotTo(BeNil())
+			// Default behavior: revert is stamped at "now", not at the original effective date.
+			Expect(revertedTx.Timestamp.GetData()).NotTo(Equal(createdTx.Timestamp.GetData()))
+			Expect(revertedTx.Timestamp.GetData()).To(Equal(revertResp.Logs[0].Payload.GetApply().Log.Date.GetData()))
 		})
 
 		It("Should fail to revert a non-existent transaction", func() {

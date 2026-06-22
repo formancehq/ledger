@@ -2445,6 +2445,7 @@ func (m *TransactionState) CloneVT() *TransactionState {
 	r := new(TransactionState)
 	r.CreatedByLog = m.CreatedByLog
 	r.RevertedByTransaction = m.RevertedByTransaction
+	r.Timestamp = m.Timestamp.CloneVT()
 	if rhs := m.Metadata; rhs != nil {
 		tmpContainer := make(map[string]*MetadataValue, len(rhs))
 		for k, v := range rhs {
@@ -7696,6 +7697,9 @@ func (this *TransactionState) EqualVT(that *TransactionState) bool {
 				return false
 			}
 		}
+	}
+	if !this.Timestamp.EqualVT(that.Timestamp) {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -15811,6 +15815,16 @@ func (m *TransactionState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Timestamp != nil {
+		size, err := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	}
 	if len(m.Metadata) > 0 {
 		for k := range m.Metadata {
 			v := m.Metadata[k]
@@ -21259,6 +21273,10 @@ func (m *TransactionState) SizeVT() (n int) {
 			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + l
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
+	}
+	if m.Timestamp != nil {
+		l = m.Timestamp.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -38169,6 +38187,42 @@ func (m *TransactionState) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Metadata[mapkey] = mapvalue
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Timestamp == nil {
+				m.Timestamp = &Timestamp{}
+			}
+			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

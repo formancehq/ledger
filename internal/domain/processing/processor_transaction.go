@@ -89,9 +89,18 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 		boundaries.NumscriptExecutionCount++
 	}
 
+	// Use the user-provided timestamp, or fall back to the command date.
+	// The effective timestamp is recorded on TransactionState so reverts can
+	// honor at_effective_date without re-reading the original log from Pebble.
+	timestamp := order.GetTimestamp()
+	if timestamp == nil {
+		timestamp = s.GetDate()
+	}
+
 	txKey := domain.TransactionKey{LedgerName: ledgerName, ID: nextTransactionID}
 	txState := &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
+		Timestamp:    timestamp,
 	}
 
 	// Validate account addresses in resolved postings (covers Numscript-resolved addresses).
@@ -203,12 +212,6 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 			domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: order.GetReference()},
 			&commonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
 		)
-	}
-
-	// Use the user-provided timestamp, or fall back to the command date
-	timestamp := order.GetTimestamp()
-	if timestamp == nil {
-		timestamp = s.GetDate()
 	}
 
 	// Compute post-commit volumes if requested

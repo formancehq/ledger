@@ -815,6 +815,10 @@ message TransactionState {
   fixed64 created_by_log = 1;
   fixed64 reverted_by_transaction = 2;  // 0 = not reverted
   map<string, MetadataValue> metadata = 3;
+  // Effective timestamp of the transaction (user-provided or command date at
+  // creation). Required for at_effective_date reverts to be deterministic
+  // without re-reading the original log from Pebble.
+  Timestamp timestamp = 4;
 }
 
 // IdempotencyKeyValue stores the log sequence associated with an idempotency key.

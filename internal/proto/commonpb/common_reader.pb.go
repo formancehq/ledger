@@ -7542,6 +7542,7 @@ type TransactionStateReader interface {
 	GetCreatedByLog() uint64
 	GetRevertedByTransaction() uint64
 	GetMetadata() TransactionState_MetadataMapReader
+	GetTimestamp() TimestampReader
 	Mutate() *TransactionState
 }
 
@@ -7557,6 +7558,14 @@ func (r *transactionStateReadonly) GetRevertedByTransaction() uint64 {
 
 func (r *transactionStateReadonly) GetMetadata() TransactionState_MetadataMapReader {
 	return transactionState_metadataMapReadonly(r.v.GetMetadata())
+}
+
+func (r *transactionStateReadonly) GetTimestamp() TimestampReader {
+	v := r.v.GetTimestamp()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *transactionStateReadonly) Mutate() *TransactionState {

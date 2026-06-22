@@ -137,10 +137,16 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 	}
 	boundaries.PostingCount += uint64(len(ct.GetPostings()))
 
+	timestamp := ct.GetTimestamp()
+	if timestamp == nil {
+		timestamp = s.GetDate()
+	}
+
 	// Record transaction state (include metadata from the mirrored transaction)
 	s.PutTransactionState(domain.TransactionKey{LedgerName: ledgerName, ID: txID}, &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     ct.GetMetadata(),
+		Timestamp:    timestamp,
 	})
 
 	// Store reference if provided
@@ -189,11 +195,6 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 				s.PutAccountMetadata(metaKey, value)
 			}
 		}
-	}
-
-	timestamp := ct.GetTimestamp()
-	if timestamp == nil {
-		timestamp = s.GetDate()
 	}
 
 	var periodID uint64
@@ -385,16 +386,17 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledgerName string, b
 		s.PutTransactionState(origKey, origState)
 	}
 
-	// Store the revert transaction's state (include metadata from the mirror revert)
-	s.PutTransactionState(domain.TransactionKey{LedgerName: ledgerName, ID: revertTxID}, &commonpb.TransactionState{
-		CreatedByLog: s.GetNextSequenceID(),
-		Metadata:     rt.GetMetadata(),
-	})
-
 	timestamp := rt.GetTimestamp()
 	if timestamp == nil {
 		timestamp = s.GetDate()
 	}
+
+	// Store the revert transaction's state (include metadata from the mirror revert)
+	s.PutTransactionState(domain.TransactionKey{LedgerName: ledgerName, ID: revertTxID}, &commonpb.TransactionState{
+		CreatedByLog: s.GetNextSequenceID(),
+		Metadata:     rt.GetMetadata(),
+		Timestamp:    timestamp,
+	})
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{

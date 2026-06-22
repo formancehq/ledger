@@ -78,10 +78,25 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 	origState.RevertedByTransaction = revertTxID
 	s.PutTransactionState(txKey, origState)
 
+	// Resolve the revert timestamp. When at_effective_date is set, the compensating
+	// transaction inherits the original's effective timestamp (parity with
+	// formancehq/ledger). Otherwise it stamps with the current FSM date.
+	// origState.Timestamp is populated at create time on every code path; missing
+	// it on an at_effective_date revert means we observed an inconsistent state.
+	revertTimestamp := s.GetDate()
+	if order.GetAtEffectiveDate() {
+		if origState.GetTimestamp() == nil {
+			return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert at_effective_date"}
+		}
+
+		revertTimestamp = origState.GetTimestamp()
+	}
+
 	// Store the revert transaction's state (include metadata from the revert order)
 	s.PutTransactionState(domain.TransactionKey{LedgerName: ledgerName, ID: revertTxID}, &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     order.GetMetadata(),
+		Timestamp:    revertTimestamp,
 	})
 
 	// Compute post-commit volumes if requested
@@ -97,7 +112,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 				RevertTransaction: &commonpb.Transaction{
 					Postings:   revertPostings,
 					Metadata:   order.GetMetadata(),
-					Timestamp:  s.GetDate(),
+					Timestamp:  revertTimestamp,
 					Id:         revertTxID,
 					InsertedAt: s.GetDate(),
 					UpdatedAt:  s.GetDate(),
