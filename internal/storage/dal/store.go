@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	fdom "github.com/formancehq/invariants"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 )
@@ -279,7 +280,12 @@ const (
 // bounds, ImmediateSuccessor) without parsing a length prefix on every
 // comparison. Callers MUST validate the upstream name length against this
 // limit to avoid silent truncation collisions.
-const LedgerNameFixedSize = 64
+//
+// The value tracks fdom.LedgerNameMaxLength: the storage layout reserves
+// exactly the maximum length imposed by the Formance-wide ledger-name
+// invariant. Keep both numbers in lockstep — never let storage allow more
+// bytes than admission accepts.
+const LedgerNameFixedSize = fdom.LedgerNameMaxLength
 
 // MaxUint64Bytes is the big-endian representation of math.MaxUint64,
 // used as an upper bound sentinel for sequence-keyed iterations.

@@ -175,7 +175,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				if err := domain.ValidateMetadataKey(key); err != nil {
 					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
 				}
-				if err := domain.ValidateMetadataStringValue(value); err != nil {
+				if err := domain.ValidateMetadataString(value); err != nil {
 					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
 				}
 
@@ -196,7 +196,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			}
 
 			stringValue := value.String()
-			if err := domain.ValidateMetadataStringValue(stringValue); err != nil {
+			if err := domain.ValidateMetadataString(stringValue); err != nil {
 				return nil, &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
 			}
 

@@ -8,6 +8,13 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Configure git for private Formance modules
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        git config --global url."https://x-access-token:${GH_TOKEN}@github.com/formancehq/".insteadOf "https://github.com/formancehq/"
+        echo "GOPRIVATE=github.com/formancehq/*" >> "$GITHUB_ENV"
     - name: Install Nix
       uses: cachix/install-nix-action@v31
     - name: go env

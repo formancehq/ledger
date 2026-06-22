@@ -69,6 +69,7 @@ require (
 	github.com/cockroachdb/pebble/v2 v2.1.4
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/formancehq/go-libs/v5 v5.3.0
+	github.com/formancehq/invariants v0.10.0
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/sirupsen/logrus v1.9.4

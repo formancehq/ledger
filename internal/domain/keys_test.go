@@ -47,7 +47,7 @@ func TestVolumeKey_RoundTrip(t *testing.T) {
 		{"with precision", "USD/4", "USD", 4},
 		{"zero precision", "EUR", "EUR", 0},
 		{"high precision", "BTC/8", "BTC", 8},
-		{"underscore asset", "CUSTOM_TOKEN/2", "CUSTOM_TOKEN", 2},
+		{"long alphanumeric base", "ABCDEFGHIJKLMNOPQ/2", "ABCDEFGHIJKLMNOPQ", 2},
 	}
 
 	for _, tt := range tests {
