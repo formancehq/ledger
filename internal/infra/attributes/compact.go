@@ -179,6 +179,24 @@ func CompactAllForBackup(s *dal.Store) error {
 		return fmt.Errorf("deleting persisted config: %w", err)
 	}
 
+	// Wipe ZoneClusterTransient — backup-job state and any other
+	// in-flight-only tracking has no meaning on the restored cluster.
+	// A backup taken while a job was RUNNING would otherwise carry that
+	// entry through the snapshot, locking the destination on the
+	// restored cluster until cleanup eventually fails the orphan.
+	// Clearing the whole zone here gives the contract a single
+	// enforcement point and matches the zone's documented intent (see
+	// dal.ZoneClusterTransient).
+	if err := batch.DeleteRange(
+		[]byte{dal.ZoneClusterTransient},
+		[]byte{dal.ZoneClusterTransient + 1},
+		pebble.NoSync,
+	); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("deleting cluster-transient zone: %w", err)
+	}
+
 	// Drop persisted bloom blocks. After an incremental restore they are stale
 	// (they predate the logs RebuildDelta replayed into the attribute zone, so
 	// they lack any post-checkpoint account), and their block layout is tied to

@@ -425,8 +425,9 @@ message Proposal {
   common.CallerSnapshot caller_snapshot = 14;  // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
   // technical_updates carries every FSM-level update that bypasses the
   // Order/Log channel. Each entry wraps a single payload (sink update,
-  // mirror sync, metadata conversion, …) with its own coverage_bits so
-  // the FSM applies per-update isolation, exactly like Order.coverage_bits.
+  // mirror sync, metadata conversion, backup lifecycle, …) with its own
+  // coverage_bits so the FSM applies per-update isolation, exactly like
+  // Order.coverage_bits.
   repeated TechnicalUpdate technical_updates = 15;
   // Fields 5, 6, 8, 9, 10, 11, 12 previously held the seven dedicated
   // technical-update channels (events_sink_updates, mirror_sync_updates,
@@ -445,7 +446,8 @@ message Proposal {
 // Order shape: a bytes coverage_bits bitset over ExecutionPlan.attributes
 // + the actual payload. Empty bits mean "no read coverage admitted" —
 // payloads that don't read cache state (EventsSinkUpdate,
-// IdempotencyEviction, ClusterConfig) ship with empty bits.
+// IdempotencyEviction, ClusterConfig, BackupOrder, IncrementalBackupOrder)
+// ship with empty bits.
 message TechnicalUpdate {
   bytes coverage_bits = 1;
   oneof kind {
@@ -456,7 +458,199 @@ message TechnicalUpdate {
     MetadataConversionBatch metadata_batch = 6;
     MetadataConversionCompletion metadata_completion = 7;
     IndexReadyUpdate index_ready = 8;
+    BackupOrder backup_order = 9;                          // Full-backup lifecycle
+    IncrementalBackupOrder incremental_backup_order = 10;  // Incremental-backup lifecycle
   }
+}
+
+// ============================================================================
+// Backup orchestration
+// ============================================================================
+//
+// Backups used to be a side-channel RPC: the gRPC handler took an in-memory
+// mutex, drove `backup.RunBackup` against the local Pebble, and wrote the
+// manifest to S3 — bypassing Raft entirely. Mutual exclusion across nodes
+// was bolted on via a separate leased-lock primitive whose expiry trusted
+// proposer wall-clock (#298) and could break mutual exclusion under skew.
+//
+// We move the backup state into the FSM so the same determinism guarantees
+// that protect every other proposal protect backup acquisition / progress
+// / completion too. The actual upload still happens on the elected
+// executor node (the leader), but it is driven by FSM events and the FSM
+// owns the "is this destination being backed up right now?" answer.
+//
+// Mutual exclusion is per-destination — the same semantic the discarded
+// per-destination leased lock (#299) was building toward. Two backups to
+// different destinations run in parallel; two to the same destination are
+// rejected at apply time.
+
+// BackupKind distinguishes the two flavours of backup we support. They
+// share the lifecycle (Start → Progress* → Complete|Fail) but the
+// underlying upload work differs: a full backup ships every checkpoint
+// file once and re-uses unchanged ones across runs; an incremental
+// backup ships log/audit export segments since the last checkpoint.
+enum BackupKind {
+  BACKUP_KIND_UNSPECIFIED = 0;
+  BACKUP_KIND_FULL = 1;
+  BACKUP_KIND_INCREMENTAL = 2;
+}
+
+// BackupJobStatus tracks where a job is in its lifecycle. Only Running is
+// surfaced via the active-jobs map; Complete/Failed move to the history
+// store as terminal records.
+enum BackupJobStatus {
+  BACKUP_JOB_STATUS_UNSPECIFIED = 0;
+  BACKUP_JOB_STATUS_RUNNING = 1;
+  BACKUP_JOB_STATUS_COMPLETE = 2;
+  BACKUP_JOB_STATUS_FAILED = 3;
+}
+
+// BackupDestination is the deterministic identification of where a backup
+// is shipped. Two requests with byte-equal destinations contend on the
+// same mutual-exclusion slot; two with different destinations are
+// orthogonal. We canonicalise it in the proposer so the resulting bytes
+// are stable across nodes.
+message BackupDestination {
+  string base_path = 1;
+  string bucket_id = 2;
+  // target is the backend-specific identification. The oneof case is the
+  // single source of truth for the driver — no parallel string to keep in
+  // sync, and adding a new backend is one more oneof case. Mirrors the
+  // BackupStorage proto shape on the public RPC.
+  //
+  // Credentials are intentionally absent: two callers with the same
+  // bucket/account but different keys must contend on the same FSM slot
+  // regardless of the credential they hold.
+  oneof target {
+    S3BackupTarget s3 = 3;
+    AzureBackupTarget azure = 4;
+  }
+}
+
+message S3BackupTarget {
+  string bucket = 1;
+  string region = 2;
+  string endpoint = 3;
+}
+
+message AzureBackupTarget {
+  string account_name = 1;
+  string container = 2;
+  string endpoint = 3;
+}
+
+// BackupJob is the FSM-tracked view of one in-flight (or terminal)
+// backup. Persisted at:
+//
+//   [ZoneClusterTransient][SubTransientBackupJob][destination_key]            (RUNNING)
+//   [ZoneClusterTransient][SubTransientBackupJobHistory][completed_at_index]  (terminal)
+//
+// destination_key is a canonical hash of BackupDestination; computing it
+// at apply time keeps the proposal payload small while guaranteeing the
+// same destination always lands on the same map slot.
+//
+// Backup state lives under ZoneClusterTransient, NOT ZoneGlobal: the
+// "is a backup running" answer is meaningful only inside the cluster
+// process lifetime. A snapshot restored from a backup must NOT carry a
+// stale RUNNING entry; FinalizeRestore wipes ZoneClusterTransient so
+// the new cluster starts with no in-flight jobs and no fake history.
+message BackupJob {
+  fixed64 job_id = 1;
+  BackupKind kind = 2;
+  BackupJobStatus status = 3;
+  BackupDestination destination = 4;
+  bytes destination_key = 5;
+  // executor_node_id is the node that proposed Start. After leadership
+  // change the old leader's executor goroutine is gone; the new leader's
+  // cleanup loop detects this via in-memory liveJobs absence and proposes
+  // Fail.
+  uint64 executor_node_id = 6;
+  // FSM-owned monotonic tick; never the proposer wall clock (#298).
+  // Liveness is NOT inferred from progress staleness — see the design
+  // note in internal/application/backup/cleanup.go.
+  uint64 started_at_applied_index = 7;
+  // Final upload counters. Populated by BackupOrderComplete (the
+  // executor knows totals only at the end). Not tracked incrementally
+  // through Raft — that would couple FSM bandwidth to upload progress
+  // for no functional benefit, since the FSM does not make decisions
+  // based on the partial count. The 0xFF generation rotation and the
+  // observability dashboards live outside Raft.
+  uint64 files_uploaded = 8;
+  uint64 segments_uploaded = 9;
+  // Completion fields (only set after Complete/Fail).
+  uint64 completed_at_applied_index = 10;
+  string failure_message = 11;
+  uint64 last_log_sequence = 12;
+  uint64 last_audit_sequence = 13;
+  uint64 last_applied_index = 14;
+
+  // Field 8 previously held last_progress_applied_index. Backup progress
+  // is no longer tracked through Raft proposals (see cleanup.go); the
+  // staleness signal is in-memory leader-local. The slot is renumbered
+  // because nothing on the wire carried it during the unmerged PR.
+}
+
+// BackupOrder is the carrier for one apply-time mutation of a full
+// backup. Exactly one of the oneof branches is set per proposal.
+message BackupOrder {
+  // Field 2 previously held BackupOrderProgress. Progress proposals were
+  // removed: the cleanup loop tracks liveness from the leader-local
+  // executor registry, not from FSM-side progress staleness. The slot
+  // is reserved.
+  reserved 2;
+  reserved "progress";
+
+  oneof op {
+    BackupOrderStart start = 1;
+    BackupOrderComplete complete = 3;
+    BackupOrderFail fail = 4;
+  }
+}
+
+// IncrementalBackupOrder mirrors BackupOrder for the incremental
+// pipeline. Sharing the carrier shape but keeping the orders distinct
+// makes the two-pipeline split explicit in the proto and lets the apply
+// path branch on the order type instead of on a field inside it.
+message IncrementalBackupOrder {
+  reserved 2;
+  reserved "progress";
+
+  oneof op {
+    BackupOrderStart start = 1;
+    BackupOrderComplete complete = 3;
+    BackupOrderFail fail = 4;
+  }
+}
+
+// BackupOrderStart proposes a new backup. The apply path rejects the
+// order when a Running job already targets the same destination — that
+// is the cross-node mutual-exclusion guarantee that used to need the
+// leased lock.
+message BackupOrderStart {
+  fixed64 job_id = 1;
+  BackupDestination destination = 2;
+  uint64 executor_node_id = 3;
+}
+
+// BackupOrderComplete moves the active entry to the history store and
+// frees the destination slot. The executor populates the final upload
+// counters (files_uploaded, segments_uploaded) at completion time —
+// the FSM stores them on the history record for operator inspection
+// but never reads them.
+message BackupOrderComplete {
+  fixed64 job_id = 1;
+  uint64 last_log_sequence = 2;
+  uint64 last_audit_sequence = 3;
+  uint64 last_applied_index = 4;
+  uint64 files_uploaded = 5;
+  uint64 segments_uploaded = 6;
+}
+
+// BackupOrderFail moves the active entry to the history store with a
+// failure payload and frees the destination slot.
+message BackupOrderFail {
+  fixed64 job_id = 1;
+  string message = 2;
 }
 
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.

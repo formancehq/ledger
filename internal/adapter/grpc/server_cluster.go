@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	ggrpc "google.golang.org/grpc"
@@ -12,6 +11,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	backupapp "github.com/formancehq/ledger/v3/internal/application/backup"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
 	"github.com/formancehq/ledger/v3/internal/application/membership"
@@ -33,25 +33,24 @@ import (
 type ClusterServiceServerImpl struct {
 	clusterpb.UnimplementedClusterServiceServer
 
-	node                *node.Node
-	raftTransport       *node.DefaultTransport
-	servicePool         *transport.ConnectionPool
-	collector           *diskusage.Collector
-	store               *dal.Store
-	readStore           *readstore.Store
-	cache               *cache.Cache
-	sharedState         *state.SharedState
-	indexBuilder        *indexbuilder.Builder
-	admission           ctrl.Admission
-	membership          *membership.Service
-	logger              logging.Logger
-	localRaftAddr       string // This node's own Raft advertise address
-	localServiceAddr    string // This node's own gRPC service address
-	authCfg             internalauth.AuthConfig
-	clusterID           string
-	backupMu            sync.Mutex
-	incrementalBackupMu sync.Mutex
-	forwarder           nodeForwarder
+	node             *node.Node
+	raftTransport    *node.DefaultTransport
+	servicePool      *transport.ConnectionPool
+	collector        *diskusage.Collector
+	store            *dal.Store
+	readStore        *readstore.Store
+	cache            *cache.Cache
+	sharedState      *state.SharedState
+	indexBuilder     *indexbuilder.Builder
+	admission        ctrl.Admission
+	membership       *membership.Service
+	logger           logging.Logger
+	localRaftAddr    string // This node's own Raft advertise address
+	localServiceAddr string // This node's own gRPC service address
+	authCfg          internalauth.AuthConfig
+	clusterID        string
+	backupOrchestra  *backupapp.Orchestrator
+	forwarder        nodeForwarder
 }
 
 func NewClusterServiceServer(
@@ -66,6 +65,7 @@ func NewClusterServiceServer(
 	readStore *readstore.Store,
 	admission ctrl.Admission,
 	membershipSvc *membership.Service,
+	backupOrchestra *backupapp.Orchestrator,
 	logger logging.Logger,
 	localRaftAddr string,
 	localServiceAddr string,
@@ -84,6 +84,7 @@ func NewClusterServiceServer(
 		indexBuilder:     indexBuilder,
 		admission:        admission,
 		membership:       membershipSvc,
+		backupOrchestra:  backupOrchestra,
 		logger:           logger.WithField("component", "cluster-server"),
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
@@ -550,12 +551,68 @@ func queryCheckpointToInfo(cp *raftcmdpb.QueryCheckpointState) *clusterpb.QueryC
 	}
 }
 
+// extractBackupDestination builds the FSM destination tuple and the
+// configured Storage driver from an inbound RPC. The bucketId falls
+// back to the local clusterID when the caller leaves it blank, which
+// matches the previous in-handler behaviour.
+//
+// Cluster-wide mutual exclusion lives inside the FSM (BackupJobsState):
+// a concurrent Backup against a byte-equal destination — same node or
+// any other — gets state.ErrBackupInProgress back through the apply
+// path; the orchestrator surfaces it as-is to the handler.
+func (impl *ClusterServiceServerImpl) extractBackupDestination(storageProto *commonpb.BackupStorage, basePath, bucketIDRaw string) (backup.Storage, *raftcmdpb.BackupDestination, error) {
+	cfg, err := storageConfigFromProto(storageProto)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	storage, err := backup.NewStorage(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating backup storage: %w", err)
+	}
+
+	bucketID := bucketIDRaw
+	if bucketID == "" {
+		bucketID = impl.clusterID
+	}
+
+	dst := &raftcmdpb.BackupDestination{
+		BasePath: basePath,
+		BucketId: bucketID,
+	}
+
+	switch cfg.Driver {
+	case "s3":
+		dst.Target = &raftcmdpb.BackupDestination_S3{
+			S3: &raftcmdpb.S3BackupTarget{
+				Bucket:   cfg.S3Bucket,
+				Region:   cfg.S3Region,
+				Endpoint: cfg.S3Endpoint,
+			},
+		}
+	case "azure":
+		dst.Target = &raftcmdpb.BackupDestination_Azure{
+			Azure: &raftcmdpb.AzureBackupTarget{
+				AccountName: cfg.AzureAccountName,
+				Container:   cfg.AzureContainer,
+				Endpoint:    cfg.AzureEndpoint,
+			},
+		}
+	default:
+		return nil, nil, fmt.Errorf("backup destination: unsupported driver %q", cfg.Driver)
+	}
+
+	return storage, dst, nil
+}
+
 func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
 	}
 
-	// Forward to leader if not leader
+	// Forward to leader if not leader. The orchestrator only runs on the
+	// leader (it is the proposer); a follower would just spin forever
+	// trying to push proposals.
 	if !impl.node.IsLeader() {
 		client, err := impl.leaderClient()
 		if err != nil {
@@ -565,27 +622,17 @@ func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb
 		return client.Backup(ctx, req)
 	}
 
-	// Serialize backups
-	impl.backupMu.Lock()
-	defer impl.backupMu.Unlock()
-
-	cfg, err := storageConfigFromProto(req.GetStorage())
+	storage, dst, err := impl.extractBackupDestination(req.GetStorage(), req.GetBasePath(), req.GetBucketId())
 	if err != nil {
 		return nil, err
 	}
 
-	storage, err := backup.NewStorage(cfg)
+	result, err := impl.backupOrchestra.RunFull(ctx, dst, storage)
 	if err != nil {
-		return nil, fmt.Errorf("creating backup storage: %w", err)
-	}
+		if errors.Is(err, state.ErrBackupInProgress) {
+			return nil, fmt.Errorf("backup already in progress for this destination: %w", err)
+		}
 
-	bucketID := req.GetBucketId()
-	if bucketID == "" {
-		bucketID = impl.clusterID
-	}
-
-	result, err := backup.RunBackup(ctx, impl.logger, impl.store, storage, bucketID)
-	if err != nil {
 		return nil, fmt.Errorf("backup failed: %w", err)
 	}
 
@@ -606,28 +653,30 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 		return nil, err
 	}
 
-	// No leader routing: log/audit sequences are identical across all replicas.
+	// Incremental used to skip the leader-routing step because log/audit
+	// sequences are identical across replicas. Now the FSM owns the
+	// destination slot and only the leader can drive a Raft proposal,
+	// so we forward like the full path.
+	if !impl.node.IsLeader() {
+		client, err := impl.leaderClient()
+		if err != nil {
+			return nil, err
+		}
 
-	impl.incrementalBackupMu.Lock()
-	defer impl.incrementalBackupMu.Unlock()
+		return client.IncrementalBackup(ctx, req)
+	}
 
-	cfg, err := storageConfigFromProto(req.GetStorage())
+	storage, dst, err := impl.extractBackupDestination(req.GetStorage(), req.GetBasePath(), req.GetBucketId())
 	if err != nil {
 		return nil, err
 	}
 
-	storage, err := backup.NewStorage(cfg)
+	result, err := impl.backupOrchestra.RunIncremental(ctx, dst, storage)
 	if err != nil {
-		return nil, fmt.Errorf("creating backup storage: %w", err)
-	}
+		if errors.Is(err, state.ErrBackupInProgress) {
+			return nil, fmt.Errorf("incremental backup already in progress for this destination: %w", err)
+		}
 
-	bucketID := req.GetBucketId()
-	if bucketID == "" {
-		bucketID = impl.clusterID
-	}
-
-	result, err := backup.RunIncrementalBackup(ctx, impl.logger, impl.store, storage, bucketID)
-	if err != nil {
 		return nil, fmt.Errorf("incremental backup failed: %w", err)
 	}
 

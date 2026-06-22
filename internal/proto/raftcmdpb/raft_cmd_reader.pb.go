@@ -4503,6 +4503,750 @@ func NewTechnicalUpdateListReader(s []*TechnicalUpdate) TechnicalUpdateListReade
 	return technicalUpdateListReadonly(s)
 }
 
+// BackupDestinationReader provides read-only access to BackupDestination.
+// Call Mutate() to obtain a mutable clone.
+type BackupDestinationReader interface {
+	GetBasePath() string
+	GetBucketId() string
+	GetTarget() isBackupDestination_Target
+	Mutate() *BackupDestination
+}
+
+type backupDestinationReadonly struct{ v *BackupDestination }
+
+func (r *backupDestinationReadonly) GetBasePath() string {
+	return r.v.GetBasePath()
+}
+
+func (r *backupDestinationReadonly) GetBucketId() string {
+	return r.v.GetBucketId()
+}
+
+func (r *backupDestinationReadonly) GetTarget() isBackupDestination_Target {
+	return r.v.GetTarget()
+}
+
+func (r *backupDestinationReadonly) Mutate() *BackupDestination {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this BackupDestination.
+func (m *BackupDestination) AsReader() BackupDestinationReader {
+	if m == nil {
+		return nil
+	}
+	return &backupDestinationReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this BackupDestination.
+func (m *BackupDestination) Mutate() *BackupDestination {
+	return m.CloneVT()
+}
+
+// BackupDestinationListReader provides read-only iteration over []*BackupDestination.
+type BackupDestinationListReader interface {
+	Len() int
+	Get(i int) BackupDestinationReader
+	Range(yield func(int, BackupDestinationReader) bool)
+}
+
+type backupDestinationListReadonly []*BackupDestination
+
+func (l backupDestinationListReadonly) Len() int { return len(l) }
+
+func (l backupDestinationListReadonly) Get(i int) BackupDestinationReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l backupDestinationListReadonly) Range(yield func(int, BackupDestinationReader) bool) {
+	for i, v := range l {
+		var r BackupDestinationReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBackupDestinationListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBackupDestinationListReader(s []*BackupDestination) BackupDestinationListReader {
+	return backupDestinationListReadonly(s)
+}
+
+// S3BackupTargetReader provides read-only access to S3BackupTarget.
+// Call Mutate() to obtain a mutable clone.
+type S3BackupTargetReader interface {
+	GetBucket() string
+	GetRegion() string
+	GetEndpoint() string
+	Mutate() *S3BackupTarget
+}
+
+type s3BackupTargetReadonly struct{ v *S3BackupTarget }
+
+func (r *s3BackupTargetReadonly) GetBucket() string {
+	return r.v.GetBucket()
+}
+
+func (r *s3BackupTargetReadonly) GetRegion() string {
+	return r.v.GetRegion()
+}
+
+func (r *s3BackupTargetReadonly) GetEndpoint() string {
+	return r.v.GetEndpoint()
+}
+
+func (r *s3BackupTargetReadonly) Mutate() *S3BackupTarget {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this S3BackupTarget.
+func (m *S3BackupTarget) AsReader() S3BackupTargetReader {
+	if m == nil {
+		return nil
+	}
+	return &s3BackupTargetReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this S3BackupTarget.
+func (m *S3BackupTarget) Mutate() *S3BackupTarget {
+	return m.CloneVT()
+}
+
+// S3BackupTargetListReader provides read-only iteration over []*S3BackupTarget.
+type S3BackupTargetListReader interface {
+	Len() int
+	Get(i int) S3BackupTargetReader
+	Range(yield func(int, S3BackupTargetReader) bool)
+}
+
+type s3BackupTargetListReadonly []*S3BackupTarget
+
+func (l s3BackupTargetListReadonly) Len() int { return len(l) }
+
+func (l s3BackupTargetListReadonly) Get(i int) S3BackupTargetReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l s3BackupTargetListReadonly) Range(yield func(int, S3BackupTargetReader) bool) {
+	for i, v := range l {
+		var r S3BackupTargetReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewS3BackupTargetListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewS3BackupTargetListReader(s []*S3BackupTarget) S3BackupTargetListReader {
+	return s3BackupTargetListReadonly(s)
+}
+
+// AzureBackupTargetReader provides read-only access to AzureBackupTarget.
+// Call Mutate() to obtain a mutable clone.
+type AzureBackupTargetReader interface {
+	GetAccountName() string
+	GetContainer() string
+	GetEndpoint() string
+	Mutate() *AzureBackupTarget
+}
+
+type azureBackupTargetReadonly struct{ v *AzureBackupTarget }
+
+func (r *azureBackupTargetReadonly) GetAccountName() string {
+	return r.v.GetAccountName()
+}
+
+func (r *azureBackupTargetReadonly) GetContainer() string {
+	return r.v.GetContainer()
+}
+
+func (r *azureBackupTargetReadonly) GetEndpoint() string {
+	return r.v.GetEndpoint()
+}
+
+func (r *azureBackupTargetReadonly) Mutate() *AzureBackupTarget {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this AzureBackupTarget.
+func (m *AzureBackupTarget) AsReader() AzureBackupTargetReader {
+	if m == nil {
+		return nil
+	}
+	return &azureBackupTargetReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this AzureBackupTarget.
+func (m *AzureBackupTarget) Mutate() *AzureBackupTarget {
+	return m.CloneVT()
+}
+
+// AzureBackupTargetListReader provides read-only iteration over []*AzureBackupTarget.
+type AzureBackupTargetListReader interface {
+	Len() int
+	Get(i int) AzureBackupTargetReader
+	Range(yield func(int, AzureBackupTargetReader) bool)
+}
+
+type azureBackupTargetListReadonly []*AzureBackupTarget
+
+func (l azureBackupTargetListReadonly) Len() int { return len(l) }
+
+func (l azureBackupTargetListReadonly) Get(i int) AzureBackupTargetReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l azureBackupTargetListReadonly) Range(yield func(int, AzureBackupTargetReader) bool) {
+	for i, v := range l {
+		var r AzureBackupTargetReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAzureBackupTargetListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAzureBackupTargetListReader(s []*AzureBackupTarget) AzureBackupTargetListReader {
+	return azureBackupTargetListReadonly(s)
+}
+
+// BackupJobReader provides read-only access to BackupJob.
+// Call Mutate() to obtain a mutable clone.
+type BackupJobReader interface {
+	GetJobId() uint64
+	GetKind() BackupKind
+	GetStatus() BackupJobStatus
+	GetDestination() BackupDestinationReader
+	GetDestinationKey() []byte
+	GetExecutorNodeId() uint64
+	GetStartedAtAppliedIndex() uint64
+	GetFilesUploaded() uint64
+	GetSegmentsUploaded() uint64
+	GetCompletedAtAppliedIndex() uint64
+	GetFailureMessage() string
+	GetLastLogSequence() uint64
+	GetLastAuditSequence() uint64
+	GetLastAppliedIndex() uint64
+	Mutate() *BackupJob
+}
+
+type backupJobReadonly struct{ v *BackupJob }
+
+func (r *backupJobReadonly) GetJobId() uint64 {
+	return r.v.GetJobId()
+}
+
+func (r *backupJobReadonly) GetKind() BackupKind {
+	return r.v.GetKind()
+}
+
+func (r *backupJobReadonly) GetStatus() BackupJobStatus {
+	return r.v.GetStatus()
+}
+
+func (r *backupJobReadonly) GetDestination() BackupDestinationReader {
+	v := r.v.GetDestination()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *backupJobReadonly) GetDestinationKey() []byte {
+	return bytes.Clone(r.v.GetDestinationKey())
+}
+
+func (r *backupJobReadonly) GetExecutorNodeId() uint64 {
+	return r.v.GetExecutorNodeId()
+}
+
+func (r *backupJobReadonly) GetStartedAtAppliedIndex() uint64 {
+	return r.v.GetStartedAtAppliedIndex()
+}
+
+func (r *backupJobReadonly) GetFilesUploaded() uint64 {
+	return r.v.GetFilesUploaded()
+}
+
+func (r *backupJobReadonly) GetSegmentsUploaded() uint64 {
+	return r.v.GetSegmentsUploaded()
+}
+
+func (r *backupJobReadonly) GetCompletedAtAppliedIndex() uint64 {
+	return r.v.GetCompletedAtAppliedIndex()
+}
+
+func (r *backupJobReadonly) GetFailureMessage() string {
+	return r.v.GetFailureMessage()
+}
+
+func (r *backupJobReadonly) GetLastLogSequence() uint64 {
+	return r.v.GetLastLogSequence()
+}
+
+func (r *backupJobReadonly) GetLastAuditSequence() uint64 {
+	return r.v.GetLastAuditSequence()
+}
+
+func (r *backupJobReadonly) GetLastAppliedIndex() uint64 {
+	return r.v.GetLastAppliedIndex()
+}
+
+func (r *backupJobReadonly) Mutate() *BackupJob {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this BackupJob.
+func (m *BackupJob) AsReader() BackupJobReader {
+	if m == nil {
+		return nil
+	}
+	return &backupJobReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this BackupJob.
+func (m *BackupJob) Mutate() *BackupJob {
+	return m.CloneVT()
+}
+
+// BackupJobListReader provides read-only iteration over []*BackupJob.
+type BackupJobListReader interface {
+	Len() int
+	Get(i int) BackupJobReader
+	Range(yield func(int, BackupJobReader) bool)
+}
+
+type backupJobListReadonly []*BackupJob
+
+func (l backupJobListReadonly) Len() int { return len(l) }
+
+func (l backupJobListReadonly) Get(i int) BackupJobReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l backupJobListReadonly) Range(yield func(int, BackupJobReader) bool) {
+	for i, v := range l {
+		var r BackupJobReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBackupJobListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBackupJobListReader(s []*BackupJob) BackupJobListReader { return backupJobListReadonly(s) }
+
+// BackupOrderReader provides read-only access to BackupOrder.
+// Call Mutate() to obtain a mutable clone.
+type BackupOrderReader interface {
+	GetOp() isBackupOrder_Op
+	Mutate() *BackupOrder
+}
+
+type backupOrderReadonly struct{ v *BackupOrder }
+
+func (r *backupOrderReadonly) GetOp() isBackupOrder_Op {
+	return r.v.GetOp()
+}
+
+func (r *backupOrderReadonly) Mutate() *BackupOrder {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this BackupOrder.
+func (m *BackupOrder) AsReader() BackupOrderReader {
+	if m == nil {
+		return nil
+	}
+	return &backupOrderReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this BackupOrder.
+func (m *BackupOrder) Mutate() *BackupOrder {
+	return m.CloneVT()
+}
+
+// BackupOrderListReader provides read-only iteration over []*BackupOrder.
+type BackupOrderListReader interface {
+	Len() int
+	Get(i int) BackupOrderReader
+	Range(yield func(int, BackupOrderReader) bool)
+}
+
+type backupOrderListReadonly []*BackupOrder
+
+func (l backupOrderListReadonly) Len() int { return len(l) }
+
+func (l backupOrderListReadonly) Get(i int) BackupOrderReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l backupOrderListReadonly) Range(yield func(int, BackupOrderReader) bool) {
+	for i, v := range l {
+		var r BackupOrderReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBackupOrderListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBackupOrderListReader(s []*BackupOrder) BackupOrderListReader {
+	return backupOrderListReadonly(s)
+}
+
+// IncrementalBackupOrderReader provides read-only access to IncrementalBackupOrder.
+// Call Mutate() to obtain a mutable clone.
+type IncrementalBackupOrderReader interface {
+	GetOp() isIncrementalBackupOrder_Op
+	Mutate() *IncrementalBackupOrder
+}
+
+type incrementalBackupOrderReadonly struct{ v *IncrementalBackupOrder }
+
+func (r *incrementalBackupOrderReadonly) GetOp() isIncrementalBackupOrder_Op {
+	return r.v.GetOp()
+}
+
+func (r *incrementalBackupOrderReadonly) Mutate() *IncrementalBackupOrder {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this IncrementalBackupOrder.
+func (m *IncrementalBackupOrder) AsReader() IncrementalBackupOrderReader {
+	if m == nil {
+		return nil
+	}
+	return &incrementalBackupOrderReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this IncrementalBackupOrder.
+func (m *IncrementalBackupOrder) Mutate() *IncrementalBackupOrder {
+	return m.CloneVT()
+}
+
+// IncrementalBackupOrderListReader provides read-only iteration over []*IncrementalBackupOrder.
+type IncrementalBackupOrderListReader interface {
+	Len() int
+	Get(i int) IncrementalBackupOrderReader
+	Range(yield func(int, IncrementalBackupOrderReader) bool)
+}
+
+type incrementalBackupOrderListReadonly []*IncrementalBackupOrder
+
+func (l incrementalBackupOrderListReadonly) Len() int { return len(l) }
+
+func (l incrementalBackupOrderListReadonly) Get(i int) IncrementalBackupOrderReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l incrementalBackupOrderListReadonly) Range(yield func(int, IncrementalBackupOrderReader) bool) {
+	for i, v := range l {
+		var r IncrementalBackupOrderReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewIncrementalBackupOrderListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewIncrementalBackupOrderListReader(s []*IncrementalBackupOrder) IncrementalBackupOrderListReader {
+	return incrementalBackupOrderListReadonly(s)
+}
+
+// BackupOrderStartReader provides read-only access to BackupOrderStart.
+// Call Mutate() to obtain a mutable clone.
+type BackupOrderStartReader interface {
+	GetJobId() uint64
+	GetDestination() BackupDestinationReader
+	GetExecutorNodeId() uint64
+	Mutate() *BackupOrderStart
+}
+
+type backupOrderStartReadonly struct{ v *BackupOrderStart }
+
+func (r *backupOrderStartReadonly) GetJobId() uint64 {
+	return r.v.GetJobId()
+}
+
+func (r *backupOrderStartReadonly) GetDestination() BackupDestinationReader {
+	v := r.v.GetDestination()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *backupOrderStartReadonly) GetExecutorNodeId() uint64 {
+	return r.v.GetExecutorNodeId()
+}
+
+func (r *backupOrderStartReadonly) Mutate() *BackupOrderStart {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this BackupOrderStart.
+func (m *BackupOrderStart) AsReader() BackupOrderStartReader {
+	if m == nil {
+		return nil
+	}
+	return &backupOrderStartReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this BackupOrderStart.
+func (m *BackupOrderStart) Mutate() *BackupOrderStart {
+	return m.CloneVT()
+}
+
+// BackupOrderStartListReader provides read-only iteration over []*BackupOrderStart.
+type BackupOrderStartListReader interface {
+	Len() int
+	Get(i int) BackupOrderStartReader
+	Range(yield func(int, BackupOrderStartReader) bool)
+}
+
+type backupOrderStartListReadonly []*BackupOrderStart
+
+func (l backupOrderStartListReadonly) Len() int { return len(l) }
+
+func (l backupOrderStartListReadonly) Get(i int) BackupOrderStartReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l backupOrderStartListReadonly) Range(yield func(int, BackupOrderStartReader) bool) {
+	for i, v := range l {
+		var r BackupOrderStartReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBackupOrderStartListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBackupOrderStartListReader(s []*BackupOrderStart) BackupOrderStartListReader {
+	return backupOrderStartListReadonly(s)
+}
+
+// BackupOrderCompleteReader provides read-only access to BackupOrderComplete.
+// Call Mutate() to obtain a mutable clone.
+type BackupOrderCompleteReader interface {
+	GetJobId() uint64
+	GetLastLogSequence() uint64
+	GetLastAuditSequence() uint64
+	GetLastAppliedIndex() uint64
+	GetFilesUploaded() uint64
+	GetSegmentsUploaded() uint64
+	Mutate() *BackupOrderComplete
+}
+
+type backupOrderCompleteReadonly struct{ v *BackupOrderComplete }
+
+func (r *backupOrderCompleteReadonly) GetJobId() uint64 {
+	return r.v.GetJobId()
+}
+
+func (r *backupOrderCompleteReadonly) GetLastLogSequence() uint64 {
+	return r.v.GetLastLogSequence()
+}
+
+func (r *backupOrderCompleteReadonly) GetLastAuditSequence() uint64 {
+	return r.v.GetLastAuditSequence()
+}
+
+func (r *backupOrderCompleteReadonly) GetLastAppliedIndex() uint64 {
+	return r.v.GetLastAppliedIndex()
+}
+
+func (r *backupOrderCompleteReadonly) GetFilesUploaded() uint64 {
+	return r.v.GetFilesUploaded()
+}
+
+func (r *backupOrderCompleteReadonly) GetSegmentsUploaded() uint64 {
+	return r.v.GetSegmentsUploaded()
+}
+
+func (r *backupOrderCompleteReadonly) Mutate() *BackupOrderComplete {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this BackupOrderComplete.
+func (m *BackupOrderComplete) AsReader() BackupOrderCompleteReader {
+	if m == nil {
+		return nil
+	}
+	return &backupOrderCompleteReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this BackupOrderComplete.
+func (m *BackupOrderComplete) Mutate() *BackupOrderComplete {
+	return m.CloneVT()
+}
+
+// BackupOrderCompleteListReader provides read-only iteration over []*BackupOrderComplete.
+type BackupOrderCompleteListReader interface {
+	Len() int
+	Get(i int) BackupOrderCompleteReader
+	Range(yield func(int, BackupOrderCompleteReader) bool)
+}
+
+type backupOrderCompleteListReadonly []*BackupOrderComplete
+
+func (l backupOrderCompleteListReadonly) Len() int { return len(l) }
+
+func (l backupOrderCompleteListReadonly) Get(i int) BackupOrderCompleteReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l backupOrderCompleteListReadonly) Range(yield func(int, BackupOrderCompleteReader) bool) {
+	for i, v := range l {
+		var r BackupOrderCompleteReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBackupOrderCompleteListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBackupOrderCompleteListReader(s []*BackupOrderComplete) BackupOrderCompleteListReader {
+	return backupOrderCompleteListReadonly(s)
+}
+
+// BackupOrderFailReader provides read-only access to BackupOrderFail.
+// Call Mutate() to obtain a mutable clone.
+type BackupOrderFailReader interface {
+	GetJobId() uint64
+	GetMessage() string
+	Mutate() *BackupOrderFail
+}
+
+type backupOrderFailReadonly struct{ v *BackupOrderFail }
+
+func (r *backupOrderFailReadonly) GetJobId() uint64 {
+	return r.v.GetJobId()
+}
+
+func (r *backupOrderFailReadonly) GetMessage() string {
+	return r.v.GetMessage()
+}
+
+func (r *backupOrderFailReadonly) Mutate() *BackupOrderFail {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this BackupOrderFail.
+func (m *BackupOrderFail) AsReader() BackupOrderFailReader {
+	if m == nil {
+		return nil
+	}
+	return &backupOrderFailReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this BackupOrderFail.
+func (m *BackupOrderFail) Mutate() *BackupOrderFail {
+	return m.CloneVT()
+}
+
+// BackupOrderFailListReader provides read-only iteration over []*BackupOrderFail.
+type BackupOrderFailListReader interface {
+	Len() int
+	Get(i int) BackupOrderFailReader
+	Range(yield func(int, BackupOrderFailReader) bool)
+}
+
+type backupOrderFailListReadonly []*BackupOrderFail
+
+func (l backupOrderFailListReadonly) Len() int { return len(l) }
+
+func (l backupOrderFailListReadonly) Get(i int) BackupOrderFailReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l backupOrderFailListReadonly) Range(yield func(int, BackupOrderFailReader) bool) {
+	for i, v := range l {
+		var r BackupOrderFailReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBackupOrderFailListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBackupOrderFailListReader(s []*BackupOrderFail) BackupOrderFailListReader {
+	return backupOrderFailListReadonly(s)
+}
+
 // IdempotencyEvictionReader provides read-only access to IdempotencyEviction.
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyEvictionReader interface {

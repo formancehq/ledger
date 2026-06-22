@@ -42,14 +42,20 @@ func (fsm *Machine) saveLedgerWithCache(batch *dal.WriteSession, ledgerKey domai
 // coverage_bits so the scope passed to its handler admits only the keys
 // the proposer declared for that single update — symmetric to Order.
 // Payloads that read no cache state (EventsSinkUpdate,
-// IdempotencyEviction, ClusterConfig) ship with empty bits and never
-// consult their scope.
+// IdempotencyEviction, ClusterConfig, BackupOrder, IncrementalBackupOrder)
+// ship with empty bits and never consult their scope.
 //
 // Reads and attribute-cache writes both flow through `buffer` — the same
 // WriteSet that ProcessOrders will use. Attribute mutations queue in
 // `buffer.Derived` and reach the cache + Pebble at WriteSet.Merge. Any
 // handler error short-circuits the loop before Merge, so no half-written
 // tech-update mutations leak into the cache.
+//
+// Backup lifecycle handlers (BackupOrder / IncrementalBackupOrder) return
+// the typed sentinels ErrBackupInProgress / ErrBackupJobNotFound /
+// ErrBackupJobIDCollision directly; machine.applyProposal recognises
+// those and converts them into ApplyResult.Error so the proposer learns
+// about the rejection without an FSM-level abort.
 func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, batch *dal.WriteSession, raftIndex uint64, proposal *raftcmdpb.Proposal) error {
 	for i, tu := range proposal.GetTechnicalUpdates() {
 		scope, scopeErr := scopeFactory.NewScope(tu.GetCoverageBits())
@@ -85,6 +91,14 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 		case *raftcmdpb.TechnicalUpdate_IndexReady:
 			if err := fsm.applyIndexReady(scope, kind.IndexReady, proposal.GetDate()); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] index ready: %w", i, err)
+			}
+		case *raftcmdpb.TechnicalUpdate_BackupOrder:
+			if err := fsm.applyBackupOrder(batch, raftIndex, raftcmdpb.BackupKind_BACKUP_KIND_FULL, kind.BackupOrder); err != nil {
+				return fmt.Errorf("applying technical_updates[%d] backup order: %w", i, err)
+			}
+		case *raftcmdpb.TechnicalUpdate_IncrementalBackupOrder:
+			if err := fsm.applyIncrementalBackupOrder(batch, raftIndex, kind.IncrementalBackupOrder); err != nil {
+				return fmt.Errorf("applying technical_updates[%d] incremental backup order: %w", i, err)
 			}
 		default:
 			return fmt.Errorf("technical_updates[%d]: unsupported kind %T", i, kind)

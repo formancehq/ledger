@@ -419,6 +419,7 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 
 	s.registry.Cache.Reset()
 	s.registry.Idempotency.Reset()
+	s.registry.BackupJobs.Reset()
 
 	reader, err := store.NewDirectReadHandle()
 	if err != nil {
@@ -434,6 +435,14 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	// at-most-once guarantee. See issue #300.
 	if err := s.registry.Idempotency.RestoreFromStore(reader); err != nil {
 		return fmt.Errorf("restoring idempotency bridge: %w", err)
+	}
+
+	// Rebuild the backup-jobs map from Pebble — same rationale as
+	// Idempotency above. Active jobs survive across snapshot/restore and
+	// the in-memory map must match what's on disk before the FSM accepts
+	// a new BackupOrderStart.
+	if err := s.registry.BackupJobs.RestoreFromStore(reader); err != nil {
+		return fmt.Errorf("restoring backup jobs: %w", err)
 	}
 
 	// Read cache-level metadata if present. Pre-rotation, this key does not

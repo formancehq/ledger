@@ -1945,7 +1945,7 @@ ledgerctl s bk --driver s3 --s3-bucket my-bucket
 
 #### store incremental-backup
 
-Export new log and audit entries since the last backup to S3 or Azure Blob Storage. Can run on **any node** (no leader forwarding required).
+Export new log and audit entries since the last backup to S3 or Azure Blob Storage. **Forwarded to the leader**: the FSM tracks each backup under a per-destination lock, so only the leader can drive a job — concurrent requests against the same destination get `FailedPrecondition` (`ErrBackupInProgress`).
 
 **Aliases:** `ibk`
 
@@ -1997,7 +1997,7 @@ ledgerctl s ibk --driver s3 --s3-bucket my-bucket
 # Initial full backup (infrequent, leader-only)
 ledgerctl store backup --driver s3 --s3-bucket my-bucket
 
-# Periodic incremental backups (frequent, any node)
+# Periodic incremental backups (frequent, forwarded to the leader)
 ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket
 
 # After many incrementals, take a new full backup to reset the base

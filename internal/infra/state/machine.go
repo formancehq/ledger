@@ -1083,14 +1083,20 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, fmt.Errorf("checkpoint trigger order not last in proposal id=%d at raft index %d", proposal.GetId(), raftIndex)
 	}
 
+	// Build the result up-front so every business-error branch below can
+	// stash its rejection on the same ApplyResult — including the per-order
+	// rejections (e.g. ErrBackupInProgress) that applyTechnicalUpdates
+	// writes. For technical-only proposals the result is the only thing
+	// returned anyway.
+	result := &ApplyResult{ProposalID: proposal.GetId()}
+
 	// checkStaleProposal is a no-op when PredictedIndex and CacheEpoch
 	// are both unset, so legacy technical-only proposals (none today
 	// set them) are unaffected.
 	if err := fsm.checkStaleProposal(raftIndex, proposal); err != nil {
-		return &ApplyResult{
-			ProposalID: proposal.GetId(),
-			Error:      &domain.BusinessError{Err: err},
-		}, nil
+		result.Error = &domain.BusinessError{Err: err}
+
+		return result, nil
 	}
 
 	// Preload is a no-op when the proposal carries no ExecutionPlan.
@@ -1144,6 +1150,21 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			}, nil
 		}
 
+		// Backup lifecycle handlers (BackupOrder / IncrementalBackupOrder)
+		// surface per-job rejections (ErrBackupInProgress, ErrBackupJobNotFound,
+		// ErrBackupJobIDCollision) as the typed sentinels. The caller wants
+		// these back as proposal-level errors (so the orchestrator can decide
+		// whether to retry, abort, etc.) — same model as planInvariantDescribable
+		// above. Anything else returned from a TU handler is FSM-fatal.
+		if errors.Is(err, ErrBackupInProgress) ||
+			errors.Is(err, ErrBackupJobIDCollision) ||
+			errors.Is(err, ErrBackupJobNotFound) {
+			return &ApplyResult{
+				ProposalID: proposal.GetId(),
+				Error:      err,
+			}, nil
+		}
+
 		return nil, err
 	}
 
@@ -1172,10 +1193,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			"raftIndex":  raftIndex,
 		})
 
-		return &ApplyResult{
-			ProposalID: proposal.GetId(),
-			Error:      &domain.BusinessError{Err: domain.ErrMaintenanceMode},
-		}, nil
+		result.Error = &domain.BusinessError{Err: domain.ErrMaintenanceMode}
+
+		return result, nil
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity
@@ -1305,10 +1325,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, appendErr
 		}
 
-		return &ApplyResult{
-			ProposalID: proposal.GetId(),
-			Error:      &domain.BusinessError{Err: err},
-		}, nil
+		result.Error = &domain.BusinessError{Err: err}
+
+		return result, nil
 	}
 
 	// ValidateTransientVolumes runs after the per-order RestrictTo passes
@@ -1348,10 +1367,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, appendErr
 		}
 
-		return &ApplyResult{
-			ProposalID: proposal.GetId(),
-			Error:      &domain.BusinessError{Err: err},
-		}, nil
+		result.Error = &domain.BusinessError{Err: err}
+
+		return result, nil
 	}
 
 	// Extract created logs (reference sequences are idempotent responses

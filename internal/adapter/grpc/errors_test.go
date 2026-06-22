@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -534,6 +535,38 @@ func TestConvertToGRPCError_BareValidationSentinels(t *testing.T) {
 			info := extractErrorInfo(t, st)
 			require.Equal(t, domain.ErrReasonValidation, info.GetReason())
 			require.Equal(t, errorDomain, info.GetDomain())
+		})
+	}
+}
+
+// TestConvertToGRPCError_BackupInProgress pins the mapping of the
+// FSM's backup busy-destination sentinel to a stable retry code. Before
+// the fix, the cluster handlers wrapped state.ErrBackupInProgress in a
+// plain fmt.Errorf — convertToGRPCError had no mapping, fell through to
+// the default sanitizer, and clients got codes.Unknown for a perfectly
+// normal "another backup is running" condition. Now the sentinel
+// surfaces as FailedPrecondition both raw and wrapped.
+func TestConvertToGRPCError_BackupInProgress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"in-progress raw", state.ErrBackupInProgress},
+		{"in-progress wrapped", fmt.Errorf("backup already in progress for this destination: %w", state.ErrBackupInProgress)},
+		{"jobID collision raw", state.ErrBackupJobIDCollision},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			grpcErr := convertToGRPCError(tt.err, testLogger())
+			st, ok := status.FromError(grpcErr)
+			require.True(t, ok)
+			require.Equal(t, codes.FailedPrecondition, st.Code(),
+				"backup-busy sentinels must surface as FailedPrecondition, not %v", st.Code())
 		})
 	}
 }

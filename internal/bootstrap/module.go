@@ -33,6 +33,7 @@ import (
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	httpcompat "github.com/formancehq/ledger/v3/internal/adapter/http"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
+	backupapp "github.com/formancehq/ledger/v3/internal/application/backup"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
@@ -547,14 +548,20 @@ func Module() fx.Option {
 					cfg.ServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, ms *membership.Service, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
-				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, adm, ms, logger,
+			func(builder *plan.Builder, n *node.Node, store *dal.Store, logger logging.Logger) *backupapp.Orchestrator {
+				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry())
+			},
+			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
+				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
+			},
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, ms *membership.Service, bo *backupapp.Orchestrator, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
+				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, adm, ms, bo, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 					authCfg,
 					cfg.ClusterID,
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
 			func(n *node.Node, raftTransport *node.DefaultTransport, ms *membership.Service, cfg Config, logger logging.Logger) clusterbootstrappb.ClusterBootstrapServiceServer {
 				return grpcadp.NewClusterBootstrapServiceServer(
 					n, raftTransport, ms, logger,
@@ -895,6 +902,38 @@ func Module() fx.Option {
 
 				return nil
 			},
+			// Backup cleanup loop: leader-only, fails stale jobs so a
+			// crashed executor doesn't permanently lock the destination.
+			// Run is leader-aware itself so this just needs lifecycle.
+			func(lc fx.Lifecycle, cleanup *backupapp.Cleanup, logger logging.Logger) {
+				ctx, cancel := context.WithCancel(context.Background())
+				done := make(chan struct{})
+
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						go func() {
+							defer close(done)
+							cleanup.Run(ctx)
+						}()
+
+						return nil
+					},
+					OnStop: func(stopCtx context.Context) error {
+						cancel()
+
+						// Wait for the loop to drain a propose-in-flight rather
+						// than leak it. Bounded by the fx Stop deadline so we
+						// never block forever.
+						select {
+						case <-done:
+						case <-stopCtx.Done():
+							logger.Infof("backup cleanup loop did not exit before stop deadline")
+						}
+
+						return nil
+					},
+				})
+			},
 			// Start Raft server (internal) - must start before adding peers
 			fx.Annotate(func(
 				lc fx.Lifecycle,
@@ -988,17 +1027,27 @@ func Module() fx.Option {
 				logger logging.Logger,
 				eventsManager *events.Manager,
 				mirrorManager *mirror.Manager,
+				backupOrchestrator *backupapp.Orchestrator,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
 					case node.ConfChangeEvent:
 						handleConfChangeEvent(e, defaultTransport, servicePool, logger)
 					case node.LeadershipChangeEvent:
-						// Run asynchronously: reconciling event emitters and mirror
-						// workers involves a full Pebble attribute scan that can take
-						// minutes on large databases. Running it synchronously blocks
-						// processReady, preventing lastSoftState from being stored
-						// and stalling the readiness probe.
+						// The backup orchestrator's OnLeadershipChange is cheap
+						// (it just swaps a context) and must observe leadership
+						// transitions IN ORDER: a stale goroutine landing
+						// OnLeadershipChange(false) after a newer (true) would
+						// leave leaderCtx cancelled while node.IsLeader()==true,
+						// failing every subsequent Backup RPC with ctx
+						// cancellation. Apply it inline.
+						backupOrchestrator.OnLeadershipChange(e.IsLeader)
+
+						// The events / mirror reconcile is dispatched off the
+						// observer thread because it does a full Pebble
+						// attribute scan that can take minutes; running it
+						// synchronously would stall processReady and the
+						// readiness probe.
 						go handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
 						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
@@ -1006,7 +1055,7 @@ func Module() fx.Option {
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
 				}))
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
 			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
 				var cancelRun context.CancelFunc
 
@@ -1688,6 +1737,16 @@ func applyAnonymousScopes(mapping internalauth.ScopeMapping, raw string, logger 
 }
 
 // handleLeadershipChangeEvent notifies the event and mirror Managers of leadership changes.
+// handleLeadershipChangeEvent reconciles event emitter and mirror
+// workers on leadership transitions. Runs in a goroutine — see the
+// observer callback above for the dispatch and the reason
+// (event/mirror reconcile can take minutes).
+//
+// The backup orchestrator's OnLeadershipChange is intentionally NOT
+// called here: it must observe transitions in order and inline, so
+// a leadership flap cannot interleave an old-(false) update behind
+// a newer-(true) update. See the observer's LeadershipChangeEvent
+// branch.
 func handleLeadershipChangeEvent(
 	e node.LeadershipChangeEvent,
 	eventsManager *events.Manager,

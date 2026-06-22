@@ -5,7 +5,7 @@
 The ledger provides a two-tier backup and restore pipeline:
 
 1. **Full backup** (`store backup`) — captures a complete Pebble checkpoint (all SST files). Forwarded to the leader (SST numbering is node-local). Done infrequently.
-2. **Incremental backup** (`store incremental-backup`) — exports only new log and audit entries since the last backup. Can run on **any node** (log/audit sequences are identical across all replicas). Done frequently.
+2. **Incremental backup** (`store incremental-backup`) — exports only new log and audit entries since the last backup. Forwarded to the leader: the FSM owns a per-destination lock so only one backup runs against the same destination at a time, and only the leader can push Raft proposals. Done frequently.
 
 A restore combines the latest checkpoint with any incremental exports to reconstruct the full state.
 
@@ -30,12 +30,12 @@ All backup/restore commands accept the same provider flags; only the `--driver` 
 │    ─► Leader: upload new/changed files, clean old exports             │
 │    ─► Leader: write manifest (checkpoint + empty exports)             │
 ├─────────────────────────────────────────────────────────────────────────┤
-│ 1b. INCREMENTAL BACKUP (any node)                                      │
+│ 1b. INCREMENTAL BACKUP (leader only, forwarded)                        │
 │                                                                        │
 │    ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket│
-│    ─► Any node: read manifest, determine last exported sequences      │
-│    ─► Any node: stream new log + audit entries as KV segments         │
-│    ─► Any node: append segments to manifest exports list              │
+│    ─► Leader: read manifest, determine last exported sequences        │
+│    ─► Leader: stream new log + audit entries as KV segments           │
+│    ─► Leader: append segments to manifest exports list                │
 └─────────────────────────────────────────────────────────────────────────┘
                                 │
                  ┌──────────────┴──────────────┐
@@ -174,7 +174,7 @@ sequenceDiagram
 ### CLI Command
 
 ```bash
-# Incremental backup to S3 (can target any node)
+# Incremental backup to S3 (forwarded to the leader)
 ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
 
 # Incremental backup to MinIO
@@ -201,24 +201,29 @@ ledgerctl store incremental-backup --driver azure --azure-account-name myaccount
 
 ### How It Works
 
-The `store incremental-backup` command calls the `ClusterService.IncrementalBackup` gRPC RPC. Unlike the full backup, this RPC is **not** forwarded to the leader — it can run on any node because log and audit entry sequences are deterministic across all Raft replicas.
+The `store incremental-backup` command calls the `ClusterService.IncrementalBackup` gRPC RPC. Like the full backup, this RPC is **forwarded to the leader**: backup jobs are tracked by the FSM under a per-destination lock, so only the node currently driving Raft proposals can open one.
 
-1. **Read manifest**: Reads the existing manifest from S3 to determine the last exported sequences.
-2. **Snapshot**: Takes a `ReadHandle` (Pebble snapshot) for point-in-time consistency.
-3. **Determine delta**: Compares current sequences against the manifest's last exported sequences.
-4. **Stream entries**: Iterates new log entries (`{0x04, 0x01}` prefix) and audit entries (`{0x04, 0x02}` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments.
-5. **Update manifest**: Appends new export segments to the manifest.
+1. **Forward**: A request hitting a follower is transparently forwarded to the leader.
+2. **Start**: The leader proposes a `BackupOrder.Start` through Raft. A duplicate destination is rejected with `FailedPrecondition` (`ErrBackupInProgress`); a duplicate `job_id` with `FailedPrecondition` (`ErrBackupJobIDCollision`).
+3. **Read manifest**: Reads the existing manifest from S3 to determine the last exported sequences.
+4. **Snapshot**: Takes a `ReadHandle` (Pebble snapshot) for point-in-time consistency.
+5. **Determine delta**: Compares current sequences against the manifest's last exported sequences.
+6. **Stream entries**: Iterates new log entries (`{0x04, 0x01}` prefix) and audit entries (`{0x04, 0x02}` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments. Progress proposals were dropped from the FSM lifecycle: liveness is observed in-memory on the leader via the orchestrator's executor registry rather than inferred from progress staleness.
+7. **Update manifest**: Appends new export segments to the manifest.
+8. **Complete / Fail**: The leader proposes the terminal order under a bounded background context (so a client disconnect does not strand the destination lock).
 
 ### Prerequisites
 
 A **full backup must exist** before running an incremental backup. The incremental backup needs a checkpoint as a base.
 
-### Node Independence
+### Leadership and Mutual Exclusion
 
-Because the FSM is deterministic, all nodes in the cluster have identical log and audit entries with the same sequence numbers. This means:
-- Incremental backups can run on **any node** (not just the leader)
-- No leader forwarding overhead
-- Survives leader elections without any impact
+Although log and audit sequences are deterministic across replicas — so any node could in principle read the same delta — incremental backups go through the leader for two reasons:
+
+- The FSM owns the destination lock. Two concurrent runs against the same destination would otherwise race the same on-S3 manifest. Pushing the lifecycle through Raft inherits cross-node mutual exclusion from apply determinism, with no separate lease primitive and no clock-skew window.
+- The leader is the only node that can propose. A follower-driven backup would have to round-trip every progress beat through the leader anyway.
+
+If leadership changes mid-backup, `OnLeadershipChange(false)` on the previous leader cancels the context that the in-flight upload runs under — the S3 SDK respects the cancellation and aborts the request, closing the two-writer race that would otherwise open between the old executor and the new leader. The new leader inherits the `RUNNING` FSM entry via cache snapshot restore but sees no live executor for it in its in-memory registry; the next cleanup tick proposes `Fail` to free the destination slot. The client retries explicitly.
 
 ### Manifest Structure
 

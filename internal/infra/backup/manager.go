@@ -40,25 +40,32 @@ type IncrementalBackupResult struct {
 // RunBackup performs a full checkpoint backup cycle.
 // It creates a Pebble checkpoint, diffs SST files against the previous manifest,
 // uploads new/changed files, cleans up stale exports, and writes an updated manifest.
+//
+// checkpointName is the name of the temporary checkpoint directory the
+// store creates. Callers running multiple concurrent backups MUST pass
+// distinct names so the underlying tmp/<name>/ directories do not
+// collide on the local filesystem — the FSM mutex protects the
+// destination slot, but the checkpoint directory is node-local.
 func RunBackup(
 	ctx context.Context,
 	logger logging.Logger,
 	store *dal.Store,
 	storage Storage,
 	bucketID string,
+	checkpointName string,
 ) (*Result, error) {
 	start := time.Now()
 
 	manifestKey := ManifestKey(bucketID)
 
 	// 1. Create temporary checkpoint (hard links, quasi-free)
-	checkpointPath, err := store.CreateTemporaryCheckpoint("backup")
+	checkpointPath, err := store.CreateTemporaryCheckpoint(checkpointName)
 	if err != nil {
 		return nil, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
 	defer func() {
-		_ = store.RemoveTemporaryCheckpoint("backup")
+		_ = store.RemoveTemporaryCheckpoint(checkpointName)
 	}()
 
 	// 2. List files in checkpoint

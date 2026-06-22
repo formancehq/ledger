@@ -142,10 +142,11 @@ func (s *Store) IsWriteStalled() bool {
 //	0x01  Attributes   — derived data hashed during seal (volumes, metadata, transactions, ...).
 //	0x02  Cache        — in-memory cache snapshot persisted before checkpoints.
 //	0x03  Per-ledger   — per-ledger config/state (prepared queries, reversions, mirror).
-//	0x04  Cold         — data archived to cold storage then purged per chapter (logs, audit).
-//	0x05  Idempotency  — TTL-managed idempotency keys (evicted by Raft command, not chapter archival).
-//	0x06  Global       — cluster-wide metadata persisted forever (applied index, signing, chapters, sinks, ...).
-//	0x07..0xFF          — reserved for future zones.
+//	0x04  Cold               — data archived to cold storage then purged per chapter (logs, audit).
+//	0x05  Idempotency        — TTL-managed idempotency keys (evicted by Raft command, not chapter archival).
+//	0x06  Global             — cluster-wide metadata persisted forever (applied index, signing, chapters, sinks, ...).
+//	0x07  ClusterTransient   — FSM-tracked state that has no meaning after restore (backup jobs, future ephemeral state).
+//	0x08..0xFF                — reserved for future zones.
 
 // Zone bytes — first byte of every Pebble key.
 const (
@@ -155,6 +156,19 @@ const (
 	ZoneCold        byte = 0x04
 	ZoneIdempotency byte = 0x05
 	ZoneGlobal      byte = 0x06
+	// ZoneClusterTransient holds FSM state that is meaningful only inside
+	// the current cluster's process lifetime. Survives snapshot/restore
+	// WITHIN the same cluster (so a follower catching up via
+	// InstallSnapshot rebuilds the right in-memory view), but is wiped at
+	// FinalizeRestore on the receiving cluster — otherwise a backup taken
+	// while a job was RUNNING would carry that entry into the restored
+	// cluster, locking the destination forever.
+	//
+	// New writers in this zone must accept that their data does not
+	// survive a cross-cluster restore. Everything operator-facing
+	// (cluster config, signing keys, chapter state, …) stays in
+	// ZoneGlobal.
+	ZoneClusterTransient byte = 0x07
 )
 
 // Attribute sub-prefixes (zone 0x01), ordered by hot-path write frequency.
@@ -223,6 +237,23 @@ const (
 	SubGlobClusterConfig           byte = 0x11
 	SubGlobBloom                   byte = 0x12
 	SubGlobNextLedgerID            byte = 0x13
+)
+
+// ClusterTransient sub-prefixes (zone 0x07).
+const (
+	// SubTransientBackupJob holds active backup jobs keyed by
+	// destination_key. The destination_key is canonicalised so two
+	// requests targeting byte-equal destinations land on the same slot
+	// (mutual exclusion).
+	// [ZoneClusterTransient][SubTransientBackupJob][destination_key] → BackupJob proto.
+	SubTransientBackupJob byte = 0x01
+	// SubTransientBackupJobHistory keeps terminal backup records
+	// (Complete / Fail). Sorted by completion applied-index so callers
+	// can read the most recent N entries in O(1) seek; the destination
+	// key suffix breaks ties when two jobs terminate at the same applied
+	// index.
+	// [ZoneClusterTransient][SubTransientBackupJobHistory][completed_at_index BE 8][destination_key] → BackupJob proto.
+	SubTransientBackupJobHistory byte = 0x02
 )
 
 // ---------------------------------------------------------------------------

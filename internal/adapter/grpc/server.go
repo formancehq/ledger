@@ -34,6 +34,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -507,6 +508,15 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	// Convert leadership transfer client errors to FailedPrecondition.
 	if errors.Is(err, node.ErrUnknownTransferee) ||
 		errors.Is(err, node.ErrLearnerNotEligible) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	// Backup-destination busy: stable retry signal so clients can distinguish
+	// a normal concurrent-backup rejection from an opaque server error. The
+	// FSM Start path rejects duplicate destinations and duplicate job_ids;
+	// both surface here through state's typed sentinels.
+	if errors.Is(err, state.ErrBackupInProgress) ||
+		errors.Is(err, state.ErrBackupJobIDCollision) {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 

@@ -96,7 +96,7 @@ func TestRunBackup_AbortsBeforeWritingManifestOnSequenceReadFailure(t *testing.T
 
 	storage := &recordingStorage{} // no prior manifest
 
-	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, "bucket")
+	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, "bucket", "test-backup")
 
 	// The headline guarantee: no manifest is written when a sequence read fails.
 	// The pre-fix code ignored the error and wrote a manifest with sequence 0.
@@ -146,7 +146,7 @@ func TestRunBackup_AbortsOnAuditSequenceReadFailure(t *testing.T) {
 
 	storage := &recordingStorage{} // no prior manifest
 
-	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, "bucket")
+	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, "bucket", "test-backup")
 
 	require.False(t, storage.wrote(ManifestKey("bucket")),
 		"manifest must not be written when the audit sequence read fails")
@@ -179,7 +179,7 @@ func TestRunBackup_AbortsOnCorruptManifest(t *testing.T) {
 	store := newBackupTestStore(t)
 	storage := &recordingStorage{manifestBody: []byte("{ not valid json")}
 
-	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, "bucket")
+	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, "bucket", "test-backup")
 
 	require.False(t, storage.wrote(ManifestKey("bucket")),
 		"manifest must not be overwritten when the existing manifest is corrupt")
@@ -294,7 +294,7 @@ func TestRunBackup_InvokesPruneForBothPrefixes(t *testing.T) {
 	storage.EXPECT().ListFiles(gomock.Any(), CheckpointPrefix(bucketID)).Return(nil, nil)
 	storage.EXPECT().ListFiles(gomock.Any(), ExportPrefix(bucketID)).Return(nil, nil)
 
-	result, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID)
+	result, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "test-backup")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Zero(t, result.OrphansDeleted)

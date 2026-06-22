@@ -41,6 +41,14 @@ type StateRegistry struct {
 	// This is always authoritative (no cache generations, no preload needed).
 	// Keyed by ledger name (matches the canonical-key change).
 	Reversions map[string]*bitset.Bitset
+
+	// BackupJobs is the FSM-owned view of in-flight backups, keyed by
+	// canonical destination. See backup_jobs.go for the rationale: the
+	// gRPC handler used to take an in-memory mutex and bypass Raft; we
+	// move the state inside the FSM so cross-node mutual exclusion is
+	// inherited from Raft's apply determinism, no separate lease primitive
+	// or wall-clock decisions involved.
+	BackupJobs *BackupJobsState
 }
 
 // NewStateRegistry creates a StateRegistry with all CacheAwareEntries backed
@@ -106,6 +114,7 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes, idempotencyT
 			dal.SubAttrLedgerMetadata,
 		),
 		Reversions: make(map[string]*bitset.Bitset),
+		BackupJobs: NewBackupJobsState(),
 	}
 }
 
