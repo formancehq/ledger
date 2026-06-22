@@ -3,12 +3,14 @@ package ledgers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -25,9 +27,13 @@ type EditableConfig struct {
 	Numscripts             map[string]EditableNumscript            `json:"numscripts,omitempty"             yaml:"numscripts,omitempty"`
 }
 
-// EditableAccountType is the editable subset of an account type.
+// EditableAccountType is the editable subset of an account type. Persistence
+// is omitted when it is the proto default ("normal") so simple configs stay
+// terse; non-default values must round-trip to avoid silently downgrading
+// ephemeral/transient types to normal at apply time.
 type EditableAccountType struct {
-	Pattern string `json:"pattern" yaml:"pattern"`
+	Pattern     string `json:"pattern"               yaml:"pattern"`
+	Persistence string `json:"persistence,omitempty" yaml:"persistence,omitempty"`
 }
 
 // EditableMetaField is the editable subset of a metadata field declaration.
@@ -75,7 +81,8 @@ func ConfigFromProto(
 	// Account types
 	for name, at := range ledger.GetAccountTypes() {
 		cfg.AccountTypes[name] = EditableAccountType{
-			Pattern: at.GetPattern(),
+			Pattern:     at.GetPattern(),
+			Persistence: persistenceToString(at.GetPersistence()),
 		}
 	}
 
@@ -177,7 +184,7 @@ func ConfigFromProto(
 }
 
 // WriteJSON writes the config to w as indented JSON.
-func (c *EditableConfig) WriteJSON(w *os.File) error {
+func (c *EditableConfig) WriteJSON(w io.Writer) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 
@@ -185,7 +192,7 @@ func (c *EditableConfig) WriteJSON(w *os.File) error {
 }
 
 // WriteYAML writes the config to w as YAML.
-func (c *EditableConfig) WriteYAML(w *os.File) error {
+func (c *EditableConfig) WriteYAML(w io.Writer) error {
 	enc := yaml.NewEncoder(w)
 	enc.SetIndent(2)
 
@@ -234,7 +241,12 @@ func ComputeDiff(ledgerName string, current, desired *EditableConfig) ([]DiffAct
 	var actions []DiffAction
 
 	actions = append(actions, diffDefaultEnforcementMode(ledgerName, current, desired)...)
-	actions = append(actions, diffAccountTypes(ledgerName, current, desired)...)
+
+	atActions, err := diffAccountTypes(ledgerName, current, desired)
+	if err != nil {
+		return nil, err
+	}
+	actions = append(actions, atActions...)
 
 	mdActions, err := diffMetadataSchema(ledgerName, current, desired)
 	if err != nil {
@@ -279,39 +291,88 @@ func diffDefaultEnforcementMode(ledgerName string, current, desired *EditableCon
 	}
 }
 
-func diffAccountTypes(ledgerName string, current, desired *EditableConfig) []DiffAction {
+func diffAccountTypes(ledgerName string, current, desired *EditableConfig) ([]DiffAction, error) {
 	var actions []DiffAction
+
+	addAction := func(name string, at EditableAccountType, reAdd bool) (DiffAction, error) {
+		persistence, err := accounttypes.ParsePersistence(at.Persistence)
+		if err != nil {
+			return DiffAction{}, fmt.Errorf("account type %q: %w", name, err)
+		}
+
+		desc := fmt.Sprintf("Add account type %q (pattern=%s", name, at.Pattern)
+		if reAdd {
+			desc = fmt.Sprintf("Re-add account type %q (pattern=%s", name, at.Pattern)
+		}
+
+		if at.Persistence != "" {
+			desc += ", persistence=" + at.Persistence
+		}
+
+		desc += ")"
+
+		return DiffAction{
+			Section:     "accountType",
+			Operation:   "add",
+			Description: desc,
+			Request: &servicepb.Request{
+				Type: &servicepb.Request_AddAccountType{
+					AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+						Ledger: ledgerName,
+						AccountType: &commonpb.AccountType{
+							Name:        name,
+							Pattern:     at.Pattern,
+							Persistence: persistence,
+						},
+					},
+				},
+			},
+		}, nil
+	}
 
 	// Added or updated
 	for name, desiredAT := range desired.AccountTypes {
 		currentAT, exists := current.AccountTypes[name]
 		if !exists {
-			actions = append(actions, DiffAction{
-				Section:     "accountType",
-				Operation:   "add",
-				Description: fmt.Sprintf("Add account type %q (pattern=%s)", name, desiredAT.Pattern),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_AddAccountType{
-						AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
-							Ledger: ledgerName,
-							AccountType: &commonpb.AccountType{
-								Name:    name,
-								Pattern: desiredAT.Pattern,
-							},
-						},
-					},
-				},
-			})
+			action, err := addAction(name, desiredAT, false)
+			if err != nil {
+				return nil, err
+			}
+
+			actions = append(actions, action)
 
 			continue
 		}
 
-		// Pattern changed → remove + add
-		if currentAT.Pattern != desiredAT.Pattern {
+		// Compare persistence on the parsed enum, not the raw string —
+		// ParsePersistence accepts "", "normal", "NORMAL", "Normal" as
+		// equivalent (same for ephemeral/transient). A raw string compare
+		// would plan a spurious remove+add when a hand-edited manifest
+		// uses a different-but-equivalent spelling than the canonical
+		// export form.
+		currentPersistence, err := accounttypes.ParsePersistence(currentAT.Persistence)
+		if err != nil {
+			return nil, fmt.Errorf("current account type %q: %w", name, err)
+		}
+
+		desiredPersistence, err := accounttypes.ParsePersistence(desiredAT.Persistence)
+		if err != nil {
+			return nil, fmt.Errorf("account type %q: %w", name, err)
+		}
+
+		// Pattern or persistence changed → remove + add. The server has no
+		// in-place updater for account types, and persistence drift would
+		// silently flip volume storage behavior if we ignored it here.
+		if currentAT.Pattern != desiredAT.Pattern || currentPersistence != desiredPersistence {
+			reason := "pattern change"
+			if currentAT.Pattern == desiredAT.Pattern {
+				reason = "persistence change"
+			}
+
 			actions = append(actions, DiffAction{
 				Section:     "accountType",
 				Operation:   "remove",
-				Description: fmt.Sprintf("Remove account type %q (pattern change)", name),
+				Description: fmt.Sprintf("Remove account type %q (%s)", name, reason),
 				Request: &servicepb.Request{
 					Type: &servicepb.Request_RemoveAccountType{
 						RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
@@ -321,22 +382,13 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) []Dif
 					},
 				},
 			})
-			actions = append(actions, DiffAction{
-				Section:     "accountType",
-				Operation:   "add",
-				Description: fmt.Sprintf("Re-add account type %q (pattern=%s)", name, desiredAT.Pattern),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_AddAccountType{
-						AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
-							Ledger: ledgerName,
-							AccountType: &commonpb.AccountType{
-								Name:    name,
-								Pattern: desiredAT.Pattern,
-							},
-						},
-					},
-				},
-			})
+
+			action, err := addAction(name, desiredAT, true)
+			if err != nil {
+				return nil, err
+			}
+
+			actions = append(actions, action)
 
 			continue
 		}
@@ -362,7 +414,21 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) []Dif
 		}
 	}
 
-	return actions
+	return actions, nil
+}
+
+// persistenceToString returns the lowercase string form of an account-type
+// persistence mode, or "" for the proto default (NORMAL) so that
+// `omitempty` keeps it out of exported manifests.
+func persistenceToString(p commonpb.AccountTypePersistence) string {
+	switch p {
+	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
+		return "ephemeral"
+	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
+		return "transient"
+	default:
+		return ""
+	}
 }
 
 func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]DiffAction, error) {
@@ -568,8 +634,59 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 			continue
 		}
 
-		// Filter or target changed → update
-		if currentPQ.Target != desiredPQ.Target || currentPQ.Filter != desiredPQ.Filter {
+		// Target changed → delete + create. `UpdatePreparedQueryRequest`
+		// carries only Filter (no Target), so an in-place update would
+		// silently drop the target change. Mirror the `diffAccountTypes`
+		// remove+re-add pattern (#502 review).
+		if currentPQ.Target != desiredPQ.Target {
+			target := parseQueryTarget(desiredPQ.Target)
+
+			var filter *commonpb.QueryFilter
+			if desiredPQ.Filter != "" {
+				var err error
+				filter, err = filterexpr.Parse(desiredPQ.Filter)
+				if err != nil {
+					return nil, fmt.Errorf("prepared query %q filter: %w", name, err)
+				}
+			}
+
+			actions = append(actions, DiffAction{
+				Section:     "preparedQuery",
+				Operation:   "remove",
+				Description: fmt.Sprintf("Delete prepared query %q (target change)", name),
+				Request: &servicepb.Request{
+					Type: &servicepb.Request_DeletePreparedQuery{
+						DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+							Ledger: ledgerName,
+							Name:   name,
+						},
+					},
+				},
+			})
+
+			actions = append(actions, DiffAction{
+				Section:     "preparedQuery",
+				Operation:   "add",
+				Description: fmt.Sprintf("Re-create prepared query %q (target=%s)", name, desiredPQ.Target),
+				Request: &servicepb.Request{
+					Type: &servicepb.Request_CreatePreparedQuery{
+						CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+							Query: &commonpb.PreparedQuery{
+								Name:   name,
+								Ledger: ledgerName,
+								Target: target,
+								Filter: filter,
+							},
+						},
+					},
+				},
+			})
+
+			continue
+		}
+
+		// Same target — only Filter can have moved. Use the in-place update.
+		if currentPQ.Filter != desiredPQ.Filter {
 			var filter *commonpb.QueryFilter
 			if desiredPQ.Filter != "" {
 				var err error

@@ -2,6 +2,7 @@ package ledgers
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -25,13 +26,18 @@ func NewConfigurationCommand() *cobra.Command {
 		Long: `Display all configuration for a ledger: indexes, prepared queries,
 and numscript library.
 
+With --yaml or --json, output the editable configuration in the same shape
+consumed by ` + "`configuration apply`" + ` — inspect → file → apply round-trips
+cleanly. Read-only status fields (createdAt, mirror progress, ...) are
+omitted; use ` + "`ledgers get`" + ` for the full proto.
+
 Subcommands:
-  export    Export editable configuration as JSON/YAML
+  export    Equivalent to ` + "`configuration <name> --yaml/--json`" + ` (defaults to JSON)
   apply     Apply a configuration file (diff-based)
 
 Examples:
   ledgerctl ledgers configuration myledger
-  ledgerctl ledgers configuration export myledger --yaml > config.yaml
+  ledgerctl ledgers configuration myledger --yaml > config.yaml
   ledgerctl ledgers configuration apply myledger -f config.yaml`,
 		Args:              cobra.ExactArgs(1),
 		RunE:              runConfiguration,
@@ -89,11 +95,26 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 
 	_ = spinner.Stop()
 
-	if handled, err := cmdutil.EncodeStructured(cmd, map[string]any{
-		"ledger":          ledger,
-		"preparedQueries": pqResp.GetQueries(),
-		"numscripts":      numscripts,
-	}); handled || err != nil {
+	// Structured output emits the EditableConfig shape — the same format
+	// that `configuration apply` consumes. Without this, --yaml/--json
+	// would dump the raw proto (preparedQueries as a list, full LedgerInfo
+	// envelope) and the inspect → file → apply round-trip would fail.
+	if cmdutil.IsStructuredOutput(cmd) {
+		cfg := ConfigFromProto(ledger, pqResp.GetQueries(), numscripts)
+		if yamlOutput, _ := cmd.Flags().GetBool("yaml"); yamlOutput {
+			// YAML emitted directly: encoding/json → yaml roundtrip would
+			// re-alphabetize top-level keys, diverging from `configuration
+			// export`. --result-file is JSON-only, so nothing to mirror here.
+			return cfg.WriteYAML(os.Stdout)
+		}
+
+		// JSON path goes through the shared encoder for the persistent
+		// --result-file mirror (kubelet /dev/termination-log, CI sinks).
+		// The encoded JSON itself is byte-identical to `cfg.WriteJSON` —
+		// only the result-file side-effect would be lost if we wrote stdout
+		// directly.
+		_, err := cmdutil.EncodeStructured(cmd, cfg)
+
 		return err
 	}
 
@@ -284,6 +305,8 @@ func queryTargetString(target commonpb.QueryTarget) string {
 		return "accounts"
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return "transactions"
+	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+		return "logs"
 	default:
 		return "unknown"
 	}

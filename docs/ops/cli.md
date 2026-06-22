@@ -747,18 +747,22 @@ ledgerctl ledgers configuration <name> [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--expand` | `false` | Show full content of numscripts and prepared query filters |
+| `--json` | `false` | Output editable configuration as JSON (apply-compatible) |
+| `--yaml` | `false` | Output editable configuration as YAML (apply-compatible) |
 | `--timeout` | `10s` | Request timeout |
+
+With `--json` or `--yaml`, the command emits the editable configuration in the same shape consumed by `configuration apply`, so inspect → file → apply round-trips cleanly. Read-only status fields (`createdAt`, mirror progress, …) are omitted; use `ledgers get` for the full proto.
 
 **Subcommands:**
 
 | Subcommand | Description |
 |------------|-------------|
-| `export` | Export a ledger's configuration to stdout or a file |
+| `export` | Equivalent to `configuration <name> --yaml/--json` (defaults to JSON) |
 | `apply` | Apply a configuration from a file to a ledger |
 
 ##### configuration export
 
-Export a ledger's configuration to stdout (or a file).
+Emit the editable configuration to stdout. Equivalent to `configuration <name> --yaml` (or `--json`).
 
 ```bash
 ledgerctl ledgers configuration export <name> [flags]
@@ -788,7 +792,8 @@ ledgerctl ledgers configuration myledger
 # Expanded view with numscript source code and query filters
 ledgerctl ledgers configuration myledger --expand
 
-# Export configuration
+# Export configuration (both forms below produce the same apply-compatible output)
+ledgerctl ledgers configuration myledger --yaml > config.yaml
 ledgerctl ledgers configuration export myledger > config.yaml
 
 # Apply configuration (preview first)
