@@ -142,9 +142,9 @@ func (s *Store) IsWriteStalled() bool {
 //	0x01  Attributes   — derived data hashed during seal (volumes, metadata, transactions, ...).
 //	0x02  Cache        — in-memory cache snapshot persisted before checkpoints.
 //	0x03  Per-ledger   — per-ledger config/state (prepared queries, reversions, mirror).
-//	0x04  Cold         — data archived to cold storage then purged per period (logs, audit).
-//	0x05  Idempotency  — TTL-managed idempotency keys (evicted by Raft command, not period archival).
-//	0x06  Global       — cluster-wide metadata persisted forever (applied index, signing, periods, sinks, ...).
+//	0x04  Cold         — data archived to cold storage then purged per chapter (logs, audit).
+//	0x05  Idempotency  — TTL-managed idempotency keys (evicted by Raft command, not chapter archival).
+//	0x06  Global       — cluster-wide metadata persisted forever (applied index, signing, chapters, sinks, ...).
 //	0x07..0xFF          — reserved for future zones.
 
 // Zone bytes — first byte of every Pebble key.
@@ -209,14 +209,14 @@ const (
 	SubGlobLedgerInfo              byte = 0x03
 	SubGlobSigningKey              byte = 0x04
 	SubGlobSigningConfig           byte = 0x05
-	SubGlobPeriods                 byte = 0x06
-	SubGlobNextPeriodID            byte = 0x07
+	SubGlobChapters                byte = 0x06
+	SubGlobNextChapterID           byte = 0x07
 	SubGlobSinkCursor              byte = 0x08
 	SubGlobEventsConfig            byte = 0x09
 	SubGlobSinkStatus              byte = 0x0A
 	SubGlobMaintenanceMode         byte = 0x0B
 	SubGlobPersistedConfig         byte = 0x0C
-	SubGlobPeriodSchedule          byte = 0x0D
+	SubGlobChapterSchedule         byte = 0x0D
 	SubGlobQueryCheckpoint         byte = 0x0E
 	SubGlobNextQueryCheckpointID   byte = 0x0F
 	SubGlobQueryCheckpointSchedule byte = 0x10
@@ -1271,7 +1271,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 }
 
 // IterateColdKVPairs iterates every cold-storable KV pair belonging to a
-// period via efficient prefixed range scans.
+// chapter via efficient prefixed range scans.
 //
 // Logs and audit entries advance on independent sequence counters, so the
 // caller must supply both ranges. SubColdLog is scanned with the log range;
@@ -1303,7 +1303,7 @@ func (s *Store) IterateColdKVPairs(logStart, logClose, auditStart, auditClose ui
 		low, high := rangeFor(zp[1])
 
 		// Audit range may legitimately be empty (high < low) when no audit
-		// entries were produced in the period. Skip the scan in that case.
+		// entries were produced in the chapter. Skip the scan in that case.
 		if high < low {
 			continue
 		}

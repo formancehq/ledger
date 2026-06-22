@@ -43,7 +43,7 @@ client := servicepb.NewBucketServiceClient(conn)
 
 The main service is `BucketService`:
 
-> **Note:** The listing below is a partial excerpt. The actual `BucketService` in `misc/proto/bucket.proto` defines 30+ RPCs including prepared queries, numscript library, period management, signing keys, index management, analysis, and more. See `bucket.proto` for the full definition.
+> **Note:** The listing below is a partial excerpt. The actual `BucketService` in `misc/proto/bucket.proto` defines 30+ RPCs including prepared queries, numscript library, chapter management, signing keys, index management, analysis, and more. See `bucket.proto` for the full definition.
 
 ```protobuf
 service BucketService {

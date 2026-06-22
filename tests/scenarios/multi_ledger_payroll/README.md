@@ -87,7 +87,7 @@ payroll:pool  --[USD/2 500,000]--> employee:{1..N}
 
 Metadata: `month={N}`, `type=salary`.
 
-Period close after each monthly cycle.
+Chapter close after each monthly cycle.
 
 ### Phase 3: Bonuses (Engineering only)
 

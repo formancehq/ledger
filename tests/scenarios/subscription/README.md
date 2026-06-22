@@ -126,9 +126,9 @@ revenue:deferred  --[full balance]--> revenue:recognized
 
 Balance of `revenue:deferred` verified at 0 after recognition.
 
-#### Period Close
+#### Chapter Close
 
-Close period + double-entry check after each cycle.
+Close chapter + double-entry check after each cycle.
 
 ### Metadata Schema Verification
 

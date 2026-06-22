@@ -324,7 +324,7 @@ func newTestColdStorage() *testColdStorage {
 	}
 }
 
-func (m *testColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
+func (m *testColdStorage) Archive(_ context.Context, bucketID string, chapterID uint64, data io.Reader, sha256 []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -333,29 +333,29 @@ func (m *testColdStorage) Archive(_ context.Context, bucketID string, periodID u
 		return err
 	}
 
-	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	key := fmt.Sprintf("%s/%d", bucketID, chapterID)
 	m.data[key] = buf
 	m.checksums[key] = append([]byte(nil), sha256...)
 
 	return nil
 }
 
-func (m *testColdStorage) Exists(_ context.Context, bucketID string, periodID uint64) (bool, error) {
+func (m *testColdStorage) Exists(_ context.Context, bucketID string, chapterID uint64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	key := fmt.Sprintf("%s/%d", bucketID, chapterID)
 	_, hasData := m.data[key]
 	_, hasChecksum := m.checksums[key]
 
 	return hasData && hasChecksum, nil
 }
 
-func (m *testColdStorage) ExpectedChecksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+func (m *testColdStorage) ExpectedChecksum(_ context.Context, bucketID string, chapterID uint64) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	c, ok := m.checksums[fmt.Sprintf("%s/%d", bucketID, periodID)]
+	c, ok := m.checksums[fmt.Sprintf("%s/%d", bucketID, chapterID)]
 	if !ok {
 		return nil, coldstorage.ErrChecksumNotFound
 	}
@@ -363,11 +363,11 @@ func (m *testColdStorage) ExpectedChecksum(_ context.Context, bucketID string, p
 	return append([]byte(nil), c...), nil
 }
 
-func (m *testColdStorage) Checksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+func (m *testColdStorage) Checksum(_ context.Context, bucketID string, chapterID uint64) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	key := fmt.Sprintf("%s/%d", bucketID, chapterID)
 
 	buf, ok := m.data[key]
 	if !ok {
@@ -377,11 +377,11 @@ func (m *testColdStorage) Checksum(_ context.Context, bucketID string, periodID 
 	return coldstorage.ComputeSHA256(bytes.NewReader(buf))
 }
 
-func (m *testColdStorage) Fetch(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
+func (m *testColdStorage) Fetch(_ context.Context, bucketID string, chapterID uint64) (io.ReadCloser, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	key := fmt.Sprintf("%s/%d", bucketID, chapterID)
 
 	buf, ok := m.data[key]
 	if !ok {
@@ -430,11 +430,11 @@ func buildColdSST(t *testing.T, logs ...*commonpb.Log) []byte {
 	return buf.Bytes()
 }
 
-func storePeriod(t *testing.T, s *dal.Store, period *commonpb.Period) {
+func storeChapter(t *testing.T, s *dal.Store, chapter *commonpb.Chapter) {
 	t.Helper()
 
 	batch := s.OpenWriteSession()
-	require.NoError(t, state.StorePeriod(batch, period))
+	require.NoError(t, state.StoreChapter(batch, chapter))
 	require.NoError(t, batch.Commit())
 }
 
@@ -500,10 +500,10 @@ func TestReadLogBySequenceWithCold_ColdFallback(t *testing.T) {
 	sstData := buildColdSST(t, coldLog)
 	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), sha256OrPanic(sstData)))
 
-	// Store an archived period in hot storage that covers sequence 5
-	storePeriod(t, s, &commonpb.Period{
+	// Store an archived chapter in hot storage that covers sequence 5
+	storeChapter(t, s, &commonpb.Chapter{
 		Id:            1,
-		Status:        commonpb.PeriodStatus_PERIOD_ARCHIVED,
+		Status:        commonpb.ChapterStatus_CHAPTER_ARCHIVED,
 		StartSequence: 1,
 		CloseSequence: 10,
 	})
@@ -530,10 +530,10 @@ func TestReadLogBySequenceWithCold_NotInCold(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	// Store an archived period, but the cold storage has no data for it
-	storePeriod(t, s, &commonpb.Period{
+	// Store an archived chapter, but the cold storage has no data for it
+	storeChapter(t, s, &commonpb.Chapter{
 		Id:            1,
-		Status:        commonpb.PeriodStatus_PERIOD_ARCHIVED,
+		Status:        commonpb.ChapterStatus_CHAPTER_ARCHIVED,
 		StartSequence: 1,
 		CloseSequence: 10,
 	})
@@ -559,7 +559,7 @@ func TestReadLogBySequenceWithCold_NotInCold(t *testing.T) {
 	require.Nil(t, log)
 }
 
-func TestReadLogBySequenceWithCold_NoPeriodMatch(t *testing.T) {
+func TestReadLogBySequenceWithCold_NoChapterMatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -571,10 +571,10 @@ func TestReadLogBySequenceWithCold_NoPeriodMatch(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	// Store a period that does NOT cover the requested sequence
-	storePeriod(t, s, &commonpb.Period{
+	// Store a chapter that does NOT cover the requested sequence
+	storeChapter(t, s, &commonpb.Chapter{
 		Id:            1,
-		Status:        commonpb.PeriodStatus_PERIOD_ARCHIVED,
+		Status:        commonpb.ChapterStatus_CHAPTER_ARCHIVED,
 		StartSequence: 100,
 		CloseSequence: 200,
 	})
@@ -583,13 +583,13 @@ func TestReadLogBySequenceWithCold_NoPeriodMatch(t *testing.T) {
 	coldReader := coldstorage.NewColdReader(cs, "bucket", t.TempDir(), 4, 0, logger)
 	t.Cleanup(func() { _ = coldReader.Close() })
 
-	// Sequence 5 is not covered by any archived period → nil
+	// Sequence 5 is not covered by any archived chapter → nil
 	log, err := query.ReadLogBySequenceWithCold(ctx, handle, coldReader, 5)
 	require.NoError(t, err)
 	require.Nil(t, log)
 }
 
-func TestReadLogBySequenceWithCold_NonArchivedPeriodIgnored(t *testing.T) {
+func TestReadLogBySequenceWithCold_NonArchivedChapterIgnored(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -601,10 +601,10 @@ func TestReadLogBySequenceWithCold_NonArchivedPeriodIgnored(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	// Period covers the sequence but is CLOSED (not ARCHIVED) → should not attempt cold read
-	storePeriod(t, s, &commonpb.Period{
+	// Chapter covers the sequence but is CLOSED (not ARCHIVED) → should not attempt cold read
+	storeChapter(t, s, &commonpb.Chapter{
 		Id:            1,
-		Status:        commonpb.PeriodStatus_PERIOD_CLOSED,
+		Status:        commonpb.ChapterStatus_CHAPTER_CLOSED,
 		StartSequence: 1,
 		CloseSequence: 10,
 	})
@@ -613,7 +613,7 @@ func TestReadLogBySequenceWithCold_NonArchivedPeriodIgnored(t *testing.T) {
 	coldReader := coldstorage.NewColdReader(cs, "bucket", t.TempDir(), 4, 0, logger)
 	t.Cleanup(func() { _ = coldReader.Close() })
 
-	// Not in hot, period not archived → nil (no cold fetch attempted)
+	// Not in hot, chapter not archived → nil (no cold fetch attempted)
 	log, err := query.ReadLogBySequenceWithCold(ctx, handle, coldReader, 5)
 	require.NoError(t, err)
 	require.Nil(t, log)

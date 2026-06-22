@@ -107,7 +107,7 @@ type QueryCheckpoints interface {
 }
 
 // ColdStorageScanner exposes the cold-storage iteration primitive used to
-// export an archived period's data.
+// export an archived chapter's data.
 //
 // Intended consumer: the Archiver background worker.
 type ColdStorageScanner interface {

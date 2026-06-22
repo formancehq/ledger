@@ -18,7 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// ColdReader provides read access to archived period data by downloading SST files
+// ColdReader provides read access to archived chapter data by downloading SST files
 // from cold storage, ingesting them into temporary Pebble databases, and caching
 // the opened databases for repeated access.
 //
@@ -32,13 +32,13 @@ type ColdReader struct {
 	cacheDir    string
 	maxCached   int
 	ttl         time.Duration
-	cache       map[uint64]*cachedPeriod
+	cache       map[uint64]*cachedChapter
 	lru         []uint64 // eviction order, oldest first
 	logger      logging.Logger
 	stopSweep   chan struct{}
 }
 
-type cachedPeriod struct {
+type cachedChapter struct {
 	db         *pebble.DB
 	lastAccess time.Time
 }
@@ -60,7 +60,7 @@ func NewColdReader(
 		cacheDir:    cacheDir,
 		maxCached:   maxCached,
 		ttl:         ttl,
-		cache:       make(map[uint64]*cachedPeriod),
+		cache:       make(map[uint64]*cachedChapter),
 		logger:      logger.WithFields(map[string]any{"cmp": "cold-reader"}),
 		stopSweep:   make(chan struct{}),
 	}
@@ -72,38 +72,38 @@ func NewColdReader(
 	return r
 }
 
-// GetReader returns a PebbleReader for the given archived period.
+// GetReader returns a PebbleReader for the given archived chapter.
 // It downloads and caches the SST file if not already cached.
-func (r *ColdReader) GetReader(ctx context.Context, periodID uint64) (dal.PebbleReader, error) {
+func (r *ColdReader) GetReader(ctx context.Context, chapterID uint64) (dal.PebbleReader, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// Cache hit
-	if cached, ok := r.cache[periodID]; ok {
+	if cached, ok := r.cache[chapterID]; ok {
 		cached.lastAccess = time.Now()
-		r.touchLRU(periodID)
+		r.touchLRU(chapterID)
 
 		return cached.db, nil
 	}
 
 	// Cache miss: fetch, ingest, cache
-	r.logger.WithFields(map[string]any{"periodId": periodID}).Infof("Fetching archived period from cold storage")
+	r.logger.WithFields(map[string]any{"chapterId": chapterID}).Infof("Fetching archived chapter from cold storage")
 
-	periodDir := filepath.Join(r.cacheDir, "period-"+strconv.FormatUint(periodID, 10))
-	sstPath := filepath.Join(periodDir, "archive.sst")
-	dbDir := filepath.Join(periodDir, "db")
+	chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(chapterID, 10))
+	sstPath := filepath.Join(chapterDir, "archive.sst")
+	dbDir := filepath.Join(chapterDir, "db")
 
 	// Download SST
-	if err := r.downloadSST(ctx, periodID, sstPath); err != nil {
-		return nil, fmt.Errorf("downloading SST for period %d: %w", periodID, err)
+	if err := r.downloadSST(ctx, chapterID, sstPath); err != nil {
+		return nil, fmt.Errorf("downloading SST for chapter %d: %w", chapterID, err)
 	}
 
 	// Open Pebble DB and ingest the SST
 	db, err := r.openAndIngest(dbDir, sstPath)
 	if err != nil {
-		_ = os.RemoveAll(periodDir)
+		_ = os.RemoveAll(chapterDir)
 
-		return nil, fmt.Errorf("ingesting SST for period %d: %w", periodID, err)
+		return nil, fmt.Errorf("ingesting SST for chapter %d: %w", chapterID, err)
 	}
 
 	// Evict oldest if at capacity
@@ -111,18 +111,18 @@ func (r *ColdReader) GetReader(ctx context.Context, periodID uint64) (dal.Pebble
 		r.evictOldest()
 	}
 
-	r.cache[periodID] = &cachedPeriod{db: db, lastAccess: time.Now()}
-	r.lru = append(r.lru, periodID)
+	r.cache[chapterID] = &cachedChapter{db: db, lastAccess: time.Now()}
+	r.lru = append(r.lru, chapterID)
 
 	return db, nil
 }
 
-func (r *ColdReader) downloadSST(ctx context.Context, periodID uint64, destPath string) error {
+func (r *ColdReader) downloadSST(ctx context.Context, chapterID uint64, destPath string) error {
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return fmt.Errorf("creating cache directory: %w", err)
 	}
 
-	rc, err := r.coldStorage.Fetch(ctx, r.bucketID, periodID)
+	rc, err := r.coldStorage.Fetch(ctx, r.bucketID, chapterID)
 	if err != nil {
 		return err
 	}
@@ -172,11 +172,11 @@ func (r *ColdReader) openAndIngest(dbDir, sstPath string) (*pebble.DB, error) {
 	return db, nil
 }
 
-func (r *ColdReader) touchLRU(periodID uint64) {
+func (r *ColdReader) touchLRU(chapterID uint64) {
 	for i, id := range r.lru {
-		if id == periodID {
+		if id == chapterID {
 			r.lru = append(r.lru[:i], r.lru[i+1:]...)
-			r.lru = append(r.lru, periodID)
+			r.lru = append(r.lru, chapterID)
 
 			return
 		}
@@ -192,13 +192,13 @@ func (r *ColdReader) evictOldest() {
 	r.lru = r.lru[1:]
 
 	if cached, ok := r.cache[oldest]; ok {
-		r.logger.WithFields(map[string]any{"periodId": oldest}).Infof("Evicting cached period")
+		r.logger.WithFields(map[string]any{"chapterId": oldest}).Infof("Evicting cached chapter")
 
 		_ = cached.db.Close()
 		delete(r.cache, oldest)
 
-		periodDir := filepath.Join(r.cacheDir, "period-"+strconv.FormatUint(oldest, 10))
-		_ = os.RemoveAll(periodDir)
+		chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(oldest, 10))
+		_ = os.RemoveAll(chapterDir)
 	}
 }
 
@@ -241,7 +241,7 @@ func (r *ColdReader) evictByID(id uint64) {
 		return
 	}
 
-	r.logger.WithFields(map[string]any{"periodId": id}).Infof("Evicting expired cached period")
+	r.logger.WithFields(map[string]any{"chapterId": id}).Infof("Evicting expired cached chapter")
 
 	_ = cached.db.Close()
 	delete(r.cache, id)
@@ -255,8 +255,8 @@ func (r *ColdReader) evictByID(id uint64) {
 		}
 	}
 
-	periodDir := filepath.Join(r.cacheDir, "period-"+strconv.FormatUint(id, 10))
-	_ = os.RemoveAll(periodDir)
+	chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(id, 10))
+	_ = os.RemoveAll(chapterDir)
 }
 
 // Close closes all cached Pebble databases and removes the cache directory contents.
@@ -269,11 +269,11 @@ func (r *ColdReader) Close() error {
 	for id, cached := range r.cache {
 		_ = cached.db.Close()
 
-		periodDir := filepath.Join(r.cacheDir, "period-"+strconv.FormatUint(id, 10))
-		_ = os.RemoveAll(periodDir)
+		chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(id, 10))
+		_ = os.RemoveAll(chapterDir)
 	}
 
-	r.cache = make(map[uint64]*cachedPeriod)
+	r.cache = make(map[uint64]*cachedChapter)
 	r.lru = nil
 
 	return nil

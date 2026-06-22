@@ -93,5 +93,6 @@ func transformName(instrumentName string, naming Naming) string {
 	if strings.HasPrefix(underscored, Prefix+"_") {
 		return underscored
 	}
+
 	return Prefix + "_" + underscored
 }

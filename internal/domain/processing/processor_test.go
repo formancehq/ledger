@@ -282,7 +282,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 		NextTransactionId: 1,
 		NextLogId:         1,
 	}).AsReader(), nil)
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("myled", gomock.Any())
 
 	// Volume operations: the LedgerID should be 1 (assigned by CreateLedger).

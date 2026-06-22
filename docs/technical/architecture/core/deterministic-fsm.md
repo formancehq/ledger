@@ -530,11 +530,11 @@ which `runCommitter` calls sequentially — one batch in flight at any time.
 
 To preserve this invariant in the presence of orders that require a Pebble
 **physical checkpoint** to be created (currently `CreateQueryCheckpoint` and
-`ClosePeriod`), we enforce:
+`CloseChapter`), we enforce:
 
 1. **Admission constraint.** A `raftcmdpb.Proposal` may carry N orders, but
    if any order is a checkpoint trigger (`CreateQueryCheckpoint` or
-   `ClosePeriod`), it **must be the last order** in `proposal.Orders`.
+   `CloseChapter`), it **must be the last order** in `proposal.Orders`.
    `internal/application/admission` rejects bulk requests that violate this
    with `ErrCheckpointOrderNotLast`.
 

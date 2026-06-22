@@ -38,13 +38,13 @@ type Order struct {
 	//	*Order_SetSigningConfig
 	//	*Order_AddEventsSink
 	//	*Order_RemoveEventsSink
-	//	*Order_ClosePeriod
-	//	*Order_SealPeriod
-	//	*Order_ArchivePeriod
-	//	*Order_ConfirmArchivePeriod
+	//	*Order_CloseChapter
+	//	*Order_SealChapter
+	//	*Order_ArchiveChapter
+	//	*Order_ConfirmArchiveChapter
 	//	*Order_SetMaintenanceMode
-	//	*Order_SetPeriodSchedule
-	//	*Order_DeletePeriodSchedule
+	//	*Order_SetChapterSchedule
+	//	*Order_DeleteChapterSchedule
 	//	*Order_MirrorIngest
 	//	*Order_PromoteLedger
 	//	*Order_CreatePreparedQuery
@@ -192,37 +192,37 @@ func (x *Order) GetRemoveEventsSink() *RemoveEventsSinkOrder {
 	return nil
 }
 
-func (x *Order) GetClosePeriod() *ClosePeriodOrder {
+func (x *Order) GetCloseChapter() *CloseChapterOrder {
 	if x != nil {
-		if x, ok := x.Type.(*Order_ClosePeriod); ok {
-			return x.ClosePeriod
+		if x, ok := x.Type.(*Order_CloseChapter); ok {
+			return x.CloseChapter
 		}
 	}
 	return nil
 }
 
-func (x *Order) GetSealPeriod() *SealPeriodOrder {
+func (x *Order) GetSealChapter() *SealChapterOrder {
 	if x != nil {
-		if x, ok := x.Type.(*Order_SealPeriod); ok {
-			return x.SealPeriod
+		if x, ok := x.Type.(*Order_SealChapter); ok {
+			return x.SealChapter
 		}
 	}
 	return nil
 }
 
-func (x *Order) GetArchivePeriod() *ArchivePeriodOrder {
+func (x *Order) GetArchiveChapter() *ArchiveChapterOrder {
 	if x != nil {
-		if x, ok := x.Type.(*Order_ArchivePeriod); ok {
-			return x.ArchivePeriod
+		if x, ok := x.Type.(*Order_ArchiveChapter); ok {
+			return x.ArchiveChapter
 		}
 	}
 	return nil
 }
 
-func (x *Order) GetConfirmArchivePeriod() *ConfirmArchivePeriodOrder {
+func (x *Order) GetConfirmArchiveChapter() *ConfirmArchiveChapterOrder {
 	if x != nil {
-		if x, ok := x.Type.(*Order_ConfirmArchivePeriod); ok {
-			return x.ConfirmArchivePeriod
+		if x, ok := x.Type.(*Order_ConfirmArchiveChapter); ok {
+			return x.ConfirmArchiveChapter
 		}
 	}
 	return nil
@@ -237,19 +237,19 @@ func (x *Order) GetSetMaintenanceMode() *SetMaintenanceModeOrder {
 	return nil
 }
 
-func (x *Order) GetSetPeriodSchedule() *SetPeriodScheduleOrder {
+func (x *Order) GetSetChapterSchedule() *SetChapterScheduleOrder {
 	if x != nil {
-		if x, ok := x.Type.(*Order_SetPeriodSchedule); ok {
-			return x.SetPeriodSchedule
+		if x, ok := x.Type.(*Order_SetChapterSchedule); ok {
+			return x.SetChapterSchedule
 		}
 	}
 	return nil
 }
 
-func (x *Order) GetDeletePeriodSchedule() *DeletePeriodScheduleOrder {
+func (x *Order) GetDeleteChapterSchedule() *DeleteChapterScheduleOrder {
 	if x != nil {
-		if x, ok := x.Type.(*Order_DeletePeriodSchedule); ok {
-			return x.DeletePeriodSchedule
+		if x, ok := x.Type.(*Order_DeleteChapterSchedule); ok {
+			return x.DeleteChapterSchedule
 		}
 	}
 	return nil
@@ -422,32 +422,32 @@ type Order_RemoveEventsSink struct {
 	RemoveEventsSink *RemoveEventsSinkOrder `protobuf:"bytes,10,opt,name=remove_events_sink,json=removeEventsSink,proto3,oneof"`
 }
 
-type Order_ClosePeriod struct {
-	ClosePeriod *ClosePeriodOrder `protobuf:"bytes,11,opt,name=close_period,json=closePeriod,proto3,oneof"`
+type Order_CloseChapter struct {
+	CloseChapter *CloseChapterOrder `protobuf:"bytes,11,opt,name=close_chapter,json=closeChapter,proto3,oneof"`
 }
 
-type Order_SealPeriod struct {
-	SealPeriod *SealPeriodOrder `protobuf:"bytes,12,opt,name=seal_period,json=sealPeriod,proto3,oneof"`
+type Order_SealChapter struct {
+	SealChapter *SealChapterOrder `protobuf:"bytes,12,opt,name=seal_chapter,json=sealChapter,proto3,oneof"`
 }
 
-type Order_ArchivePeriod struct {
-	ArchivePeriod *ArchivePeriodOrder `protobuf:"bytes,13,opt,name=archive_period,json=archivePeriod,proto3,oneof"`
+type Order_ArchiveChapter struct {
+	ArchiveChapter *ArchiveChapterOrder `protobuf:"bytes,13,opt,name=archive_chapter,json=archiveChapter,proto3,oneof"`
 }
 
-type Order_ConfirmArchivePeriod struct {
-	ConfirmArchivePeriod *ConfirmArchivePeriodOrder `protobuf:"bytes,14,opt,name=confirm_archive_period,json=confirmArchivePeriod,proto3,oneof"`
+type Order_ConfirmArchiveChapter struct {
+	ConfirmArchiveChapter *ConfirmArchiveChapterOrder `protobuf:"bytes,14,opt,name=confirm_archive_chapter,json=confirmArchiveChapter,proto3,oneof"`
 }
 
 type Order_SetMaintenanceMode struct {
 	SetMaintenanceMode *SetMaintenanceModeOrder `protobuf:"bytes,15,opt,name=set_maintenance_mode,json=setMaintenanceMode,proto3,oneof"`
 }
 
-type Order_SetPeriodSchedule struct {
-	SetPeriodSchedule *SetPeriodScheduleOrder `protobuf:"bytes,16,opt,name=set_period_schedule,json=setPeriodSchedule,proto3,oneof"`
+type Order_SetChapterSchedule struct {
+	SetChapterSchedule *SetChapterScheduleOrder `protobuf:"bytes,16,opt,name=set_chapter_schedule,json=setChapterSchedule,proto3,oneof"`
 }
 
-type Order_DeletePeriodSchedule struct {
-	DeletePeriodSchedule *DeletePeriodScheduleOrder `protobuf:"bytes,17,opt,name=delete_period_schedule,json=deletePeriodSchedule,proto3,oneof"`
+type Order_DeleteChapterSchedule struct {
+	DeleteChapterSchedule *DeleteChapterScheduleOrder `protobuf:"bytes,17,opt,name=delete_chapter_schedule,json=deleteChapterSchedule,proto3,oneof"`
 }
 
 type Order_MirrorIngest struct {
@@ -518,19 +518,19 @@ func (*Order_AddEventsSink) isOrder_Type() {}
 
 func (*Order_RemoveEventsSink) isOrder_Type() {}
 
-func (*Order_ClosePeriod) isOrder_Type() {}
+func (*Order_CloseChapter) isOrder_Type() {}
 
-func (*Order_SealPeriod) isOrder_Type() {}
+func (*Order_SealChapter) isOrder_Type() {}
 
-func (*Order_ArchivePeriod) isOrder_Type() {}
+func (*Order_ArchiveChapter) isOrder_Type() {}
 
-func (*Order_ConfirmArchivePeriod) isOrder_Type() {}
+func (*Order_ConfirmArchiveChapter) isOrder_Type() {}
 
 func (*Order_SetMaintenanceMode) isOrder_Type() {}
 
-func (*Order_SetPeriodSchedule) isOrder_Type() {}
+func (*Order_SetChapterSchedule) isOrder_Type() {}
 
-func (*Order_DeletePeriodSchedule) isOrder_Type() {}
+func (*Order_DeleteChapterSchedule) isOrder_Type() {}
 
 func (*Order_MirrorIngest) isOrder_Type() {}
 
@@ -959,26 +959,26 @@ func (x *SetSigningConfigOrder) GetRequireSignatures() bool {
 	return false
 }
 
-type ClosePeriodOrder struct {
+type CloseChapterOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ClosePeriodOrder) Reset() {
-	*x = ClosePeriodOrder{}
+func (x *CloseChapterOrder) Reset() {
+	*x = CloseChapterOrder{}
 	mi := &file_raft_cmd_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ClosePeriodOrder) String() string {
+func (x *CloseChapterOrder) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ClosePeriodOrder) ProtoMessage() {}
+func (*CloseChapterOrder) ProtoMessage() {}
 
-func (x *ClosePeriodOrder) ProtoReflect() protoreflect.Message {
+func (x *CloseChapterOrder) ProtoReflect() protoreflect.Message {
 	mi := &file_raft_cmd_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -990,34 +990,34 @@ func (x *ClosePeriodOrder) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ClosePeriodOrder.ProtoReflect.Descriptor instead.
-func (*ClosePeriodOrder) Descriptor() ([]byte, []int) {
+// Deprecated: Use CloseChapterOrder.ProtoReflect.Descriptor instead.
+func (*CloseChapterOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{9}
 }
 
-type SealPeriodOrder struct {
+type SealChapterOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	ChapterId     uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
 	SealingHash   []byte                 `protobuf:"bytes,2,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
 	StateHash     []byte                 `protobuf:"bytes,3,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SealPeriodOrder) Reset() {
-	*x = SealPeriodOrder{}
+func (x *SealChapterOrder) Reset() {
+	*x = SealChapterOrder{}
 	mi := &file_raft_cmd_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SealPeriodOrder) String() string {
+func (x *SealChapterOrder) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SealPeriodOrder) ProtoMessage() {}
+func (*SealChapterOrder) ProtoMessage() {}
 
-func (x *SealPeriodOrder) ProtoReflect() protoreflect.Message {
+func (x *SealChapterOrder) ProtoReflect() protoreflect.Message {
 	mi := &file_raft_cmd_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1029,53 +1029,53 @@ func (x *SealPeriodOrder) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SealPeriodOrder.ProtoReflect.Descriptor instead.
-func (*SealPeriodOrder) Descriptor() ([]byte, []int) {
+// Deprecated: Use SealChapterOrder.ProtoReflect.Descriptor instead.
+func (*SealChapterOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *SealPeriodOrder) GetPeriodId() uint64 {
+func (x *SealChapterOrder) GetChapterId() uint64 {
 	if x != nil {
-		return x.PeriodId
+		return x.ChapterId
 	}
 	return 0
 }
 
-func (x *SealPeriodOrder) GetSealingHash() []byte {
+func (x *SealChapterOrder) GetSealingHash() []byte {
 	if x != nil {
 		return x.SealingHash
 	}
 	return nil
 }
 
-func (x *SealPeriodOrder) GetStateHash() []byte {
+func (x *SealChapterOrder) GetStateHash() []byte {
 	if x != nil {
 		return x.StateHash
 	}
 	return nil
 }
 
-type ArchivePeriodOrder struct {
+type ArchiveChapterOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	ChapterId     uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ArchivePeriodOrder) Reset() {
-	*x = ArchivePeriodOrder{}
+func (x *ArchiveChapterOrder) Reset() {
+	*x = ArchiveChapterOrder{}
 	mi := &file_raft_cmd_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ArchivePeriodOrder) String() string {
+func (x *ArchiveChapterOrder) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ArchivePeriodOrder) ProtoMessage() {}
+func (*ArchiveChapterOrder) ProtoMessage() {}
 
-func (x *ArchivePeriodOrder) ProtoReflect() protoreflect.Message {
+func (x *ArchiveChapterOrder) ProtoReflect() protoreflect.Message {
 	mi := &file_raft_cmd_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1087,39 +1087,39 @@ func (x *ArchivePeriodOrder) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ArchivePeriodOrder.ProtoReflect.Descriptor instead.
-func (*ArchivePeriodOrder) Descriptor() ([]byte, []int) {
+// Deprecated: Use ArchiveChapterOrder.ProtoReflect.Descriptor instead.
+func (*ArchiveChapterOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *ArchivePeriodOrder) GetPeriodId() uint64 {
+func (x *ArchiveChapterOrder) GetChapterId() uint64 {
 	if x != nil {
-		return x.PeriodId
+		return x.ChapterId
 	}
 	return 0
 }
 
-type ConfirmArchivePeriodOrder struct {
+type ConfirmArchiveChapterOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	ChapterId     uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ConfirmArchivePeriodOrder) Reset() {
-	*x = ConfirmArchivePeriodOrder{}
+func (x *ConfirmArchiveChapterOrder) Reset() {
+	*x = ConfirmArchiveChapterOrder{}
 	mi := &file_raft_cmd_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ConfirmArchivePeriodOrder) String() string {
+func (x *ConfirmArchiveChapterOrder) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ConfirmArchivePeriodOrder) ProtoMessage() {}
+func (*ConfirmArchiveChapterOrder) ProtoMessage() {}
 
-func (x *ConfirmArchivePeriodOrder) ProtoReflect() protoreflect.Message {
+func (x *ConfirmArchiveChapterOrder) ProtoReflect() protoreflect.Message {
 	mi := &file_raft_cmd_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1131,14 +1131,14 @@ func (x *ConfirmArchivePeriodOrder) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ConfirmArchivePeriodOrder.ProtoReflect.Descriptor instead.
-func (*ConfirmArchivePeriodOrder) Descriptor() ([]byte, []int) {
+// Deprecated: Use ConfirmArchiveChapterOrder.ProtoReflect.Descriptor instead.
+func (*ConfirmArchiveChapterOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *ConfirmArchivePeriodOrder) GetPeriodId() uint64 {
+func (x *ConfirmArchiveChapterOrder) GetChapterId() uint64 {
 	if x != nil {
-		return x.PeriodId
+		return x.ChapterId
 	}
 	return 0
 }
@@ -1187,27 +1187,27 @@ func (x *SetMaintenanceModeOrder) GetEnabled() bool {
 	return false
 }
 
-type SetPeriodScheduleOrder struct {
+type SetChapterScheduleOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cron          string                 `protobuf:"bytes,1,opt,name=cron,proto3" json:"cron,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SetPeriodScheduleOrder) Reset() {
-	*x = SetPeriodScheduleOrder{}
+func (x *SetChapterScheduleOrder) Reset() {
+	*x = SetChapterScheduleOrder{}
 	mi := &file_raft_cmd_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SetPeriodScheduleOrder) String() string {
+func (x *SetChapterScheduleOrder) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SetPeriodScheduleOrder) ProtoMessage() {}
+func (*SetChapterScheduleOrder) ProtoMessage() {}
 
-func (x *SetPeriodScheduleOrder) ProtoReflect() protoreflect.Message {
+func (x *SetChapterScheduleOrder) ProtoReflect() protoreflect.Message {
 	mi := &file_raft_cmd_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1219,38 +1219,38 @@ func (x *SetPeriodScheduleOrder) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SetPeriodScheduleOrder.ProtoReflect.Descriptor instead.
-func (*SetPeriodScheduleOrder) Descriptor() ([]byte, []int) {
+// Deprecated: Use SetChapterScheduleOrder.ProtoReflect.Descriptor instead.
+func (*SetChapterScheduleOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{14}
 }
 
-func (x *SetPeriodScheduleOrder) GetCron() string {
+func (x *SetChapterScheduleOrder) GetCron() string {
 	if x != nil {
 		return x.Cron
 	}
 	return ""
 }
 
-type DeletePeriodScheduleOrder struct {
+type DeleteChapterScheduleOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeletePeriodScheduleOrder) Reset() {
-	*x = DeletePeriodScheduleOrder{}
+func (x *DeleteChapterScheduleOrder) Reset() {
+	*x = DeleteChapterScheduleOrder{}
 	mi := &file_raft_cmd_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeletePeriodScheduleOrder) String() string {
+func (x *DeleteChapterScheduleOrder) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeletePeriodScheduleOrder) ProtoMessage() {}
+func (*DeleteChapterScheduleOrder) ProtoMessage() {}
 
-func (x *DeletePeriodScheduleOrder) ProtoReflect() protoreflect.Message {
+func (x *DeleteChapterScheduleOrder) ProtoReflect() protoreflect.Message {
 	mi := &file_raft_cmd_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1262,8 +1262,8 @@ func (x *DeletePeriodScheduleOrder) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeletePeriodScheduleOrder.ProtoReflect.Descriptor instead.
-func (*DeletePeriodScheduleOrder) Descriptor() ([]byte, []int) {
+// Deprecated: Use DeleteChapterScheduleOrder.ProtoReflect.Descriptor instead.
+func (*DeleteChapterScheduleOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{15}
 }
 
@@ -5469,7 +5469,7 @@ var File_raft_cmd_proto protoreflect.FileDescriptor
 
 const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
-	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xcd\x12\n" +
+	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xdf\x12\n" +
 	"\x05Order\x125\n" +
 	"\vidempotency\x18\x01 \x01(\v2\x13.common.IdempotencyR\vidempotency\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +
@@ -5480,15 +5480,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x12set_signing_config\x18\b \x01(\v2\x1b.raft.SetSigningConfigOrderH\x00R\x10setSigningConfig\x12B\n" +
 	"\x0fadd_events_sink\x18\t \x01(\v2\x18.raft.AddEventsSinkOrderH\x00R\raddEventsSink\x12K\n" +
 	"\x12remove_events_sink\x18\n" +
-	" \x01(\v2\x1b.raft.RemoveEventsSinkOrderH\x00R\x10removeEventsSink\x12;\n" +
-	"\fclose_period\x18\v \x01(\v2\x16.raft.ClosePeriodOrderH\x00R\vclosePeriod\x128\n" +
-	"\vseal_period\x18\f \x01(\v2\x15.raft.SealPeriodOrderH\x00R\n" +
-	"sealPeriod\x12A\n" +
-	"\x0earchive_period\x18\r \x01(\v2\x18.raft.ArchivePeriodOrderH\x00R\rarchivePeriod\x12W\n" +
-	"\x16confirm_archive_period\x18\x0e \x01(\v2\x1f.raft.ConfirmArchivePeriodOrderH\x00R\x14confirmArchivePeriod\x12Q\n" +
-	"\x14set_maintenance_mode\x18\x0f \x01(\v2\x1d.raft.SetMaintenanceModeOrderH\x00R\x12setMaintenanceMode\x12N\n" +
-	"\x13set_period_schedule\x18\x10 \x01(\v2\x1c.raft.SetPeriodScheduleOrderH\x00R\x11setPeriodSchedule\x12W\n" +
-	"\x16delete_period_schedule\x18\x11 \x01(\v2\x1f.raft.DeletePeriodScheduleOrderH\x00R\x14deletePeriodSchedule\x12>\n" +
+	" \x01(\v2\x1b.raft.RemoveEventsSinkOrderH\x00R\x10removeEventsSink\x12>\n" +
+	"\rclose_chapter\x18\v \x01(\v2\x17.raft.CloseChapterOrderH\x00R\fcloseChapter\x12;\n" +
+	"\fseal_chapter\x18\f \x01(\v2\x16.raft.SealChapterOrderH\x00R\vsealChapter\x12D\n" +
+	"\x0farchive_chapter\x18\r \x01(\v2\x19.raft.ArchiveChapterOrderH\x00R\x0earchiveChapter\x12Z\n" +
+	"\x17confirm_archive_chapter\x18\x0e \x01(\v2 .raft.ConfirmArchiveChapterOrderH\x00R\x15confirmArchiveChapter\x12Q\n" +
+	"\x14set_maintenance_mode\x18\x0f \x01(\v2\x1d.raft.SetMaintenanceModeOrderH\x00R\x12setMaintenanceMode\x12Q\n" +
+	"\x14set_chapter_schedule\x18\x10 \x01(\v2\x1d.raft.SetChapterScheduleOrderH\x00R\x12setChapterSchedule\x12Z\n" +
+	"\x17delete_chapter_schedule\x18\x11 \x01(\v2 .raft.DeleteChapterScheduleOrderH\x00R\x15deleteChapterSchedule\x12>\n" +
 	"\rmirror_ingest\x18\x13 \x01(\v2\x17.raft.MirrorIngestOrderH\x00R\fmirrorIngest\x12A\n" +
 	"\x0epromote_ledger\x18\x14 \x01(\v2\x18.raft.PromoteLedgerOrderH\x00R\rpromoteLedger\x12T\n" +
 	"\x15create_prepared_query\x18\x15 \x01(\v2\x1e.raft.CreatePreparedQueryOrderH\x00R\x13createPreparedQuery\x12T\n" +
@@ -5527,22 +5526,25 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x18\n" +
 	"\acascade\x18\x02 \x01(\bR\acascade\"F\n" +
 	"\x15SetSigningConfigOrder\x12-\n" +
-	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures\"\x12\n" +
-	"\x10ClosePeriodOrder\"p\n" +
-	"\x0fSealPeriodOrder\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\x12!\n" +
+	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures\"\x13\n" +
+	"\x11CloseChapterOrder\"s\n" +
+	"\x10SealChapterOrder\x12\x1d\n" +
+	"\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\x12!\n" +
 	"\fsealing_hash\x18\x02 \x01(\fR\vsealingHash\x12\x1d\n" +
 	"\n" +
-	"state_hash\x18\x03 \x01(\fR\tstateHash\"1\n" +
-	"\x12ArchivePeriodOrder\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\"8\n" +
-	"\x19ConfirmArchivePeriodOrder\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\"3\n" +
+	"state_hash\x18\x03 \x01(\fR\tstateHash\"4\n" +
+	"\x13ArchiveChapterOrder\x12\x1d\n" +
+	"\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\";\n" +
+	"\x1aConfirmArchiveChapterOrder\x12\x1d\n" +
+	"\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"3\n" +
 	"\x17SetMaintenanceModeOrder\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\",\n" +
-	"\x16SetPeriodScheduleOrder\x12\x12\n" +
-	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x1b\n" +
-	"\x19DeletePeriodScheduleOrder\"t\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"-\n" +
+	"\x17SetChapterScheduleOrder\x12\x12\n" +
+	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x1c\n" +
+	"\x1aDeleteChapterScheduleOrder\"t\n" +
 	"\x12SaveNumscriptOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
@@ -5888,13 +5890,13 @@ var file_raft_cmd_proto_goTypes = []any{
 	(*RegisterSigningKeyOrder)(nil),              // 6: raft.RegisterSigningKeyOrder
 	(*RevokeSigningKeyOrder)(nil),                // 7: raft.RevokeSigningKeyOrder
 	(*SetSigningConfigOrder)(nil),                // 8: raft.SetSigningConfigOrder
-	(*ClosePeriodOrder)(nil),                     // 9: raft.ClosePeriodOrder
-	(*SealPeriodOrder)(nil),                      // 10: raft.SealPeriodOrder
-	(*ArchivePeriodOrder)(nil),                   // 11: raft.ArchivePeriodOrder
-	(*ConfirmArchivePeriodOrder)(nil),            // 12: raft.ConfirmArchivePeriodOrder
+	(*CloseChapterOrder)(nil),                    // 9: raft.CloseChapterOrder
+	(*SealChapterOrder)(nil),                     // 10: raft.SealChapterOrder
+	(*ArchiveChapterOrder)(nil),                  // 11: raft.ArchiveChapterOrder
+	(*ConfirmArchiveChapterOrder)(nil),           // 12: raft.ConfirmArchiveChapterOrder
 	(*SetMaintenanceModeOrder)(nil),              // 13: raft.SetMaintenanceModeOrder
-	(*SetPeriodScheduleOrder)(nil),               // 14: raft.SetPeriodScheduleOrder
-	(*DeletePeriodScheduleOrder)(nil),            // 15: raft.DeletePeriodScheduleOrder
+	(*SetChapterScheduleOrder)(nil),              // 14: raft.SetChapterScheduleOrder
+	(*DeleteChapterScheduleOrder)(nil),           // 15: raft.DeleteChapterScheduleOrder
 	(*SaveNumscriptOrder)(nil),                   // 16: raft.SaveNumscriptOrder
 	(*DeleteNumscriptOrder)(nil),                 // 17: raft.DeleteNumscriptOrder
 	(*CreateQueryCheckpointOrder)(nil),           // 18: raft.CreateQueryCheckpointOrder
@@ -6009,13 +6011,13 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	8,   // 6: raft.Order.set_signing_config:type_name -> raft.SetSigningConfigOrder
 	4,   // 7: raft.Order.add_events_sink:type_name -> raft.AddEventsSinkOrder
 	5,   // 8: raft.Order.remove_events_sink:type_name -> raft.RemoveEventsSinkOrder
-	9,   // 9: raft.Order.close_period:type_name -> raft.ClosePeriodOrder
-	10,  // 10: raft.Order.seal_period:type_name -> raft.SealPeriodOrder
-	11,  // 11: raft.Order.archive_period:type_name -> raft.ArchivePeriodOrder
-	12,  // 12: raft.Order.confirm_archive_period:type_name -> raft.ConfirmArchivePeriodOrder
+	9,   // 9: raft.Order.close_chapter:type_name -> raft.CloseChapterOrder
+	10,  // 10: raft.Order.seal_chapter:type_name -> raft.SealChapterOrder
+	11,  // 11: raft.Order.archive_chapter:type_name -> raft.ArchiveChapterOrder
+	12,  // 12: raft.Order.confirm_archive_chapter:type_name -> raft.ConfirmArchiveChapterOrder
 	13,  // 13: raft.Order.set_maintenance_mode:type_name -> raft.SetMaintenanceModeOrder
-	14,  // 14: raft.Order.set_period_schedule:type_name -> raft.SetPeriodScheduleOrder
-	15,  // 15: raft.Order.delete_period_schedule:type_name -> raft.DeletePeriodScheduleOrder
+	14,  // 14: raft.Order.set_chapter_schedule:type_name -> raft.SetChapterScheduleOrder
+	15,  // 15: raft.Order.delete_chapter_schedule:type_name -> raft.DeleteChapterScheduleOrder
 	24,  // 16: raft.Order.mirror_ingest:type_name -> raft.MirrorIngestOrder
 	31,  // 17: raft.Order.promote_ledger:type_name -> raft.PromoteLedgerOrder
 	1,   // 18: raft.Order.create_prepared_query:type_name -> raft.CreatePreparedQueryOrder
@@ -6171,13 +6173,13 @@ func file_raft_cmd_proto_init() {
 		(*Order_SetSigningConfig)(nil),
 		(*Order_AddEventsSink)(nil),
 		(*Order_RemoveEventsSink)(nil),
-		(*Order_ClosePeriod)(nil),
-		(*Order_SealPeriod)(nil),
-		(*Order_ArchivePeriod)(nil),
-		(*Order_ConfirmArchivePeriod)(nil),
+		(*Order_CloseChapter)(nil),
+		(*Order_SealChapter)(nil),
+		(*Order_ArchiveChapter)(nil),
+		(*Order_ConfirmArchiveChapter)(nil),
 		(*Order_SetMaintenanceMode)(nil),
-		(*Order_SetPeriodSchedule)(nil),
-		(*Order_DeletePeriodSchedule)(nil),
+		(*Order_SetChapterSchedule)(nil),
+		(*Order_DeleteChapterSchedule)(nil),
 		(*Order_MirrorIngest)(nil),
 		(*Order_PromoteLedger)(nil),
 		(*Order_CreatePreparedQuery)(nil),

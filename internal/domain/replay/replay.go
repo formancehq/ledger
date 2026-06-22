@@ -270,7 +270,7 @@ type ProposalBoundaryTracker struct {
 }
 
 // NewProposalBoundaryTracker creates a tracker seeded with the highest log
-// sequence already covered by the replay base, such as an archived period or a
+// sequence already covered by the replay base, such as an archived chapter or a
 // backup checkpoint.
 func NewProposalBoundaryTracker(replayedThrough uint64) *ProposalBoundaryTracker {
 	return &ProposalBoundaryTracker{lastLogSequence: replayedThrough}

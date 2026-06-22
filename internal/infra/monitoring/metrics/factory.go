@@ -34,5 +34,6 @@ func (f *Factory) Meter(name string, opts ...metric.MeterOption) metric.Meter {
 	if f.naming == NamingOTel {
 		return inner
 	}
+
 	return &renamingMeter{Meter: inner, naming: f.naming}
 }

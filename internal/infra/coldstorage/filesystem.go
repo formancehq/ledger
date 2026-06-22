@@ -13,9 +13,9 @@ import (
 // FilesystemStorage implements ColdStorage using the local filesystem.
 // Intended for development and testing; production should use S3 or similar.
 //
-// Layout per period:
+// Layout per chapter:
 //
-//	{basePath}/{bucketID}/periods/{periodID}/
+//	{basePath}/{bucketID}/chapters/{chapterID}/
 //	  archive.sst             — data
 //	  archive.sst.sha256      — 32-byte SHA-256 sidecar (presence = upload complete)
 //
@@ -37,24 +37,24 @@ func NewFilesystemStorage(basePath string) *FilesystemStorage {
 	return &FilesystemStorage{basePath: basePath}
 }
 
-func (f *FilesystemStorage) archiveDir(bucketID string, periodID uint64) string {
-	return filepath.Join(f.basePath, bucketID, "periods", strconv.FormatUint(periodID, 10))
+func (f *FilesystemStorage) archiveDir(bucketID string, chapterID uint64) string {
+	return filepath.Join(f.basePath, bucketID, "chapters", strconv.FormatUint(chapterID, 10))
 }
 
-func (f *FilesystemStorage) archivePath(bucketID string, periodID uint64) string {
-	return filepath.Join(f.archiveDir(bucketID, periodID), archiveDataName)
+func (f *FilesystemStorage) archivePath(bucketID string, chapterID uint64) string {
+	return filepath.Join(f.archiveDir(bucketID, chapterID), archiveDataName)
 }
 
-func (f *FilesystemStorage) checksumPath(bucketID string, periodID uint64) string {
-	return filepath.Join(f.archiveDir(bucketID, periodID), archiveChecksumName)
+func (f *FilesystemStorage) checksumPath(bucketID string, chapterID uint64) string {
+	return filepath.Join(f.archiveDir(bucketID, chapterID), archiveChecksumName)
 }
 
-func (f *FilesystemStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
+func (f *FilesystemStorage) Archive(_ context.Context, bucketID string, chapterID uint64, data io.Reader, sha256 []byte) error {
 	if len(sha256) != ChecksumLength {
 		return fmt.Errorf("archive: invalid checksum length %d, expected %d", len(sha256), ChecksumLength)
 	}
 
-	dir := f.archiveDir(bucketID, periodID)
+	dir := f.archiveDir(bucketID, chapterID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating archive directory: %w", err)
 	}
@@ -137,8 +137,8 @@ func fsyncDir(dir string) error {
 	return d.Sync()
 }
 
-func (f *FilesystemStorage) Exists(_ context.Context, bucketID string, periodID uint64) (bool, error) {
-	dataOK, err := fileExists(f.archivePath(bucketID, periodID))
+func (f *FilesystemStorage) Exists(_ context.Context, bucketID string, chapterID uint64) (bool, error) {
+	dataOK, err := fileExists(f.archivePath(bucketID, chapterID))
 	if err != nil {
 		return false, err
 	}
@@ -147,7 +147,7 @@ func (f *FilesystemStorage) Exists(_ context.Context, bucketID string, periodID 
 		return false, nil
 	}
 
-	return fileExists(f.checksumPath(bucketID, periodID))
+	return fileExists(f.checksumPath(bucketID, chapterID))
 }
 
 func fileExists(path string) (bool, error) {
@@ -163,8 +163,8 @@ func fileExists(path string) (bool, error) {
 	return true, nil
 }
 
-func (f *FilesystemStorage) ExpectedChecksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
-	path := f.checksumPath(bucketID, periodID)
+func (f *FilesystemStorage) ExpectedChecksum(_ context.Context, bucketID string, chapterID uint64) ([]byte, error) {
+	path := f.checksumPath(bucketID, chapterID)
 
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -182,8 +182,8 @@ func (f *FilesystemStorage) ExpectedChecksum(_ context.Context, bucketID string,
 	return b, nil
 }
 
-func (f *FilesystemStorage) Checksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
-	path := f.archivePath(bucketID, periodID)
+func (f *FilesystemStorage) Checksum(_ context.Context, bucketID string, chapterID uint64) ([]byte, error) {
+	path := f.archivePath(bucketID, chapterID)
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -195,8 +195,8 @@ func (f *FilesystemStorage) Checksum(_ context.Context, bucketID string, periodI
 	return ComputeSHA256(file)
 }
 
-func (f *FilesystemStorage) Fetch(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
-	path := f.archivePath(bucketID, periodID)
+func (f *FilesystemStorage) Fetch(_ context.Context, bucketID string, chapterID uint64) (io.ReadCloser, error) {
+	path := f.archivePath(bucketID, chapterID)
 
 	file, err := os.Open(path)
 	if err != nil {

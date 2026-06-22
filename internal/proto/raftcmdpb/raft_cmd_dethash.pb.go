@@ -117,33 +117,33 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0x52
 		}
-	case *Order_ClosePeriod:
-		if v.ClosePeriod != nil {
-			size, _ := v.ClosePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	case *Order_CloseChapter:
+		if v.CloseChapter != nil {
+			size, _ := v.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x5a
 		}
-	case *Order_SealPeriod:
-		if v.SealPeriod != nil {
-			size, _ := v.SealPeriod.MarshalToSizedBufferVT(dAtA[:i])
+	case *Order_SealChapter:
+		if v.SealChapter != nil {
+			size, _ := v.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x62
 		}
-	case *Order_ArchivePeriod:
-		if v.ArchivePeriod != nil {
-			size, _ := v.ArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	case *Order_ArchiveChapter:
+		if v.ArchiveChapter != nil {
+			size, _ := v.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x6a
 		}
-	case *Order_ConfirmArchivePeriod:
-		if v.ConfirmArchivePeriod != nil {
-			size, _ := v.ConfirmArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	case *Order_ConfirmArchiveChapter:
+		if v.ConfirmArchiveChapter != nil {
+			size, _ := v.ConfirmArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -157,9 +157,9 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0x7a
 		}
-	case *Order_SetPeriodSchedule:
-		if v.SetPeriodSchedule != nil {
-			size, _ := v.SetPeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+	case *Order_SetChapterSchedule:
+		if v.SetChapterSchedule != nil {
+			size, _ := v.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -167,9 +167,9 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0x82
 		}
-	case *Order_DeletePeriodSchedule:
-		if v.DeletePeriodSchedule != nil {
-			size, _ := v.DeletePeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+	case *Order_DeleteChapterSchedule:
+		if v.DeleteChapterSchedule != nil {
+			size, _ := v.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -399,7 +399,7 @@ func (m *SetSigningConfigOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ClosePeriodOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *CloseChapterOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -410,7 +410,7 @@ func (m *ClosePeriodOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *SealPeriodOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SealChapterOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -421,7 +421,7 @@ func (m *SealPeriodOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ArchivePeriodOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *ArchiveChapterOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -432,7 +432,7 @@ func (m *ArchivePeriodOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ConfirmArchivePeriodOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *ConfirmArchiveChapterOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -454,7 +454,7 @@ func (m *SetMaintenanceModeOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *SetPeriodScheduleOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SetChapterScheduleOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -465,7 +465,7 @@ func (m *SetPeriodScheduleOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *DeletePeriodScheduleOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *DeleteChapterScheduleOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

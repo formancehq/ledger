@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	sessionIDBytes    = 16
-	sessionReapPeriod = 60 * time.Second
-	defaultSessionTTL = 5 * time.Minute
+	sessionIDBytes      = 16
+	sessionReapInterval = 60 * time.Second
+	defaultSessionTTL   = 5 * time.Minute
 )
 
 type snapshotSession struct {
@@ -92,7 +92,7 @@ func (ss *snapshotSessionStore) remove(sessionID string) {
 }
 
 func (ss *snapshotSessionStore) reapLoop() {
-	ticker := time.NewTicker(sessionReapPeriod)
+	ticker := time.NewTicker(sessionReapInterval)
 	defer ticker.Stop()
 
 	for {

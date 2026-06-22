@@ -33,14 +33,14 @@ type PostingClaim struct {
 type Claims struct {
 	jwt.RegisteredClaims
 
-	Ledger   string         `json:"ledger"`
-	TxID     uint64         `json:"txId"`
-	Postings []PostingClaim `json:"postings"`
-	PeriodID uint64         `json:"periodId"`
+	Ledger    string         `json:"ledger"`
+	TxID      uint64         `json:"txId"`
+	Postings  []PostingClaim `json:"postings"`
+	ChapterID uint64         `json:"chapterId"`
 }
 
 // Sign creates a JWT receipt for a transaction.
-func (s *Signer) Sign(ledger string, txID uint64, postings []*commonpb.Posting, timestamp *commonpb.Timestamp, periodID uint64) (string, error) {
+func (s *Signer) Sign(ledger string, txID uint64, postings []*commonpb.Posting, timestamp *commonpb.Timestamp, chapterID uint64) (string, error) {
 	postingClaims := make([]PostingClaim, len(postings))
 	for i, p := range postings {
 		postingClaims[i] = PostingClaim{
@@ -61,10 +61,10 @@ func (s *Signer) Sign(ledger string, txID uint64, postings []*commonpb.Posting, 
 			Issuer:   "ledger-v3",
 			IssuedAt: jwt.NewNumericDate(issuedAt),
 		},
-		Ledger:   ledger,
-		TxID:     txID,
-		Postings: postingClaims,
-		PeriodID: periodID,
+		Ledger:    ledger,
+		TxID:      txID,
+		Postings:  postingClaims,
+		ChapterID: chapterID,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

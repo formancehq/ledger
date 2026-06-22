@@ -46,7 +46,7 @@ These invariants are upheld by a layered stack between the order processor and t
  │       miss → return *ErrCoverageMiss                                  │
  │       hit  → forward to embedded *WriteSet.GetXxx                     │
  │                                                                       │
- │   Writes, counters, period ops, signing, etc. forward implicitly      │
+ │   Writes, counters, chapter ops, signing, etc. forward implicitly      │
  │   via the embedded *WriteSet — no gate logic.                         │
  └─────────────────────────────────┬────────────────────────────────────┘
                                    │ inner.GetXxx / inner.PutXxx
@@ -139,7 +139,7 @@ The cache and Pebble are mutated by two paths during apply, both honoring the sa
  │ • MirrorTouch        │    │ • derived.Merge() → writer.Put →         │
  │   Gen1→Gen0          │    │   KeyStore.Put → Gen0 (immediate)        │
  │ • MirrorPreload      │    │ • mergeSimpleWithCache → batch 0xF1+0xFF │
- │   raw→Gen0+Gen1      │    │ • SaveLedger / period writes / …         │
+ │   raw→Gen0+Gen1      │    │ • SaveLedger / chapter writes / …         │
  │                      │    │                                          │
  │                      │    │ One Merge drains BOTH tech-update writes │
  │                      │    │ AND order writes — single atomic batch.  │
@@ -162,7 +162,7 @@ Each layer enforces exactly one invariant that the layer above doesn't have to t
 |-------|----------------------|
 | `processing.Scope` (interface) | Single handler-facing API. Hides the engine — a handler can call only what the interface exposes, never reach into `Derived`/`view` directly. |
 | `state.gatedScope` (decorator) | Coverage enforcement. `CheckCoverage(kind, canonical)` runs once at the top of every cache-attribute read. The engine below stays ignorant of the gate. |
-| `state.WriteSet` (engine) | One proposal = one read/write context. Overlay/Merge mechanics, counters, period ops. No gate logic — pure engine. |
+| `state.WriteSet` (engine) | One proposal = one read/write context. Overlay/Merge mechanics, counters, chapter ops. No gate logic — pure engine. |
 | `DerivedKeyStore` | Same-batch read-your-own-writes. Handler *N* sees what handler *N-1* wrote without going through the view. |
 | `Plan` | Holds the coverage state and emits `*ErrCoverageMiss` on undeclared reads. One coverage map per kind, indexed by sub-attribute byte. |
 | `KeyStore` | Collision safety + tombstone visibility. `Entry.Tag` distinguishes U128 collisions; `Entry.Deleted` propagates deletes. |

@@ -16,7 +16,7 @@ import (
 //
 // Fields that are conceptually "state of the FSM" live here. Capability
 // objects (queryCheckpoints, sentinel, cacheSnapshotter), in-memory plumbing
-// (channels, mutexes, metrics), and shared sub-trackers (Registry, Periods,
+// (channels, mutexes, metrics), and shared sub-trackers (Registry, Chapters,
 // KeyStore, SharedState, BloomFilters) remain on Machine — they are not
 // recovered from Pebble at boot and have their own lifecycles.
 type FSMState struct {
@@ -109,7 +109,7 @@ func (s *FSMState) AppendAuditEntry(hash []byte) uint64 {
 
 // LoadFSMStateFromStore reads every FSM-level field that lives in FSMState
 // from the main Pebble store, returning a fully-hydrated value ready to be
-// swapped into a Machine via Machine.RestoreState. Sub-trackers (Periods,
+// swapped into a Machine via Machine.RestoreState. Sub-trackers (Chapters,
 // Registry.Reversions, KeyStore, SharedState, Registry.Cache settings,
 // Registry.Idempotency) are out of scope — they have their own lifecycles
 // and are reset separately by the caller.

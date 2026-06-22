@@ -90,7 +90,7 @@ func TestSynchronizeWithLeader(t *testing.T) {
 
 // TestSynchronizeWithLeaderDrainsBackgroundChannels asserts that
 // SynchronizeWithLeader empties the FSM's background-request channels before
-// installing the leader's checkpoint. Pre-sync messages reference period IDs,
+// installing the leader's checkpoint. Pre-sync messages reference chapter IDs,
 // sequence ranges and checkpoint paths from the follower's pre-sync state; if
 // they survived the sync, the Archiver could write an empty SST over the
 // leader's correct cold-storage archive (see #447 PR body).
@@ -118,11 +118,11 @@ func TestSynchronizeWithLeaderDrainsBackgroundChannels(t *testing.T) {
 	followerMachine, followerStore, _ := newTestMachine(t)
 
 	// Stuff every background channel with stale pre-sync work — what would
-	// happen if the follower had applied a ClosePeriod / ArchivePeriod /
-	// SetMetadataFieldType / period purge / cluster-config-change locally
+	// happen if the follower had applied a CloseChapter / ArchiveChapter /
+	// SetMetadataFieldType / chapter purge / cluster-config-change locally
 	// just before being told to sync.
-	require.True(t, followerMachine.sealRequestCh.TrySend(SealRequest{PeriodID: 99, CloseSequence: 999, CheckpointPath: "/tmp/stale"}, "stale-seal"))
-	require.True(t, followerMachine.archiveRequestCh.TrySend(ArchiveRequest{PeriodID: 99, StartSequence: 1, CloseSequence: 999}, "stale-archive"))
+	require.True(t, followerMachine.sealRequestCh.TrySend(SealRequest{ChapterID: 99, CloseSequence: 999, CheckpointPath: "/tmp/stale"}, "stale-seal"))
+	require.True(t, followerMachine.archiveRequestCh.TrySend(ArchiveRequest{ChapterID: 99, StartSequence: 1, CloseSequence: 999}, "stale-archive"))
 	require.True(t, followerMachine.metadataConvertRequestCh.TrySend(MetadataConvertRequest{LedgerName: "gone", Key: "stale"}, "stale-convert"))
 	followerMachine.coldCompactionCh <- struct{}{}
 	followerMachine.bloomRebuildCh <- "stale reason"

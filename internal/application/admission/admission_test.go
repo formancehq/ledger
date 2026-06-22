@@ -1332,10 +1332,10 @@ func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
 			},
 		}
 	}
-	closePeriodReq := func() *servicepb.Request {
+	closeChapterReq := func() *servicepb.Request {
 		return &servicepb.Request{
-			Type: &servicepb.Request_ClosePeriod{
-				ClosePeriod: &servicepb.ClosePeriodRequest{},
+			Type: &servicepb.Request_CloseChapter{
+				CloseChapter: &servicepb.CloseChapterRequest{},
 			},
 		}
 	}
@@ -1348,11 +1348,11 @@ func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
 		{"empty batch", nil, nil},
 		{"single apply", []*servicepb.Request{applyReq()}, nil},
 		{"checkpoint alone", []*servicepb.Request{checkpointReq()}, nil},
-		{"close period alone", []*servicepb.Request{closePeriodReq()}, nil},
+		{"close chapter alone", []*servicepb.Request{closeChapterReq()}, nil},
 		{"apply then checkpoint", []*servicepb.Request{applyReq(), checkpointReq()}, nil},
-		{"apply then close period", []*servicepb.Request{applyReq(), closePeriodReq()}, nil},
+		{"apply then close chapter", []*servicepb.Request{applyReq(), closeChapterReq()}, nil},
 		{"checkpoint then apply", []*servicepb.Request{checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
-		{"close period then apply", []*servicepb.Request{closePeriodReq(), applyReq()}, ErrCheckpointOrderNotLast},
+		{"close chapter then apply", []*servicepb.Request{closeChapterReq(), applyReq()}, ErrCheckpointOrderNotLast},
 		{"checkpoint mid-batch", []*servicepb.Request{applyReq(), checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
 	}
 

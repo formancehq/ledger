@@ -676,43 +676,43 @@ func NewSetSigningConfigOrderListReader(s []*SetSigningConfigOrder) SetSigningCo
 	return setSigningConfigOrderListReadonly(s)
 }
 
-// ClosePeriodOrderReader provides read-only access to ClosePeriodOrder.
+// CloseChapterOrderReader provides read-only access to CloseChapterOrder.
 // Call Mutate() to obtain a mutable clone.
-type ClosePeriodOrderReader interface {
-	Mutate() *ClosePeriodOrder
+type CloseChapterOrderReader interface {
+	Mutate() *CloseChapterOrder
 }
 
-type closePeriodOrderReadonly struct{ v *ClosePeriodOrder }
+type closeChapterOrderReadonly struct{ v *CloseChapterOrder }
 
-func (r *closePeriodOrderReadonly) Mutate() *ClosePeriodOrder {
+func (r *closeChapterOrderReadonly) Mutate() *CloseChapterOrder {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this ClosePeriodOrder.
-func (m *ClosePeriodOrder) AsReader() ClosePeriodOrderReader {
+// AsReader returns a read-only view of this CloseChapterOrder.
+func (m *CloseChapterOrder) AsReader() CloseChapterOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &closePeriodOrderReadonly{v: m}
+	return &closeChapterOrderReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this ClosePeriodOrder.
-func (m *ClosePeriodOrder) Mutate() *ClosePeriodOrder {
+// Mutate returns a mutable deep clone of this CloseChapterOrder.
+func (m *CloseChapterOrder) Mutate() *CloseChapterOrder {
 	return m.CloneVT()
 }
 
-// ClosePeriodOrderListReader provides read-only iteration over []*ClosePeriodOrder.
-type ClosePeriodOrderListReader interface {
+// CloseChapterOrderListReader provides read-only iteration over []*CloseChapterOrder.
+type CloseChapterOrderListReader interface {
 	Len() int
-	Get(i int) ClosePeriodOrderReader
-	Range(yield func(int, ClosePeriodOrderReader) bool)
+	Get(i int) CloseChapterOrderReader
+	Range(yield func(int, CloseChapterOrderReader) bool)
 }
 
-type closePeriodOrderListReadonly []*ClosePeriodOrder
+type closeChapterOrderListReadonly []*CloseChapterOrder
 
-func (l closePeriodOrderListReadonly) Len() int { return len(l) }
+func (l closeChapterOrderListReadonly) Len() int { return len(l) }
 
-func (l closePeriodOrderListReadonly) Get(i int) ClosePeriodOrderReader {
+func (l closeChapterOrderListReadonly) Get(i int) CloseChapterOrderReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -720,9 +720,9 @@ func (l closePeriodOrderListReadonly) Get(i int) ClosePeriodOrderReader {
 	return v.AsReader()
 }
 
-func (l closePeriodOrderListReadonly) Range(yield func(int, ClosePeriodOrderReader) bool) {
+func (l closeChapterOrderListReadonly) Range(yield func(int, CloseChapterOrderReader) bool) {
 	for i, v := range l {
-		var r ClosePeriodOrderReader
+		var r CloseChapterOrderReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -732,64 +732,64 @@ func (l closePeriodOrderListReadonly) Range(yield func(int, ClosePeriodOrderRead
 	}
 }
 
-// NewClosePeriodOrderListReader wraps s for read-only iteration. The returned
+// NewCloseChapterOrderListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewClosePeriodOrderListReader(s []*ClosePeriodOrder) ClosePeriodOrderListReader {
-	return closePeriodOrderListReadonly(s)
+func NewCloseChapterOrderListReader(s []*CloseChapterOrder) CloseChapterOrderListReader {
+	return closeChapterOrderListReadonly(s)
 }
 
-// SealPeriodOrderReader provides read-only access to SealPeriodOrder.
+// SealChapterOrderReader provides read-only access to SealChapterOrder.
 // Call Mutate() to obtain a mutable clone.
-type SealPeriodOrderReader interface {
-	GetPeriodId() uint64
+type SealChapterOrderReader interface {
+	GetChapterId() uint64
 	GetSealingHash() []byte
 	GetStateHash() []byte
-	Mutate() *SealPeriodOrder
+	Mutate() *SealChapterOrder
 }
 
-type sealPeriodOrderReadonly struct{ v *SealPeriodOrder }
+type sealChapterOrderReadonly struct{ v *SealChapterOrder }
 
-func (r *sealPeriodOrderReadonly) GetPeriodId() uint64 {
-	return r.v.GetPeriodId()
+func (r *sealChapterOrderReadonly) GetChapterId() uint64 {
+	return r.v.GetChapterId()
 }
 
-func (r *sealPeriodOrderReadonly) GetSealingHash() []byte {
+func (r *sealChapterOrderReadonly) GetSealingHash() []byte {
 	return bytes.Clone(r.v.GetSealingHash())
 }
 
-func (r *sealPeriodOrderReadonly) GetStateHash() []byte {
+func (r *sealChapterOrderReadonly) GetStateHash() []byte {
 	return bytes.Clone(r.v.GetStateHash())
 }
 
-func (r *sealPeriodOrderReadonly) Mutate() *SealPeriodOrder {
+func (r *sealChapterOrderReadonly) Mutate() *SealChapterOrder {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this SealPeriodOrder.
-func (m *SealPeriodOrder) AsReader() SealPeriodOrderReader {
+// AsReader returns a read-only view of this SealChapterOrder.
+func (m *SealChapterOrder) AsReader() SealChapterOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &sealPeriodOrderReadonly{v: m}
+	return &sealChapterOrderReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this SealPeriodOrder.
-func (m *SealPeriodOrder) Mutate() *SealPeriodOrder {
+// Mutate returns a mutable deep clone of this SealChapterOrder.
+func (m *SealChapterOrder) Mutate() *SealChapterOrder {
 	return m.CloneVT()
 }
 
-// SealPeriodOrderListReader provides read-only iteration over []*SealPeriodOrder.
-type SealPeriodOrderListReader interface {
+// SealChapterOrderListReader provides read-only iteration over []*SealChapterOrder.
+type SealChapterOrderListReader interface {
 	Len() int
-	Get(i int) SealPeriodOrderReader
-	Range(yield func(int, SealPeriodOrderReader) bool)
+	Get(i int) SealChapterOrderReader
+	Range(yield func(int, SealChapterOrderReader) bool)
 }
 
-type sealPeriodOrderListReadonly []*SealPeriodOrder
+type sealChapterOrderListReadonly []*SealChapterOrder
 
-func (l sealPeriodOrderListReadonly) Len() int { return len(l) }
+func (l sealChapterOrderListReadonly) Len() int { return len(l) }
 
-func (l sealPeriodOrderListReadonly) Get(i int) SealPeriodOrderReader {
+func (l sealChapterOrderListReadonly) Get(i int) SealChapterOrderReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -797,9 +797,9 @@ func (l sealPeriodOrderListReadonly) Get(i int) SealPeriodOrderReader {
 	return v.AsReader()
 }
 
-func (l sealPeriodOrderListReadonly) Range(yield func(int, SealPeriodOrderReader) bool) {
+func (l sealChapterOrderListReadonly) Range(yield func(int, SealChapterOrderReader) bool) {
 	for i, v := range l {
-		var r SealPeriodOrderReader
+		var r SealChapterOrderReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -809,54 +809,54 @@ func (l sealPeriodOrderListReadonly) Range(yield func(int, SealPeriodOrderReader
 	}
 }
 
-// NewSealPeriodOrderListReader wraps s for read-only iteration. The returned
+// NewSealChapterOrderListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSealPeriodOrderListReader(s []*SealPeriodOrder) SealPeriodOrderListReader {
-	return sealPeriodOrderListReadonly(s)
+func NewSealChapterOrderListReader(s []*SealChapterOrder) SealChapterOrderListReader {
+	return sealChapterOrderListReadonly(s)
 }
 
-// ArchivePeriodOrderReader provides read-only access to ArchivePeriodOrder.
+// ArchiveChapterOrderReader provides read-only access to ArchiveChapterOrder.
 // Call Mutate() to obtain a mutable clone.
-type ArchivePeriodOrderReader interface {
-	GetPeriodId() uint64
-	Mutate() *ArchivePeriodOrder
+type ArchiveChapterOrderReader interface {
+	GetChapterId() uint64
+	Mutate() *ArchiveChapterOrder
 }
 
-type archivePeriodOrderReadonly struct{ v *ArchivePeriodOrder }
+type archiveChapterOrderReadonly struct{ v *ArchiveChapterOrder }
 
-func (r *archivePeriodOrderReadonly) GetPeriodId() uint64 {
-	return r.v.GetPeriodId()
+func (r *archiveChapterOrderReadonly) GetChapterId() uint64 {
+	return r.v.GetChapterId()
 }
 
-func (r *archivePeriodOrderReadonly) Mutate() *ArchivePeriodOrder {
+func (r *archiveChapterOrderReadonly) Mutate() *ArchiveChapterOrder {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this ArchivePeriodOrder.
-func (m *ArchivePeriodOrder) AsReader() ArchivePeriodOrderReader {
+// AsReader returns a read-only view of this ArchiveChapterOrder.
+func (m *ArchiveChapterOrder) AsReader() ArchiveChapterOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &archivePeriodOrderReadonly{v: m}
+	return &archiveChapterOrderReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this ArchivePeriodOrder.
-func (m *ArchivePeriodOrder) Mutate() *ArchivePeriodOrder {
+// Mutate returns a mutable deep clone of this ArchiveChapterOrder.
+func (m *ArchiveChapterOrder) Mutate() *ArchiveChapterOrder {
 	return m.CloneVT()
 }
 
-// ArchivePeriodOrderListReader provides read-only iteration over []*ArchivePeriodOrder.
-type ArchivePeriodOrderListReader interface {
+// ArchiveChapterOrderListReader provides read-only iteration over []*ArchiveChapterOrder.
+type ArchiveChapterOrderListReader interface {
 	Len() int
-	Get(i int) ArchivePeriodOrderReader
-	Range(yield func(int, ArchivePeriodOrderReader) bool)
+	Get(i int) ArchiveChapterOrderReader
+	Range(yield func(int, ArchiveChapterOrderReader) bool)
 }
 
-type archivePeriodOrderListReadonly []*ArchivePeriodOrder
+type archiveChapterOrderListReadonly []*ArchiveChapterOrder
 
-func (l archivePeriodOrderListReadonly) Len() int { return len(l) }
+func (l archiveChapterOrderListReadonly) Len() int { return len(l) }
 
-func (l archivePeriodOrderListReadonly) Get(i int) ArchivePeriodOrderReader {
+func (l archiveChapterOrderListReadonly) Get(i int) ArchiveChapterOrderReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -864,9 +864,9 @@ func (l archivePeriodOrderListReadonly) Get(i int) ArchivePeriodOrderReader {
 	return v.AsReader()
 }
 
-func (l archivePeriodOrderListReadonly) Range(yield func(int, ArchivePeriodOrderReader) bool) {
+func (l archiveChapterOrderListReadonly) Range(yield func(int, ArchiveChapterOrderReader) bool) {
 	for i, v := range l {
-		var r ArchivePeriodOrderReader
+		var r ArchiveChapterOrderReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -876,54 +876,54 @@ func (l archivePeriodOrderListReadonly) Range(yield func(int, ArchivePeriodOrder
 	}
 }
 
-// NewArchivePeriodOrderListReader wraps s for read-only iteration. The returned
+// NewArchiveChapterOrderListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewArchivePeriodOrderListReader(s []*ArchivePeriodOrder) ArchivePeriodOrderListReader {
-	return archivePeriodOrderListReadonly(s)
+func NewArchiveChapterOrderListReader(s []*ArchiveChapterOrder) ArchiveChapterOrderListReader {
+	return archiveChapterOrderListReadonly(s)
 }
 
-// ConfirmArchivePeriodOrderReader provides read-only access to ConfirmArchivePeriodOrder.
+// ConfirmArchiveChapterOrderReader provides read-only access to ConfirmArchiveChapterOrder.
 // Call Mutate() to obtain a mutable clone.
-type ConfirmArchivePeriodOrderReader interface {
-	GetPeriodId() uint64
-	Mutate() *ConfirmArchivePeriodOrder
+type ConfirmArchiveChapterOrderReader interface {
+	GetChapterId() uint64
+	Mutate() *ConfirmArchiveChapterOrder
 }
 
-type confirmArchivePeriodOrderReadonly struct{ v *ConfirmArchivePeriodOrder }
+type confirmArchiveChapterOrderReadonly struct{ v *ConfirmArchiveChapterOrder }
 
-func (r *confirmArchivePeriodOrderReadonly) GetPeriodId() uint64 {
-	return r.v.GetPeriodId()
+func (r *confirmArchiveChapterOrderReadonly) GetChapterId() uint64 {
+	return r.v.GetChapterId()
 }
 
-func (r *confirmArchivePeriodOrderReadonly) Mutate() *ConfirmArchivePeriodOrder {
+func (r *confirmArchiveChapterOrderReadonly) Mutate() *ConfirmArchiveChapterOrder {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this ConfirmArchivePeriodOrder.
-func (m *ConfirmArchivePeriodOrder) AsReader() ConfirmArchivePeriodOrderReader {
+// AsReader returns a read-only view of this ConfirmArchiveChapterOrder.
+func (m *ConfirmArchiveChapterOrder) AsReader() ConfirmArchiveChapterOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &confirmArchivePeriodOrderReadonly{v: m}
+	return &confirmArchiveChapterOrderReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this ConfirmArchivePeriodOrder.
-func (m *ConfirmArchivePeriodOrder) Mutate() *ConfirmArchivePeriodOrder {
+// Mutate returns a mutable deep clone of this ConfirmArchiveChapterOrder.
+func (m *ConfirmArchiveChapterOrder) Mutate() *ConfirmArchiveChapterOrder {
 	return m.CloneVT()
 }
 
-// ConfirmArchivePeriodOrderListReader provides read-only iteration over []*ConfirmArchivePeriodOrder.
-type ConfirmArchivePeriodOrderListReader interface {
+// ConfirmArchiveChapterOrderListReader provides read-only iteration over []*ConfirmArchiveChapterOrder.
+type ConfirmArchiveChapterOrderListReader interface {
 	Len() int
-	Get(i int) ConfirmArchivePeriodOrderReader
-	Range(yield func(int, ConfirmArchivePeriodOrderReader) bool)
+	Get(i int) ConfirmArchiveChapterOrderReader
+	Range(yield func(int, ConfirmArchiveChapterOrderReader) bool)
 }
 
-type confirmArchivePeriodOrderListReadonly []*ConfirmArchivePeriodOrder
+type confirmArchiveChapterOrderListReadonly []*ConfirmArchiveChapterOrder
 
-func (l confirmArchivePeriodOrderListReadonly) Len() int { return len(l) }
+func (l confirmArchiveChapterOrderListReadonly) Len() int { return len(l) }
 
-func (l confirmArchivePeriodOrderListReadonly) Get(i int) ConfirmArchivePeriodOrderReader {
+func (l confirmArchiveChapterOrderListReadonly) Get(i int) ConfirmArchiveChapterOrderReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -931,9 +931,9 @@ func (l confirmArchivePeriodOrderListReadonly) Get(i int) ConfirmArchivePeriodOr
 	return v.AsReader()
 }
 
-func (l confirmArchivePeriodOrderListReadonly) Range(yield func(int, ConfirmArchivePeriodOrderReader) bool) {
+func (l confirmArchiveChapterOrderListReadonly) Range(yield func(int, ConfirmArchiveChapterOrderReader) bool) {
 	for i, v := range l {
-		var r ConfirmArchivePeriodOrderReader
+		var r ConfirmArchiveChapterOrderReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -943,10 +943,10 @@ func (l confirmArchivePeriodOrderListReadonly) Range(yield func(int, ConfirmArch
 	}
 }
 
-// NewConfirmArchivePeriodOrderListReader wraps s for read-only iteration. The returned
+// NewConfirmArchiveChapterOrderListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewConfirmArchivePeriodOrderListReader(s []*ConfirmArchivePeriodOrder) ConfirmArchivePeriodOrderListReader {
-	return confirmArchivePeriodOrderListReadonly(s)
+func NewConfirmArchiveChapterOrderListReader(s []*ConfirmArchiveChapterOrder) ConfirmArchiveChapterOrderListReader {
+	return confirmArchiveChapterOrderListReadonly(s)
 }
 
 // SetMaintenanceModeOrderReader provides read-only access to SetMaintenanceModeOrder.
@@ -1016,48 +1016,48 @@ func NewSetMaintenanceModeOrderListReader(s []*SetMaintenanceModeOrder) SetMaint
 	return setMaintenanceModeOrderListReadonly(s)
 }
 
-// SetPeriodScheduleOrderReader provides read-only access to SetPeriodScheduleOrder.
+// SetChapterScheduleOrderReader provides read-only access to SetChapterScheduleOrder.
 // Call Mutate() to obtain a mutable clone.
-type SetPeriodScheduleOrderReader interface {
+type SetChapterScheduleOrderReader interface {
 	GetCron() string
-	Mutate() *SetPeriodScheduleOrder
+	Mutate() *SetChapterScheduleOrder
 }
 
-type setPeriodScheduleOrderReadonly struct{ v *SetPeriodScheduleOrder }
+type setChapterScheduleOrderReadonly struct{ v *SetChapterScheduleOrder }
 
-func (r *setPeriodScheduleOrderReadonly) GetCron() string {
+func (r *setChapterScheduleOrderReadonly) GetCron() string {
 	return r.v.GetCron()
 }
 
-func (r *setPeriodScheduleOrderReadonly) Mutate() *SetPeriodScheduleOrder {
+func (r *setChapterScheduleOrderReadonly) Mutate() *SetChapterScheduleOrder {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this SetPeriodScheduleOrder.
-func (m *SetPeriodScheduleOrder) AsReader() SetPeriodScheduleOrderReader {
+// AsReader returns a read-only view of this SetChapterScheduleOrder.
+func (m *SetChapterScheduleOrder) AsReader() SetChapterScheduleOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &setPeriodScheduleOrderReadonly{v: m}
+	return &setChapterScheduleOrderReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this SetPeriodScheduleOrder.
-func (m *SetPeriodScheduleOrder) Mutate() *SetPeriodScheduleOrder {
+// Mutate returns a mutable deep clone of this SetChapterScheduleOrder.
+func (m *SetChapterScheduleOrder) Mutate() *SetChapterScheduleOrder {
 	return m.CloneVT()
 }
 
-// SetPeriodScheduleOrderListReader provides read-only iteration over []*SetPeriodScheduleOrder.
-type SetPeriodScheduleOrderListReader interface {
+// SetChapterScheduleOrderListReader provides read-only iteration over []*SetChapterScheduleOrder.
+type SetChapterScheduleOrderListReader interface {
 	Len() int
-	Get(i int) SetPeriodScheduleOrderReader
-	Range(yield func(int, SetPeriodScheduleOrderReader) bool)
+	Get(i int) SetChapterScheduleOrderReader
+	Range(yield func(int, SetChapterScheduleOrderReader) bool)
 }
 
-type setPeriodScheduleOrderListReadonly []*SetPeriodScheduleOrder
+type setChapterScheduleOrderListReadonly []*SetChapterScheduleOrder
 
-func (l setPeriodScheduleOrderListReadonly) Len() int { return len(l) }
+func (l setChapterScheduleOrderListReadonly) Len() int { return len(l) }
 
-func (l setPeriodScheduleOrderListReadonly) Get(i int) SetPeriodScheduleOrderReader {
+func (l setChapterScheduleOrderListReadonly) Get(i int) SetChapterScheduleOrderReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -1065,9 +1065,9 @@ func (l setPeriodScheduleOrderListReadonly) Get(i int) SetPeriodScheduleOrderRea
 	return v.AsReader()
 }
 
-func (l setPeriodScheduleOrderListReadonly) Range(yield func(int, SetPeriodScheduleOrderReader) bool) {
+func (l setChapterScheduleOrderListReadonly) Range(yield func(int, SetChapterScheduleOrderReader) bool) {
 	for i, v := range l {
-		var r SetPeriodScheduleOrderReader
+		var r SetChapterScheduleOrderReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -1077,49 +1077,49 @@ func (l setPeriodScheduleOrderListReadonly) Range(yield func(int, SetPeriodSched
 	}
 }
 
-// NewSetPeriodScheduleOrderListReader wraps s for read-only iteration. The returned
+// NewSetChapterScheduleOrderListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSetPeriodScheduleOrderListReader(s []*SetPeriodScheduleOrder) SetPeriodScheduleOrderListReader {
-	return setPeriodScheduleOrderListReadonly(s)
+func NewSetChapterScheduleOrderListReader(s []*SetChapterScheduleOrder) SetChapterScheduleOrderListReader {
+	return setChapterScheduleOrderListReadonly(s)
 }
 
-// DeletePeriodScheduleOrderReader provides read-only access to DeletePeriodScheduleOrder.
+// DeleteChapterScheduleOrderReader provides read-only access to DeleteChapterScheduleOrder.
 // Call Mutate() to obtain a mutable clone.
-type DeletePeriodScheduleOrderReader interface {
-	Mutate() *DeletePeriodScheduleOrder
+type DeleteChapterScheduleOrderReader interface {
+	Mutate() *DeleteChapterScheduleOrder
 }
 
-type deletePeriodScheduleOrderReadonly struct{ v *DeletePeriodScheduleOrder }
+type deleteChapterScheduleOrderReadonly struct{ v *DeleteChapterScheduleOrder }
 
-func (r *deletePeriodScheduleOrderReadonly) Mutate() *DeletePeriodScheduleOrder {
+func (r *deleteChapterScheduleOrderReadonly) Mutate() *DeleteChapterScheduleOrder {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this DeletePeriodScheduleOrder.
-func (m *DeletePeriodScheduleOrder) AsReader() DeletePeriodScheduleOrderReader {
+// AsReader returns a read-only view of this DeleteChapterScheduleOrder.
+func (m *DeleteChapterScheduleOrder) AsReader() DeleteChapterScheduleOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &deletePeriodScheduleOrderReadonly{v: m}
+	return &deleteChapterScheduleOrderReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this DeletePeriodScheduleOrder.
-func (m *DeletePeriodScheduleOrder) Mutate() *DeletePeriodScheduleOrder {
+// Mutate returns a mutable deep clone of this DeleteChapterScheduleOrder.
+func (m *DeleteChapterScheduleOrder) Mutate() *DeleteChapterScheduleOrder {
 	return m.CloneVT()
 }
 
-// DeletePeriodScheduleOrderListReader provides read-only iteration over []*DeletePeriodScheduleOrder.
-type DeletePeriodScheduleOrderListReader interface {
+// DeleteChapterScheduleOrderListReader provides read-only iteration over []*DeleteChapterScheduleOrder.
+type DeleteChapterScheduleOrderListReader interface {
 	Len() int
-	Get(i int) DeletePeriodScheduleOrderReader
-	Range(yield func(int, DeletePeriodScheduleOrderReader) bool)
+	Get(i int) DeleteChapterScheduleOrderReader
+	Range(yield func(int, DeleteChapterScheduleOrderReader) bool)
 }
 
-type deletePeriodScheduleOrderListReadonly []*DeletePeriodScheduleOrder
+type deleteChapterScheduleOrderListReadonly []*DeleteChapterScheduleOrder
 
-func (l deletePeriodScheduleOrderListReadonly) Len() int { return len(l) }
+func (l deleteChapterScheduleOrderListReadonly) Len() int { return len(l) }
 
-func (l deletePeriodScheduleOrderListReadonly) Get(i int) DeletePeriodScheduleOrderReader {
+func (l deleteChapterScheduleOrderListReadonly) Get(i int) DeleteChapterScheduleOrderReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -1127,9 +1127,9 @@ func (l deletePeriodScheduleOrderListReadonly) Get(i int) DeletePeriodScheduleOr
 	return v.AsReader()
 }
 
-func (l deletePeriodScheduleOrderListReadonly) Range(yield func(int, DeletePeriodScheduleOrderReader) bool) {
+func (l deleteChapterScheduleOrderListReadonly) Range(yield func(int, DeleteChapterScheduleOrderReader) bool) {
 	for i, v := range l {
-		var r DeletePeriodScheduleOrderReader
+		var r DeleteChapterScheduleOrderReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -1139,10 +1139,10 @@ func (l deletePeriodScheduleOrderListReadonly) Range(yield func(int, DeletePerio
 	}
 }
 
-// NewDeletePeriodScheduleOrderListReader wraps s for read-only iteration. The returned
+// NewDeleteChapterScheduleOrderListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDeletePeriodScheduleOrderListReader(s []*DeletePeriodScheduleOrder) DeletePeriodScheduleOrderListReader {
-	return deletePeriodScheduleOrderListReadonly(s)
+func NewDeleteChapterScheduleOrderListReader(s []*DeleteChapterScheduleOrder) DeleteChapterScheduleOrderListReader {
+	return deleteChapterScheduleOrderListReadonly(s)
 }
 
 // SaveNumscriptOrderReader provides read-only access to SaveNumscriptOrder.

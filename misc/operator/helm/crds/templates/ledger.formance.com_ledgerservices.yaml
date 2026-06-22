@@ -1165,7 +1165,7 @@ spec:
                 - message: clusterID is immutable once set
                   rule: oldSelf == '' || self == oldSelf
               coldStorage:
-                description: ColdStorage configuration for period archival.
+                description: ColdStorage configuration for chapter archival.
                 properties:
                   bucketId:
                     description: BucketID is the shared namespace prefix for archives.
@@ -2347,7 +2347,7 @@ spec:
                   coldCache:
                     description: |-
                       ColdCache persistence configuration for cold storage read cache.
-                      Uses a separate volume to avoid filling the data disk when reading archived periods.
+                      Uses a separate volume to avoid filling the data disk when reading archived chapters.
                     properties:
                       accessMode:
                         default: ReadWriteOnce

@@ -177,12 +177,12 @@ func TestParseNaming(t *testing.T) {
 		{"OTEL", "", true}, // case-sensitive: rejects ambiguity at config time
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.in, func(t *testing.T) {
 			t.Parallel()
 			got, err := metrics.ParseNaming(tc.in)
 			if tc.err {
 				require.Error(t, err)
+
 				return
 			}
 			require.NoError(t, err)

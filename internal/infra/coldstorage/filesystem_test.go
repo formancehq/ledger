@@ -33,12 +33,12 @@ func sha256Of(t *testing.T, content string) []byte {
 	return c
 }
 
-func dataPath(dir, bucket string, periodID uint64) string {
-	return filepath.Join(dir, bucket, "periods", strconv.FormatUint(periodID, 10), archiveDataName)
+func dataPath(dir, bucket string, chapterID uint64) string {
+	return filepath.Join(dir, bucket, "chapters", strconv.FormatUint(chapterID, 10), archiveDataName)
 }
 
-func sidecarPath(dir, bucket string, periodID uint64) string {
-	return filepath.Join(dir, bucket, "periods", strconv.FormatUint(periodID, 10), archiveChecksumName)
+func sidecarPath(dir, bucket string, chapterID uint64) string {
+	return filepath.Join(dir, bucket, "chapters", strconv.FormatUint(chapterID, 10), archiveChecksumName)
 }
 
 func TestFilesystemStorage_ArchiveAndExists(t *testing.T) {
@@ -146,17 +146,17 @@ func TestFilesystemStorage_LargeArchive(t *testing.T) {
 	require.True(t, exists)
 }
 
-func TestFilesystemStorage_DifferentPeriods(t *testing.T) {
+func TestFilesystemStorage_DifferentChapters(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	fs := NewFilesystemStorage(dir)
 	ctx := context.Background()
 
-	c1 := sha256Of(t, "period-1")
-	c2 := sha256Of(t, "period-2")
-	require.NoError(t, fs.Archive(ctx, "bucket", 1, strings.NewReader("period-1"), c1))
-	require.NoError(t, fs.Archive(ctx, "bucket", 2, strings.NewReader("period-2"), c2))
+	c1 := sha256Of(t, "chapter-1")
+	c2 := sha256Of(t, "chapter-2")
+	require.NoError(t, fs.Archive(ctx, "bucket", 1, strings.NewReader("chapter-1"), c1))
+	require.NoError(t, fs.Archive(ctx, "bucket", 2, strings.NewReader("chapter-2"), c2))
 
 	exists1, err := fs.Exists(ctx, "bucket", 1)
 	require.NoError(t, err)
@@ -218,24 +218,24 @@ func TestFilesystemStorage_ExistsRequiresBothFiles(t *testing.T) {
 	fs := NewFilesystemStorage(dir)
 	ctx := context.Background()
 
-	periodDir := filepath.Join(dir, "bucket", "periods", "5")
-	require.NoError(t, os.MkdirAll(periodDir, 0o755))
+	chapterDir := filepath.Join(dir, "bucket", "chapters", "5")
+	require.NoError(t, os.MkdirAll(chapterDir, 0o755))
 
 	// Only data, no sidecar
-	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveDataName), []byte("orphan"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(chapterDir, archiveDataName), []byte("orphan"), 0o644))
 	exists, err := fs.Exists(ctx, "bucket", 5)
 	require.NoError(t, err)
 	require.False(t, exists, "data alone must not count as committed")
 
 	// Only sidecar, no data
-	require.NoError(t, os.Remove(filepath.Join(periodDir, archiveDataName)))
-	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveChecksumName), makeChecksum(0x01), 0o644))
+	require.NoError(t, os.Remove(filepath.Join(chapterDir, archiveDataName)))
+	require.NoError(t, os.WriteFile(filepath.Join(chapterDir, archiveChecksumName), makeChecksum(0x01), 0o644))
 	exists, err = fs.Exists(ctx, "bucket", 5)
 	require.NoError(t, err)
 	require.False(t, exists, "sidecar alone must not count as committed")
 
 	// Both present
-	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveDataName), []byte("orphan"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(chapterDir, archiveDataName), []byte("orphan"), 0o644))
 	exists, err = fs.Exists(ctx, "bucket", 5)
 	require.NoError(t, err)
 	require.True(t, exists, "data + sidecar means committed")
@@ -276,10 +276,10 @@ func TestFilesystemStorage_MalformedSidecar(t *testing.T) {
 	fs := NewFilesystemStorage(dir)
 	ctx := context.Background()
 
-	periodDir := filepath.Join(dir, "bucket", "periods", "8")
-	require.NoError(t, os.MkdirAll(periodDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveDataName), []byte("data"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveChecksumName), []byte("not-32-bytes"), 0o644))
+	chapterDir := filepath.Join(dir, "bucket", "chapters", "8")
+	require.NoError(t, os.MkdirAll(chapterDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chapterDir, archiveDataName), []byte("data"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(chapterDir, archiveChecksumName), []byte("not-32-bytes"), 0o644))
 
 	_, err := fs.ExpectedChecksum(ctx, "bucket", 8)
 	require.Error(t, err)
@@ -319,7 +319,7 @@ func TestFilesystemStorage_NoOrphanTmpAfterArchive(t *testing.T) {
 
 	require.NoError(t, fs.Archive(ctx, "bucket", 4, strings.NewReader("x"), makeChecksum(0x07)))
 
-	entries, err := os.ReadDir(filepath.Join(dir, "bucket", "periods", "4"))
+	entries, err := os.ReadDir(filepath.Join(dir, "bucket", "chapters", "4"))
 	require.NoError(t, err)
 	for _, e := range entries {
 		require.False(t, strings.HasSuffix(e.Name(), ".tmp"),

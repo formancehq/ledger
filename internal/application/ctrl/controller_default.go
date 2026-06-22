@@ -1195,14 +1195,14 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 	return entry, nil
 }
 
-// ListPeriods returns a cursor over all non-purged periods from the store.
-func (ctrl *DefaultController) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
+// ListChapters returns a cursor over all non-purged chapters from the store.
+func (ctrl *DefaultController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	c, err := query.ReadPeriods(ctx, handle)
+	c, err := query.ReadChapters(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
 
@@ -1308,7 +1308,7 @@ func (ctrl *DefaultController) ListNumscripts(ctx context.Context, ledger string
 	return query.ReadAllNumscripts(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetName())
 }
 
-func (ctrl *DefaultController) GetPeriodSchedule(_ context.Context) (string, error) {
+func (ctrl *DefaultController) GetChapterSchedule(_ context.Context) (string, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return "", fmt.Errorf("creating read handle: %w", err)
@@ -1316,7 +1316,7 @@ func (ctrl *DefaultController) GetPeriodSchedule(_ context.Context) (string, err
 
 	defer func() { _ = handle.Close() }()
 
-	return query.ReadPeriodSchedule(handle)
+	return query.ReadChapterSchedule(handle)
 }
 
 func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig, error) {

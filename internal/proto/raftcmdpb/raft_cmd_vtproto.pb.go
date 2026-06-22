@@ -121,39 +121,39 @@ func (m *Order_RemoveEventsSink) CloneVT() isOrder_Type {
 	return r
 }
 
-func (m *Order_ClosePeriod) CloneVT() isOrder_Type {
+func (m *Order_CloseChapter) CloneVT() isOrder_Type {
 	if m == nil {
-		return (*Order_ClosePeriod)(nil)
+		return (*Order_CloseChapter)(nil)
 	}
-	r := new(Order_ClosePeriod)
-	r.ClosePeriod = m.ClosePeriod.CloneVT()
+	r := new(Order_CloseChapter)
+	r.CloseChapter = m.CloseChapter.CloneVT()
 	return r
 }
 
-func (m *Order_SealPeriod) CloneVT() isOrder_Type {
+func (m *Order_SealChapter) CloneVT() isOrder_Type {
 	if m == nil {
-		return (*Order_SealPeriod)(nil)
+		return (*Order_SealChapter)(nil)
 	}
-	r := new(Order_SealPeriod)
-	r.SealPeriod = m.SealPeriod.CloneVT()
+	r := new(Order_SealChapter)
+	r.SealChapter = m.SealChapter.CloneVT()
 	return r
 }
 
-func (m *Order_ArchivePeriod) CloneVT() isOrder_Type {
+func (m *Order_ArchiveChapter) CloneVT() isOrder_Type {
 	if m == nil {
-		return (*Order_ArchivePeriod)(nil)
+		return (*Order_ArchiveChapter)(nil)
 	}
-	r := new(Order_ArchivePeriod)
-	r.ArchivePeriod = m.ArchivePeriod.CloneVT()
+	r := new(Order_ArchiveChapter)
+	r.ArchiveChapter = m.ArchiveChapter.CloneVT()
 	return r
 }
 
-func (m *Order_ConfirmArchivePeriod) CloneVT() isOrder_Type {
+func (m *Order_ConfirmArchiveChapter) CloneVT() isOrder_Type {
 	if m == nil {
-		return (*Order_ConfirmArchivePeriod)(nil)
+		return (*Order_ConfirmArchiveChapter)(nil)
 	}
-	r := new(Order_ConfirmArchivePeriod)
-	r.ConfirmArchivePeriod = m.ConfirmArchivePeriod.CloneVT()
+	r := new(Order_ConfirmArchiveChapter)
+	r.ConfirmArchiveChapter = m.ConfirmArchiveChapter.CloneVT()
 	return r
 }
 
@@ -166,21 +166,21 @@ func (m *Order_SetMaintenanceMode) CloneVT() isOrder_Type {
 	return r
 }
 
-func (m *Order_SetPeriodSchedule) CloneVT() isOrder_Type {
+func (m *Order_SetChapterSchedule) CloneVT() isOrder_Type {
 	if m == nil {
-		return (*Order_SetPeriodSchedule)(nil)
+		return (*Order_SetChapterSchedule)(nil)
 	}
-	r := new(Order_SetPeriodSchedule)
-	r.SetPeriodSchedule = m.SetPeriodSchedule.CloneVT()
+	r := new(Order_SetChapterSchedule)
+	r.SetChapterSchedule = m.SetChapterSchedule.CloneVT()
 	return r
 }
 
-func (m *Order_DeletePeriodSchedule) CloneVT() isOrder_Type {
+func (m *Order_DeleteChapterSchedule) CloneVT() isOrder_Type {
 	if m == nil {
-		return (*Order_DeletePeriodSchedule)(nil)
+		return (*Order_DeleteChapterSchedule)(nil)
 	}
-	r := new(Order_DeletePeriodSchedule)
-	r.DeletePeriodSchedule = m.DeletePeriodSchedule.CloneVT()
+	r := new(Order_DeleteChapterSchedule)
+	r.DeleteChapterSchedule = m.DeleteChapterSchedule.CloneVT()
 	return r
 }
 
@@ -447,11 +447,11 @@ func (m *SetSigningConfigOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ClosePeriodOrder) CloneVT() *ClosePeriodOrder {
+func (m *CloseChapterOrder) CloneVT() *CloseChapterOrder {
 	if m == nil {
-		return (*ClosePeriodOrder)(nil)
+		return (*CloseChapterOrder)(nil)
 	}
-	r := new(ClosePeriodOrder)
+	r := new(CloseChapterOrder)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -459,16 +459,16 @@ func (m *ClosePeriodOrder) CloneVT() *ClosePeriodOrder {
 	return r
 }
 
-func (m *ClosePeriodOrder) CloneMessageVT() proto.Message {
+func (m *CloseChapterOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *SealPeriodOrder) CloneVT() *SealPeriodOrder {
+func (m *SealChapterOrder) CloneVT() *SealChapterOrder {
 	if m == nil {
-		return (*SealPeriodOrder)(nil)
+		return (*SealChapterOrder)(nil)
 	}
-	r := new(SealPeriodOrder)
-	r.PeriodId = m.PeriodId
+	r := new(SealChapterOrder)
+	r.ChapterId = m.ChapterId
 	if rhs := m.SealingHash; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -486,16 +486,16 @@ func (m *SealPeriodOrder) CloneVT() *SealPeriodOrder {
 	return r
 }
 
-func (m *SealPeriodOrder) CloneMessageVT() proto.Message {
+func (m *SealChapterOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ArchivePeriodOrder) CloneVT() *ArchivePeriodOrder {
+func (m *ArchiveChapterOrder) CloneVT() *ArchiveChapterOrder {
 	if m == nil {
-		return (*ArchivePeriodOrder)(nil)
+		return (*ArchiveChapterOrder)(nil)
 	}
-	r := new(ArchivePeriodOrder)
-	r.PeriodId = m.PeriodId
+	r := new(ArchiveChapterOrder)
+	r.ChapterId = m.ChapterId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -503,16 +503,16 @@ func (m *ArchivePeriodOrder) CloneVT() *ArchivePeriodOrder {
 	return r
 }
 
-func (m *ArchivePeriodOrder) CloneMessageVT() proto.Message {
+func (m *ArchiveChapterOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ConfirmArchivePeriodOrder) CloneVT() *ConfirmArchivePeriodOrder {
+func (m *ConfirmArchiveChapterOrder) CloneVT() *ConfirmArchiveChapterOrder {
 	if m == nil {
-		return (*ConfirmArchivePeriodOrder)(nil)
+		return (*ConfirmArchiveChapterOrder)(nil)
 	}
-	r := new(ConfirmArchivePeriodOrder)
-	r.PeriodId = m.PeriodId
+	r := new(ConfirmArchiveChapterOrder)
+	r.ChapterId = m.ChapterId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -520,7 +520,7 @@ func (m *ConfirmArchivePeriodOrder) CloneVT() *ConfirmArchivePeriodOrder {
 	return r
 }
 
-func (m *ConfirmArchivePeriodOrder) CloneMessageVT() proto.Message {
+func (m *ConfirmArchiveChapterOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -541,11 +541,11 @@ func (m *SetMaintenanceModeOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *SetPeriodScheduleOrder) CloneVT() *SetPeriodScheduleOrder {
+func (m *SetChapterScheduleOrder) CloneVT() *SetChapterScheduleOrder {
 	if m == nil {
-		return (*SetPeriodScheduleOrder)(nil)
+		return (*SetChapterScheduleOrder)(nil)
 	}
-	r := new(SetPeriodScheduleOrder)
+	r := new(SetChapterScheduleOrder)
 	r.Cron = m.Cron
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -554,15 +554,15 @@ func (m *SetPeriodScheduleOrder) CloneVT() *SetPeriodScheduleOrder {
 	return r
 }
 
-func (m *SetPeriodScheduleOrder) CloneMessageVT() proto.Message {
+func (m *SetChapterScheduleOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DeletePeriodScheduleOrder) CloneVT() *DeletePeriodScheduleOrder {
+func (m *DeleteChapterScheduleOrder) CloneVT() *DeleteChapterScheduleOrder {
 	if m == nil {
-		return (*DeletePeriodScheduleOrder)(nil)
+		return (*DeleteChapterScheduleOrder)(nil)
 	}
-	r := new(DeletePeriodScheduleOrder)
+	r := new(DeleteChapterScheduleOrder)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -570,7 +570,7 @@ func (m *DeletePeriodScheduleOrder) CloneVT() *DeletePeriodScheduleOrder {
 	return r
 }
 
-func (m *DeletePeriodScheduleOrder) CloneMessageVT() proto.Message {
+func (m *DeleteChapterScheduleOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -2459,8 +2459,8 @@ func (this *Order_RemoveEventsSink) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_ClosePeriod) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_ClosePeriod)
+func (this *Order_CloseChapter) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_CloseChapter)
 	if !ok {
 		return false
 	}
@@ -2470,12 +2470,12 @@ func (this *Order_ClosePeriod) EqualVT(thatIface isOrder_Type) bool {
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.ClosePeriod, that.ClosePeriod; p != q {
+	if p, q := this.CloseChapter, that.CloseChapter; p != q {
 		if p == nil {
-			p = &ClosePeriodOrder{}
+			p = &CloseChapterOrder{}
 		}
 		if q == nil {
-			q = &ClosePeriodOrder{}
+			q = &CloseChapterOrder{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -2484,8 +2484,8 @@ func (this *Order_ClosePeriod) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_SealPeriod) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_SealPeriod)
+func (this *Order_SealChapter) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_SealChapter)
 	if !ok {
 		return false
 	}
@@ -2495,12 +2495,12 @@ func (this *Order_SealPeriod) EqualVT(thatIface isOrder_Type) bool {
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.SealPeriod, that.SealPeriod; p != q {
+	if p, q := this.SealChapter, that.SealChapter; p != q {
 		if p == nil {
-			p = &SealPeriodOrder{}
+			p = &SealChapterOrder{}
 		}
 		if q == nil {
-			q = &SealPeriodOrder{}
+			q = &SealChapterOrder{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -2509,8 +2509,8 @@ func (this *Order_SealPeriod) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_ArchivePeriod) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_ArchivePeriod)
+func (this *Order_ArchiveChapter) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_ArchiveChapter)
 	if !ok {
 		return false
 	}
@@ -2520,12 +2520,12 @@ func (this *Order_ArchivePeriod) EqualVT(thatIface isOrder_Type) bool {
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.ArchivePeriod, that.ArchivePeriod; p != q {
+	if p, q := this.ArchiveChapter, that.ArchiveChapter; p != q {
 		if p == nil {
-			p = &ArchivePeriodOrder{}
+			p = &ArchiveChapterOrder{}
 		}
 		if q == nil {
-			q = &ArchivePeriodOrder{}
+			q = &ArchiveChapterOrder{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -2534,8 +2534,8 @@ func (this *Order_ArchivePeriod) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_ConfirmArchivePeriod) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_ConfirmArchivePeriod)
+func (this *Order_ConfirmArchiveChapter) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_ConfirmArchiveChapter)
 	if !ok {
 		return false
 	}
@@ -2545,12 +2545,12 @@ func (this *Order_ConfirmArchivePeriod) EqualVT(thatIface isOrder_Type) bool {
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.ConfirmArchivePeriod, that.ConfirmArchivePeriod; p != q {
+	if p, q := this.ConfirmArchiveChapter, that.ConfirmArchiveChapter; p != q {
 		if p == nil {
-			p = &ConfirmArchivePeriodOrder{}
+			p = &ConfirmArchiveChapterOrder{}
 		}
 		if q == nil {
-			q = &ConfirmArchivePeriodOrder{}
+			q = &ConfirmArchiveChapterOrder{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -2584,8 +2584,8 @@ func (this *Order_SetMaintenanceMode) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_SetPeriodSchedule) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_SetPeriodSchedule)
+func (this *Order_SetChapterSchedule) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_SetChapterSchedule)
 	if !ok {
 		return false
 	}
@@ -2595,12 +2595,12 @@ func (this *Order_SetPeriodSchedule) EqualVT(thatIface isOrder_Type) bool {
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.SetPeriodSchedule, that.SetPeriodSchedule; p != q {
+	if p, q := this.SetChapterSchedule, that.SetChapterSchedule; p != q {
 		if p == nil {
-			p = &SetPeriodScheduleOrder{}
+			p = &SetChapterScheduleOrder{}
 		}
 		if q == nil {
-			q = &SetPeriodScheduleOrder{}
+			q = &SetChapterScheduleOrder{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -2609,8 +2609,8 @@ func (this *Order_SetPeriodSchedule) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
-func (this *Order_DeletePeriodSchedule) EqualVT(thatIface isOrder_Type) bool {
-	that, ok := thatIface.(*Order_DeletePeriodSchedule)
+func (this *Order_DeleteChapterSchedule) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_DeleteChapterSchedule)
 	if !ok {
 		return false
 	}
@@ -2620,12 +2620,12 @@ func (this *Order_DeletePeriodSchedule) EqualVT(thatIface isOrder_Type) bool {
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.DeletePeriodSchedule, that.DeletePeriodSchedule; p != q {
+	if p, q := this.DeleteChapterSchedule, that.DeleteChapterSchedule; p != q {
 		if p == nil {
-			p = &DeletePeriodScheduleOrder{}
+			p = &DeleteChapterScheduleOrder{}
 		}
 		if q == nil {
-			q = &DeletePeriodScheduleOrder{}
+			q = &DeleteChapterScheduleOrder{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -3129,7 +3129,7 @@ func (this *SetSigningConfigOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *ClosePeriodOrder) EqualVT(that *ClosePeriodOrder) bool {
+func (this *CloseChapterOrder) EqualVT(that *CloseChapterOrder) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -3138,20 +3138,20 @@ func (this *ClosePeriodOrder) EqualVT(that *ClosePeriodOrder) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ClosePeriodOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ClosePeriodOrder)
+func (this *CloseChapterOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CloseChapterOrder)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *SealPeriodOrder) EqualVT(that *SealPeriodOrder) bool {
+func (this *SealChapterOrder) EqualVT(that *SealChapterOrder) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.PeriodId != that.PeriodId {
+	if this.ChapterId != that.ChapterId {
 		return false
 	}
 	if string(this.SealingHash) != string(that.SealingHash) {
@@ -3163,46 +3163,46 @@ func (this *SealPeriodOrder) EqualVT(that *SealPeriodOrder) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *SealPeriodOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SealPeriodOrder)
+func (this *SealChapterOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SealChapterOrder)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *ArchivePeriodOrder) EqualVT(that *ArchivePeriodOrder) bool {
+func (this *ArchiveChapterOrder) EqualVT(that *ArchiveChapterOrder) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.PeriodId != that.PeriodId {
+	if this.ChapterId != that.ChapterId {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ArchivePeriodOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ArchivePeriodOrder)
+func (this *ArchiveChapterOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ArchiveChapterOrder)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *ConfirmArchivePeriodOrder) EqualVT(that *ConfirmArchivePeriodOrder) bool {
+func (this *ConfirmArchiveChapterOrder) EqualVT(that *ConfirmArchiveChapterOrder) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.PeriodId != that.PeriodId {
+	if this.ChapterId != that.ChapterId {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ConfirmArchivePeriodOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ConfirmArchivePeriodOrder)
+func (this *ConfirmArchiveChapterOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ConfirmArchiveChapterOrder)
 	if !ok {
 		return false
 	}
@@ -3227,7 +3227,7 @@ func (this *SetMaintenanceModeOrder) EqualMessageVT(thatMsg proto.Message) bool 
 	}
 	return this.EqualVT(that)
 }
-func (this *SetPeriodScheduleOrder) EqualVT(that *SetPeriodScheduleOrder) bool {
+func (this *SetChapterScheduleOrder) EqualVT(that *SetChapterScheduleOrder) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -3239,14 +3239,14 @@ func (this *SetPeriodScheduleOrder) EqualVT(that *SetPeriodScheduleOrder) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *SetPeriodScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SetPeriodScheduleOrder)
+func (this *SetChapterScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SetChapterScheduleOrder)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *DeletePeriodScheduleOrder) EqualVT(that *DeletePeriodScheduleOrder) bool {
+func (this *DeleteChapterScheduleOrder) EqualVT(that *DeleteChapterScheduleOrder) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -3255,8 +3255,8 @@ func (this *DeletePeriodScheduleOrder) EqualVT(that *DeletePeriodScheduleOrder) 
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *DeletePeriodScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DeletePeriodScheduleOrder)
+func (this *DeleteChapterScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DeleteChapterScheduleOrder)
 	if !ok {
 		return false
 	}
@@ -6171,15 +6171,15 @@ func (m *Order_RemoveEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_ClosePeriod) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Order_CloseChapter) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_ClosePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Order_CloseChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.ClosePeriod != nil {
-		size, err := m.ClosePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.CloseChapter != nil {
+		size, err := m.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6190,15 +6190,15 @@ func (m *Order_ClosePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_SealPeriod) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Order_SealChapter) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_SealPeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Order_SealChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.SealPeriod != nil {
-		size, err := m.SealPeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.SealChapter != nil {
+		size, err := m.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6209,15 +6209,15 @@ func (m *Order_SealPeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_ArchivePeriod) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Order_ArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_ArchivePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Order_ArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.ArchivePeriod != nil {
-		size, err := m.ArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.ArchiveChapter != nil {
+		size, err := m.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6228,15 +6228,15 @@ func (m *Order_ArchivePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_ConfirmArchivePeriod) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Order_ConfirmArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_ConfirmArchivePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Order_ConfirmArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.ConfirmArchivePeriod != nil {
-		size, err := m.ConfirmArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.ConfirmArchiveChapter != nil {
+		size, err := m.ConfirmArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6266,15 +6266,15 @@ func (m *Order_SetMaintenanceMode) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_SetPeriodSchedule) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Order_SetChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_SetPeriodSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Order_SetChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.SetPeriodSchedule != nil {
-		size, err := m.SetPeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+	if m.SetChapterSchedule != nil {
+		size, err := m.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6287,15 +6287,15 @@ func (m *Order_SetPeriodSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Order_DeletePeriodSchedule) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Order_DeleteChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Order_DeletePeriodSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Order_DeleteChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.DeletePeriodSchedule != nil {
-		size, err := m.DeletePeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+	if m.DeleteChapterSchedule != nil {
+		size, err := m.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6958,7 +6958,7 @@ func (m *SetSigningConfigOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *ClosePeriodOrder) MarshalVT() (dAtA []byte, err error) {
+func (m *CloseChapterOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -6971,12 +6971,12 @@ func (m *ClosePeriodOrder) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ClosePeriodOrder) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CloseChapterOrder) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ClosePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CloseChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -6991,7 +6991,7 @@ func (m *ClosePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SealPeriodOrder) MarshalVT() (dAtA []byte, err error) {
+func (m *SealChapterOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -7004,12 +7004,12 @@ func (m *SealPeriodOrder) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SealPeriodOrder) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SealChapterOrder) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SealPeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SealChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -7035,16 +7035,16 @@ func (m *SealPeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.PeriodId != 0 {
+	if m.ChapterId != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PeriodId))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
 		i--
 		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *ArchivePeriodOrder) MarshalVT() (dAtA []byte, err error) {
+func (m *ArchiveChapterOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -7057,12 +7057,12 @@ func (m *ArchivePeriodOrder) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ArchivePeriodOrder) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ArchiveChapterOrder) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ArchivePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ArchiveChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -7074,16 +7074,16 @@ func (m *ArchivePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.PeriodId != 0 {
+	if m.ChapterId != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PeriodId))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
 		i--
 		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *ConfirmArchivePeriodOrder) MarshalVT() (dAtA []byte, err error) {
+func (m *ConfirmArchiveChapterOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -7096,12 +7096,12 @@ func (m *ConfirmArchivePeriodOrder) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ConfirmArchivePeriodOrder) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ConfirmArchiveChapterOrder) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ConfirmArchivePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ConfirmArchiveChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -7113,9 +7113,9 @@ func (m *ConfirmArchivePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.PeriodId != 0 {
+	if m.ChapterId != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PeriodId))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
 		i--
 		dAtA[i] = 0x9
 	}
@@ -7165,7 +7165,7 @@ func (m *SetMaintenanceModeOrder) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	return len(dAtA) - i, nil
 }
 
-func (m *SetPeriodScheduleOrder) MarshalVT() (dAtA []byte, err error) {
+func (m *SetChapterScheduleOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -7178,12 +7178,12 @@ func (m *SetPeriodScheduleOrder) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SetPeriodScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SetChapterScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SetPeriodScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SetChapterScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -7205,7 +7205,7 @@ func (m *SetPeriodScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	return len(dAtA) - i, nil
 }
 
-func (m *DeletePeriodScheduleOrder) MarshalVT() (dAtA []byte, err error) {
+func (m *DeleteChapterScheduleOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -7218,12 +7218,12 @@ func (m *DeletePeriodScheduleOrder) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DeletePeriodScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DeleteChapterScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DeletePeriodScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DeleteChapterScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -11685,50 +11685,50 @@ func (m *Order_RemoveEventsSink) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_ClosePeriod) SizeVT() (n int) {
+func (m *Order_CloseChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.ClosePeriod != nil {
-		l = m.ClosePeriod.SizeVT()
+	if m.CloseChapter != nil {
+		l = m.CloseChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *Order_SealPeriod) SizeVT() (n int) {
+func (m *Order_SealChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.SealPeriod != nil {
-		l = m.SealPeriod.SizeVT()
+	if m.SealChapter != nil {
+		l = m.SealChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *Order_ArchivePeriod) SizeVT() (n int) {
+func (m *Order_ArchiveChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.ArchivePeriod != nil {
-		l = m.ArchivePeriod.SizeVT()
+	if m.ArchiveChapter != nil {
+		l = m.ArchiveChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *Order_ConfirmArchivePeriod) SizeVT() (n int) {
+func (m *Order_ConfirmArchiveChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.ConfirmArchivePeriod != nil {
-		l = m.ConfirmArchivePeriod.SizeVT()
+	if m.ConfirmArchiveChapter != nil {
+		l = m.ConfirmArchiveChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -11745,26 +11745,26 @@ func (m *Order_SetMaintenanceMode) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Order_SetPeriodSchedule) SizeVT() (n int) {
+func (m *Order_SetChapterSchedule) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.SetPeriodSchedule != nil {
-		l = m.SetPeriodSchedule.SizeVT()
+	if m.SetChapterSchedule != nil {
+		l = m.SetChapterSchedule.SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *Order_DeletePeriodSchedule) SizeVT() (n int) {
+func (m *Order_DeleteChapterSchedule) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.DeletePeriodSchedule != nil {
-		l = m.DeletePeriodSchedule.SizeVT()
+	if m.DeleteChapterSchedule != nil {
+		l = m.DeleteChapterSchedule.SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -12059,7 +12059,7 @@ func (m *SetSigningConfigOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *ClosePeriodOrder) SizeVT() (n int) {
+func (m *CloseChapterOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -12069,13 +12069,13 @@ func (m *ClosePeriodOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *SealPeriodOrder) SizeVT() (n int) {
+func (m *SealChapterOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.PeriodId != 0 {
+	if m.ChapterId != 0 {
 		n += 9
 	}
 	l = len(m.SealingHash)
@@ -12090,26 +12090,26 @@ func (m *SealPeriodOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *ArchivePeriodOrder) SizeVT() (n int) {
+func (m *ArchiveChapterOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.PeriodId != 0 {
+	if m.ChapterId != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *ConfirmArchivePeriodOrder) SizeVT() (n int) {
+func (m *ConfirmArchiveChapterOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.PeriodId != 0 {
+	if m.ChapterId != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -12129,7 +12129,7 @@ func (m *SetMaintenanceModeOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *SetPeriodScheduleOrder) SizeVT() (n int) {
+func (m *SetChapterScheduleOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -12143,7 +12143,7 @@ func (m *SetPeriodScheduleOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *DeletePeriodScheduleOrder) SizeVT() (n int) {
+func (m *DeleteChapterScheduleOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -14288,7 +14288,7 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 11:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ClosePeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field CloseChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -14315,21 +14315,21 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*Order_ClosePeriod); ok {
-				if err := oneof.ClosePeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*Order_CloseChapter); ok {
+				if err := oneof.CloseChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &ClosePeriodOrder{}
+				v := &CloseChapterOrder{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &Order_ClosePeriod{ClosePeriod: v}
+				m.Type = &Order_CloseChapter{CloseChapter: v}
 			}
 			iNdEx = postIndex
 		case 12:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SealPeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field SealChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -14356,21 +14356,21 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*Order_SealPeriod); ok {
-				if err := oneof.SealPeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*Order_SealChapter); ok {
+				if err := oneof.SealChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &SealPeriodOrder{}
+				v := &SealChapterOrder{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &Order_SealPeriod{SealPeriod: v}
+				m.Type = &Order_SealChapter{SealChapter: v}
 			}
 			iNdEx = postIndex
 		case 13:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ArchivePeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ArchiveChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -14397,21 +14397,21 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*Order_ArchivePeriod); ok {
-				if err := oneof.ArchivePeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*Order_ArchiveChapter); ok {
+				if err := oneof.ArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &ArchivePeriodOrder{}
+				v := &ArchiveChapterOrder{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &Order_ArchivePeriod{ArchivePeriod: v}
+				m.Type = &Order_ArchiveChapter{ArchiveChapter: v}
 			}
 			iNdEx = postIndex
 		case 14:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConfirmArchivePeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ConfirmArchiveChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -14438,16 +14438,16 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*Order_ConfirmArchivePeriod); ok {
-				if err := oneof.ConfirmArchivePeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*Order_ConfirmArchiveChapter); ok {
+				if err := oneof.ConfirmArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &ConfirmArchivePeriodOrder{}
+				v := &ConfirmArchiveChapterOrder{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &Order_ConfirmArchivePeriod{ConfirmArchivePeriod: v}
+				m.Type = &Order_ConfirmArchiveChapter{ConfirmArchiveChapter: v}
 			}
 			iNdEx = postIndex
 		case 15:
@@ -14493,7 +14493,7 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 16:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetPeriodSchedule", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field SetChapterSchedule", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -14520,21 +14520,21 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*Order_SetPeriodSchedule); ok {
-				if err := oneof.SetPeriodSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*Order_SetChapterSchedule); ok {
+				if err := oneof.SetChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &SetPeriodScheduleOrder{}
+				v := &SetChapterScheduleOrder{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &Order_SetPeriodSchedule{SetPeriodSchedule: v}
+				m.Type = &Order_SetChapterSchedule{SetChapterSchedule: v}
 			}
 			iNdEx = postIndex
 		case 17:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeletePeriodSchedule", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteChapterSchedule", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -14561,16 +14561,16 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*Order_DeletePeriodSchedule); ok {
-				if err := oneof.DeletePeriodSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*Order_DeleteChapterSchedule); ok {
+				if err := oneof.DeleteChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &DeletePeriodScheduleOrder{}
+				v := &DeleteChapterScheduleOrder{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &Order_DeletePeriodSchedule{DeletePeriodSchedule: v}
+				m.Type = &Order_DeleteChapterSchedule{DeleteChapterSchedule: v}
 			}
 			iNdEx = postIndex
 		case 19:
@@ -16008,7 +16008,7 @@ func (m *SetSigningConfigOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ClosePeriodOrder) UnmarshalVT(dAtA []byte) error {
+func (m *CloseChapterOrder) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -16031,10 +16031,10 @@ func (m *ClosePeriodOrder) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ClosePeriodOrder: wiretype end group for non-group")
+			return fmt.Errorf("proto: CloseChapterOrder: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ClosePeriodOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CloseChapterOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -16059,7 +16059,7 @@ func (m *ClosePeriodOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SealPeriodOrder) UnmarshalVT(dAtA []byte) error {
+func (m *SealChapterOrder) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -16082,21 +16082,21 @@ func (m *SealPeriodOrder) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SealPeriodOrder: wiretype end group for non-group")
+			return fmt.Errorf("proto: SealChapterOrder: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SealPeriodOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SealChapterOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ChapterId", wireType)
 			}
-			m.PeriodId = 0
+			m.ChapterId = 0
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.PeriodId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 2:
 			if wireType != 2 {
@@ -16188,7 +16188,7 @@ func (m *SealPeriodOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ArchivePeriodOrder) UnmarshalVT(dAtA []byte) error {
+func (m *ArchiveChapterOrder) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -16211,21 +16211,21 @@ func (m *ArchivePeriodOrder) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ArchivePeriodOrder: wiretype end group for non-group")
+			return fmt.Errorf("proto: ArchiveChapterOrder: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ArchivePeriodOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ArchiveChapterOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ChapterId", wireType)
 			}
-			m.PeriodId = 0
+			m.ChapterId = 0
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.PeriodId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex
@@ -16249,7 +16249,7 @@ func (m *ArchivePeriodOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ConfirmArchivePeriodOrder) UnmarshalVT(dAtA []byte) error {
+func (m *ConfirmArchiveChapterOrder) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -16272,21 +16272,21 @@ func (m *ConfirmArchivePeriodOrder) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ConfirmArchivePeriodOrder: wiretype end group for non-group")
+			return fmt.Errorf("proto: ConfirmArchiveChapterOrder: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConfirmArchivePeriodOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ConfirmArchiveChapterOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ChapterId", wireType)
 			}
-			m.PeriodId = 0
+			m.ChapterId = 0
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.PeriodId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex
@@ -16381,7 +16381,7 @@ func (m *SetMaintenanceModeOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SetPeriodScheduleOrder) UnmarshalVT(dAtA []byte) error {
+func (m *SetChapterScheduleOrder) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -16404,10 +16404,10 @@ func (m *SetPeriodScheduleOrder) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SetPeriodScheduleOrder: wiretype end group for non-group")
+			return fmt.Errorf("proto: SetChapterScheduleOrder: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SetPeriodScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SetChapterScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -16464,7 +16464,7 @@ func (m *SetPeriodScheduleOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DeletePeriodScheduleOrder) UnmarshalVT(dAtA []byte) error {
+func (m *DeleteChapterScheduleOrder) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -16487,10 +16487,10 @@ func (m *DeletePeriodScheduleOrder) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DeletePeriodScheduleOrder: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeleteChapterScheduleOrder: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeletePeriodScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeleteChapterScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:

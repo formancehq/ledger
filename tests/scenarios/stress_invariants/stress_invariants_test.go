@@ -96,9 +96,9 @@ func TestStressInvariants(t *testing.T) {
 				}
 			}
 
-			// Every 80 trades: close period + check double-entry
+			// Every 80 trades: close chapter + check double-entry
 			if (i+1)%80 == 0 {
-				scenariotest.ClosePeriodAndWait(t, ctx, client, "period close timed out at trade %d", i)
+				scenariotest.CloseChapterAndWait(t, ctx, client, "chapter close timed out at trade %d", i)
 				scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 			}
 		}

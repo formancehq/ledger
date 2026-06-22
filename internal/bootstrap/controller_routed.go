@@ -29,7 +29,7 @@ type RoutedController struct {
 }
 
 // getLeaderCtrl returns a controller that talks to the leader.
-// Used only for operations that must execute on the leader (Apply, ListPeriods).
+// Used only for operations that must execute on the leader (Apply, ListChapters).
 func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 	if b.IsLeader() {
 		return b.localController, nil
@@ -127,14 +127,14 @@ func (b *RoutedController) Barrier(ctx context.Context) (uint64, error) {
 
 // --- Read operations requiring leader state: forwarded to leader ---
 
-func (b *RoutedController) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
-	// Period state is in-memory on the leader — route to leader
+func (b *RoutedController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
+	// Chapter state is in-memory on the leader — route to leader
 	leaderCtrl, err := b.getLeaderCtrl()
 	if err != nil {
 		return nil, err
 	}
 
-	return leaderCtrl.ListPeriods(ctx)
+	return leaderCtrl.ListChapters(ctx)
 }
 
 // --- Linearizable reads: ReadIndex + local read ---
@@ -361,13 +361,13 @@ func (b *RoutedController) ListNumscripts(ctx context.Context, ledger string) ([
 	return c.ListNumscripts(ctx, ledger)
 }
 
-func (b *RoutedController) GetPeriodSchedule(ctx context.Context) (string, error) {
+func (b *RoutedController) GetChapterSchedule(ctx context.Context) (string, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	return c.GetPeriodSchedule(ctx)
+	return c.GetChapterSchedule(ctx)
 }
 
 func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {

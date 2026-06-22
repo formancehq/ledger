@@ -31,9 +31,9 @@ func newReceiptTestStore(t *testing.T) *dal.Store {
 }
 
 // seedTransaction writes a ledger, a transaction-state attribute, and the
-// transaction's creation log (carrying periodID) into store, so that
+// transaction's creation log (carrying chapterID) into store, so that
 // computeTransactionReceipt can resolve a receipt by reading only this store.
-func seedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, txID, logSeq, periodID uint64, tx *commonpb.Transaction) {
+func seedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, txID, logSeq, chapterID uint64, tx *commonpb.Transaction) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -55,7 +55,7 @@ func seedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attribute
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
 									Transaction: tx,
-									PeriodId:    periodID,
+									ChapterId:   chapterID,
 								},
 							},
 						},
@@ -69,17 +69,17 @@ func seedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attribute
 }
 
 // A checkpoint read must compute its receipt from the checkpoint store, not the
-// live store. Here the live store records a DIFFERENT period for the same
-// transaction; the receipt must reflect the reader (checkpoint) period.
+// live store. Here the live store records a DIFFERENT chapter for the same
+// transaction; the receipt must reflect the reader (checkpoint) chapter.
 func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) {
 	t.Parallel()
 
 	const (
-		ledger             = "L"
-		txID               = uint64(1)
-		logSeq             = uint64(1)
-		checkpointPeriodID = uint64(7)
-		liveStorePeriodID  = uint64(99)
+		ledger              = "L"
+		txID                = uint64(1)
+		logSeq              = uint64(1)
+		checkpointChapterID = uint64(7)
+		liveStoreChapterID  = uint64(99)
 	)
 
 	attrs := attributes.New()
@@ -89,11 +89,11 @@ func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) 
 	}
 
 	checkpointStore := newReceiptTestStore(t)
-	seedTransaction(t, checkpointStore, attrs, ledger, txID, logSeq, checkpointPeriodID, tx)
+	seedTransaction(t, checkpointStore, attrs, ledger, txID, logSeq, checkpointChapterID, tx)
 
-	// Live store holds the same transaction but under a different period.
+	// Live store holds the same transaction but under a different chapter.
 	liveStore := newReceiptTestStore(t)
-	seedTransaction(t, liveStore, attrs, ledger, txID, logSeq, liveStorePeriodID, tx)
+	seedTransaction(t, liveStore, attrs, ledger, txID, logSeq, liveStoreChapterID, tx)
 
 	signer := receipt.NewSigner([]byte("test-receipt-signing-key-32bytes!"))
 	impl := &BucketServiceServerImpl{
@@ -108,8 +108,8 @@ func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) 
 
 	claims, err := signer.Verify(token)
 	require.NoError(t, err)
-	require.Equal(t, checkpointPeriodID, claims.PeriodID,
-		"receipt must use the period from the reader (checkpoint), not the live store")
+	require.Equal(t, checkpointChapterID, claims.ChapterID,
+		"receipt must use the chapter from the reader (checkpoint), not the live store")
 }
 
 // A genuine reader/lookup error (here: the ledger is absent from the reader)

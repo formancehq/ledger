@@ -790,33 +790,33 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x42
 		}
-	case *LogPayload_ClosePeriod:
-		if v.ClosePeriod != nil {
-			size, _ := v.ClosePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	case *LogPayload_CloseChapter:
+		if v.CloseChapter != nil {
+			size, _ := v.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x4a
 		}
-	case *LogPayload_SealPeriod:
-		if v.SealPeriod != nil {
-			size, _ := v.SealPeriod.MarshalToSizedBufferVT(dAtA[:i])
+	case *LogPayload_SealChapter:
+		if v.SealChapter != nil {
+			size, _ := v.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x52
 		}
-	case *LogPayload_ArchivePeriod:
-		if v.ArchivePeriod != nil {
-			size, _ := v.ArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	case *LogPayload_ArchiveChapter:
+		if v.ArchiveChapter != nil {
+			size, _ := v.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x5a
 		}
-	case *LogPayload_ConfirmArchivePeriod:
-		if v.ConfirmArchivePeriod != nil {
-			size, _ := v.ConfirmArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	case *LogPayload_ConfirmArchiveChapter:
+		if v.ConfirmArchiveChapter != nil {
+			size, _ := v.ConfirmArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -830,17 +830,17 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x6a
 		}
-	case *LogPayload_SetPeriodSchedule:
-		if v.SetPeriodSchedule != nil {
-			size, _ := v.SetPeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+	case *LogPayload_SetChapterSchedule:
+		if v.SetChapterSchedule != nil {
+			size, _ := v.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x72
 		}
-	case *LogPayload_DeletePeriodSchedule:
-		if v.DeletePeriodSchedule != nil {
-			size, _ := v.DeletePeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+	case *LogPayload_DeleteChapterSchedule:
+		if v.DeleteChapterSchedule != nil {
+			size, _ := v.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -1091,7 +1091,7 @@ func (m *PersistedClusterState) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *SetPeriodScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SetChapterScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1102,7 +1102,7 @@ func (m *SetPeriodScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *DeletedPeriodScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *DeletedChapterScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1771,9 +1771,9 @@ func (m *CreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.PeriodId != 0 {
+	if m.ChapterId != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PeriodId))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
 		i--
 		dAtA[i] = 0x19
 	}
@@ -1948,7 +1948,7 @@ func (m *RemovedMetadataFieldTypeLog) MarshalDeterministicVT(dAtA []byte) []byte
 	return append(dAtA, b...)
 }
 
-func (m *Period) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *Chapter) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1959,7 +1959,7 @@ func (m *Period) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ClosedPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *ClosedChapterLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1970,7 +1970,7 @@ func (m *ClosedPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *SealedPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SealedChapterLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1981,7 +1981,7 @@ func (m *SealedPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ArchivedPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *ArchivedChapterLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1992,7 +1992,7 @@ func (m *ArchivedPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ConfirmedArchivePeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *ConfirmedArchiveChapterLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

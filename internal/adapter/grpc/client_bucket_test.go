@@ -389,36 +389,36 @@ func TestGetAuditEntry_Error(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestListPeriods_Success(t *testing.T) {
+func TestListChapters_Success(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.Period](ctrl, []*commonpb.Period{
+	stream := newRecvStream[commonpb.Chapter](ctrl, []*commonpb.Chapter{
 		{Id: 1},
 	}, nil)
-	mock.EXPECT().ListPeriods(gomock.Any(), gomock.Any()).Return(stream, nil)
+	mock.EXPECT().ListChapters(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
-	cursor, err := client.ListPeriods(context.Background())
+	cursor, err := client.ListChapters(context.Background())
 	require.NoError(t, err)
 
-	period, err := cursor.Next()
+	chapter, err := cursor.Next()
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), period.GetId())
+	require.Equal(t, uint64(1), chapter.GetId())
 }
 
-func TestListPeriods_StreamError(t *testing.T) {
+func TestListChapters_StreamError(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().ListPeriods(gomock.Any(), gomock.Any()).Return(nil, errors.New("periods error"))
+	mock.EXPECT().ListChapters(gomock.Any(), gomock.Any()).Return(nil, errors.New("chapters error"))
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.ListPeriods(context.Background())
+	_, err := client.ListChapters(context.Background())
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "gRPC ListPeriods call failed")
+	require.Contains(t, err.Error(), "gRPC ListChapters call failed")
 }
 
 func TestListSigningKeys_Success(t *testing.T) {

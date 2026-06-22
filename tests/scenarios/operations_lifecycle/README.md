@@ -2,7 +2,7 @@
 
 ## Use Case
 
-Tests administrative and operational features of the ledger: maintenance mode, audit logging, period archiving, period scheduling, Ed25519 request signing, and ledger deletion. Focuses on ops tooling rather than financial logic.
+Tests administrative and operational features of the ledger: maintenance mode, audit logging, chapter archiving, chapter scheduling, Ed25519 request signing, and ledger deletion. Focuses on ops tooling rather than financial logic.
 
 ## Ledger
 
@@ -51,21 +51,21 @@ Primary ledger: `ops-test`. Asset: `USD/2` (cents). A secondary `temp-ledger` is
 
 Fetch individual audit entries by sequence number. Verify each entry has an outcome (success or failure).
 
-### Phase 3c: Archive Period + CheckStore (Regression)
+### Phase 3c: Archive Chapter + CheckStore (Regression)
 
 Tests that `CheckStore` works correctly after log purging:
 
 1. Create 3 more transactions (deposits to `ops:{1..3}`)
-2. **Close period** -> CLOSED status
-3. **Archive period** -> ARCHIVED status (logs purged from Pebble)
-4. **CheckStore**: must pass with no errors. The hash chain must correctly skip purged log ranges by reading archived period metadata (`start_sequence`, `close_sequence`, `last_log_hash`).
+2. **Close chapter** -> CLOSED status
+3. **Archive chapter** -> ARCHIVED status (logs purged from Pebble)
+4. **CheckStore**: must pass with no errors. The hash chain must correctly skip purged log ranges by reading archived chapter metadata (`start_sequence`, `close_sequence`, `last_log_hash`).
 
-### Phase 4: Period Schedule
+### Phase 4: Chapter Schedule
 
 1. **Set cron**: `0 0 * * *` (daily midnight)
-2. **Verify**: `GetPeriodSchedule` returns `"0 0 * * *"`
-3. **Delete**: `DeletePeriodSchedule`
-4. **Verify empty**: `GetPeriodSchedule` returns `""`
+2. **Verify**: `GetChapterSchedule` returns `"0 0 * * *"`
+3. **Delete**: `DeleteChapterSchedule`
+4. **Verify empty**: `GetChapterSchedule` returns `""`
 
 ### Phase 5: Request Signing (Ed25519 Key Lifecycle)
 
@@ -93,7 +93,7 @@ Tests that `CheckStore` works correctly after log purging:
 
 ### Post-Test Phases
 
-1. **StoreCheck** -- hash chain integrity (accounts for archived period)
+1. **StoreCheck** -- hash chain integrity (accounts for archived chapter)
 2. **Backup** -- full backup
 3. **Restart + Verify** -- re-verify double-entry + no negative balances
 4. **Backup-Restore + Verify** -- restore on fresh node, re-verify

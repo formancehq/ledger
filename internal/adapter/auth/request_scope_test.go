@@ -41,13 +41,13 @@ func TestRequiredScopeForRequest_OpsWrite(t *testing.T) {
 		{"SetSigningConfig", &servicepb.Request{Type: &servicepb.Request_SetSigningConfig{}}},
 		{"AddEventsSink", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{}}},
 		{"RemoveEventsSink", &servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{}}},
-		{"ClosePeriod", &servicepb.Request{Type: &servicepb.Request_ClosePeriod{}}},
-		{"SealPeriod", &servicepb.Request{Type: &servicepb.Request_SealPeriod{}}},
-		{"ArchivePeriod", &servicepb.Request{Type: &servicepb.Request_ArchivePeriod{}}},
-		{"ConfirmArchivePeriod", &servicepb.Request{Type: &servicepb.Request_ConfirmArchivePeriod{}}},
+		{"CloseChapter", &servicepb.Request{Type: &servicepb.Request_CloseChapter{}}},
+		{"SealChapter", &servicepb.Request{Type: &servicepb.Request_SealChapter{}}},
+		{"ArchiveChapter", &servicepb.Request{Type: &servicepb.Request_ArchiveChapter{}}},
+		{"ConfirmArchiveChapter", &servicepb.Request{Type: &servicepb.Request_ConfirmArchiveChapter{}}},
 		{"SetMaintenanceMode", &servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{}}},
-		{"SetPeriodSchedule", &servicepb.Request{Type: &servicepb.Request_SetPeriodSchedule{}}},
-		{"DeletePeriodSchedule", &servicepb.Request{Type: &servicepb.Request_DeletePeriodSchedule{}}},
+		{"SetChapterSchedule", &servicepb.Request{Type: &servicepb.Request_SetChapterSchedule{}}},
+		{"DeleteChapterSchedule", &servicepb.Request{Type: &servicepb.Request_DeleteChapterSchedule{}}},
 	}
 
 	for _, tc := range opsWriteRequests {

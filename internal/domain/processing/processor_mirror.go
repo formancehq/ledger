@@ -197,9 +197,9 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 		}
 	}
 
-	var periodID uint64
-	if p, ok := s.GetCurrentOpenPeriod(); ok {
-		periodID = p.GetId()
+	var chapterID uint64
+	if p, ok := s.GetCurrentOpenChapter(); ok {
+		chapterID = p.GetId()
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -215,7 +215,7 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 					UpdatedAt:  s.GetDate(),
 				},
 				AccountMetadata:         accountMetadata,
-				PeriodId:                periodID,
+				ChapterId:               chapterID,
 				PreviousAccountMetadata: previousAccountMetadata,
 			},
 		},

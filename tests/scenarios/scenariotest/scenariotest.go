@@ -189,20 +189,20 @@ func RunPostTestPhases(t *testing.T, sc *ScenarioCluster, verifyFn func(t *testi
 }
 
 // ---------------------------------------------------------------------------
-// Period close helper
+// Chapter close helper
 // ---------------------------------------------------------------------------
 
-// ClosePeriodAndWait closes the current period and waits for a new OPEN period to appear.
-func ClosePeriodAndWait(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, msgAndArgs ...interface{}) {
+// CloseChapterAndWait closes the current chapter and waits for a new OPEN chapter to appear.
+func CloseChapterAndWait(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, msgAndArgs ...interface{}) {
 	t.Helper()
 
-	ApplyActions(t, ctx, client, actions.ClosePeriodAction())
+	ApplyActions(t, ctx, client, actions.CloseChapterAction())
 	require.Eventually(t, func() bool {
-		periods, err := actions.ListAllPeriods(ctx, client)
+		chapters, err := actions.ListAllChapters(ctx, client)
 		if err != nil {
 			return false
 		}
-		return len(periods) >= 2 && periods[len(periods)-1].Status == commonpb.PeriodStatus_PERIOD_OPEN
+		return len(chapters) >= 2 && chapters[len(chapters)-1].Status == commonpb.ChapterStatus_CHAPTER_OPEN
 	}, 10*time.Second, 200*time.Millisecond, msgAndArgs...)
 }
 

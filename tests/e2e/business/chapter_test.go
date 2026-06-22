@@ -16,34 +16,34 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var _ = Describe("Periods", Ordered, func() {
+var _ = Describe("Chapters", Ordered, func() {
 
 	Context("Auto-bootstrap", Ordered, func() {
 		BeforeAll(func() {
-			// Create a ledger and a transaction to trigger period auto-bootstrap
+			// Create a ledger and a transaction to trigger chapter auto-bootstrap
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("period-test", nil)),
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("chapter-test", nil)),
 			})
 			Expect(err).To(Succeed())
 		})
 
-		It("Should have at least one OPEN period after first proposal", func() {
-			periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
+		It("Should have at least one OPEN chapter after first proposal", func() {
+			chapters, err := actions.ListAllChapters(sharedCtx, sharedClient)
 			Expect(err).To(Succeed())
-			Expect(periods).NotTo(BeEmpty())
-			// The last period should always be OPEN
-			lastPeriod := periods[len(periods)-1]
-			Expect(lastPeriod.Status).To(Equal(commonpb.PeriodStatus_PERIOD_OPEN))
+			Expect(chapters).NotTo(BeEmpty())
+			// The last chapter should always be OPEN
+			lastChapter := chapters[len(chapters)-1]
+			Expect(lastChapter.Status).To(Equal(commonpb.ChapterStatus_CHAPTER_OPEN))
 		})
 	})
 
-	Context("Close period", Ordered, func() {
-		It("Should close the current period and open a new one", func() {
+	Context("Close chapter", Ordered, func() {
+		It("Should close the current chapter and open a new one", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Envelopes: servicepb.UnsignedEnvelopes(
 					&servicepb.Request{
-						Type: &servicepb.Request_ClosePeriod{
-							ClosePeriod: &servicepb.ClosePeriodRequest{},
+						Type: &servicepb.Request_CloseChapter{
+							CloseChapter: &servicepb.CloseChapterRequest{},
 						},
 					},
 				),
@@ -51,69 +51,69 @@ var _ = Describe("Periods", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
-			closePeriodLog := resp.Logs[0].Payload.GetClosePeriod()
-			Expect(closePeriodLog).NotTo(BeNil())
-			Expect(closePeriodLog.ClosedPeriod.Status).To(Equal(commonpb.PeriodStatus_PERIOD_CLOSING))
-			Expect(closePeriodLog.NewPeriod.Id).To(Equal(closePeriodLog.ClosedPeriod.Id + 1))
-			Expect(closePeriodLog.NewPeriod.Status).To(Equal(commonpb.PeriodStatus_PERIOD_OPEN))
+			closeChapterLog := resp.Logs[0].Payload.GetCloseChapter()
+			Expect(closeChapterLog).NotTo(BeNil())
+			Expect(closeChapterLog.ClosedChapter.Status).To(Equal(commonpb.ChapterStatus_CHAPTER_CLOSING))
+			Expect(closeChapterLog.NewChapter.Id).To(Equal(closeChapterLog.ClosedChapter.Id + 1))
+			Expect(closeChapterLog.NewChapter.Status).To(Equal(commonpb.ChapterStatus_CHAPTER_OPEN))
 		})
 
-		It("Should have at least two periods after close (last OPEN)", func() {
-			// The sealer runs in the background so the second-to-last period may be CLOSING or CLOSED
+		It("Should have at least two chapters after close (last OPEN)", func() {
+			// The sealer runs in the background so the second-to-last chapter may be CLOSING or CLOSED
 			Eventually(func(g Gomega) {
-				periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
+				chapters, err := actions.ListAllChapters(sharedCtx, sharedClient)
 				g.Expect(err).To(Succeed())
-				g.Expect(len(periods)).To(BeNumerically(">=", 2))
-				// Last period should always be OPEN
-				g.Expect(periods[len(periods)-1].Status).To(Equal(commonpb.PeriodStatus_PERIOD_OPEN))
+				g.Expect(len(chapters)).To(BeNumerically(">=", 2))
+				// Last chapter should always be OPEN
+				g.Expect(chapters[len(chapters)-1].Status).To(Equal(commonpb.ChapterStatus_CHAPTER_OPEN))
 			}).Within(5 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 		})
 
-		It("Should eventually seal the closed period", func() {
+		It("Should eventually seal the closed chapter", func() {
 			Eventually(func(g Gomega) {
-				periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
+				chapters, err := actions.ListAllChapters(sharedCtx, sharedClient)
 				g.Expect(err).To(Succeed())
-				g.Expect(len(periods)).To(BeNumerically(">=", 2))
-				// Second-to-last period should eventually be CLOSED (sealed)
-				secondToLast := periods[len(periods)-2]
-				g.Expect(secondToLast.Status).To(Equal(commonpb.PeriodStatus_PERIOD_CLOSED))
+				g.Expect(len(chapters)).To(BeNumerically(">=", 2))
+				// Second-to-last chapter should eventually be CLOSED (sealed)
+				secondToLast := chapters[len(chapters)-2]
+				g.Expect(secondToLast.Status).To(Equal(commonpb.ChapterStatus_CHAPTER_CLOSED))
 				g.Expect(secondToLast.SealingHash).NotTo(BeEmpty())
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 
-	Context("Multiple simultaneous closing periods", Ordered, func() {
-		It("Should allow closing while another period is already in CLOSING state", func() {
-			// Wait until there's no CLOSING period (previous seal completed)
+	Context("Multiple simultaneous closing chapters", Ordered, func() {
+		It("Should allow closing while another chapter is already in CLOSING state", func() {
+			// Wait until there's no CLOSING chapter (previous seal completed)
 			Eventually(func(g Gomega) {
-				periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
+				chapters, err := actions.ListAllChapters(sharedCtx, sharedClient)
 				g.Expect(err).To(Succeed())
-				for _, p := range periods {
-					g.Expect(p.Status).NotTo(Equal(commonpb.PeriodStatus_PERIOD_CLOSING))
+				for _, p := range chapters {
+					g.Expect(p.Status).NotTo(Equal(commonpb.ChapterStatus_CHAPTER_CLOSING))
 				}
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			// Close the period twice in quick succession — both should succeed
+			// Close the chapter twice in quick succession — both should succeed
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Envelopes: servicepb.UnsignedEnvelopes(
-					&servicepb.Request{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
+					&servicepb.Request{Type: &servicepb.Request_CloseChapter{CloseChapter: &servicepb.CloseChapterRequest{}}},
 				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Envelopes: servicepb.UnsignedEnvelopes(
-					&servicepb.Request{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
+					&servicepb.Request{Type: &servicepb.Request_CloseChapter{CloseChapter: &servicepb.CloseChapterRequest{}}},
 				),
 			})
 			Expect(err).To(Succeed())
 
-			// Wait for all periods to be sealed
+			// Wait for all chapters to be sealed
 			Eventually(func(g Gomega) {
-				periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
+				chapters, err := actions.ListAllChapters(sharedCtx, sharedClient)
 				g.Expect(err).To(Succeed())
-				for _, p := range periods {
-					g.Expect(p.Status).NotTo(Equal(commonpb.PeriodStatus_PERIOD_CLOSING))
+				for _, p := range chapters {
+					g.Expect(p.Status).NotTo(Equal(commonpb.ChapterStatus_CHAPTER_CLOSING))
 				}
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})

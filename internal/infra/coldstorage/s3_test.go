@@ -236,17 +236,17 @@ func TestS3Storage_ColdReaderCacheEviction(t *testing.T) {
 	reader := NewColdReader(storage, "evict-bucket", cacheDir, 2, 0, logger)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	// Load periods 1 and 2
+	// Load chapters 1 and 2
 	_, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
 	_, err = reader.GetReader(ctx, 2)
 	require.NoError(t, err)
 
-	// Load period 3 → evicts period 1
+	// Load chapter 3 → evicts chapter 1
 	_, err = reader.GetReader(ctx, 3)
 	require.NoError(t, err)
 
-	// Period 3 should be readable (re-downloaded if needed)
+	// Chapter 3 should be readable (re-downloaded if needed)
 	r3, err := reader.GetReader(ctx, 3)
 	require.NoError(t, err)
 

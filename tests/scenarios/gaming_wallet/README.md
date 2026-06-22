@@ -56,7 +56,7 @@ First 10 players receive 500 free coins via **force transactions** (bypass balan
 world  --[COINS 500]--> player:{1..10}:coins  (force=true)
 ```
 
-Metadata: `type=promotion`, `reason=welcome-bonus`. Period close after promotions.
+Metadata: `type=promotion`, `reason=welcome-bonus`. Chapter close after promotions.
 
 ### Phase 4: Item Purchases (3 rounds)
 
@@ -70,7 +70,7 @@ player:{id}:coins  --[COINS cost]--> shop:items
 - Round 2: 250 COINS -- mid-way account reads (cache exercise)
 - Round 3: 500 COINS -- only players with sufficient balance
 
-Period close after purchases.
+Chapter close after purchases.
 
 ### Phase 5: Peer-to-Peer Trades (up to 10 Apply calls)
 
@@ -103,7 +103,7 @@ Reclaim expired promo coins from players 8-10. Capped to available balance:
 player:{8..10}:coins  --[COINS min(500, balance)]--> platform:promotions
 ```
 
-Metadata: `type=promo-clawback`, `reason=expired-welcome-bonus`. Period close after clawback.
+Metadata: `type=promo-clawback`, `reason=expired-welcome-bonus`. Chapter close after clawback.
 
 ### Phase 9: Metadata Lifecycle
 

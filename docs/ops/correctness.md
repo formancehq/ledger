@@ -297,7 +297,7 @@ See [Clock Skew Check](../technical/architecture/core/hybrid-logical-clock.md#cl
 
 ## Cold Archive Integrity
 
-When a period is closed, its logs are exported as a Pebble SST to cold storage (filesystem or S3) and the leader proposes `ConfirmArchivePeriod`. Confirming an archive eventually leads to purging the source data, so the leader **must not propose** until it has cryptographic evidence that the archived bytes are intact.
+When a chapter is closed, its logs are exported as a Pebble SST to cold storage (filesystem or S3) and the leader proposes `ConfirmArchiveChapter`. Confirming an archive eventually leads to purging the source data, so the leader **must not propose** until it has cryptographic evidence that the archived bytes are intact.
 
 ### What is persisted
 
@@ -305,25 +305,25 @@ Every archive carries an attached SHA-256 checksum, written atomically with the 
 
 | Backend | Data | Checksum |
 |---|---|---|
-| Filesystem | `<bucketID>/periods/<periodID>/archive.sst` | sidecar `archive.sst.sha256` (32 bytes) |
+| Filesystem | `<bucketID>/chapters/<chapterID>/archive.sst` | sidecar `archive.sst.sha256` (32 bytes) |
 | S3 | object body | user metadata key `sha256` (hex-encoded) |
 
 The filesystem backend writes each file via a `<name>.tmp` → fsync → atomic rename → fsync directory sequence, with the data file fully committed before the sidecar is touched. The S3 backend relies on `PutObject` to apply the body and the `Metadata` map atomically.
 
 ### Verification flow
 
-After upload (`Archive` returns), the leader recomputes the remote SHA-256 and compares it with the local checksum. Mismatch aborts the upload — no `ConfirmArchivePeriod` is proposed.
+After upload (`Archive` returns), the leader recomputes the remote SHA-256 and compares it with the local checksum. Mismatch aborts the upload — no `ConfirmArchiveChapter` is proposed.
 
 On boot, the archiver retry loop re-evaluates every still-open archive request:
 
 - **Archive missing or checksum sidecar/metadata missing** (`Exists` returns false): treated as "not yet committed". The leader rebuilds and re-uploads. Pre-PR archives that never had a sidecar end up here too — they are silently re-uploaded on first contact with the new binary.
-- **Archive complete**: the leader reads the persisted `ExpectedChecksum`, recomputes `Checksum` over the current bytes, and proposes `ConfirmArchivePeriod` only on equality. A mismatch is reported as a hard error with both hex digests in the log; the period stays unconfirmed so no purge runs.
+- **Archive complete**: the leader reads the persisted `ExpectedChecksum`, recomputes `Checksum` over the current bytes, and proposes `ConfirmArchiveChapter` only on equality. A mismatch is reported as a hard error with both hex digests in the log; the chapter stays unconfirmed so no purge runs.
 
 The crash-recovery path is what catches truncation or post-upload bit rot: an SST that is "readable" still produces a digest, but only the comparison against the reference value detects that the bytes diverge from what was originally committed.
 
 ### Determinism of archive content
 
-The SST produced by `buildSSTArchive` is a deterministic function of the period being archived: identical periods produce byte-identical SSTs. `periodMetadata` carries only `periodId`, `startSequence`, `closeSequence`, `startAuditSequence`, and `closeAuditSequence` — no timestamps, no nonces. The two audit-sequence fields were added in #312 so the SST is scoped to BOTH the log range AND the (independent) audit-sequence range; otherwise audit entries would silently miss the archive and then be purged. This contract is enforced by `TestArchiver_BuildSSTIsDeterministic`. Adding a non-deterministic field would invalidate the checksum reference on re-upload and is treated as a regression.
+The SST produced by `buildSSTArchive` is a deterministic function of the chapter being archived: identical chapters produce byte-identical SSTs. `chapterMetadata` carries only `chapterId`, `startSequence`, `closeSequence`, `startAuditSequence`, and `closeAuditSequence` — no timestamps, no nonces. The two audit-sequence fields were added in #312 so the SST is scoped to BOTH the log range AND the (independent) audit-sequence range; otherwise audit entries would silently miss the archive and then be purged. This contract is enforced by `TestArchiver_BuildSSTIsDeterministic`. Adding a non-deterministic field would invalidate the checksum reference on re-upload and is treated as a regression.
 
 ## Integrity Guarantees
 

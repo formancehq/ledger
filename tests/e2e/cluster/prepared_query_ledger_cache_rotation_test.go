@@ -48,7 +48,7 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 		// Enough no-op proposals to push the LedgerInfo past gen1 of the
 		// cache (needs > 2 * rotationThreshold beyond the CreateLedger
 		// index). 50 is comfortably above that and tolerates whatever
-		// startup proposals (cluster config, period bootstrap, ...) are
+		// startup proposals (cluster config, chapter bootstrap, ...) are
 		// applied before the test's CreateLedger.
 		barrierCount = 50
 		ledgerName   = "preload-rotation"

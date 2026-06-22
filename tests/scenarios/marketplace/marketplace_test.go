@@ -163,9 +163,9 @@ func TestMarketplaceLifecycle(t *testing.T) {
 			merchantBalance[merchant].Add(merchantBalance[merchant], big.NewInt(net))
 			totalFees.Add(totalFees, big.NewInt(fee))
 
-			// Every 60 transactions: close period + check double-entry
+			// Every 60 transactions: close chapter + check double-entry
 			if (i+1)%60 == 0 {
-				scenariotest.ClosePeriodAndWait(t, ctx, client, "period close timed out at purchase %d", i)
+				scenariotest.CloseChapterAndWait(t, ctx, client, "chapter close timed out at purchase %d", i)
 				scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 			}
 
@@ -257,9 +257,9 @@ func TestMarketplaceLifecycle(t *testing.T) {
 		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)
 	})
 
-	// --- Phase 5: Final Period Close ---
-	t.Run("FinalPeriodClose", func(t *testing.T) {
-		scenariotest.ClosePeriodAndWait(t, ctx, client, "final period close timed out")
+	// --- Phase 5: Final Chapter Close ---
+	t.Run("FinalChapterClose", func(t *testing.T) {
+		scenariotest.CloseChapterAndWait(t, ctx, client, "final chapter close timed out")
 	})
 
 	// --- Phase 6: Merchant Payouts ---

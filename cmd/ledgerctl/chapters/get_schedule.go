@@ -1,4 +1,4 @@
-package periods
+package chapters
 
 import (
 	"github.com/pterm/pterm"
@@ -8,12 +8,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// NewGetScheduleCommand creates the periods get-schedule command.
+// NewGetScheduleCommand creates the chapters get-schedule command.
 func NewGetScheduleCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "get-schedule",
-		Short:             "Show automatic period rotation schedule",
-		Long:              `Display the current cron schedule for automatic period rotation, if any.`,
+		Short:             "Show automatic chapter rotation schedule",
+		Long:              `Display the current cron schedule for automatic chapter rotation, if any.`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runGetSchedule,
@@ -36,13 +36,13 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching period schedule...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching chapter schedule...")
 
-	resp, err := client.GetPeriodSchedule(ctx, &servicepb.GetPeriodScheduleRequest{})
+	resp, err := client.GetChapterSchedule(ctx, &servicepb.GetChapterScheduleRequest{})
 	if err != nil {
 		_ = spinner.Stop()
 
-		return cmdutil.FormatGRPCError("failed to get period schedule", err)
+		return cmdutil.FormatGRPCError("failed to get chapter schedule", err)
 	}
 
 	_ = spinner.Stop()
@@ -52,9 +52,9 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 	}
 
 	if resp.GetCron() == "" {
-		pterm.Success.Println("No period schedule configured (automatic rotation disabled)")
+		pterm.Success.Println("No chapter schedule configured (automatic rotation disabled)")
 	} else {
-		pterm.Success.Println("Period schedule: " + resp.GetCron())
+		pterm.Success.Println("Chapter schedule: " + resp.GetCron())
 	}
 
 	return nil

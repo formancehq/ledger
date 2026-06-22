@@ -9,14 +9,14 @@ import (
 )
 
 func main() {
-	internal.RunDriver("singleton_driver_period_schedule", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("singleton_driver_chapter_schedule", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
 		details := internal.Details{}
 
-		// 1. Set an automatic period schedule (every hour).
+		// 1. Set an automatic chapter schedule (every hour).
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SetPeriodSchedule{
-					SetPeriodSchedule: &servicepb.SetPeriodScheduleRequest{
+				Type: &servicepb.Request_SetChapterSchedule{
+					SetChapterSchedule: &servicepb.SetChapterScheduleRequest{
 						Cron: "0 * * * *",
 					},
 				},
@@ -24,32 +24,32 @@ func main() {
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
-			"should be able to set period schedule", details.With(internal.Details{"error": err}))
+			"should be able to set chapter schedule", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}
 
 		// 2. Read the schedule back.
-		schedResp, err := client.GetPeriodSchedule(ctx, &servicepb.GetPeriodScheduleRequest{})
+		schedResp, err := client.GetChapterSchedule(ctx, &servicepb.GetChapterScheduleRequest{})
 		if err != nil {
-			internal.LogCleanupError("get period schedule after set", err)
+			internal.LogCleanupError("get chapter schedule after set", err)
 			return
 		}
 
 		assert.AlwaysOrUnreachable(schedResp.GetCron() == "0 * * * *",
-			"period schedule should match what was set",
+			"chapter schedule should match what was set",
 			details.With(internal.Details{"actual": schedResp.GetCron()}))
 
 		// 3. Delete the schedule.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_DeletePeriodSchedule{
-					DeletePeriodSchedule: &servicepb.DeletePeriodScheduleRequest{},
+				Type: &servicepb.Request_DeleteChapterSchedule{
+					DeleteChapterSchedule: &servicepb.DeleteChapterScheduleRequest{},
 				},
 			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
-			"should be able to delete period schedule", details.With(internal.Details{"error": err}))
+			"should be able to delete chapter schedule", details.With(internal.Details{"error": err}))
 	})
 }

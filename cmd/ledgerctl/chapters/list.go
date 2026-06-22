@@ -1,4 +1,4 @@
-package periods
+package chapters
 
 import (
 	"fmt"
@@ -15,13 +15,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// NewListCommand creates the periods list command.
+// NewListCommand creates the chapters list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "list",
 		Aliases:           cmdutil.ListAliases,
-		Short:             "List all periods",
-		Long:              "List all accounting periods with their status",
+		Short:             "List all chapters",
+		Long:              "List all accounting chapters with their status",
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
@@ -51,20 +51,20 @@ func runList(cmd *cobra.Command, _ []string) error {
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 
-	periods, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.Period, metadata.MD, error) {
+	chapters, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.Chapter, metadata.MD, error) {
 		page := pgn
 		page.Cursor = cur
 
-		stream, err := client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{
+		stream, err := client.ListChapters(ctx, &servicepb.ListChaptersRequest{
 			Options: cmdutil.BuildListOptions(page, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, nil),
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("listing periods: %w", err)
+			return nil, nil, fmt.Errorf("listing chapters: %w", err)
 		}
 
 		items, recvErr := cmdutil.CollectStream(stream)
 		if recvErr != nil {
-			return nil, nil, fmt.Errorf("receiving periods: %w", recvErr)
+			return nil, nil, fmt.Errorf("receiving chapters: %w", recvErr)
 		}
 
 		return items, stream.Trailer(), nil
@@ -73,14 +73,14 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	if handled, err := cmdutil.EncodeStructured(cmd, periods); handled || err != nil {
+	if handled, err := cmdutil.EncodeStructured(cmd, chapters); handled || err != nil {
 		cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 		return err
 	}
 
-	if len(periods) == 0 {
-		pterm.Info.Println("No periods found.")
+	if len(chapters) == 0 {
+		pterm.Info.Println("No chapters found.")
 
 		return nil
 	}
@@ -90,7 +90,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		{"ID", "STATUS", "START", "END", "CLOSE SEQ"},
 	}
 
-	for _, p := range periods {
+	for _, p := range chapters {
 		var (
 			startStr    = "-"
 			endStr      = "-"
@@ -111,7 +111,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 		tableData = append(tableData, []string{
 			strconv.FormatUint(p.GetId(), 10),
-			formatPeriodStatus(p.GetStatus()),
+			formatChapterStatus(p.GetStatus()),
 			startStr,
 			endStr,
 			closeSeqStr,
@@ -129,16 +129,16 @@ func runList(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func formatPeriodStatus(status commonpb.PeriodStatus) string {
-	name := strings.TrimPrefix(commonpb.PeriodStatus_name[int32(status)], "PERIOD_")
+func formatChapterStatus(status commonpb.ChapterStatus) string {
+	name := strings.TrimPrefix(commonpb.ChapterStatus_name[int32(status)], "CHAPTER_")
 	switch status {
-	case commonpb.PeriodStatus_PERIOD_OPEN:
+	case commonpb.ChapterStatus_CHAPTER_OPEN:
 		return pterm.Green(name)
-	case commonpb.PeriodStatus_PERIOD_CLOSING:
+	case commonpb.ChapterStatus_CHAPTER_CLOSING:
 		return pterm.Yellow(name)
-	case commonpb.PeriodStatus_PERIOD_CLOSED:
+	case commonpb.ChapterStatus_CHAPTER_CLOSED:
 		return pterm.Cyan(name)
-	case commonpb.PeriodStatus_PERIOD_ARCHIVED:
+	case commonpb.ChapterStatus_CHAPTER_ARCHIVED:
 		return pterm.Gray(name)
 	default:
 		return name

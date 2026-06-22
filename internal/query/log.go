@@ -212,7 +212,7 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 }
 
 // ReadLogBySequenceWithCold tries hot storage first, then falls back to cold storage
-// by finding the archived period that contains the given sequence.
+// by finding the archived chapter that contains the given sequence.
 func ReadLogBySequenceWithCold(
 	ctx context.Context,
 	hotReader dal.PebbleReader,
@@ -234,28 +234,28 @@ func ReadLogBySequenceWithCold(
 		return nil, nil
 	}
 
-	// Find the archived period containing this sequence
-	periodID, err := findArchivedPeriodForSequence(ctx, hotReader, sequence)
+	// Find the archived chapter containing this sequence
+	chapterID, err := findArchivedChapterForSequence(ctx, hotReader, sequence)
 	if err != nil {
-		return nil, fmt.Errorf("finding archived period for sequence %d: %w", sequence, err)
+		return nil, fmt.Errorf("finding archived chapter for sequence %d: %w", sequence, err)
 	}
 
-	if periodID == 0 {
-		return nil, nil // not in any archived period
+	if chapterID == 0 {
+		return nil, nil // not in any archived chapter
 	}
 
 	// Read from cold storage
-	coldPebble, err := coldReader.GetReader(ctx, periodID)
+	coldPebble, err := coldReader.GetReader(ctx, chapterID)
 	if err != nil {
-		return nil, fmt.Errorf("getting cold reader for period %d: %w", periodID, err)
+		return nil, fmt.Errorf("getting cold reader for chapter %d: %w", chapterID, err)
 	}
 
 	return ReadLogBySequence(ctx, coldPebble, sequence)
 }
 
-// findArchivedPeriodForSequence iterates periods to find an archived one containing the given sequence.
-func findArchivedPeriodForSequence(ctx context.Context, reader dal.PebbleReader, sequence uint64) (uint64, error) {
-	cursor, err := ReadPeriods(ctx, reader)
+// findArchivedChapterForSequence iterates chapters to find an archived one containing the given sequence.
+func findArchivedChapterForSequence(ctx context.Context, reader dal.PebbleReader, sequence uint64) (uint64, error) {
+	cursor, err := ReadChapters(ctx, reader)
 	if err != nil {
 		return 0, err
 	}
@@ -263,7 +263,7 @@ func findArchivedPeriodForSequence(ctx context.Context, reader dal.PebbleReader,
 	defer func() { _ = cursor.Close() }()
 
 	for {
-		period, err := cursor.Next()
+		chapter, err := cursor.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -272,12 +272,12 @@ func findArchivedPeriodForSequence(ctx context.Context, reader dal.PebbleReader,
 			return 0, err
 		}
 
-		if period.GetStatus() != commonpb.PeriodStatus_PERIOD_ARCHIVED {
+		if chapter.GetStatus() != commonpb.ChapterStatus_CHAPTER_ARCHIVED {
 			continue
 		}
 
-		if sequence >= period.GetStartSequence() && sequence <= period.GetCloseSequence() {
-			return period.GetId(), nil
+		if sequence >= chapter.GetStartSequence() && sequence <= chapter.GetCloseSequence() {
+			return chapter.GetId(), nil
 		}
 	}
 

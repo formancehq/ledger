@@ -105,7 +105,7 @@ func resetCreatedTransaction(ct *commonpb.CreatedTransaction) {
 		return
 	}
 
-	ct.PeriodId = 0
+	ct.ChapterId = 0
 	ct.PostCommitVolumes = nil
 	clear(ct.GetAccountMetadata())
 	clear(ct.GetPreviousAccountMetadata())

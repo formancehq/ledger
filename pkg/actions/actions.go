@@ -383,11 +383,11 @@ func FindMetadataValue(m map[string]*commonpb.MetadataValue, key string) *common
 	return m[key]
 }
 
-// ClosePeriodAction creates a request to close the current accounting period.
-func ClosePeriodAction() *servicepb.Request {
+// CloseChapterAction creates a request to close the current accounting chapter.
+func CloseChapterAction() *servicepb.Request {
 	return &servicepb.Request{
-		Type: &servicepb.Request_ClosePeriod{
-			ClosePeriod: &servicepb.ClosePeriodRequest{},
+		Type: &servicepb.Request_CloseChapter{
+			CloseChapter: &servicepb.CloseChapterRequest{},
 		},
 	}
 }
@@ -403,22 +403,22 @@ func SetMaintenanceModeAction(enabled bool) *servicepb.Request {
 	}
 }
 
-// SetPeriodScheduleAction creates a request to set the period schedule cron expression.
-func SetPeriodScheduleAction(cron string) *servicepb.Request {
+// SetChapterScheduleAction creates a request to set the chapter schedule cron expression.
+func SetChapterScheduleAction(cron string) *servicepb.Request {
 	return &servicepb.Request{
-		Type: &servicepb.Request_SetPeriodSchedule{
-			SetPeriodSchedule: &servicepb.SetPeriodScheduleRequest{
+		Type: &servicepb.Request_SetChapterSchedule{
+			SetChapterSchedule: &servicepb.SetChapterScheduleRequest{
 				Cron: cron,
 			},
 		},
 	}
 }
 
-// DeletePeriodScheduleAction creates a request to remove the period schedule.
-func DeletePeriodScheduleAction() *servicepb.Request {
+// DeleteChapterScheduleAction creates a request to remove the chapter schedule.
+func DeleteChapterScheduleAction() *servicepb.Request {
 	return &servicepb.Request{
-		Type: &servicepb.Request_DeletePeriodSchedule{
-			DeletePeriodSchedule: &servicepb.DeletePeriodScheduleRequest{},
+		Type: &servicepb.Request_DeleteChapterSchedule{
+			DeleteChapterSchedule: &servicepb.DeleteChapterScheduleRequest{},
 		},
 	}
 }
@@ -657,12 +657,12 @@ func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget,
 	}
 }
 
-// ArchivePeriodAction creates an action for archiving a closed period.
-func ArchivePeriodAction(periodID uint64) *servicepb.Request {
+// ArchiveChapterAction creates an action for archiving a closed chapter.
+func ArchiveChapterAction(chapterID uint64) *servicepb.Request {
 	return &servicepb.Request{
-		Type: &servicepb.Request_ArchivePeriod{
-			ArchivePeriod: &servicepb.ArchivePeriodRequest{
-				PeriodId: periodID,
+		Type: &servicepb.Request_ArchiveChapter{
+			ArchiveChapter: &servicepb.ArchiveChapterRequest{
+				ChapterId: chapterID,
 			},
 		},
 	}

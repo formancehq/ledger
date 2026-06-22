@@ -282,13 +282,13 @@ message LogPayload {
     SetSigningConfigLog set_signing_config = 6;
     AddedEventsSinkLog added_events_sink = 7;
     RemovedEventsSinkLog removed_events_sink = 8;
-    ClosedPeriodLog close_period = 9;
-    SealedPeriodLog seal_period = 10;
-    ArchivedPeriodLog archive_period = 11;
-    ConfirmedArchivePeriodLog confirm_archive_period = 12;
+    ClosedChapterLog close_chapter = 9;
+    SealedChapterLog seal_chapter = 10;
+    ArchivedChapterLog archive_chapter = 11;
+    ConfirmedArchiveChapterLog confirm_archive_chapter = 12;
     SetMaintenanceModeLog set_maintenance_mode = 13;
-    SetPeriodScheduleLog set_period_schedule = 14;
-    DeletedPeriodScheduleLog delete_period_schedule = 15;
+    SetChapterScheduleLog set_chapter_schedule = 14;
+    DeletedChapterScheduleLog delete_chapter_schedule = 15;
     PromotedLedgerLog promote_ledger = 17;
     CreatedPreparedQueryLog created_prepared_query = 18;
     UpdatedPreparedQueryLog updated_prepared_query = 19;
@@ -389,13 +389,13 @@ message PersistedClusterState {
 }
 
 
-// SetPeriodScheduleLog records a period schedule change.
-message SetPeriodScheduleLog {
+// SetChapterScheduleLog records a chapter schedule change.
+message SetChapterScheduleLog {
   string cron = 1;
 }
 
-// DeletedPeriodScheduleLog records the removal of the period schedule.
-message DeletedPeriodScheduleLog {}
+// DeletedChapterScheduleLog records the removal of the chapter schedule.
+message DeletedChapterScheduleLog {}
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
 message CreatedPreparedQueryLog {
@@ -638,7 +638,7 @@ message FilledGapLog {
 message CreatedTransaction {
   Transaction transaction = 1;
   map<string, MetadataMap> account_metadata = 2;
-  fixed64 period_id = 3;  // Period that was OPEN when this transaction was created
+  fixed64 chapter_id = 3;  // Chapter that was OPEN when this transaction was created
   PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
   map<string, MetadataMap> previous_account_metadata = 5;  // previous account metadata values (for index replay)
 }
@@ -678,46 +678,46 @@ message RemovedMetadataFieldTypeLog {
 }
 
 // ============================================================================
-// Period
+// Chapter
 // ============================================================================
 
-enum PeriodStatus {
-  PERIOD_OPEN = 0;
-  PERIOD_CLOSING = 1;
-  PERIOD_CLOSED = 2;
-  PERIOD_ARCHIVED = 3;
-  PERIOD_ARCHIVING = 4;
+enum ChapterStatus {
+  CHAPTER_OPEN = 0;
+  CHAPTER_CLOSING = 1;
+  CHAPTER_CLOSED = 2;
+  CHAPTER_ARCHIVED = 3;
+  CHAPTER_ARCHIVING = 4;
 }
 
-message Period {
+message Chapter {
   fixed64 id = 1;
   Timestamp start = 2;
   Timestamp end = 3;
-  PeriodStatus status = 4;
+  ChapterStatus status = 4;
   fixed64 close_sequence = 5;
   bytes sealing_hash = 6;
-  bytes last_audit_hash = 7;  // Audit chain hash at the time the period was closed (for integrity recovery)
-  fixed64 start_sequence = 8;  // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
+  bytes last_audit_hash = 7;  // Audit chain hash at the time the chapter was closed (for integrity recovery)
+  fixed64 start_sequence = 8;  // First log sequence in this chapter (previous close_sequence + 1, or 1 for the first chapter)
   bytes state_hash = 9;       // BLAKE3 hash of computed attributes (V+M+T) at seal time
-  fixed64 start_audit_sequence = 10; // First audit sequence in this period
-  fixed64 close_audit_sequence = 11; // Last audit sequence when period was closed
+  fixed64 start_audit_sequence = 10; // First audit sequence in this chapter
+  fixed64 close_audit_sequence = 11; // Last audit sequence when chapter was closed
 }
 
-message ClosedPeriodLog {
-  Period closed_period = 1;
-  Period new_period = 2;
+message ClosedChapterLog {
+  Chapter closed_chapter = 1;
+  Chapter new_chapter = 2;
 }
 
-message SealedPeriodLog {
-  Period period = 1;
+message SealedChapterLog {
+  Chapter chapter = 1;
 }
 
-message ArchivedPeriodLog {
-  Period period = 1;  // The period being archived (still CLOSED at this point)
+message ArchivedChapterLog {
+  Chapter chapter = 1;  // The chapter being archived (still CLOSED at this point)
 }
 
-message ConfirmedArchivePeriodLog {
-  Period period = 1;  // Period now in ARCHIVED status
+message ConfirmedArchiveChapterLog {
+  Chapter chapter = 1;  // Chapter now in ARCHIVED status
 }
 
 // ============================================================================

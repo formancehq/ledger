@@ -59,7 +59,7 @@
 | Store integrity check | ✅ | Hash chain + derived data verification |
 | Point-in-time backup | ✅ | Pebble snapshot as tar archive |
 | Restore pipeline | ✅ | Upload, validate, preview, finalize |
-| Periods (close, seal, archive) | ✅ | BLAKE3 sealing hash, JWT receipts |
+| Chapters (close, seal, archive) | ✅ | BLAKE3 sealing hash, JWT receipts |
 | Cluster management | ✅ | Transfer leader, add/promote learner |
 | Disk space monitoring | ✅ | Auto-reject writes when storage full |
 

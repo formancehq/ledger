@@ -20,13 +20,13 @@ message Order {
     SetSigningConfigOrder set_signing_config = 8;
     AddEventsSinkOrder add_events_sink = 9;
     RemoveEventsSinkOrder remove_events_sink = 10;
-    ClosePeriodOrder close_period = 11;
-    SealPeriodOrder seal_period = 12;
-    ArchivePeriodOrder archive_period = 13;
-    ConfirmArchivePeriodOrder confirm_archive_period = 14;
+    CloseChapterOrder close_chapter = 11;
+    SealChapterOrder seal_chapter = 12;
+    ArchiveChapterOrder archive_chapter = 13;
+    ConfirmArchiveChapterOrder confirm_archive_chapter = 14;
     SetMaintenanceModeOrder set_maintenance_mode = 15;
-    SetPeriodScheduleOrder set_period_schedule = 16;
-    DeletePeriodScheduleOrder delete_period_schedule = 17;
+    SetChapterScheduleOrder set_chapter_schedule = 16;
+    DeleteChapterScheduleOrder delete_chapter_schedule = 17;
     MirrorIngestOrder mirror_ingest = 19;
     PromoteLedgerOrder promote_ledger = 20;
     CreatePreparedQueryOrder create_prepared_query = 21;
@@ -98,31 +98,31 @@ message SetSigningConfigOrder {
   bool require_signatures = 1;
 }
 
-message ClosePeriodOrder {}
+message CloseChapterOrder {}
 
-message SealPeriodOrder {
-  fixed64 period_id = 1;
+message SealChapterOrder {
+  fixed64 chapter_id = 1;
   bytes sealing_hash = 2;
   bytes state_hash = 3;
 }
 
-message ArchivePeriodOrder {
-  fixed64 period_id = 1;
+message ArchiveChapterOrder {
+  fixed64 chapter_id = 1;
 }
 
-message ConfirmArchivePeriodOrder {
-  fixed64 period_id = 1;
+message ConfirmArchiveChapterOrder {
+  fixed64 chapter_id = 1;
 }
 
 message SetMaintenanceModeOrder {
   bool enabled = 1;
 }
 
-message SetPeriodScheduleOrder {
+message SetChapterScheduleOrder {
   string cron = 1;
 }
 
-message DeletePeriodScheduleOrder {}
+message DeleteChapterScheduleOrder {}
 
 message SaveNumscriptOrder {
   string name = 1;

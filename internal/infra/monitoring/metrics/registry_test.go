@@ -151,6 +151,7 @@ func collectInstrumentNamesFromCode(t *testing.T, root string) []string {
 				seen[name] = struct{}{}
 			}
 		}
+
 		return nil
 	})
 	require.NoError(t, err)

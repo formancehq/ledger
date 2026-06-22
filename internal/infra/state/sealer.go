@@ -17,34 +17,34 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// SealRequest contains the data needed to seal a period.
+// SealRequest contains the data needed to seal a chapter.
 type SealRequest struct {
-	PeriodID       uint64
+	ChapterID      uint64
 	CloseSequence  uint64
 	LastAuditHash  []byte
 	CheckpointPath string
 }
 
-// SealProposer is a callback to propose a SealPeriod order back into Raft.
-type SealProposer func(periodID uint64, sealingHash, stateHash []byte) error
+// SealProposer is a callback to propose a SealChapter order back into Raft.
+type SealProposer func(chapterID uint64, sealingHash, stateHash []byte) error
 
-// SealerPeriodState provides the Sealer with read access to the current period
+// SealerChapterState provides the Sealer with read access to the current chapter
 // state. Implemented by *Machine.
-type SealerPeriodState interface {
-	ClosingPeriods() []*commonpb.Period
-	ClosingPeriodByID(id uint64) (*commonpb.Period, bool)
+type SealerChapterState interface {
+	ClosingChapters() []*commonpb.Chapter
+	ClosingChapterByID(id uint64) (*commonpb.Chapter, bool)
 }
 
-// SealCheckpointName returns the checkpoint name for a given period ID.
-func SealCheckpointName(periodID uint64) string {
-	return fmt.Sprintf("seal-%d", periodID)
+// SealCheckpointName returns the checkpoint name for a given chapter ID.
+func SealCheckpointName(chapterID uint64) string {
+	return fmt.Sprintf("seal-%d", chapterID)
 }
 
-// Sealer runs in the background to compute sealing hashes for closing periods.
-// It reads seal requests from sealRequestCh (fed by the Machine on ClosePeriod
+// Sealer runs in the background to compute sealing hashes for closing chapters.
+// It reads seal requests from sealRequestCh (fed by the Machine on CloseChapter
 // or directly by crash-recovery logic in the Sealer/Node).
-// Only the leader node computes the hash and proposes SealPeriod. Followers
-// poll until the period is no longer CLOSING (sealed by the leader through Raft).
+// Only the leader node computes the hash and proposes SealChapter. Followers
+// poll until the chapter is no longer CLOSING (sealed by the leader through Raft).
 type Sealer struct {
 	logger            logging.Logger
 	dataStore         dal.CheckpointStaging
@@ -52,7 +52,7 @@ type Sealer struct {
 	sealRequestCh     *worker.Channel[SealRequest]
 	proposeFn         SealProposer
 	isLeader          func() bool
-	periodState       SealerPeriodState
+	chapterState      SealerChapterState
 	reconcileInterval time.Duration
 	w                 worker.Worker
 }
@@ -65,7 +65,7 @@ func NewSealer(
 	sealRequestCh *worker.Channel[SealRequest],
 	proposeFn SealProposer,
 	isLeader func() bool,
-	periodState SealerPeriodState,
+	chapterState SealerChapterState,
 ) *Sealer {
 	return &Sealer{
 		logger:            logger.WithFields(map[string]any{"cmp": "sealer"}),
@@ -74,7 +74,7 @@ func NewSealer(
 		sealRequestCh:     sealRequestCh,
 		proposeFn:         proposeFn,
 		isLeader:          isLeader,
-		periodState:       periodState,
+		chapterState:      chapterState,
 		reconcileInterval: sealReconcileInterval,
 		w:                 worker.New(),
 	}
@@ -112,7 +112,7 @@ func (s *Sealer) Start() {
 // re-enqueues them if seal checkpoints exist on disk.
 // Sends block until the worker drains or stop is closed.
 func (s *Sealer) recoverPendingSeal(stop <-chan struct{}) {
-	for _, cp := range s.periodState.ClosingPeriods() {
+	for _, cp := range s.chapterState.ClosingChapters() {
 		name := SealCheckpointName(cp.GetId())
 
 		checkpointPath, exists := s.dataStore.TemporaryCheckpointPath(name)
@@ -120,12 +120,12 @@ func (s *Sealer) recoverPendingSeal(stop <-chan struct{}) {
 			continue
 		}
 
-		req := SealRequestFromPeriod(cp)
+		req := SealRequestFromChapter(cp)
 		req.CheckpointPath = checkpointPath
 		s.logger.WithFields(map[string]any{
-			"periodId":      req.PeriodID,
+			"chapterId":     req.ChapterID,
 			"closeSequence": req.CloseSequence,
-		}).Infof("Recovering pending period seal")
+		}).Infof("Recovering pending chapter seal")
 
 		if !s.sealRequestCh.Send(*req, stop) {
 			return
@@ -138,41 +138,41 @@ func (s *Sealer) Stop() {
 	s.w.Stop()
 }
 
-// seal computes the sealing hash for a period and proposes a SealPeriod order.
+// seal computes the sealing hash for a chapter and proposes a SealChapter order.
 //
 // The flow handles both leader and follower nodes:
-//   - First, check if the period is still in CLOSING state. If not, the seal
+//   - First, check if the chapter is still in CLOSING state. If not, the seal
 //     was already applied through Raft — exit silently.
-//   - If the period is still CLOSING and this node is not the leader, return
+//   - If the chapter is still CLOSING and this node is not the leader, return
 //     worker.ErrNotLeader so the retry loop waits and re-checks.
-//   - Only the leader computes the hash and proposes SealPeriod.
+//   - Only the leader computes the hash and proposes SealChapter.
 //
-// sealing_hash = BLAKE3(period_id || close_sequence || last_log_hash || state_hash)
+// sealing_hash = BLAKE3(chapter_id || close_sequence || last_log_hash || state_hash)
 // state_hash = BLAKE3(all attribute key+value pairs in the checkpoint).
 func (s *Sealer) seal(req SealRequest) error {
 	logFields := map[string]any{
-		"periodId":      req.PeriodID,
+		"chapterId":     req.ChapterID,
 		"closeSequence": req.CloseSequence,
 	}
 
-	checkpointName := SealCheckpointName(req.PeriodID)
+	checkpointName := SealCheckpointName(req.ChapterID)
 
-	// Check if the period is still CLOSING — if not, the leader already sealed
-	// it and the SealPeriod was applied through Raft. Followers can exit.
-	if _, ok := s.periodState.ClosingPeriodByID(req.PeriodID); !ok {
-		s.logger.WithFields(logFields).Infof("Period no longer closing (sealed by leader), done")
+	// Check if the chapter is still CLOSING — if not, the leader already sealed
+	// it and the SealChapter was applied through Raft. Followers can exit.
+	if _, ok := s.chapterState.ClosingChapterByID(req.ChapterID); !ok {
+		s.logger.WithFields(logFields).Infof("Chapter no longer closing (sealed by leader), done")
 		// Clean up the seal checkpoint if it exists on this node
 		_ = s.dataStore.RemoveTemporaryCheckpoint(checkpointName)
 
 		return nil
 	}
 
-	// Period is still CLOSING — only the leader should compute the hash.
+	// Chapter is still CLOSING — only the leader should compute the hash.
 	if !s.isLeader() {
 		return worker.ErrNotLeader
 	}
 
-	s.logger.WithFields(logFields).Infof("Starting period sealing")
+	s.logger.WithFields(logFields).Infof("Starting chapter sealing")
 
 	// Open the seal checkpoint as a read-only Pebble DB
 	db, err := pebble.Open(req.CheckpointPath, &pebble.Options{
@@ -200,7 +200,7 @@ func (s *Sealer) seal(req SealRequest) error {
 	hasher := blake3.New()
 	buf := make([]byte, 8)
 
-	binary.BigEndian.PutUint64(buf, req.PeriodID)
+	binary.BigEndian.PutUint64(buf, req.ChapterID)
 	_, _ = hasher.Write(buf)
 
 	binary.BigEndian.PutUint64(buf, req.CloseSequence)
@@ -215,13 +215,13 @@ func (s *Sealer) seal(req SealRequest) error {
 	sealingHash := hasher.Sum(nil)
 
 	s.logger.WithFields(map[string]any{
-		"periodId":    req.PeriodID,
+		"chapterId":   req.ChapterID,
 		"sealingHash": sealingHash,
-	}).Infof("Period sealing complete, proposing SealPeriod")
+	}).Infof("Chapter sealing complete, proposing SealChapter")
 
-	// Propose the SealPeriod order back into Raft
-	if err := s.proposeFn(req.PeriodID, sealingHash, stateHash); err != nil {
-		return fmt.Errorf("proposing SealPeriod for period %d: %w", req.PeriodID, err)
+	// Propose the SealChapter order back into Raft
+	if err := s.proposeFn(req.ChapterID, sealingHash, stateHash); err != nil {
+		return fmt.Errorf("proposing SealChapter for chapter %d: %w", req.ChapterID, err)
 	}
 
 	return nil
@@ -269,7 +269,7 @@ func computeStateHash(reader dal.PebbleReader, attrs *attributes.Attributes) ([]
 //
 // Cost: ~20% slower end-to-end than MarshalVT and ~75% slower per call
 // (see #288). Acceptable here because sealing runs at most once per
-// closing period, off the FSM hot path. The same swap on the hot path
+// closing chapter, off the FSM hot path. The same swap on the hot path
 // was rejected by the same analysis.
 func hashAttribute[V proto.Message](
 	reader dal.PebbleReader,

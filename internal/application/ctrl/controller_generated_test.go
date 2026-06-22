@@ -168,6 +168,21 @@ func (mr *MockControllerMockRecorder) GetAuditEntry(ctx, sequence any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuditEntry", reflect.TypeOf((*MockController)(nil).GetAuditEntry), ctx, sequence)
 }
 
+// GetChapterSchedule mocks base method.
+func (m *MockController) GetChapterSchedule(ctx context.Context) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChapterSchedule", ctx)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChapterSchedule indicates an expected call of GetChapterSchedule.
+func (mr *MockControllerMockRecorder) GetChapterSchedule(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChapterSchedule", reflect.TypeOf((*MockController)(nil).GetChapterSchedule), ctx)
+}
+
 // GetEventsSinks mocks base method.
 func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
 	m.ctrl.T.Helper()
@@ -258,21 +273,6 @@ func (mr *MockControllerMockRecorder) GetNumscript(ctx, ledger, name, version an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscript", reflect.TypeOf((*MockController)(nil).GetNumscript), ctx, ledger, name, version)
 }
 
-// GetPeriodSchedule mocks base method.
-func (m *MockController) GetPeriodSchedule(ctx context.Context) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPeriodSchedule", ctx)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetPeriodSchedule indicates an expected call of GetPeriodSchedule.
-func (mr *MockControllerMockRecorder) GetPeriodSchedule(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPeriodSchedule", reflect.TypeOf((*MockController)(nil).GetPeriodSchedule), ctx)
-}
-
 // GetTransaction mocks base method.
 func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	m.ctrl.T.Helper()
@@ -333,6 +333,21 @@ func (mr *MockControllerMockRecorder) ListAuditEntries(ctx, afterSequence, failu
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuditEntries", reflect.TypeOf((*MockController)(nil).ListAuditEntries), ctx, afterSequence, failuresOnly, pageSize, ledger)
 }
 
+// ListChapters mocks base method.
+func (m *MockController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListChapters", ctx)
+	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Chapter])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListChapters indicates an expected call of ListChapters.
+func (mr *MockControllerMockRecorder) ListChapters(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChapters", reflect.TypeOf((*MockController)(nil).ListChapters), ctx)
+}
+
 // ListLedgers mocks base method.
 func (m *MockController) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 	m.ctrl.T.Helper()
@@ -376,21 +391,6 @@ func (m *MockController) ListNumscripts(ctx context.Context, ledger string) ([]*
 func (mr *MockControllerMockRecorder) ListNumscripts(ctx, ledger any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNumscripts", reflect.TypeOf((*MockController)(nil).ListNumscripts), ctx, ledger)
-}
-
-// ListPeriods mocks base method.
-func (m *MockController) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListPeriods", ctx)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Period])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListPeriods indicates an expected call of ListPeriods.
-func (mr *MockControllerMockRecorder) ListPeriods(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPeriods", reflect.TypeOf((*MockController)(nil).ListPeriods), ctx)
 }
 
 // ListPreparedQueries mocks base method.

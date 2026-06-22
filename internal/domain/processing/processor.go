@@ -221,18 +221,18 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commo
 		return p.processAddEventsSink(orderType.AddEventsSink, s)
 	case *raftcmdpb.Order_RemoveEventsSink:
 		return p.processRemoveEventsSink(orderType.RemoveEventsSink, s)
-	case *raftcmdpb.Order_ClosePeriod:
-		return p.processClosePeriod(orderType.ClosePeriod, s)
-	case *raftcmdpb.Order_SealPeriod:
-		return p.processSealPeriod(orderType.SealPeriod, s)
-	case *raftcmdpb.Order_ArchivePeriod:
-		return p.processArchivePeriod(orderType.ArchivePeriod, s)
-	case *raftcmdpb.Order_ConfirmArchivePeriod:
-		return p.processConfirmArchivePeriod(orderType.ConfirmArchivePeriod, s)
-	case *raftcmdpb.Order_SetPeriodSchedule:
-		return p.processSetPeriodSchedule(orderType.SetPeriodSchedule, s)
-	case *raftcmdpb.Order_DeletePeriodSchedule:
-		return p.processDeletePeriodSchedule(s)
+	case *raftcmdpb.Order_CloseChapter:
+		return p.processCloseChapter(orderType.CloseChapter, s)
+	case *raftcmdpb.Order_SealChapter:
+		return p.processSealChapter(orderType.SealChapter, s)
+	case *raftcmdpb.Order_ArchiveChapter:
+		return p.processArchiveChapter(orderType.ArchiveChapter, s)
+	case *raftcmdpb.Order_ConfirmArchiveChapter:
+		return p.processConfirmArchiveChapter(orderType.ConfirmArchiveChapter, s)
+	case *raftcmdpb.Order_SetChapterSchedule:
+		return p.processSetChapterSchedule(orderType.SetChapterSchedule, s)
+	case *raftcmdpb.Order_DeleteChapterSchedule:
+		return p.processDeleteChapterSchedule(s)
 	case *raftcmdpb.Order_MirrorIngest:
 		return p.processMirrorIngest(orderType.MirrorIngest, s)
 	case *raftcmdpb.Order_PromoteLedger:

@@ -18,7 +18,7 @@ import (
 //
 // The result is orders of magnitude smaller than a full Pebble checkpoint
 // because it contains only the seal-hash domain (attributes zone), not the
-// entire store. This is critical for archived periods: the whole point of
+// entire store. This is critical for archived chapters: the whole point of
 // archiving is to reclaim disk space, so a full checkpoint would be
 // counter-productive.
 //

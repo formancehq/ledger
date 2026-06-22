@@ -21,7 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// ArchiveRequest contains the data needed to archive a period.
+// ArchiveRequest contains the data needed to archive a chapter.
 //
 // Logs and audit entries advance on independent sequence counters, so the
 // archive must carry BOTH ranges (#312). Iterating `SubColdAudit` /
@@ -30,28 +30,28 @@ import (
 // subsequent purge still removes them from Pebble. The audit trail goes
 // straight to the floor.
 type ArchiveRequest struct {
-	PeriodID           uint64
-	StartSequence      uint64 // First log sequence in the period
-	CloseSequence      uint64 // Last log sequence in the period (the ClosePeriod log)
-	StartAuditSequence uint64 // First audit sequence in the period
-	CloseAuditSequence uint64 // Last audit sequence when the period was closed
+	ChapterID          uint64
+	StartSequence      uint64 // First log sequence in the chapter
+	CloseSequence      uint64 // Last log sequence in the chapter (the CloseChapter log)
+	StartAuditSequence uint64 // First audit sequence in the chapter
+	CloseAuditSequence uint64 // Last audit sequence when the chapter was closed
 }
 
-// ArchiveProposer is a callback to propose a ConfirmArchivePeriod order back into Raft.
-type ArchiveProposer func(periodID uint64) error
+// ArchiveProposer is a callback to propose a ConfirmArchiveChapter order back into Raft.
+type ArchiveProposer func(chapterID uint64) error
 
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source archiver.go -destination archiver_period_state_generated_test.go -package state . ArchiverPeriodState
+//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source archiver.go -destination archiver_chapter_state_generated_test.go -package state . ArchiverChapterState
 
-// ArchiverPeriodState provides the Archiver with read access to the current
-// period state, used to gate consumption of stale archive requests after a
+// ArchiverChapterState provides the Archiver with read access to the current
+// chapter state, used to gate consumption of stale archive requests after a
 // follower sync — see Archiver.archive for the rationale.
 // Implemented by *Machine.
-type ArchiverPeriodState interface {
-	ArchivingPeriodByID(id uint64) (*commonpb.Period, bool)
+type ArchiverChapterState interface {
+	ArchivingChapterByID(id uint64) (*commonpb.Chapter, bool)
 }
 
-// Archiver runs in the background to export closed period data to cold storage
-// and propose ConfirmArchivePeriod back into Raft for deterministic purge.
+// Archiver runs in the background to export closed chapter data to cold storage
+// and propose ConfirmArchiveChapter back into Raft for deterministic purge.
 // It follows the same pattern as Sealer: a background goroutine reads from
 // archiveRequestCh, performs I/O off the Raft critical path, then proposes.
 type Archiver struct {
@@ -61,7 +61,7 @@ type Archiver struct {
 	archiveRequestCh *worker.Channel[ArchiveRequest]
 	proposeFn        ArchiveProposer
 	isLeader         func() bool
-	periodState      ArchiverPeriodState
+	chapterState     ArchiverChapterState
 	reconcileFn      func(stop <-chan struct{})
 	w                worker.Worker
 	bucketID         string
@@ -72,7 +72,7 @@ type Archiver struct {
 const archiveReconcileInterval = 30 * time.Second
 
 // NewArchiver creates a new background archiver.
-// reconcileFn re-dispatches ARCHIVING periods from durable state to the channel.
+// reconcileFn re-dispatches ARCHIVING chapters from durable state to the channel.
 func NewArchiver(
 	logger logging.Logger,
 	dataStore dal.ColdStorageScanner,
@@ -80,7 +80,7 @@ func NewArchiver(
 	archiveRequestCh *worker.Channel[ArchiveRequest],
 	proposeFn ArchiveProposer,
 	isLeader func() bool,
-	periodState ArchiverPeriodState,
+	chapterState ArchiverChapterState,
 	bucketID string,
 	reconcileFn func(stop <-chan struct{}),
 ) *Archiver {
@@ -91,7 +91,7 @@ func NewArchiver(
 		archiveRequestCh: archiveRequestCh,
 		proposeFn:        proposeFn,
 		isLeader:         isLeader,
-		periodState:      periodState,
+		chapterState:     chapterState,
 		reconcileFn:      reconcileFn,
 		w:                worker.New(),
 		bucketID:         bucketID,
@@ -101,7 +101,7 @@ func NewArchiver(
 // Start launches the background archiving goroutine with periodic reconciliation.
 func (a *Archiver) Start() {
 	a.w.Run(func(stop <-chan struct{}) {
-		// Periodic reconciliation: re-scan for ARCHIVING periods.
+		// Periodic reconciliation: re-scan for ARCHIVING chapters.
 		go worker.RunTicker(stop, archiveReconcileInterval, func() {
 			if a.isLeader() {
 				a.reconcileFn(stop)
@@ -122,7 +122,7 @@ func (a *Archiver) Stop() {
 	a.w.Stop()
 }
 
-// archive exports period data to cold storage and proposes ConfirmArchivePeriod.
+// archive exports chapter data to cold storage and proposes ConfirmArchiveChapter.
 //
 // The flow handles both leader and follower nodes:
 //   - Exists returns true only when both the archive data AND its persisted
@@ -149,25 +149,25 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 	}()
 
 	logFields := map[string]any{
-		"periodId":      req.PeriodID,
+		"chapterId":     req.ChapterID,
 		"startSequence": req.StartSequence,
 		"closeSequence": req.CloseSequence,
 	}
 
-	// Reject stale requests whose period has moved past ARCHIVING. After a
+	// Reject stale requests whose chapter has moved past ARCHIVING. After a
 	// follower sync, the leader's checkpoint may have already promoted this
-	// period to ARCHIVED (entries purged) — iterating the request's sequence
+	// chapter to ARCHIVED (entries purged) — iterating the request's sequence
 	// ranges would surface zero entries and we'd upload an empty SST. The
 	// drain in SynchronizeWithLeader handles most of these, but the guard
-	// also covers requests that race the leader's confirm via Raft (period
+	// also covers requests that race the leader's confirm via Raft (chapter
 	// transitions between TrySend and consumption).
-	if _, ok := a.periodState.ArchivingPeriodByID(req.PeriodID); !ok {
-		a.logger.WithFields(logFields).Infof("Period no longer ARCHIVING (sealed/archived by leader), skipping")
+	if _, ok := a.chapterState.ArchivingChapterByID(req.ChapterID); !ok {
+		a.logger.WithFields(logFields).Infof("Chapter no longer ARCHIVING (sealed/archived by leader), skipping")
 
 		return nil
 	}
 
-	exists, err := a.coldStorage.Exists(ctx, a.bucketID, req.PeriodID)
+	exists, err := a.coldStorage.Exists(ctx, a.bucketID, req.ChapterID)
 	if err != nil {
 		return fmt.Errorf("checking archive existence: %w", err)
 	}
@@ -183,13 +183,13 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 		// Leader crash-recovery: validate the existing object against its
 		// persisted checksum. A truncated-but-readable SST would still
 		// produce a digest, so we MUST compare against the stored reference.
-		if err := a.verifyExistingArchive(ctx, req.PeriodID); err != nil {
+		if err := a.verifyExistingArchive(ctx, req.ChapterID); err != nil {
 			return err
 		}
 
-		a.logger.WithFields(logFields).Infof("Archive integrity verified, proposing ConfirmArchivePeriod")
-		if err := a.proposeFn(req.PeriodID); err != nil {
-			return fmt.Errorf("proposing ConfirmArchivePeriod for period %d: %w", req.PeriodID, err)
+		a.logger.WithFields(logFields).Infof("Archive integrity verified, proposing ConfirmArchiveChapter")
+		if err := a.proposeFn(req.ChapterID); err != nil {
+			return fmt.Errorf("proposing ConfirmArchiveChapter for chapter %d: %w", req.ChapterID, err)
 		}
 
 		return nil
@@ -200,7 +200,7 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 		return worker.ErrNotLeader
 	}
 
-	a.logger.WithFields(logFields).Infof("Starting period archival")
+	a.logger.WithFields(logFields).Infof("Starting chapter archival")
 
 	// Build SST archive to a temp file, then upload it.
 	tmpPath, localChecksum, err := a.buildSSTArchive(req)
@@ -217,7 +217,7 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 		return fmt.Errorf("opening SST archive for upload: %w", err)
 	}
 
-	uploadErr := a.coldStorage.Archive(ctx, a.bucketID, req.PeriodID, sstFile, localChecksum)
+	uploadErr := a.coldStorage.Archive(ctx, a.bucketID, req.ChapterID, sstFile, localChecksum)
 	_ = sstFile.Close()
 
 	if uploadErr != nil {
@@ -227,21 +227,21 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 	// Sanity-check the upload by recomputing the remote checksum and
 	// comparing with the local one. Catches backend bugs or in-flight bit
 	// flips before we propose Confirm.
-	remoteChecksum, err := a.coldStorage.Checksum(ctx, a.bucketID, req.PeriodID)
+	remoteChecksum, err := a.coldStorage.Checksum(ctx, a.bucketID, req.ChapterID)
 	if err != nil {
 		return fmt.Errorf("computing remote archive checksum: %w", err)
 	}
 
 	if !bytes.Equal(localChecksum, remoteChecksum) {
-		return fmt.Errorf("archive checksum mismatch for period %d after upload: local=%s remote=%s",
-			req.PeriodID, hex.EncodeToString(localChecksum), hex.EncodeToString(remoteChecksum))
+		return fmt.Errorf("archive checksum mismatch for chapter %d after upload: local=%s remote=%s",
+			req.ChapterID, hex.EncodeToString(localChecksum), hex.EncodeToString(remoteChecksum))
 	}
 
-	a.logger.WithFields(logFields).Infof("Period archival complete, proposing ConfirmArchivePeriod")
+	a.logger.WithFields(logFields).Infof("Chapter archival complete, proposing ConfirmArchiveChapter")
 
-	// Propose ConfirmArchivePeriod back into Raft
-	if err := a.proposeFn(req.PeriodID); err != nil {
-		return fmt.Errorf("proposing ConfirmArchivePeriod for period %d: %w", req.PeriodID, err)
+	// Propose ConfirmArchiveChapter back into Raft
+	if err := a.proposeFn(req.ChapterID); err != nil {
+		return fmt.Errorf("proposing ConfirmArchiveChapter for chapter %d: %w", req.ChapterID, err)
 	}
 
 	return nil
@@ -250,49 +250,49 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 // verifyExistingArchive reads the expected SHA-256 stored alongside the
 // archive at upload time, recomputes the current SHA-256 of the data, and
 // fails if they do not match. Used by the crash-recovery path before
-// proposing ConfirmArchivePeriod.
-func (a *Archiver) verifyExistingArchive(ctx context.Context, periodID uint64) error {
-	expected, err := a.coldStorage.ExpectedChecksum(ctx, a.bucketID, periodID)
+// proposing ConfirmArchiveChapter.
+func (a *Archiver) verifyExistingArchive(ctx context.Context, chapterID uint64) error {
+	expected, err := a.coldStorage.ExpectedChecksum(ctx, a.bucketID, chapterID)
 	if err != nil {
-		return fmt.Errorf("reading expected checksum for period %d: %w", periodID, err)
+		return fmt.Errorf("reading expected checksum for chapter %d: %w", chapterID, err)
 	}
 
-	actual, err := a.coldStorage.Checksum(ctx, a.bucketID, periodID)
+	actual, err := a.coldStorage.Checksum(ctx, a.bucketID, chapterID)
 	if err != nil {
-		return fmt.Errorf("reading current checksum for period %d: %w", periodID, err)
+		return fmt.Errorf("reading current checksum for chapter %d: %w", chapterID, err)
 	}
 
 	if !bytes.Equal(expected, actual) {
-		return fmt.Errorf("archive integrity check failed for period %d: expected=%s actual=%s",
-			periodID, hex.EncodeToString(expected), hex.EncodeToString(actual))
+		return fmt.Errorf("archive integrity check failed for chapter %d: expected=%s actual=%s",
+			chapterID, hex.EncodeToString(expected), hex.EncodeToString(actual))
 	}
 
 	return nil
 }
 
-// periodMetadata is the JSON metadata included in the archive. Every field
-// here must be a deterministic function of the period being archived, so
-// that two archive builds of the same period produce byte-identical SSTs
+// chapterMetadata is the JSON metadata included in the archive. Every field
+// here must be a deterministic function of the chapter being archived, so
+// that two archive builds of the same chapter produce byte-identical SSTs
 // (and therefore identical checksums). Adding a timestamp or any other
 // non-deterministic field would break checksum verification — keep this
 // struct boring.
-type periodMetadata struct {
-	PeriodID           uint64 `json:"periodId"`
+type chapterMetadata struct {
+	ChapterID          uint64 `json:"chapterId"`
 	StartSequence      uint64 `json:"startSequence"`
 	CloseSequence      uint64 `json:"closeSequence"`
 	StartAuditSequence uint64 `json:"startAuditSequence"`
 	CloseAuditSequence uint64 `json:"closeAuditSequence"`
 }
 
-// MetadataKey is the SST key used for period metadata.
+// MetadataKey is the SST key used for chapter metadata.
 // Prefix 0x00 sorts before the cold zone (0x01+) so it won't interfere with queries.
 var MetadataKey = []byte{0x00, 'm', 'e', 't', 'a', 'd', 'a', 't', 'a'}
 
-// buildSSTArchive writes a Pebble SST file to a temp file containing period metadata
-// and all cold-storable KV pairs for the period in a single pass.
+// buildSSTArchive writes a Pebble SST file to a temp file containing chapter metadata
+// and all cold-storable KV pairs for the chapter in a single pass.
 //
 // SST key layout:
-//   - [0x00]["metadata"] → JSON period metadata
+//   - [0x00]["metadata"] → JSON chapter metadata
 //   - original Pebble keys (0x01+ prefix) → values as-is
 func (a *Archiver) buildSSTArchive(req ArchiveRequest) (string, []byte, error) {
 	tmpFile, err := os.CreateTemp("", "cold-archive-*.sst")
@@ -307,17 +307,17 @@ func (a *Archiver) buildSSTArchive(req ArchiveRequest) (string, []byte, error) {
 		FilterPolicy: bloom.FilterPolicy(10),
 	})
 
-	// 1. Write metadata (sorts first due to 0x00 prefix). periodMetadata
+	// 1. Write metadata (sorts first due to 0x00 prefix). chapterMetadata
 	// shares the same shape as ArchiveRequest; the conversion is a no-op
 	// and keeps the two struct definitions in sync at compile time.
-	meta := periodMetadata(req)
+	meta := chapterMetadata(req)
 
 	metaJSON, err := json.Marshal(meta)
 	if err != nil {
 		_ = writer.Close()
 		_ = os.Remove(tmpPath)
 
-		return "", nil, fmt.Errorf("marshaling period metadata: %w", err)
+		return "", nil, fmt.Errorf("marshaling chapter metadata: %w", err)
 	}
 
 	if err := writer.Set(MetadataKey, metaJSON); err != nil {

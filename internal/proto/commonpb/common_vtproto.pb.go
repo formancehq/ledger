@@ -795,39 +795,39 @@ func (m *LogPayload_RemovedEventsSink) CloneVT() isLogPayload_Type {
 	return r
 }
 
-func (m *LogPayload_ClosePeriod) CloneVT() isLogPayload_Type {
+func (m *LogPayload_CloseChapter) CloneVT() isLogPayload_Type {
 	if m == nil {
-		return (*LogPayload_ClosePeriod)(nil)
+		return (*LogPayload_CloseChapter)(nil)
 	}
-	r := new(LogPayload_ClosePeriod)
-	r.ClosePeriod = m.ClosePeriod.CloneVT()
+	r := new(LogPayload_CloseChapter)
+	r.CloseChapter = m.CloseChapter.CloneVT()
 	return r
 }
 
-func (m *LogPayload_SealPeriod) CloneVT() isLogPayload_Type {
+func (m *LogPayload_SealChapter) CloneVT() isLogPayload_Type {
 	if m == nil {
-		return (*LogPayload_SealPeriod)(nil)
+		return (*LogPayload_SealChapter)(nil)
 	}
-	r := new(LogPayload_SealPeriod)
-	r.SealPeriod = m.SealPeriod.CloneVT()
+	r := new(LogPayload_SealChapter)
+	r.SealChapter = m.SealChapter.CloneVT()
 	return r
 }
 
-func (m *LogPayload_ArchivePeriod) CloneVT() isLogPayload_Type {
+func (m *LogPayload_ArchiveChapter) CloneVT() isLogPayload_Type {
 	if m == nil {
-		return (*LogPayload_ArchivePeriod)(nil)
+		return (*LogPayload_ArchiveChapter)(nil)
 	}
-	r := new(LogPayload_ArchivePeriod)
-	r.ArchivePeriod = m.ArchivePeriod.CloneVT()
+	r := new(LogPayload_ArchiveChapter)
+	r.ArchiveChapter = m.ArchiveChapter.CloneVT()
 	return r
 }
 
-func (m *LogPayload_ConfirmArchivePeriod) CloneVT() isLogPayload_Type {
+func (m *LogPayload_ConfirmArchiveChapter) CloneVT() isLogPayload_Type {
 	if m == nil {
-		return (*LogPayload_ConfirmArchivePeriod)(nil)
+		return (*LogPayload_ConfirmArchiveChapter)(nil)
 	}
-	r := new(LogPayload_ConfirmArchivePeriod)
-	r.ConfirmArchivePeriod = m.ConfirmArchivePeriod.CloneVT()
+	r := new(LogPayload_ConfirmArchiveChapter)
+	r.ConfirmArchiveChapter = m.ConfirmArchiveChapter.CloneVT()
 	return r
 }
 
@@ -840,21 +840,21 @@ func (m *LogPayload_SetMaintenanceMode) CloneVT() isLogPayload_Type {
 	return r
 }
 
-func (m *LogPayload_SetPeriodSchedule) CloneVT() isLogPayload_Type {
+func (m *LogPayload_SetChapterSchedule) CloneVT() isLogPayload_Type {
 	if m == nil {
-		return (*LogPayload_SetPeriodSchedule)(nil)
+		return (*LogPayload_SetChapterSchedule)(nil)
 	}
-	r := new(LogPayload_SetPeriodSchedule)
-	r.SetPeriodSchedule = m.SetPeriodSchedule.CloneVT()
+	r := new(LogPayload_SetChapterSchedule)
+	r.SetChapterSchedule = m.SetChapterSchedule.CloneVT()
 	return r
 }
 
-func (m *LogPayload_DeletePeriodSchedule) CloneVT() isLogPayload_Type {
+func (m *LogPayload_DeleteChapterSchedule) CloneVT() isLogPayload_Type {
 	if m == nil {
-		return (*LogPayload_DeletePeriodSchedule)(nil)
+		return (*LogPayload_DeleteChapterSchedule)(nil)
 	}
-	r := new(LogPayload_DeletePeriodSchedule)
-	r.DeletePeriodSchedule = m.DeletePeriodSchedule.CloneVT()
+	r := new(LogPayload_DeleteChapterSchedule)
+	r.DeleteChapterSchedule = m.DeleteChapterSchedule.CloneVT()
 	return r
 }
 
@@ -1183,11 +1183,11 @@ func (m *PersistedClusterState) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *SetPeriodScheduleLog) CloneVT() *SetPeriodScheduleLog {
+func (m *SetChapterScheduleLog) CloneVT() *SetChapterScheduleLog {
 	if m == nil {
-		return (*SetPeriodScheduleLog)(nil)
+		return (*SetChapterScheduleLog)(nil)
 	}
-	r := new(SetPeriodScheduleLog)
+	r := new(SetChapterScheduleLog)
 	r.Cron = m.Cron
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -1196,15 +1196,15 @@ func (m *SetPeriodScheduleLog) CloneVT() *SetPeriodScheduleLog {
 	return r
 }
 
-func (m *SetPeriodScheduleLog) CloneMessageVT() proto.Message {
+func (m *SetChapterScheduleLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DeletedPeriodScheduleLog) CloneVT() *DeletedPeriodScheduleLog {
+func (m *DeletedChapterScheduleLog) CloneVT() *DeletedChapterScheduleLog {
 	if m == nil {
-		return (*DeletedPeriodScheduleLog)(nil)
+		return (*DeletedChapterScheduleLog)(nil)
 	}
-	r := new(DeletedPeriodScheduleLog)
+	r := new(DeletedChapterScheduleLog)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1212,7 +1212,7 @@ func (m *DeletedPeriodScheduleLog) CloneVT() *DeletedPeriodScheduleLog {
 	return r
 }
 
-func (m *DeletedPeriodScheduleLog) CloneMessageVT() proto.Message {
+func (m *DeletedChapterScheduleLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1969,7 +1969,7 @@ func (m *CreatedTransaction) CloneVT() *CreatedTransaction {
 	}
 	r := new(CreatedTransaction)
 	r.Transaction = m.Transaction.CloneVT()
-	r.PeriodId = m.PeriodId
+	r.ChapterId = m.ChapterId
 	r.PostCommitVolumes = m.PostCommitVolumes.CloneVT()
 	if rhs := m.AccountMetadata; rhs != nil {
 		tmpContainer := make(map[string]*MetadataMap, len(rhs))
@@ -2103,11 +2103,11 @@ func (m *RemovedMetadataFieldTypeLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *Period) CloneVT() *Period {
+func (m *Chapter) CloneVT() *Chapter {
 	if m == nil {
-		return (*Period)(nil)
+		return (*Chapter)(nil)
 	}
-	r := new(Period)
+	r := new(Chapter)
 	r.Id = m.Id
 	r.Start = m.Start.CloneVT()
 	r.End = m.End.CloneVT()
@@ -2138,17 +2138,17 @@ func (m *Period) CloneVT() *Period {
 	return r
 }
 
-func (m *Period) CloneMessageVT() proto.Message {
+func (m *Chapter) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ClosedPeriodLog) CloneVT() *ClosedPeriodLog {
+func (m *ClosedChapterLog) CloneVT() *ClosedChapterLog {
 	if m == nil {
-		return (*ClosedPeriodLog)(nil)
+		return (*ClosedChapterLog)(nil)
 	}
-	r := new(ClosedPeriodLog)
-	r.ClosedPeriod = m.ClosedPeriod.CloneVT()
-	r.NewPeriod = m.NewPeriod.CloneVT()
+	r := new(ClosedChapterLog)
+	r.ClosedChapter = m.ClosedChapter.CloneVT()
+	r.NewChapter = m.NewChapter.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2156,16 +2156,16 @@ func (m *ClosedPeriodLog) CloneVT() *ClosedPeriodLog {
 	return r
 }
 
-func (m *ClosedPeriodLog) CloneMessageVT() proto.Message {
+func (m *ClosedChapterLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *SealedPeriodLog) CloneVT() *SealedPeriodLog {
+func (m *SealedChapterLog) CloneVT() *SealedChapterLog {
 	if m == nil {
-		return (*SealedPeriodLog)(nil)
+		return (*SealedChapterLog)(nil)
 	}
-	r := new(SealedPeriodLog)
-	r.Period = m.Period.CloneVT()
+	r := new(SealedChapterLog)
+	r.Chapter = m.Chapter.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2173,16 +2173,16 @@ func (m *SealedPeriodLog) CloneVT() *SealedPeriodLog {
 	return r
 }
 
-func (m *SealedPeriodLog) CloneMessageVT() proto.Message {
+func (m *SealedChapterLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ArchivedPeriodLog) CloneVT() *ArchivedPeriodLog {
+func (m *ArchivedChapterLog) CloneVT() *ArchivedChapterLog {
 	if m == nil {
-		return (*ArchivedPeriodLog)(nil)
+		return (*ArchivedChapterLog)(nil)
 	}
-	r := new(ArchivedPeriodLog)
-	r.Period = m.Period.CloneVT()
+	r := new(ArchivedChapterLog)
+	r.Chapter = m.Chapter.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2190,16 +2190,16 @@ func (m *ArchivedPeriodLog) CloneVT() *ArchivedPeriodLog {
 	return r
 }
 
-func (m *ArchivedPeriodLog) CloneMessageVT() proto.Message {
+func (m *ArchivedChapterLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ConfirmedArchivePeriodLog) CloneVT() *ConfirmedArchivePeriodLog {
+func (m *ConfirmedArchiveChapterLog) CloneVT() *ConfirmedArchiveChapterLog {
 	if m == nil {
-		return (*ConfirmedArchivePeriodLog)(nil)
+		return (*ConfirmedArchiveChapterLog)(nil)
 	}
-	r := new(ConfirmedArchivePeriodLog)
-	r.Period = m.Period.CloneVT()
+	r := new(ConfirmedArchiveChapterLog)
+	r.Chapter = m.Chapter.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2207,7 +2207,7 @@ func (m *ConfirmedArchivePeriodLog) CloneVT() *ConfirmedArchivePeriodLog {
 	return r
 }
 
-func (m *ConfirmedArchivePeriodLog) CloneMessageVT() proto.Message {
+func (m *ConfirmedArchiveChapterLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -4915,8 +4915,8 @@ func (this *LogPayload_RemovedEventsSink) EqualVT(thatIface isLogPayload_Type) b
 	return true
 }
 
-func (this *LogPayload_ClosePeriod) EqualVT(thatIface isLogPayload_Type) bool {
-	that, ok := thatIface.(*LogPayload_ClosePeriod)
+func (this *LogPayload_CloseChapter) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_CloseChapter)
 	if !ok {
 		return false
 	}
@@ -4926,12 +4926,12 @@ func (this *LogPayload_ClosePeriod) EqualVT(thatIface isLogPayload_Type) bool {
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.ClosePeriod, that.ClosePeriod; p != q {
+	if p, q := this.CloseChapter, that.CloseChapter; p != q {
 		if p == nil {
-			p = &ClosedPeriodLog{}
+			p = &ClosedChapterLog{}
 		}
 		if q == nil {
-			q = &ClosedPeriodLog{}
+			q = &ClosedChapterLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4940,8 +4940,8 @@ func (this *LogPayload_ClosePeriod) EqualVT(thatIface isLogPayload_Type) bool {
 	return true
 }
 
-func (this *LogPayload_SealPeriod) EqualVT(thatIface isLogPayload_Type) bool {
-	that, ok := thatIface.(*LogPayload_SealPeriod)
+func (this *LogPayload_SealChapter) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_SealChapter)
 	if !ok {
 		return false
 	}
@@ -4951,12 +4951,12 @@ func (this *LogPayload_SealPeriod) EqualVT(thatIface isLogPayload_Type) bool {
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.SealPeriod, that.SealPeriod; p != q {
+	if p, q := this.SealChapter, that.SealChapter; p != q {
 		if p == nil {
-			p = &SealedPeriodLog{}
+			p = &SealedChapterLog{}
 		}
 		if q == nil {
-			q = &SealedPeriodLog{}
+			q = &SealedChapterLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4965,8 +4965,8 @@ func (this *LogPayload_SealPeriod) EqualVT(thatIface isLogPayload_Type) bool {
 	return true
 }
 
-func (this *LogPayload_ArchivePeriod) EqualVT(thatIface isLogPayload_Type) bool {
-	that, ok := thatIface.(*LogPayload_ArchivePeriod)
+func (this *LogPayload_ArchiveChapter) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_ArchiveChapter)
 	if !ok {
 		return false
 	}
@@ -4976,12 +4976,12 @@ func (this *LogPayload_ArchivePeriod) EqualVT(thatIface isLogPayload_Type) bool 
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.ArchivePeriod, that.ArchivePeriod; p != q {
+	if p, q := this.ArchiveChapter, that.ArchiveChapter; p != q {
 		if p == nil {
-			p = &ArchivedPeriodLog{}
+			p = &ArchivedChapterLog{}
 		}
 		if q == nil {
-			q = &ArchivedPeriodLog{}
+			q = &ArchivedChapterLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4990,8 +4990,8 @@ func (this *LogPayload_ArchivePeriod) EqualVT(thatIface isLogPayload_Type) bool 
 	return true
 }
 
-func (this *LogPayload_ConfirmArchivePeriod) EqualVT(thatIface isLogPayload_Type) bool {
-	that, ok := thatIface.(*LogPayload_ConfirmArchivePeriod)
+func (this *LogPayload_ConfirmArchiveChapter) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_ConfirmArchiveChapter)
 	if !ok {
 		return false
 	}
@@ -5001,12 +5001,12 @@ func (this *LogPayload_ConfirmArchivePeriod) EqualVT(thatIface isLogPayload_Type
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.ConfirmArchivePeriod, that.ConfirmArchivePeriod; p != q {
+	if p, q := this.ConfirmArchiveChapter, that.ConfirmArchiveChapter; p != q {
 		if p == nil {
-			p = &ConfirmedArchivePeriodLog{}
+			p = &ConfirmedArchiveChapterLog{}
 		}
 		if q == nil {
-			q = &ConfirmedArchivePeriodLog{}
+			q = &ConfirmedArchiveChapterLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5040,8 +5040,8 @@ func (this *LogPayload_SetMaintenanceMode) EqualVT(thatIface isLogPayload_Type) 
 	return true
 }
 
-func (this *LogPayload_SetPeriodSchedule) EqualVT(thatIface isLogPayload_Type) bool {
-	that, ok := thatIface.(*LogPayload_SetPeriodSchedule)
+func (this *LogPayload_SetChapterSchedule) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_SetChapterSchedule)
 	if !ok {
 		return false
 	}
@@ -5051,12 +5051,12 @@ func (this *LogPayload_SetPeriodSchedule) EqualVT(thatIface isLogPayload_Type) b
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.SetPeriodSchedule, that.SetPeriodSchedule; p != q {
+	if p, q := this.SetChapterSchedule, that.SetChapterSchedule; p != q {
 		if p == nil {
-			p = &SetPeriodScheduleLog{}
+			p = &SetChapterScheduleLog{}
 		}
 		if q == nil {
-			q = &SetPeriodScheduleLog{}
+			q = &SetChapterScheduleLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5065,8 +5065,8 @@ func (this *LogPayload_SetPeriodSchedule) EqualVT(thatIface isLogPayload_Type) b
 	return true
 }
 
-func (this *LogPayload_DeletePeriodSchedule) EqualVT(thatIface isLogPayload_Type) bool {
-	that, ok := thatIface.(*LogPayload_DeletePeriodSchedule)
+func (this *LogPayload_DeleteChapterSchedule) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_DeleteChapterSchedule)
 	if !ok {
 		return false
 	}
@@ -5076,12 +5076,12 @@ func (this *LogPayload_DeletePeriodSchedule) EqualVT(thatIface isLogPayload_Type
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.DeletePeriodSchedule, that.DeletePeriodSchedule; p != q {
+	if p, q := this.DeleteChapterSchedule, that.DeleteChapterSchedule; p != q {
 		if p == nil {
-			p = &DeletedPeriodScheduleLog{}
+			p = &DeletedChapterScheduleLog{}
 		}
 		if q == nil {
-			q = &DeletedPeriodScheduleLog{}
+			q = &DeletedChapterScheduleLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5659,7 +5659,7 @@ func (this *PersistedClusterState) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *SetPeriodScheduleLog) EqualVT(that *SetPeriodScheduleLog) bool {
+func (this *SetChapterScheduleLog) EqualVT(that *SetChapterScheduleLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5671,14 +5671,14 @@ func (this *SetPeriodScheduleLog) EqualVT(that *SetPeriodScheduleLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *SetPeriodScheduleLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SetPeriodScheduleLog)
+func (this *SetChapterScheduleLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SetChapterScheduleLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *DeletedPeriodScheduleLog) EqualVT(that *DeletedPeriodScheduleLog) bool {
+func (this *DeletedChapterScheduleLog) EqualVT(that *DeletedChapterScheduleLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5687,8 +5687,8 @@ func (this *DeletedPeriodScheduleLog) EqualVT(that *DeletedPeriodScheduleLog) bo
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *DeletedPeriodScheduleLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DeletedPeriodScheduleLog)
+func (this *DeletedChapterScheduleLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DeletedChapterScheduleLog)
 	if !ok {
 		return false
 	}
@@ -6970,7 +6970,7 @@ func (this *CreatedTransaction) EqualVT(that *CreatedTransaction) bool {
 			}
 		}
 	}
-	if this.PeriodId != that.PeriodId {
+	if this.ChapterId != that.ChapterId {
 		return false
 	}
 	if !this.PostCommitVolumes.EqualVT(that.PostCommitVolumes) {
@@ -7165,7 +7165,7 @@ func (this *RemovedMetadataFieldTypeLog) EqualMessageVT(thatMsg proto.Message) b
 	}
 	return this.EqualVT(that)
 }
-func (this *Period) EqualVT(that *Period) bool {
+func (this *Chapter) EqualVT(that *Chapter) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -7207,87 +7207,87 @@ func (this *Period) EqualVT(that *Period) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *Period) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*Period)
+func (this *Chapter) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*Chapter)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *ClosedPeriodLog) EqualVT(that *ClosedPeriodLog) bool {
+func (this *ClosedChapterLog) EqualVT(that *ClosedChapterLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if !this.ClosedPeriod.EqualVT(that.ClosedPeriod) {
+	if !this.ClosedChapter.EqualVT(that.ClosedChapter) {
 		return false
 	}
-	if !this.NewPeriod.EqualVT(that.NewPeriod) {
+	if !this.NewChapter.EqualVT(that.NewChapter) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ClosedPeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ClosedPeriodLog)
+func (this *ClosedChapterLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ClosedChapterLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *SealedPeriodLog) EqualVT(that *SealedPeriodLog) bool {
+func (this *SealedChapterLog) EqualVT(that *SealedChapterLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if !this.Period.EqualVT(that.Period) {
+	if !this.Chapter.EqualVT(that.Chapter) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *SealedPeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SealedPeriodLog)
+func (this *SealedChapterLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SealedChapterLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *ArchivedPeriodLog) EqualVT(that *ArchivedPeriodLog) bool {
+func (this *ArchivedChapterLog) EqualVT(that *ArchivedChapterLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if !this.Period.EqualVT(that.Period) {
+	if !this.Chapter.EqualVT(that.Chapter) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ArchivedPeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ArchivedPeriodLog)
+func (this *ArchivedChapterLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ArchivedChapterLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *ConfirmedArchivePeriodLog) EqualVT(that *ConfirmedArchivePeriodLog) bool {
+func (this *ConfirmedArchiveChapterLog) EqualVT(that *ConfirmedArchiveChapterLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if !this.Period.EqualVT(that.Period) {
+	if !this.Chapter.EqualVT(that.Chapter) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ConfirmedArchivePeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ConfirmedArchivePeriodLog)
+func (this *ConfirmedArchiveChapterLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ConfirmedArchiveChapterLog)
 	if !ok {
 		return false
 	}
@@ -11435,15 +11435,15 @@ func (m *LogPayload_RemovedEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int,
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LogPayload_ClosePeriod) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LogPayload_CloseChapter) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *LogPayload_ClosePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LogPayload_CloseChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.ClosePeriod != nil {
-		size, err := m.ClosePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.CloseChapter != nil {
+		size, err := m.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11454,15 +11454,15 @@ func (m *LogPayload_ClosePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LogPayload_SealPeriod) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LogPayload_SealChapter) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *LogPayload_SealPeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LogPayload_SealChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.SealPeriod != nil {
-		size, err := m.SealPeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.SealChapter != nil {
+		size, err := m.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11473,15 +11473,15 @@ func (m *LogPayload_SealPeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LogPayload_ArchivePeriod) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LogPayload_ArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *LogPayload_ArchivePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LogPayload_ArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.ArchivePeriod != nil {
-		size, err := m.ArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.ArchiveChapter != nil {
+		size, err := m.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11492,15 +11492,15 @@ func (m *LogPayload_ArchivePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LogPayload_ConfirmArchivePeriod) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LogPayload_ConfirmArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *LogPayload_ConfirmArchivePeriod) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LogPayload_ConfirmArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.ConfirmArchivePeriod != nil {
-		size, err := m.ConfirmArchivePeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.ConfirmArchiveChapter != nil {
+		size, err := m.ConfirmArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11530,15 +11530,15 @@ func (m *LogPayload_SetMaintenanceMode) MarshalToSizedBufferVT(dAtA []byte) (int
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LogPayload_SetPeriodSchedule) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LogPayload_SetChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *LogPayload_SetPeriodSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LogPayload_SetChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.SetPeriodSchedule != nil {
-		size, err := m.SetPeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+	if m.SetChapterSchedule != nil {
+		size, err := m.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11549,15 +11549,15 @@ func (m *LogPayload_SetPeriodSchedule) MarshalToSizedBufferVT(dAtA []byte) (int,
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LogPayload_DeletePeriodSchedule) MarshalToVT(dAtA []byte) (int, error) {
+func (m *LogPayload_DeleteChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *LogPayload_DeletePeriodSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *LogPayload_DeleteChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.DeletePeriodSchedule != nil {
-		size, err := m.DeletePeriodSchedule.MarshalToSizedBufferVT(dAtA[:i])
+	if m.DeleteChapterSchedule != nil {
+		size, err := m.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -12422,7 +12422,7 @@ func (m *PersistedClusterState) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *SetPeriodScheduleLog) MarshalVT() (dAtA []byte, err error) {
+func (m *SetChapterScheduleLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -12435,12 +12435,12 @@ func (m *SetPeriodScheduleLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SetPeriodScheduleLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SetChapterScheduleLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SetPeriodScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SetChapterScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -12462,7 +12462,7 @@ func (m *SetPeriodScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	return len(dAtA) - i, nil
 }
 
-func (m *DeletedPeriodScheduleLog) MarshalVT() (dAtA []byte, err error) {
+func (m *DeletedChapterScheduleLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -12475,12 +12475,12 @@ func (m *DeletedPeriodScheduleLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DeletedPeriodScheduleLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DeletedChapterScheduleLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DeletedPeriodScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DeletedChapterScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -14505,9 +14505,9 @@ func (m *CreatedTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.PeriodId != 0 {
+	if m.ChapterId != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PeriodId))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
 		i--
 		dAtA[i] = 0x19
 	}
@@ -14857,7 +14857,7 @@ func (m *RemovedMetadataFieldTypeLog) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	return len(dAtA) - i, nil
 }
 
-func (m *Period) MarshalVT() (dAtA []byte, err error) {
+func (m *Chapter) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -14870,12 +14870,12 @@ func (m *Period) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Period) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Chapter) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Period) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Chapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -14966,7 +14966,7 @@ func (m *Period) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ClosedPeriodLog) MarshalVT() (dAtA []byte, err error) {
+func (m *ClosedChapterLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -14979,12 +14979,12 @@ func (m *ClosedPeriodLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ClosedPeriodLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ClosedChapterLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ClosedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ClosedChapterLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -14996,8 +14996,8 @@ func (m *ClosedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.NewPeriod != nil {
-		size, err := m.NewPeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.NewChapter != nil {
+		size, err := m.NewChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -15006,8 +15006,8 @@ func (m *ClosedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.ClosedPeriod != nil {
-		size, err := m.ClosedPeriod.MarshalToSizedBufferVT(dAtA[:i])
+	if m.ClosedChapter != nil {
+		size, err := m.ClosedChapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -15019,7 +15019,7 @@ func (m *ClosedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SealedPeriodLog) MarshalVT() (dAtA []byte, err error) {
+func (m *SealedChapterLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15032,12 +15032,12 @@ func (m *SealedPeriodLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SealedPeriodLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SealedChapterLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SealedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SealedChapterLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15049,8 +15049,8 @@ func (m *SealedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Period != nil {
-		size, err := m.Period.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Chapter != nil {
+		size, err := m.Chapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -15062,7 +15062,7 @@ func (m *SealedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ArchivedPeriodLog) MarshalVT() (dAtA []byte, err error) {
+func (m *ArchivedChapterLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15075,12 +15075,12 @@ func (m *ArchivedPeriodLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ArchivedPeriodLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ArchivedChapterLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ArchivedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ArchivedChapterLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15092,8 +15092,8 @@ func (m *ArchivedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Period != nil {
-		size, err := m.Period.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Chapter != nil {
+		size, err := m.Chapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -15105,7 +15105,7 @@ func (m *ArchivedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ConfirmedArchivePeriodLog) MarshalVT() (dAtA []byte, err error) {
+func (m *ConfirmedArchiveChapterLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15118,12 +15118,12 @@ func (m *ConfirmedArchivePeriodLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ConfirmedArchivePeriodLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ConfirmedArchiveChapterLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ConfirmedArchivePeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ConfirmedArchiveChapterLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15135,8 +15135,8 @@ func (m *ConfirmedArchivePeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Period != nil {
-		size, err := m.Period.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Chapter != nil {
+		size, err := m.Chapter.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -19393,50 +19393,50 @@ func (m *LogPayload_RemovedEventsSink) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LogPayload_ClosePeriod) SizeVT() (n int) {
+func (m *LogPayload_CloseChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.ClosePeriod != nil {
-		l = m.ClosePeriod.SizeVT()
+	if m.CloseChapter != nil {
+		l = m.CloseChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *LogPayload_SealPeriod) SizeVT() (n int) {
+func (m *LogPayload_SealChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.SealPeriod != nil {
-		l = m.SealPeriod.SizeVT()
+	if m.SealChapter != nil {
+		l = m.SealChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *LogPayload_ArchivePeriod) SizeVT() (n int) {
+func (m *LogPayload_ArchiveChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.ArchivePeriod != nil {
-		l = m.ArchivePeriod.SizeVT()
+	if m.ArchiveChapter != nil {
+		l = m.ArchiveChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *LogPayload_ConfirmArchivePeriod) SizeVT() (n int) {
+func (m *LogPayload_ConfirmArchiveChapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.ConfirmArchivePeriod != nil {
-		l = m.ConfirmArchivePeriod.SizeVT()
+	if m.ConfirmArchiveChapter != nil {
+		l = m.ConfirmArchiveChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -19453,26 +19453,26 @@ func (m *LogPayload_SetMaintenanceMode) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LogPayload_SetPeriodSchedule) SizeVT() (n int) {
+func (m *LogPayload_SetChapterSchedule) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.SetPeriodSchedule != nil {
-		l = m.SetPeriodSchedule.SizeVT()
+	if m.SetChapterSchedule != nil {
+		l = m.SetChapterSchedule.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *LogPayload_DeletePeriodSchedule) SizeVT() (n int) {
+func (m *LogPayload_DeleteChapterSchedule) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.DeletePeriodSchedule != nil {
-		l = m.DeletePeriodSchedule.SizeVT()
+	if m.DeleteChapterSchedule != nil {
+		l = m.DeleteChapterSchedule.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -19842,7 +19842,7 @@ func (m *PersistedClusterState) SizeVT() (n int) {
 	return n
 }
 
-func (m *SetPeriodScheduleLog) SizeVT() (n int) {
+func (m *SetChapterScheduleLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -19856,7 +19856,7 @@ func (m *SetPeriodScheduleLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *DeletedPeriodScheduleLog) SizeVT() (n int) {
+func (m *DeletedChapterScheduleLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20725,7 +20725,7 @@ func (m *CreatedTransaction) SizeVT() (n int) {
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
 	}
-	if m.PeriodId != 0 {
+	if m.ChapterId != 0 {
 		n += 9
 	}
 	if m.PostCommitVolumes != nil {
@@ -20873,7 +20873,7 @@ func (m *RemovedMetadataFieldTypeLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *Period) SizeVT() (n int) {
+func (m *Chapter) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20921,60 +20921,60 @@ func (m *Period) SizeVT() (n int) {
 	return n
 }
 
-func (m *ClosedPeriodLog) SizeVT() (n int) {
+func (m *ClosedChapterLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.ClosedPeriod != nil {
-		l = m.ClosedPeriod.SizeVT()
+	if m.ClosedChapter != nil {
+		l = m.ClosedChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.NewPeriod != nil {
-		l = m.NewPeriod.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *SealedPeriodLog) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Period != nil {
-		l = m.Period.SizeVT()
+	if m.NewChapter != nil {
+		l = m.NewChapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *ArchivedPeriodLog) SizeVT() (n int) {
+func (m *SealedChapterLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Period != nil {
-		l = m.Period.SizeVT()
+	if m.Chapter != nil {
+		l = m.Chapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *ConfirmedArchivePeriodLog) SizeVT() (n int) {
+func (m *ArchivedChapterLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Period != nil {
-		l = m.Period.SizeVT()
+	if m.Chapter != nil {
+		l = m.Chapter.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *ConfirmedArchiveChapterLog) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Chapter != nil {
+		l = m.Chapter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -27155,7 +27155,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 9:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ClosePeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field CloseChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -27182,21 +27182,21 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*LogPayload_ClosePeriod); ok {
-				if err := oneof.ClosePeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*LogPayload_CloseChapter); ok {
+				if err := oneof.CloseChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &ClosedPeriodLog{}
+				v := &ClosedChapterLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &LogPayload_ClosePeriod{ClosePeriod: v}
+				m.Type = &LogPayload_CloseChapter{CloseChapter: v}
 			}
 			iNdEx = postIndex
 		case 10:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SealPeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field SealChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -27223,21 +27223,21 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*LogPayload_SealPeriod); ok {
-				if err := oneof.SealPeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*LogPayload_SealChapter); ok {
+				if err := oneof.SealChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &SealedPeriodLog{}
+				v := &SealedChapterLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &LogPayload_SealPeriod{SealPeriod: v}
+				m.Type = &LogPayload_SealChapter{SealChapter: v}
 			}
 			iNdEx = postIndex
 		case 11:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ArchivePeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ArchiveChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -27264,21 +27264,21 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*LogPayload_ArchivePeriod); ok {
-				if err := oneof.ArchivePeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*LogPayload_ArchiveChapter); ok {
+				if err := oneof.ArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &ArchivedPeriodLog{}
+				v := &ArchivedChapterLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &LogPayload_ArchivePeriod{ArchivePeriod: v}
+				m.Type = &LogPayload_ArchiveChapter{ArchiveChapter: v}
 			}
 			iNdEx = postIndex
 		case 12:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConfirmArchivePeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ConfirmArchiveChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -27305,16 +27305,16 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*LogPayload_ConfirmArchivePeriod); ok {
-				if err := oneof.ConfirmArchivePeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*LogPayload_ConfirmArchiveChapter); ok {
+				if err := oneof.ConfirmArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &ConfirmedArchivePeriodLog{}
+				v := &ConfirmedArchiveChapterLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &LogPayload_ConfirmArchivePeriod{ConfirmArchivePeriod: v}
+				m.Type = &LogPayload_ConfirmArchiveChapter{ConfirmArchiveChapter: v}
 			}
 			iNdEx = postIndex
 		case 13:
@@ -27360,7 +27360,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 14:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetPeriodSchedule", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field SetChapterSchedule", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -27387,21 +27387,21 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*LogPayload_SetPeriodSchedule); ok {
-				if err := oneof.SetPeriodSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*LogPayload_SetChapterSchedule); ok {
+				if err := oneof.SetChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &SetPeriodScheduleLog{}
+				v := &SetChapterScheduleLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &LogPayload_SetPeriodSchedule{SetPeriodSchedule: v}
+				m.Type = &LogPayload_SetChapterSchedule{SetChapterSchedule: v}
 			}
 			iNdEx = postIndex
 		case 15:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeletePeriodSchedule", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteChapterSchedule", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -27428,16 +27428,16 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*LogPayload_DeletePeriodSchedule); ok {
-				if err := oneof.DeletePeriodSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*LogPayload_DeleteChapterSchedule); ok {
+				if err := oneof.DeleteChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &DeletedPeriodScheduleLog{}
+				v := &DeletedChapterScheduleLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &LogPayload_DeletePeriodSchedule{DeletePeriodSchedule: v}
+				m.Type = &LogPayload_DeleteChapterSchedule{DeleteChapterSchedule: v}
 			}
 			iNdEx = postIndex
 		case 17:
@@ -29389,7 +29389,7 @@ func (m *PersistedClusterState) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SetPeriodScheduleLog) UnmarshalVT(dAtA []byte) error {
+func (m *SetChapterScheduleLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -29412,10 +29412,10 @@ func (m *SetPeriodScheduleLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SetPeriodScheduleLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: SetChapterScheduleLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SetPeriodScheduleLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SetChapterScheduleLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -29472,7 +29472,7 @@ func (m *SetPeriodScheduleLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DeletedPeriodScheduleLog) UnmarshalVT(dAtA []byte) error {
+func (m *DeletedChapterScheduleLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -29495,10 +29495,10 @@ func (m *DeletedPeriodScheduleLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DeletedPeriodScheduleLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeletedChapterScheduleLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeletedPeriodScheduleLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeletedChapterScheduleLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -34478,13 +34478,13 @@ func (m *CreatedTransaction) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ChapterId", wireType)
 			}
-			m.PeriodId = 0
+			m.ChapterId = 0
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.PeriodId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 4:
 			if wireType != 2 {
@@ -35565,7 +35565,7 @@ func (m *RemovedMetadataFieldTypeLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Period) UnmarshalVT(dAtA []byte) error {
+func (m *Chapter) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -35588,10 +35588,10 @@ func (m *Period) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Period: wiretype end group for non-group")
+			return fmt.Errorf("proto: Chapter: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Period: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Chapter: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -35690,7 +35690,7 @@ func (m *Period) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Status |= PeriodStatus(b&0x7F) << shift
+				m.Status |= ChapterStatus(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -35859,7 +35859,7 @@ func (m *Period) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ClosedPeriodLog) UnmarshalVT(dAtA []byte) error {
+func (m *ClosedChapterLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -35882,15 +35882,15 @@ func (m *ClosedPeriodLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ClosedPeriodLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: ClosedChapterLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ClosedPeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ClosedChapterLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ClosedPeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ClosedChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -35917,16 +35917,16 @@ func (m *ClosedPeriodLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.ClosedPeriod == nil {
-				m.ClosedPeriod = &Period{}
+			if m.ClosedChapter == nil {
+				m.ClosedChapter = &Chapter{}
 			}
-			if err := m.ClosedPeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.ClosedChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NewPeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NewChapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -35953,10 +35953,10 @@ func (m *ClosedPeriodLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.NewPeriod == nil {
-				m.NewPeriod = &Period{}
+			if m.NewChapter == nil {
+				m.NewChapter = &Chapter{}
 			}
-			if err := m.NewPeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.NewChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -35982,7 +35982,7 @@ func (m *ClosedPeriodLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SealedPeriodLog) UnmarshalVT(dAtA []byte) error {
+func (m *SealedChapterLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -36005,15 +36005,15 @@ func (m *SealedPeriodLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SealedPeriodLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: SealedChapterLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SealedPeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SealedChapterLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Period", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Chapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -36040,10 +36040,10 @@ func (m *SealedPeriodLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Period == nil {
-				m.Period = &Period{}
+			if m.Chapter == nil {
+				m.Chapter = &Chapter{}
 			}
-			if err := m.Period.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Chapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -36069,7 +36069,7 @@ func (m *SealedPeriodLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ArchivedPeriodLog) UnmarshalVT(dAtA []byte) error {
+func (m *ArchivedChapterLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -36092,15 +36092,15 @@ func (m *ArchivedPeriodLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ArchivedPeriodLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: ArchivedChapterLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ArchivedPeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ArchivedChapterLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Period", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Chapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -36127,10 +36127,10 @@ func (m *ArchivedPeriodLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Period == nil {
-				m.Period = &Period{}
+			if m.Chapter == nil {
+				m.Chapter = &Chapter{}
 			}
-			if err := m.Period.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Chapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -36156,7 +36156,7 @@ func (m *ArchivedPeriodLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ConfirmedArchivePeriodLog) UnmarshalVT(dAtA []byte) error {
+func (m *ConfirmedArchiveChapterLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -36179,15 +36179,15 @@ func (m *ConfirmedArchivePeriodLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ConfirmedArchivePeriodLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: ConfirmedArchiveChapterLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConfirmedArchivePeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ConfirmedArchiveChapterLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Period", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Chapter", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -36214,10 +36214,10 @@ func (m *ConfirmedArchivePeriodLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Period == nil {
-				m.Period = &Period{}
+			if m.Chapter == nil {
+				m.Chapter = &Chapter{}
 			}
-			if err := m.Period.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Chapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

@@ -22,7 +22,7 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 				"vip": NewStringValue("yes"),
 			}},
 		},
-		PeriodId:          7,
+		ChapterId:         7,
 		PostCommitVolumes: &PostCommitVolumes{},
 		PreviousAccountMetadata: map[string]*MetadataMap{
 			"users:alice": {Values: map[string]*MetadataValue{
@@ -37,10 +37,10 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 	out := string(data)
 	require.Contains(t, out, `"transaction":`)
 	require.Contains(t, out, `"accountMetadata":`)
-	require.Contains(t, out, `"periodId":7`)
+	require.Contains(t, out, `"chapterId":7`)
 	require.Contains(t, out, `"postCommitVolumes":`)
 	require.Contains(t, out, `"previousAccountMetadata":`)
-	require.False(t, strings.Contains(out, "period_id"), "must use camelCase")
+	require.False(t, strings.Contains(out, "chapter_id"), "must use camelCase")
 }
 
 // TestRevertedTransaction_MarshalJSON_AllFields covers the same regression on

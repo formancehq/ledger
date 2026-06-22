@@ -46,55 +46,55 @@ func TestSaveMaintenanceMode(t *testing.T) {
 	require.False(t, enabled)
 }
 
-func TestSavePeriodSchedule(t *testing.T) {
+func TestSaveChapterSchedule(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
 
 	// Default: empty schedule
-	schedule, err := query.ReadPeriodSchedule(s)
+	schedule, err := query.ReadChapterSchedule(s)
 	require.NoError(t, err)
 	require.Empty(t, schedule)
 
 	// Save a cron expression
 	batch := s.OpenWriteSession()
-	require.NoError(t, SavePeriodSchedule(batch, "*/5 * * * *"))
+	require.NoError(t, SaveChapterSchedule(batch, "*/5 * * * *"))
 	require.NoError(t, batch.Commit())
 
-	schedule, err = query.ReadPeriodSchedule(s)
+	schedule, err = query.ReadChapterSchedule(s)
 	require.NoError(t, err)
 	require.Equal(t, "*/5 * * * *", schedule)
 
 	// Update schedule
 	batch = s.OpenWriteSession()
-	require.NoError(t, SavePeriodSchedule(batch, "0 * * * *"))
+	require.NoError(t, SaveChapterSchedule(batch, "0 * * * *"))
 	require.NoError(t, batch.Commit())
 
-	schedule, err = query.ReadPeriodSchedule(s)
+	schedule, err = query.ReadChapterSchedule(s)
 	require.NoError(t, err)
 	require.Equal(t, "0 * * * *", schedule)
 }
 
-func TestBatchDeletePeriodScheduleFunc(t *testing.T) {
+func TestBatchDeleteChapterScheduleFunc(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
 
 	// Save a schedule
 	batch := s.OpenWriteSession()
-	require.NoError(t, SavePeriodSchedule(batch, "*/10 * * * *"))
+	require.NoError(t, SaveChapterSchedule(batch, "*/10 * * * *"))
 	require.NoError(t, batch.Commit())
 
-	schedule, err := query.ReadPeriodSchedule(s)
+	schedule, err := query.ReadChapterSchedule(s)
 	require.NoError(t, err)
 	require.Equal(t, "*/10 * * * *", schedule)
 
 	// Delete the schedule
 	batch = s.OpenWriteSession()
-	require.NoError(t, batchDeletePeriodSchedule(batch))
+	require.NoError(t, batchDeleteChapterSchedule(batch))
 	require.NoError(t, batch.Commit())
 
-	schedule, err = query.ReadPeriodSchedule(s)
+	schedule, err = query.ReadChapterSchedule(s)
 	require.NoError(t, err)
 	require.Empty(t, schedule)
 }

@@ -570,6 +570,50 @@ func (c *MockBucketServiceClientGetAuditEntryCall) DoAndReturn(f func(context.Co
 	return c
 }
 
+// GetChapterSchedule mocks base method.
+func (m *MockBucketServiceClient) GetChapterSchedule(ctx context.Context, in *servicepb.GetChapterScheduleRequest, opts ...grpc.CallOption) (*servicepb.GetChapterScheduleResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetChapterSchedule", varargs...)
+	ret0, _ := ret[0].(*servicepb.GetChapterScheduleResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChapterSchedule indicates an expected call of GetChapterSchedule.
+func (mr *MockBucketServiceClientMockRecorder) GetChapterSchedule(ctx, in any, opts ...any) *MockBucketServiceClientGetChapterScheduleCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChapterSchedule", reflect.TypeOf((*MockBucketServiceClient)(nil).GetChapterSchedule), varargs...)
+	return &MockBucketServiceClientGetChapterScheduleCall{Call: call}
+}
+
+// MockBucketServiceClientGetChapterScheduleCall wrap *gomock.Call
+type MockBucketServiceClientGetChapterScheduleCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientGetChapterScheduleCall) Return(arg0 *servicepb.GetChapterScheduleResponse, arg1 error) *MockBucketServiceClientGetChapterScheduleCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientGetChapterScheduleCall) Do(f func(context.Context, *servicepb.GetChapterScheduleRequest, ...grpc.CallOption) (*servicepb.GetChapterScheduleResponse, error)) *MockBucketServiceClientGetChapterScheduleCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientGetChapterScheduleCall) DoAndReturn(f func(context.Context, *servicepb.GetChapterScheduleRequest, ...grpc.CallOption) (*servicepb.GetChapterScheduleResponse, error)) *MockBucketServiceClientGetChapterScheduleCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetEventsSinks mocks base method.
 func (m *MockBucketServiceClient) GetEventsSinks(ctx context.Context, in *servicepb.GetEventsSinksRequest, opts ...grpc.CallOption) (*servicepb.GetEventsSinksResponse, error) {
 	m.ctrl.T.Helper()
@@ -878,50 +922,6 @@ func (c *MockBucketServiceClientGetNumscriptCall) DoAndReturn(f func(context.Con
 	return c
 }
 
-// GetPeriodSchedule mocks base method.
-func (m *MockBucketServiceClient) GetPeriodSchedule(ctx context.Context, in *servicepb.GetPeriodScheduleRequest, opts ...grpc.CallOption) (*servicepb.GetPeriodScheduleResponse, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, in}
-	for _, a := range opts {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "GetPeriodSchedule", varargs...)
-	ret0, _ := ret[0].(*servicepb.GetPeriodScheduleResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetPeriodSchedule indicates an expected call of GetPeriodSchedule.
-func (mr *MockBucketServiceClientMockRecorder) GetPeriodSchedule(ctx, in any, opts ...any) *MockBucketServiceClientGetPeriodScheduleCall {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, in}, opts...)
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPeriodSchedule", reflect.TypeOf((*MockBucketServiceClient)(nil).GetPeriodSchedule), varargs...)
-	return &MockBucketServiceClientGetPeriodScheduleCall{Call: call}
-}
-
-// MockBucketServiceClientGetPeriodScheduleCall wrap *gomock.Call
-type MockBucketServiceClientGetPeriodScheduleCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientGetPeriodScheduleCall) Return(arg0 *servicepb.GetPeriodScheduleResponse, arg1 error) *MockBucketServiceClientGetPeriodScheduleCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientGetPeriodScheduleCall) Do(f func(context.Context, *servicepb.GetPeriodScheduleRequest, ...grpc.CallOption) (*servicepb.GetPeriodScheduleResponse, error)) *MockBucketServiceClientGetPeriodScheduleCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientGetPeriodScheduleCall) DoAndReturn(f func(context.Context, *servicepb.GetPeriodScheduleRequest, ...grpc.CallOption) (*servicepb.GetPeriodScheduleResponse, error)) *MockBucketServiceClientGetPeriodScheduleCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // GetPrimaryMetrics mocks base method.
 func (m *MockBucketServiceClient) GetPrimaryMetrics(ctx context.Context, in *servicepb.GetPrimaryMetricsRequest, opts ...grpc.CallOption) (*servicepb.GetPrimaryMetricsResponse, error) {
 	m.ctrl.T.Helper()
@@ -1186,6 +1186,50 @@ func (c *MockBucketServiceClientListAuditEntriesCall) DoAndReturn(f func(context
 	return c
 }
 
+// ListChapters mocks base method.
+func (m *MockBucketServiceClient) ListChapters(ctx context.Context, in *servicepb.ListChaptersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Chapter], error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ListChapters", varargs...)
+	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.Chapter])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListChapters indicates an expected call of ListChapters.
+func (mr *MockBucketServiceClientMockRecorder) ListChapters(ctx, in any, opts ...any) *MockBucketServiceClientListChaptersCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChapters", reflect.TypeOf((*MockBucketServiceClient)(nil).ListChapters), varargs...)
+	return &MockBucketServiceClientListChaptersCall{Call: call}
+}
+
+// MockBucketServiceClientListChaptersCall wrap *gomock.Call
+type MockBucketServiceClientListChaptersCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientListChaptersCall) Return(arg0 grpc.ServerStreamingClient[commonpb.Chapter], arg1 error) *MockBucketServiceClientListChaptersCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientListChaptersCall) Do(f func(context.Context, *servicepb.ListChaptersRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Chapter], error)) *MockBucketServiceClientListChaptersCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientListChaptersCall) DoAndReturn(f func(context.Context, *servicepb.ListChaptersRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Chapter], error)) *MockBucketServiceClientListChaptersCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // ListLedgers mocks base method.
 func (m *MockBucketServiceClient) ListLedgers(ctx context.Context, in *servicepb.ListLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
 	m.ctrl.T.Helper()
@@ -1314,50 +1358,6 @@ func (c *MockBucketServiceClientListNumscriptsCall) Do(f func(context.Context, *
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockBucketServiceClientListNumscriptsCall) DoAndReturn(f func(context.Context, *servicepb.ListNumscriptsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error)) *MockBucketServiceClientListNumscriptsCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// ListPeriods mocks base method.
-func (m *MockBucketServiceClient) ListPeriods(ctx context.Context, in *servicepb.ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, in}
-	for _, a := range opts {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "ListPeriods", varargs...)
-	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.Period])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListPeriods indicates an expected call of ListPeriods.
-func (mr *MockBucketServiceClientMockRecorder) ListPeriods(ctx, in any, opts ...any) *MockBucketServiceClientListPeriodsCall {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, in}, opts...)
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPeriods", reflect.TypeOf((*MockBucketServiceClient)(nil).ListPeriods), varargs...)
-	return &MockBucketServiceClientListPeriodsCall{Call: call}
-}
-
-// MockBucketServiceClientListPeriodsCall wrap *gomock.Call
-type MockBucketServiceClientListPeriodsCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockBucketServiceClientListPeriodsCall) Return(arg0 grpc.ServerStreamingClient[commonpb.Period], arg1 error) *MockBucketServiceClientListPeriodsCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockBucketServiceClientListPeriodsCall) Do(f func(context.Context, *servicepb.ListPeriodsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error)) *MockBucketServiceClientListPeriodsCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBucketServiceClientListPeriodsCall) DoAndReturn(f func(context.Context, *servicepb.ListPeriodsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error)) *MockBucketServiceClientListPeriodsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

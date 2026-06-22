@@ -47,7 +47,7 @@ const (
 	KindConflict
 
 	// KindPrecondition: a precondition the caller can in principle satisfy
-	// is not met (e.g. insufficient funds, index missing, period not
+	// is not met (e.g. insufficient funds, index missing, chapter not
 	// closing). gRPC: FailedPrecondition. HTTP: 400.
 	KindPrecondition
 
@@ -145,11 +145,11 @@ const (
 	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
 	ErrReasonSinkNotFound                  = "SINK_NOT_FOUND"
 	ErrReasonSinkBatchSizeTooLarge         = "SINK_BATCH_SIZE_TOO_LARGE"
-	ErrReasonNoPeriodOpen                  = "NO_PERIOD_OPEN"
-	ErrReasonPeriodNotFound                = "PERIOD_NOT_FOUND"
-	ErrReasonPeriodNotClosing              = "PERIOD_NOT_CLOSING"
-	ErrReasonPeriodNotClosed               = "PERIOD_NOT_CLOSED"
-	ErrReasonPeriodNotArchiving            = "PERIOD_NOT_ARCHIVING"
+	ErrReasonNoChapterOpen                 = "NO_CHAPTER_OPEN"
+	ErrReasonChapterNotFound               = "CHAPTER_NOT_FOUND"
+	ErrReasonChapterNotClosing             = "CHAPTER_NOT_CLOSING"
+	ErrReasonChapterNotClosed              = "CHAPTER_NOT_CLOSED"
+	ErrReasonChapterNotArchiving           = "CHAPTER_NOT_ARCHIVING"
 	ErrReasonMetadataNotFound              = "METADATA_NOT_FOUND"
 	ErrReasonInvalidReceipt                = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode               = "MAINTENANCE_MODE"
@@ -307,15 +307,15 @@ func (errStaleProposal) Metadata() map[string]string { return nil }
 
 var ErrStaleProposal Describable = errStaleProposal{}
 
-// ErrNoPeriodOpen — no open period exists.
-type errNoPeriodOpen struct{}
+// ErrNoChapterOpen — no open chapter exists.
+type errNoChapterOpen struct{}
 
-func (errNoPeriodOpen) Error() string               { return "no open period exists" }
-func (errNoPeriodOpen) Kind() ErrorKind             { return KindPrecondition }
-func (errNoPeriodOpen) Reason() string              { return ErrReasonNoPeriodOpen }
-func (errNoPeriodOpen) Metadata() map[string]string { return nil }
+func (errNoChapterOpen) Error() string               { return "no open chapter exists" }
+func (errNoChapterOpen) Kind() ErrorKind             { return KindPrecondition }
+func (errNoChapterOpen) Reason() string              { return ErrReasonNoChapterOpen }
+func (errNoChapterOpen) Metadata() map[string]string { return nil }
 
-var ErrNoPeriodOpen Describable = errNoPeriodOpen{}
+var ErrNoChapterOpen Describable = errNoChapterOpen{}
 
 // Validation sentinels — caller sent a request that fails a structural
 // check. Each is a unique *validationSentinel pointer; errors.Is compares
@@ -578,58 +578,58 @@ func (*ErrSinkNotFound) Kind() ErrorKind               { return KindNotFound }
 func (*ErrSinkNotFound) Reason() string                { return ErrReasonSinkNotFound }
 func (e *ErrSinkNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
 
-// ErrPeriodNotFound — period ID does not match any known period.
-type ErrPeriodNotFound struct {
-	PeriodID uint64
+// ErrChapterNotFound — chapter ID does not match any known chapter.
+type ErrChapterNotFound struct {
+	ChapterID uint64
 }
 
-func (e *ErrPeriodNotFound) Error() string { return fmt.Sprintf("period %d not found", e.PeriodID) }
-func (*ErrPeriodNotFound) Kind() ErrorKind { return KindNotFound }
-func (*ErrPeriodNotFound) Reason() string  { return ErrReasonPeriodNotFound }
-func (e *ErrPeriodNotFound) Metadata() map[string]string {
-	return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
+func (e *ErrChapterNotFound) Error() string { return fmt.Sprintf("chapter %d not found", e.ChapterID) }
+func (*ErrChapterNotFound) Kind() ErrorKind { return KindNotFound }
+func (*ErrChapterNotFound) Reason() string  { return ErrReasonChapterNotFound }
+func (e *ErrChapterNotFound) Metadata() map[string]string {
+	return map[string]string{"chapterId": strconv.FormatUint(e.ChapterID, 10)}
 }
 
-// ErrPeriodNotClosing — attempting to seal a period not in CLOSING state.
-type ErrPeriodNotClosing struct {
-	PeriodID uint64
+// ErrChapterNotClosing — attempting to seal a chapter not in CLOSING state.
+type ErrChapterNotClosing struct {
+	ChapterID uint64
 }
 
-func (e *ErrPeriodNotClosing) Error() string {
-	return fmt.Sprintf("period %d is not in CLOSING state", e.PeriodID)
+func (e *ErrChapterNotClosing) Error() string {
+	return fmt.Sprintf("chapter %d is not in CLOSING state", e.ChapterID)
 }
-func (*ErrPeriodNotClosing) Kind() ErrorKind { return KindPrecondition }
-func (*ErrPeriodNotClosing) Reason() string  { return ErrReasonPeriodNotClosing }
-func (e *ErrPeriodNotClosing) Metadata() map[string]string {
-	return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
-}
-
-// ErrPeriodNotClosed — attempting to archive a period not in CLOSED state.
-type ErrPeriodNotClosed struct {
-	PeriodID uint64
+func (*ErrChapterNotClosing) Kind() ErrorKind { return KindPrecondition }
+func (*ErrChapterNotClosing) Reason() string  { return ErrReasonChapterNotClosing }
+func (e *ErrChapterNotClosing) Metadata() map[string]string {
+	return map[string]string{"chapterId": strconv.FormatUint(e.ChapterID, 10)}
 }
 
-func (e *ErrPeriodNotClosed) Error() string {
-	return fmt.Sprintf("period %d is not in CLOSED state", e.PeriodID)
-}
-func (*ErrPeriodNotClosed) Kind() ErrorKind { return KindPrecondition }
-func (*ErrPeriodNotClosed) Reason() string  { return ErrReasonPeriodNotClosed }
-func (e *ErrPeriodNotClosed) Metadata() map[string]string {
-	return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
+// ErrChapterNotClosed — attempting to archive a chapter not in CLOSED state.
+type ErrChapterNotClosed struct {
+	ChapterID uint64
 }
 
-// ErrPeriodNotArchiving — attempting to confirm archive of a period not in ARCHIVING state.
-type ErrPeriodNotArchiving struct {
-	PeriodID uint64
+func (e *ErrChapterNotClosed) Error() string {
+	return fmt.Sprintf("chapter %d is not in CLOSED state", e.ChapterID)
+}
+func (*ErrChapterNotClosed) Kind() ErrorKind { return KindPrecondition }
+func (*ErrChapterNotClosed) Reason() string  { return ErrReasonChapterNotClosed }
+func (e *ErrChapterNotClosed) Metadata() map[string]string {
+	return map[string]string{"chapterId": strconv.FormatUint(e.ChapterID, 10)}
 }
 
-func (e *ErrPeriodNotArchiving) Error() string {
-	return fmt.Sprintf("period %d is not in ARCHIVING state", e.PeriodID)
+// ErrChapterNotArchiving — attempting to confirm archive of a chapter not in ARCHIVING state.
+type ErrChapterNotArchiving struct {
+	ChapterID uint64
 }
-func (*ErrPeriodNotArchiving) Kind() ErrorKind { return KindPrecondition }
-func (*ErrPeriodNotArchiving) Reason() string  { return ErrReasonPeriodNotArchiving }
-func (e *ErrPeriodNotArchiving) Metadata() map[string]string {
-	return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
+
+func (e *ErrChapterNotArchiving) Error() string {
+	return fmt.Sprintf("chapter %d is not in ARCHIVING state", e.ChapterID)
+}
+func (*ErrChapterNotArchiving) Kind() ErrorKind { return KindPrecondition }
+func (*ErrChapterNotArchiving) Reason() string  { return ErrReasonChapterNotArchiving }
+func (e *ErrChapterNotArchiving) Metadata() map[string]string {
+	return map[string]string{"chapterId": strconv.FormatUint(e.ChapterID, 10)}
 }
 
 // ErrInvalidCronExpression — cron expression is invalid.

@@ -69,7 +69,7 @@ Every Pebble key starts with a **zone byte** that groups data by access pattern,
 | Per-Ledger | `0x03` | Per-ledger state (reversions, pending cleanups, mirror cursors) |
 | Cold | `0x04` | Archivable data (logs, audit entries) |
 | Idempotency | `0x05` | Deduplication keys with TTL |
-| Global | `0x06` | Singleton system state (applied index, ledger info, signing, periods, config) |
+| Global | `0x06` | Singleton system state (applied index, ledger info, signing, chapters, config) |
 
 #### Attributes zone (`0x01`)
 
@@ -127,7 +127,7 @@ Key format: `[0x04][SubCold][sequence (8 bytes BE)]`
 | `0x01` | Transaction logs (protobuf `Log`) |
 | `0x02` | Audit entries (protobuf `AuditEntry`) |
 
-Cold zone data is archived to cold storage per period, then purged via `DeleteRange`.
+Cold zone data is archived to cold storage per chapter, then purged via `DeleteRange`.
 
 #### Idempotency zone (`0x05`)
 
@@ -147,12 +147,12 @@ Singleton keys for system-wide state:
 | `0x03` | Ledger info entries (keyed by ledger name string) |
 | `0x04` | Signing keys (Ed25519 public keys) |
 | `0x05` | Signing config (require signatures flag) |
-| `0x06` | Periods state (protobuf per period) |
-| `0x07` | Next period ID counter |
+| `0x06` | Chapters state (protobuf per chapter) |
+| `0x07` | Next chapter ID counter |
 | `0x08`-`0x0A` | Sink cursors, events config, sink status |
 | `0x0B` | Maintenance mode flag |
 | `0x0C` | Persisted config (node-id, cluster-id validation) |
-| `0x0D` | Period schedule (cron expression) |
+| `0x0D` | Chapter schedule (cron expression) |
 | `0x0E`-`0x10` | Query checkpoints, next checkpoint ID, checkpoint schedule |
 | `0x11` | Cluster config (rotation threshold, bloom config) |
 | `0x12` | Bloom filter persisted blocks |
@@ -207,20 +207,20 @@ The `L0CompactionThreshold` is set low (default 4) so that Pebble auto-compacts 
 
 The key space is divided into zones with different compaction characteristics:
 
-- **Cold zone** (`0x04`) — logs, audit. Immutable, sequential, write-once data. Compacting this zone only benefits after a period purge deletes data.
+- **Cold zone** (`0x04`) — logs, audit. Immutable, sequential, write-once data. Compacting this zone only benefits after a chapter purge deletes data.
 - **Attributes zone** (`0x01`) — volumes, metadata, etc. Last-write-wins entries are naturally compacted by Pebble.
 - **Cache zone** (`0x02`) — `DeleteRange` tombstones from generation-rotation pruning are pushed down the LSM by Pebble's automatic compaction.
 - **Global zone** (`0x06`) — tiny singleton keys, Pebble handles natively.
 
 Two mechanisms keep L0 under control:
 
-1. **Post-purge compaction — cold zone** (`smart_compactor.go`): When a `ConfirmArchivePeriod` is applied and period data is purged, the FSM signals the `SmartCompactor` via a channel. The compactor then runs `db.Compact` over the cold zone to push the purge tombstones down the LSM and reclaim space.
+1. **Post-purge compaction — cold zone** (`smart_compactor.go`): When a `ConfirmArchiveChapter` is applied and chapter data is purged, the FSM signals the `SmartCompactor` via a channel. The compactor then runs `db.Compact` over the cold zone to push the purge tombstones down the LSM and reclaim space.
 
 2. **Pebble automatic compaction**: Pebble's built-in compaction runs when L0 reaches the threshold (default 4). This handles steady-state write workloads and keeps L0 clean at all times.
 
 | Mechanism | Zone | Trigger | Blocking | When |
 |-----------|------|---------|----------|------|
-| Post-purge compaction | Cold (`0x04`) | Period purge applied | No (background goroutine) | After period archival |
+| Post-purge compaction | Cold (`0x04`) | Chapter purge applied | No (background goroutine) | After chapter archival |
 | Pebble automatic | Full range | L0 >= threshold (4) | No (background) | During sustained writes |
 
 Source files: `internal/storage/dal/smart_compactor.go` (post-purge).

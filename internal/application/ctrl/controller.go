@@ -36,8 +36,8 @@ type Controller interface {
 	ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error)
 	GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
 
-	// Period operations
-	ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error)
+	// Chapter operations
+	ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error)
 
 	// Signing key operations
 	ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error)
@@ -61,7 +61,7 @@ type Controller interface {
 	ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error)
 
 	// Cluster-wide config operations (read-only)
-	GetPeriodSchedule(ctx context.Context) (string, error)
+	GetChapterSchedule(ctx context.Context) (string, error)
 	GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error)
 
 	// Index inspection

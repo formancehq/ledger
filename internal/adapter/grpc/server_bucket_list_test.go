@@ -284,23 +284,23 @@ func TestListAuditEntries(t *testing.T) {
 	})
 }
 
-// TestListPeriods covers period listing — the cursor is the period id.
-func TestListPeriods(t *testing.T) {
+// TestListChapters covers chapter listing — the cursor is the chapter id.
+func TestListChapters(t *testing.T) {
 	t.Parallel()
 
-	t.Run("peek fires → trailer is period id", func(t *testing.T) {
+	t.Run("peek fires → trailer is chapter id", func(t *testing.T) {
 		t.Parallel()
 
 		impl, mockCtrl := newListHandlerHarness(t)
-		mockCtrl.EXPECT().ListPeriods(gomock.Any()).Return(
-			page(&commonpb.Period{Id: 1}, &commonpb.Period{Id: 2}, &commonpb.Period{Id: 3}),
+		mockCtrl.EXPECT().ListChapters(gomock.Any()).Return(
+			page(&commonpb.Chapter{Id: 1}, &commonpb.Chapter{Id: 2}, &commonpb.Chapter{Id: 3}),
 			nil,
 		)
 
-		stream := newFakeServerStream[commonpb.Period](t)
-		req := &servicepb.ListPeriodsRequest{Options: &commonpb.ListOptions{PageSize: 2}}
+		stream := newFakeServerStream[commonpb.Chapter](t)
+		req := &servicepb.ListChaptersRequest{Options: &commonpb.ListOptions{PageSize: 2}}
 
-		require.NoError(t, impl.ListPeriods(req, stream))
+		require.NoError(t, impl.ListChapters(req, stream))
 		require.Equal(t, "2", stream.trailerCursor())
 	})
 }

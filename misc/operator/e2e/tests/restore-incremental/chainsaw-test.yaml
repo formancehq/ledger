@@ -114,7 +114,7 @@ spec:
         - script:
             content: |
               sleep 5
-              kubectl delete pod ri-svc-0 -n $NAMESPACE --force --grace-period=0
+              kubectl delete pod ri-svc-0 -n $NAMESPACE --force --grace-chapter=0
             timeout: 30s
         - assert:
             resource:

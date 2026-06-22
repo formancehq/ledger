@@ -18,7 +18,7 @@ import (
 
 // TestMultiCurrencyTreasury models a corporate treasury with multiple currencies
 // and FX operations through a clearing account.
-// 20 FX ops across 5 currency pairs, 50 vendor payments, 2 intercalated period closes.
+// 20 FX ops across 5 currency pairs, 50 vendor payments, 2 intercalated chapter closes.
 // Generates ~100 Apply calls to trigger ~2 cache rotations (threshold=50).
 func TestMultiCurrencyTreasury(t *testing.T) {
 	const ledger = scenario.MultiCurrencyLedger
@@ -161,9 +161,9 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 			adjustBalance("fx:clearing", fx.targetAsset, -fx.targetAmount)
 			adjustBalance(fx.targetAccount, fx.targetAsset, fx.targetAmount)
 
-			// Close period after every 10 FX ops
+			// Close chapter after every 10 FX ops
 			if (i+1)%10 == 0 {
-				scenariotest.ClosePeriodAndWait(t, ctx, client, "period close timed out at FX op %d", i)
+				scenariotest.CloseChapterAndWait(t, ctx, client, "chapter close timed out at FX op %d", i)
 				scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 			}
 		}
@@ -331,7 +331,7 @@ send $amount (
 
 	// --- Phase 4: Close & Reconciliation ---
 	t.Run("CloseAndReconciliation", func(t *testing.T) {
-		scenariotest.ClosePeriodAndWait(t, ctx, client, "period close timed out")
+		scenariotest.CloseChapterAndWait(t, ctx, client, "chapter close timed out")
 		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 
 		// Verify all tracked balances

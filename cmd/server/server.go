@@ -161,7 +161,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("response-signing-key", "", "Path to Ed25519 seed file for response signing (empty = disabled)")
 
 	// Cold storage configuration
-	runCmd.Flags().String("cold-storage-driver", "none", "Cold storage driver for period archival (none, filesystem, s3)")
+	runCmd.Flags().String("cold-storage-driver", "none", "Cold storage driver for chapter archival (none, filesystem, s3)")
 	runCmd.Flags().String("cold-storage-path", "", "Base path for cold storage (default: <data-dir>/cold-storage)")
 	runCmd.Flags().String("cold-storage-bucket-id", "", "Shared namespace prefix for archives (default: cluster-id)")
 	runCmd.Flags().String("cold-storage-s3-bucket", "", "S3 bucket name (required when driver=s3)")

@@ -64,16 +64,16 @@ func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
 	return &S3Storage{client: client, bucket: bucket}
 }
 
-func (s *S3Storage) archiveKey(bucketID string, periodID uint64) string {
-	return fmt.Sprintf("%s/periods/%d/archive.sst", bucketID, periodID)
+func (s *S3Storage) archiveKey(bucketID string, chapterID uint64) string {
+	return fmt.Sprintf("%s/chapters/%d/archive.sst", bucketID, chapterID)
 }
 
-func (s *S3Storage) Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
+func (s *S3Storage) Archive(ctx context.Context, bucketID string, chapterID uint64, data io.Reader, sha256 []byte) error {
 	if len(sha256) != ChecksumLength {
 		return fmt.Errorf("archive: invalid checksum length %d, expected %d", len(sha256), ChecksumLength)
 	}
 
-	key := s.archiveKey(bucketID, periodID)
+	key := s.archiveKey(bucketID, chapterID)
 
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
@@ -114,8 +114,8 @@ func (s *S3Storage) headObject(ctx context.Context, key string) (*s3.HeadObjectO
 	return out, true, nil
 }
 
-func (s *S3Storage) Exists(ctx context.Context, bucketID string, periodID uint64) (bool, error) {
-	key := s.archiveKey(bucketID, periodID)
+func (s *S3Storage) Exists(ctx context.Context, bucketID string, chapterID uint64) (bool, error) {
+	key := s.archiveKey(bucketID, chapterID)
 
 	out, ok, err := s.headObject(ctx, key)
 	if err != nil || !ok {
@@ -132,8 +132,8 @@ func (s *S3Storage) Exists(ctx context.Context, bucketID string, periodID uint64
 	return true, nil
 }
 
-func (s *S3Storage) ExpectedChecksum(ctx context.Context, bucketID string, periodID uint64) ([]byte, error) {
-	key := s.archiveKey(bucketID, periodID)
+func (s *S3Storage) ExpectedChecksum(ctx context.Context, bucketID string, chapterID uint64) ([]byte, error) {
+	key := s.archiveKey(bucketID, chapterID)
 
 	out, ok, err := s.headObject(ctx, key)
 	if err != nil {
@@ -161,8 +161,8 @@ func (s *S3Storage) ExpectedChecksum(ctx context.Context, bucketID string, perio
 	return checksum, nil
 }
 
-func (s *S3Storage) Checksum(ctx context.Context, bucketID string, periodID uint64) ([]byte, error) {
-	body, err := s.Fetch(ctx, bucketID, periodID)
+func (s *S3Storage) Checksum(ctx context.Context, bucketID string, chapterID uint64) ([]byte, error) {
+	body, err := s.Fetch(ctx, bucketID, chapterID)
 	if err != nil {
 		return nil, fmt.Errorf("fetching archive for checksum: %w", err)
 	}
@@ -172,8 +172,8 @@ func (s *S3Storage) Checksum(ctx context.Context, bucketID string, periodID uint
 	return ComputeSHA256(body)
 }
 
-func (s *S3Storage) Fetch(ctx context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
-	key := s.archiveKey(bucketID, periodID)
+func (s *S3Storage) Fetch(ctx context.Context, bucketID string, chapterID uint64) (io.ReadCloser, error) {
+	key := s.archiveKey(bucketID, chapterID)
 
 	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),

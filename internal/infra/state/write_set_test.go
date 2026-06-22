@@ -219,19 +219,19 @@ func TestWriteSetSetMaintenanceMode(t *testing.T) {
 	require.True(t, buf.pendingMaintenanceModeUpdate.enabled)
 }
 
-func TestWriteSetSetDeletePeriodSchedule(t *testing.T) {
+func TestWriteSetSetDeleteChapterSchedule(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	require.Nil(t, buf.pendingPeriodScheduleUpdate)
+	require.Nil(t, buf.pendingChapterScheduleUpdate)
 
-	buf.SetPeriodSchedule("*/5 * * * *")
-	require.NotNil(t, buf.pendingPeriodScheduleUpdate)
-	require.Equal(t, "*/5 * * * *", *buf.pendingPeriodScheduleUpdate)
+	buf.SetChapterSchedule("*/5 * * * *")
+	require.NotNil(t, buf.pendingChapterScheduleUpdate)
+	require.Equal(t, "*/5 * * * *", *buf.pendingChapterScheduleUpdate)
 
-	buf.DeletePeriodSchedule()
-	require.NotNil(t, buf.pendingPeriodScheduleUpdate)
-	require.Empty(t, *buf.pendingPeriodScheduleUpdate)
+	buf.DeleteChapterSchedule()
+	require.NotNil(t, buf.pendingChapterScheduleUpdate)
+	require.Empty(t, *buf.pendingChapterScheduleUpdate)
 }
 
 func TestWriteSetSinkConfigOperations(t *testing.T) {
@@ -278,135 +278,135 @@ func TestWriteSetDateAndHash(t *testing.T) {
 	require.Equal(t, uint64(1700000000), buf.GetDate().GetData())
 }
 
-func TestWriteSetPeriodOperations(t *testing.T) {
+func TestWriteSetChapterOperations(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	// Initially no open period
-	p, ok := buf.GetCurrentOpenPeriod()
+	// Initially no open chapter
+	p, ok := buf.GetCurrentOpenChapter()
 	require.False(t, ok)
 	require.Nil(t, p)
 
-	// No closing periods
-	require.Empty(t, buf.GetClosingPeriods())
+	// No closing chapters
+	require.Empty(t, buf.GetClosingChapters())
 
-	// Set current open period
-	openPeriod := &commonpb.Period{Id: 1, Status: commonpb.PeriodStatus_PERIOD_OPEN}
-	buf.SetCurrentOpenPeriod(openPeriod)
-	p, ok = buf.GetCurrentOpenPeriod()
+	// Set current open chapter
+	openChapter := &commonpb.Chapter{Id: 1, Status: commonpb.ChapterStatus_CHAPTER_OPEN}
+	buf.SetCurrentOpenChapter(openChapter)
+	p, ok = buf.GetCurrentOpenChapter()
 	require.True(t, ok)
 	require.Equal(t, uint64(1), p.GetId())
 
-	// Add closing period
-	closingPeriod := &commonpb.Period{Id: 2, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	buf.AddClosingPeriod(closingPeriod)
-	cp, ok := buf.GetClosingPeriodByID(2)
+	// Add closing chapter
+	closingChapter := &commonpb.Chapter{Id: 2, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
+	buf.AddClosingChapter(closingChapter)
+	cp, ok := buf.GetClosingChapterByID(2)
 	require.True(t, ok)
 	require.Equal(t, uint64(2), cp.GetId())
-	require.Len(t, buf.GetClosingPeriods(), 1)
+	require.Len(t, buf.GetClosingChapters(), 1)
 
-	// Add a second closing period
-	closingPeriod2 := &commonpb.Period{Id: 3, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	buf.AddClosingPeriod(closingPeriod2)
-	require.Len(t, buf.GetClosingPeriods(), 2)
+	// Add a second closing chapter
+	closingChapter2 := &commonpb.Chapter{Id: 3, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
+	buf.AddClosingChapter(closingChapter2)
+	require.Len(t, buf.GetClosingChapters(), 2)
 
-	// Remove first closing period
-	buf.RemoveClosingPeriod(2)
-	_, ok = buf.GetClosingPeriodByID(2)
+	// Remove first closing chapter
+	buf.RemoveClosingChapter(2)
+	_, ok = buf.GetClosingChapterByID(2)
 	require.False(t, ok)
-	require.Len(t, buf.GetClosingPeriods(), 1)
+	require.Len(t, buf.GetClosingChapters(), 1)
 
-	// Remove second closing period
-	buf.RemoveClosingPeriod(3)
-	require.Empty(t, buf.GetClosingPeriods())
+	// Remove second closing chapter
+	buf.RemoveClosingChapter(3)
+	require.Empty(t, buf.GetClosingChapters())
 }
 
-func TestWriteSetRemoveClosingPeriodRecordsChange(t *testing.T) {
+func TestWriteSetRemoveClosingChapterRecordsChange(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	closingPeriod := &commonpb.Period{Id: 7, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	buf.AddClosingPeriod(closingPeriod)
-	initialChanges := len(buf.changedPeriods)
+	closingChapter := &commonpb.Chapter{Id: 7, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
+	buf.AddClosingChapter(closingChapter)
+	initialChanges := len(buf.changedChapters)
 
-	buf.RemoveClosingPeriod(7)
+	buf.RemoveClosingChapter(7)
 
-	// RemoveClosingPeriod should record the removed period's final state
-	require.Greater(t, len(buf.changedPeriods), initialChanges)
+	// RemoveClosingChapter should record the removed chapter's final state
+	require.Greater(t, len(buf.changedChapters), initialChanges)
 	found := false
-	for _, p := range buf.changedPeriods {
+	for _, p := range buf.changedChapters {
 		if p.GetId() == 7 {
 			found = true
 
 			break
 		}
 	}
-	require.True(t, found, "removed closing period should be in changedPeriods")
+	require.True(t, found, "removed closing chapter should be in changedChapters")
 }
 
-func TestWriteSetMultipleClosingPeriodsAfterMerge(t *testing.T) {
+func TestWriteSetMultipleClosingChaptersAfterMerge(t *testing.T) {
 	t.Parallel()
 	buf, machine, dataStore := newTestBuffer(t)
 
-	// Add two closing periods
-	p1 := &commonpb.Period{Id: 10, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	p2 := &commonpb.Period{Id: 11, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	buf.AddClosingPeriod(p1)
-	buf.AddClosingPeriod(p2)
+	// Add two closing chapters
+	p1 := &commonpb.Chapter{Id: 10, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
+	p2 := &commonpb.Chapter{Id: 11, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
+	buf.AddClosingChapter(p1)
+	buf.AddClosingChapter(p2)
 
-	// After Merge, the machine should have both closing periods
+	// After Merge, the machine should have both closing chapters
 	batch := dataStore.OpenWriteSession()
 	err := buf.Merge(batch, nil)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
-	require.Len(t, machine.Periods.ClosingPeriods(), 2)
-	_, ok := machine.Periods.ClosingPeriodByID(10)
+	require.Len(t, machine.Chapters.ClosingChapters(), 2)
+	_, ok := machine.Chapters.ClosingChapterByID(10)
 	require.True(t, ok)
-	_, ok = machine.Periods.ClosingPeriodByID(11)
+	_, ok = machine.Chapters.ClosingChapterByID(11)
 	require.True(t, ok)
 }
 
-func TestWriteSetGetNextPeriodIDAndIncrement(t *testing.T) {
+func TestWriteSetGetNextChapterIDAndIncrement(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	startID := buf.GetNextPeriodID()
-	id := buf.IncrementNextPeriodID()
+	startID := buf.GetNextChapterID()
+	id := buf.IncrementNextChapterID()
 	require.Equal(t, startID, id)
-	require.Equal(t, startID+1, buf.GetNextPeriodID())
+	require.Equal(t, startID+1, buf.GetNextChapterID())
 }
 
-func TestWriteSetGetPeriodByID(t *testing.T) {
+func TestWriteSetGetChapterByID(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	// Non-existent period
-	_, ok := buf.GetPeriodByID(999)
+	// Non-existent chapter
+	_, ok := buf.GetChapterByID(999)
 	require.False(t, ok)
 
-	// Add via allPeriods (simulating Machine state)
-	buf.periods.PutPeriod(&commonpb.Period{Id: 10, Status: commonpb.PeriodStatus_PERIOD_CLOSED})
+	// Add via allChapters (simulating Machine state)
+	buf.chapters.PutChapter(&commonpb.Chapter{Id: 10, Status: commonpb.ChapterStatus_CHAPTER_CLOSED})
 
-	p, ok := buf.GetPeriodByID(10)
+	p, ok := buf.GetChapterByID(10)
 	require.True(t, ok)
 	require.Equal(t, uint64(10), p.GetId())
 
-	// Changed periods take priority over allPeriods
-	buf.changedPeriods = append(buf.changedPeriods, &commonpb.Period{Id: 10, Status: commonpb.PeriodStatus_PERIOD_OPEN})
-	p, ok = buf.GetPeriodByID(10)
+	// Changed chapters take priority over allChapters
+	buf.changedChapters = append(buf.changedChapters, &commonpb.Chapter{Id: 10, Status: commonpb.ChapterStatus_CHAPTER_OPEN})
+	p, ok = buf.GetChapterByID(10)
 	require.True(t, ok)
-	require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, p.GetStatus())
+	require.Equal(t, commonpb.ChapterStatus_CHAPTER_OPEN, p.GetStatus())
 }
 
-func TestWriteSetUpdatePeriod(t *testing.T) {
+func TestWriteSetUpdateChapter(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	period := &commonpb.Period{Id: 5, Status: commonpb.PeriodStatus_PERIOD_CLOSED}
-	buf.UpdatePeriod(period)
-	require.Len(t, buf.changedPeriods, 1)
-	require.Equal(t, uint64(5), buf.changedPeriods[0].GetId())
+	chapter := &commonpb.Chapter{Id: 5, Status: commonpb.ChapterStatus_CHAPTER_CLOSED}
+	buf.UpdateChapter(chapter)
+	require.Len(t, buf.changedChapters, 1)
+	require.Equal(t, uint64(5), buf.changedChapters[0].GetId())
 }
 
 func TestWriteSetSetPurgeRange(t *testing.T) {
@@ -433,7 +433,7 @@ func TestWriteSetSetPendingArchive(t *testing.T) {
 	require.Empty(t, buf.pendingArchives)
 	buf.SetPendingArchive(1, 10, 50, 5, 25)
 	require.Len(t, buf.pendingArchives, 1)
-	require.Equal(t, uint64(1), buf.pendingArchives[0].PeriodID)
+	require.Equal(t, uint64(1), buf.pendingArchives[0].ChapterID)
 	require.Equal(t, uint64(10), buf.pendingArchives[0].StartSequence)
 	require.Equal(t, uint64(50), buf.pendingArchives[0].CloseSequence)
 	require.Equal(t, uint64(5), buf.pendingArchives[0].StartAuditSequence)
@@ -483,7 +483,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.AddSigningKey("key-leak", []byte("pub"), "")
 	buf.SetMaintenanceMode(true)
 	buf.SetRequireSignatures(true)
-	buf.SetPeriodSchedule("*/5 * * * *")
+	buf.SetChapterSchedule("*/5 * * * *")
 	buf.SetPurgeRange(1, 10, 50, 5, 25)
 	buf.SetPendingArchive(1, 10, 50, 5, 25)
 	buf.AddMetadataConvertRequest("ledger-1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "email", commonpb.MetadataType_METADATA_TYPE_STRING)
@@ -496,7 +496,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	require.Len(t, buf.pendingSigningKeyUpdates, 1)
 	require.NotNil(t, buf.pendingMaintenanceModeUpdate)
 	require.NotNil(t, buf.pendingSigningConfigUpdate)
-	require.NotNil(t, buf.pendingPeriodScheduleUpdate)
+	require.NotNil(t, buf.pendingChapterScheduleUpdate)
 	require.Len(t, buf.pendingMirrorSyncs, 1)
 
 	// --- Reset for proposal N+1 ---
@@ -524,7 +524,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	require.Empty(t, buf.pendingSigningKeyUpdates, "signing key updates must be cleared after Reset")
 	require.Nil(t, buf.pendingMaintenanceModeUpdate, "maintenance mode update must be nil after Reset")
 	require.Nil(t, buf.pendingSigningConfigUpdate, "signing config update must be nil after Reset")
-	require.Nil(t, buf.pendingPeriodScheduleUpdate, "period schedule update must be nil after Reset")
+	require.Nil(t, buf.pendingChapterScheduleUpdate, "chapter schedule update must be nil after Reset")
 	require.False(t, buf.HasPurges(), "purges must be cleared after Reset")
 	require.Empty(t, buf.pendingArchives, "archives must be cleared after Reset")
 	require.Empty(t, buf.MetadataConvertRequests(), "metadata convert requests must be cleared after Reset")

@@ -29,13 +29,13 @@ Pebble engine, key layout, caching, and synchronization buffers.
 
 ## Data Model
 
-Ledgers, transactions, periods, events, and wire formats.
+Ledgers, transactions, chapters, events, and wire formats.
 
 | Document | Description |
 |----------|-------------|
 | [buckets-ledgers.md](data-model/buckets-ledgers.md) | Ledger system, transaction management, and data organization |
 | [data-flows.md](data-model/data-flows.md) | Data flow diagrams for ledger creation, transactions, and other operations |
-| [periods.md](data-model/periods.md) | Period lifecycle (OPEN, CLOSING, CLOSED), sealing hash, and crash recovery |
+| [chapters.md](data-model/chapters.md) | Chapter lifecycle (OPEN, CLOSING, CLOSED), sealing hash, and crash recovery |
 | [idempotency.md](data-model/idempotency.md) | Idempotency key mechanism, hash-based conflict detection, and storage |
 | [typed-metadata.md](data-model/typed-metadata.md) | Typed metadata values, per-ledger schema, and hybrid conversion strategy |
 | [uint256-wire-format.md](data-model/uint256-wire-format.md) | Fixed-size Uint256 wire format for monetary amounts |

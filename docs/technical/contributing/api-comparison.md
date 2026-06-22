@@ -81,14 +81,14 @@ This document compares the POC's API with the original Formance ledger API and d
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
 | Index status | ✅ | ❌ | Read index builder progress (lag, file size) |
-| **Periods** |
-| Close period | ✅ | ❌ | Two-step close: ClosePeriod → SealPeriod |
-| Seal period (background) | ✅ | ❌ | Background sealer computes BLAKE3 sealing hash |
-| List periods | ✅ | ❌ | gRPC streaming |
-| Transaction receipts (JWT) | ✅ | ❌ | HMAC-SHA256 JWT receipts with period ID; available on GetTransaction |
+| **Chapters** |
+| Close chapter | ✅ | ❌ | Two-step close: CloseChapter → SealChapter |
+| Seal chapter (background) | ✅ | ❌ | Background sealer computes BLAKE3 sealing hash |
+| List chapters | ✅ | ❌ | gRPC streaming |
+| Transaction receipts (JWT) | ✅ | ❌ | HMAC-SHA256 JWT receipts with chapter ID; available on GetTransaction |
 | Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
-| Period crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
-| Archive period | ✅ | ❌ | Two-step archive: ArchivePeriod → ConfirmArchivePeriod with cold storage export |
+| Chapter crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
+| Archive chapter | ✅ | ❌ | Two-step archive: ArchiveChapter → ConfirmArchiveChapter with cold storage export |
 | Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
 | **Prepared Queries** |
 | Create prepared query | ✅ | ❌ | Reusable parameterized filter queries |
@@ -228,46 +228,46 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 ```
 
-### 7. Periods
+### 7. Chapters
 
-Periods partition a ledger's transaction history into discrete, sealed segments. See [Periods Architecture](../architecture/data-model/periods.md) for full documentation.
+Chapters partition a ledger's transaction history into discrete, sealed segments. See [Chapters Architecture](../architecture/data-model/chapters.md) for full documentation.
 
 **gRPC Methods:**
-- `Apply(ClosePeriodRequest)` - Close the current open period (write, leader-only)
-- `Apply(SetPeriodScheduleRequest)` - Set automatic period rotation schedule (write, leader-only)
-- `Apply(DeletePeriodScheduleRequest)` - Delete automatic period rotation schedule (write, leader-only)
-- `Apply(ArchivePeriodRequest)` - Archive a closed period to cold storage (write, leader-only)
-- `GetPeriodSchedule(GetPeriodScheduleRequest)` - Get the current period rotation schedule (read, any node)
-- `ListPeriods(ListPeriodsRequest)` - Stream all periods (read, any node)
+- `Apply(CloseChapterRequest)` - Close the current open chapter (write, leader-only)
+- `Apply(SetChapterScheduleRequest)` - Set automatic chapter rotation schedule (write, leader-only)
+- `Apply(DeleteChapterScheduleRequest)` - Delete automatic chapter rotation schedule (write, leader-only)
+- `Apply(ArchiveChapterRequest)` - Archive a closed chapter to cold storage (write, leader-only)
+- `GetChapterSchedule(GetChapterScheduleRequest)` - Get the current chapter rotation schedule (read, any node)
+- `ListChapters(ListChaptersRequest)` - Stream all chapters (read, any node)
 
 **Features:**
-- ✅ Close current period (OPEN → CLOSING → CLOSED lifecycle)
+- ✅ Close current chapter (OPEN → CLOSING → CLOSED lifecycle)
 - ✅ Background sealing with BLAKE3 hash (off Raft critical path)
 - ✅ Automatic crash recovery for both crash windows
-- ✅ Transaction receipts (HMAC-SHA256 JWT with period ID)
-- ✅ List all periods with status, timestamps, and sealing hashes
-- ✅ Archive period (CLOSED → ARCHIVED with cold storage export and hot purge)
-- ✅ Scheduled automatic period rotation (cron-based, leader-only, runtime-configurable)
+- ✅ Transaction receipts (HMAC-SHA256 JWT with chapter ID)
+- ✅ List all chapters with status, timestamps, and sealing hashes
+- ✅ Archive chapter (CLOSED → ARCHIVED with cold storage export and hot purge)
+- ✅ Scheduled automatic chapter rotation (cron-based, leader-only, runtime-configurable)
 
 **CLI commands:**
 ```bash
-# Close the current open period
-ledgerctl periods close
+# Close the current open chapter
+ledgerctl chapters close
 
-# Set automatic period rotation (every day at midnight)
-ledgerctl periods set-schedule "0 0 * * *"
+# Set automatic chapter rotation (every day at midnight)
+ledgerctl chapters set-schedule "0 0 * * *"
 
 # Disable automatic rotation
-ledgerctl periods delete-schedule
+ledgerctl chapters delete-schedule
 
 # Show current schedule
-ledgerctl periods get-schedule
+ledgerctl chapters get-schedule
 
-# Archive a closed period to cold storage
-ledgerctl periods archive 1
+# Archive a closed chapter to cold storage
+ledgerctl chapters archive 1
 
-# List all periods
-ledgerctl periods list
+# List all chapters
+ledgerctl chapters list
 ```
 
 ### 8. Mirror Ledgers
@@ -628,7 +628,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetSecondaryMetrics` | Get secondary (read index) Pebble store metrics | ✅ |
 | `CheckStore` | Verify store integrity (hash chain + derived data) | ✅ |
 | `GetEventsSinks` | Get per-sink configurations and statuses | ✅ |
-| `GetPeriodSchedule` | Get current period rotation schedule | ✅ |
+| `GetChapterSchedule` | Get current chapter rotation schedule | ✅ |
 | `GetMetadataSchemaStatus` | Get metadata field conversion status | ✅ |
 | `AnalyzeTransactions` | Discover transaction flow patterns | ✅ |
 | `CreatePreparedQuery` | Create a named prepared query | ✅ |
@@ -644,8 +644,8 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `Apply(DeleteNumscript)` | Delete a numscript | ✅ |
 | `GetNumscript` | Get a numscript by name and optional version | ✅ |
 | `ListNumscripts` | List all saved numscripts | ✅ |
-| `Apply(ClosePeriod)` | Close the current open period | ✅ |
-| `ListPeriods` | Stream all periods | ✅ |
+| `Apply(CloseChapter)` | Close the current open chapter | ✅ |
+| `ListChapters` | Stream all chapters | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination) | ✅ |
@@ -726,11 +726,11 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Stale proposal | `UNAVAILABLE` | `STALE_PROPOSAL` | *(none)* |
 | Cluster unhealthy | `UNAVAILABLE` | `CLUSTER_UNHEALTHY` | *(none)* |
 | Cold storage disabled | `FAILED_PRECONDITION` | `COLD_STORAGE_DISABLED` | *(none)* |
-| No period open | `FAILED_PRECONDITION` | `NO_PERIOD_OPEN` | *(none)* |
-| Period not found | `NOT_FOUND` | `PERIOD_NOT_FOUND` | `periodId` |
-| Period not closing | `FAILED_PRECONDITION` | `PERIOD_NOT_CLOSING` | `periodId` |
-| Period not closed | `FAILED_PRECONDITION` | `PERIOD_NOT_CLOSED` | `periodId` |
-| Period not archiving | `FAILED_PRECONDITION` | `PERIOD_NOT_ARCHIVING` | `periodId` |
+| No chapter open | `FAILED_PRECONDITION` | `NO_CHAPTER_OPEN` | *(none)* |
+| Chapter not found | `NOT_FOUND` | `CHAPTER_NOT_FOUND` | `chapterId` |
+| Chapter not closing | `FAILED_PRECONDITION` | `CHAPTER_NOT_CLOSING` | `chapterId` |
+| Chapter not closed | `FAILED_PRECONDITION` | `CHAPTER_NOT_CLOSED` | `chapterId` |
+| Chapter not archiving | `FAILED_PRECONDITION` | `CHAPTER_NOT_ARCHIVING` | `chapterId` |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
 | Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
 | Metadata conversion in progress | `UNAVAILABLE` | `METADATA_CONVERSION_IN_PROGRESS` | `target`, `key` |

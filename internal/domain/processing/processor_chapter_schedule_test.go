@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func TestProcessSetPeriodSchedule_ValidCron(t *testing.T) {
+func TestProcessSetChapterSchedule_ValidCron(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -20,11 +20,11 @@ func TestProcessSetPeriodSchedule_ValidCron(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().SetPeriodSchedule("0 0 1 * *")
+	mockStore.EXPECT().SetChapterSchedule("0 0 1 * *")
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_SetPeriodSchedule{
-			SetPeriodSchedule: &raftcmdpb.SetPeriodScheduleOrder{
+		Type: &raftcmdpb.Order_SetChapterSchedule{
+			SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
 				Cron: "0 0 1 * *",
 			},
 		},
@@ -34,12 +34,12 @@ func TestProcessSetPeriodSchedule_ValidCron(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	scheduleLog := result.GetSetPeriodSchedule()
+	scheduleLog := result.GetSetChapterSchedule()
 	require.NotNil(t, scheduleLog)
 	require.Equal(t, "0 0 1 * *", scheduleLog.GetCron())
 }
 
-func TestProcessSetPeriodSchedule_InvalidCron(t *testing.T) {
+func TestProcessSetChapterSchedule_InvalidCron(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -50,8 +50,8 @@ func TestProcessSetPeriodSchedule_InvalidCron(t *testing.T) {
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_SetPeriodSchedule{
-			SetPeriodSchedule: &raftcmdpb.SetPeriodScheduleOrder{
+		Type: &raftcmdpb.Order_SetChapterSchedule{
+			SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
 				Cron: "not-a-cron",
 			},
 		},
@@ -66,7 +66,7 @@ func TestProcessSetPeriodSchedule_InvalidCron(t *testing.T) {
 	require.Equal(t, "not-a-cron", cronErr.Expression)
 }
 
-func TestProcessDeletePeriodSchedule(t *testing.T) {
+func TestProcessDeleteChapterSchedule(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -76,11 +76,11 @@ func TestProcessDeletePeriodSchedule(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().DeletePeriodSchedule()
+	mockStore.EXPECT().DeleteChapterSchedule()
 
 	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_DeletePeriodSchedule{
-			DeletePeriodSchedule: &raftcmdpb.DeletePeriodScheduleOrder{},
+		Type: &raftcmdpb.Order_DeleteChapterSchedule{
+			DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{},
 		},
 	}
 
@@ -88,6 +88,6 @@ func TestProcessDeletePeriodSchedule(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	deleteLog := result.GetDeletePeriodSchedule()
+	deleteLog := result.GetDeleteChapterSchedule()
 	require.NotNil(t, deleteLog)
 }

@@ -63,10 +63,10 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 			wantErr: domain.ErrLedgerNameContainsNullByte,
 		},
 		{
-			name: "valid order without ledger (ClosePeriod)",
+			name: "valid order without ledger (CloseChapter)",
 			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_ClosePeriod{
-					ClosePeriod: &raftcmdpb.ClosePeriodOrder{},
+				Type: &raftcmdpb.Order_CloseChapter{
+					CloseChapter: &raftcmdpb.CloseChapterOrder{},
 				},
 			},
 		},

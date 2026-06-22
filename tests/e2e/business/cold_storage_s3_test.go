@@ -86,7 +86,7 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		)
 	})
 
-	It("Should archive a period to S3 and read back logs from cold storage", func() {
+	It("Should archive a chapter to S3 and read back logs from cold storage", func() {
 		const ledger = "cold-s3-test"
 
 		// Create a ledger
@@ -117,57 +117,57 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 
 		txSeq := resp.Logs[0].Sequence
 
-		// Close the current period
+		// Close the current chapter
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.ClosePeriodAction(),
+				actions.CloseChapterAction(),
 			),
 		})
 		Expect(err).To(Succeed())
 
-		// Wait for the period to be sealed (CLOSED)
-		var closedPeriodID uint64
+		// Wait for the chapter to be sealed (CLOSED)
+		var closedChapterID uint64
 		Eventually(func(g Gomega) {
-			periods, err := actions.ListAllPeriods(ctx, client)
+			chapters, err := actions.ListAllChapters(ctx, client)
 			g.Expect(err).To(Succeed())
-			g.Expect(len(periods)).To(BeNumerically(">=", 2))
+			g.Expect(len(chapters)).To(BeNumerically(">=", 2))
 
-			for _, p := range periods {
-				if p.Status == commonpb.PeriodStatus_PERIOD_CLOSED {
-					closedPeriodID = p.GetId()
+			for _, p := range chapters {
+				if p.Status == commonpb.ChapterStatus_CHAPTER_CLOSED {
+					closedChapterID = p.GetId()
 
 					return
 				}
 			}
 
-			g.Expect(false).To(BeTrue(), "no CLOSED period found")
+			g.Expect(false).To(BeTrue(), "no CLOSED chapter found")
 		}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-		// Archive the closed period
+		// Archive the closed chapter
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.ArchivePeriodAction(closedPeriodID),
+				actions.ArchiveChapterAction(closedChapterID),
 			),
 		})
 		Expect(err).To(Succeed())
 
-		// Wait for the period to become ARCHIVED
+		// Wait for the chapter to become ARCHIVED
 		Eventually(func(g Gomega) {
-			periods, err := actions.ListAllPeriods(ctx, client)
+			chapters, err := actions.ListAllChapters(ctx, client)
 			g.Expect(err).To(Succeed())
 
-			for _, p := range periods {
-				if p.GetId() == closedPeriodID {
-					g.Expect(p.Status).To(Equal(commonpb.PeriodStatus_PERIOD_ARCHIVED))
+			for _, p := range chapters {
+				if p.GetId() == closedChapterID {
+					g.Expect(p.Status).To(Equal(commonpb.ChapterStatus_CHAPTER_ARCHIVED))
 
 					return
 				}
 			}
 
-			g.Expect(false).To(BeTrue(), "archived period not found")
+			g.Expect(false).To(BeTrue(), "archived chapter not found")
 		}).Within(30 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 
-		// Verify that logs from the archived period can still be read via GetLog
+		// Verify that logs from the archived chapter can still be read via GetLog
 		// (cold storage fallback)
 		log, err := actions.GetLog(ctx, client, createLedgerSeq)
 		Expect(err).To(Succeed())

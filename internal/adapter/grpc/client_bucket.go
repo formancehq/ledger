@@ -141,7 +141,7 @@ func (g *BucketGrpcClient) ListLedgers(ctx context.Context) (cursor.Cursor[*comm
 	// interface does not propagate the caller's cursor to the leader, so a
 	// trailer-peek shim would only ever see the first leader page and the
 	// follower-side skip predicate would never reach later ledgers. See
-	// ListSigningKeys / ListPeriods / ListNumscripts for the same pattern.
+	// ListSigningKeys / ListChapters / ListNumscripts for the same pattern.
 	var (
 		ledgers []*commonpb.LedgerInfo
 		nextCur string
@@ -217,34 +217,34 @@ func (g *BucketGrpcClient) GetAuditEntry(ctx context.Context, sequence uint64) (
 	})
 }
 
-func (g *BucketGrpcClient) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
+func (g *BucketGrpcClient) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
 	// Follow x-next-cursor across pages — see ListSigningKeys for the
 	// rationale (routed leader controller caps per-call at the server
 	// default page).
 	var (
-		periods []*commonpb.Period
-		nextCur string
+		chapters []*commonpb.Chapter
+		nextCur  string
 	)
 
 	for {
-		stream, err := g.client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{
+		stream, err := g.client.ListChapters(ctx, &servicepb.ListChaptersRequest{
 			Options: &commonpb.ListOptions{Cursor: nextCur},
 		})
 		if err != nil {
-			return nil, fmt.Errorf("gRPC ListPeriods call failed: %w", err)
+			return nil, fmt.Errorf("gRPC ListChapters call failed: %w", err)
 		}
 
 		for {
-			period, recvErr := stream.Recv()
+			chapter, recvErr := stream.Recv()
 			if errors.Is(recvErr, io.EOF) {
 				break
 			}
 
 			if recvErr != nil {
-				return nil, fmt.Errorf("receiving period: %w", recvErr)
+				return nil, fmt.Errorf("receiving chapter: %w", recvErr)
 			}
 
-			periods = append(periods, period)
+			chapters = append(chapters, chapter)
 		}
 
 		if next := nextCursorFromTrailer(stream.Trailer()); next != "" {
@@ -253,7 +253,7 @@ func (g *BucketGrpcClient) ListPeriods(ctx context.Context) (cursor.Cursor[*comm
 			continue
 		}
 
-		return cursor.NewSliceCursor(periods), nil
+		return cursor.NewSliceCursor(chapters), nil
 	}
 }
 
@@ -452,10 +452,10 @@ func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([
 	}
 }
 
-func (g *BucketGrpcClient) GetPeriodSchedule(ctx context.Context) (string, error) {
-	resp, err := g.client.GetPeriodSchedule(ctx, &servicepb.GetPeriodScheduleRequest{})
+func (g *BucketGrpcClient) GetChapterSchedule(ctx context.Context) (string, error) {
+	resp, err := g.client.GetChapterSchedule(ctx, &servicepb.GetChapterScheduleRequest{})
 	if err != nil {
-		return "", fmt.Errorf("gRPC GetPeriodSchedule call failed: %w", err)
+		return "", fmt.Errorf("gRPC GetChapterSchedule call failed: %w", err)
 	}
 
 	return resp.GetCron(), nil

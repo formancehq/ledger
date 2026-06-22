@@ -46,8 +46,8 @@ type coldStorageState struct {
 	archiveCalls atomic.Int32 // count of successful Archive() invocations
 }
 
-func archiveKey(bucketID string, periodID uint64) string {
-	return fmt.Sprintf("%s/%d", bucketID, periodID)
+func archiveKey(bucketID string, chapterID uint64) string {
+	return fmt.Sprintf("%s/%d", bucketID, chapterID)
 }
 
 // newMockColdStorage returns a MockColdStorage backed by an in-memory state.
@@ -59,7 +59,7 @@ func newMockColdStorage(t *testing.T) (*MockColdStorage, *coldStorageState) {
 	m := NewMockColdStorage(gomock.NewController(t))
 
 	m.EXPECT().Archive(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
+		DoAndReturn(func(_ context.Context, bucketID string, chapterID uint64, data io.Reader, sha256 []byte) error {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 
@@ -80,18 +80,18 @@ func newMockColdStorage(t *testing.T) (*MockColdStorage, *coldStorageState) {
 			checksumCopy := make([]byte, len(sha256))
 			copy(checksumCopy, sha256)
 
-			s.archives[archiveKey(bucketID, periodID)] = &archive{data: buf, checksum: checksumCopy}
+			s.archives[archiveKey(bucketID, chapterID)] = &archive{data: buf, checksum: checksumCopy}
 			s.archiveCalls.Add(1)
 
 			return nil
 		}).AnyTimes()
 
 	m.EXPECT().Exists(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64) (bool, error) {
+		DoAndReturn(func(_ context.Context, bucketID string, chapterID uint64) (bool, error) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 
-			a, ok := s.archives[archiveKey(bucketID, periodID)]
+			a, ok := s.archives[archiveKey(bucketID, chapterID)]
 			if !ok {
 				return false, nil
 			}
@@ -102,11 +102,11 @@ func newMockColdStorage(t *testing.T) (*MockColdStorage, *coldStorageState) {
 		}).AnyTimes()
 
 	m.EXPECT().ExpectedChecksum(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+		DoAndReturn(func(_ context.Context, bucketID string, chapterID uint64) ([]byte, error) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 
-			a, ok := s.archives[archiveKey(bucketID, periodID)]
+			a, ok := s.archives[archiveKey(bucketID, chapterID)]
 			if !ok || a.checksum == nil {
 				return nil, coldstorage.ErrChecksumNotFound
 			}
@@ -118,26 +118,26 @@ func newMockColdStorage(t *testing.T) (*MockColdStorage, *coldStorageState) {
 		}).AnyTimes()
 
 	m.EXPECT().Checksum(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+		DoAndReturn(func(_ context.Context, bucketID string, chapterID uint64) ([]byte, error) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 
-			a, ok := s.archives[archiveKey(bucketID, periodID)]
+			a, ok := s.archives[archiveKey(bucketID, chapterID)]
 			if !ok || a.data == nil {
-				return nil, fmt.Errorf("archive %s/%d not found", bucketID, periodID)
+				return nil, fmt.Errorf("archive %s/%d not found", bucketID, chapterID)
 			}
 
 			return coldstorage.ComputeSHA256(bytes.NewReader(a.data))
 		}).AnyTimes()
 
 	m.EXPECT().Fetch(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
+		DoAndReturn(func(_ context.Context, bucketID string, chapterID uint64) (io.ReadCloser, error) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 
-			a, ok := s.archives[archiveKey(bucketID, periodID)]
+			a, ok := s.archives[archiveKey(bucketID, chapterID)]
 			if !ok || a.data == nil {
-				return nil, fmt.Errorf("archive %s/%d not found", bucketID, periodID)
+				return nil, fmt.Errorf("archive %s/%d not found", bucketID, chapterID)
 			}
 
 			return io.NopCloser(bytes.NewReader(a.data)), nil
@@ -148,40 +148,40 @@ func newMockColdStorage(t *testing.T) (*MockColdStorage, *coldStorageState) {
 
 // seed inserts a synthetic archive (used to reproduce crash-recovery state in
 // tests). Pass checksum=nil to simulate a data-only partial upload.
-func (s *coldStorageState) seed(bucketID string, periodID uint64, data, checksum []byte) {
+func (s *coldStorageState) seed(bucketID string, chapterID uint64, data, checksum []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.archives[archiveKey(bucketID, periodID)] = &archive{
+	s.archives[archiveKey(bucketID, chapterID)] = &archive{
 		data:     append([]byte(nil), data...),
 		checksum: append([]byte(nil), checksum...),
 	}
 }
 
-// newArchivingPeriodState returns a MockArchiverPeriodState that reports every
-// period as still ARCHIVING — used by archiver tests that pre-date the
+// newArchivingChapterState returns a MockArchiverChapterState that reports every
+// chapter as still ARCHIVING — used by archiver tests that pre-date the
 // consume-time guard and need the request to flow through to the cold-storage
 // write path.
-func newArchivingPeriodState(t *testing.T) *MockArchiverPeriodState {
+func newArchivingChapterState(t *testing.T) *MockArchiverChapterState {
 	t.Helper()
 
-	m := NewMockArchiverPeriodState(gomock.NewController(t))
-	m.EXPECT().ArchivingPeriodByID(gomock.Any()).
-		DoAndReturn(func(id uint64) (*commonpb.Period, bool) {
-			return &commonpb.Period{Id: id, Status: commonpb.PeriodStatus_PERIOD_ARCHIVING}, true
+	m := NewMockArchiverChapterState(gomock.NewController(t))
+	m.EXPECT().ArchivingChapterByID(gomock.Any()).
+		DoAndReturn(func(id uint64) (*commonpb.Chapter, bool) {
+			return &commonpb.Chapter{Id: id, Status: commonpb.ChapterStatus_CHAPTER_ARCHIVING}, true
 		}).AnyTimes()
 
 	return m
 }
 
-// newRejectingPeriodState returns a MockArchiverPeriodState that reports every
-// period as no-longer-ARCHIVING — used to assert the Archiver's consume-time
+// newRejectingChapterState returns a MockArchiverChapterState that reports every
+// chapter as no-longer-ARCHIVING — used to assert the Archiver's consume-time
 // guard against stale requests.
-func newRejectingPeriodState(t *testing.T) *MockArchiverPeriodState {
+func newRejectingChapterState(t *testing.T) *MockArchiverChapterState {
 	t.Helper()
 
-	m := NewMockArchiverPeriodState(gomock.NewController(t))
-	m.EXPECT().ArchivingPeriodByID(gomock.Any()).Return(nil, false).AnyTimes()
+	m := NewMockArchiverChapterState(gomock.NewController(t))
+	m.EXPECT().ArchivingChapterByID(gomock.Any()).Return(nil, false).AnyTimes()
 
 	return m
 }
@@ -195,7 +195,7 @@ func TestArchiverStartStop(t *testing.T) {
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 	cs, _ := newMockColdStorage(t)
 
-	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) error { return nil }, func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
+	a := NewArchiver(logger, nil, cs, archiveReqCh, func(chapterID uint64) error { return nil }, func() bool { return true }, newArchivingChapterState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	a.Stop()
 	// No deadlock or panic means success
@@ -224,20 +224,20 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 	cs, _ := newMockColdStorage(t)
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
-	var proposedPeriodID atomic.Uint64
+	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(
 		logger,
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
 		func() bool { return true },
-		newArchivingPeriodState(t),
+		newArchivingChapterState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -245,15 +245,15 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 
 	// Send an archive request
 	archiveReqCh.TrySend(ArchiveRequest{
-		PeriodID:      1,
+		ChapterID:     1,
 		StartSequence: 1,
 		CloseSequence: 1,
 	}, "test")
 
 	// Wait for the archive to complete
 	require.Eventually(t, func() bool {
-		return proposedPeriodID.Load() == 1
-	}, 5*time.Second, 50*time.Millisecond, "archiver should propose ConfirmArchivePeriod")
+		return proposedChapterID.Load() == 1
+	}, 5*time.Second, 50*time.Millisecond, "archiver should propose ConfirmArchiveChapter")
 
 	a.Stop()
 
@@ -278,36 +278,36 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
-	var proposedPeriodID atomic.Uint64
+	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(
 		logger,
 		nil, // no dataStore needed since archive already exists
 		cs,
 		archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
 		func() bool { return true }, // is leader
-		newArchivingPeriodState(t),
+		newArchivingChapterState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
 	a.Start()
 
-	// Send request for already-archived period
+	// Send request for already-archived chapter
 	archiveReqCh.TrySend(ArchiveRequest{
-		PeriodID:      5,
+		ChapterID:     5,
 		StartSequence: 1,
 		CloseSequence: 10,
 	}, "test")
 
-	// Leader should still propose ConfirmArchivePeriod (crash recovery)
+	// Leader should still propose ConfirmArchiveChapter (crash recovery)
 	require.Eventually(t, func() bool {
-		return proposedPeriodID.Load() == 5
-	}, 5*time.Second, 50*time.Millisecond, "leader should propose for already-archived period")
+		return proposedChapterID.Load() == 5
+	}, 5*time.Second, 50*time.Millisecond, "leader should propose for already-archived chapter")
 
 	a.Stop()
 }
@@ -327,20 +327,20 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
-	var proposedPeriodID atomic.Uint64
+	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(
 		logger,
 		nil,
 		cs,
 		archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
 		func() bool { return false }, // not leader
-		newArchivingPeriodState(t),
+		newArchivingChapterState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -348,19 +348,19 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 
 	// Send request
 	archiveReqCh.TrySend(ArchiveRequest{
-		PeriodID:      7,
+		ChapterID:     7,
 		StartSequence: 1,
 		CloseSequence: 10,
 	}, "test")
 
 	// Follower should not propose
-	require.Never(t, func() bool { return proposedPeriodID.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "follower should not propose")
+	require.Never(t, func() bool { return proposedChapterID.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "follower should not propose")
 
 	a.Stop()
 }
 
 // TestArchiverRejectsStaleRequest covers the consume-time guard: a request
-// whose period is no longer ARCHIVING (e.g. the leader has confirmed the
+// whose chapter is no longer ARCHIVING (e.g. the leader has confirmed the
 // archive and purged the underlying ranges, then this node synced) must NOT
 // touch cold storage, even on the leader path. Otherwise an empty SST would
 // overwrite the leader's correct archive.
@@ -373,20 +373,20 @@ func TestArchiverRejectsStaleRequest(t *testing.T) {
 	cs, csState := newMockColdStorage(t)
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
-	var proposedPeriodID atomic.Uint64
+	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(
 		logger,
 		nil, // no dataStore needed: guard rejects before iteration
 		cs,
 		archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
 		func() bool { return true }, // leader, to prove the guard fires before isLeader gating
-		newRejectingPeriodState(t),
+		newRejectingChapterState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -394,13 +394,13 @@ func TestArchiverRejectsStaleRequest(t *testing.T) {
 	t.Cleanup(a.Stop)
 
 	archiveReqCh.TrySend(ArchiveRequest{
-		PeriodID:      5,
+		ChapterID:     5,
 		StartSequence: 1,
 		CloseSequence: 10,
 	}, "test")
 
 	require.Never(t, func() bool {
-		return csState.archiveCalls.Load() > 0 || proposedPeriodID.Load() > 0
+		return csState.archiveCalls.Load() > 0 || proposedChapterID.Load() > 0
 	}, 200*time.Millisecond, 10*time.Millisecond,
 		"stale request must not write cold storage nor propose")
 }
@@ -420,8 +420,8 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var (
-		proposedPeriodID atomic.Uint64
-		isLeader         atomic.Bool
+		proposedChapterID atomic.Uint64
+		isLeader          atomic.Bool
 	)
 
 	isLeader.Store(false)
@@ -431,13 +431,13 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
 		isLeader.Load,
-		newArchivingPeriodState(t),
+		newArchivingChapterState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -445,13 +445,13 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 
 	// Send request while not leader
 	archiveReqCh.TrySend(ArchiveRequest{
-		PeriodID:      3,
+		ChapterID:     3,
 		StartSequence: 1,
 		CloseSequence: 1,
 	}, "test")
 
 	// Should not have proposed yet
-	require.Never(t, func() bool { return proposedPeriodID.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "non-leader should not propose yet")
+	require.Never(t, func() bool { return proposedChapterID.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "non-leader should not propose yet")
 
 	// Become leader - archiver should eventually succeed
 	isLeader.Store(true)
@@ -465,7 +465,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	require.Eventually(t, func() bool {
-		return proposedPeriodID.Load() == 3
+		return proposedChapterID.Load() == 3
 	}, 10*time.Second, 100*time.Millisecond, "archiver should eventually succeed after becoming leader")
 
 	a.Stop()
@@ -497,34 +497,34 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 	cs, _ := newMockColdStorage(t)
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
-	var proposedPeriodID atomic.Uint64
+	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(
 		logger,
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
 		func() bool { return true },
-		newArchivingPeriodState(t),
+		newArchivingChapterState(t),
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
 	a.Start()
 
 	archiveReqCh.TrySend(ArchiveRequest{
-		PeriodID:      1,
+		ChapterID:     1,
 		StartSequence: 1,
 		CloseSequence: 1,
 	}, "test")
 
 	require.Eventually(t, func() bool {
-		return proposedPeriodID.Load() == 1
-	}, 5*time.Second, 50*time.Millisecond, "archiver should propose ConfirmArchivePeriod")
+		return proposedChapterID.Load() == 1
+	}, 5*time.Second, 50*time.Millisecond, "archiver should propose ConfirmArchiveChapter")
 
 	a.Stop()
 
@@ -572,7 +572,7 @@ func archiveRequestForTest(t *testing.T) (*dal.Store, ArchiveRequest) {
 	}}))
 	require.NoError(t, batch.Commit())
 
-	return dataStore, ArchiveRequest{PeriodID: 42, StartSequence: 1, CloseSequence: 1}
+	return dataStore, ArchiveRequest{ChapterID: 42, StartSequence: 1, CloseSequence: 1}
 }
 
 func TestArchiver_FreshUploadPersistsChecksum(t *testing.T) {
@@ -585,29 +585,29 @@ func TestArchiver_FreshUploadPersistsChecksum(t *testing.T) {
 	cs, _ := newMockColdStorage(t)
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
-	var proposedPeriodID atomic.Uint64
+	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, dataStore, cs, archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
-		func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, newArchivingChapterState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
 	archiveReqCh.TrySend(req, "test")
 
 	require.Eventually(t, func() bool {
-		return proposedPeriodID.Load() == req.PeriodID
+		return proposedChapterID.Load() == req.ChapterID
 	}, 5*time.Second, 50*time.Millisecond, "should propose after fresh upload")
 
-	expected, err := cs.ExpectedChecksum(ctx, "test-bucket", req.PeriodID)
+	expected, err := cs.ExpectedChecksum(ctx, "test-bucket", req.ChapterID)
 	require.NoError(t, err, "checksum must be persisted with the archive")
 	require.Len(t, expected, coldstorage.ChecksumLength)
 
-	current, err := cs.Checksum(ctx, "test-bucket", req.PeriodID)
+	current, err := cs.Checksum(ctx, "test-bucket", req.ChapterID)
 	require.NoError(t, err)
 	require.Equal(t, expected, current, "persisted checksum must match the data it was uploaded with")
 }
@@ -626,22 +626,22 @@ func TestArchiver_CrashRecoveryWithValidArchive(t *testing.T) {
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
-	var proposedPeriodID atomic.Uint64
+	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, nil, cs, archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
-		func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, newArchivingChapterState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
-	archiveReqCh.TrySend(ArchiveRequest{PeriodID: 11, StartSequence: 1, CloseSequence: 1}, "test")
+	archiveReqCh.TrySend(ArchiveRequest{ChapterID: 11, StartSequence: 1, CloseSequence: 1}, "test")
 
 	require.Eventually(t, func() bool {
-		return proposedPeriodID.Load() == 11
+		return proposedChapterID.Load() == 11
 	}, 5*time.Second, 50*time.Millisecond, "integrity-verified archive should be proposed")
 
 	require.EqualValues(t, 0, csState.archiveCalls.Load(),
@@ -663,22 +663,22 @@ func TestArchiver_CrashRecoveryWithCorruptArchive(t *testing.T) {
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
-	var proposedPeriodID atomic.Uint64
+	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, nil, cs, archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
-		func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, newArchivingChapterState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
-	archiveReqCh.TrySend(ArchiveRequest{PeriodID: 13, StartSequence: 1, CloseSequence: 1}, "test")
+	archiveReqCh.TrySend(ArchiveRequest{ChapterID: 13, StartSequence: 1, CloseSequence: 1}, "test")
 
 	// Propose must NEVER happen for a corrupt archive.
-	require.Never(t, func() bool { return proposedPeriodID.Load() > 0 },
+	require.Never(t, func() bool { return proposedChapterID.Load() > 0 },
 		400*time.Millisecond, 25*time.Millisecond,
 		"corrupt archive must NOT be confirmed")
 	require.EqualValues(t, 0, csState.archiveCalls.Load(),
@@ -695,30 +695,30 @@ func TestArchiver_LegacyDataOnlyTriggersReupload(t *testing.T) {
 	cs, csState := newMockColdStorage(t)
 	// Legacy state (pre-PR): data was uploaded but no checksum sidecar was
 	// ever written. Exists() must report false so the leader re-uploads.
-	csState.seed("test-bucket", req.PeriodID, []byte("legacy bytes"), nil)
+	csState.seed("test-bucket", req.ChapterID, []byte("legacy bytes"), nil)
 
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
-	var proposedPeriodID atomic.Uint64
+	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, dataStore, cs, archiveReqCh,
-		func(periodID uint64) error {
-			proposedPeriodID.Store(periodID)
+		func(chapterID uint64) error {
+			proposedChapterID.Store(chapterID)
 
 			return nil
 		},
-		func() bool { return true }, newArchivingPeriodState(t), "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, newArchivingChapterState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
 	archiveReqCh.TrySend(req, "test")
 
 	require.Eventually(t, func() bool {
-		return proposedPeriodID.Load() == req.PeriodID
+		return proposedChapterID.Load() == req.ChapterID
 	}, 5*time.Second, 50*time.Millisecond, "leader must re-upload legacy data-only archives")
 
 	// After re-upload, the checksum is now present.
-	persistedChecksum, err := cs.ExpectedChecksum(ctx, "test-bucket", req.PeriodID)
+	persistedChecksum, err := cs.ExpectedChecksum(ctx, "test-bucket", req.ChapterID)
 	require.NoError(t, err)
 	require.Len(t, persistedChecksum, coldstorage.ChecksumLength)
 
@@ -742,25 +742,25 @@ func TestArchiver_BuildSSTIsDeterministic(t *testing.T) {
 	t.Cleanup(func() { _ = os.Remove(path2) })
 
 	require.Equal(t, checksum1, checksum2,
-		"buildSSTArchive must be deterministic — adding a non-deterministic field to periodMetadata is a regression")
+		"buildSSTArchive must be deterministic — adding a non-deterministic field to chapterMetadata is a regression")
 
 	b1, err := os.ReadFile(path1)
 	require.NoError(t, err)
 	b2, err := os.ReadFile(path2)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(b1, b2),
-		"SST bytes must be identical across builds of the same period")
+		"SST bytes must be identical across builds of the same chapter")
 }
 
-func TestArchiver_PeriodMetadataHasNoTimestamp(t *testing.T) {
+func TestArchiver_ChapterMetadataHasNoTimestamp(t *testing.T) {
 	t.Parallel()
 
-	// Structural check: any future field added to periodMetadata must be a
-	// deterministic function of the period. This test fails on a name match
+	// Structural check: any future field added to chapterMetadata must be a
+	// deterministic function of the chapter. This test fails on a name match
 	// against common non-deterministic names — the byte-equality assertion
 	// in TestArchiver_BuildSSTIsDeterministic is the load-bearing one, but
 	// this gives a clearer error message when someone adds a timestamp.
-	typ := reflect.TypeFor[periodMetadata]()
+	typ := reflect.TypeFor[chapterMetadata]()
 
 	disallowed := map[string]struct{}{
 		"ArchivedAt": {},
@@ -772,6 +772,6 @@ func TestArchiver_PeriodMetadataHasNoTimestamp(t *testing.T) {
 	for f := range typ.Fields() {
 		_, bad := disallowed[f.Name]
 		require.False(t, bad,
-			"field %q is non-deterministic — periodMetadata must stay a pure function of the period (see PR #229)", f.Name)
+			"field %q is non-deterministic — chapterMetadata must stay a pure function of the chapter (see PR #229)", f.Name)
 	}
 }

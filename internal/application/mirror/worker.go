@@ -25,11 +25,11 @@ import (
 )
 
 const (
-	defaultBatchSize  = 100
-	defaultPollPeriod = 5 * time.Second
-	initialBackoff    = 1 * time.Second
-	maxBackoff        = 60 * time.Second
-	backoffMultiplier = 2.0
+	defaultBatchSize    = 100
+	defaultPollInterval = 5 * time.Second
+	initialBackoff      = 1 * time.Second
+	maxBackoff          = 60 * time.Second
+	backoffMultiplier   = 2.0
 )
 
 // prefetchResult holds the result of a background log fetch started during
@@ -161,7 +161,7 @@ func (w *Worker) Notify() {
 }
 
 func (w *Worker) loop(stop <-chan struct{}) {
-	ticker := time.NewTicker(defaultPollPeriod)
+	ticker := time.NewTicker(defaultPollInterval)
 	defer ticker.Stop()
 
 	// Initial source head query + catch-up

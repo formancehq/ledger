@@ -684,14 +684,14 @@ var ErrIdempotencyKeyInvalidUTF8 domain.Describable = errIdempotencyKeyInvalidUT
 var ErrMaintenanceMode = domain.ErrMaintenanceMode
 
 // ErrCheckpointOrderNotLast is returned when a bulk request mixes a checkpoint
-// trigger (CreateQueryCheckpoint or ClosePeriod) with any non-trigger order
+// trigger (CreateQueryCheckpoint or CloseChapter) with any non-trigger order
 // AND the trigger does not occupy the last slot. The FSM commits the batch as
 // a single atomic unit, so a trigger order must always be last — otherwise it
 // would force a mid-batch commit that races the pipelined committer.
 type errCheckpointOrderNotLast struct{}
 
 func (errCheckpointOrderNotLast) Error() string {
-	return "checkpoint trigger (CreateQueryCheckpoint or ClosePeriod) must be the last order in a bulk request"
+	return "checkpoint trigger (CreateQueryCheckpoint or CloseChapter) must be the last order in a bulk request"
 }
 func (errCheckpointOrderNotLast) Kind() domain.ErrorKind      { return domain.KindValidation }
 func (errCheckpointOrderNotLast) Reason() string              { return domain.ErrReasonValidation }
@@ -1143,32 +1143,32 @@ func (a *Admission) requestToOrder(ctx context.Context, vr verifiedRequest, over
 		}
 
 		overlay.sinks.Delete(reqType.RemoveEventsSink.GetName())
-	case *servicepb.Request_ClosePeriod:
-		order.Type = &raftcmdpb.Order_ClosePeriod{
-			ClosePeriod: &raftcmdpb.ClosePeriodOrder{},
+	case *servicepb.Request_CloseChapter:
+		order.Type = &raftcmdpb.Order_CloseChapter{
+			CloseChapter: &raftcmdpb.CloseChapterOrder{},
 		}
-	case *servicepb.Request_SealPeriod:
-		order.Type = &raftcmdpb.Order_SealPeriod{
-			SealPeriod: &raftcmdpb.SealPeriodOrder{
-				PeriodId:    reqType.SealPeriod.GetPeriodId(),
-				SealingHash: reqType.SealPeriod.GetSealingHash(),
-				StateHash:   reqType.SealPeriod.GetStateHash(),
+	case *servicepb.Request_SealChapter:
+		order.Type = &raftcmdpb.Order_SealChapter{
+			SealChapter: &raftcmdpb.SealChapterOrder{
+				ChapterId:   reqType.SealChapter.GetChapterId(),
+				SealingHash: reqType.SealChapter.GetSealingHash(),
+				StateHash:   reqType.SealChapter.GetStateHash(),
 			},
 		}
-	case *servicepb.Request_ArchivePeriod:
+	case *servicepb.Request_ArchiveChapter:
 		if !a.coldStorageEnabled {
 			return nil, domain.ErrColdStorageDisabled
 		}
 
-		order.Type = &raftcmdpb.Order_ArchivePeriod{
-			ArchivePeriod: &raftcmdpb.ArchivePeriodOrder{
-				PeriodId: reqType.ArchivePeriod.GetPeriodId(),
+		order.Type = &raftcmdpb.Order_ArchiveChapter{
+			ArchiveChapter: &raftcmdpb.ArchiveChapterOrder{
+				ChapterId: reqType.ArchiveChapter.GetChapterId(),
 			},
 		}
-	case *servicepb.Request_ConfirmArchivePeriod:
-		order.Type = &raftcmdpb.Order_ConfirmArchivePeriod{
-			ConfirmArchivePeriod: &raftcmdpb.ConfirmArchivePeriodOrder{
-				PeriodId: reqType.ConfirmArchivePeriod.GetPeriodId(),
+	case *servicepb.Request_ConfirmArchiveChapter:
+		order.Type = &raftcmdpb.Order_ConfirmArchiveChapter{
+			ConfirmArchiveChapter: &raftcmdpb.ConfirmArchiveChapterOrder{
+				ChapterId: reqType.ConfirmArchiveChapter.GetChapterId(),
 			},
 		}
 	case *servicepb.Request_SetMaintenanceMode:
@@ -1177,15 +1177,15 @@ func (a *Admission) requestToOrder(ctx context.Context, vr verifiedRequest, over
 				Enabled: reqType.SetMaintenanceMode.GetEnabled(),
 			},
 		}
-	case *servicepb.Request_SetPeriodSchedule:
-		order.Type = &raftcmdpb.Order_SetPeriodSchedule{
-			SetPeriodSchedule: &raftcmdpb.SetPeriodScheduleOrder{
-				Cron: reqType.SetPeriodSchedule.GetCron(),
+	case *servicepb.Request_SetChapterSchedule:
+		order.Type = &raftcmdpb.Order_SetChapterSchedule{
+			SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
+				Cron: reqType.SetChapterSchedule.GetCron(),
 			},
 		}
-	case *servicepb.Request_DeletePeriodSchedule:
-		order.Type = &raftcmdpb.Order_DeletePeriodSchedule{
-			DeletePeriodSchedule: &raftcmdpb.DeletePeriodScheduleOrder{},
+	case *servicepb.Request_DeleteChapterSchedule:
+		order.Type = &raftcmdpb.Order_DeleteChapterSchedule{
+			DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{},
 		}
 	case *servicepb.Request_PromoteLedger:
 		order.Type = &raftcmdpb.Order_PromoteLedger{

@@ -364,7 +364,7 @@ func TestStore_IterateColdKVPairs_AuditRangeAppliedToAuditZones(t *testing.T) {
 	s := newTestStore(t)
 	kb := NewKeyBuilder()
 
-	// Period: log range [10, 20], audit range [3, 5].
+	// Chapter: log range [10, 20], audit range [3, 5].
 	// The two windows do not overlap on purpose — that is precisely the case
 	// that broke the archiver before #312.
 	batch := s.OpenWriteSession()
@@ -425,7 +425,7 @@ func TestStore_IterateColdKVPairs_AuditRangeAppliedToAuditZones(t *testing.T) {
 	require.False(t, strayPicked, "audit entry outside the audit range must NOT be archived (#312)")
 }
 
-// TestStore_IterateColdKVPairs_EmptyAuditRangeNoop documents that a period
+// TestStore_IterateColdKVPairs_EmptyAuditRangeNoop documents that a chapter
 // with no audit entries (close < start by convention) skips the audit
 // scans entirely instead of erroring.
 func TestStore_IterateColdKVPairs_EmptyAuditRangeNoop(t *testing.T) {

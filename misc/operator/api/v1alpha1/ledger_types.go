@@ -209,7 +209,7 @@ type LedgerServiceSpec struct {
 	// +optional
 	Bloom *BloomConfig `json:"bloom,omitempty"`
 
-	// ColdStorage configuration for period archival.
+	// ColdStorage configuration for chapter archival.
 	// +optional
 	ColdStorage *ColdStorageConfig `json:"coldStorage,omitempty"`
 
@@ -1054,7 +1054,7 @@ type PersistenceSpec struct {
 	Data VolumeSpec `json:"data,omitempty"`
 
 	// ColdCache persistence configuration for cold storage read cache.
-	// Uses a separate volume to avoid filling the data disk when reading archived periods.
+	// Uses a separate volume to avoid filling the data disk when reading archived chapters.
 	// +optional
 	ColdCache VolumeSpec `json:"coldCache,omitempty"`
 

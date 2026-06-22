@@ -118,8 +118,8 @@ func TestMultiLedgerPayroll(t *testing.T) {
 					scenariotest.ApplyActions(t, ctx, client, payrollActions...)
 				}
 
-				// Close period after each cycle
-				scenariotest.ClosePeriodAndWait(t, ctx, client, "period close month %d", month)
+				// Close chapter after each cycle
+				scenariotest.CloseChapterAndWait(t, ctx, client, "chapter close month %d", month)
 			})
 		}
 	})

@@ -34,10 +34,10 @@ const (
 	BucketService_ListAuditEntries_FullMethodName        = "/ledger.BucketService/ListAuditEntries"
 	BucketService_GetAuditEntry_FullMethodName           = "/ledger.BucketService/GetAuditEntry"
 	BucketService_GetEventsSinks_FullMethodName          = "/ledger.BucketService/GetEventsSinks"
-	BucketService_ListPeriods_FullMethodName             = "/ledger.BucketService/ListPeriods"
+	BucketService_ListChapters_FullMethodName            = "/ledger.BucketService/ListChapters"
 	BucketService_ListLogs_FullMethodName                = "/ledger.BucketService/ListLogs"
 	BucketService_GetLog_FullMethodName                  = "/ledger.BucketService/GetLog"
-	BucketService_GetPeriodSchedule_FullMethodName       = "/ledger.BucketService/GetPeriodSchedule"
+	BucketService_GetChapterSchedule_FullMethodName      = "/ledger.BucketService/GetChapterSchedule"
 	BucketService_ListSigningKeys_FullMethodName         = "/ledger.BucketService/ListSigningKeys"
 	BucketService_Discovery_FullMethodName               = "/ledger.BucketService/Discovery"
 	BucketService_GetMetadataSchemaStatus_FullMethodName = "/ledger.BucketService/GetMetadataSchemaStatus"
@@ -89,14 +89,14 @@ type BucketServiceClient interface {
 	GetAuditEntry(ctx context.Context, in *GetAuditEntryRequest, opts ...grpc.CallOption) (*auditpb.AuditEntry, error)
 	// GetEventsSinks returns the current per-sink configurations and statuses
 	GetEventsSinks(ctx context.Context, in *GetEventsSinksRequest, opts ...grpc.CallOption) (*GetEventsSinksResponse, error)
-	// ListPeriods streams all periods
-	ListPeriods(ctx context.Context, in *ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error)
+	// ListChapters streams all chapters
+	ListChapters(ctx context.Context, in *ListChaptersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Chapter], error)
 	// ListLogs streams system logs; when ledger is set, streams only logs for that ledger
 	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)
 	// GetLog returns a single system log by sequence number
 	GetLog(ctx context.Context, in *GetLogRequest, opts ...grpc.CallOption) (*commonpb.Log, error)
-	// GetPeriodSchedule returns the current automatic period rotation schedule
-	GetPeriodSchedule(ctx context.Context, in *GetPeriodScheduleRequest, opts ...grpc.CallOption) (*GetPeriodScheduleResponse, error)
+	// GetChapterSchedule returns the current automatic chapter rotation schedule
+	GetChapterSchedule(ctx context.Context, in *GetChapterScheduleRequest, opts ...grpc.CallOption) (*GetChapterScheduleResponse, error)
 	// ListSigningKeys streams all registered signing keys
 	ListSigningKeys(ctx context.Context, in *ListSigningKeysRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error)
 	// Discovery returns server capabilities and configuration for clients
@@ -318,13 +318,13 @@ func (c *bucketServiceClient) GetEventsSinks(ctx context.Context, in *GetEventsS
 	return out, nil
 }
 
-func (c *bucketServiceClient) ListPeriods(ctx context.Context, in *ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error) {
+func (c *bucketServiceClient) ListChapters(ctx context.Context, in *ListChaptersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Chapter], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[5], BucketService_ListPeriods_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[5], BucketService_ListChapters_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ListPeriodsRequest, commonpb.Period]{ClientStream: stream}
+	x := &grpc.GenericClientStream[ListChaptersRequest, commonpb.Chapter]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func (c *bucketServiceClient) ListPeriods(ctx context.Context, in *ListPeriodsRe
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BucketService_ListPeriodsClient = grpc.ServerStreamingClient[commonpb.Period]
+type BucketService_ListChaptersClient = grpc.ServerStreamingClient[commonpb.Chapter]
 
 func (c *bucketServiceClient) ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -366,10 +366,10 @@ func (c *bucketServiceClient) GetLog(ctx context.Context, in *GetLogRequest, opt
 	return out, nil
 }
 
-func (c *bucketServiceClient) GetPeriodSchedule(ctx context.Context, in *GetPeriodScheduleRequest, opts ...grpc.CallOption) (*GetPeriodScheduleResponse, error) {
+func (c *bucketServiceClient) GetChapterSchedule(ctx context.Context, in *GetChapterScheduleRequest, opts ...grpc.CallOption) (*GetChapterScheduleResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetPeriodScheduleResponse)
-	err := c.cc.Invoke(ctx, BucketService_GetPeriodSchedule_FullMethodName, in, out, cOpts...)
+	out := new(GetChapterScheduleResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetChapterSchedule_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -614,14 +614,14 @@ type BucketServiceServer interface {
 	GetAuditEntry(context.Context, *GetAuditEntryRequest) (*auditpb.AuditEntry, error)
 	// GetEventsSinks returns the current per-sink configurations and statuses
 	GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error)
-	// ListPeriods streams all periods
-	ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error
+	// ListChapters streams all chapters
+	ListChapters(*ListChaptersRequest, grpc.ServerStreamingServer[commonpb.Chapter]) error
 	// ListLogs streams system logs; when ledger is set, streams only logs for that ledger
 	ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error
 	// GetLog returns a single system log by sequence number
 	GetLog(context.Context, *GetLogRequest) (*commonpb.Log, error)
-	// GetPeriodSchedule returns the current automatic period rotation schedule
-	GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error)
+	// GetChapterSchedule returns the current automatic chapter rotation schedule
+	GetChapterSchedule(context.Context, *GetChapterScheduleRequest) (*GetChapterScheduleResponse, error)
 	// ListSigningKeys streams all registered signing keys
 	ListSigningKeys(*ListSigningKeysRequest, grpc.ServerStreamingServer[commonpb.SigningKey]) error
 	// Discovery returns server capabilities and configuration for clients
@@ -707,8 +707,8 @@ func (UnimplementedBucketServiceServer) GetAuditEntry(context.Context, *GetAudit
 func (UnimplementedBucketServiceServer) GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetEventsSinks not implemented")
 }
-func (UnimplementedBucketServiceServer) ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error {
-	return status.Error(codes.Unimplemented, "method ListPeriods not implemented")
+func (UnimplementedBucketServiceServer) ListChapters(*ListChaptersRequest, grpc.ServerStreamingServer[commonpb.Chapter]) error {
+	return status.Error(codes.Unimplemented, "method ListChapters not implemented")
 }
 func (UnimplementedBucketServiceServer) ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error {
 	return status.Error(codes.Unimplemented, "method ListLogs not implemented")
@@ -716,8 +716,8 @@ func (UnimplementedBucketServiceServer) ListLogs(*ListLogsRequest, grpc.ServerSt
 func (UnimplementedBucketServiceServer) GetLog(context.Context, *GetLogRequest) (*commonpb.Log, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLog not implemented")
 }
-func (UnimplementedBucketServiceServer) GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetPeriodSchedule not implemented")
+func (UnimplementedBucketServiceServer) GetChapterSchedule(context.Context, *GetChapterScheduleRequest) (*GetChapterScheduleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetChapterSchedule not implemented")
 }
 func (UnimplementedBucketServiceServer) ListSigningKeys(*ListSigningKeysRequest, grpc.ServerStreamingServer[commonpb.SigningKey]) error {
 	return status.Error(codes.Unimplemented, "method ListSigningKeys not implemented")
@@ -990,16 +990,16 @@ func _BucketService_GetEventsSinks_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BucketService_ListPeriods_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ListPeriodsRequest)
+func _BucketService_ListChapters_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListChaptersRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(BucketServiceServer).ListPeriods(m, &grpc.GenericServerStream[ListPeriodsRequest, commonpb.Period]{ServerStream: stream})
+	return srv.(BucketServiceServer).ListChapters(m, &grpc.GenericServerStream[ListChaptersRequest, commonpb.Chapter]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BucketService_ListPeriodsServer = grpc.ServerStreamingServer[commonpb.Period]
+type BucketService_ListChaptersServer = grpc.ServerStreamingServer[commonpb.Chapter]
 
 func _BucketService_ListLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ListLogsRequest)
@@ -1030,20 +1030,20 @@ func _BucketService_GetLog_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BucketService_GetPeriodSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetPeriodScheduleRequest)
+func _BucketService_GetChapterSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetChapterScheduleRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BucketServiceServer).GetPeriodSchedule(ctx, in)
+		return srv.(BucketServiceServer).GetChapterSchedule(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: BucketService_GetPeriodSchedule_FullMethodName,
+		FullMethod: BucketService_GetChapterSchedule_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BucketServiceServer).GetPeriodSchedule(ctx, req.(*GetPeriodScheduleRequest))
+		return srv.(BucketServiceServer).GetChapterSchedule(ctx, req.(*GetChapterScheduleRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1370,8 +1370,8 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _BucketService_GetLog_Handler,
 		},
 		{
-			MethodName: "GetPeriodSchedule",
-			Handler:    _BucketService_GetPeriodSchedule_Handler,
+			MethodName: "GetChapterSchedule",
+			Handler:    _BucketService_GetChapterSchedule_Handler,
 		},
 		{
 			MethodName: "Discovery",
@@ -1453,8 +1453,8 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "ListPeriods",
-			Handler:       _BucketService_ListPeriods_Handler,
+			StreamName:    "ListChapters",
+			Handler:       _BucketService_ListChapters_Handler,
 			ServerStreams: true,
 		},
 		{

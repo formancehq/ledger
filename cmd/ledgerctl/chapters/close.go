@@ -1,4 +1,4 @@
-package periods
+package chapters
 
 import (
 	"fmt"
@@ -10,12 +10,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// NewCloseCommand creates the periods close command.
+// NewCloseCommand creates the chapters close command.
 func NewCloseCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "close",
-		Short:             "Close the current open period",
-		Long:              "Close the current open period and open a new one. A background seal process will compute the sealing hash.",
+		Short:             "Close the current open chapter",
+		Long:              "Close the current open chapter and open a new one. A background seal process will compute the sealing hash.",
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runClose,
@@ -39,13 +39,13 @@ func runClose(cmd *cobra.Command, _ []string) error {
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_ClosePeriod{
-				ClosePeriod: &servicepb.ClosePeriodRequest{},
+			Type: &servicepb.Request_CloseChapter{
+				CloseChapter: &servicepb.CloseChapterRequest{},
 			},
 		}),
 	})
 	if err != nil {
-		return fmt.Errorf("closing period: %w", err)
+		return fmt.Errorf("closing chapter: %w", err)
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
@@ -54,12 +54,12 @@ func runClose(cmd *cobra.Command, _ []string) error {
 
 	if len(resp.GetLogs()) > 0 {
 		log := resp.GetLogs()[0]
-		if closePeriodLog := log.GetPayload().GetClosePeriod(); closePeriodLog != nil {
-			pterm.Success.Printfln("Period %d closed successfully", closePeriodLog.GetClosedPeriod().GetId())
-			pterm.Info.Printfln("New period %d opened", closePeriodLog.GetNewPeriod().GetId())
+		if closeChapterLog := log.GetPayload().GetCloseChapter(); closeChapterLog != nil {
+			pterm.Success.Printfln("Chapter %d closed successfully", closeChapterLog.GetClosedChapter().GetId())
+			pterm.Info.Printfln("New chapter %d opened", closeChapterLog.GetNewChapter().GetId())
 			pterm.Info.Println("Background sealing process will compute the sealing hash")
 		} else {
-			pterm.Success.Println("Period closed successfully")
+			pterm.Success.Println("Chapter closed successfully")
 		}
 	}
 

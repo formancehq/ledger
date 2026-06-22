@@ -204,7 +204,7 @@ The **Applier** (owned by the Node) manages the synchronization process through 
 |--------|-------|-------------|
 | `statusNormal` | 0 | Normal operation: committed entries applied directly to FSM (pipelined) |
 | `statusSyncing` | 1 | Pebble checkpoint fetch from leader in progress: entries spooled |
-| `statusSnapshotting` | 2 | Local checkpoint creation in progress (ClosePeriod / QueryCheckpoint): entries spooled |
+| `statusSnapshotting` | 2 | Local checkpoint creation in progress (CloseChapter / QueryCheckpoint): entries spooled |
 | `statusOutOfSync` | 3 | Store behind FSM snapshot: waiting for leader discovery |
 | `statusInstallingSnapshot` | 4 | Leader snapshot being installed by processReadies: entries spooled, unspool skipped |
 
@@ -220,7 +220,7 @@ The **Applier** (owned by the Node) manages the synchronization process through 
                     │                               │           │
     checkpoint      │                    replay      │           │
     required        │                    complete    │           │
-    (ClosePeriod)   │                               │           │
+    (CloseChapter)   │                               │           │
                     ▼                               │           │
            ┌─────────────────┐               ┌──────┴──────┐   │
            │statusSnapshotting│──── done ────►│ unspool &   │   │
@@ -552,7 +552,7 @@ config:
 
 ### Overview
 
-Only **write requests** (`Apply`) and **`ListPeriods`** are forwarded to the leader. All other reads use the ReadIndex mechanism (see below).
+Only **write requests** (`Apply`) and **`ListChapters`** are forwarded to the leader. All other reads use the ReadIndex mechanism (see below).
 
 ### Forwarding Flow
 
@@ -696,13 +696,13 @@ sequenceDiagram
 - **continueOnFailure**: Continue even if an operation fails (sequential mode only)
 - **atomic**: All operations or nothing - supported and enables cross-ledger atomicity
 
-## Period Close and Seal
+## Chapter Close and Seal
 
 ### Overview
 
-Closing a period is a two-step process. The first step (`ClosePeriod`) is a lightweight Raft command that transitions the period state. The second step (`SealPeriod`) runs in the background to compute a cryptographic hash and then proposes the result back into Raft.
+Closing a chapter is a two-step process. The first step (`CloseChapter`) is a lightweight Raft command that transitions the chapter state. The second step (`SealChapter`) runs in the background to compute a cryptographic hash and then proposes the result back into Raft.
 
-For full documentation on periods, see [Periods](./periods.md).
+For full documentation on chapters, see [Chapters](./chapters.md).
 
 ### Complete Flow
 
@@ -716,55 +716,55 @@ sequenceDiagram
     participant Store as Pebble Store
     participant Sealer as Background Sealer
 
-    Client->>API: Apply(ClosePeriod)
+    Client->>API: Apply(CloseChapter)
     API->>Ctrl: Apply()
     Ctrl->>Admission: Admit()
 
-    Note over Admission,FSM: Step 1: ClosePeriod (on Raft critical path)
-    Admission->>FSM: Propose ClosePeriod via Raft
-    FSM->>FSM: OPEN → CLOSING + create new OPEN period
-    FSM->>Store: Commit batch (period state update)
+    Note over Admission,FSM: Step 1: CloseChapter (on Raft critical path)
+    Admission->>FSM: Propose CloseChapter via Raft
+    FSM->>FSM: OPEN → CLOSING + create new OPEN chapter
+    FSM->>Store: Commit batch (chapter state update)
     FSM->>Store: Maintenance task: CreateSealCheckpoint()
     FSM-->>Sealer: SealRequest (via channel)
-    FSM-->>Admission: ClosedPeriodLog
+    FSM-->>Admission: ClosedChapterLog
 
     Ctrl-->>API: ApplyResponse
-    API-->>Client: Response (period is now CLOSING)
+    API-->>Client: Response (chapter is now CLOSING)
 
-    Note over Sealer: Step 2: SealPeriod (off critical path)
+    Note over Sealer: Step 2: SealChapter (off critical path)
     Sealer->>Store: Open seal checkpoint (read-only)
     Sealer->>Sealer: Compute state_hash (iterate all attributes)
     Sealer->>Sealer: Compute sealing_hash (BLAKE3)
     Sealer->>Store: Remove seal checkpoint
 
-    Sealer->>Admission: Propose SealPeriod(period_id, sealing_hash)
-    Admission->>FSM: SealPeriod via Raft
+    Sealer->>Admission: Propose SealChapter(chapter_id, sealing_hash)
+    Admission->>FSM: SealChapter via Raft
     FSM->>FSM: CLOSING → CLOSED + set sealing_hash
-    FSM->>Store: Commit batch (period state update)
-    FSM-->>Admission: SealedPeriodLog
+    FSM->>Store: Commit batch (chapter state update)
+    FSM-->>Admission: SealedChapterLog
 ```
 
 ### Detailed Steps
 
-1. **ClosePeriod Request**
-   - The client sends `Apply(ClosePeriod)` via gRPC
+1. **CloseChapter Request**
+   - The client sends `Apply(CloseChapter)` via gRPC
    - The routed controller forwards to the leader if needed
 
-2. **ClosePeriod FSM Application**
-   - The current `OPEN` period transitions to `CLOSING`
+2. **CloseChapter FSM Application**
+   - The current `OPEN` chapter transitions to `CLOSING`
    - `close_sequence`, `end` timestamp, and `last_audit_hash` are recorded
-   - A new `OPEN` period is created (transactions continue immediately)
+   - A new `OPEN` chapter is created (transactions continue immediately)
    - A Pebble checkpoint is created in the `seal/` directory
 
 3. **Background Sealing**
    - The Sealer opens the checkpoint as a read-only Pebble database
    - Iterates all attribute entries in `[0x09, 0x0A)` to compute `state_hash`
-   - Computes `sealing_hash = BLAKE3(period_id || close_sequence || last_audit_hash || state_hash)`
+   - Computes `sealing_hash = BLAKE3(chapter_id || close_sequence || last_audit_hash || state_hash)`
    - Removes the seal checkpoint from disk
 
-4. **SealPeriod Proposal**
-   - The Sealer proposes `SealPeriod` back into Raft
-   - The FSM transitions the period from `CLOSING` to `CLOSED`
+4. **SealChapter Proposal**
+   - The Sealer proposes `SealChapter` back into Raft
+   - The FSM transitions the chapter from `CLOSING` to `CLOSED`
    - The sealing hash is persisted
 
 ### Crash Recovery
@@ -773,8 +773,8 @@ Two crash windows are handled automatically on restart:
 
 | Crash Window | Condition | Recovery |
 |-------------|-----------|----------|
-| After ClosePeriod commit, before checkpoint | `closingPeriod != nil && !checkpointExists` | `NewNode()` creates checkpoint from Pebble state |
-| After checkpoint, before SealPeriod | `closingPeriod != nil && checkpointExists` | `Sealer.Start()` re-sends SealRequest |
+| After CloseChapter commit, before checkpoint | `closingChapter != nil && !checkpointExists` | `NewNode()` creates checkpoint from Pebble state |
+| After checkpoint, before SealChapter | `closingChapter != nil && checkpointExists` | `Sealer.Start()` re-sends SealRequest |
 
 ## Next Steps
 
@@ -784,4 +784,4 @@ To deepen your understanding:
 2. [Storage and Persistence](../storage/storage.md) - How data is persisted
 3. [API and Interfaces](../api/api.md) - API endpoint documentation
 4. [Spool](../storage/spool.md) - Technical details of the Spool component
-5. [Periods](./periods.md) - Period lifecycle, sealing, and crash recovery
+5. [Chapters](./chapters.md) - Chapter lifecycle, sealing, and crash recovery

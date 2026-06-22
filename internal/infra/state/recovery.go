@@ -41,7 +41,7 @@ func NewRecovery(apply *Machine, reader dal.RecoveryReader) *Recovery {
 //     RestoreState, preserving SnapshotIndex (in-memory only, carried from
 //     the previous value — set by InstallSnapshot on followers, zero at
 //     boot).
-//  3. Reset sub-trackers: Periods, Registry.Reversions, KeyStore,
+//  3. Reset sub-trackers: Chapters, Registry.Reversions, KeyStore,
 //     SharedState, Registry.Cache settings, Registry.Idempotency. These
 //     are not part of FSMState; they are reset from the same handle so the
 //     Machine ends up coherent.
@@ -78,46 +78,46 @@ func (r *Recovery) RecoverState() error {
 	r.apply.publishApplied(newState.LastAppliedIndex)
 
 	// Phase 3: rebuild sub-trackers (not part of FSMState).
-	periodsCursor, err := query.ReadPeriods(context.Background(), handle)
+	chaptersCursor, err := query.ReadChapters(context.Background(), handle)
 	if err != nil {
-		return fmt.Errorf("recovering periods: %w", err)
+		return fmt.Errorf("recovering chapters: %w", err)
 	}
 
-	periodsFromStore, err := cursor.Collect(periodsCursor)
+	chaptersFromStore, err := cursor.Collect(chaptersCursor)
 	if err != nil {
-		return fmt.Errorf("collecting periods: %w", err)
+		return fmt.Errorf("collecting chapters: %w", err)
 	}
 
-	allPeriods := make(map[uint64]*commonpb.Period, len(periodsFromStore))
+	allChapters := make(map[uint64]*commonpb.Chapter, len(chaptersFromStore))
 
-	var currentOpenPeriod *commonpb.Period
+	var currentOpenChapter *commonpb.Chapter
 
-	var closingPeriods []*commonpb.Period
+	var closingChapters []*commonpb.Chapter
 
-	for _, p := range periodsFromStore {
-		allPeriods[p.GetId()] = p
+	for _, p := range chaptersFromStore {
+		allChapters[p.GetId()] = p
 
 		switch p.GetStatus() {
-		case commonpb.PeriodStatus_PERIOD_OPEN:
-			currentOpenPeriod = p
-		case commonpb.PeriodStatus_PERIOD_CLOSING:
-			closingPeriods = append(closingPeriods, p)
+		case commonpb.ChapterStatus_CHAPTER_OPEN:
+			currentOpenChapter = p
+		case commonpb.ChapterStatus_CHAPTER_CLOSING:
+			closingChapters = append(closingChapters, p)
 		}
 	}
 
-	nextPeriodID, err := query.ReadNextPeriodID(r.reader)
+	nextChapterID, err := query.ReadNextChapterID(r.reader)
 	if err != nil {
-		return fmt.Errorf("recovering next period ID: %w", err)
+		return fmt.Errorf("recovering next chapter ID: %w", err)
 	}
 
-	r.apply.Periods.Reset(allPeriods, currentOpenPeriod, closingPeriods, nextPeriodID)
+	r.apply.Chapters.Reset(allChapters, currentOpenChapter, closingChapters, nextChapterID)
 
-	periodSchedule, err := query.ReadPeriodSchedule(r.reader)
+	chapterSchedule, err := query.ReadChapterSchedule(r.reader)
 	if err != nil {
-		return fmt.Errorf("recovering period schedule: %w", err)
+		return fmt.Errorf("recovering chapter schedule: %w", err)
 	}
 
-	r.apply.Periods.SetSchedule(periodSchedule)
+	r.apply.Chapters.SetSchedule(chapterSchedule)
 
 	reversions, err := query.ReadReversions(handle)
 	if err != nil {
@@ -183,7 +183,7 @@ func (r *Recovery) RecoverState() error {
 		"nextAuditSequenceID":   newState.NextAuditSequenceID,
 		"nextQueryCheckpointID": newState.NextQueryCheckpointID,
 		"hasAuditHash":          len(newState.LastAuditHash) > 0,
-		"periodCount":           len(allPeriods),
+		"chapterCount":          len(allChapters),
 		"reversionLedgers":      len(reversions),
 		"pendingCleanups":       len(newState.PendingLedgerCleanups),
 	}).Infof("Recovered FSM state from store")

@@ -51,7 +51,7 @@ type SmartCompactor struct {
 }
 
 // NewSmartCompactor creates a new SmartCompactor for the given store.
-// coldRequestCh receives signals from the FSM when a period purge has been applied,
+// coldRequestCh receives signals from the FSM when a chapter purge has been applied,
 // indicating that cold zone compaction would be beneficial.
 func NewSmartCompactor(
 	store *Store,

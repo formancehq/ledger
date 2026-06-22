@@ -488,7 +488,7 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	}
 
 	// Restore cache from Pebble (store is up to date, checkpoint has cache data).
-	// FSM counters (sequences, periods, reversions, etc.) are already loaded by
+	// FSM counters (sequences, chapters, reversions, etc.) are already loaded by
 	// NewMachine → RecoverState in the constructor and Pebble has not changed
 	// since (InstallSnapshot only touches in-memory state, and the
 	// SynchronizeWithLeader path exits earlier via setOutOfSync).
@@ -496,14 +496,14 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
 	}
 
-	// Recovery: if periods are in CLOSING state but no seal checkpoint exists,
-	// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
-	// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
-	for _, period := range a.fsm.ClosingPeriods() {
-		name := state.SealCheckpointName(period.GetId())
+	// Recovery: if chapters are in CLOSING state but no seal checkpoint exists,
+	// the node crashed after CloseChapter batch.Commit() but before checkpoint creation.
+	// Pebble state is exactly at the CloseChapter boundary right now (spool replay hasn't run).
+	for _, chapter := range a.fsm.ClosingChapters() {
+		name := state.SealCheckpointName(chapter.GetId())
 		if _, exists := a.store.TemporaryCheckpointPath(name); !exists {
 			if a.logger.Enabled(logging.DebugLevel) {
-				a.logger.Debugf("Recovering: creating seal checkpoint for closing period %d", period.GetId())
+				a.logger.Debugf("Recovering: creating seal checkpoint for closing chapter %d", chapter.GetId())
 			}
 
 			_, err := a.store.CreateTemporaryCheckpoint(name)
@@ -1203,7 +1203,7 @@ func (a *Applier) gateAndLaunchMaintenance(
 }
 
 // handleCheckpointRequired enters maintenance mode to create a checkpoint off
-// the Raft hot path for ClosePeriod (seal checkpoint). While the checkpoint is
+// the Raft hot path for CloseChapter (seal checkpoint). While the checkpoint is
 // being created, new committed entries are spooled and replayed afterward.
 func (a *Applier) handleCheckpointRequired(
 	ctx context.Context,
@@ -1212,7 +1212,7 @@ func (a *Applier) handleCheckpointRequired(
 ) error {
 	return a.gateAndLaunchMaintenance(ctx, entries, applyResult, gatingReasonSnapshotting,
 		func(ctx context.Context, deferredResult *state.ApplyResult, deferredFuture *futures.Future[state.ApplyResult], frozenAtIndex uint64) (maintenanceTaskResult, error) {
-			path, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("checkpoint-%d", applyResult.CheckpointPeriodID))
+			path, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("checkpoint-%d", applyResult.CheckpointChapterID))
 			if err != nil {
 				if deferredFuture != nil {
 					deferredFuture.Resolve(state.ApplyResult{}, err)
@@ -1549,7 +1549,7 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 }
 
 // handleCheckpointDuringReplay creates a checkpoint synchronously when a
-// checkpoint-requiring entry (ClosePeriod or CreateQueryCheckpoint) is the
+// checkpoint-requiring entry (CloseChapter or CreateQueryCheckpoint) is the
 // last entry of a replay batch. Unlike handleCheckpointRequired, this does
 // not enter maintenance mode — we are already off the hot path. Callers
 // (replayWAL, replaySpoolImpl) pre-split so the checkpoint trigger is always
@@ -1571,10 +1571,10 @@ func (a *Applier) handleCheckpointDuringReplay(_ context.Context, applyResult *s
 	return a.createReplayCheckpoint(applyResult)
 }
 
-// createReplayCheckpoint creates a checkpoint for a ClosePeriod entry encountered
+// createReplayCheckpoint creates a checkpoint for a CloseChapter entry encountered
 // during spool replay and resolves the deferred future.
 func (a *Applier) createReplayCheckpoint(result *state.ApplyEntriesResult) error {
-	checkpointPath, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("replay-%d", result.CheckpointPeriodID))
+	checkpointPath, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("replay-%d", result.CheckpointChapterID))
 	if err != nil {
 		return fmt.Errorf("creating checkpoint during replay: %w", err)
 	}

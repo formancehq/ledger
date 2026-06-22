@@ -62,7 +62,7 @@ Currency pairs and volume:
 | USD -> GBP | 4 | 5,000 - 11,000 | 3,950 - 8,690 |
 | EUR -> USD | 4 | 4,000 - 10,000 | 4,360 - 10,900 |
 
-Period close + double-entry check every 10 FX operations.
+Chapter close + double-entry check every 10 FX operations.
 
 ### Phase 2b: Force Script + Indexes
 
@@ -98,7 +98,7 @@ All 3 queries deleted after verification.
 
 ### Phase 4: Close + Reconciliation
 
-- Final period close
+- Final chapter close
 - Double-entry balance check
 - All tracked balances verified against actual (every account x every asset)
 - No negative balances (except `@world` and `fx:clearing`)

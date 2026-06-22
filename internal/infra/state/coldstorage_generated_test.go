@@ -40,17 +40,17 @@ func (m *MockColdStorage) EXPECT() *MockColdStorageMockRecorder {
 }
 
 // Archive mocks base method.
-func (m *MockColdStorage) Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
+func (m *MockColdStorage) Archive(ctx context.Context, bucketID string, chapterID uint64, data io.Reader, sha256 []byte) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Archive", ctx, bucketID, periodID, data, sha256)
+	ret := m.ctrl.Call(m, "Archive", ctx, bucketID, chapterID, data, sha256)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Archive indicates an expected call of Archive.
-func (mr *MockColdStorageMockRecorder) Archive(ctx, bucketID, periodID, data, sha256 any) *MockColdStorageArchiveCall {
+func (mr *MockColdStorageMockRecorder) Archive(ctx, bucketID, chapterID, data, sha256 any) *MockColdStorageArchiveCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Archive", reflect.TypeOf((*MockColdStorage)(nil).Archive), ctx, bucketID, periodID, data, sha256)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Archive", reflect.TypeOf((*MockColdStorage)(nil).Archive), ctx, bucketID, chapterID, data, sha256)
 	return &MockColdStorageArchiveCall{Call: call}
 }
 
@@ -78,18 +78,18 @@ func (c *MockColdStorageArchiveCall) DoAndReturn(f func(context.Context, string,
 }
 
 // Checksum mocks base method.
-func (m *MockColdStorage) Checksum(ctx context.Context, bucketID string, periodID uint64) ([]byte, error) {
+func (m *MockColdStorage) Checksum(ctx context.Context, bucketID string, chapterID uint64) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Checksum", ctx, bucketID, periodID)
+	ret := m.ctrl.Call(m, "Checksum", ctx, bucketID, chapterID)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Checksum indicates an expected call of Checksum.
-func (mr *MockColdStorageMockRecorder) Checksum(ctx, bucketID, periodID any) *MockColdStorageChecksumCall {
+func (mr *MockColdStorageMockRecorder) Checksum(ctx, bucketID, chapterID any) *MockColdStorageChecksumCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Checksum", reflect.TypeOf((*MockColdStorage)(nil).Checksum), ctx, bucketID, periodID)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Checksum", reflect.TypeOf((*MockColdStorage)(nil).Checksum), ctx, bucketID, chapterID)
 	return &MockColdStorageChecksumCall{Call: call}
 }
 
@@ -117,18 +117,18 @@ func (c *MockColdStorageChecksumCall) DoAndReturn(f func(context.Context, string
 }
 
 // Exists mocks base method.
-func (m *MockColdStorage) Exists(ctx context.Context, bucketID string, periodID uint64) (bool, error) {
+func (m *MockColdStorage) Exists(ctx context.Context, bucketID string, chapterID uint64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Exists", ctx, bucketID, periodID)
+	ret := m.ctrl.Call(m, "Exists", ctx, bucketID, chapterID)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Exists indicates an expected call of Exists.
-func (mr *MockColdStorageMockRecorder) Exists(ctx, bucketID, periodID any) *MockColdStorageExistsCall {
+func (mr *MockColdStorageMockRecorder) Exists(ctx, bucketID, chapterID any) *MockColdStorageExistsCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exists", reflect.TypeOf((*MockColdStorage)(nil).Exists), ctx, bucketID, periodID)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exists", reflect.TypeOf((*MockColdStorage)(nil).Exists), ctx, bucketID, chapterID)
 	return &MockColdStorageExistsCall{Call: call}
 }
 
@@ -156,18 +156,18 @@ func (c *MockColdStorageExistsCall) DoAndReturn(f func(context.Context, string, 
 }
 
 // ExpectedChecksum mocks base method.
-func (m *MockColdStorage) ExpectedChecksum(ctx context.Context, bucketID string, periodID uint64) ([]byte, error) {
+func (m *MockColdStorage) ExpectedChecksum(ctx context.Context, bucketID string, chapterID uint64) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExpectedChecksum", ctx, bucketID, periodID)
+	ret := m.ctrl.Call(m, "ExpectedChecksum", ctx, bucketID, chapterID)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ExpectedChecksum indicates an expected call of ExpectedChecksum.
-func (mr *MockColdStorageMockRecorder) ExpectedChecksum(ctx, bucketID, periodID any) *MockColdStorageExpectedChecksumCall {
+func (mr *MockColdStorageMockRecorder) ExpectedChecksum(ctx, bucketID, chapterID any) *MockColdStorageExpectedChecksumCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExpectedChecksum", reflect.TypeOf((*MockColdStorage)(nil).ExpectedChecksum), ctx, bucketID, periodID)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExpectedChecksum", reflect.TypeOf((*MockColdStorage)(nil).ExpectedChecksum), ctx, bucketID, chapterID)
 	return &MockColdStorageExpectedChecksumCall{Call: call}
 }
 
@@ -195,18 +195,18 @@ func (c *MockColdStorageExpectedChecksumCall) DoAndReturn(f func(context.Context
 }
 
 // Fetch mocks base method.
-func (m *MockColdStorage) Fetch(ctx context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
+func (m *MockColdStorage) Fetch(ctx context.Context, bucketID string, chapterID uint64) (io.ReadCloser, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Fetch", ctx, bucketID, periodID)
+	ret := m.ctrl.Call(m, "Fetch", ctx, bucketID, chapterID)
 	ret0, _ := ret[0].(io.ReadCloser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Fetch indicates an expected call of Fetch.
-func (mr *MockColdStorageMockRecorder) Fetch(ctx, bucketID, periodID any) *MockColdStorageFetchCall {
+func (mr *MockColdStorageMockRecorder) Fetch(ctx, bucketID, chapterID any) *MockColdStorageFetchCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fetch", reflect.TypeOf((*MockColdStorage)(nil).Fetch), ctx, bucketID, periodID)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fetch", reflect.TypeOf((*MockColdStorage)(nil).Fetch), ctx, bucketID, chapterID)
 	return &MockColdStorageFetchCall{Call: call}
 }
 

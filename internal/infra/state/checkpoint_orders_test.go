@@ -18,8 +18,8 @@ func TestClassifyCheckpointOrderPosition(t *testing.T) {
 	chkpt := func() *raftcmdpb.Order {
 		return &raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}}
 	}
-	closePeriod := func() *raftcmdpb.Order {
-		return &raftcmdpb.Order{Type: &raftcmdpb.Order_ClosePeriod{ClosePeriod: &raftcmdpb.ClosePeriodOrder{}}}
+	closeChapter := func() *raftcmdpb.Order {
+		return &raftcmdpb.Order{Type: &raftcmdpb.Order_CloseChapter{CloseChapter: &raftcmdpb.CloseChapterOrder{}}}
 	}
 
 	cases := []struct {
@@ -30,19 +30,19 @@ func TestClassifyCheckpointOrderPosition(t *testing.T) {
 		{"empty", nil, CheckpointOrderAbsent},
 		{"only apply", []*raftcmdpb.Order{apply(), apply()}, CheckpointOrderAbsent},
 		{"checkpoint alone", []*raftcmdpb.Order{chkpt()}, CheckpointOrderLast},
-		{"close period alone", []*raftcmdpb.Order{closePeriod()}, CheckpointOrderLast},
+		{"close chapter alone", []*raftcmdpb.Order{closeChapter()}, CheckpointOrderLast},
 		{"apply then checkpoint", []*raftcmdpb.Order{apply(), apply(), chkpt()}, CheckpointOrderLast},
-		{"apply then close period", []*raftcmdpb.Order{apply(), closePeriod()}, CheckpointOrderLast},
+		{"apply then close chapter", []*raftcmdpb.Order{apply(), closeChapter()}, CheckpointOrderLast},
 		{"checkpoint then apply", []*raftcmdpb.Order{chkpt(), apply()}, CheckpointOrderInvalid},
-		{"close period then apply", []*raftcmdpb.Order{closePeriod(), apply()}, CheckpointOrderInvalid},
+		{"close chapter then apply", []*raftcmdpb.Order{closeChapter(), apply()}, CheckpointOrderInvalid},
 		{"checkpoint mid-batch", []*raftcmdpb.Order{apply(), chkpt(), apply()}, CheckpointOrderInvalid},
 		// Two triggers: only the LAST slot is valid. The first trigger at
 		// position 0 already violates the invariant, regardless of what
 		// follows. (Submitting two checkpoint orders in one proposal is
 		// nonsensical anyway, but the validator must reject it cleanly.)
 		{"two checkpoints", []*raftcmdpb.Order{chkpt(), chkpt()}, CheckpointOrderInvalid},
-		{"close period then checkpoint", []*raftcmdpb.Order{closePeriod(), chkpt()}, CheckpointOrderInvalid},
-		{"checkpoint then close period", []*raftcmdpb.Order{chkpt(), closePeriod()}, CheckpointOrderInvalid},
+		{"close chapter then checkpoint", []*raftcmdpb.Order{closeChapter(), chkpt()}, CheckpointOrderInvalid},
+		{"checkpoint then close chapter", []*raftcmdpb.Order{chkpt(), closeChapter()}, CheckpointOrderInvalid},
 	}
 
 	for _, tc := range cases {

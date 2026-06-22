@@ -71,7 +71,7 @@ func (x *LogPayload) MarshalJSON() ([]byte, error) {
 			Apply *ApplyLedgerLog `json:"apply,omitempty"`
 		}{Apply: p.Apply})
 	default:
-		// Other variants (signing, sinks, periods, etc.) — use protojson for camelCase
+		// Other variants (signing, sinks, chapters, etc.) — use protojson for camelCase
 		return protojson.Marshal(x)
 	}
 }
@@ -177,13 +177,13 @@ func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Transaction             *Transaction              `json:"transaction,omitempty"`
 		AccountMetadata         map[string]map[string]any `json:"accountMetadata,omitempty"`
-		PeriodID                uint64                    `json:"periodId,omitempty"`
+		ChapterID               uint64                    `json:"chapterId,omitempty"`
 		PostCommitVolumes       *PostCommitVolumes        `json:"postCommitVolumes,omitempty"`
 		PreviousAccountMetadata map[string]map[string]any `json:"previousAccountMetadata,omitempty"`
 	}{
 		Transaction:             x.GetTransaction(),
 		AccountMetadata:         AccountMetadataToAnyMap(x.GetAccountMetadata()),
-		PeriodID:                x.GetPeriodId(),
+		ChapterID:               x.GetChapterId(),
 		PostCommitVolumes:       x.GetPostCommitVolumes(),
 		PreviousAccountMetadata: AccountMetadataToAnyMap(x.GetPreviousAccountMetadata()),
 	})
@@ -478,8 +478,8 @@ func (x *NumscriptInfo) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for Period.
-func (x *Period) MarshalJSON() ([]byte, error) {
+// MarshalJSON implements json.Marshaler for Chapter.
+func (x *Chapter) MarshalJSON() ([]byte, error) {
 	type Aux struct {
 		ID                 uint64     `json:"id,omitempty"`
 		Start              *time.Time `json:"start,omitempty"`

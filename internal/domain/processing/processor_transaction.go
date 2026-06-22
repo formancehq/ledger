@@ -220,10 +220,10 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 		postCommitVolumes = buildPostCommitVolumes(s, ledgerName, result.Postings)
 	}
 
-	// Get the current open period ID for the receipt
-	var periodID uint64
-	if p, ok := s.GetCurrentOpenPeriod(); ok {
-		periodID = p.GetId()
+	// Get the current open chapter ID for the receipt
+	var chapterID uint64
+	if p, ok := s.GetCurrentOpenChapter(); ok {
+		chapterID = p.GetId()
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -239,7 +239,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 					UpdatedAt:  s.GetDate(),
 				},
 				AccountMetadata:         accountMetadata,
-				PeriodId:                periodID,
+				ChapterId:               chapterID,
 				PostCommitVolumes:       postCommitVolumes,
 				PreviousAccountMetadata: previousAccountMetadata,
 			},

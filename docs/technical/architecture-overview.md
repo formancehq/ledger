@@ -157,9 +157,9 @@ The three data paths above handle the core read/write lifecycle. Several additio
 
 The leader node can stream ledger events to external systems (NATS JetStream, Kafka, ClickHouse, Databricks, HTTP webhooks). Each named sink runs an independent emitter that tails the global log from a persisted cursor, batches events, and publishes them with at-least-once delivery. Cursor advances are Raft-replicated; on failure, the emitter reports error status via Raft so it is visible cluster-wide. See [Event System](architecture/data-model/events.md).
 
-### Periods and Archiving
+### Chapters and Archiving
 
-Ledger history is divided into periods. A period progresses through five states: **open** (accepting writes) → **closing** (writes blocked, hash chain captured) → **closed** (sealed with a BLAKE3 state hash) → **archiving** (exporting to cold storage) → **archived** (logs purged from Pebble). Sealing produces a cryptographic proof that the period's data has not been tampered with. See [Periods](architecture/data-model/periods.md).
+Ledger history is divided into chapters. A chapter progresses through five states: **open** (accepting writes) → **closing** (writes blocked, hash chain captured) → **closed** (sealed with a BLAKE3 state hash) → **archiving** (exporting to cold storage) → **archived** (logs purged from Pebble). Sealing produces a cryptographic proof that the chapter's data has not been tampered with. See [Chapters](architecture/data-model/chapters.md).
 
 ### Mirror Replication
 

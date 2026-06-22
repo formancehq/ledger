@@ -126,7 +126,7 @@ cmd/ledgerctl/
   ledgers/        # Ledger commands
   logs/           # Log commands
   numscripts/     # Numscript commands
-  periods/        # Period commands
+  chapters/        # Chapter commands
   profile/        # Profile commands
   provision/      # Provisioning commands
   queries/        # Prepared query commands

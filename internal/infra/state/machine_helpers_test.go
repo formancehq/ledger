@@ -54,74 +54,74 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 	})
 }
 
-func TestSealRequestFromPeriod(t *testing.T) {
+func TestSealRequestFromChapter(t *testing.T) {
 	t.Parallel()
 
-	period := &commonpb.Period{
+	chapter := &commonpb.Chapter{
 		Id:            5,
 		CloseSequence: 42,
 		LastAuditHash: []byte("hash-abc"),
 	}
 
-	req := SealRequestFromPeriod(period)
-	require.Equal(t, uint64(5), req.PeriodID)
+	req := SealRequestFromChapter(chapter)
+	require.Equal(t, uint64(5), req.ChapterID)
 	require.Equal(t, uint64(42), req.CloseSequence)
 	require.Equal(t, []byte("hash-abc"), req.LastAuditHash)
 }
 
-func TestMachineAllPeriods(t *testing.T) {
+func TestMachineAllChapters(t *testing.T) {
 	t.Parallel()
 
 	machine, _, _ := newTestMachine(t)
 
 	// Initially empty
-	require.Empty(t, machine.AllPeriods())
+	require.Empty(t, machine.AllChapters())
 
-	// Add periods to machine
-	machine.Periods.PutPeriod(&commonpb.Period{Id: 1, Status: commonpb.PeriodStatus_PERIOD_CLOSED})
-	machine.Periods.PutPeriod(&commonpb.Period{Id: 2, Status: commonpb.PeriodStatus_PERIOD_OPEN})
+	// Add chapters to machine
+	machine.Chapters.PutChapter(&commonpb.Chapter{Id: 1, Status: commonpb.ChapterStatus_CHAPTER_CLOSED})
+	machine.Chapters.PutChapter(&commonpb.Chapter{Id: 2, Status: commonpb.ChapterStatus_CHAPTER_OPEN})
 
-	periods := machine.AllPeriods()
-	require.Len(t, periods, 2)
+	chapters := machine.AllChapters()
+	require.Len(t, chapters, 2)
 }
 
-func TestMachineClosingPeriods(t *testing.T) {
+func TestMachineClosingChapters(t *testing.T) {
 	t.Parallel()
 
 	machine, _, _ := newTestMachine(t)
 
 	// Initially empty
-	require.Empty(t, machine.ClosingPeriods())
+	require.Empty(t, machine.ClosingChapters())
 
-	// Add closing period
-	machine.Periods.AddClosingPeriod(&commonpb.Period{Id: 3, Status: commonpb.PeriodStatus_PERIOD_CLOSING})
-	require.Len(t, machine.ClosingPeriods(), 1)
-	cp, ok := machine.ClosingPeriodByID(3)
+	// Add closing chapter
+	machine.Chapters.AddClosingChapter(&commonpb.Chapter{Id: 3, Status: commonpb.ChapterStatus_CHAPTER_CLOSING})
+	require.Len(t, machine.ClosingChapters(), 1)
+	cp, ok := machine.ClosingChapterByID(3)
 	require.True(t, ok)
 	require.Equal(t, uint64(3), cp.GetId())
 
-	// Add a second closing period
-	machine.Periods.AddClosingPeriod(&commonpb.Period{Id: 4, Status: commonpb.PeriodStatus_PERIOD_CLOSING})
-	require.Len(t, machine.ClosingPeriods(), 2)
+	// Add a second closing chapter
+	machine.Chapters.AddClosingChapter(&commonpb.Chapter{Id: 4, Status: commonpb.ChapterStatus_CHAPTER_CLOSING})
+	require.Len(t, machine.ClosingChapters(), 2)
 
 	// Remove first
-	machine.Periods.RemoveClosingPeriod(3)
-	require.Len(t, machine.ClosingPeriods(), 1)
-	_, ok = machine.ClosingPeriodByID(3)
+	machine.Chapters.RemoveClosingChapter(3)
+	require.Len(t, machine.ClosingChapters(), 1)
+	_, ok = machine.ClosingChapterByID(3)
 	require.False(t, ok)
 }
 
-func TestMachinePeriodSchedule(t *testing.T) {
+func TestMachineChapterSchedule(t *testing.T) {
 	t.Parallel()
 
 	machine, _, _ := newTestMachine(t)
 
 	// Initially empty
-	require.Empty(t, machine.PeriodSchedule())
+	require.Empty(t, machine.ChapterSchedule())
 
 	// Set schedule
-	machine.Periods.SetSchedule("*/5 * * * *")
-	require.Equal(t, "*/5 * * * *", machine.PeriodSchedule())
+	machine.Chapters.SetSchedule("*/5 * * * *")
+	require.Equal(t, "*/5 * * * *", machine.ChapterSchedule())
 }
 
 func TestMachineScheduleChanged(t *testing.T) {
@@ -288,15 +288,15 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	require.Equal(t, uint64(3), entries[1].GetSequence())
 }
 
-func TestCheckClosePeriod(t *testing.T) {
+func TestCheckCloseChapter(t *testing.T) {
 	t.Parallel()
 
 	machine, _, _ := newTestMachine(t)
 
 	// nil result
-	require.Nil(t, machine.checkClosePeriod(nil))
+	require.Nil(t, machine.checkCloseChapter(nil))
 
-	// result without ClosePeriod log
+	// result without CloseChapter log
 	result := &ApplyResult{
 		Logs: []*raftcmdpb.CreatedLogOrReference{
 			{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
@@ -309,64 +309,64 @@ func TestCheckClosePeriod(t *testing.T) {
 			}},
 		},
 	}
-	require.Nil(t, machine.checkClosePeriod(result))
+	require.Nil(t, machine.checkCloseChapter(result))
 
-	// result with ClosePeriod log
-	closedPeriod := &commonpb.Period{
+	// result with CloseChapter log
+	closedChapter := &commonpb.Chapter{
 		Id:            5,
 		CloseSequence: 42,
 		LastAuditHash: []byte("hash"),
 	}
-	// Add the closing period on the machine so checkClosePeriod can find it.
-	machine.Periods.AddClosingPeriod(closedPeriod)
+	// Add the closing chapter on the machine so checkCloseChapter can find it.
+	machine.Chapters.AddClosingChapter(closedChapter)
 	resultWithClose := &ApplyResult{
 		Logs: []*raftcmdpb.CreatedLogOrReference{
 			{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
 				CreatedLog: &commonpb.Log{
 					Sequence: 10,
-					Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_ClosePeriod{
-						ClosePeriod: &commonpb.ClosedPeriodLog{
-							ClosedPeriod: closedPeriod,
+					Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CloseChapter{
+						CloseChapter: &commonpb.ClosedChapterLog{
+							ClosedChapter: closedChapter,
 						},
 					}},
 				},
 			}},
 		},
 	}
-	sealReq := machine.checkClosePeriod(resultWithClose)
+	sealReq := machine.checkCloseChapter(resultWithClose)
 	require.NotNil(t, sealReq)
-	require.Equal(t, uint64(5), sealReq.PeriodID)
+	require.Equal(t, uint64(5), sealReq.ChapterID)
 	require.Equal(t, uint64(42), sealReq.CloseSequence)
 	require.Equal(t, []byte("hash"), sealReq.LastAuditHash)
 }
 
-func TestCheckClosePeriodReturnsLatestWhenMultiple(t *testing.T) {
+func TestCheckCloseChapterReturnsLatestWhenMultiple(t *testing.T) {
 	t.Parallel()
 
 	machine, _, _ := newTestMachine(t)
 
-	// Add two closing periods — checkClosePeriod should return the latest
-	firstPeriod := &commonpb.Period{
+	// Add two closing chapters — checkCloseChapter should return the latest
+	firstChapter := &commonpb.Chapter{
 		Id:            3,
 		CloseSequence: 30,
 		LastAuditHash: []byte("old-hash"),
 	}
-	latestPeriod := &commonpb.Period{
+	latestChapter := &commonpb.Chapter{
 		Id:            7,
 		CloseSequence: 70,
 		LastAuditHash: []byte("new-hash"),
 	}
-	machine.Periods.AddClosingPeriod(firstPeriod)
-	machine.Periods.AddClosingPeriod(latestPeriod)
+	machine.Chapters.AddClosingChapter(firstChapter)
+	machine.Chapters.AddClosingChapter(latestChapter)
 
 	resultWithClose := &ApplyResult{
 		Logs: []*raftcmdpb.CreatedLogOrReference{
 			{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
 				CreatedLog: &commonpb.Log{
 					Sequence: 10,
-					Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_ClosePeriod{
-						ClosePeriod: &commonpb.ClosedPeriodLog{
-							ClosedPeriod: latestPeriod,
+					Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CloseChapter{
+						CloseChapter: &commonpb.ClosedChapterLog{
+							ClosedChapter: latestChapter,
 						},
 					}},
 				},
@@ -374,10 +374,10 @@ func TestCheckClosePeriodReturnsLatestWhenMultiple(t *testing.T) {
 		},
 	}
 
-	sealReq := machine.checkClosePeriod(resultWithClose)
+	sealReq := machine.checkCloseChapter(resultWithClose)
 	require.NotNil(t, sealReq)
-	// Should return the latest closing period (period 7), not the first one
-	require.Equal(t, uint64(7), sealReq.PeriodID)
+	// Should return the latest closing chapter (chapter 7), not the first one
+	require.Equal(t, uint64(7), sealReq.ChapterID)
 	require.Equal(t, uint64(70), sealReq.CloseSequence)
 	require.Equal(t, []byte("new-hash"), sealReq.LastAuditHash)
 }

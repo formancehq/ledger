@@ -318,9 +318,9 @@ All ledgers share a single Pebble key-value store with byte-prefixed keys organi
 | **Attributes** | `0x01` | Volumes, metadata, boundaries, tx state, references, sink configs, numscript, prepared queries | Hot storage, hashed during seal |
 | **Cache** | `0x02` | Generation-based cache for fast restart | Rotated per generation |
 | **Per-Ledger** | `0x03` | Reversions, pending cleanups, prepared queries, mirror source head, mirror cursor, mirror status | Per-ledger lifecycle |
-| **Cold** | `0x04` | Logs + audit entries | Archived to cold storage then purged per period |
+| **Cold** | `0x04` | Logs + audit entries | Archived to cold storage then purged per chapter |
 | **Idempotency** | `0x05` | Deduplication keys + time index | TTL-based eviction |
-| **Global** | `0x06` | Applied index/timestamp, ledger info, signing, periods, cluster config, bloom | Lives forever |
+| **Global** | `0x06` | Applied index/timestamp, ledger info, signing, chapters, cluster config, bloom | Lives forever |
 
 ## Scalability
 

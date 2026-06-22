@@ -199,7 +199,7 @@ func GetPaginationFlags(cmd *cobra.Command) PaginationFlags {
 
 // AddMinLogSequenceFlag registers --min-log-sequence on cmd. Use this on
 // endpoints that gate live reads on log-sequence catch-up but do NOT support
-// checkpoint reads (audit, periods, etc.); other callers should use
+// checkpoint reads (audit, chapters, etc.); other callers should use
 // AddConsistencyFlags.
 func AddMinLogSequenceFlag(cmd *cobra.Command) {
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")

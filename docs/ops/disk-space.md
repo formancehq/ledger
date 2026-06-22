@@ -188,32 +188,32 @@ When the cluster becomes unhealthy due to disk space:
 
 `DeleteLedger` performs a **soft delete**: the ledger is marked as deleted and
 hidden from list/get operations, but its underlying data (volumes, metadata,
-transactions, logs) remains in Pebble until the **period purge** covers the
+transactions, logs) remains in Pebble until the **chapter purge** covers the
 delete sequence.
 
 ### How cleanup works
 
 1. `DeleteLedger` records the delete sequence number in `pendingLedgerCleanups`.
-2. When a period is archived and purged, the purge range covers all log
-   sequences up to the period's `close_sequence`.
+2. When a chapter is archived and purged, the purge range covers all log
+   sequences up to the chapter's `close_sequence`.
 3. If the delete sequence falls within a purged range, `deleteLedgerData` runs
    and removes all per-ledger Pebble data (volumes, metadata, transactions,
    bloom entries, account types).
 
 ### Implications
 
-- **No period rotation = no cleanup.** If period scheduling is disabled or no
-  `ClosePeriod` is triggered after the delete, the data stays indefinitely.
+- **No chapter rotation = no cleanup.** If chapter scheduling is disabled or no
+  `CloseChapter` is triggered after the delete, the data stays indefinitely.
 - **Storage growth.** Deleted ledger data contributes to disk usage until
   purged. Factor this into volume sizing.
 - **Privacy.** If regulatory requirements mandate timely data deletion, ensure
-  period rotation and archiving are active.
+  chapter rotation and archiving are active.
 
 ### Recommendations
 
-- Keep period scheduling enabled (`--period-schedule`) so that periods close
+- Keep chapter scheduling enabled (`--chapter-schedule`) so that chapters close
   and archive automatically.
-- After deleting a ledger, verify that the next period close covers the delete
+- After deleting a ledger, verify that the next chapter close covers the delete
   by checking `store check` or the audit log.
 - Monitor `pendingLedgerCleanups` via the cluster state gRPC endpoint to detect
   ledgers awaiting cleanup

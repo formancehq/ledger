@@ -62,7 +62,7 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 // 4. Volume consistency (input/output per account/asset)
 // 5. Account metadata consistency
 // 6. Transaction update consistency
-// 7. Archived period sealing hash decomposition
+// 7. Archived chapter sealing hash decomposition
 // 8. Archived state via baseline checkpoint + 3-way merge comparison.
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
 	// Take a point-in-time snapshot so that log iteration and live attribute
@@ -94,30 +94,30 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return nil
 	}
 
-	// Read archived periods to adjust the starting point for log replay.
-	periodsCursor, err := query.ReadPeriods(ctx, snap)
+	// Read archived chapters to adjust the starting point for log replay.
+	chaptersCursor, err := query.ReadChapters(ctx, snap)
 	if err != nil {
-		return fmt.Errorf("reading periods: %w", err)
+		return fmt.Errorf("reading chapters: %w", err)
 	}
 
-	periods, err := cursor.Collect(periodsCursor)
+	chapters, err := cursor.Collect(chaptersCursor)
 	if err != nil {
-		return fmt.Errorf("collecting periods: %w", err)
+		return fmt.Errorf("collecting chapters: %w", err)
 	}
 
 	var (
-		hasArchivedPeriods   bool
-		archiveEndSeq        uint64 // max close_sequence among archived periods
-		archiveLastAuditHash []byte // last_audit_hash from the latest archived period
+		hasArchivedChapters  bool
+		archiveEndSeq        uint64 // max close_sequence among archived chapters
+		archiveLastAuditHash []byte // last_audit_hash from the latest archived chapter
 	)
 
-	for _, p := range periods {
-		if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVED {
-			hasArchivedPeriods = true
+	for _, p := range chapters {
+		if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
+			hasArchivedChapters = true
 
 			if len(p.GetSealingHash()) == 0 {
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
-					fmt.Sprintf("archived period %d has no sealing hash (unsealed before archive)", p.GetId()),
+					fmt.Sprintf("archived chapter %d has no sealing hash (unsealed before archive)", p.GetId()),
 					p.GetCloseSequence(), "", "", ""))
 			} else {
 				verifySealingHash(p, callback)
@@ -141,11 +141,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Verify the audit hash chain before log replay.
 	// This iterates all non-archived audit entries and recomputes each hash
 	// from the stored orders, chaining from archiveLastAuditHash.
-	if err := c.verifyAuditHashChain(ctx, snap, periods, archiveLastAuditHash, callback); err != nil {
+	if err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, callback); err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
 
-	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, periods, archiveEndSeq)
+	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, chapters, archiveEndSeq)
 	if err != nil {
 		return fmt.Errorf("reading proposal log boundaries: %w", err)
 	}
@@ -172,9 +172,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		ephemeralPurgeBuffer = domainreplay.NewEphemeralPurgeBuffer()
 	}
 
-	// If periods were archived, pre-populate knownLedgers from Pebble
+	// If chapters were archived, pre-populate knownLedgers from Pebble
 	// since the CreateLedger logs have been purged.
-	if hasArchivedPeriods {
+	if hasArchivedChapters {
 		ledgerCursor, err := query.ReadLedgers(ctx, snap)
 		if err != nil {
 			return fmt.Errorf("reading ledgers for archive recovery: %w", err)
@@ -353,7 +353,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Open baseline checkpoint for archived state comparison.
 	var baselineDB *pebble.DB
 
-	if hasArchivedPeriods {
+	if hasArchivedChapters {
 		baselinePath, exists := c.store.BaselineCheckpointPath()
 		if exists {
 			db, openErr := pebble.Open(baselinePath, &pebble.Options{
@@ -370,10 +370,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 	}
 
-	// If archived periods exist but no baseline is available, we can't do
+	// If archived chapters exist but no baseline is available, we can't do
 	// entry-by-entry comparison (the replay only covers non-archived logs).
 	// This is expected after a restore. Warn and skip comparison passes.
-	if hasArchivedPeriods && baselineDB == nil {
+	if hasArchivedChapters && baselineDB == nil {
 		c.logger.Info("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
 
 		return nil
@@ -390,7 +390,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	// Comparison passes: 3-way merge (baseline + replay + live).
-	// When no archived periods exist, baseline is nil and expected = replay delta only.
+	// When no archived chapters exist, baseline is nil and expected = replay delta only.
 	c.compareVolumes(ctx, snap, baselineDB, replay, excluded, callback)
 	c.compareMetadata(ctx, snap, baselineDB, replay, excluded, callback)
 	c.compareTransactions(ctx, snap, baselineDB, replay, callback)
@@ -1080,27 +1080,27 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 // the first mismatch.
 //
 // Archived audit entries have been purged from Pebble, so the chain starts
-// at archiveLastAuditHash (from the latest archived period) or nil if no
-// periods have been archived.
+// at archiveLastAuditHash (from the latest archived chapter) or nil if no
+// chapters have been archived.
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
 	reader dal.PebbleReader,
-	periods []*commonpb.Period,
+	chapters []*commonpb.Chapter,
 	archiveLastAuditHash []byte,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
 	// Find the last archived audit sequence to start iteration after it.
 	//
-	// CloseAuditSequence is the last audit entry written BEFORE the ClosePeriod
+	// CloseAuditSequence is the last audit entry written BEFORE the CloseChapter
 	// proposal. Purging deletes entries [start, CloseAuditSequence], so the
-	// ClosePeriod entry at CloseAuditSequence + 1 survives and is the first
-	// entry we verify. period.LastAuditHash is the hash of the predecessor
+	// CloseChapter entry at CloseAuditSequence + 1 survives and is the first
+	// entry we verify. chapter.LastAuditHash is the hash of the predecessor
 	// (entry at CloseAuditSequence), which is the chain input for verifying
 	// the surviving entry.
 	var afterAuditSeq *uint64
 
-	for _, p := range periods {
-		if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVED {
+	for _, p := range chapters {
+		if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
 			closeAuditSeq := p.GetCloseAuditSequence()
 			if afterAuditSeq == nil || closeAuditSeq > *afterAuditSeq {
 				afterAuditSeq = &closeAuditSeq
@@ -1230,13 +1230,13 @@ type proposalBoundaryReader struct {
 func (c *Checker) newProposalBoundaryReader(
 	ctx context.Context,
 	reader dal.PebbleReader,
-	periods []*commonpb.Period,
+	chapters []*commonpb.Chapter,
 	archiveEndSeq uint64,
 ) (*proposalBoundaryReader, error) {
 	var afterAuditSeq *uint64
 
-	for _, p := range periods {
-		if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVED {
+	for _, p := range chapters {
+		if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
 			closeAuditSeq := p.GetCloseAuditSequence()
 			if afterAuditSeq == nil || closeAuditSeq > *afterAuditSeq {
 				afterAuditSeq = &closeAuditSeq
@@ -1295,9 +1295,9 @@ func logSequenceFromAuditEntry(entry *auditpb.AuditEntry) uint64 {
 	return 0
 }
 
-// verifySealingHash checks that the sealing hash of an archived period matches
-// the expected decomposition: BLAKE3(period_id || close_sequence || last_log_hash || state_hash).
-func verifySealingHash(p *commonpb.Period, callback func(*servicepb.CheckStoreEvent)) {
+// verifySealingHash checks that the sealing hash of an archived chapter matches
+// the expected decomposition: BLAKE3(chapter_id || close_sequence || last_log_hash || state_hash).
+func verifySealingHash(p *commonpb.Chapter, callback func(*servicepb.CheckStoreEvent)) {
 	hasher := blake3.New()
 	buf := make([]byte, 8)
 
@@ -1316,7 +1316,7 @@ func verifySealingHash(p *commonpb.Period, callback func(*servicepb.CheckStoreEv
 	expected := hasher.Sum(nil)
 	if !bytes.Equal(expected, p.GetSealingHash()) {
 		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
-			fmt.Sprintf("sealing hash mismatch for archived period %d: expected %x, got %x",
+			fmt.Sprintf("sealing hash mismatch for archived chapter %d: expected %x, got %x",
 				p.GetId(), expected, p.GetSealingHash()),
 			p.GetCloseSequence(), "", "", ""))
 	}

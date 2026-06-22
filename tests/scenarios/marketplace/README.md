@@ -57,7 +57,7 @@ customer:{id}  --[$amount]--> platform:fees  (3%)
 customer:{id}  --[$amount]--> merchant:{id}  (97%)
 ```
 
-- **Period close** every 60 transactions + double-entry check
+- **Chapter close** every 60 transactions + double-entry check
 - **Cold-account read** every 20 transactions (cache eviction exercise)
 - **GetTransaction** on first purchase to verify structure
 
@@ -75,7 +75,7 @@ customer:{id}  --[$amount]--> merchant:{id}  (97%)
 (reverse) platform:fees  --[3%]-->  customer:{id}
 ```
 
-### Phase 5: Final Period Close
+### Phase 5: Final Chapter Close
 
 ### Phase 6: Merchant Payouts
 

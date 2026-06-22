@@ -26,7 +26,7 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
 
 ## Automatic Checkpoint Creation (Cron Scheduler)
 
-Checkpoint creation can be automated via a cron schedule. The schedule is a runtime-modifiable configuration stored in Raft, following the same pattern as period schedule (`SetPeriodSchedule`).
+Checkpoint creation can be automated via a cron schedule. The schedule is a runtime-modifiable configuration stored in Raft, following the same pattern as chapter schedule (`SetChapterSchedule`).
 
 ### Configuration
 

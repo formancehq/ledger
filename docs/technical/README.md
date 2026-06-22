@@ -34,7 +34,7 @@ technical/
   architecture/
     core/          -- Raft, FSM, global log, HLC
     storage/       -- Pebble engine, drivers, attributes, spool
-    data-model/    -- ledgers, periods, events, idempotency, metadata
+    data-model/    -- ledgers, chapters, events, idempotency, metadata
     api/           -- gRPC, HTTP, Numscript library
   contributing/    -- getting started, conventions, testing, protobuf
 ```

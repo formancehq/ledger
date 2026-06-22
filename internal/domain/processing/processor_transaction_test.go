@@ -43,7 +43,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVolume.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
@@ -174,7 +174,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetVolume(worldKey).Return(worldVolume.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(worldKey, gomock.Any())
@@ -272,7 +272,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -333,7 +333,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -401,7 +401,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -469,7 +469,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	// Bank starts with 0 balance but can go negative with unbounded overdraft
 	setupNumscriptVolumeMocks(mockStore)
@@ -652,7 +652,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -719,7 +719,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -787,7 +787,7 @@ func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
 
 	request := &servicepb.Request{
@@ -869,7 +869,7 @@ func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *test
 			mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil).AnyTimes()
 			mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 			mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-			mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false).AnyTimes()
+			mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false).AnyTimes()
 			setupNumscriptVolumeMocks(mockStore)
 
 			request := &servicepb.Request{
@@ -913,7 +913,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1014,7 +1014,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_OverwriteCapturesOldV
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1102,7 +1102,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVolume.AsReader(), nil)
 	// With force=true, balance check is skipped and output is updated
@@ -1181,7 +1181,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetVolume(sourceKey).Return(zeroVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
@@ -1241,7 +1241,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	// Note: GetVolume might be called for volume updates but not for balance queries
 	// when force=true (store adapter returns unlimited balance)
@@ -1387,7 +1387,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 	require.Nil(t, result)
 }
 
-func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
+func TestProcessCreateTransaction_ChapterIdInCreatedTransaction(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -1417,7 +1417,7 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
 	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(&commonpb.Period{Id: 5, Status: commonpb.PeriodStatus_PERIOD_OPEN}, true)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(&commonpb.Chapter{Id: 5, Status: commonpb.ChapterStatus_CHAPTER_OPEN}, true)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	request := &servicepb.Request{
@@ -1450,11 +1450,11 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 
 	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(5), createdTx.GetPeriodId(), "PeriodId should match the open period")
+	require.Equal(t, uint64(5), createdTx.GetChapterId(), "ChapterId should match the open chapter")
 	require.Equal(t, uint64(1), createdTx.GetTransaction().GetId())
 }
 
-func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
+func TestProcessCreateTransaction_ChapterIdZeroWhenNoChapter(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -1484,7 +1484,7 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
 	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	request := &servicepb.Request{
@@ -1517,7 +1517,7 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 
 	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(0), createdTx.GetPeriodId(), "PeriodId should be 0 when no open period exists")
+	require.Equal(t, uint64(0), createdTx.GetChapterId(), "ChapterId should be 0 when no open chapter exists")
 }
 
 func TestProcessCreateTransaction_CoercesPreviousAccountMetadata(t *testing.T) {
@@ -1557,7 +1557,7 @@ func TestProcessCreateTransaction_CoercesPreviousAccountMetadata(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetVolume(worldKey).Return(zero.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(worldKey, gomock.Any())

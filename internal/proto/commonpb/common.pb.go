@@ -499,58 +499,58 @@ func (EventType) EnumDescriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{8}
 }
 
-type PeriodStatus int32
+type ChapterStatus int32
 
 const (
-	PeriodStatus_PERIOD_OPEN      PeriodStatus = 0
-	PeriodStatus_PERIOD_CLOSING   PeriodStatus = 1
-	PeriodStatus_PERIOD_CLOSED    PeriodStatus = 2
-	PeriodStatus_PERIOD_ARCHIVED  PeriodStatus = 3
-	PeriodStatus_PERIOD_ARCHIVING PeriodStatus = 4
+	ChapterStatus_CHAPTER_OPEN      ChapterStatus = 0
+	ChapterStatus_CHAPTER_CLOSING   ChapterStatus = 1
+	ChapterStatus_CHAPTER_CLOSED    ChapterStatus = 2
+	ChapterStatus_CHAPTER_ARCHIVED  ChapterStatus = 3
+	ChapterStatus_CHAPTER_ARCHIVING ChapterStatus = 4
 )
 
-// Enum value maps for PeriodStatus.
+// Enum value maps for ChapterStatus.
 var (
-	PeriodStatus_name = map[int32]string{
-		0: "PERIOD_OPEN",
-		1: "PERIOD_CLOSING",
-		2: "PERIOD_CLOSED",
-		3: "PERIOD_ARCHIVED",
-		4: "PERIOD_ARCHIVING",
+	ChapterStatus_name = map[int32]string{
+		0: "CHAPTER_OPEN",
+		1: "CHAPTER_CLOSING",
+		2: "CHAPTER_CLOSED",
+		3: "CHAPTER_ARCHIVED",
+		4: "CHAPTER_ARCHIVING",
 	}
-	PeriodStatus_value = map[string]int32{
-		"PERIOD_OPEN":      0,
-		"PERIOD_CLOSING":   1,
-		"PERIOD_CLOSED":    2,
-		"PERIOD_ARCHIVED":  3,
-		"PERIOD_ARCHIVING": 4,
+	ChapterStatus_value = map[string]int32{
+		"CHAPTER_OPEN":      0,
+		"CHAPTER_CLOSING":   1,
+		"CHAPTER_CLOSED":    2,
+		"CHAPTER_ARCHIVED":  3,
+		"CHAPTER_ARCHIVING": 4,
 	}
 )
 
-func (x PeriodStatus) Enum() *PeriodStatus {
-	p := new(PeriodStatus)
+func (x ChapterStatus) Enum() *ChapterStatus {
+	p := new(ChapterStatus)
 	*p = x
 	return p
 }
 
-func (x PeriodStatus) String() string {
+func (x ChapterStatus) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (PeriodStatus) Descriptor() protoreflect.EnumDescriptor {
+func (ChapterStatus) Descriptor() protoreflect.EnumDescriptor {
 	return file_common_proto_enumTypes[9].Descriptor()
 }
 
-func (PeriodStatus) Type() protoreflect.EnumType {
+func (ChapterStatus) Type() protoreflect.EnumType {
 	return &file_common_proto_enumTypes[9]
 }
 
-func (x PeriodStatus) Number() protoreflect.EnumNumber {
+func (x ChapterStatus) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use PeriodStatus.Descriptor instead.
-func (PeriodStatus) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use ChapterStatus.Descriptor instead.
+func (ChapterStatus) EnumDescriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{9}
 }
 
@@ -2603,13 +2603,13 @@ type LogPayload struct {
 	//	*LogPayload_SetSigningConfig
 	//	*LogPayload_AddedEventsSink
 	//	*LogPayload_RemovedEventsSink
-	//	*LogPayload_ClosePeriod
-	//	*LogPayload_SealPeriod
-	//	*LogPayload_ArchivePeriod
-	//	*LogPayload_ConfirmArchivePeriod
+	//	*LogPayload_CloseChapter
+	//	*LogPayload_SealChapter
+	//	*LogPayload_ArchiveChapter
+	//	*LogPayload_ConfirmArchiveChapter
 	//	*LogPayload_SetMaintenanceMode
-	//	*LogPayload_SetPeriodSchedule
-	//	*LogPayload_DeletePeriodSchedule
+	//	*LogPayload_SetChapterSchedule
+	//	*LogPayload_DeleteChapterSchedule
 	//	*LogPayload_PromoteLedger
 	//	*LogPayload_CreatedPreparedQuery
 	//	*LogPayload_UpdatedPreparedQuery
@@ -2736,37 +2736,37 @@ func (x *LogPayload) GetRemovedEventsSink() *RemovedEventsSinkLog {
 	return nil
 }
 
-func (x *LogPayload) GetClosePeriod() *ClosedPeriodLog {
+func (x *LogPayload) GetCloseChapter() *ClosedChapterLog {
 	if x != nil {
-		if x, ok := x.Type.(*LogPayload_ClosePeriod); ok {
-			return x.ClosePeriod
+		if x, ok := x.Type.(*LogPayload_CloseChapter); ok {
+			return x.CloseChapter
 		}
 	}
 	return nil
 }
 
-func (x *LogPayload) GetSealPeriod() *SealedPeriodLog {
+func (x *LogPayload) GetSealChapter() *SealedChapterLog {
 	if x != nil {
-		if x, ok := x.Type.(*LogPayload_SealPeriod); ok {
-			return x.SealPeriod
+		if x, ok := x.Type.(*LogPayload_SealChapter); ok {
+			return x.SealChapter
 		}
 	}
 	return nil
 }
 
-func (x *LogPayload) GetArchivePeriod() *ArchivedPeriodLog {
+func (x *LogPayload) GetArchiveChapter() *ArchivedChapterLog {
 	if x != nil {
-		if x, ok := x.Type.(*LogPayload_ArchivePeriod); ok {
-			return x.ArchivePeriod
+		if x, ok := x.Type.(*LogPayload_ArchiveChapter); ok {
+			return x.ArchiveChapter
 		}
 	}
 	return nil
 }
 
-func (x *LogPayload) GetConfirmArchivePeriod() *ConfirmedArchivePeriodLog {
+func (x *LogPayload) GetConfirmArchiveChapter() *ConfirmedArchiveChapterLog {
 	if x != nil {
-		if x, ok := x.Type.(*LogPayload_ConfirmArchivePeriod); ok {
-			return x.ConfirmArchivePeriod
+		if x, ok := x.Type.(*LogPayload_ConfirmArchiveChapter); ok {
+			return x.ConfirmArchiveChapter
 		}
 	}
 	return nil
@@ -2781,19 +2781,19 @@ func (x *LogPayload) GetSetMaintenanceMode() *SetMaintenanceModeLog {
 	return nil
 }
 
-func (x *LogPayload) GetSetPeriodSchedule() *SetPeriodScheduleLog {
+func (x *LogPayload) GetSetChapterSchedule() *SetChapterScheduleLog {
 	if x != nil {
-		if x, ok := x.Type.(*LogPayload_SetPeriodSchedule); ok {
-			return x.SetPeriodSchedule
+		if x, ok := x.Type.(*LogPayload_SetChapterSchedule); ok {
+			return x.SetChapterSchedule
 		}
 	}
 	return nil
 }
 
-func (x *LogPayload) GetDeletePeriodSchedule() *DeletedPeriodScheduleLog {
+func (x *LogPayload) GetDeleteChapterSchedule() *DeletedChapterScheduleLog {
 	if x != nil {
-		if x, ok := x.Type.(*LogPayload_DeletePeriodSchedule); ok {
-			return x.DeletePeriodSchedule
+		if x, ok := x.Type.(*LogPayload_DeleteChapterSchedule); ok {
+			return x.DeleteChapterSchedule
 		}
 	}
 	return nil
@@ -2943,32 +2943,32 @@ type LogPayload_RemovedEventsSink struct {
 	RemovedEventsSink *RemovedEventsSinkLog `protobuf:"bytes,8,opt,name=removed_events_sink,json=removedEventsSink,proto3,oneof"`
 }
 
-type LogPayload_ClosePeriod struct {
-	ClosePeriod *ClosedPeriodLog `protobuf:"bytes,9,opt,name=close_period,json=closePeriod,proto3,oneof"`
+type LogPayload_CloseChapter struct {
+	CloseChapter *ClosedChapterLog `protobuf:"bytes,9,opt,name=close_chapter,json=closeChapter,proto3,oneof"`
 }
 
-type LogPayload_SealPeriod struct {
-	SealPeriod *SealedPeriodLog `protobuf:"bytes,10,opt,name=seal_period,json=sealPeriod,proto3,oneof"`
+type LogPayload_SealChapter struct {
+	SealChapter *SealedChapterLog `protobuf:"bytes,10,opt,name=seal_chapter,json=sealChapter,proto3,oneof"`
 }
 
-type LogPayload_ArchivePeriod struct {
-	ArchivePeriod *ArchivedPeriodLog `protobuf:"bytes,11,opt,name=archive_period,json=archivePeriod,proto3,oneof"`
+type LogPayload_ArchiveChapter struct {
+	ArchiveChapter *ArchivedChapterLog `protobuf:"bytes,11,opt,name=archive_chapter,json=archiveChapter,proto3,oneof"`
 }
 
-type LogPayload_ConfirmArchivePeriod struct {
-	ConfirmArchivePeriod *ConfirmedArchivePeriodLog `protobuf:"bytes,12,opt,name=confirm_archive_period,json=confirmArchivePeriod,proto3,oneof"`
+type LogPayload_ConfirmArchiveChapter struct {
+	ConfirmArchiveChapter *ConfirmedArchiveChapterLog `protobuf:"bytes,12,opt,name=confirm_archive_chapter,json=confirmArchiveChapter,proto3,oneof"`
 }
 
 type LogPayload_SetMaintenanceMode struct {
 	SetMaintenanceMode *SetMaintenanceModeLog `protobuf:"bytes,13,opt,name=set_maintenance_mode,json=setMaintenanceMode,proto3,oneof"`
 }
 
-type LogPayload_SetPeriodSchedule struct {
-	SetPeriodSchedule *SetPeriodScheduleLog `protobuf:"bytes,14,opt,name=set_period_schedule,json=setPeriodSchedule,proto3,oneof"`
+type LogPayload_SetChapterSchedule struct {
+	SetChapterSchedule *SetChapterScheduleLog `protobuf:"bytes,14,opt,name=set_chapter_schedule,json=setChapterSchedule,proto3,oneof"`
 }
 
-type LogPayload_DeletePeriodSchedule struct {
-	DeletePeriodSchedule *DeletedPeriodScheduleLog `protobuf:"bytes,15,opt,name=delete_period_schedule,json=deletePeriodSchedule,proto3,oneof"`
+type LogPayload_DeleteChapterSchedule struct {
+	DeleteChapterSchedule *DeletedChapterScheduleLog `protobuf:"bytes,15,opt,name=delete_chapter_schedule,json=deleteChapterSchedule,proto3,oneof"`
 }
 
 type LogPayload_PromoteLedger struct {
@@ -3035,19 +3035,19 @@ func (*LogPayload_AddedEventsSink) isLogPayload_Type() {}
 
 func (*LogPayload_RemovedEventsSink) isLogPayload_Type() {}
 
-func (*LogPayload_ClosePeriod) isLogPayload_Type() {}
+func (*LogPayload_CloseChapter) isLogPayload_Type() {}
 
-func (*LogPayload_SealPeriod) isLogPayload_Type() {}
+func (*LogPayload_SealChapter) isLogPayload_Type() {}
 
-func (*LogPayload_ArchivePeriod) isLogPayload_Type() {}
+func (*LogPayload_ArchiveChapter) isLogPayload_Type() {}
 
-func (*LogPayload_ConfirmArchivePeriod) isLogPayload_Type() {}
+func (*LogPayload_ConfirmArchiveChapter) isLogPayload_Type() {}
 
 func (*LogPayload_SetMaintenanceMode) isLogPayload_Type() {}
 
-func (*LogPayload_SetPeriodSchedule) isLogPayload_Type() {}
+func (*LogPayload_SetChapterSchedule) isLogPayload_Type() {}
 
-func (*LogPayload_DeletePeriodSchedule) isLogPayload_Type() {}
+func (*LogPayload_DeleteChapterSchedule) isLogPayload_Type() {}
 
 func (*LogPayload_PromoteLedger) isLogPayload_Type() {}
 
@@ -3713,28 +3713,28 @@ func (x *PersistedClusterState) GetCacheEpoch() uint64 {
 	return 0
 }
 
-// SetPeriodScheduleLog records a period schedule change.
-type SetPeriodScheduleLog struct {
+// SetChapterScheduleLog records a chapter schedule change.
+type SetChapterScheduleLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cron          string                 `protobuf:"bytes,1,opt,name=cron,proto3" json:"cron,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SetPeriodScheduleLog) Reset() {
-	*x = SetPeriodScheduleLog{}
+func (x *SetChapterScheduleLog) Reset() {
+	*x = SetChapterScheduleLog{}
 	mi := &file_common_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SetPeriodScheduleLog) String() string {
+func (x *SetChapterScheduleLog) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SetPeriodScheduleLog) ProtoMessage() {}
+func (*SetChapterScheduleLog) ProtoMessage() {}
 
-func (x *SetPeriodScheduleLog) ProtoReflect() protoreflect.Message {
+func (x *SetChapterScheduleLog) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3746,39 +3746,39 @@ func (x *SetPeriodScheduleLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SetPeriodScheduleLog.ProtoReflect.Descriptor instead.
-func (*SetPeriodScheduleLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use SetChapterScheduleLog.ProtoReflect.Descriptor instead.
+func (*SetChapterScheduleLog) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{37}
 }
 
-func (x *SetPeriodScheduleLog) GetCron() string {
+func (x *SetChapterScheduleLog) GetCron() string {
 	if x != nil {
 		return x.Cron
 	}
 	return ""
 }
 
-// DeletedPeriodScheduleLog records the removal of the period schedule.
-type DeletedPeriodScheduleLog struct {
+// DeletedChapterScheduleLog records the removal of the chapter schedule.
+type DeletedChapterScheduleLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeletedPeriodScheduleLog) Reset() {
-	*x = DeletedPeriodScheduleLog{}
+func (x *DeletedChapterScheduleLog) Reset() {
+	*x = DeletedChapterScheduleLog{}
 	mi := &file_common_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeletedPeriodScheduleLog) String() string {
+func (x *DeletedChapterScheduleLog) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeletedPeriodScheduleLog) ProtoMessage() {}
+func (*DeletedChapterScheduleLog) ProtoMessage() {}
 
-func (x *DeletedPeriodScheduleLog) ProtoReflect() protoreflect.Message {
+func (x *DeletedChapterScheduleLog) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3790,8 +3790,8 @@ func (x *DeletedPeriodScheduleLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeletedPeriodScheduleLog.ProtoReflect.Descriptor instead.
-func (*DeletedPeriodScheduleLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use DeletedChapterScheduleLog.ProtoReflect.Descriptor instead.
+func (*DeletedChapterScheduleLog) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{38}
 }
 
@@ -5800,7 +5800,7 @@ type CreatedTransaction struct {
 	state                   protoimpl.MessageState  `protogen:"open.v1"`
 	Transaction             *Transaction            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
 	AccountMetadata         map[string]*MetadataMap `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	PeriodId                uint64                  `protobuf:"fixed64,3,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`                                                                                                                        // Period that was OPEN when this transaction was created
+	ChapterId               uint64                  `protobuf:"fixed64,3,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`                                                                                                                     // Chapter that was OPEN when this transaction was created
 	PostCommitVolumes       *PostCommitVolumes      `protobuf:"bytes,4,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"`                                                                                             // Opt-in: volumes after commit (only when expand_volumes is true)
 	PreviousAccountMetadata map[string]*MetadataMap `protobuf:"bytes,5,rep,name=previous_account_metadata,json=previousAccountMetadata,proto3" json:"previous_account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // previous account metadata values (for index replay)
 	unknownFields           protoimpl.UnknownFields
@@ -5851,9 +5851,9 @@ func (x *CreatedTransaction) GetAccountMetadata() map[string]*MetadataMap {
 	return nil
 }
 
-func (x *CreatedTransaction) GetPeriodId() uint64 {
+func (x *CreatedTransaction) GetChapterId() uint64 {
 	if x != nil {
-		return x.PeriodId
+		return x.ChapterId
 	}
 	return 0
 }
@@ -6176,37 +6176,37 @@ func (x *RemovedMetadataFieldTypeLog) GetDroppedIndex() *IndexID {
 	return nil
 }
 
-type Period struct {
+type Chapter struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Id                 uint64                 `protobuf:"fixed64,1,opt,name=id,proto3" json:"id,omitempty"`
 	Start              *Timestamp             `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
 	End                *Timestamp             `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
-	Status             PeriodStatus           `protobuf:"varint,4,opt,name=status,proto3,enum=common.PeriodStatus" json:"status,omitempty"`
+	Status             ChapterStatus          `protobuf:"varint,4,opt,name=status,proto3,enum=common.ChapterStatus" json:"status,omitempty"`
 	CloseSequence      uint64                 `protobuf:"fixed64,5,opt,name=close_sequence,json=closeSequence,proto3" json:"close_sequence,omitempty"`
 	SealingHash        []byte                 `protobuf:"bytes,6,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
-	LastAuditHash      []byte                 `protobuf:"bytes,7,opt,name=last_audit_hash,json=lastAuditHash,proto3" json:"last_audit_hash,omitempty"`                   // Audit chain hash at the time the period was closed (for integrity recovery)
-	StartSequence      uint64                 `protobuf:"fixed64,8,opt,name=start_sequence,json=startSequence,proto3" json:"start_sequence,omitempty"`                   // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
+	LastAuditHash      []byte                 `protobuf:"bytes,7,opt,name=last_audit_hash,json=lastAuditHash,proto3" json:"last_audit_hash,omitempty"`                   // Audit chain hash at the time the chapter was closed (for integrity recovery)
+	StartSequence      uint64                 `protobuf:"fixed64,8,opt,name=start_sequence,json=startSequence,proto3" json:"start_sequence,omitempty"`                   // First log sequence in this chapter (previous close_sequence + 1, or 1 for the first chapter)
 	StateHash          []byte                 `protobuf:"bytes,9,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`                                 // BLAKE3 hash of computed attributes (V+M+T) at seal time
-	StartAuditSequence uint64                 `protobuf:"fixed64,10,opt,name=start_audit_sequence,json=startAuditSequence,proto3" json:"start_audit_sequence,omitempty"` // First audit sequence in this period
-	CloseAuditSequence uint64                 `protobuf:"fixed64,11,opt,name=close_audit_sequence,json=closeAuditSequence,proto3" json:"close_audit_sequence,omitempty"` // Last audit sequence when period was closed
+	StartAuditSequence uint64                 `protobuf:"fixed64,10,opt,name=start_audit_sequence,json=startAuditSequence,proto3" json:"start_audit_sequence,omitempty"` // First audit sequence in this chapter
+	CloseAuditSequence uint64                 `protobuf:"fixed64,11,opt,name=close_audit_sequence,json=closeAuditSequence,proto3" json:"close_audit_sequence,omitempty"` // Last audit sequence when chapter was closed
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
 
-func (x *Period) Reset() {
-	*x = Period{}
+func (x *Chapter) Reset() {
+	*x = Chapter{}
 	mi := &file_common_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Period) String() string {
+func (x *Chapter) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Period) ProtoMessage() {}
+func (*Chapter) ProtoMessage() {}
 
-func (x *Period) ProtoReflect() protoreflect.Message {
+func (x *Chapter) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -6218,110 +6218,110 @@ func (x *Period) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Period.ProtoReflect.Descriptor instead.
-func (*Period) Descriptor() ([]byte, []int) {
+// Deprecated: Use Chapter.ProtoReflect.Descriptor instead.
+func (*Chapter) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{74}
 }
 
-func (x *Period) GetId() uint64 {
+func (x *Chapter) GetId() uint64 {
 	if x != nil {
 		return x.Id
 	}
 	return 0
 }
 
-func (x *Period) GetStart() *Timestamp {
+func (x *Chapter) GetStart() *Timestamp {
 	if x != nil {
 		return x.Start
 	}
 	return nil
 }
 
-func (x *Period) GetEnd() *Timestamp {
+func (x *Chapter) GetEnd() *Timestamp {
 	if x != nil {
 		return x.End
 	}
 	return nil
 }
 
-func (x *Period) GetStatus() PeriodStatus {
+func (x *Chapter) GetStatus() ChapterStatus {
 	if x != nil {
 		return x.Status
 	}
-	return PeriodStatus_PERIOD_OPEN
+	return ChapterStatus_CHAPTER_OPEN
 }
 
-func (x *Period) GetCloseSequence() uint64 {
+func (x *Chapter) GetCloseSequence() uint64 {
 	if x != nil {
 		return x.CloseSequence
 	}
 	return 0
 }
 
-func (x *Period) GetSealingHash() []byte {
+func (x *Chapter) GetSealingHash() []byte {
 	if x != nil {
 		return x.SealingHash
 	}
 	return nil
 }
 
-func (x *Period) GetLastAuditHash() []byte {
+func (x *Chapter) GetLastAuditHash() []byte {
 	if x != nil {
 		return x.LastAuditHash
 	}
 	return nil
 }
 
-func (x *Period) GetStartSequence() uint64 {
+func (x *Chapter) GetStartSequence() uint64 {
 	if x != nil {
 		return x.StartSequence
 	}
 	return 0
 }
 
-func (x *Period) GetStateHash() []byte {
+func (x *Chapter) GetStateHash() []byte {
 	if x != nil {
 		return x.StateHash
 	}
 	return nil
 }
 
-func (x *Period) GetStartAuditSequence() uint64 {
+func (x *Chapter) GetStartAuditSequence() uint64 {
 	if x != nil {
 		return x.StartAuditSequence
 	}
 	return 0
 }
 
-func (x *Period) GetCloseAuditSequence() uint64 {
+func (x *Chapter) GetCloseAuditSequence() uint64 {
 	if x != nil {
 		return x.CloseAuditSequence
 	}
 	return 0
 }
 
-type ClosedPeriodLog struct {
+type ClosedChapterLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClosedPeriod  *Period                `protobuf:"bytes,1,opt,name=closed_period,json=closedPeriod,proto3" json:"closed_period,omitempty"`
-	NewPeriod     *Period                `protobuf:"bytes,2,opt,name=new_period,json=newPeriod,proto3" json:"new_period,omitempty"`
+	ClosedChapter *Chapter               `protobuf:"bytes,1,opt,name=closed_chapter,json=closedChapter,proto3" json:"closed_chapter,omitempty"`
+	NewChapter    *Chapter               `protobuf:"bytes,2,opt,name=new_chapter,json=newChapter,proto3" json:"new_chapter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ClosedPeriodLog) Reset() {
-	*x = ClosedPeriodLog{}
+func (x *ClosedChapterLog) Reset() {
+	*x = ClosedChapterLog{}
 	mi := &file_common_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ClosedPeriodLog) String() string {
+func (x *ClosedChapterLog) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ClosedPeriodLog) ProtoMessage() {}
+func (*ClosedChapterLog) ProtoMessage() {}
 
-func (x *ClosedPeriodLog) ProtoReflect() protoreflect.Message {
+func (x *ClosedChapterLog) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -6333,46 +6333,46 @@ func (x *ClosedPeriodLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ClosedPeriodLog.ProtoReflect.Descriptor instead.
-func (*ClosedPeriodLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use ClosedChapterLog.ProtoReflect.Descriptor instead.
+func (*ClosedChapterLog) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{75}
 }
 
-func (x *ClosedPeriodLog) GetClosedPeriod() *Period {
+func (x *ClosedChapterLog) GetClosedChapter() *Chapter {
 	if x != nil {
-		return x.ClosedPeriod
+		return x.ClosedChapter
 	}
 	return nil
 }
 
-func (x *ClosedPeriodLog) GetNewPeriod() *Period {
+func (x *ClosedChapterLog) GetNewChapter() *Chapter {
 	if x != nil {
-		return x.NewPeriod
+		return x.NewChapter
 	}
 	return nil
 }
 
-type SealedPeriodLog struct {
+type SealedChapterLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Period        *Period                `protobuf:"bytes,1,opt,name=period,proto3" json:"period,omitempty"`
+	Chapter       *Chapter               `protobuf:"bytes,1,opt,name=chapter,proto3" json:"chapter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SealedPeriodLog) Reset() {
-	*x = SealedPeriodLog{}
+func (x *SealedChapterLog) Reset() {
+	*x = SealedChapterLog{}
 	mi := &file_common_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SealedPeriodLog) String() string {
+func (x *SealedChapterLog) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SealedPeriodLog) ProtoMessage() {}
+func (*SealedChapterLog) ProtoMessage() {}
 
-func (x *SealedPeriodLog) ProtoReflect() protoreflect.Message {
+func (x *SealedChapterLog) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -6384,39 +6384,39 @@ func (x *SealedPeriodLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SealedPeriodLog.ProtoReflect.Descriptor instead.
-func (*SealedPeriodLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use SealedChapterLog.ProtoReflect.Descriptor instead.
+func (*SealedChapterLog) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{76}
 }
 
-func (x *SealedPeriodLog) GetPeriod() *Period {
+func (x *SealedChapterLog) GetChapter() *Chapter {
 	if x != nil {
-		return x.Period
+		return x.Chapter
 	}
 	return nil
 }
 
-type ArchivedPeriodLog struct {
+type ArchivedChapterLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Period        *Period                `protobuf:"bytes,1,opt,name=period,proto3" json:"period,omitempty"` // The period being archived (still CLOSED at this point)
+	Chapter       *Chapter               `protobuf:"bytes,1,opt,name=chapter,proto3" json:"chapter,omitempty"` // The chapter being archived (still CLOSED at this point)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ArchivedPeriodLog) Reset() {
-	*x = ArchivedPeriodLog{}
+func (x *ArchivedChapterLog) Reset() {
+	*x = ArchivedChapterLog{}
 	mi := &file_common_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ArchivedPeriodLog) String() string {
+func (x *ArchivedChapterLog) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ArchivedPeriodLog) ProtoMessage() {}
+func (*ArchivedChapterLog) ProtoMessage() {}
 
-func (x *ArchivedPeriodLog) ProtoReflect() protoreflect.Message {
+func (x *ArchivedChapterLog) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -6428,39 +6428,39 @@ func (x *ArchivedPeriodLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ArchivedPeriodLog.ProtoReflect.Descriptor instead.
-func (*ArchivedPeriodLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use ArchivedChapterLog.ProtoReflect.Descriptor instead.
+func (*ArchivedChapterLog) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{77}
 }
 
-func (x *ArchivedPeriodLog) GetPeriod() *Period {
+func (x *ArchivedChapterLog) GetChapter() *Chapter {
 	if x != nil {
-		return x.Period
+		return x.Chapter
 	}
 	return nil
 }
 
-type ConfirmedArchivePeriodLog struct {
+type ConfirmedArchiveChapterLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Period        *Period                `protobuf:"bytes,1,opt,name=period,proto3" json:"period,omitempty"` // Period now in ARCHIVED status
+	Chapter       *Chapter               `protobuf:"bytes,1,opt,name=chapter,proto3" json:"chapter,omitempty"` // Chapter now in ARCHIVED status
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ConfirmedArchivePeriodLog) Reset() {
-	*x = ConfirmedArchivePeriodLog{}
+func (x *ConfirmedArchiveChapterLog) Reset() {
+	*x = ConfirmedArchiveChapterLog{}
 	mi := &file_common_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ConfirmedArchivePeriodLog) String() string {
+func (x *ConfirmedArchiveChapterLog) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ConfirmedArchivePeriodLog) ProtoMessage() {}
+func (*ConfirmedArchiveChapterLog) ProtoMessage() {}
 
-func (x *ConfirmedArchivePeriodLog) ProtoReflect() protoreflect.Message {
+func (x *ConfirmedArchiveChapterLog) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -6472,14 +6472,14 @@ func (x *ConfirmedArchivePeriodLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ConfirmedArchivePeriodLog.ProtoReflect.Descriptor instead.
-func (*ConfirmedArchivePeriodLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use ConfirmedArchiveChapterLog.ProtoReflect.Descriptor instead.
+func (*ConfirmedArchiveChapterLog) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{78}
 }
 
-func (x *ConfirmedArchivePeriodLog) GetPeriod() *Period {
+func (x *ConfirmedArchiveChapterLog) GetChapter() *Chapter {
 	if x != nil {
-		return x.Period
+		return x.Chapter
 	}
 	return nil
 }
@@ -10260,7 +10260,7 @@ const file_common_proto_rawDesc = "" +
 	"\vidempotency\x18\x03 \x01(\v2\x13.common.IdempotencyR\vidempotency\x126\n" +
 	"\tsignature\x18\x05 \x01(\v2\x18.signature.SignedRequestR\tsignature\x12\x18\n" +
 	"\areceipt\x18\x06 \x01(\tR\areceipt\x12C\n" +
-	"\x12response_signature\x18\a \x01(\v2\x14.signature.SignedLogR\x11responseSignatureJ\x04\b\x04\x10\x05J\x04\b\b\x10\t\"\x99\x11\n" +
+	"\x12response_signature\x18\a \x01(\v2\x14.signature.SignedLogR\x11responseSignatureJ\x04\b\x04\x10\x05J\x04\b\b\x10\t\"\xab\x11\n" +
 	"\n" +
 	"LogPayload\x12?\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x18.common.CreatedLedgerLogH\x00R\fcreateLedger\x12?\n" +
@@ -10270,16 +10270,15 @@ const file_common_proto_rawDesc = "" +
 	"\x12revoke_signing_key\x18\x05 \x01(\v2\x1c.common.RevokedSigningKeyLogH\x00R\x10revokeSigningKey\x12K\n" +
 	"\x12set_signing_config\x18\x06 \x01(\v2\x1b.common.SetSigningConfigLogH\x00R\x10setSigningConfig\x12H\n" +
 	"\x11added_events_sink\x18\a \x01(\v2\x1a.common.AddedEventsSinkLogH\x00R\x0faddedEventsSink\x12N\n" +
-	"\x13removed_events_sink\x18\b \x01(\v2\x1c.common.RemovedEventsSinkLogH\x00R\x11removedEventsSink\x12<\n" +
-	"\fclose_period\x18\t \x01(\v2\x17.common.ClosedPeriodLogH\x00R\vclosePeriod\x12:\n" +
-	"\vseal_period\x18\n" +
-	" \x01(\v2\x17.common.SealedPeriodLogH\x00R\n" +
-	"sealPeriod\x12B\n" +
-	"\x0earchive_period\x18\v \x01(\v2\x19.common.ArchivedPeriodLogH\x00R\rarchivePeriod\x12Y\n" +
-	"\x16confirm_archive_period\x18\f \x01(\v2!.common.ConfirmedArchivePeriodLogH\x00R\x14confirmArchivePeriod\x12Q\n" +
-	"\x14set_maintenance_mode\x18\r \x01(\v2\x1d.common.SetMaintenanceModeLogH\x00R\x12setMaintenanceMode\x12N\n" +
-	"\x13set_period_schedule\x18\x0e \x01(\v2\x1c.common.SetPeriodScheduleLogH\x00R\x11setPeriodSchedule\x12X\n" +
-	"\x16delete_period_schedule\x18\x0f \x01(\v2 .common.DeletedPeriodScheduleLogH\x00R\x14deletePeriodSchedule\x12B\n" +
+	"\x13removed_events_sink\x18\b \x01(\v2\x1c.common.RemovedEventsSinkLogH\x00R\x11removedEventsSink\x12?\n" +
+	"\rclose_chapter\x18\t \x01(\v2\x18.common.ClosedChapterLogH\x00R\fcloseChapter\x12=\n" +
+	"\fseal_chapter\x18\n" +
+	" \x01(\v2\x18.common.SealedChapterLogH\x00R\vsealChapter\x12E\n" +
+	"\x0farchive_chapter\x18\v \x01(\v2\x1a.common.ArchivedChapterLogH\x00R\x0earchiveChapter\x12\\\n" +
+	"\x17confirm_archive_chapter\x18\f \x01(\v2\".common.ConfirmedArchiveChapterLogH\x00R\x15confirmArchiveChapter\x12Q\n" +
+	"\x14set_maintenance_mode\x18\r \x01(\v2\x1d.common.SetMaintenanceModeLogH\x00R\x12setMaintenanceMode\x12Q\n" +
+	"\x14set_chapter_schedule\x18\x0e \x01(\v2\x1d.common.SetChapterScheduleLogH\x00R\x12setChapterSchedule\x12[\n" +
+	"\x17delete_chapter_schedule\x18\x0f \x01(\v2!.common.DeletedChapterScheduleLogH\x00R\x15deleteChapterSchedule\x12B\n" +
 	"\x0epromote_ledger\x18\x11 \x01(\v2\x19.common.PromotedLedgerLogH\x00R\rpromoteLedger\x12W\n" +
 	"\x16created_prepared_query\x18\x12 \x01(\v2\x1f.common.CreatedPreparedQueryLogH\x00R\x14createdPreparedQuery\x12W\n" +
 	"\x16updated_prepared_query\x18\x13 \x01(\v2\x1f.common.UpdatedPreparedQueryLogH\x00R\x14updatedPreparedQuery\x12W\n" +
@@ -10337,10 +10336,10 @@ const file_common_proto_rawDesc = "" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
-	"cacheEpoch\"*\n" +
-	"\x14SetPeriodScheduleLog\x12\x12\n" +
-	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x1a\n" +
-	"\x18DeletedPeriodScheduleLog\"F\n" +
+	"cacheEpoch\"+\n" +
+	"\x15SetChapterScheduleLog\x12\x12\n" +
+	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x1b\n" +
+	"\x19DeletedChapterScheduleLog\"F\n" +
 	"\x17CreatedPreparedQueryLog\x12+\n" +
 	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb7\x01\n" +
 	"\x17UpdatedPreparedQueryLog\x12\x16\n" +
@@ -10491,11 +10490,12 @@ const file_common_proto_rawDesc = "" +
 	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"/\n" +
 	"\fFilledGapLog\x12\x1f\n" +
 	"\voriginal_id\x18\x01 \x01(\x06R\n" +
-	"originalId\"\xbe\x04\n" +
+	"originalId\"\xc0\x04\n" +
 	"\x12CreatedTransaction\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12Z\n" +
-	"\x10account_metadata\x18\x02 \x03(\v2/.common.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x12\x1b\n" +
-	"\tperiod_id\x18\x03 \x01(\x06R\bperiodId\x12I\n" +
+	"\x10account_metadata\x18\x02 \x03(\v2/.common.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x12\x1d\n" +
+	"\n" +
+	"chapter_id\x18\x03 \x01(\x06R\tchapterId\x12I\n" +
 	"\x13post_commit_volumes\x18\x04 \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\x12s\n" +
 	"\x19previous_account_metadata\x18\x05 \x03(\v27.common.CreatedTransaction.PreviousAccountMetadataEntryR\x17previousAccountMetadata\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
@@ -10531,12 +10531,12 @@ const file_common_proto_rawDesc = "" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x124\n" +
-	"\rdropped_index\x18\x03 \x01(\v2\x0f.common.IndexIDR\fdroppedIndex\"\xb0\x03\n" +
-	"\x06Period\x12\x0e\n" +
+	"\rdropped_index\x18\x03 \x01(\v2\x0f.common.IndexIDR\fdroppedIndex\"\xb2\x03\n" +
+	"\aChapter\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x06R\x02id\x12'\n" +
 	"\x05start\x18\x02 \x01(\v2\x11.common.TimestampR\x05start\x12#\n" +
-	"\x03end\x18\x03 \x01(\v2\x11.common.TimestampR\x03end\x12,\n" +
-	"\x06status\x18\x04 \x01(\x0e2\x14.common.PeriodStatusR\x06status\x12%\n" +
+	"\x03end\x18\x03 \x01(\v2\x11.common.TimestampR\x03end\x12-\n" +
+	"\x06status\x18\x04 \x01(\x0e2\x15.common.ChapterStatusR\x06status\x12%\n" +
 	"\x0eclose_sequence\x18\x05 \x01(\x06R\rcloseSequence\x12!\n" +
 	"\fsealing_hash\x18\x06 \x01(\fR\vsealingHash\x12&\n" +
 	"\x0flast_audit_hash\x18\a \x01(\fR\rlastAuditHash\x12%\n" +
@@ -10545,17 +10545,17 @@ const file_common_proto_rawDesc = "" +
 	"state_hash\x18\t \x01(\fR\tstateHash\x120\n" +
 	"\x14start_audit_sequence\x18\n" +
 	" \x01(\x06R\x12startAuditSequence\x120\n" +
-	"\x14close_audit_sequence\x18\v \x01(\x06R\x12closeAuditSequence\"u\n" +
-	"\x0fClosedPeriodLog\x123\n" +
-	"\rclosed_period\x18\x01 \x01(\v2\x0e.common.PeriodR\fclosedPeriod\x12-\n" +
-	"\n" +
-	"new_period\x18\x02 \x01(\v2\x0e.common.PeriodR\tnewPeriod\"9\n" +
-	"\x0fSealedPeriodLog\x12&\n" +
-	"\x06period\x18\x01 \x01(\v2\x0e.common.PeriodR\x06period\";\n" +
-	"\x11ArchivedPeriodLog\x12&\n" +
-	"\x06period\x18\x01 \x01(\v2\x0e.common.PeriodR\x06period\"C\n" +
-	"\x19ConfirmedArchivePeriodLog\x12&\n" +
-	"\x06period\x18\x01 \x01(\v2\x0e.common.PeriodR\x06period\"\xd4\x01\n" +
+	"\x14close_audit_sequence\x18\v \x01(\x06R\x12closeAuditSequence\"|\n" +
+	"\x10ClosedChapterLog\x126\n" +
+	"\x0eclosed_chapter\x18\x01 \x01(\v2\x0f.common.ChapterR\rclosedChapter\x120\n" +
+	"\vnew_chapter\x18\x02 \x01(\v2\x0f.common.ChapterR\n" +
+	"newChapter\"=\n" +
+	"\x10SealedChapterLog\x12)\n" +
+	"\achapter\x18\x01 \x01(\v2\x0f.common.ChapterR\achapter\"?\n" +
+	"\x12ArchivedChapterLog\x12)\n" +
+	"\achapter\x18\x01 \x01(\v2\x0f.common.ChapterR\achapter\"G\n" +
+	"\x1aConfirmedArchiveChapterLog\x12)\n" +
+	"\achapter\x18\x01 \x01(\v2\x0f.common.ChapterR\achapter\"\xd4\x01\n" +
 	"\x12MirrorSourceConfig\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\x124\n" +
@@ -10859,13 +10859,13 @@ const file_common_proto_rawDesc = "" +
 	"\x0eSAVED_METADATA\x10\x03\x12\x14\n" +
 	"\x10DELETED_METADATA\x10\x04\x12\x12\n" +
 	"\x0eCREATED_LEDGER\x10\x05\x12\x12\n" +
-	"\x0eDELETED_LEDGER\x10\x06*q\n" +
-	"\fPeriodStatus\x12\x0f\n" +
-	"\vPERIOD_OPEN\x10\x00\x12\x12\n" +
-	"\x0ePERIOD_CLOSING\x10\x01\x12\x11\n" +
-	"\rPERIOD_CLOSED\x10\x02\x12\x13\n" +
-	"\x0fPERIOD_ARCHIVED\x10\x03\x12\x14\n" +
-	"\x10PERIOD_ARCHIVING\x10\x04*<\n" +
+	"\x0eDELETED_LEDGER\x10\x06*w\n" +
+	"\rChapterStatus\x12\x10\n" +
+	"\fCHAPTER_OPEN\x10\x00\x12\x13\n" +
+	"\x0fCHAPTER_CLOSING\x10\x01\x12\x12\n" +
+	"\x0eCHAPTER_CLOSED\x10\x02\x12\x14\n" +
+	"\x10CHAPTER_ARCHIVED\x10\x03\x12\x15\n" +
+	"\x11CHAPTER_ARCHIVING\x10\x04*<\n" +
 	"\n" +
 	"LedgerMode\x12\x16\n" +
 	"\x12LEDGER_MODE_NORMAL\x10\x00\x12\x16\n" +
@@ -10916,7 +10916,7 @@ var file_common_proto_goTypes = []any{
 	(LogBuiltinIndex)(0),                      // 6: common.LogBuiltinIndex
 	(HashAlgorithm)(0),                        // 7: common.HashAlgorithm
 	(EventType)(0),                            // 8: common.EventType
-	(PeriodStatus)(0),                         // 9: common.PeriodStatus
+	(ChapterStatus)(0),                        // 9: common.ChapterStatus
 	(LedgerMode)(0),                           // 10: common.LedgerMode
 	(MirrorSyncState)(0),                      // 11: common.MirrorSyncState
 	(ChartEnforcementMode)(0),                 // 12: common.ChartEnforcementMode
@@ -10961,8 +10961,8 @@ var file_common_proto_goTypes = []any{
 	(*BloomTypeConfig)(nil),                   // 51: common.BloomTypeConfig
 	(*ClusterConfig)(nil),                     // 52: common.ClusterConfig
 	(*PersistedClusterState)(nil),             // 53: common.PersistedClusterState
-	(*SetPeriodScheduleLog)(nil),              // 54: common.SetPeriodScheduleLog
-	(*DeletedPeriodScheduleLog)(nil),          // 55: common.DeletedPeriodScheduleLog
+	(*SetChapterScheduleLog)(nil),             // 54: common.SetChapterScheduleLog
+	(*DeletedChapterScheduleLog)(nil),         // 55: common.DeletedChapterScheduleLog
 	(*CreatedPreparedQueryLog)(nil),           // 56: common.CreatedPreparedQueryLog
 	(*UpdatedPreparedQueryLog)(nil),           // 57: common.UpdatedPreparedQueryLog
 	(*DeletedPreparedQueryLog)(nil),           // 58: common.DeletedPreparedQueryLog
@@ -10998,11 +10998,11 @@ var file_common_proto_goTypes = []any{
 	(*DeletedMetadata)(nil),                   // 88: common.DeletedMetadata
 	(*SetMetadataFieldTypeLog)(nil),           // 89: common.SetMetadataFieldTypeLog
 	(*RemovedMetadataFieldTypeLog)(nil),       // 90: common.RemovedMetadataFieldTypeLog
-	(*Period)(nil),                            // 91: common.Period
-	(*ClosedPeriodLog)(nil),                   // 92: common.ClosedPeriodLog
-	(*SealedPeriodLog)(nil),                   // 93: common.SealedPeriodLog
-	(*ArchivedPeriodLog)(nil),                 // 94: common.ArchivedPeriodLog
-	(*ConfirmedArchivePeriodLog)(nil),         // 95: common.ConfirmedArchivePeriodLog
+	(*Chapter)(nil),                           // 91: common.Chapter
+	(*ClosedChapterLog)(nil),                  // 92: common.ClosedChapterLog
+	(*SealedChapterLog)(nil),                  // 93: common.SealedChapterLog
+	(*ArchivedChapterLog)(nil),                // 94: common.ArchivedChapterLog
+	(*ConfirmedArchiveChapterLog)(nil),        // 95: common.ConfirmedArchiveChapterLog
 	(*MirrorSourceConfig)(nil),                // 96: common.MirrorSourceConfig
 	(*HttpMirrorSourceConfig)(nil),            // 97: common.HttpMirrorSourceConfig
 	(*OAuth2ClientCredentials)(nil),           // 98: common.OAuth2ClientCredentials
@@ -11127,13 +11127,13 @@ var file_common_proto_depIdxs = []int32{
 	47,  // 43: common.LogPayload.set_signing_config:type_name -> common.SetSigningConfigLog
 	48,  // 44: common.LogPayload.added_events_sink:type_name -> common.AddedEventsSinkLog
 	49,  // 45: common.LogPayload.removed_events_sink:type_name -> common.RemovedEventsSinkLog
-	92,  // 46: common.LogPayload.close_period:type_name -> common.ClosedPeriodLog
-	93,  // 47: common.LogPayload.seal_period:type_name -> common.SealedPeriodLog
-	94,  // 48: common.LogPayload.archive_period:type_name -> common.ArchivedPeriodLog
-	95,  // 49: common.LogPayload.confirm_archive_period:type_name -> common.ConfirmedArchivePeriodLog
+	92,  // 46: common.LogPayload.close_chapter:type_name -> common.ClosedChapterLog
+	93,  // 47: common.LogPayload.seal_chapter:type_name -> common.SealedChapterLog
+	94,  // 48: common.LogPayload.archive_chapter:type_name -> common.ArchivedChapterLog
+	95,  // 49: common.LogPayload.confirm_archive_chapter:type_name -> common.ConfirmedArchiveChapterLog
 	50,  // 50: common.LogPayload.set_maintenance_mode:type_name -> common.SetMaintenanceModeLog
-	54,  // 51: common.LogPayload.set_period_schedule:type_name -> common.SetPeriodScheduleLog
-	55,  // 52: common.LogPayload.delete_period_schedule:type_name -> common.DeletedPeriodScheduleLog
+	54,  // 51: common.LogPayload.set_chapter_schedule:type_name -> common.SetChapterScheduleLog
+	55,  // 52: common.LogPayload.delete_chapter_schedule:type_name -> common.DeletedChapterScheduleLog
 	43,  // 53: common.LogPayload.promote_ledger:type_name -> common.PromotedLedgerLog
 	56,  // 54: common.LogPayload.created_prepared_query:type_name -> common.CreatedPreparedQueryLog
 	57,  // 55: common.LogPayload.updated_prepared_query:type_name -> common.UpdatedPreparedQueryLog
@@ -11215,14 +11215,14 @@ var file_common_proto_depIdxs = []int32{
 	1,   // 131: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
 	0,   // 132: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
 	37,  // 133: common.RemovedMetadataFieldTypeLog.dropped_index:type_name -> common.IndexID
-	17,  // 134: common.Period.start:type_name -> common.Timestamp
-	17,  // 135: common.Period.end:type_name -> common.Timestamp
-	9,   // 136: common.Period.status:type_name -> common.PeriodStatus
-	91,  // 137: common.ClosedPeriodLog.closed_period:type_name -> common.Period
-	91,  // 138: common.ClosedPeriodLog.new_period:type_name -> common.Period
-	91,  // 139: common.SealedPeriodLog.period:type_name -> common.Period
-	91,  // 140: common.ArchivedPeriodLog.period:type_name -> common.Period
-	91,  // 141: common.ConfirmedArchivePeriodLog.period:type_name -> common.Period
+	17,  // 134: common.Chapter.start:type_name -> common.Timestamp
+	17,  // 135: common.Chapter.end:type_name -> common.Timestamp
+	9,   // 136: common.Chapter.status:type_name -> common.ChapterStatus
+	91,  // 137: common.ClosedChapterLog.closed_chapter:type_name -> common.Chapter
+	91,  // 138: common.ClosedChapterLog.new_chapter:type_name -> common.Chapter
+	91,  // 139: common.SealedChapterLog.chapter:type_name -> common.Chapter
+	91,  // 140: common.ArchivedChapterLog.chapter:type_name -> common.Chapter
+	91,  // 141: common.ConfirmedArchiveChapterLog.chapter:type_name -> common.Chapter
 	97,  // 142: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
 	99,  // 143: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
 	98,  // 144: common.HttpMirrorSourceConfig.oauth2_client_credentials:type_name -> common.OAuth2ClientCredentials
@@ -11357,13 +11357,13 @@ func file_common_proto_init() {
 		(*LogPayload_SetSigningConfig)(nil),
 		(*LogPayload_AddedEventsSink)(nil),
 		(*LogPayload_RemovedEventsSink)(nil),
-		(*LogPayload_ClosePeriod)(nil),
-		(*LogPayload_SealPeriod)(nil),
-		(*LogPayload_ArchivePeriod)(nil),
-		(*LogPayload_ConfirmArchivePeriod)(nil),
+		(*LogPayload_CloseChapter)(nil),
+		(*LogPayload_SealChapter)(nil),
+		(*LogPayload_ArchiveChapter)(nil),
+		(*LogPayload_ConfirmArchiveChapter)(nil),
 		(*LogPayload_SetMaintenanceMode)(nil),
-		(*LogPayload_SetPeriodSchedule)(nil),
-		(*LogPayload_DeletePeriodSchedule)(nil),
+		(*LogPayload_SetChapterSchedule)(nil),
+		(*LogPayload_DeleteChapterSchedule)(nil),
 		(*LogPayload_PromoteLedger)(nil),
 		(*LogPayload_CreatedPreparedQuery)(nil),
 		(*LogPayload_UpdatedPreparedQuery)(nil),

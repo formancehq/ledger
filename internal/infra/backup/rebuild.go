@@ -221,12 +221,12 @@ func RebuildDelta(
 				}
 			}
 
-		case *commonpb.LogPayload_SetPeriodSchedule:
-			if p.SetPeriodSchedule != nil {
-				if err := state.SavePeriodSchedule(batch, p.SetPeriodSchedule.GetCron()); err != nil {
+		case *commonpb.LogPayload_SetChapterSchedule:
+			if p.SetChapterSchedule != nil {
+				if err := state.SaveChapterSchedule(batch, p.SetChapterSchedule.GetCron()); err != nil {
 					_ = batch.Cancel()
 
-					return fmt.Errorf("saving period schedule at log %d: %w", seq, err)
+					return fmt.Errorf("saving chapter schedule at log %d: %w", seq, err)
 				}
 			}
 
@@ -275,11 +275,11 @@ func RebuildDelta(
 		// Log types with no persistent state to rebuild:
 		case *commonpb.LogPayload_RevokeSigningKey:
 		case *commonpb.LogPayload_RemovedEventsSink:
-		case *commonpb.LogPayload_ClosePeriod:
-		case *commonpb.LogPayload_SealPeriod:
-		case *commonpb.LogPayload_ArchivePeriod:
-		case *commonpb.LogPayload_ConfirmArchivePeriod:
-		case *commonpb.LogPayload_DeletePeriodSchedule:
+		case *commonpb.LogPayload_CloseChapter:
+		case *commonpb.LogPayload_SealChapter:
+		case *commonpb.LogPayload_ArchiveChapter:
+		case *commonpb.LogPayload_ConfirmArchiveChapter:
+		case *commonpb.LogPayload_DeleteChapterSchedule:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
 		case *commonpb.LogPayload_DeletedNumscript:
 		case *commonpb.LogPayload_CreatedQueryCheckpoint:

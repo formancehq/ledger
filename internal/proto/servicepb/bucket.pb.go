@@ -986,13 +986,13 @@ type Request struct {
 	//	*Request_SetSigningConfig
 	//	*Request_AddEventsSink
 	//	*Request_RemoveEventsSink
-	//	*Request_ClosePeriod
-	//	*Request_SealPeriod
-	//	*Request_ArchivePeriod
-	//	*Request_ConfirmArchivePeriod
+	//	*Request_CloseChapter
+	//	*Request_SealChapter
+	//	*Request_ArchiveChapter
+	//	*Request_ConfirmArchiveChapter
 	//	*Request_SetMaintenanceMode
-	//	*Request_SetPeriodSchedule
-	//	*Request_DeletePeriodSchedule
+	//	*Request_SetChapterSchedule
+	//	*Request_DeleteChapterSchedule
 	//	*Request_SetMetadataFieldType
 	//	*Request_RemoveMetadataFieldType
 	//	*Request_PromoteLedger
@@ -1133,37 +1133,37 @@ func (x *Request) GetRemoveEventsSink() *RemoveEventsSinkRequest {
 	return nil
 }
 
-func (x *Request) GetClosePeriod() *ClosePeriodRequest {
+func (x *Request) GetCloseChapter() *CloseChapterRequest {
 	if x != nil {
-		if x, ok := x.Type.(*Request_ClosePeriod); ok {
-			return x.ClosePeriod
+		if x, ok := x.Type.(*Request_CloseChapter); ok {
+			return x.CloseChapter
 		}
 	}
 	return nil
 }
 
-func (x *Request) GetSealPeriod() *SealPeriodRequest {
+func (x *Request) GetSealChapter() *SealChapterRequest {
 	if x != nil {
-		if x, ok := x.Type.(*Request_SealPeriod); ok {
-			return x.SealPeriod
+		if x, ok := x.Type.(*Request_SealChapter); ok {
+			return x.SealChapter
 		}
 	}
 	return nil
 }
 
-func (x *Request) GetArchivePeriod() *ArchivePeriodRequest {
+func (x *Request) GetArchiveChapter() *ArchiveChapterRequest {
 	if x != nil {
-		if x, ok := x.Type.(*Request_ArchivePeriod); ok {
-			return x.ArchivePeriod
+		if x, ok := x.Type.(*Request_ArchiveChapter); ok {
+			return x.ArchiveChapter
 		}
 	}
 	return nil
 }
 
-func (x *Request) GetConfirmArchivePeriod() *ConfirmArchivePeriodRequest {
+func (x *Request) GetConfirmArchiveChapter() *ConfirmArchiveChapterRequest {
 	if x != nil {
-		if x, ok := x.Type.(*Request_ConfirmArchivePeriod); ok {
-			return x.ConfirmArchivePeriod
+		if x, ok := x.Type.(*Request_ConfirmArchiveChapter); ok {
+			return x.ConfirmArchiveChapter
 		}
 	}
 	return nil
@@ -1178,19 +1178,19 @@ func (x *Request) GetSetMaintenanceMode() *SetMaintenanceModeRequest {
 	return nil
 }
 
-func (x *Request) GetSetPeriodSchedule() *SetPeriodScheduleRequest {
+func (x *Request) GetSetChapterSchedule() *SetChapterScheduleRequest {
 	if x != nil {
-		if x, ok := x.Type.(*Request_SetPeriodSchedule); ok {
-			return x.SetPeriodSchedule
+		if x, ok := x.Type.(*Request_SetChapterSchedule); ok {
+			return x.SetChapterSchedule
 		}
 	}
 	return nil
 }
 
-func (x *Request) GetDeletePeriodSchedule() *DeletePeriodScheduleRequest {
+func (x *Request) GetDeleteChapterSchedule() *DeleteChapterScheduleRequest {
 	if x != nil {
-		if x, ok := x.Type.(*Request_DeletePeriodSchedule); ok {
-			return x.DeletePeriodSchedule
+		if x, ok := x.Type.(*Request_DeleteChapterSchedule); ok {
+			return x.DeleteChapterSchedule
 		}
 	}
 	return nil
@@ -1403,32 +1403,32 @@ type Request_RemoveEventsSink struct {
 	RemoveEventsSink *RemoveEventsSinkRequest `protobuf:"bytes,10,opt,name=remove_events_sink,json=removeEventsSink,proto3,oneof"`
 }
 
-type Request_ClosePeriod struct {
-	ClosePeriod *ClosePeriodRequest `protobuf:"bytes,11,opt,name=close_period,json=closePeriod,proto3,oneof"`
+type Request_CloseChapter struct {
+	CloseChapter *CloseChapterRequest `protobuf:"bytes,11,opt,name=close_chapter,json=closeChapter,proto3,oneof"`
 }
 
-type Request_SealPeriod struct {
-	SealPeriod *SealPeriodRequest `protobuf:"bytes,12,opt,name=seal_period,json=sealPeriod,proto3,oneof"`
+type Request_SealChapter struct {
+	SealChapter *SealChapterRequest `protobuf:"bytes,12,opt,name=seal_chapter,json=sealChapter,proto3,oneof"`
 }
 
-type Request_ArchivePeriod struct {
-	ArchivePeriod *ArchivePeriodRequest `protobuf:"bytes,13,opt,name=archive_period,json=archivePeriod,proto3,oneof"`
+type Request_ArchiveChapter struct {
+	ArchiveChapter *ArchiveChapterRequest `protobuf:"bytes,13,opt,name=archive_chapter,json=archiveChapter,proto3,oneof"`
 }
 
-type Request_ConfirmArchivePeriod struct {
-	ConfirmArchivePeriod *ConfirmArchivePeriodRequest `protobuf:"bytes,14,opt,name=confirm_archive_period,json=confirmArchivePeriod,proto3,oneof"`
+type Request_ConfirmArchiveChapter struct {
+	ConfirmArchiveChapter *ConfirmArchiveChapterRequest `protobuf:"bytes,14,opt,name=confirm_archive_chapter,json=confirmArchiveChapter,proto3,oneof"`
 }
 
 type Request_SetMaintenanceMode struct {
 	SetMaintenanceMode *SetMaintenanceModeRequest `protobuf:"bytes,15,opt,name=set_maintenance_mode,json=setMaintenanceMode,proto3,oneof"`
 }
 
-type Request_SetPeriodSchedule struct {
-	SetPeriodSchedule *SetPeriodScheduleRequest `protobuf:"bytes,16,opt,name=set_period_schedule,json=setPeriodSchedule,proto3,oneof"`
+type Request_SetChapterSchedule struct {
+	SetChapterSchedule *SetChapterScheduleRequest `protobuf:"bytes,16,opt,name=set_chapter_schedule,json=setChapterSchedule,proto3,oneof"`
 }
 
-type Request_DeletePeriodSchedule struct {
-	DeletePeriodSchedule *DeletePeriodScheduleRequest `protobuf:"bytes,17,opt,name=delete_period_schedule,json=deletePeriodSchedule,proto3,oneof"`
+type Request_DeleteChapterSchedule struct {
+	DeleteChapterSchedule *DeleteChapterScheduleRequest `protobuf:"bytes,17,opt,name=delete_chapter_schedule,json=deleteChapterSchedule,proto3,oneof"`
 }
 
 type Request_SetMetadataFieldType struct {
@@ -1523,19 +1523,19 @@ func (*Request_AddEventsSink) isRequest_Type() {}
 
 func (*Request_RemoveEventsSink) isRequest_Type() {}
 
-func (*Request_ClosePeriod) isRequest_Type() {}
+func (*Request_CloseChapter) isRequest_Type() {}
 
-func (*Request_SealPeriod) isRequest_Type() {}
+func (*Request_SealChapter) isRequest_Type() {}
 
-func (*Request_ArchivePeriod) isRequest_Type() {}
+func (*Request_ArchiveChapter) isRequest_Type() {}
 
-func (*Request_ConfirmArchivePeriod) isRequest_Type() {}
+func (*Request_ConfirmArchiveChapter) isRequest_Type() {}
 
 func (*Request_SetMaintenanceMode) isRequest_Type() {}
 
-func (*Request_SetPeriodSchedule) isRequest_Type() {}
+func (*Request_SetChapterSchedule) isRequest_Type() {}
 
-func (*Request_DeletePeriodSchedule) isRequest_Type() {}
+func (*Request_DeleteChapterSchedule) isRequest_Type() {}
 
 func (*Request_SetMetadataFieldType) isRequest_Type() {}
 
@@ -2097,26 +2097,26 @@ func (x *ListSigningKeysRequest) GetOptions() *commonpb.ListOptions {
 	return nil
 }
 
-type ClosePeriodRequest struct {
+type CloseChapterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ClosePeriodRequest) Reset() {
-	*x = ClosePeriodRequest{}
+func (x *CloseChapterRequest) Reset() {
+	*x = CloseChapterRequest{}
 	mi := &file_bucket_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ClosePeriodRequest) String() string {
+func (x *CloseChapterRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ClosePeriodRequest) ProtoMessage() {}
+func (*CloseChapterRequest) ProtoMessage() {}
 
-func (x *ClosePeriodRequest) ProtoReflect() protoreflect.Message {
+func (x *CloseChapterRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2128,34 +2128,34 @@ func (x *ClosePeriodRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ClosePeriodRequest.ProtoReflect.Descriptor instead.
-func (*ClosePeriodRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use CloseChapterRequest.ProtoReflect.Descriptor instead.
+func (*CloseChapterRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{25}
 }
 
-type SealPeriodRequest struct {
+type SealChapterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	ChapterId     uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
 	SealingHash   []byte                 `protobuf:"bytes,2,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
 	StateHash     []byte                 `protobuf:"bytes,3,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SealPeriodRequest) Reset() {
-	*x = SealPeriodRequest{}
+func (x *SealChapterRequest) Reset() {
+	*x = SealChapterRequest{}
 	mi := &file_bucket_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SealPeriodRequest) String() string {
+func (x *SealChapterRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SealPeriodRequest) ProtoMessage() {}
+func (*SealChapterRequest) ProtoMessage() {}
 
-func (x *SealPeriodRequest) ProtoReflect() protoreflect.Message {
+func (x *SealChapterRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2167,53 +2167,53 @@ func (x *SealPeriodRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SealPeriodRequest.ProtoReflect.Descriptor instead.
-func (*SealPeriodRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use SealChapterRequest.ProtoReflect.Descriptor instead.
+func (*SealChapterRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{26}
 }
 
-func (x *SealPeriodRequest) GetPeriodId() uint64 {
+func (x *SealChapterRequest) GetChapterId() uint64 {
 	if x != nil {
-		return x.PeriodId
+		return x.ChapterId
 	}
 	return 0
 }
 
-func (x *SealPeriodRequest) GetSealingHash() []byte {
+func (x *SealChapterRequest) GetSealingHash() []byte {
 	if x != nil {
 		return x.SealingHash
 	}
 	return nil
 }
 
-func (x *SealPeriodRequest) GetStateHash() []byte {
+func (x *SealChapterRequest) GetStateHash() []byte {
 	if x != nil {
 		return x.StateHash
 	}
 	return nil
 }
 
-type ArchivePeriodRequest struct {
+type ArchiveChapterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	ChapterId     uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ArchivePeriodRequest) Reset() {
-	*x = ArchivePeriodRequest{}
+func (x *ArchiveChapterRequest) Reset() {
+	*x = ArchiveChapterRequest{}
 	mi := &file_bucket_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ArchivePeriodRequest) String() string {
+func (x *ArchiveChapterRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ArchivePeriodRequest) ProtoMessage() {}
+func (*ArchiveChapterRequest) ProtoMessage() {}
 
-func (x *ArchivePeriodRequest) ProtoReflect() protoreflect.Message {
+func (x *ArchiveChapterRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2225,39 +2225,39 @@ func (x *ArchivePeriodRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ArchivePeriodRequest.ProtoReflect.Descriptor instead.
-func (*ArchivePeriodRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ArchiveChapterRequest.ProtoReflect.Descriptor instead.
+func (*ArchiveChapterRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{27}
 }
 
-func (x *ArchivePeriodRequest) GetPeriodId() uint64 {
+func (x *ArchiveChapterRequest) GetChapterId() uint64 {
 	if x != nil {
-		return x.PeriodId
+		return x.ChapterId
 	}
 	return 0
 }
 
-type ConfirmArchivePeriodRequest struct {
+type ConfirmArchiveChapterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	ChapterId     uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ConfirmArchivePeriodRequest) Reset() {
-	*x = ConfirmArchivePeriodRequest{}
+func (x *ConfirmArchiveChapterRequest) Reset() {
+	*x = ConfirmArchiveChapterRequest{}
 	mi := &file_bucket_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ConfirmArchivePeriodRequest) String() string {
+func (x *ConfirmArchiveChapterRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ConfirmArchivePeriodRequest) ProtoMessage() {}
+func (*ConfirmArchiveChapterRequest) ProtoMessage() {}
 
-func (x *ConfirmArchivePeriodRequest) ProtoReflect() protoreflect.Message {
+func (x *ConfirmArchiveChapterRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2269,39 +2269,39 @@ func (x *ConfirmArchivePeriodRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ConfirmArchivePeriodRequest.ProtoReflect.Descriptor instead.
-func (*ConfirmArchivePeriodRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ConfirmArchiveChapterRequest.ProtoReflect.Descriptor instead.
+func (*ConfirmArchiveChapterRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{28}
 }
 
-func (x *ConfirmArchivePeriodRequest) GetPeriodId() uint64 {
+func (x *ConfirmArchiveChapterRequest) GetChapterId() uint64 {
 	if x != nil {
-		return x.PeriodId
+		return x.ChapterId
 	}
 	return 0
 }
 
-type ListPeriodsRequest struct {
+type ListChaptersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Options       *commonpb.ListOptions  `protobuf:"bytes,1,opt,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListPeriodsRequest) Reset() {
-	*x = ListPeriodsRequest{}
+func (x *ListChaptersRequest) Reset() {
+	*x = ListChaptersRequest{}
 	mi := &file_bucket_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListPeriodsRequest) String() string {
+func (x *ListChaptersRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListPeriodsRequest) ProtoMessage() {}
+func (*ListChaptersRequest) ProtoMessage() {}
 
-func (x *ListPeriodsRequest) ProtoReflect() protoreflect.Message {
+func (x *ListChaptersRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2313,12 +2313,12 @@ func (x *ListPeriodsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListPeriodsRequest.ProtoReflect.Descriptor instead.
-func (*ListPeriodsRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListChaptersRequest.ProtoReflect.Descriptor instead.
+func (*ListChaptersRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{29}
 }
 
-func (x *ListPeriodsRequest) GetOptions() *commonpb.ListOptions {
+func (x *ListChaptersRequest) GetOptions() *commonpb.ListOptions {
 	if x != nil {
 		return x.Options
 	}
@@ -2371,28 +2371,28 @@ func (x *SetMaintenanceModeRequest) GetEnabled() bool {
 	return false
 }
 
-// SetPeriodScheduleRequest sets the automatic period rotation schedule.
-type SetPeriodScheduleRequest struct {
+// SetChapterScheduleRequest sets the automatic chapter rotation schedule.
+type SetChapterScheduleRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cron          string                 `protobuf:"bytes,1,opt,name=cron,proto3" json:"cron,omitempty"` // Cron expression (standard 5-field)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SetPeriodScheduleRequest) Reset() {
-	*x = SetPeriodScheduleRequest{}
+func (x *SetChapterScheduleRequest) Reset() {
+	*x = SetChapterScheduleRequest{}
 	mi := &file_bucket_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SetPeriodScheduleRequest) String() string {
+func (x *SetChapterScheduleRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SetPeriodScheduleRequest) ProtoMessage() {}
+func (*SetChapterScheduleRequest) ProtoMessage() {}
 
-func (x *SetPeriodScheduleRequest) ProtoReflect() protoreflect.Message {
+func (x *SetChapterScheduleRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2404,39 +2404,39 @@ func (x *SetPeriodScheduleRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SetPeriodScheduleRequest.ProtoReflect.Descriptor instead.
-func (*SetPeriodScheduleRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use SetChapterScheduleRequest.ProtoReflect.Descriptor instead.
+func (*SetChapterScheduleRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{31}
 }
 
-func (x *SetPeriodScheduleRequest) GetCron() string {
+func (x *SetChapterScheduleRequest) GetCron() string {
 	if x != nil {
 		return x.Cron
 	}
 	return ""
 }
 
-// DeletePeriodScheduleRequest disables the automatic period rotation schedule.
-type DeletePeriodScheduleRequest struct {
+// DeleteChapterScheduleRequest disables the automatic chapter rotation schedule.
+type DeleteChapterScheduleRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeletePeriodScheduleRequest) Reset() {
-	*x = DeletePeriodScheduleRequest{}
+func (x *DeleteChapterScheduleRequest) Reset() {
+	*x = DeleteChapterScheduleRequest{}
 	mi := &file_bucket_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeletePeriodScheduleRequest) String() string {
+func (x *DeleteChapterScheduleRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeletePeriodScheduleRequest) ProtoMessage() {}
+func (*DeleteChapterScheduleRequest) ProtoMessage() {}
 
-func (x *DeletePeriodScheduleRequest) ProtoReflect() protoreflect.Message {
+func (x *DeleteChapterScheduleRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2448,8 +2448,8 @@ func (x *DeletePeriodScheduleRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeletePeriodScheduleRequest.ProtoReflect.Descriptor instead.
-func (*DeletePeriodScheduleRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use DeleteChapterScheduleRequest.ProtoReflect.Descriptor instead.
+func (*DeleteChapterScheduleRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{32}
 }
 
@@ -3079,26 +3079,26 @@ func (*DeleteQueryCheckpointScheduleRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{43}
 }
 
-type GetPeriodScheduleRequest struct {
+type GetChapterScheduleRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetPeriodScheduleRequest) Reset() {
-	*x = GetPeriodScheduleRequest{}
+func (x *GetChapterScheduleRequest) Reset() {
+	*x = GetChapterScheduleRequest{}
 	mi := &file_bucket_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetPeriodScheduleRequest) String() string {
+func (x *GetChapterScheduleRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetPeriodScheduleRequest) ProtoMessage() {}
+func (*GetChapterScheduleRequest) ProtoMessage() {}
 
-func (x *GetPeriodScheduleRequest) ProtoReflect() protoreflect.Message {
+func (x *GetChapterScheduleRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3110,32 +3110,32 @@ func (x *GetPeriodScheduleRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetPeriodScheduleRequest.ProtoReflect.Descriptor instead.
-func (*GetPeriodScheduleRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetChapterScheduleRequest.ProtoReflect.Descriptor instead.
+func (*GetChapterScheduleRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{44}
 }
 
-type GetPeriodScheduleResponse struct {
+type GetChapterScheduleResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cron          string                 `protobuf:"bytes,1,opt,name=cron,proto3" json:"cron,omitempty"` // Current cron expression, empty if disabled
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetPeriodScheduleResponse) Reset() {
-	*x = GetPeriodScheduleResponse{}
+func (x *GetChapterScheduleResponse) Reset() {
+	*x = GetChapterScheduleResponse{}
 	mi := &file_bucket_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetPeriodScheduleResponse) String() string {
+func (x *GetChapterScheduleResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetPeriodScheduleResponse) ProtoMessage() {}
+func (*GetChapterScheduleResponse) ProtoMessage() {}
 
-func (x *GetPeriodScheduleResponse) ProtoReflect() protoreflect.Message {
+func (x *GetChapterScheduleResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3147,12 +3147,12 @@ func (x *GetPeriodScheduleResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetPeriodScheduleResponse.ProtoReflect.Descriptor instead.
-func (*GetPeriodScheduleResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetChapterScheduleResponse.ProtoReflect.Descriptor instead.
+func (*GetChapterScheduleResponse) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{45}
 }
 
-func (x *GetPeriodScheduleResponse) GetCron() string {
+func (x *GetChapterScheduleResponse) GetCron() string {
 	if x != nil {
 		return x.Cron
 	}
@@ -8483,7 +8483,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x06signed\x18\x02 \x01(\v2\x18.signature.SignedRequestH\x00R\x06signedB\t\n" +
 	"\avariant\"0\n" +
 	"\rApplyResponse\x12\x1f\n" +
-	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\xe9\x16\n" +
+	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\xfb\x16\n" +
 	"\aRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x122\n" +
 	"\x05apply\x18\x02 \x01(\v2\x1a.ledger.LedgerApplyRequestH\x00R\x05apply\x12B\n" +
@@ -8494,15 +8494,14 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12set_signing_config\x18\b \x01(\v2\x1f.ledger.SetSigningConfigRequestH\x00R\x10setSigningConfig\x12F\n" +
 	"\x0fadd_events_sink\x18\t \x01(\v2\x1c.ledger.AddEventsSinkRequestH\x00R\raddEventsSink\x12O\n" +
 	"\x12remove_events_sink\x18\n" +
-	" \x01(\v2\x1f.ledger.RemoveEventsSinkRequestH\x00R\x10removeEventsSink\x12?\n" +
-	"\fclose_period\x18\v \x01(\v2\x1a.ledger.ClosePeriodRequestH\x00R\vclosePeriod\x12<\n" +
-	"\vseal_period\x18\f \x01(\v2\x19.ledger.SealPeriodRequestH\x00R\n" +
-	"sealPeriod\x12E\n" +
-	"\x0earchive_period\x18\r \x01(\v2\x1c.ledger.ArchivePeriodRequestH\x00R\rarchivePeriod\x12[\n" +
-	"\x16confirm_archive_period\x18\x0e \x01(\v2#.ledger.ConfirmArchivePeriodRequestH\x00R\x14confirmArchivePeriod\x12U\n" +
-	"\x14set_maintenance_mode\x18\x0f \x01(\v2!.ledger.SetMaintenanceModeRequestH\x00R\x12setMaintenanceMode\x12R\n" +
-	"\x13set_period_schedule\x18\x10 \x01(\v2 .ledger.SetPeriodScheduleRequestH\x00R\x11setPeriodSchedule\x12[\n" +
-	"\x16delete_period_schedule\x18\x11 \x01(\v2#.ledger.DeletePeriodScheduleRequestH\x00R\x14deletePeriodSchedule\x12\\\n" +
+	" \x01(\v2\x1f.ledger.RemoveEventsSinkRequestH\x00R\x10removeEventsSink\x12B\n" +
+	"\rclose_chapter\x18\v \x01(\v2\x1b.ledger.CloseChapterRequestH\x00R\fcloseChapter\x12?\n" +
+	"\fseal_chapter\x18\f \x01(\v2\x1a.ledger.SealChapterRequestH\x00R\vsealChapter\x12H\n" +
+	"\x0farchive_chapter\x18\r \x01(\v2\x1d.ledger.ArchiveChapterRequestH\x00R\x0earchiveChapter\x12^\n" +
+	"\x17confirm_archive_chapter\x18\x0e \x01(\v2$.ledger.ConfirmArchiveChapterRequestH\x00R\x15confirmArchiveChapter\x12U\n" +
+	"\x14set_maintenance_mode\x18\x0f \x01(\v2!.ledger.SetMaintenanceModeRequestH\x00R\x12setMaintenanceMode\x12U\n" +
+	"\x14set_chapter_schedule\x18\x10 \x01(\v2!.ledger.SetChapterScheduleRequestH\x00R\x12setChapterSchedule\x12^\n" +
+	"\x17delete_chapter_schedule\x18\x11 \x01(\v2$.ledger.DeleteChapterScheduleRequestH\x00R\x15deleteChapterSchedule\x12\\\n" +
 	"\x17set_metadata_field_type\x18\x12 \x01(\v2#.ledger.SetMetadataFieldTypeRequestH\x00R\x14setMetadataFieldType\x12e\n" +
 	"\x1aremove_metadata_field_type\x18\x13 \x01(\v2&.ledger.RemoveMetadataFieldTypeRequestH\x00R\x17removeMetadataFieldType\x12E\n" +
 	"\x0epromote_ledger\x18\x15 \x01(\v2\x1c.ledger.PromoteLedgerRequestH\x00R\rpromoteLedger\x12X\n" +
@@ -8552,24 +8551,27 @@ const file_bucket_proto_rawDesc = "" +
 	"\x17SetSigningConfigRequest\x12-\n" +
 	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures\"G\n" +
 	"\x16ListSigningKeysRequest\x12-\n" +
-	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"\x14\n" +
-	"\x12ClosePeriodRequest\"r\n" +
-	"\x11SealPeriodRequest\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\x12!\n" +
+	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"\x15\n" +
+	"\x13CloseChapterRequest\"u\n" +
+	"\x12SealChapterRequest\x12\x1d\n" +
+	"\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\x12!\n" +
 	"\fsealing_hash\x18\x02 \x01(\fR\vsealingHash\x12\x1d\n" +
 	"\n" +
-	"state_hash\x18\x03 \x01(\fR\tstateHash\"3\n" +
-	"\x14ArchivePeriodRequest\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\":\n" +
-	"\x1bConfirmArchivePeriodRequest\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\"C\n" +
-	"\x12ListPeriodsRequest\x12-\n" +
+	"state_hash\x18\x03 \x01(\fR\tstateHash\"6\n" +
+	"\x15ArchiveChapterRequest\x12\x1d\n" +
+	"\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"=\n" +
+	"\x1cConfirmArchiveChapterRequest\x12\x1d\n" +
+	"\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"D\n" +
+	"\x13ListChaptersRequest\x12-\n" +
 	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"5\n" +
 	"\x19SetMaintenanceModeRequest\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\".\n" +
-	"\x18SetPeriodScheduleRequest\x12\x12\n" +
-	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x1d\n" +
-	"\x1bDeletePeriodScheduleRequest\"\xa6\x01\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"/\n" +
+	"\x19SetChapterScheduleRequest\x12\x12\n" +
+	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x1e\n" +
+	"\x1cDeleteChapterScheduleRequest\"\xa6\x01\n" +
 	"\x1bSetMetadataFieldTypeRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x123\n" +
 	"\vtarget_type\x18\x02 \x01(\x0e2\x12.common.TargetTypeR\n" +
@@ -8612,9 +8614,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"7\n" +
 	"!SetQueryCheckpointScheduleRequest\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"&\n" +
-	"$DeleteQueryCheckpointScheduleRequest\"\x1a\n" +
-	"\x18GetPeriodScheduleRequest\"/\n" +
-	"\x19GetPeriodScheduleResponse\x12\x12\n" +
+	"$DeleteQueryCheckpointScheduleRequest\"\x1b\n" +
+	"\x19GetChapterScheduleRequest\"0\n" +
+	"\x1aGetChapterScheduleResponse\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x12\n" +
 	"\x10DiscoveryRequest\"[\n" +
 	"\x11DiscoveryResponse\x12F\n" +
@@ -9042,7 +9044,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10InspectIndexMode\x12&\n" +
 	"\"INSPECT_INDEX_MODE_DISTINCT_VALUES\x10\x00\x12\x1d\n" +
 	"\x19INSPECT_INDEX_MODE_FACETS\x10\x01\x12\x1e\n" +
-	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xb2\x14\n" +
+	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xb8\x14\n" +
 	"\rBucketService\x12?\n" +
 	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\x128\n" +
@@ -9058,11 +9060,11 @@ const file_bucket_proto_rawDesc = "" +
 	"CheckStore\x12\x19.ledger.CheckStoreRequest\x1a\x17.ledger.CheckStoreEvent0\x01\x12H\n" +
 	"\x10ListAuditEntries\x12\x1f.ledger.ListAuditEntriesRequest\x1a\x11.audit.AuditEntry0\x01\x12@\n" +
 	"\rGetAuditEntry\x12\x1c.ledger.GetAuditEntryRequest\x1a\x11.audit.AuditEntry\x12O\n" +
-	"\x0eGetEventsSinks\x12\x1d.ledger.GetEventsSinksRequest\x1a\x1e.ledger.GetEventsSinksResponse\x12;\n" +
-	"\vListPeriods\x12\x1a.ledger.ListPeriodsRequest\x1a\x0e.common.Period0\x01\x122\n" +
+	"\x0eGetEventsSinks\x12\x1d.ledger.GetEventsSinksRequest\x1a\x1e.ledger.GetEventsSinksResponse\x12>\n" +
+	"\fListChapters\x12\x1b.ledger.ListChaptersRequest\x1a\x0f.common.Chapter0\x01\x122\n" +
 	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log0\x01\x12,\n" +
-	"\x06GetLog\x12\x15.ledger.GetLogRequest\x1a\v.common.Log\x12X\n" +
-	"\x11GetPeriodSchedule\x12 .ledger.GetPeriodScheduleRequest\x1a!.ledger.GetPeriodScheduleResponse\x12G\n" +
+	"\x06GetLog\x12\x15.ledger.GetLogRequest\x1a\v.common.Log\x12[\n" +
+	"\x12GetChapterSchedule\x12!.ledger.GetChapterScheduleRequest\x1a\".ledger.GetChapterScheduleResponse\x12G\n" +
 	"\x0fListSigningKeys\x12\x1e.ledger.ListSigningKeysRequest\x1a\x12.common.SigningKey0\x01\x12@\n" +
 	"\tDiscovery\x12\x18.ledger.DiscoveryRequest\x1a\x19.ledger.DiscoveryResponse\x12j\n" +
 	"\x17GetMetadataSchemaStatus\x12&.ledger.GetMetadataSchemaStatusRequest\x1a'.ledger.GetMetadataSchemaStatusResponse\x12Q\n" +
@@ -9125,14 +9127,14 @@ var file_bucket_proto_goTypes = []any{
 	(*RevokeSigningKeyRequest)(nil),                // 26: ledger.RevokeSigningKeyRequest
 	(*SetSigningConfigRequest)(nil),                // 27: ledger.SetSigningConfigRequest
 	(*ListSigningKeysRequest)(nil),                 // 28: ledger.ListSigningKeysRequest
-	(*ClosePeriodRequest)(nil),                     // 29: ledger.ClosePeriodRequest
-	(*SealPeriodRequest)(nil),                      // 30: ledger.SealPeriodRequest
-	(*ArchivePeriodRequest)(nil),                   // 31: ledger.ArchivePeriodRequest
-	(*ConfirmArchivePeriodRequest)(nil),            // 32: ledger.ConfirmArchivePeriodRequest
-	(*ListPeriodsRequest)(nil),                     // 33: ledger.ListPeriodsRequest
+	(*CloseChapterRequest)(nil),                    // 29: ledger.CloseChapterRequest
+	(*SealChapterRequest)(nil),                     // 30: ledger.SealChapterRequest
+	(*ArchiveChapterRequest)(nil),                  // 31: ledger.ArchiveChapterRequest
+	(*ConfirmArchiveChapterRequest)(nil),           // 32: ledger.ConfirmArchiveChapterRequest
+	(*ListChaptersRequest)(nil),                    // 33: ledger.ListChaptersRequest
 	(*SetMaintenanceModeRequest)(nil),              // 34: ledger.SetMaintenanceModeRequest
-	(*SetPeriodScheduleRequest)(nil),               // 35: ledger.SetPeriodScheduleRequest
-	(*DeletePeriodScheduleRequest)(nil),            // 36: ledger.DeletePeriodScheduleRequest
+	(*SetChapterScheduleRequest)(nil),              // 35: ledger.SetChapterScheduleRequest
+	(*DeleteChapterScheduleRequest)(nil),           // 36: ledger.DeleteChapterScheduleRequest
 	(*SetMetadataFieldTypeRequest)(nil),            // 37: ledger.SetMetadataFieldTypeRequest
 	(*RemoveMetadataFieldTypeRequest)(nil),         // 38: ledger.RemoveMetadataFieldTypeRequest
 	(*CreateIndexRequest)(nil),                     // 39: ledger.CreateIndexRequest
@@ -9144,8 +9146,8 @@ var file_bucket_proto_goTypes = []any{
 	(*ScriptReference)(nil),                        // 45: ledger.ScriptReference
 	(*SetQueryCheckpointScheduleRequest)(nil),      // 46: ledger.SetQueryCheckpointScheduleRequest
 	(*DeleteQueryCheckpointScheduleRequest)(nil),   // 47: ledger.DeleteQueryCheckpointScheduleRequest
-	(*GetPeriodScheduleRequest)(nil),               // 48: ledger.GetPeriodScheduleRequest
-	(*GetPeriodScheduleResponse)(nil),              // 49: ledger.GetPeriodScheduleResponse
+	(*GetChapterScheduleRequest)(nil),              // 48: ledger.GetChapterScheduleRequest
+	(*GetChapterScheduleResponse)(nil),             // 49: ledger.GetChapterScheduleResponse
 	(*DiscoveryRequest)(nil),                       // 50: ledger.DiscoveryRequest
 	(*DiscoveryResponse)(nil),                      // 51: ledger.DiscoveryResponse
 	(*ResponseSigningInfo)(nil),                    // 52: ledger.ResponseSigningInfo
@@ -9270,7 +9272,7 @@ var file_bucket_proto_goTypes = []any{
 	(*commonpb.LedgerInfo)(nil),                    // 171: common.LedgerInfo
 	(*commonpb.Account)(nil),                       // 172: common.Account
 	(*auditpb.AuditEntry)(nil),                     // 173: audit.AuditEntry
-	(*commonpb.Period)(nil),                        // 174: common.Period
+	(*commonpb.Chapter)(nil),                       // 174: common.Chapter
 	(*commonpb.SigningKey)(nil),                    // 175: common.SigningKey
 	(*commonpb.LedgerStats)(nil),                   // 176: common.LedgerStats
 	(*commonpb.NumscriptInfo)(nil),                 // 177: common.NumscriptInfo
@@ -9299,13 +9301,13 @@ var file_bucket_proto_depIdxs = []int32{
 	27,  // 20: ledger.Request.set_signing_config:type_name -> ledger.SetSigningConfigRequest
 	23,  // 21: ledger.Request.add_events_sink:type_name -> ledger.AddEventsSinkRequest
 	24,  // 22: ledger.Request.remove_events_sink:type_name -> ledger.RemoveEventsSinkRequest
-	29,  // 23: ledger.Request.close_period:type_name -> ledger.ClosePeriodRequest
-	30,  // 24: ledger.Request.seal_period:type_name -> ledger.SealPeriodRequest
-	31,  // 25: ledger.Request.archive_period:type_name -> ledger.ArchivePeriodRequest
-	32,  // 26: ledger.Request.confirm_archive_period:type_name -> ledger.ConfirmArchivePeriodRequest
+	29,  // 23: ledger.Request.close_chapter:type_name -> ledger.CloseChapterRequest
+	30,  // 24: ledger.Request.seal_chapter:type_name -> ledger.SealChapterRequest
+	31,  // 25: ledger.Request.archive_chapter:type_name -> ledger.ArchiveChapterRequest
+	32,  // 26: ledger.Request.confirm_archive_chapter:type_name -> ledger.ConfirmArchiveChapterRequest
 	34,  // 27: ledger.Request.set_maintenance_mode:type_name -> ledger.SetMaintenanceModeRequest
-	35,  // 28: ledger.Request.set_period_schedule:type_name -> ledger.SetPeriodScheduleRequest
-	36,  // 29: ledger.Request.delete_period_schedule:type_name -> ledger.DeletePeriodScheduleRequest
+	35,  // 28: ledger.Request.set_chapter_schedule:type_name -> ledger.SetChapterScheduleRequest
+	36,  // 29: ledger.Request.delete_chapter_schedule:type_name -> ledger.DeleteChapterScheduleRequest
 	37,  // 30: ledger.Request.set_metadata_field_type:type_name -> ledger.SetMetadataFieldTypeRequest
 	38,  // 31: ledger.Request.remove_metadata_field_type:type_name -> ledger.RemoveMetadataFieldTypeRequest
 	20,  // 32: ledger.Request.promote_ledger:type_name -> ledger.PromoteLedgerRequest
@@ -9328,7 +9330,7 @@ var file_bucket_proto_depIdxs = []int32{
 	131, // 49: ledger.SaveLedgerMetadataRequest.metadata:type_name -> ledger.SaveLedgerMetadataRequest.MetadataEntry
 	150, // 50: ledger.AddEventsSinkRequest.config:type_name -> common.SinkConfig
 	141, // 51: ledger.ListSigningKeysRequest.options:type_name -> common.ListOptions
-	141, // 52: ledger.ListPeriodsRequest.options:type_name -> common.ListOptions
+	141, // 52: ledger.ListChaptersRequest.options:type_name -> common.ListOptions
 	151, // 53: ledger.SetMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
 	152, // 54: ledger.SetMetadataFieldTypeRequest.type:type_name -> common.MetadataType
 	151, // 55: ledger.RemoveMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
@@ -9440,10 +9442,10 @@ var file_bucket_proto_depIdxs = []int32{
 	82,  // 161: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
 	83,  // 162: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
 	86,  // 163: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
-	33,  // 164: ledger.BucketService.ListPeriods:input_type -> ledger.ListPeriodsRequest
+	33,  // 164: ledger.BucketService.ListChapters:input_type -> ledger.ListChaptersRequest
 	84,  // 165: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
 	85,  // 166: ledger.BucketService.GetLog:input_type -> ledger.GetLogRequest
-	48,  // 167: ledger.BucketService.GetPeriodSchedule:input_type -> ledger.GetPeriodScheduleRequest
+	48,  // 167: ledger.BucketService.GetChapterSchedule:input_type -> ledger.GetChapterScheduleRequest
 	28,  // 168: ledger.BucketService.ListSigningKeys:input_type -> ledger.ListSigningKeysRequest
 	50,  // 169: ledger.BucketService.Discovery:input_type -> ledger.DiscoveryRequest
 	88,  // 170: ledger.BucketService.GetMetadataSchemaStatus:input_type -> ledger.GetMetadataSchemaStatusRequest
@@ -9474,10 +9476,10 @@ var file_bucket_proto_depIdxs = []int32{
 	173, // 195: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
 	173, // 196: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
 	87,  // 197: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
-	174, // 198: ledger.BucketService.ListPeriods:output_type -> common.Period
+	174, // 198: ledger.BucketService.ListChapters:output_type -> common.Chapter
 	149, // 199: ledger.BucketService.ListLogs:output_type -> common.Log
 	149, // 200: ledger.BucketService.GetLog:output_type -> common.Log
-	49,  // 201: ledger.BucketService.GetPeriodSchedule:output_type -> ledger.GetPeriodScheduleResponse
+	49,  // 201: ledger.BucketService.GetChapterSchedule:output_type -> ledger.GetChapterScheduleResponse
 	175, // 202: ledger.BucketService.ListSigningKeys:output_type -> common.SigningKey
 	51,  // 203: ledger.BucketService.Discovery:output_type -> ledger.DiscoveryResponse
 	89,  // 204: ledger.BucketService.GetMetadataSchemaStatus:output_type -> ledger.GetMetadataSchemaStatusResponse
@@ -9520,13 +9522,13 @@ func file_bucket_proto_init() {
 		(*Request_SetSigningConfig)(nil),
 		(*Request_AddEventsSink)(nil),
 		(*Request_RemoveEventsSink)(nil),
-		(*Request_ClosePeriod)(nil),
-		(*Request_SealPeriod)(nil),
-		(*Request_ArchivePeriod)(nil),
-		(*Request_ConfirmArchivePeriod)(nil),
+		(*Request_CloseChapter)(nil),
+		(*Request_SealChapter)(nil),
+		(*Request_ArchiveChapter)(nil),
+		(*Request_ConfirmArchiveChapter)(nil),
 		(*Request_SetMaintenanceMode)(nil),
-		(*Request_SetPeriodSchedule)(nil),
-		(*Request_DeletePeriodSchedule)(nil),
+		(*Request_SetChapterSchedule)(nil),
+		(*Request_DeleteChapterSchedule)(nil),
 		(*Request_SetMetadataFieldType)(nil),
 		(*Request_RemoveMetadataFieldType)(nil),
 		(*Request_PromoteLedger)(nil),

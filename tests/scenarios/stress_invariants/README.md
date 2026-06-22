@@ -56,7 +56,7 @@ Interleaved operations during the loop:
 |---------|--------|
 | Every 20 trades | Read 5 accounts (pseudo-random selection, cache hit/miss exercise) |
 | Every 40 trades | Revert a trade from 10 trades ago (`force=true`) |
-| Every 80 trades | Period close + double-entry balance check |
+| Every 80 trades | Chapter close + double-entry balance check |
 
 ### Phase 3b: Audit Entries
 

@@ -21,7 +21,7 @@ The ledger currently provides these read capabilities:
 | `ListLedgers` / `GetLedger` | Ledger listing |
 | `ListLogs(afterSequence, pageSize)` | Global log listing by sequence (not per-ledger) |
 | `ListAuditEntries` | Audit trail with ledger + failures-only filter |
-| `ListPeriods` / `ListSigningKeys` | Period and signing key listing |
+| `ListChapters` / `ListSigningKeys` | Chapter and signing key listing |
 | `GetMetadataSchemaStatus` | Metadata schema validation status per ledger |
 
 This is insufficient for real-world use cases:
@@ -65,7 +65,7 @@ Pebble is an LSM-tree (sorted key-value store). Its core strength is **ordered i
 |------|-------|---------|
 | **Cold-storable** | `[0x01, 0xF1)` | Logs, audit, tx updates — archivable to cold storage |
 | **Attributes** | `[0xF1, 0xF2)` | Volumes, metadata, reversions — stays in hot storage |
-| **System** | `[0xF2, 0xFF]` | Config, signing keys, periods — lives forever |
+| **System** | `[0xF2, 0xFF]` | Config, signing keys, chapters — lives forever |
 
 Within the attributes zone, keys follow this structure:
 
@@ -314,14 +314,14 @@ Pebble checkpoints are cheap copy-on-write snapshots (hard links). The system al
 
 - **Pro**: correct data, no change to compaction strategy
 - **Con**: coarse granularity (checkpoint frequency, not per-log), disk space for retained checkpoints
-- **Best for**: periodic snapshots (daily, per-period), not arbitrary point queries
+- **Best for**: periodic snapshots (daily, per-chapter), not arbitrary point queries
 
-**Option B — Log Replay from Period Boundary**
+**Option B — Log Replay from Chapter Boundary**
 
-If data retention cold storage is implemented, balance snapshots at period boundaries provide known-good starting points. PIT at sequence N = load period boundary snapshot + replay logs from boundary to N.
+If data retention cold storage is implemented, balance snapshots at chapter boundaries provide known-good starting points. PIT at sequence N = load chapter boundary snapshot + replay logs from boundary to N.
 
 - **Pro**: exact PIT at any sequence, correct by construction
-- **Con**: replay cost is O(logs between boundary and target), requires period infrastructure
+- **Con**: replay cost is O(logs between boundary and target), requires chapter infrastructure
 - **Best for**: audit queries, debugging, rare historical lookups
 
 **Option C — Separate Non-Compacted Read Replica**
@@ -332,7 +332,7 @@ Fork a Pebble instance that receives the same writes but never runs compaction. 
 - **Con**: unbounded storage growth (defeats the purpose of compaction), operational complexity
 - **Best for**: environments where storage is cheap and PIT is critical
 
-**Recommendation**: Point-in-time reads are **out of scope** for this draft. Option B (log replay from period boundary) is the most promising long-term approach and naturally builds on the data retention infrastructure. Option A (checkpoints) can be a quick win for coarse-granularity PIT.
+**Recommendation**: Point-in-time reads are **out of scope** for this draft. Option B (log replay from chapter boundary) is the most promising long-term approach and naturally builds on the data retention infrastructure. Option A (checkpoints) can be a quick win for coarse-granularity PIT.
 
 ### 5.5 Transactions by Account
 
@@ -867,7 +867,7 @@ If `--read-index-dir` is not specified, the read index store defaults to `{data-
 
 | Store | Engine | Data | Populated by |
 |-------|--------|------|-------------|
-| **Primary** (existing) | Pebble (LSM) | Volumes, metadata, logs, tx updates, system config, periods, prepared query definitions (`0xE0`) | FSM apply (synchronous) |
+| **Primary** (existing) | Pebble (LSM) | Volumes, metadata, logs, tx updates, system config, chapters, prepared query definitions (`0xE0`) | FSM apply (synchronous) |
 | **Read index** (new) | bbolt (B+ tree) | Inverted metadata index (`0x0C`), reverse metadata map (`0x0E`), account existence index (`0x0D`), per-ledger log index (`0x05`), account-tx index (`0x0B`), `lastIndexedRaftIndex` | Index builder (asynchronous) |
 
 #### Crash Recovery
@@ -932,7 +932,7 @@ Note: `0x05`, `0x0B`, `0x0C`, `0x0D` are in the cold-storable range (can be rebu
 service BucketService {
   // ... existing RPCs (ListLedgers, GetLedger, GetAccount, GetTransaction,
   //     ListTransactions, ListAccounts, ListLogs, ListAuditEntries,
-  //     GetAuditEntry, ListPeriods, ListSigningKeys, ...) ...
+  //     GetAuditEntry, ListChapters, ListSigningKeys, ...) ...
 
   // New read RPCs
   rpc AggregateBalances(AggregateBalancesRequest) returns (AggregateBalancesResponse);
@@ -1104,8 +1104,8 @@ For typical use cases (10-20% selectivity), a 2-filter merge-join on 1M accounts
 
 1. **AggregateBalances performance**: for ledgers with millions of accounts, a full aggregation scan could take seconds. Should we add a time limit or streaming aggregation? Or is this acceptable given it's a read-only operation on a follower?
 2. **Index backfill**: should `store rebuild-indexes` be a blocking CLI command, or a background operation with progress streaming (like `store check`)?
-3. **Interaction with data retention**: when periods are archived and purged, secondary indexes for purged data should also be cleaned up. The per-ledger log index (`0x05`) can use range delete on `[0x05][ledgerName\x00][startLogID]...[endLogID]`. The account-tx index (`0x0B`) requires scanning to find entries in the purged range — should we store txID in big-endian so range delete works? (Note: txID is already stored big-endian via `PutUint64`.)
-4. **Point-in-time reads**: the compaction strategy destroys historical data (see Section 5.4). If PIT becomes a requirement, the most promising approach is log replay from period boundary snapshots (builds on the data retention draft). Should we plan for this, or is current-state-only sufficient?
+3. **Interaction with data retention**: when chapters are archived and purged, secondary indexes for purged data should also be cleaned up. The per-ledger log index (`0x05`) can use range delete on `[0x05][ledgerName\x00][startLogID]...[endLogID]`. The account-tx index (`0x0B`) requires scanning to find entries in the purged range — should we store txID in big-endian so range delete works? (Note: txID is already stored big-endian via `PutUint64`.)
+4. **Point-in-time reads**: the compaction strategy destroys historical data (see Section 5.4). If PIT becomes a requirement, the most promising approach is log replay from chapter boundary snapshots (builds on the data retention draft). Should we plan for this, or is current-state-only sufficient?
 5. **Metadata preload cost**: extending the admission preload to include old metadata values adds Pebble reads on the leader during admission. For high-throughput metadata updates, this could become a bottleneck. Should we batch metadata preloads? Or is the async index builder (Section 5.8) sufficient to avoid this entirely?
 6. **Eventually consistent reads**: is the eventual consistency model (Section 5.8) acceptable for all use cases? Some clients may expect read-after-write consistency for metadata filtering. The `min_raft_index` opt-in mechanism adds latency.
 7. **Metadata value representation in index keys**: metadata values can be arbitrary strings. Should we hash long values to keep index keys bounded? Risk: hash collisions require post-filtering. Alternative: truncate to N bytes + hash suffix.

@@ -139,9 +139,9 @@ The backup is a complete Pebble database that contains:
 | Per-Ledger | `0x03` | Per-ledger data |
 | Cold | `0x04` | Transaction logs (`{0x04, 0x01}`), audit entries (`{0x04, 0x02}`) |
 | Idempotency | `0x05` | Idempotency keys |
-| Global | `0x06` | Last applied index (reset to 0), last applied timestamp, signing keys, signing config, periods, sink configs, sink cursors, sink statuses |
+| Global | `0x06` | Last applied index (reset to 0), last applied timestamp, signing keys, signing config, chapters, sink configs, sink cursors, sink statuses |
 
-> **Note**: If periods have been archived before the backup, the archived logs and audit entries are no longer in the backup (they have been purged to cold storage). Attributes remain.
+> **Note**: If chapters have been archived before the backup, the archived logs and audit entries are no longer in the backup (they have been purged to cold storage). Attributes remain.
 
 ### Sequence Diagram
 
@@ -568,17 +568,17 @@ ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootst
 
 ---
 
-## Relationship with Periods and Cold Storage
+## Relationship with Chapters and Cold Storage
 
-Periods partition the ledger's history into sealed segments. Each period covers a contiguous range of log sequences and, once archived, its logs and audit entries are purged from Pebble and exported to cold storage (S3 or filesystem).
+Chapters partition the ledger's history into sealed segments. Each chapter covers a contiguous range of log sequences and, once archived, its logs and audit entries are purged from Pebble and exported to cold storage (S3 or filesystem).
 
 **Impact on backups**:
 
-- A backup always contains the **current hot storage state**. If periods have been archived before the backup, the archived logs and audit entries are no longer present — they live in cold storage.
-- **Attributes are never purged**: volumes, metadata, reversions, idempotency keys, and references remain in Pebble permanently (and therefore in every backup), regardless of period archival.
-- To obtain a complete historical record, you need both the backup (hot data) and the cold storage archives (archived periods).
+- A backup always contains the **current hot storage state**. If chapters have been archived before the backup, the archived logs and audit entries are no longer present — they live in cold storage.
+- **Attributes are never purged**: volumes, metadata, reversions, idempotency keys, and references remain in Pebble permanently (and therefore in every backup), regardless of chapter archival.
+- To obtain a complete historical record, you need both the backup (hot data) and the cold storage archives (archived chapters).
 
-See [Periods](../technical/architecture/data-model/periods.md) for the full period lifecycle and cold storage documentation.
+See [Chapters](../technical/architecture/data-model/chapters.md) for the full chapter lifecycle and cold storage documentation.
 
 ---
 

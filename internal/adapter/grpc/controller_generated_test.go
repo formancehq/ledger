@@ -360,6 +360,45 @@ func (c *MockControllerGetAuditEntryCall) DoAndReturn(f func(context.Context, ui
 	return c
 }
 
+// GetChapterSchedule mocks base method.
+func (m *MockController) GetChapterSchedule(ctx context.Context) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChapterSchedule", ctx)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChapterSchedule indicates an expected call of GetChapterSchedule.
+func (mr *MockControllerMockRecorder) GetChapterSchedule(ctx any) *MockControllerGetChapterScheduleCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChapterSchedule", reflect.TypeOf((*MockController)(nil).GetChapterSchedule), ctx)
+	return &MockControllerGetChapterScheduleCall{Call: call}
+}
+
+// MockControllerGetChapterScheduleCall wrap *gomock.Call
+type MockControllerGetChapterScheduleCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockControllerGetChapterScheduleCall) Return(arg0 string, arg1 error) *MockControllerGetChapterScheduleCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockControllerGetChapterScheduleCall) Do(f func(context.Context) (string, error)) *MockControllerGetChapterScheduleCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockControllerGetChapterScheduleCall) DoAndReturn(f func(context.Context) (string, error)) *MockControllerGetChapterScheduleCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetEventsSinks mocks base method.
 func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
 	m.ctrl.T.Helper()
@@ -594,45 +633,6 @@ func (c *MockControllerGetNumscriptCall) DoAndReturn(f func(context.Context, str
 	return c
 }
 
-// GetPeriodSchedule mocks base method.
-func (m *MockController) GetPeriodSchedule(ctx context.Context) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPeriodSchedule", ctx)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetPeriodSchedule indicates an expected call of GetPeriodSchedule.
-func (mr *MockControllerMockRecorder) GetPeriodSchedule(ctx any) *MockControllerGetPeriodScheduleCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPeriodSchedule", reflect.TypeOf((*MockController)(nil).GetPeriodSchedule), ctx)
-	return &MockControllerGetPeriodScheduleCall{Call: call}
-}
-
-// MockControllerGetPeriodScheduleCall wrap *gomock.Call
-type MockControllerGetPeriodScheduleCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockControllerGetPeriodScheduleCall) Return(arg0 string, arg1 error) *MockControllerGetPeriodScheduleCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockControllerGetPeriodScheduleCall) Do(f func(context.Context) (string, error)) *MockControllerGetPeriodScheduleCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetPeriodScheduleCall) DoAndReturn(f func(context.Context) (string, error)) *MockControllerGetPeriodScheduleCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // GetTransaction mocks base method.
 func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	m.ctrl.T.Helper()
@@ -789,6 +789,45 @@ func (c *MockControllerListAuditEntriesCall) DoAndReturn(f func(context.Context,
 	return c
 }
 
+// ListChapters mocks base method.
+func (m *MockController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListChapters", ctx)
+	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Chapter])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListChapters indicates an expected call of ListChapters.
+func (mr *MockControllerMockRecorder) ListChapters(ctx any) *MockControllerListChaptersCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChapters", reflect.TypeOf((*MockController)(nil).ListChapters), ctx)
+	return &MockControllerListChaptersCall{Call: call}
+}
+
+// MockControllerListChaptersCall wrap *gomock.Call
+type MockControllerListChaptersCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockControllerListChaptersCall) Return(arg0 cursor.Cursor[*commonpb.Chapter], arg1 error) *MockControllerListChaptersCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockControllerListChaptersCall) Do(f func(context.Context) (cursor.Cursor[*commonpb.Chapter], error)) *MockControllerListChaptersCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockControllerListChaptersCall) DoAndReturn(f func(context.Context) (cursor.Cursor[*commonpb.Chapter], error)) *MockControllerListChaptersCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // ListLedgers mocks base method.
 func (m *MockController) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 	m.ctrl.T.Helper()
@@ -902,45 +941,6 @@ func (c *MockControllerListNumscriptsCall) Do(f func(context.Context, string) ([
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockControllerListNumscriptsCall) DoAndReturn(f func(context.Context, string) ([]*commonpb.NumscriptInfo, error)) *MockControllerListNumscriptsCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// ListPeriods mocks base method.
-func (m *MockController) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListPeriods", ctx)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Period])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListPeriods indicates an expected call of ListPeriods.
-func (mr *MockControllerMockRecorder) ListPeriods(ctx any) *MockControllerListPeriodsCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPeriods", reflect.TypeOf((*MockController)(nil).ListPeriods), ctx)
-	return &MockControllerListPeriodsCall{Call: call}
-}
-
-// MockControllerListPeriodsCall wrap *gomock.Call
-type MockControllerListPeriodsCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockControllerListPeriodsCall) Return(arg0 cursor.Cursor[*commonpb.Period], arg1 error) *MockControllerListPeriodsCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockControllerListPeriodsCall) Do(f func(context.Context) (cursor.Cursor[*commonpb.Period], error)) *MockControllerListPeriodsCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListPeriodsCall) DoAndReturn(f func(context.Context) (cursor.Cursor[*commonpb.Period], error)) *MockControllerListPeriodsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -24,7 +24,7 @@ import (
 )
 
 // TestOperationsLifecycle covers admin/ops operations:
-// maintenance mode, audit config, period schedule, request signing, and delete ledger.
+// maintenance mode, audit config, chapter schedule, request signing, and delete ledger.
 // Generates ~30 Apply calls with moderate operational complexity.
 func TestOperationsLifecycle(t *testing.T) {
 	const (
@@ -134,12 +134,12 @@ func TestOperationsLifecycle(t *testing.T) {
 			"audit entry should have an outcome")
 	})
 
-	// --- Regression: ArchivePeriod + CheckStore ---
-	// After archiving a period, CheckStore must account for purged logs by
-	// reading archived period metadata (start_sequence, close_sequence, last_log_hash)
+	// --- Regression: ArchiveChapter + CheckStore ---
+	// After archiving a chapter, CheckStore must account for purged logs by
+	// reading archived chapter metadata (start_sequence, close_sequence, last_log_hash)
 	// and resuming the hash chain from the correct boundary.
-	t.Run("ArchivePeriodCheckStore", func(t *testing.T) {
-		// Create a few transactions to have content in the current period
+	t.Run("ArchiveChapterCheckStore", func(t *testing.T) {
+		// Create a few transactions to have content in the current chapter
 		for i := 1; i <= 3; i++ {
 			scenariotest.ApplyActions(t, ctx, client,
 				actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
@@ -149,49 +149,49 @@ func TestOperationsLifecycle(t *testing.T) {
 			)
 		}
 
-		// Close the period → creates a CLOSING period
-		scenariotest.ClosePeriodAndWait(t, ctx, client, "period close timed out for archive test")
+		// Close the chapter → creates a CLOSING chapter
+		scenariotest.CloseChapterAndWait(t, ctx, client, "chapter close timed out for archive test")
 
-		// Find the CLOSED period (the one just sealed)
-		var closedPeriodID uint64
+		// Find the CLOSED chapter (the one just sealed)
+		var closedChapterID uint64
 		require.Eventually(t, func() bool {
-			periods, err := actions.ListAllPeriods(ctx, client)
+			chapters, err := actions.ListAllChapters(ctx, client)
 			if err != nil {
 				return false
 			}
-			for _, p := range periods {
-				if p.Status == commonpb.PeriodStatus_PERIOD_CLOSED {
-					closedPeriodID = p.GetId()
+			for _, p := range chapters {
+				if p.Status == commonpb.ChapterStatus_CHAPTER_CLOSED {
+					closedChapterID = p.GetId()
 
 					return true
 				}
 			}
 
 			return false
-		}, 15*time.Second, 200*time.Millisecond, "should have a CLOSED period")
-		require.NotZero(t, closedPeriodID, "should have found a closed period ID")
+		}, 15*time.Second, 200*time.Millisecond, "should have a CLOSED chapter")
+		require.NotZero(t, closedChapterID, "should have found a closed chapter ID")
 
-		// Archive the closed period
-		scenariotest.ApplyActions(t, ctx, client, actions.ArchivePeriodAction(closedPeriodID))
+		// Archive the closed chapter
+		scenariotest.ApplyActions(t, ctx, client, actions.ArchiveChapterAction(closedChapterID))
 
-		// Wait for the period to become ARCHIVED
+		// Wait for the chapter to become ARCHIVED
 		require.Eventually(t, func() bool {
-			periods, err := actions.ListAllPeriods(ctx, client)
+			chapters, err := actions.ListAllChapters(ctx, client)
 			if err != nil {
 				return false
 			}
-			for _, p := range periods {
-				if p.GetId() == closedPeriodID && p.Status == commonpb.PeriodStatus_PERIOD_ARCHIVED {
+			for _, p := range chapters {
+				if p.GetId() == closedChapterID && p.Status == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
 					return true
 				}
 			}
 
 			return false
-		}, 30*time.Second, 200*time.Millisecond, "period should become ARCHIVED")
+		}, 30*time.Second, 200*time.Millisecond, "chapter should become ARCHIVED")
 
-		t.Logf("Period %d successfully archived", closedPeriodID)
+		t.Logf("Chapter %d successfully archived", closedChapterID)
 
-		// CheckStore must pass after archiving: it reads archived period metadata
+		// CheckStore must pass after archiving: it reads archived chapter metadata
 		// to skip purged log ranges and resume the hash chain correctly.
 		stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
 		require.NoError(t, err, "CheckStore RPC failed")
@@ -211,22 +211,22 @@ func TestOperationsLifecycle(t *testing.T) {
 			len(storeErrors))
 	})
 
-	// --- Phase 4: Period Schedule ---
-	t.Run("PeriodSchedule", func(t *testing.T) {
-		// Set a period schedule
-		scenariotest.ApplyActions(t, ctx, client, actions.SetPeriodScheduleAction("0 0 * * *"))
+	// --- Phase 4: Chapter Schedule ---
+	t.Run("ChapterSchedule", func(t *testing.T) {
+		// Set a chapter schedule
+		scenariotest.ApplyActions(t, ctx, client, actions.SetChapterScheduleAction("0 0 * * *"))
 
 		// Verify cron was set
-		cron, err := actions.GetPeriodSchedule(ctx, client)
-		require.NoError(t, err, "GetPeriodSchedule failed")
+		cron, err := actions.GetChapterSchedule(ctx, client)
+		require.NoError(t, err, "GetChapterSchedule failed")
 		require.Equal(t, "0 0 * * *", cron, "cron should match")
 
-		// Delete period schedule
-		scenariotest.ApplyActions(t, ctx, client, actions.DeletePeriodScheduleAction())
+		// Delete chapter schedule
+		scenariotest.ApplyActions(t, ctx, client, actions.DeleteChapterScheduleAction())
 
 		// Verify cron is empty
-		cron, err = actions.GetPeriodSchedule(ctx, client)
-		require.NoError(t, err, "GetPeriodSchedule after delete failed")
+		cron, err = actions.GetChapterSchedule(ctx, client)
+		require.NoError(t, err, "GetChapterSchedule after delete failed")
 		require.Empty(t, cron, "cron should be empty after delete")
 	})
 

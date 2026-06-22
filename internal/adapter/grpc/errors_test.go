@@ -376,42 +376,42 @@ func TestBusinessErrorToGRPCStatus_MetadataFieldNotInSchema(t *testing.T) {
 	require.Equal(t, "idx-key-33", info.GetMetadata()["key"])
 }
 
-func TestBusinessErrorToGRPCStatus_NoPeriodOpen(t *testing.T) {
+func TestBusinessErrorToGRPCStatus_NoChapterOpen(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &domain.BusinessError{Err: domain.ErrNoPeriodOpen}
+	bizErr := &domain.BusinessError{Err: domain.ErrNoChapterOpen}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonNoPeriodOpen, info.GetReason())
+	require.Equal(t, domain.ErrReasonNoChapterOpen, info.GetReason())
 }
 
-func TestBusinessErrorToGRPCStatus_PeriodNotFound(t *testing.T) {
+func TestBusinessErrorToGRPCStatus_ChapterNotFound(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &domain.BusinessError{Err: &domain.ErrPeriodNotFound{PeriodID: 7}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrChapterNotFound{ChapterID: 7}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonPeriodNotFound, info.GetReason())
-	require.Equal(t, "7", info.GetMetadata()["periodId"])
+	require.Equal(t, domain.ErrReasonChapterNotFound, info.GetReason())
+	require.Equal(t, "7", info.GetMetadata()["chapterId"])
 }
 
-func TestBusinessErrorToGRPCStatus_PeriodNotClosing(t *testing.T) {
+func TestBusinessErrorToGRPCStatus_ChapterNotClosing(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &domain.BusinessError{Err: &domain.ErrPeriodNotClosing{PeriodID: 3}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrChapterNotClosing{ChapterID: 3}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonPeriodNotClosing, info.GetReason())
-	require.Equal(t, "3", info.GetMetadata()["periodId"])
+	require.Equal(t, domain.ErrReasonChapterNotClosing, info.GetReason())
+	require.Equal(t, "3", info.GetMetadata()["chapterId"])
 }
 
 func TestBusinessErrorToGRPCStatus_InvalidReceipt(t *testing.T) {
@@ -617,19 +617,19 @@ func TestConvertToGRPCError_AuditDisabled(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 }
 
-func TestConvertToGRPCError_PeriodNotClosed(t *testing.T) {
+func TestConvertToGRPCError_ChapterNotClosed(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(&domain.ErrPeriodNotClosed{PeriodID: 5}, testLogger())
+	grpcErr := convertToGRPCError(&domain.ErrChapterNotClosed{ChapterID: 5}, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 }
 
-func TestConvertToGRPCError_PeriodNotArchiving(t *testing.T) {
+func TestConvertToGRPCError_ChapterNotArchiving(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(&domain.ErrPeriodNotArchiving{PeriodID: 3}, testLogger())
+	grpcErr := convertToGRPCError(&domain.ErrChapterNotArchiving{ChapterID: 3}, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())

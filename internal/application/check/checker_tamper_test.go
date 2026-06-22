@@ -27,7 +27,7 @@ import (
 // AuditEntry + 2 AuditItems persisted via the production builders, then
 // exactly one field is mutated and the entry/item is rewritten in place.
 // We invoke `verifyAuditHashChain` directly (package-private access) so
-// other Check() phases (replay, balances, periods) cannot mask the
+// other Check() phases (replay, balances, chapters) cannot mask the
 // mismatch event we are looking for.
 func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 	t.Parallel()

@@ -89,17 +89,17 @@ type WriteSet struct {
 	pendingSigningKeyUpdates             []signingKeyUpdate
 	pendingSigningConfigUpdate           *signingConfigUpdate
 	pendingMaintenanceModeUpdate         *maintenanceModeUpdate
-	pendingPeriodScheduleUpdate          *string
+	pendingChapterScheduleUpdate         *string
 	pendingQueryCheckpointScheduleUpdate *string
 	sinkConfigChanged                    bool
-	// periods is a lazy clone of fsm.Periods, created on first period access.
-	// Nil means no period method was called — Merge() skips period propagation.
-	// Period orders (ClosePeriod, SealPeriod, etc.) read period protos and mutate
+	// chapters is a lazy clone of fsm.Chapters, created on first chapter access.
+	// Nil means no chapter method was called — Merge() skips chapter propagation.
+	// Chapter orders (CloseChapter, SealChapter, etc.) read chapter protos and mutate
 	// them in-place, so the clone must happen before any read to avoid corrupting
-	// the FSM's state. CreateTransaction never touches periods, so the clone is
+	// the FSM's state. CreateTransaction never touches chapters, so the clone is
 	// avoided on the hot path.
-	periods                        *PeriodTracker
-	changedPeriods                 []*commonpb.Period
+	chapters                       *ChapterTracker
+	changedChapters                []*commonpb.Chapter
 	purgeRanges                    []purgeRange
 	pendingArchives                []ArchiveRequest
 	pendingMetadataConvertRequests []MetadataConvertRequest
@@ -145,10 +145,10 @@ type WriteSet struct {
 	pendingQueryCheckpointDeletes []uint64
 }
 
-// purgeRange identifies a period's sequence ranges to delete from Pebble during Merge().
+// purgeRange identifies a chapter's sequence ranges to delete from Pebble during Merge().
 // Log and audit entries have independent sequence counters, so separate ranges are needed.
 type purgeRange struct {
-	periodID           uint64
+	chapterID          uint64
 	startSequence      uint64 // log sequence range start
 	closeSequence      uint64 // log sequence range end
 	startAuditSequence uint64 // audit sequence range start
@@ -408,20 +408,20 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 		b.fsm.sharedState.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
 	}
 
-	if b.pendingPeriodScheduleUpdate != nil {
-		if *b.pendingPeriodScheduleUpdate == "" {
-			err := batchDeletePeriodSchedule(batch)
+	if b.pendingChapterScheduleUpdate != nil {
+		if *b.pendingChapterScheduleUpdate == "" {
+			err := batchDeleteChapterSchedule(batch)
 			if err != nil {
-				return fmt.Errorf("deleting period schedule: %w", err)
+				return fmt.Errorf("deleting chapter schedule: %w", err)
 			}
 		} else {
-			err := SavePeriodSchedule(batch, *b.pendingPeriodScheduleUpdate)
+			err := SaveChapterSchedule(batch, *b.pendingChapterScheduleUpdate)
 			if err != nil {
-				return fmt.Errorf("saving period schedule: %w", err)
+				return fmt.Errorf("saving chapter schedule: %w", err)
 			}
 		}
 
-		b.fsm.Periods.SetSchedule(*b.pendingPeriodScheduleUpdate)
+		b.fsm.Chapters.SetSchedule(*b.pendingChapterScheduleUpdate)
 	}
 
 	if b.pendingQueryCheckpointScheduleUpdate != nil {
@@ -460,25 +460,25 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 		return err
 	}
 
-	for _, p := range b.changedPeriods {
-		err := StorePeriod(batch, p)
+	for _, p := range b.changedChapters {
+		err := StoreChapter(batch, p)
 		if err != nil {
-			return fmt.Errorf("storing period %d: %w", p.GetId(), err)
+			return fmt.Errorf("storing chapter %d: %w", p.GetId(), err)
 		}
 	}
 
-	// Persist next period ID only if periods were touched.
-	if b.periods != nil {
-		if err := StoreNextPeriodID(batch, b.periods.NextPeriodID()); err != nil {
-			return fmt.Errorf("storing next period ID: %w", err)
+	// Persist next chapter ID only if chapters were touched.
+	if b.chapters != nil {
+		if err := StoreNextChapterID(batch, b.chapters.NextChapterID()); err != nil {
+			return fmt.Errorf("storing next chapter ID: %w", err)
 		}
 	}
 
-	// Purge archived period data (logs + audit entries) if requested
+	// Purge archived chapter data (logs + audit entries) if requested
 	for i := range b.purgeRanges {
 		err := b.executePurge(batch, &b.purgeRanges[i])
 		if err != nil {
-			return fmt.Errorf("purging archived period %d data: %w", b.purgeRanges[i].periodID, err)
+			return fmt.Errorf("purging archived chapter %d data: %w", b.purgeRanges[i].chapterID, err)
 		}
 	}
 
@@ -578,23 +578,23 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 	b.fsm.State.NextLedgerID = b.NextLedgerID
 	b.fsm.State.NextQueryCheckpointID = b.NextQueryCheckpointID
 
-	// Apply changed periods to Machine's Periods tracker
-	for _, p := range b.changedPeriods {
-		b.fsm.Periods.PutPeriod(p)
+	// Apply changed chapters to Machine's Chapters tracker
+	for _, p := range b.changedChapters {
+		b.fsm.Chapters.PutChapter(p)
 	}
 
-	// Remove purged periods from memory
+	// Remove purged chapters from memory
 	for _, pr := range b.purgeRanges {
-		b.fsm.Periods.DeletePeriod(pr.periodID)
+		b.fsm.Chapters.DeleteChapter(pr.chapterID)
 	}
 
-	// Propagate period tracker state only if periods were touched (lazy clone occurred).
-	// On the hot transaction path (CreateTransaction, etc.), b.periods stays nil
+	// Propagate chapter tracker state only if chapters were touched (lazy clone occurred).
+	// On the hot transaction path (CreateTransaction, etc.), b.chapters stays nil
 	// and the FSM's tracker is already correct.
-	if b.periods != nil {
-		b.fsm.Periods.SetCurrentOpenPeriod(b.periods.CurrentOpenPeriod())
-		b.fsm.Periods.SetClosingPeriods(b.periods.ClosingPeriods())
-		b.fsm.Periods.SetNextPeriodID(b.periods.NextPeriodID())
+	if b.chapters != nil {
+		b.fsm.Chapters.SetCurrentOpenChapter(b.chapters.CurrentOpenChapter())
+		b.fsm.Chapters.SetClosingChapters(b.chapters.ClosingChapters())
+		b.fsm.Chapters.SetNextChapterID(b.chapters.NextChapterID())
 	}
 
 	return nil
@@ -623,11 +623,11 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.pendingSigningKeyUpdates = b.pendingSigningKeyUpdates[:0]
 	b.pendingSigningConfigUpdate = nil
 	b.pendingMaintenanceModeUpdate = nil
-	b.pendingPeriodScheduleUpdate = nil
+	b.pendingChapterScheduleUpdate = nil
 	b.pendingQueryCheckpointScheduleUpdate = nil
 	b.sinkConfigChanged = false
-	b.periods = nil
-	b.changedPeriods = b.changedPeriods[:0]
+	b.chapters = nil
+	b.changedChapters = b.changedChapters[:0]
 	b.purgeRanges = b.purgeRanges[:0]
 	b.pendingArchives = b.pendingArchives[:0]
 	b.pendingMetadataConvertRequests = b.pendingMetadataConvertRequests[:0]
@@ -642,7 +642,7 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.pendingQueryCheckpointDeletes = b.pendingQueryCheckpointDeletes[:0]
 }
 
-// Engine surface: the read/write/counter/period methods that gatedScope
+// Engine surface: the read/write/counter/chapter methods that gatedScope
 // forwards via embedding. The coverage gate method (CheckCoverage) is
 // deliberately absent here — it lives on gatedScope, which embeds
 // *WriteSet and overrides the cache-attribute Get* to insert the gate.
@@ -932,13 +932,13 @@ func (b *WriteSet) SetMaintenanceMode(enabled bool) {
 	}
 }
 
-func (b *WriteSet) SetPeriodSchedule(cronExpr string) {
-	b.pendingPeriodScheduleUpdate = &cronExpr
+func (b *WriteSet) SetChapterSchedule(cronExpr string) {
+	b.pendingChapterScheduleUpdate = &cronExpr
 }
 
-func (b *WriteSet) DeletePeriodSchedule() {
+func (b *WriteSet) DeleteChapterSchedule() {
 	empty := ""
-	b.pendingPeriodScheduleUpdate = &empty
+	b.pendingChapterScheduleUpdate = &empty
 }
 
 func (b *WriteSet) SetQueryCheckpointSchedule(cronExpr string) {
@@ -1075,23 +1075,23 @@ func checkDoubleEntryInvariant(
 	return nil
 }
 
-// Period operations
+// Chapter operations
 
-// ensurePeriods clones the FSM's PeriodTracker on first access.
-// Period orders (ClosePeriod, SealPeriod, etc.) read period protos and mutate
+// ensureChapters clones the FSM's ChapterTracker on first access.
+// Chapter orders (CloseChapter, SealChapter, etc.) read chapter protos and mutate
 // them in-place, so the clone must happen before any read to protect the FSM.
-// CreateTransaction never calls period methods, so this is never triggered on
+// CreateTransaction never calls chapter methods, so this is never triggered on
 // the hot transaction path.
-func (b *WriteSet) ensurePeriods() {
-	if b.periods == nil {
-		b.periods = b.fsm.Periods.Clone()
+func (b *WriteSet) ensureChapters() {
+	if b.chapters == nil {
+		b.chapters = b.fsm.Chapters.Clone()
 	}
 }
 
-func (b *WriteSet) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
-	b.ensurePeriods()
+func (b *WriteSet) GetCurrentOpenChapter() (*commonpb.Chapter, bool) {
+	b.ensureChapters()
 
-	p := b.periods.CurrentOpenPeriod()
+	p := b.chapters.CurrentOpenChapter()
 	if p != nil {
 		return p, true
 	}
@@ -1099,82 +1099,82 @@ func (b *WriteSet) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
 	return nil, false
 }
 
-func (b *WriteSet) GetClosingPeriods() []*commonpb.Period {
-	b.ensurePeriods()
+func (b *WriteSet) GetClosingChapters() []*commonpb.Chapter {
+	b.ensureChapters()
 
-	return b.periods.ClosingPeriods()
+	return b.chapters.ClosingChapters()
 }
 
-func (b *WriteSet) GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool) {
-	b.ensurePeriods()
+func (b *WriteSet) GetClosingChapterByID(chapterID uint64) (*commonpb.Chapter, bool) {
+	b.ensureChapters()
 
-	return b.periods.ClosingPeriodByID(periodID)
+	return b.chapters.ClosingChapterByID(chapterID)
 }
 
-func (b *WriteSet) SetCurrentOpenPeriod(period *commonpb.Period) {
-	b.ensurePeriods()
-	b.periods.SetCurrentOpenPeriod(period)
-	b.changedPeriods = append(b.changedPeriods, period)
+func (b *WriteSet) SetCurrentOpenChapter(chapter *commonpb.Chapter) {
+	b.ensureChapters()
+	b.chapters.SetCurrentOpenChapter(chapter)
+	b.changedChapters = append(b.changedChapters, chapter)
 }
 
-func (b *WriteSet) AddClosingPeriod(period *commonpb.Period) {
-	b.ensurePeriods()
-	b.periods.AddClosingPeriod(period)
-	b.changedPeriods = append(b.changedPeriods, period)
+func (b *WriteSet) AddClosingChapter(chapter *commonpb.Chapter) {
+	b.ensureChapters()
+	b.chapters.AddClosingChapter(chapter)
+	b.changedChapters = append(b.changedChapters, chapter)
 }
 
-// RemoveClosingPeriod persists the closing period's final state and removes it from in-memory tracking.
-func (b *WriteSet) RemoveClosingPeriod(periodID uint64) {
-	b.ensurePeriods()
+// RemoveClosingChapter persists the closing chapter's final state and removes it from in-memory tracking.
+func (b *WriteSet) RemoveClosingChapter(chapterID uint64) {
+	b.ensureChapters()
 
-	if closing, ok := b.periods.ClosingPeriodByID(periodID); ok {
-		b.changedPeriods = append(b.changedPeriods, closing)
+	if closing, ok := b.chapters.ClosingChapterByID(chapterID); ok {
+		b.changedChapters = append(b.changedChapters, closing)
 	}
 
-	b.periods.RemoveClosingPeriod(periodID)
+	b.chapters.RemoveClosingChapter(chapterID)
 }
 
-func (b *WriteSet) GetNextPeriodID() uint64 {
-	b.ensurePeriods()
+func (b *WriteSet) GetNextChapterID() uint64 {
+	b.ensureChapters()
 
-	return b.periods.NextPeriodID()
+	return b.chapters.NextChapterID()
 }
 
-func (b *WriteSet) IncrementNextPeriodID() uint64 {
-	b.ensurePeriods()
+func (b *WriteSet) IncrementNextChapterID() uint64 {
+	b.ensureChapters()
 
-	id := b.periods.NextPeriodID()
-	b.periods.SetNextPeriodID(id + 1)
+	id := b.chapters.NextChapterID()
+	b.chapters.SetNextChapterID(id + 1)
 
 	return id
 }
 
-// GetPeriodByID looks up a period by ID from in-memory state only.
-// It checks changedPeriods first (most recent modifications), then the periods tracker.
-func (b *WriteSet) GetPeriodByID(periodID uint64) (*commonpb.Period, bool) {
-	// Check changedPeriods (most recently changed first)
-	for i := len(b.changedPeriods) - 1; i >= 0; i-- {
-		if b.changedPeriods[i].GetId() == periodID {
-			return b.changedPeriods[i], true
+// GetChapterByID looks up a chapter by ID from in-memory state only.
+// It checks changedChapters first (most recent modifications), then the chapters tracker.
+func (b *WriteSet) GetChapterByID(chapterID uint64) (*commonpb.Chapter, bool) {
+	// Check changedChapters (most recently changed first)
+	for i := len(b.changedChapters) - 1; i >= 0; i-- {
+		if b.changedChapters[i].GetId() == chapterID {
+			return b.changedChapters[i], true
 		}
 	}
 
-	b.ensurePeriods()
+	b.ensureChapters()
 
-	return b.periods.GetPeriodByID(periodID)
+	return b.chapters.GetChapterByID(chapterID)
 }
 
-// UpdatePeriod records a period modification to be persisted in Merge().
-func (b *WriteSet) UpdatePeriod(period *commonpb.Period) {
-	b.changedPeriods = append(b.changedPeriods, period)
+// UpdateChapter records a chapter modification to be persisted in Merge().
+func (b *WriteSet) UpdateChapter(chapter *commonpb.Chapter) {
+	b.changedChapters = append(b.changedChapters, chapter)
 }
 
 // SetPurgeRange records sequence ranges to be purged during Merge().
 // Log and audit entries have independent sequence counters (audit advances
 // slower due to batching), so both ranges are needed for correct purging.
-func (b *WriteSet) SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
+func (b *WriteSet) SetPurgeRange(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
 	b.purgeRanges = append(b.purgeRanges, purgeRange{
-		periodID:           periodID,
+		chapterID:          chapterID,
 		startSequence:      startSequence,
 		closeSequence:      closeSequence,
 		startAuditSequence: startAuditSequence,
@@ -1182,12 +1182,12 @@ func (b *WriteSet) SetPurgeRange(periodID, startSequence, closeSequence, startAu
 	})
 }
 
-// SetPendingArchive records a period that needs archiving after the batch is committed.
+// SetPendingArchive records a chapter that needs archiving after the batch is committed.
 // The Machine reads this after Merge() to construct and send the ArchiveRequest.
-// Can be called multiple times to archive multiple periods in the same batch.
-func (b *WriteSet) SetPendingArchive(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
+// Can be called multiple times to archive multiple chapters in the same batch.
+func (b *WriteSet) SetPendingArchive(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
 	b.pendingArchives = append(b.pendingArchives, ArchiveRequest{
-		PeriodID:           periodID,
+		ChapterID:          chapterID,
 		StartSequence:      startSequence,
 		CloseSequence:      closeSequence,
 		StartAuditSequence: startAuditSequence,
@@ -1233,15 +1233,15 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 
 			// Liveness anchor for deleted-ledger-data-isolation-and-eventual-purge:
 			// the deferred cleanup recorded at DeleteLedger apply time is only
-			// consumed here, when a covering purge range (period archival
-			// confirmation) reaches the delete sequence. The period-close
-			// singleton driver closes/archives/confirms periods continuously
+			// consumed here, when a covering purge range (chapter archival
+			// confirmation) reaches the delete sequence. The chapter-close
+			// singleton driver closes/archives/confirms chapters continuously
 			// and ledger-delete drivers run in parallel, so this branch is
 			// expected to be exercised in every full run.
 			assert.Reachable("deleted ledger deferred cleanup executed by covering purge", map[string]any{
 				"ledger":    ledgerName,
 				"deleteSeq": deleteSeq,
-				"periodId":  pr.periodID,
+				"chapterId": pr.chapterID,
 			})
 		}
 	}

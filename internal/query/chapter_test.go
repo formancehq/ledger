@@ -16,8 +16,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func collectAllPeriods(reader dal.PebbleReader) ([]*commonpb.Period, error) {
-	c, err := query.ReadPeriods(context.Background(), reader)
+func collectAllChapters(reader dal.PebbleReader) ([]*commonpb.Chapter, error) {
+	c, err := query.ReadChapters(context.Background(), reader)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func collectAllPeriods(reader dal.PebbleReader) ([]*commonpb.Period, error) {
 	return cursor.Collect(c)
 }
 
-func TestReadPeriods(t *testing.T) {
+func TestReadChapters(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -43,16 +43,16 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		periods, err := collectAllPeriods(handle)
+		chapters, err := collectAllChapters(handle)
 		require.NoError(t, err)
-		require.Nil(t, periods)
+		require.Nil(t, chapters)
 
-		nextID, err := query.ReadNextPeriodID(s)
+		nextID, err := query.ReadNextChapterID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), nextID)
 	})
 
-	t.Run("StoreSinglePeriod", func(t *testing.T) {
+	t.Run("StoreSingleChapter", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := t.TempDir()
 		s, err := dal.NewStore(tmpDir, logger, meter, dal.DefaultConfig())
@@ -60,109 +60,109 @@ func TestReadPeriods(t *testing.T) {
 		t.Cleanup(func() { _ = s.Close() })
 
 		batch := s.OpenWriteSession()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
-			Status: commonpb.PeriodStatus_PERIOD_OPEN,
+			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 2))
+		require.NoError(t, state.StoreNextChapterID(batch, 2))
 		require.NoError(t, batch.Commit())
 
 		handle, err := s.NewDirectReadHandle()
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		periods, err := collectAllPeriods(handle)
+		chapters, err := collectAllChapters(handle)
 		require.NoError(t, err)
-		require.Len(t, periods, 1)
-		require.Equal(t, uint64(1), periods[0].GetId())
-		require.Equal(t, uint64(1000), periods[0].GetStart().GetData())
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, periods[0].GetStatus())
+		require.Len(t, chapters, 1)
+		require.Equal(t, uint64(1), chapters[0].GetId())
+		require.Equal(t, uint64(1000), chapters[0].GetStart().GetData())
+		require.Equal(t, commonpb.ChapterStatus_CHAPTER_OPEN, chapters[0].GetStatus())
 
-		nextID, err := query.ReadNextPeriodID(s)
+		nextID, err := query.ReadNextChapterID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), nextID)
 	})
 
-	t.Run("StoreMultiplePeriodsOrderedByID", func(t *testing.T) {
+	t.Run("StoreMultipleChaptersOrderedByID", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := t.TempDir()
 		s, err := dal.NewStore(tmpDir, logger, meter, dal.DefaultConfig())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close() })
 
-		// Insert periods out of order
+		// Insert chapters out of order
 		batch := s.OpenWriteSession()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     3,
 			Start:  &commonpb.Timestamp{Data: 3000},
-			Status: commonpb.PeriodStatus_PERIOD_OPEN,
+			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
 			End:    &commonpb.Timestamp{Data: 2000},
-			Status: commonpb.PeriodStatus_PERIOD_CLOSED,
+			Status: commonpb.ChapterStatus_CHAPTER_CLOSED,
 		}))
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:            2,
 			Start:         &commonpb.Timestamp{Data: 2000},
 			End:           &commonpb.Timestamp{Data: 3000},
-			Status:        commonpb.PeriodStatus_PERIOD_CLOSED,
+			Status:        commonpb.ChapterStatus_CHAPTER_CLOSED,
 			CloseSequence: 10,
 			SealingHash:   []byte("hash-2"),
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 4))
+		require.NoError(t, state.StoreNextChapterID(batch, 4))
 		require.NoError(t, batch.Commit())
 
 		handle, err := s.NewDirectReadHandle()
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		// Verify periods are returned ordered by ID
-		periods, err := collectAllPeriods(handle)
+		// Verify chapters are returned ordered by ID
+		chapters, err := collectAllChapters(handle)
 		require.NoError(t, err)
-		require.Len(t, periods, 3)
-		require.Equal(t, uint64(1), periods[0].GetId())
-		require.Equal(t, uint64(2), periods[1].GetId())
-		require.Equal(t, uint64(3), periods[2].GetId())
+		require.Len(t, chapters, 3)
+		require.Equal(t, uint64(1), chapters[0].GetId())
+		require.Equal(t, uint64(2), chapters[1].GetId())
+		require.Equal(t, uint64(3), chapters[2].GetId())
 
 		// Verify fields
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].GetStatus())
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[1].GetStatus())
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, periods[2].GetStatus())
-		require.Equal(t, uint64(10), periods[1].GetCloseSequence())
-		require.Equal(t, []byte("hash-2"), periods[1].GetSealingHash())
+		require.Equal(t, commonpb.ChapterStatus_CHAPTER_CLOSED, chapters[0].GetStatus())
+		require.Equal(t, commonpb.ChapterStatus_CHAPTER_CLOSED, chapters[1].GetStatus())
+		require.Equal(t, commonpb.ChapterStatus_CHAPTER_OPEN, chapters[2].GetStatus())
+		require.Equal(t, uint64(10), chapters[1].GetCloseSequence())
+		require.Equal(t, []byte("hash-2"), chapters[1].GetSealingHash())
 
-		nextID, err := query.ReadNextPeriodID(s)
+		nextID, err := query.ReadNextChapterID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(4), nextID)
 	})
 
-	t.Run("UpdateExistingPeriod", func(t *testing.T) {
+	t.Run("UpdateExistingChapter", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := t.TempDir()
 		s, err := dal.NewStore(tmpDir, logger, meter, dal.DefaultConfig())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close() })
 
-		// Store initial period
+		// Store initial chapter
 		batch := s.OpenWriteSession()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
-			Status: commonpb.PeriodStatus_PERIOD_OPEN,
+			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 2))
+		require.NoError(t, state.StoreNextChapterID(batch, 2))
 		require.NoError(t, batch.Commit())
 
-		// Update the same period (close it)
+		// Update the same chapter (close it)
 		batch = s.OpenWriteSession()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:            1,
 			Start:         &commonpb.Timestamp{Data: 1000},
 			End:           &commonpb.Timestamp{Data: 2000},
-			Status:        commonpb.PeriodStatus_PERIOD_CLOSED,
+			Status:        commonpb.ChapterStatus_CHAPTER_CLOSED,
 			CloseSequence: 5,
 			SealingHash:   []byte("sealed"),
 		}))
@@ -172,35 +172,35 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		periods, err := collectAllPeriods(handle)
+		chapters, err := collectAllChapters(handle)
 		require.NoError(t, err)
-		require.Len(t, periods, 1)
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].GetStatus())
-		require.Equal(t, uint64(5), periods[0].GetCloseSequence())
-		require.Equal(t, []byte("sealed"), periods[0].GetSealingHash())
+		require.Len(t, chapters, 1)
+		require.Equal(t, commonpb.ChapterStatus_CHAPTER_CLOSED, chapters[0].GetStatus())
+		require.Equal(t, uint64(5), chapters[0].GetCloseSequence())
+		require.Equal(t, []byte("sealed"), chapters[0].GetSealingHash())
 	})
 
 	t.Run("PersistAcrossReopen", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := t.TempDir()
 
-		// Store periods and close
+		// Store chapters and close
 		s, err := dal.NewStore(tmpDir, logger, meter, dal.DefaultConfig())
 		require.NoError(t, err)
 
 		batch := s.OpenWriteSession()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
 			End:    &commonpb.Timestamp{Data: 2000},
-			Status: commonpb.PeriodStatus_PERIOD_CLOSED,
+			Status: commonpb.ChapterStatus_CHAPTER_CLOSED,
 		}))
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     2,
 			Start:  &commonpb.Timestamp{Data: 2000},
-			Status: commonpb.PeriodStatus_PERIOD_OPEN,
+			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 3))
+		require.NoError(t, state.StoreNextChapterID(batch, 3))
 		require.NoError(t, batch.Commit())
 
 		// Create snapshot so data survives reopen (writes use NoSync)
@@ -217,18 +217,18 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = handle.Close() }()
 
-		periods, err := collectAllPeriods(handle)
+		chapters, err := collectAllChapters(handle)
 		require.NoError(t, err)
-		require.Len(t, periods, 2)
-		require.Equal(t, uint64(1), periods[0].GetId())
-		require.Equal(t, uint64(2), periods[1].GetId())
+		require.Len(t, chapters, 2)
+		require.Equal(t, uint64(1), chapters[0].GetId())
+		require.Equal(t, uint64(2), chapters[1].GetId())
 
-		nextID, err := query.ReadNextPeriodID(s2)
+		nextID, err := query.ReadNextChapterID(s2)
 		require.NoError(t, err)
 		require.Equal(t, uint64(3), nextID)
 	})
 
-	t.Run("NextPeriodIDUpdate", func(t *testing.T) {
+	t.Run("NextChapterIDUpdate", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := t.TempDir()
 		s, err := dal.NewStore(tmpDir, logger, meter, dal.DefaultConfig())
@@ -237,24 +237,24 @@ func TestReadPeriods(t *testing.T) {
 
 		// Set to 5
 		batch := s.OpenWriteSession()
-		require.NoError(t, state.StoreNextPeriodID(batch, 5))
+		require.NoError(t, state.StoreNextChapterID(batch, 5))
 		require.NoError(t, batch.Commit())
 
-		nextID, err := query.ReadNextPeriodID(s)
+		nextID, err := query.ReadNextChapterID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(5), nextID)
 
 		// Update to 10
 		batch = s.OpenWriteSession()
-		require.NoError(t, state.StoreNextPeriodID(batch, 10))
+		require.NoError(t, state.StoreNextChapterID(batch, 10))
 		require.NoError(t, batch.Commit())
 
-		nextID, err = query.ReadNextPeriodID(s)
+		nextID, err = query.ReadNextChapterID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(10), nextID)
 	})
 
-	t.Run("AtomicBatchWithPeriodsAndLogs", func(t *testing.T) {
+	t.Run("AtomicBatchWithChaptersAndLogs", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := t.TempDir()
 		s, err := dal.NewStore(tmpDir, logger, meter, dal.DefaultConfig())
@@ -263,14 +263,14 @@ func TestReadPeriods(t *testing.T) {
 
 		registerLedger(t, s, "test-ledger")
 
-		// Store periods, nextPeriodID, and logs in the same batch
+		// Store chapters, nextChapterID, and logs in the same batch
 		batch := s.OpenWriteSession()
-		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
+		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
-			Status: commonpb.PeriodStatus_PERIOD_OPEN,
+			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
-		require.NoError(t, state.StoreNextPeriodID(batch, 2))
+		require.NoError(t, state.StoreNextChapterID(batch, 2))
 		require.NoError(t, state.SetAppliedIndex(batch, 42))
 		require.NoError(t, batch.Commit())
 
@@ -279,11 +279,11 @@ func TestReadPeriods(t *testing.T) {
 		defer func() { _ = handle.Close() }()
 
 		// Verify all data was written atomically
-		periods, err := collectAllPeriods(handle)
+		chapters, err := collectAllChapters(handle)
 		require.NoError(t, err)
-		require.Len(t, periods, 1)
+		require.Len(t, chapters, 1)
 
-		nextID, err := query.ReadNextPeriodID(s)
+		nextID, err := query.ReadNextChapterID(s)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), nextID)
 

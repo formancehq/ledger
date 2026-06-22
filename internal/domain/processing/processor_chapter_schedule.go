@@ -10,12 +10,12 @@ import (
 
 // CronParser accepts both the standard 5-field format (minute-level) and the
 // extended 6-field format with an optional leading seconds field.
-// It is exported so the PeriodScheduler can reuse the same parser.
+// It is exported so the ChapterScheduler can reuse the same parser.
 var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 
-// processSetPeriodSchedule handles the SetPeriodSchedule order.
+// processSetChapterSchedule handles the SetChapterSchedule order.
 // It validates the cron expression and stores it in the FSM state.
-func (p *RequestProcessor) processSetPeriodSchedule(order *raftcmdpb.SetPeriodScheduleOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func (p *RequestProcessor) processSetChapterSchedule(order *raftcmdpb.SetChapterScheduleOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	if _, err := CronParser.Parse(order.GetCron()); err != nil {
 		return nil, &domain.ErrInvalidCronExpression{
 			Expression: order.GetCron(),
@@ -23,25 +23,25 @@ func (p *RequestProcessor) processSetPeriodSchedule(order *raftcmdpb.SetPeriodSc
 		}
 	}
 
-	s.SetPeriodSchedule(order.GetCron())
+	s.SetChapterSchedule(order.GetCron())
 
 	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SetPeriodSchedule{
-			SetPeriodSchedule: &commonpb.SetPeriodScheduleLog{
+		Type: &commonpb.LogPayload_SetChapterSchedule{
+			SetChapterSchedule: &commonpb.SetChapterScheduleLog{
 				Cron: order.GetCron(),
 			},
 		},
 	}, nil
 }
 
-// processDeletePeriodSchedule handles the DeletePeriodSchedule order.
-// It removes the period schedule from the FSM state.
-func (p *RequestProcessor) processDeletePeriodSchedule(s Scope) (*commonpb.LogPayload, domain.Describable) {
-	s.DeletePeriodSchedule()
+// processDeleteChapterSchedule handles the DeleteChapterSchedule order.
+// It removes the chapter schedule from the FSM state.
+func (p *RequestProcessor) processDeleteChapterSchedule(s Scope) (*commonpb.LogPayload, domain.Describable) {
+	s.DeleteChapterSchedule()
 
 	return &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_DeletePeriodSchedule{
-			DeletePeriodSchedule: &commonpb.DeletedPeriodScheduleLog{},
+		Type: &commonpb.LogPayload_DeleteChapterSchedule{
+			DeleteChapterSchedule: &commonpb.DeletedChapterScheduleLog{},
 		},
 	}, nil
 }

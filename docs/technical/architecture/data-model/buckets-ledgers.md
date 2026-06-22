@@ -302,10 +302,10 @@ sequenceDiagram
 
 **Recovery Flow** (see `Applier.RecoverAndReplay()` in `internal/infra/node/applier.go`):
 1. On startup, the Pebble store opens from its `live/` directory (the last committed state, not a checkpoint)
-2. The FSM loads in-memory state (sequences, periods, reversions) from Pebble via `RecoverState()`
+2. The FSM loads in-memory state (sequences, chapters, reversions) from Pebble via `RecoverState()`
 3. The Applier checks `IsStoreUpToDate()` — if the store's applied index matches the FSM snapshot index, recovery proceeds locally:
    - Restores the in-memory cache from Pebble (`RestoreCacheFromStore()`)
-   - Recovers any periods stuck in CLOSING state (creates seal checkpoint if missing)
+   - Recovers any chapters stuck in CLOSING state (creates seal checkpoint if missing)
    - Replays committed WAL entries not yet applied (`replayWAL()`)
    - Replays spooled entries up to the WAL commit index (`replaySpoolUntil()`)
 4. If the store is behind (e.g., crash after receiving a leader snapshot but before syncing), the Applier is marked `statusOutOfSync` and waits for a leader to fetch a Pebble checkpoint via SnapshotService gRPC

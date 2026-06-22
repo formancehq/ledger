@@ -44,7 +44,7 @@ func newInMemoryColdStorage() *inMemoryColdStorage {
 	}
 }
 
-func (m *inMemoryColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
+func (m *inMemoryColdStorage) Archive(_ context.Context, bucketID string, chapterID uint64, data io.Reader, sha256 []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -53,29 +53,29 @@ func (m *inMemoryColdStorage) Archive(_ context.Context, bucketID string, period
 		return err
 	}
 
-	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	key := fmt.Sprintf("%s/%d", bucketID, chapterID)
 	m.data[key] = buf
 	m.checksums[key] = append([]byte(nil), sha256...)
 
 	return nil
 }
 
-func (m *inMemoryColdStorage) Exists(_ context.Context, bucketID string, periodID uint64) (bool, error) {
+func (m *inMemoryColdStorage) Exists(_ context.Context, bucketID string, chapterID uint64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	key := fmt.Sprintf("%s/%d", bucketID, chapterID)
 	_, hasData := m.data[key]
 	_, hasChecksum := m.checksums[key]
 
 	return hasData && hasChecksum, nil
 }
 
-func (m *inMemoryColdStorage) ExpectedChecksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+func (m *inMemoryColdStorage) ExpectedChecksum(_ context.Context, bucketID string, chapterID uint64) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	c, ok := m.checksums[fmt.Sprintf("%s/%d", bucketID, periodID)]
+	c, ok := m.checksums[fmt.Sprintf("%s/%d", bucketID, chapterID)]
 	if !ok {
 		return nil, ErrChecksumNotFound
 	}
@@ -83,11 +83,11 @@ func (m *inMemoryColdStorage) ExpectedChecksum(_ context.Context, bucketID strin
 	return append([]byte(nil), c...), nil
 }
 
-func (m *inMemoryColdStorage) Checksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+func (m *inMemoryColdStorage) Checksum(_ context.Context, bucketID string, chapterID uint64) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	key := fmt.Sprintf("%s/%d", bucketID, chapterID)
 
 	buf, ok := m.data[key]
 	if !ok {
@@ -97,11 +97,11 @@ func (m *inMemoryColdStorage) Checksum(_ context.Context, bucketID string, perio
 	return ComputeSHA256(bytes.NewReader(buf))
 }
 
-func (m *inMemoryColdStorage) Fetch(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
+func (m *inMemoryColdStorage) Fetch(_ context.Context, bucketID string, chapterID uint64) (io.ReadCloser, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	key := fmt.Sprintf("%s/%d", bucketID, chapterID)
 
 	buf, ok := m.data[key]
 	if !ok {
@@ -223,7 +223,7 @@ func TestColdReaderEviction(t *testing.T) {
 	cs := newInMemoryColdStorage()
 	cacheDir := t.TempDir()
 
-	// Create SSTs for periods 1, 2, 3
+	// Create SSTs for chapters 1, 2, 3
 	for i := uint64(1); i <= 3; i++ {
 		sstData := buildTestSST(t, [][2][]byte{
 			{fmt.Appendf(nil, "key-%d", i), fmt.Appendf(nil, "value-%d", i)},
@@ -231,7 +231,7 @@ func TestColdReaderEviction(t *testing.T) {
 		require.NoError(t, cs.Archive(ctx, "bucket", i, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 	}
 
-	// maxCached=2 → opening a 3rd period should evict the oldest
+	// maxCached=2 → opening a 3rd chapter should evict the oldest
 	reader := NewColdReader(cs, "bucket", cacheDir, 2, 0, logger)
 	t.Cleanup(func() { _ = reader.Close() })
 
@@ -240,7 +240,7 @@ func TestColdReaderEviction(t *testing.T) {
 	_, err = reader.GetReader(ctx, 2)
 	require.NoError(t, err)
 
-	// This should evict period 1
+	// This should evict chapter 1
 	r3, err := reader.GetReader(ctx, 3)
 	require.NoError(t, err)
 
@@ -249,11 +249,11 @@ func TestColdReaderEviction(t *testing.T) {
 	require.Equal(t, []byte("value-3"), val)
 	_ = closer.Close()
 
-	// Verify period 1 was evicted from cache (directory cleaned up)
-	_, err = os.Stat(cacheDir + "/period-1")
-	require.True(t, os.IsNotExist(err), "period-1 cache directory should have been removed")
+	// Verify chapter 1 was evicted from cache (directory cleaned up)
+	_, err = os.Stat(cacheDir + "/chapter-1")
+	require.True(t, os.IsNotExist(err), "chapter-1 cache directory should have been removed")
 
-	// Period 2 should still be cached
+	// Chapter 2 should still be cached
 	r2, err := reader.GetReader(ctx, 2)
 	require.NoError(t, err)
 
@@ -282,27 +282,27 @@ func TestColdReaderLRUTouchOrder(t *testing.T) {
 	reader := NewColdReader(cs, "bucket", cacheDir, 2, 0, logger)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	// Load periods 1 and 2
+	// Load chapters 1 and 2
 	_, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
 	_, err = reader.GetReader(ctx, 2)
 	require.NoError(t, err)
 
-	// Touch period 1 (moves it to end of LRU)
+	// Touch chapter 1 (moves it to end of LRU)
 	_, err = reader.GetReader(ctx, 1)
 	require.NoError(t, err)
 
-	// Load period 3 → should evict period 2 (oldest untouched), not period 1
+	// Load chapter 3 → should evict chapter 2 (oldest untouched), not chapter 1
 	_, err = reader.GetReader(ctx, 3)
 	require.NoError(t, err)
 
-	// Period 1 should still be cached
-	_, err = os.Stat(cacheDir + "/period-1")
-	require.NoError(t, err, "period-1 should still be cached")
+	// Chapter 1 should still be cached
+	_, err = os.Stat(cacheDir + "/chapter-1")
+	require.NoError(t, err, "chapter-1 should still be cached")
 
-	// Period 2 should be evicted
-	_, err = os.Stat(cacheDir + "/period-2")
-	require.True(t, os.IsNotExist(err), "period-2 should have been evicted")
+	// Chapter 2 should be evicted
+	_, err = os.Stat(cacheDir + "/chapter-2")
+	require.True(t, os.IsNotExist(err), "chapter-2 should have been evicted")
 }
 
 func TestColdReaderClose(t *testing.T) {
@@ -327,8 +327,8 @@ func TestColdReaderClose(t *testing.T) {
 	// Close should clean up
 	require.NoError(t, reader.Close())
 
-	// Cache directory for the period should be removed
-	_, err = os.Stat(cacheDir + "/period-1")
+	// Cache directory for the chapter should be removed
+	_, err = os.Stat(cacheDir + "/chapter-1")
 	require.True(t, os.IsNotExist(err), "cache directory should be cleaned after Close")
 }
 
@@ -344,7 +344,7 @@ func TestColdReaderFetchNotFound(t *testing.T) {
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 0, logger)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	// Period 999 doesn't exist in cold storage
+	// Chapter 999 doesn't exist in cold storage
 	_, err := reader.GetReader(ctx, 999)
 	require.Error(t, err)
 }
@@ -422,15 +422,15 @@ func TestColdReaderTTLEviction(t *testing.T) {
 	require.NoError(t, err)
 
 	// Cache directory should exist
-	_, err = os.Stat(cacheDir + "/period-1")
-	require.NoError(t, err, "period-1 should be cached")
+	_, err = os.Stat(cacheDir + "/chapter-1")
+	require.NoError(t, err, "chapter-1 should be cached")
 
 	// Wait for TTL + sweep interval to expire
 	require.Eventually(t, func() bool {
-		_, err := os.Stat(cacheDir + "/period-1")
+		_, err := os.Stat(cacheDir + "/chapter-1")
 
 		return os.IsNotExist(err)
-	}, 1*time.Second, 25*time.Millisecond, "period-1 should be evicted after TTL")
+	}, 1*time.Second, 25*time.Millisecond, "chapter-1 should be evicted after TTL")
 }
 
 func TestColdReaderTTLRefreshedOnAccess(t *testing.T) {
@@ -463,6 +463,6 @@ func TestColdReaderTTLRefreshedOnAccess(t *testing.T) {
 	}
 
 	// Should still be cached (each access refreshes the TTL)
-	_, err = os.Stat(cacheDir + "/period-1")
-	require.NoError(t, err, "period-1 should still be cached after repeated access")
+	_, err = os.Stat(cacheDir + "/chapter-1")
+	require.NoError(t, err, "chapter-1 should still be cached after repeated access")
 }

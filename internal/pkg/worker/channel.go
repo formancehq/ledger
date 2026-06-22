@@ -63,7 +63,7 @@ func (wc *Channel[T]) Receive() <-chan T {
 // discarded. Intended for callers that need to wipe stale messages before
 // re-populating the channel from a fresh source (e.g. follower-sync before
 // installing a leader's checkpoint: messages enqueued by the FSM hot path
-// pre-sync reference state — period IDs, sequence ranges, checkpoint paths —
+// pre-sync reference state — chapter IDs, sequence ranges, checkpoint paths —
 // that may no longer line up with the post-sync FSMState).
 func (wc *Channel[T]) Drain() int {
 	n := 0

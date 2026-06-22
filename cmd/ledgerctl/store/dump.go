@@ -229,8 +229,8 @@ func decodeGlobalValue(key, val []byte) string {
 	switch key[1] {
 	case dal.SubGlobLedgerInfo:
 		return tryProtoJSON(val, &commonpb.LedgerInfo{})
-	case dal.SubGlobPeriods:
-		return tryProtoJSON(val, &commonpb.Period{})
+	case dal.SubGlobChapters:
+		return tryProtoJSON(val, &commonpb.Chapter{})
 	case dal.SubGlobEventsConfig:
 		return tryProtoJSON(val, &commonpb.SinkConfig{})
 	case dal.SubGlobSinkStatus:
@@ -238,7 +238,7 @@ func decodeGlobalValue(key, val []byte) string {
 	case dal.SubGlobQueryCheckpoint:
 		return tryProtoJSON(val, &raftcmdpb.QueryCheckpointState{})
 	case dal.SubGlobLastAppliedIndex, dal.SubGlobLastAppliedTimestamp,
-		dal.SubGlobNextPeriodID, dal.SubGlobNextQueryCheckpointID:
+		dal.SubGlobNextChapterID, dal.SubGlobNextQueryCheckpointID:
 		if len(val) == 8 {
 			return fmt.Sprintf("uint64=%d", binary.BigEndian.Uint64(val))
 		}
@@ -256,7 +256,7 @@ func decodeGlobalValue(key, val []byte) string {
 		}
 
 		return hexVal(val)
-	case dal.SubGlobPeriodSchedule, dal.SubGlobQueryCheckpointSchedule:
+	case dal.SubGlobChapterSchedule, dal.SubGlobQueryCheckpointSchedule:
 		return fmt.Sprintf("cron=%q", string(val))
 	case dal.SubGlobPersistedConfig:
 		return tryProtoJSON(val, &commonpb.PersistedConfig{})
@@ -341,16 +341,16 @@ func describeGlobalKey(key []byte) string {
 		return "SIGNING_KEY id=" + safeString(key[2:])
 	case dal.SubGlobSigningConfig:
 		return "SIGNING_CONFIG"
-	case dal.SubGlobPeriods:
+	case dal.SubGlobChapters:
 		if len(key) >= 10 {
 			id := binary.BigEndian.Uint64(key[2:10])
 
-			return fmt.Sprintf("PERIOD id=%d", id)
+			return fmt.Sprintf("CHAPTER id=%d", id)
 		}
 
-		return "PERIOD (short key)"
-	case dal.SubGlobNextPeriodID:
-		return "NEXT_PERIOD_ID"
+		return "CHAPTER (short key)"
+	case dal.SubGlobNextChapterID:
+		return "NEXT_CHAPTER_ID"
 	case dal.SubGlobSinkCursor:
 		return "SINK_CURSOR name=" + safeString(key[2:])
 	case dal.SubGlobEventsConfig:
@@ -361,8 +361,8 @@ func describeGlobalKey(key []byte) string {
 		return "MAINTENANCE_MODE"
 	case dal.SubGlobPersistedConfig:
 		return "PERSISTED_CONFIG"
-	case dal.SubGlobPeriodSchedule:
-		return "PERIOD_SCHEDULE"
+	case dal.SubGlobChapterSchedule:
+		return "CHAPTER_SCHEDULE"
 	case dal.SubGlobQueryCheckpoint:
 		if len(key) >= 10 {
 			id := binary.BigEndian.Uint64(key[2:10])

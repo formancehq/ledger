@@ -158,21 +158,21 @@ func saveClusterState(b *dal.WriteSession, state *commonpb.PersistedClusterState
 	return b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig}, state)
 }
 
-// SavePeriodSchedule stores the period schedule cron expression in the batch.
-func SavePeriodSchedule(b *dal.WriteSession, cron string) error {
-	err := b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPeriodSchedule}, []byte(cron))
+// SaveChapterSchedule stores the chapter schedule cron expression in the batch.
+func SaveChapterSchedule(b *dal.WriteSession, cron string) error {
+	err := b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobChapterSchedule}, []byte(cron))
 	if err != nil {
-		return fmt.Errorf("saving period schedule: %w", err)
+		return fmt.Errorf("saving chapter schedule: %w", err)
 	}
 
 	return nil
 }
 
-// BatchDeletePeriodSchedule removes the period schedule from the batch.
-func batchDeletePeriodSchedule(b *dal.WriteSession) error {
-	err := b.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobPeriodSchedule})
+// BatchDeleteChapterSchedule removes the chapter schedule from the batch.
+func batchDeleteChapterSchedule(b *dal.WriteSession) error {
+	err := b.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobChapterSchedule})
 	if err != nil {
-		return fmt.Errorf("deleting period schedule: %w", err)
+		return fmt.Errorf("deleting chapter schedule: %w", err)
 	}
 
 	return nil
@@ -340,28 +340,28 @@ func ClearSinkStatus(b *dal.WriteSession, sinkName string) error {
 	return nil
 }
 
-// StorePeriod marshals and writes a single period keyed by its ID.
-func StorePeriod(b *dal.WriteSession, period *commonpb.Period) error {
+// StoreChapter marshals and writes a single chapter keyed by its ID.
+func StoreChapter(b *dal.WriteSession, chapter *commonpb.Chapter) error {
 	b.KeyBuilder.
-		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobPeriods).
-		PutUint64(period.GetId())
+		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobChapters).
+		PutUint64(chapter.GetId())
 
-	err := b.SetProto(b.KeyBuilder.Consume(), period)
+	err := b.SetProto(b.KeyBuilder.Consume(), chapter)
 	if err != nil {
-		return fmt.Errorf("storing period: %w", err)
+		return fmt.Errorf("storing chapter: %w", err)
 	}
 
 	return nil
 }
 
-// StoreNextPeriodID writes the next period ID as 8-byte big-endian uint64.
-func StoreNextPeriodID(b *dal.WriteSession, id uint64) error {
+// StoreNextChapterID writes the next chapter ID as 8-byte big-endian uint64.
+func StoreNextChapterID(b *dal.WriteSession, id uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, id)
 
-	err := b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobNextPeriodID}, value)
+	err := b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobNextChapterID}, value)
 	if err != nil {
-		return fmt.Errorf("storing next period ID: %w", err)
+		return fmt.Errorf("storing next chapter ID: %w", err)
 	}
 
 	return nil

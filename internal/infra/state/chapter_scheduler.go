@@ -10,49 +10,49 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 )
 
-// PeriodScheduler runs on every node but only triggers period rotation on the leader.
-// It watches the Machine's period schedule cron expression and proposes ClosePeriod
+// ChapterScheduler runs on every node but only triggers chapter rotation on the leader.
+// It watches the Machine's chapter schedule cron expression and proposes CloseChapter
 // orders when the cron fires.
-type PeriodScheduler struct {
-	logger            logging.Logger
-	isLeader          func() bool
-	getPeriodSchedule func() string
-	proposeFn         func() error
-	scheduleChanged   signal.Signal
-	w                 worker.Worker
+type ChapterScheduler struct {
+	logger             logging.Logger
+	isLeader           func() bool
+	getChapterSchedule func() string
+	proposeFn          func() error
+	scheduleChanged    signal.Signal
+	w                  worker.Worker
 }
 
-// NewPeriodScheduler creates a new PeriodScheduler.
-// proposeFn should propose a ClosePeriod via the admission layer.
-func NewPeriodScheduler(
+// NewChapterScheduler creates a new ChapterScheduler.
+// proposeFn should propose a CloseChapter via the admission layer.
+func NewChapterScheduler(
 	logger logging.Logger,
 	isLeader func() bool,
-	getPeriodSchedule func() string,
+	getChapterSchedule func() string,
 	proposeFn func() error,
 	scheduleChanged signal.Signal,
-) *PeriodScheduler {
-	return &PeriodScheduler{
-		logger:            logger,
-		isLeader:          isLeader,
-		getPeriodSchedule: getPeriodSchedule,
-		proposeFn:         proposeFn,
-		scheduleChanged:   scheduleChanged,
-		w:                 worker.New(),
+) *ChapterScheduler {
+	return &ChapterScheduler{
+		logger:             logger,
+		isLeader:           isLeader,
+		getChapterSchedule: getChapterSchedule,
+		proposeFn:          proposeFn,
+		scheduleChanged:    scheduleChanged,
+		w:                  worker.New(),
 	}
 }
 
 // Start launches the background scheduler goroutine.
-func (ps *PeriodScheduler) Start() {
+func (ps *ChapterScheduler) Start() {
 	ps.w.Run(ps.loop)
 }
 
 // Stop signals the scheduler to stop and waits for it to finish.
-func (ps *PeriodScheduler) Stop() {
+func (ps *ChapterScheduler) Stop() {
 	ps.w.Stop()
 }
 
 // loop is the main scheduler loop.
-func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
+func (ps *ChapterScheduler) loop(stop <-chan struct{}) {
 	var timer *time.Timer
 
 	defer func() {
@@ -66,7 +66,7 @@ func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 			timer.Stop()
 		}
 
-		cronExpr := ps.getPeriodSchedule()
+		cronExpr := ps.getChapterSchedule()
 		if cronExpr == "" {
 			timer = nil
 
@@ -78,7 +78,7 @@ func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 			ps.logger.WithFields(map[string]any{
 				"cron":  cronExpr,
 				"error": err,
-			}).Errorf("Invalid period schedule cron expression, disabling scheduler")
+			}).Errorf("Invalid chapter schedule cron expression, disabling scheduler")
 
 			timer = nil
 
@@ -92,7 +92,7 @@ func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 		ps.logger.WithFields(map[string]any{
 			"cron":     cronExpr,
 			"nextFire": nextFire.Format(time.RFC3339),
-		}).Infof("Period scheduler armed")
+		}).Infof("Chapter scheduler armed")
 
 		timer = time.NewTimer(delay)
 
@@ -109,10 +109,10 @@ func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 			timerCh = resetTimer()
 		case <-timerCh:
 			if ps.isLeader() {
-				ps.logger.Infof("Period scheduler firing: proposing ClosePeriod")
+				ps.logger.Infof("Chapter scheduler firing: proposing CloseChapter")
 
 				if err := ps.proposeFn(); err != nil {
-					ps.logger.Errorf("Failed to propose ClosePeriod: %v (will retry on next tick)", err)
+					ps.logger.Errorf("Failed to propose CloseChapter: %v (will retry on next tick)", err)
 				}
 			}
 

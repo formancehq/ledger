@@ -2469,10 +2469,10 @@ components:
             postCommitVolumes:
               $ref: '#/components/schemas/PostCommitVolumes'
               description: Post-commit volumes per account/asset (only present when expandVolumes is true)
-            periodId:
+            chapterId:
               type: integer
               format: uint64
-              description: Period that was OPEN when this transaction was created
+              description: Chapter that was OPEN when this transaction was created
             previousAccountMetadata:
               type: object
               additionalProperties:

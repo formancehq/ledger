@@ -29,7 +29,7 @@ Ledger v3 sustains 106,000 transactions per second on modest hardware: a 3-node 
 - **Maintenance mode** -- graceful read-only mode for planned operations
 - **Event sinks** -- Kafka, NATS, ClickHouse, and Databricks integrations via build tags
 - **Full OpenTelemetry** -- traces, metrics, and logs with optional Pyroscope continuous profiling
-- **Periods and archiving** -- time-based partitioning and cold storage offloading
+- **Chapters and archiving** -- time-based partitioning and cold storage offloading
 - **Prepared queries** -- pre-compiled read queries for low-latency reporting
 
 ## Detail Pages

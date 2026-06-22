@@ -68,7 +68,7 @@ func TestRunWithoutPreload_ClearsPreSetExecutionPlan(t *testing.T) {
 
 // TestRun_IdempotencyOnlyNeedsTakesFastPath pins the AttributeKeysCount
 // gate: a proposal that only carries idempotency keys (no cache
-// attribute reads — e.g. maintenance / signing / period-schedule
+// attribute reads — e.g. maintenance / signing / chapter-schedule
 // operations) must take runWithoutPreload, not the slow path. Without
 // this, the slow path would serialize cache_epoch on cmd and a
 // cluster-config reset between Build and apply would spuriously reject

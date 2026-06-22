@@ -96,7 +96,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
-	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("mirror-ledger", gomock.Any()).Do(
 		func(_ string, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b },
 	)

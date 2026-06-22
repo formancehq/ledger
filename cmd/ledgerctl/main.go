@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/audit"
 	authcmd "github.com/formancehq/ledger/v3/cmd/ledgerctl/auth"
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/chapters"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cluster"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/events"
@@ -23,7 +24,6 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/logs"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/numscripts"
-	"github.com/formancehq/ledger/v3/cmd/ledgerctl/periods"
 	profilecmd "github.com/formancehq/ledger/v3/cmd/ledgerctl/profile"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/provision"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/queries"
@@ -152,7 +152,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(logs.NewCommand())
 	rootCmd.AddCommand(signing.NewCommand())
 	rootCmd.AddCommand(events.NewCommand())
-	rootCmd.AddCommand(periods.NewCommand())
+	rootCmd.AddCommand(chapters.NewCommand())
 	rootCmd.AddCommand(restore.NewCommand())
 	rootCmd.AddCommand(authcmd.NewCommand())
 	rootCmd.AddCommand(profilecmd.NewCommand())

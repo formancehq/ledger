@@ -369,13 +369,13 @@ func TestBuildAuditFailure(t *testing.T) {
 		require.Equal(t, "missing-sink", failure.GetContext()["name"])
 	})
 
-	t.Run("PeriodNotClosed", func(t *testing.T) {
+	t.Run("ChapterNotClosed", func(t *testing.T) {
 		t.Parallel()
 
-		err := &domain.ErrPeriodNotClosed{PeriodID: 3}
+		err := &domain.ErrChapterNotClosed{ChapterID: 3}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonPeriodNotClosed, failure.GetErrorType())
-		require.Equal(t, "3", failure.GetContext()["periodId"])
+		require.Equal(t, domain.ErrReasonChapterNotClosed, failure.GetErrorType())
+		require.Equal(t, "3", failure.GetContext()["chapterId"])
 	})
 
 	t.Run("Unknown", func(t *testing.T) {

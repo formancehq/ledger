@@ -247,17 +247,17 @@ func listLogsPageWithTrailer(ctx context.Context, client servicepb.BucketService
 // termination signal.
 const listAllPageSize uint32 = 1000
 
-// ListAllPeriods collects every period across the cluster, following the
-// x-next-cursor trailer chain so installations with more periods than the
+// ListAllChapters collects every chapter across the cluster, following the
+// x-next-cursor trailer chain so installations with more chapters than the
 // server's default page still surface them all.
-func ListAllPeriods(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Period, error) {
+func ListAllChapters(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Chapter, error) {
 	var (
-		periods []*commonpb.Period
-		nextCur string
+		chapters []*commonpb.Chapter
+		nextCur  string
 	)
 
 	for {
-		stream, err := client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{
+		stream, err := client.ListChapters(ctx, &servicepb.ListChaptersRequest{
 			Options: &commonpb.ListOptions{PageSize: listAllPageSize, Cursor: nextCur},
 		})
 		if err != nil {
@@ -265,19 +265,19 @@ func ListAllPeriods(ctx context.Context, client servicepb.BucketServiceClient) (
 		}
 
 		for {
-			period, recvErr := stream.Recv()
+			chapter, recvErr := stream.Recv()
 			if errors.Is(recvErr, io.EOF) {
 				break
 			}
 			if recvErr != nil {
 				return nil, recvErr
 			}
-			periods = append(periods, period)
+			chapters = append(chapters, chapter)
 		}
 
 		next := nextCursorFromTrailer(stream.Trailer())
 		if next == "" {
-			return periods, nil
+			return chapters, nil
 		}
 		nextCur = next
 	}
@@ -419,9 +419,9 @@ func GetMetadataSchemaStatus(ctx context.Context, client servicepb.BucketService
 	})
 }
 
-// GetPeriodSchedule retrieves the current period schedule cron expression.
-func GetPeriodSchedule(ctx context.Context, client servicepb.BucketServiceClient) (string, error) {
-	resp, err := client.GetPeriodSchedule(ctx, &servicepb.GetPeriodScheduleRequest{})
+// GetChapterSchedule retrieves the current chapter schedule cron expression.
+func GetChapterSchedule(ctx context.Context, client servicepb.BucketServiceClient) (string, error) {
+	resp, err := client.GetChapterSchedule(ctx, &servicepb.GetChapterScheduleRequest{})
 	if err != nil {
 		return "", err
 	}

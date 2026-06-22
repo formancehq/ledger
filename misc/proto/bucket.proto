@@ -41,14 +41,14 @@ service BucketService {
   rpc GetAuditEntry(GetAuditEntryRequest) returns (audit.AuditEntry);
   // GetEventsSinks returns the current per-sink configurations and statuses
   rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse);
-  // ListPeriods streams all periods
-  rpc ListPeriods(ListPeriodsRequest) returns (stream common.Period);
+  // ListChapters streams all chapters
+  rpc ListChapters(ListChaptersRequest) returns (stream common.Chapter);
   // ListLogs streams system logs; when ledger is set, streams only logs for that ledger
   rpc ListLogs(ListLogsRequest) returns (stream common.Log);
   // GetLog returns a single system log by sequence number
   rpc GetLog(GetLogRequest) returns (common.Log);
-  // GetPeriodSchedule returns the current automatic period rotation schedule
-  rpc GetPeriodSchedule(GetPeriodScheduleRequest) returns (GetPeriodScheduleResponse);
+  // GetChapterSchedule returns the current automatic chapter rotation schedule
+  rpc GetChapterSchedule(GetChapterScheduleRequest) returns (GetChapterScheduleResponse);
   // ListSigningKeys streams all registered signing keys
   rpc ListSigningKeys(ListSigningKeysRequest) returns (stream common.SigningKey);
   // Discovery returns server capabilities and configuration for clients
@@ -221,13 +221,13 @@ message Request {
     SetSigningConfigRequest set_signing_config = 8;
     AddEventsSinkRequest add_events_sink = 9;
     RemoveEventsSinkRequest remove_events_sink = 10;
-    ClosePeriodRequest close_period = 11;
-    SealPeriodRequest seal_period = 12;
-    ArchivePeriodRequest archive_period = 13;
-    ConfirmArchivePeriodRequest confirm_archive_period = 14;
+    CloseChapterRequest close_chapter = 11;
+    SealChapterRequest seal_chapter = 12;
+    ArchiveChapterRequest archive_chapter = 13;
+    ConfirmArchiveChapterRequest confirm_archive_chapter = 14;
     SetMaintenanceModeRequest set_maintenance_mode = 15;
-    SetPeriodScheduleRequest set_period_schedule = 16;
-    DeletePeriodScheduleRequest delete_period_schedule = 17;
+    SetChapterScheduleRequest set_chapter_schedule = 16;
+    DeleteChapterScheduleRequest delete_chapter_schedule = 17;
     SetMetadataFieldTypeRequest set_metadata_field_type = 18;
     RemoveMetadataFieldTypeRequest remove_metadata_field_type = 19;
     PromoteLedgerRequest promote_ledger = 21;
@@ -320,23 +320,23 @@ message ListSigningKeysRequest {
   common.ListOptions options = 1;
 }
 
-message ClosePeriodRequest {}
+message CloseChapterRequest {}
 
-message SealPeriodRequest {
-  fixed64 period_id = 1;
+message SealChapterRequest {
+  fixed64 chapter_id = 1;
   bytes sealing_hash = 2;
   bytes state_hash = 3;
 }
 
-message ArchivePeriodRequest {
-  fixed64 period_id = 1;
+message ArchiveChapterRequest {
+  fixed64 chapter_id = 1;
 }
 
-message ConfirmArchivePeriodRequest {
-  fixed64 period_id = 1;
+message ConfirmArchiveChapterRequest {
+  fixed64 chapter_id = 1;
 }
 
-message ListPeriodsRequest {
+message ListChaptersRequest {
   common.ListOptions options = 1;
 }
 
@@ -346,13 +346,13 @@ message SetMaintenanceModeRequest {
   bool enabled = 1;   // Whether maintenance mode is active
 }
 
-// SetPeriodScheduleRequest sets the automatic period rotation schedule.
-message SetPeriodScheduleRequest {
+// SetChapterScheduleRequest sets the automatic chapter rotation schedule.
+message SetChapterScheduleRequest {
   string cron = 1;   // Cron expression (standard 5-field)
 }
 
-// DeletePeriodScheduleRequest disables the automatic period rotation schedule.
-message DeletePeriodScheduleRequest {}
+// DeleteChapterScheduleRequest disables the automatic chapter rotation schedule.
+message DeleteChapterScheduleRequest {}
 
 // SetMetadataFieldTypeRequest declares or changes the type of a single metadata key.
 // Automatically triggers background conversion for that key.
@@ -442,9 +442,9 @@ message SetQueryCheckpointScheduleRequest {
 // DeleteQueryCheckpointScheduleRequest disables the automatic query checkpoint schedule.
 message DeleteQueryCheckpointScheduleRequest {}
 
-message GetPeriodScheduleRequest {}
+message GetChapterScheduleRequest {}
 
-message GetPeriodScheduleResponse {
+message GetChapterScheduleResponse {
   string cron = 1;   // Current cron expression, empty if disabled
 }
 

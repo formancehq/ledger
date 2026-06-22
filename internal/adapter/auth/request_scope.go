@@ -25,19 +25,19 @@ func RequiredScopeForRequest(req *servicepb.Request) Scope {
 		return ScopeOpsWrite
 	case *servicepb.Request_RemoveEventsSink:
 		return ScopeOpsWrite
-	case *servicepb.Request_ClosePeriod:
+	case *servicepb.Request_CloseChapter:
 		return ScopeOpsWrite
-	case *servicepb.Request_SealPeriod:
+	case *servicepb.Request_SealChapter:
 		return ScopeOpsWrite
-	case *servicepb.Request_ArchivePeriod:
+	case *servicepb.Request_ArchiveChapter:
 		return ScopeOpsWrite
-	case *servicepb.Request_ConfirmArchivePeriod:
+	case *servicepb.Request_ConfirmArchiveChapter:
 		return ScopeOpsWrite
 	case *servicepb.Request_SetMaintenanceMode:
 		return ScopeOpsWrite
-	case *servicepb.Request_SetPeriodSchedule:
+	case *servicepb.Request_SetChapterSchedule:
 		return ScopeOpsWrite
-	case *servicepb.Request_DeletePeriodSchedule:
+	case *servicepb.Request_DeleteChapterSchedule:
 		return ScopeOpsWrite
 	case *servicepb.Request_SetMetadataFieldType:
 		return ScopeMetadataWrite

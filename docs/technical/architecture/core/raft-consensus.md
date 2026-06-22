@@ -65,7 +65,7 @@ Machine state (conceptual):
   // ... and other attribute KeyStores (Transactions, SinkConfigs, etc.)
 ```
 
-The recoverable scalars live on `FSMState` (`internal/infra/state/fsmstate.go`); sub-trackers (`Registry`, `Periods`, `KeyStore`, …) stay on `Machine` directly with their own lifecycles.
+The recoverable scalars live on `FSMState` (`internal/infra/state/fsmstate.go`); sub-trackers (`Registry`, `Chapters`, `KeyStore`, …) stay on `Machine` directly with their own lifecycles.
 
 ### Advantages of Single Raft
 
@@ -451,7 +451,7 @@ All reads use the etcd/raft **ReadIndex** mechanism to provide linearizable cons
 
 **Exceptions**:
 - `Apply` (writes) are still forwarded to the leader via gRPC, since writes must go through Raft consensus.
-- `ListPeriods` is forwarded to the leader because period state is kept in-memory only on the leader.
+- `ListChapters` is forwarded to the leader because chapter state is kept in-memory only on the leader.
 
 **Fallback during sync**:
 - If the node is still syncing (restoring a snapshot or replaying spool), `ReadIndexAndWait` returns `ErrNodeSyncing`.

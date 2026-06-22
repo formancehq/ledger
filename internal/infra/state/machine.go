@@ -63,8 +63,8 @@ type Machine struct {
 	mu sync.Mutex
 
 	// Composed subsystems
-	Registry *StateRegistry // KeyStores + Cache + Attrs
-	Periods  *PeriodTracker // Period lifecycle
+	Registry *StateRegistry  // KeyStores + Cache + Attrs
+	Chapters *ChapterTracker // Chapter lifecycle
 
 	// State groups the FSM-level mutable state (counters, timestamps, audit
 	// chain, cluster config, pending ledger cleanups). It is the explicit
@@ -84,11 +84,11 @@ type Machine struct {
 	// RequestProcessor handles business logic
 	processor *processing.RequestProcessor
 
-	// sealRequestCh receives seal requests when a ClosePeriod log is applied.
+	// sealRequestCh receives seal requests when a CloseChapter log is applied.
 	// The Sealer reads from this channel to perform background sealing.
 	sealRequestCh *worker.Channel[SealRequest]
 
-	// archiveRequestCh receives archive requests when an ArchivePeriod order is applied.
+	// archiveRequestCh receives archive requests when an ArchiveChapter order is applied.
 	// The Archiver reads from this channel to perform background archival to cold storage.
 	archiveRequestCh *worker.Channel[ArchiveRequest]
 
@@ -97,7 +97,7 @@ type Machine struct {
 	// background conversion of existing account metadata values.
 	metadataConvertRequestCh *worker.Channel[MetadataConvertRequest]
 
-	// coldCompactionCh signals the SmartCompactor that a period purge has been applied,
+	// coldCompactionCh signals the SmartCompactor that a chapter purge has been applied,
 	// meaning the cold zone [0x01, 0xF1) contains fresh tombstones that benefit from compaction.
 	coldCompactionCh chan struct{}
 
@@ -244,7 +244,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		keyStore:                       ks,
 		sharedState:                    sharedState,
 		Registry:                       registry,
-		Periods:                        NewPeriodTracker(nil, nil, nil, 0, ""),
+		Chapters:                       NewChapterTracker(nil, nil, nil, 0, ""),
 		State:                          NewFSMState(clusterID),
 		queryCheckpointScheduleChanged: signal.New(),
 		sealRequestCh:                  worker.NewChannel[SealRequest](logger, "seal request", 10),
@@ -288,7 +288,7 @@ func (fsm *Machine) LastAppliedIndex() uint64 {
 // RestoreState atomically replaces the FSM-level state. The intended callers
 // are Recovery (at boot) and Synchronizer (after install-snapshot), which
 // build a fresh FSMState from Pebble via LoadFSMStateFromStore and swap it
-// in here. Sub-trackers (Periods, Registry.Reversions, KeyStore,
+// in here. Sub-trackers (Chapters, Registry.Reversions, KeyStore,
 // SharedState, Registry.Cache settings, Registry.Idempotency) are NOT
 // touched by this method — they have their own lifecycles and the caller
 // is responsible for resetting them in the same critical section.
@@ -622,7 +622,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		// place because reaching it would mean either the upfront validator and
 		// this dynamic detection disagree, or applyProposal produced a trigger
 		// effect from a proposal whose orders did not carry a trigger.
-		sealReqBase := fsm.checkClosePeriod(result)
+		sealReqBase := fsm.checkCloseChapter(result)
 		queryCheckpointCreated := result.QueryCheckpointCreated > 0
 
 		if (sealReqBase != nil || queryCheckpointCreated) && i != len(entries)-1 {
@@ -643,10 +643,10 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 
 		if sealReqBase != nil {
 			ret.CheckpointRequired = true
-			ret.CheckpointPeriodID = sealReqBase.PeriodID
+			ret.CheckpointChapterID = sealReqBase.ChapterID
 			ret.OnCheckpointDone = func(checkpointPath string) {
 				sealReqBase.CheckpointPath = checkpointPath
-				fsm.sealRequestCh.TrySend(*sealReqBase, fmt.Sprintf("period %d", sealReqBase.PeriodID))
+				fsm.sealRequestCh.TrySend(*sealReqBase, fmt.Sprintf("chapter %d", sealReqBase.ChapterID))
 			}
 		}
 
@@ -693,12 +693,12 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		pb.sentinelTracer = fsm.sentinelTracer
 	}
 
-	// Capture archive requests from current period state.
+	// Capture archive requests from current chapter state.
 	if needsArchiveDispatch {
-		for _, p := range fsm.Periods.AllPeriods() {
-			if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVING {
+		for _, p := range fsm.Chapters.AllChapters() {
+			if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVING {
 				pb.archiveRequests = append(pb.archiveRequests, ArchiveRequest{
-					PeriodID:           p.GetId(),
+					ChapterID:          p.GetId(),
 					StartSequence:      p.GetStartSequence(),
 					CloseSequence:      p.GetCloseSequence(),
 					StartAuditSequence: p.GetStartAuditSequence(),
@@ -806,7 +806,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	// Dispatch post-commit side effects using captured data.
 	for _, req := range pb.archiveRequests {
-		fsm.archiveRequestCh.TrySend(req, fmt.Sprintf("period %d", req.PeriodID))
+		fsm.archiveRequestCh.TrySend(req, fmt.Sprintf("chapter %d", req.ChapterID))
 	}
 
 	for _, cpID := range pb.checkpointDeletes {
@@ -1062,7 +1062,7 @@ func planInvariantDescribable(err error) domain.Describable {
 
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.WriteSession, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
 	// FSM-level safety net mirroring the admission check: a checkpoint trigger
-	// (CreateQueryCheckpoint or ClosePeriod) must be the last order. The
+	// (CreateQueryCheckpoint or CloseChapter) must be the last order. The
 	// applier relies on this so it can place a Pebble-batch boundary at this
 	// proposal — a trigger that is not last would force a mid-batch commit
 	// and race the pipelined committer. Any violation here means the
@@ -1176,7 +1176,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Compute the effective date using the HLC to guarantee monotonicity
 	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
-	if err := fsm.ensurePeriodBootstrapped(effectiveDate, batch); err != nil {
+	if err := fsm.ensureChapterBootstrapped(effectiveDate, batch); err != nil {
 		return nil, err
 	}
 
@@ -1388,7 +1388,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Capture the audit hash BEFORE writing this proposal's audit entry.
 	// This is the hash of the predecessor — used as LastAuditHash on the
-	// period so the checker can chain-verify from the first non-purged entry.
+	// chapter so the checker can chain-verify from the first non-purged entry.
 	preAuditHash := make([]byte, len(fsm.State.LastAuditHash))
 	copy(preAuditHash, fsm.State.LastAuditHash)
 
@@ -1417,15 +1417,15 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, appendErr
 	}
 
-	// Update closing period's LastAuditHash if this batch contains a ClosePeriod.
+	// Update closing chapter's LastAuditHash if this batch contains a CloseChapter.
 	// We use preAuditHash (the hash before this proposal's audit entry) so the
 	// checker can use it as the chain input when verifying the first non-purged
 	// audit entry after archive.
 	for _, logOrRef := range logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
-			if cp := created.GetPayload().GetClosePeriod(); cp != nil {
-				if closingPeriod := fsm.Periods.LatestClosingPeriod(); closingPeriod != nil {
-					closingPeriod.LastAuditHash = preAuditHash
+			if cp := created.GetPayload().GetCloseChapter(); cp != nil {
+				if closingChapter := fsm.Chapters.LatestClosingChapter(); closingChapter != nil {
+					closingChapter.LastAuditHash = preAuditHash
 				}
 			}
 		}
@@ -1486,7 +1486,7 @@ func (fsm *Machine) Close() {
 }
 
 // SealRequestCh returns the channel used to communicate seal requests between
-// the Machine (writer, on ClosePeriod) and the Sealer (reader).
+// the Machine (writer, on CloseChapter) and the Sealer (reader).
 // Both sides need send access (Machine for normal flow, Sealer/Node for recovery).
 func (fsm *Machine) SealRequestCh() *worker.Channel[SealRequest] {
 	return fsm.sealRequestCh
@@ -1502,7 +1502,7 @@ func (fsm *Machine) StopBackgroundTasks() {
 // DrainBackgroundChannels empties every background-request channel without
 // blocking. Called by Synchronizer.SynchronizeWithLeader before the leader's
 // checkpoint is installed: messages enqueued by the FSM hot path pre-sync
-// reference period IDs, sequence ranges and checkpoint paths that may no
+// reference chapter IDs, sequence ranges and checkpoint paths that may no
 // longer line up with the post-sync FSMState. Fresh requests are re-pushed
 // from durable state by Recovery.DispatchArchiveRequests /
 // DispatchMetadataConversionRequests when leadership is (re)acquired, and by
@@ -1538,7 +1538,7 @@ func (fsm *Machine) MetadataConvertRequestCh() *worker.Channel[MetadataConvertRe
 }
 
 // ColdCompactionCh returns the channel that signals the SmartCompactor when
-// cold zone compaction is needed (after period purges).
+// cold zone compaction is needed (after chapter purges).
 func (fsm *Machine) ColdCompactionCh() <-chan struct{} {
 	return fsm.coldCompactionCh
 }
@@ -1551,17 +1551,17 @@ func (fsm *Machine) BloomRebuildCh() <-chan string {
 	return fsm.bloomRebuildCh
 }
 
-// dispatchArchiveRequests sends archive requests for all ARCHIVING periods
+// dispatchArchiveRequests sends archive requests for all ARCHIVING chapters
 // to the archiver channel.
 //
 // When stop is non-nil (recovery/reconciliation paths), sends block until
 // the worker drains or stop is closed.
 // When stop is nil (FSM apply path), sends are non-blocking with drop logging.
 func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
-	for _, p := range fsm.Periods.AllPeriods() {
-		if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVING {
+	for _, p := range fsm.Chapters.AllChapters() {
+		if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVING {
 			req := ArchiveRequest{
-				PeriodID:           p.GetId(),
+				ChapterID:          p.GetId(),
 				StartSequence:      p.GetStartSequence(),
 				CloseSequence:      p.GetCloseSequence(),
 				StartAuditSequence: p.GetStartAuditSequence(),
@@ -1573,7 +1573,7 @@ func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
 					return
 				}
 			} else {
-				fsm.archiveRequestCh.TrySend(req, fmt.Sprintf("period %d", req.PeriodID))
+				fsm.archiveRequestCh.TrySend(req, fmt.Sprintf("chapter %d", req.ChapterID))
 			}
 		}
 	}
@@ -1602,73 +1602,73 @@ func (fsm *Machine) dispatchConvertingFields(stop <-chan struct{}, info *commonp
 // OnLeadershipAcquired lives on Recovery (it needs the Pebble reader for
 // metadata-conversion dispatch). Callers should invoke Recovery.OnLeadershipAcquired.
 
-// ensurePeriodBootstrapped creates the first period deterministically at the
-// first proposal. The period start timestamp is derived from the proposal's
+// ensureChapterBootstrapped creates the first chapter deterministically at the
+// first proposal. The chapter start timestamp is derived from the proposal's
 // effective date so that all nodes produce the same deterministic state.
-func (fsm *Machine) ensurePeriodBootstrapped(effectiveDate *commonpb.Timestamp, batch *dal.WriteSession) error {
-	if fsm.Periods.CurrentOpenPeriod() != nil {
+func (fsm *Machine) ensureChapterBootstrapped(effectiveDate *commonpb.Timestamp, batch *dal.WriteSession) error {
+	if fsm.Chapters.CurrentOpenChapter() != nil {
 		return nil
 	}
 
-	p := &commonpb.Period{
+	p := &commonpb.Chapter{
 		Id:            1,
 		Start:         effectiveDate,
-		Status:        commonpb.PeriodStatus_PERIOD_OPEN,
+		Status:        commonpb.ChapterStatus_CHAPTER_OPEN,
 		StartSequence: 1,
 	}
-	fsm.Periods.SetCurrentOpenPeriod(p)
-	fsm.Periods.SetNextPeriodID(2)
+	fsm.Chapters.SetCurrentOpenChapter(p)
+	fsm.Chapters.SetNextChapterID(2)
 
-	if err := StorePeriod(batch, p); err != nil {
-		return fmt.Errorf("storing bootstrapped period: %w", err)
+	if err := StoreChapter(batch, p); err != nil {
+		return fmt.Errorf("storing bootstrapped chapter: %w", err)
 	}
 
-	if err := StoreNextPeriodID(batch, fsm.Periods.NextPeriodID()); err != nil {
-		return fmt.Errorf("storing next period ID: %w", err)
+	if err := StoreNextChapterID(batch, fsm.Chapters.NextChapterID()); err != nil {
+		return fmt.Errorf("storing next chapter ID: %w", err)
 	}
 
 	return nil
 }
 
-// AllPeriods returns all non-purged periods kept in memory.
-func (fsm *Machine) AllPeriods() []*commonpb.Period {
-	return fsm.Periods.AllPeriods()
+// AllChapters returns all non-purged chapters kept in memory.
+func (fsm *Machine) AllChapters() []*commonpb.Chapter {
+	return fsm.Chapters.AllChapters()
 }
 
-// ClosingPeriods returns all periods currently in CLOSING state.
+// ClosingChapters returns all chapters currently in CLOSING state.
 // Used for crash recovery on startup.
-func (fsm *Machine) ClosingPeriods() []*commonpb.Period {
-	return fsm.Periods.ClosingPeriods()
+func (fsm *Machine) ClosingChapters() []*commonpb.Chapter {
+	return fsm.Chapters.ClosingChapters()
 }
 
-// ClosingPeriodByID returns the closing period with the given ID, if any.
-func (fsm *Machine) ClosingPeriodByID(id uint64) (*commonpb.Period, bool) {
-	return fsm.Periods.ClosingPeriodByID(id)
+// ClosingChapterByID returns the closing chapter with the given ID, if any.
+func (fsm *Machine) ClosingChapterByID(id uint64) (*commonpb.Chapter, bool) {
+	return fsm.Chapters.ClosingChapterByID(id)
 }
 
-// ArchivingPeriodByID returns the period with the given ID if it is currently
+// ArchivingChapterByID returns the chapter with the given ID if it is currently
 // in ARCHIVING status. Used by the Archiver to gate consumption of stale
 // requests after a follower sync: if the leader has already advanced the
-// period to ARCHIVED (or further), the request must not produce a cold-storage
+// chapter to ARCHIVED (or further), the request must not produce a cold-storage
 // write — the data ranges it carries no longer exist in the restored Pebble.
-func (fsm *Machine) ArchivingPeriodByID(id uint64) (*commonpb.Period, bool) {
-	p, ok := fsm.Periods.GetPeriodByID(id)
-	if !ok || p.GetStatus() != commonpb.PeriodStatus_PERIOD_ARCHIVING {
+func (fsm *Machine) ArchivingChapterByID(id uint64) (*commonpb.Chapter, bool) {
+	p, ok := fsm.Chapters.GetChapterByID(id)
+	if !ok || p.GetStatus() != commonpb.ChapterStatus_CHAPTER_ARCHIVING {
 		return nil, false
 	}
 
 	return p, true
 }
 
-// PeriodSchedule returns the current period schedule cron expression.
+// ChapterSchedule returns the current chapter schedule cron expression.
 // Empty string means the schedule is disabled.
-func (fsm *Machine) PeriodSchedule() string {
-	return fsm.Periods.Schedule()
+func (fsm *Machine) ChapterSchedule() string {
+	return fsm.Chapters.Schedule()
 }
 
-// ScheduleChanged returns the Signal that fires when the period schedule changes.
+// ScheduleChanged returns the Signal that fires when the chapter schedule changes.
 func (fsm *Machine) ScheduleChanged() signal.Signal {
-	return fsm.Periods.ScheduleChanged()
+	return fsm.Chapters.ScheduleChanged()
 }
 
 // QueryCheckpointSchedule returns the current query checkpoint schedule cron expression.
@@ -1701,26 +1701,26 @@ func (fsm *Machine) QueryCheckpointScheduleChanged() signal.Signal {
 	return fsm.queryCheckpointScheduleChanged
 }
 
-// checkClosePeriod checks if the apply result contains a ClosePeriod log
+// checkCloseChapter checks if the apply result contains a CloseChapter log
 // and returns a SealRequest if the sealer should be triggered.
 // Only created logs are checked since reference sequences are idempotent
 // responses that already triggered sealing when first applied.
 //
-// Uses the FSM state's closing period (not the log payload snapshot) because
-// applyProposal updates closingPeriod.LastAuditHash after computing the batch
+// Uses the FSM state's closing chapter (not the log payload snapshot) because
+// applyProposal updates closingChapter.LastAuditHash after computing the batch
 // audit hash. The sealer must use the same value for the sealing hash to be
 // verifiable by the checker.
-func (fsm *Machine) checkClosePeriod(result *ApplyResult) *SealRequest {
+func (fsm *Machine) checkCloseChapter(result *ApplyResult) *SealRequest {
 	if result == nil {
 		return nil
 	}
 
 	for _, logOrRef := range result.Logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
-			if created.GetPayload().GetClosePeriod() != nil {
-				closingPeriod := fsm.Periods.LatestClosingPeriod()
-				if closingPeriod != nil {
-					return SealRequestFromPeriod(closingPeriod)
+			if created.GetPayload().GetCloseChapter() != nil {
+				closingChapter := fsm.Chapters.LatestClosingChapter()
+				if closingChapter != nil {
+					return SealRequestFromChapter(closingChapter)
 				}
 			}
 		}
@@ -1729,11 +1729,11 @@ func (fsm *Machine) checkClosePeriod(result *ApplyResult) *SealRequest {
 	return nil
 }
 
-func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
+func SealRequestFromChapter(chapter *commonpb.Chapter) *SealRequest {
 	return &SealRequest{
-		PeriodID:      period.GetId(),
-		CloseSequence: period.GetCloseSequence(),
-		LastAuditHash: period.GetLastAuditHash(),
+		ChapterID:     chapter.GetId(),
+		CloseSequence: chapter.GetCloseSequence(),
+		LastAuditHash: chapter.GetLastAuditHash(),
 	}
 }
 
@@ -1763,7 +1763,7 @@ type PreparedBatch struct {
 	sentinelTracer      *SentinelTracer
 
 	// archiveRequests is captured during prepare so CommitPreparedBatch
-	// does not need to read fsm.Periods (which may be mutated by the next prepare).
+	// does not need to read fsm.Chapters (which may be mutated by the next prepare).
 	archiveRequests []ArchiveRequest
 
 	entryCount int
@@ -1783,7 +1783,7 @@ type ApplyResult struct {
 	AppliedIndex            uint64 // Raft index at which this entry was applied
 	Logs                    []*raftcmdpb.CreatedLogOrReference
 	Error                   error
-	CheckpointPath          string // Set by Node after checkpoint creation (ClosePeriod proposals)
+	CheckpointPath          string // Set by Node after checkpoint creation (CloseChapter proposals)
 	ConfigChanged           bool   // True when sink configuration changed
 	MirrorConfigChanged     bool   // True when mirror ledger configuration changed
 	HasArchiveRequests      bool   // True when there are pending archive requests
@@ -1812,22 +1812,22 @@ type ApplyEntriesResult struct {
 	Results []ApplyResult
 
 	// CheckpointRequired is true when the caller must create a Pebble checkpoint
-	// before resuming entry processing (e.g. after a ClosePeriod or
+	// before resuming entry processing (e.g. after a CloseChapter or
 	// CreateQueryCheckpoint). The triggering entry is always the last in the
 	// slice that produced this result — callers must pre-split to maintain that
 	// invariant (see state.ClassifyCheckpointOrderPosition).
 	CheckpointRequired bool
 
-	// CheckpointPeriodID is the period ID that triggered the checkpoint.
-	// Used by the Applier to name the checkpoint uniquely per period.
-	CheckpointPeriodID uint64
+	// CheckpointChapterID is the chapter ID that triggered the checkpoint.
+	// Used by the Applier to name the checkpoint uniquely per chapter.
+	CheckpointChapterID uint64
 
 	// OnCheckpointDone is called by Node once the Pebble checkpoint has been created.
 	// It forges a SealRequest and sends it to the sealer.  Nil when CheckpointRequired is false.
 	OnCheckpointDone func(checkpointPath string)
 
 	// QueryCheckpointID is set when the checkpoint was triggered by a
-	// CreateQueryCheckpointOrder (not a ClosePeriod). The Applier uses this
+	// CreateQueryCheckpointOrder (not a CloseChapter). The Applier uses this
 	// to create the main store checkpoint. The read index checkpoint is
 	// created separately by the index builder when it processes the log.
 	QueryCheckpointID uint64

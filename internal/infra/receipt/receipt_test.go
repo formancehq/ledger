@@ -33,7 +33,7 @@ func TestSignAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "my-ledger", claims.Ledger)
 	require.Equal(t, uint64(42), claims.TxID)
-	require.Equal(t, uint64(1), claims.PeriodID)
+	require.Equal(t, uint64(1), claims.ChapterID)
 	require.Equal(t, "ledger-v3", claims.Issuer)
 	require.Len(t, claims.Postings, 1)
 	require.Equal(t, "world", claims.Postings[0].Source)
@@ -106,7 +106,7 @@ func TestSignMultiplePostings(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, claims.Postings, 3)
 	require.Equal(t, uint64(7), claims.TxID)
-	require.Equal(t, uint64(2), claims.PeriodID)
+	require.Equal(t, uint64(2), claims.ChapterID)
 }
 
 func TestClaimsToPostings(t *testing.T) {
@@ -209,5 +209,5 @@ func TestSignWithNilTimestamp(t *testing.T) {
 
 	claims, err := signer.Verify(token)
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), claims.PeriodID)
+	require.Equal(t, uint64(0), claims.ChapterID)
 }

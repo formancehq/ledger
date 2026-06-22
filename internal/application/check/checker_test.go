@@ -56,12 +56,12 @@ type testEngine struct {
 	idempotency            map[string]*commonpb.IdempotencyKeyValue
 	references             map[string]*commonpb.TransactionReferenceValue
 	transactionStates      map[string]*commonpb.TransactionState
-	currentOpenPeriod      *commonpb.Period
-	closingPeriods         []*commonpb.Period
+	currentOpenChapter     *commonpb.Chapter
+	closingChapters        []*commonpb.Chapter
 	nextLedgerID           uint32
 	nextAuditSequenceID    uint64
 	lastAuditHash          []byte
-	nextPeriodID           uint64
+	nextChapterID          uint64
 	raftIndex              uint64
 	pendingLedgerDeletions []string
 }
@@ -95,7 +95,7 @@ func newTestEngine(t *testing.T) *testEngine {
 		idempotency:         make(map[string]*commonpb.IdempotencyKeyValue),
 		references:          make(map[string]*commonpb.TransactionReferenceValue),
 		transactionStates:   make(map[string]*commonpb.TransactionState),
-		nextPeriodID:        1,
+		nextChapterID:       1,
 		nextAuditSequenceID: 1,
 		raftIndex:           1,
 	}
@@ -491,8 +491,8 @@ func (s *scopeImpl) RemoveSigningKey(_ string)                            {}
 func (s *scopeImpl) GetSigningKeyChildren(_ string) []string              { return nil }
 func (s *scopeImpl) SetRequireSignatures(_ bool)                          {}
 func (s *scopeImpl) SetMaintenanceMode(_ bool)                            {}
-func (s *scopeImpl) SetPeriodSchedule(_ string)                           {}
-func (s *scopeImpl) DeletePeriodSchedule()                                {}
+func (s *scopeImpl) SetChapterSchedule(_ string)                          {}
+func (s *scopeImpl) DeleteChapterSchedule()                               {}
 func (s *scopeImpl) GetSinkConfig(_ string) (*commonpb.SinkConfig, error) { return nil, nil }
 func (s *scopeImpl) AddSinkConfig(_ *commonpb.SinkConfig)                 {}
 func (s *scopeImpl) RemoveSinkConfig(_ string)                            {}
@@ -531,21 +531,21 @@ func (s *scopeImpl) GetDate() *commonpb.Timestamp {
 	return s.date
 }
 
-func (s *scopeImpl) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
-	if s.engine.currentOpenPeriod != nil {
-		return s.engine.currentOpenPeriod, true
+func (s *scopeImpl) GetCurrentOpenChapter() (*commonpb.Chapter, bool) {
+	if s.engine.currentOpenChapter != nil {
+		return s.engine.currentOpenChapter, true
 	}
 
 	return nil, false
 }
 
-func (s *scopeImpl) GetClosingPeriods() []*commonpb.Period {
-	return s.engine.closingPeriods
+func (s *scopeImpl) GetClosingChapters() []*commonpb.Chapter {
+	return s.engine.closingChapters
 }
 
-func (s *scopeImpl) GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool) {
-	for _, p := range s.engine.closingPeriods {
-		if p.GetId() == periodID {
+func (s *scopeImpl) GetClosingChapterByID(chapterID uint64) (*commonpb.Chapter, bool) {
+	for _, p := range s.engine.closingChapters {
+		if p.GetId() == chapterID {
 			return p, true
 		}
 	}
@@ -553,42 +553,42 @@ func (s *scopeImpl) GetClosingPeriodByID(periodID uint64) (*commonpb.Period, boo
 	return nil, false
 }
 
-func (s *scopeImpl) SetCurrentOpenPeriod(period *commonpb.Period) {
-	s.engine.currentOpenPeriod = period
+func (s *scopeImpl) SetCurrentOpenChapter(chapter *commonpb.Chapter) {
+	s.engine.currentOpenChapter = chapter
 }
 
-func (s *scopeImpl) AddClosingPeriod(period *commonpb.Period) {
-	s.engine.closingPeriods = append(s.engine.closingPeriods, period)
+func (s *scopeImpl) AddClosingChapter(chapter *commonpb.Chapter) {
+	s.engine.closingChapters = append(s.engine.closingChapters, chapter)
 }
 
-func (s *scopeImpl) RemoveClosingPeriod(periodID uint64) {
-	for i, p := range s.engine.closingPeriods {
-		if p.GetId() == periodID {
-			s.engine.closingPeriods = append(s.engine.closingPeriods[:i], s.engine.closingPeriods[i+1:]...)
+func (s *scopeImpl) RemoveClosingChapter(chapterID uint64) {
+	for i, p := range s.engine.closingChapters {
+		if p.GetId() == chapterID {
+			s.engine.closingChapters = append(s.engine.closingChapters[:i], s.engine.closingChapters[i+1:]...)
 
 			return
 		}
 	}
 }
 
-func (s *scopeImpl) GetNextPeriodID() uint64 {
-	return s.engine.nextPeriodID
+func (s *scopeImpl) GetNextChapterID() uint64 {
+	return s.engine.nextChapterID
 }
 
-func (s *scopeImpl) IncrementNextPeriodID() uint64 {
-	id := s.engine.nextPeriodID
-	s.engine.nextPeriodID++
+func (s *scopeImpl) IncrementNextChapterID() uint64 {
+	id := s.engine.nextChapterID
+	s.engine.nextChapterID++
 
 	return id
 }
 
-func (s *scopeImpl) GetPeriodByID(_ uint64) (*commonpb.Period, bool) {
+func (s *scopeImpl) GetChapterByID(_ uint64) (*commonpb.Chapter, bool) {
 	return nil, false
 }
 
 func (s *scopeImpl) GetNextAuditSequenceID() uint64 { return 0 }
 
-func (s *scopeImpl) UpdatePeriod(_ *commonpb.Period) {}
+func (s *scopeImpl) UpdateChapter(_ *commonpb.Chapter) {}
 
 func (s *scopeImpl) SetPurgeRange(_, _, _, _, _ uint64) {}
 

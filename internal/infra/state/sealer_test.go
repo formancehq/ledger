@@ -33,38 +33,38 @@ func createSealerTestStore(t *testing.T) *dal.Store {
 
 // testSealerResult captures the proposed sealing hash instead of sending it over Raft.
 type testSealerResult struct {
-	periodID    uint64
+	chapterID   uint64
 	sealingHash []byte
 	stateHash   []byte
 }
 
-// fixedPeriodState returns a fixed closing period for testing.
-// The period is stored atomically so it can be set after sealer startup
+// fixedChapterState returns a fixed closing chapter for testing.
+// The chapter is stored atomically so it can be set after sealer startup
 // to avoid races with recoverPendingSeal.
-type fixedPeriodState struct {
-	period atomic.Pointer[commonpb.Period]
+type fixedChapterState struct {
+	chapter atomic.Pointer[commonpb.Chapter]
 }
 
-func newFixedPeriodState(p *commonpb.Period) *fixedPeriodState {
-	ps := &fixedPeriodState{}
+func newFixedChapterState(p *commonpb.Chapter) *fixedChapterState {
+	ps := &fixedChapterState{}
 	if p != nil {
-		ps.period.Store(p)
+		ps.chapter.Store(p)
 	}
 
 	return ps
 }
 
-func (f *fixedPeriodState) ClosingPeriods() []*commonpb.Period {
-	p := f.period.Load()
+func (f *fixedChapterState) ClosingChapters() []*commonpb.Chapter {
+	p := f.chapter.Load()
 	if p == nil {
 		return nil
 	}
 
-	return []*commonpb.Period{p}
+	return []*commonpb.Chapter{p}
 }
 
-func (f *fixedPeriodState) ClosingPeriodByID(id uint64) (*commonpb.Period, bool) {
-	p := f.period.Load()
+func (f *fixedChapterState) ClosingChapterByID(id uint64) (*commonpb.Chapter, bool) {
+	p := f.chapter.Load()
 	if p != nil && p.GetId() == id {
 		return p, true
 	}
@@ -72,17 +72,17 @@ func (f *fixedPeriodState) ClosingPeriodByID(id uint64) (*commonpb.Period, bool)
 	return nil, false
 }
 
-// multiPeriodState holds multiple closing periods for testing.
-type multiPeriodState struct {
-	periods []*commonpb.Period
+// multiChapterState holds multiple closing chapters for testing.
+type multiChapterState struct {
+	chapters []*commonpb.Chapter
 }
 
-func (m *multiPeriodState) ClosingPeriods() []*commonpb.Period {
-	return m.periods
+func (m *multiChapterState) ClosingChapters() []*commonpb.Chapter {
+	return m.chapters
 }
 
-func (m *multiPeriodState) ClosingPeriodByID(id uint64) (*commonpb.Period, bool) {
-	for _, p := range m.periods {
+func (m *multiChapterState) ClosingChapterByID(id uint64) (*commonpb.Chapter, bool) {
+	for _, p := range m.chapters {
 		if p.GetId() == id {
 			return p, true
 		}
@@ -91,16 +91,16 @@ func (m *multiPeriodState) ClosingPeriodByID(id uint64) (*commonpb.Period, bool)
 	return nil, false
 }
 
-func newTestSealer(t *testing.T, store *dal.Store, closingPeriodID uint64) (*Sealer, *testSealerResult) {
+func newTestSealer(t *testing.T, store *dal.Store, closingChapterID uint64) (*Sealer, *testSealerResult) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
 	result := &testSealerResult{}
-	ps := newFixedPeriodState(&commonpb.Period{Id: closingPeriodID})
-	sealer := NewSealer(logger, store, attributes.New(), worker.NewChannel[SealRequest](logger, "test-seal", 1), func(periodID uint64, sealingHash, stateHash []byte) error {
-		result.periodID = periodID
+	ps := newFixedChapterState(&commonpb.Chapter{Id: closingChapterID})
+	sealer := NewSealer(logger, store, attributes.New(), worker.NewChannel[SealRequest](logger, "test-seal", 1), func(chapterID uint64, sealingHash, stateHash []byte) error {
+		result.chapterID = chapterID
 		result.sealingHash = sealingHash
 		result.stateHash = stateHash
 
@@ -112,10 +112,10 @@ func newTestSealer(t *testing.T, store *dal.Store, closingPeriodID uint64) (*Sea
 
 // createSealCheckpoint creates a seal checkpoint from the store and returns its path.
 // The checkpoint is automatically cleaned up when the test finishes.
-func createSealCheckpoint(t *testing.T, store *dal.Store, periodID uint64) string {
+func createSealCheckpoint(t *testing.T, store *dal.Store, chapterID uint64) string {
 	t.Helper()
 
-	name := SealCheckpointName(periodID)
+	name := SealCheckpointName(chapterID)
 	checkpointPath, err := store.CreateTemporaryCheckpoint(name)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.RemoveTemporaryCheckpoint(name) })
@@ -146,7 +146,7 @@ func TestSealerDeterministic(t *testing.T) {
 
 		sealer, result := newTestSealer(t, store, 42)
 		err = sealer.seal(SealRequest{
-			PeriodID:       42,
+			ChapterID:      42,
 			CloseSequence:  100,
 			LastAuditHash:  []byte("chain-hash"),
 			CheckpointPath: checkpointPath,
@@ -178,7 +178,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 
 	sealer, result := newTestSealer(t, store, 1)
 	err = sealer.seal(SealRequest{
-		PeriodID:       1,
+		ChapterID:      1,
 		CloseSequence:  10,
 		LastAuditHash:  nil,
 		CheckpointPath: checkpointPath,
@@ -200,7 +200,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 
 	sealer2, result2 := newTestSealer(t, store, 1)
 	err = sealer2.seal(SealRequest{
-		PeriodID:       1,
+		ChapterID:      1,
 		CloseSequence:  10,
 		LastAuditHash:  nil,
 		CheckpointPath: checkpointPath2,
@@ -224,7 +224,7 @@ func TestSealerEmptyStore(t *testing.T) {
 	sealer, result := newTestSealer(t, store, 1)
 
 	err := sealer.seal(SealRequest{
-		PeriodID:       1,
+		ChapterID:      1,
 		CloseSequence:  10,
 		LastAuditHash:  nil,
 		CheckpointPath: checkpointPath,
@@ -248,9 +248,9 @@ func TestSealerRetryOnFailure(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	sealRequestCh := worker.NewChannel[SealRequest](logger, "test-seal", 1)
-	// Use nil period state so recoverPendingSeal at startup does nothing.
-	ps := newFixedPeriodState(nil)
-	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(periodID uint64, sealingHash, stateHash []byte) error {
+	// Use nil chapter state so recoverPendingSeal at startup does nothing.
+	ps := newFixedChapterState(nil)
+	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(chapterID uint64, sealingHash, stateHash []byte) error {
 		proposeCalled.Add(1)
 
 		return nil
@@ -261,11 +261,11 @@ func TestSealerRetryOnFailure(t *testing.T) {
 	sealer.Start()
 	t.Cleanup(sealer.Stop)
 
-	// Activate the closing period state (needed for seal to proceed).
-	ps.period.Store(&commonpb.Period{Id: 7})
+	// Activate the closing chapter state (needed for seal to proceed).
+	ps.chapter.Store(&commonpb.Chapter{Id: 7})
 
 	sealRequestCh.TrySend(SealRequest{
-		PeriodID:       7,
+		ChapterID:      7,
 		CloseSequence:  50,
 		LastAuditHash:  []byte("test-hash"),
 		CheckpointPath: checkpointPath,
@@ -290,15 +290,15 @@ func TestSealCheckpointName(t *testing.T) {
 	require.NotEqual(t, SealCheckpointName(1), SealCheckpointName(2))
 }
 
-func TestSealerRecoverPendingSealMultiplePeriods(t *testing.T) {
+func TestSealerRecoverPendingSealMultipleChapters(t *testing.T) {
 	t.Parallel()
 
 	store := createSealerTestStore(t)
 
-	p1 := &commonpb.Period{Id: 5, CloseSequence: 100, LastAuditHash: []byte("h1"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	p2 := &commonpb.Period{Id: 8, CloseSequence: 200, LastAuditHash: []byte("h2"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	p1 := &commonpb.Chapter{Id: 5, CloseSequence: 100, LastAuditHash: []byte("h1"), Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
+	p2 := &commonpb.Chapter{Id: 8, CloseSequence: 200, LastAuditHash: []byte("h2"), Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
 
-	// Create seal checkpoints for both periods
+	// Create seal checkpoints for both chapters
 	_, err := store.CreateTemporaryCheckpoint(SealCheckpointName(5))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.RemoveTemporaryCheckpoint(SealCheckpointName(5)) })
@@ -311,18 +311,18 @@ func TestSealerRecoverPendingSealMultiplePeriods(t *testing.T) {
 	logger := logging.FromContext(ctx)
 
 	sealRequestCh := worker.NewChannel[SealRequest](logger, "test-seal", 10)
-	ps := &multiPeriodState{periods: []*commonpb.Period{p1, p2}}
+	ps := &multiChapterState{chapters: []*commonpb.Chapter{p1, p2}}
 
 	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) error { return nil }, func() bool { return true }, ps)
 
 	sealer.recoverPendingSeal(make(chan struct{}))
 
-	// Both periods should have been enqueued
+	// Both chapters should have been enqueued
 	var received []uint64
 	for len(received) < 2 {
 		select {
 		case req := <-sealRequestCh.Receive():
-			received = append(received, req.PeriodID)
+			received = append(received, req.ChapterID)
 		default:
 			t.Fatal("expected 2 seal requests")
 		}
@@ -337,10 +337,10 @@ func TestSealerRecoverPendingSealSkipsMissingCheckpoint(t *testing.T) {
 
 	store := createSealerTestStore(t)
 
-	p1 := &commonpb.Period{Id: 5, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	p2 := &commonpb.Period{Id: 8, CloseSequence: 200, LastAuditHash: []byte("h2"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	p1 := &commonpb.Chapter{Id: 5, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
+	p2 := &commonpb.Chapter{Id: 8, CloseSequence: 200, LastAuditHash: []byte("h2"), Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
 
-	// Only create a checkpoint for period 8, not period 5
+	// Only create a checkpoint for chapter 8, not chapter 5
 	_, err := store.CreateTemporaryCheckpoint(SealCheckpointName(8))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.RemoveTemporaryCheckpoint(SealCheckpointName(8)) })
@@ -349,18 +349,18 @@ func TestSealerRecoverPendingSealSkipsMissingCheckpoint(t *testing.T) {
 	logger := logging.FromContext(ctx)
 
 	sealRequestCh := worker.NewChannel[SealRequest](logger, "test-seal", 10)
-	ps := &multiPeriodState{periods: []*commonpb.Period{p1, p2}}
+	ps := &multiChapterState{chapters: []*commonpb.Chapter{p1, p2}}
 
 	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) error { return nil }, func() bool { return true }, ps)
 
 	sealer.recoverPendingSeal(make(chan struct{}))
 
-	// Only period 8 should be enqueued (period 5 has no checkpoint)
+	// Only chapter 8 should be enqueued (chapter 5 has no checkpoint)
 	select {
 	case req := <-sealRequestCh.Receive():
-		require.Equal(t, uint64(8), req.PeriodID)
+		require.Equal(t, uint64(8), req.ChapterID)
 	default:
-		t.Fatal("expected 1 seal request for period 8")
+		t.Fatal("expected 1 seal request for chapter 8")
 	}
 
 	// No more requests
@@ -371,14 +371,14 @@ func TestSealerRecoverPendingSealSkipsMissingCheckpoint(t *testing.T) {
 	}
 }
 
-func TestSealerSkipsAlreadySealedPeriod(t *testing.T) {
+func TestSealerSkipsAlreadySealedChapter(t *testing.T) {
 	t.Parallel()
 
 	store := createSealerTestStore(t)
 	checkpointPath := createSealCheckpoint(t, store, 42)
 
-	// Period state says no closing periods (period was already sealed)
-	ps := newFixedPeriodState(nil)
+	// Chapter state says no closing chapters (chapter was already sealed)
+	ps := newFixedChapterState(nil)
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
@@ -392,10 +392,10 @@ func TestSealerSkipsAlreadySealedPeriod(t *testing.T) {
 	}, func() bool { return true }, ps)
 
 	err := sealer.seal(SealRequest{
-		PeriodID:       42,
+		ChapterID:      42,
 		CloseSequence:  10,
 		CheckpointPath: checkpointPath,
 	})
 	require.NoError(t, err)
-	require.False(t, proposeCalled, "should not propose when period is no longer closing")
+	require.False(t, proposeCalled, "should not propose when chapter is no longer closing")
 }

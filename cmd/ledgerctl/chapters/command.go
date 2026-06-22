@@ -1,13 +1,13 @@
-package periods
+package chapters
 
 import "github.com/spf13/cobra"
 
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "periods",
-		Aliases: []string{"period", "pd"},
-		Short:   "Manage periods",
-		Long:    "Commands for managing accounting periods via gRPC",
+		Use:     "chapters",
+		Aliases: []string{"chapter", "ch"},
+		Short:   "Manage chapters",
+		Long:    "Commands for managing accounting chapters via gRPC",
 	}
 
 	cmd.AddCommand(NewListCommand())

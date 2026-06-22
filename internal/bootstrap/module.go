@@ -157,11 +157,11 @@ func ColdStorageModule(coldStorageDriver string) fx.Option {
 					store,
 					cold,
 					machine.ArchiveRequestCh(),
-					func(periodID uint64) error {
+					func(chapterID uint64) error {
 						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
-							Type: &servicepb.Request_ConfirmArchivePeriod{
-								ConfirmArchivePeriod: &servicepb.ConfirmArchivePeriodRequest{
-									PeriodId: periodID,
+							Type: &servicepb.Request_ConfirmArchiveChapter{
+								ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{
+									ChapterId: chapterID,
 								},
 							},
 						}))
@@ -211,6 +211,7 @@ func Module() fx.Option {
 				// doesn't crash the fx graph.
 				naming = ledgermetrics.DefaultNaming
 			}
+
 			return ledgermetrics.NewFactory(inner, naming)
 		}),
 		fx.Provide(
@@ -652,11 +653,11 @@ func Module() fx.Option {
 				admissionHandler ctrl.Admission,
 				raftNode *node.Node,
 			) *state.Sealer {
-				return state.NewSealer(logger, store, attrs, machine.SealRequestCh(), func(periodID uint64, sealingHash, stateHash []byte) error {
+				return state.NewSealer(logger, store, attrs, machine.SealRequestCh(), func(chapterID uint64, sealingHash, stateHash []byte) error {
 					_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
-						Type: &servicepb.Request_SealPeriod{
-							SealPeriod: &servicepb.SealPeriodRequest{
-								PeriodId:    periodID,
+						Type: &servicepb.Request_SealChapter{
+							SealChapter: &servicepb.SealChapterRequest{
+								ChapterId:   chapterID,
 								SealingHash: sealingHash,
 								StateHash:   stateHash,
 							},
@@ -671,15 +672,15 @@ func Module() fx.Option {
 				machine *state.Machine,
 				admissionHandler ctrl.Admission,
 				raftNode *node.Node,
-			) *state.PeriodScheduler {
-				return state.NewPeriodScheduler(
+			) *state.ChapterScheduler {
+				return state.NewChapterScheduler(
 					logger,
 					raftNode.IsLeader,
-					machine.PeriodSchedule,
+					machine.ChapterSchedule,
 					func() error {
 						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
-							Type: &servicepb.Request_ClosePeriod{
-								ClosePeriod: &servicepb.ClosePeriodRequest{},
+							Type: &servicepb.Request_CloseChapter{
+								CloseChapter: &servicepb.CloseChapterRequest{},
 							},
 						}))
 
@@ -1191,7 +1192,7 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, sealer *state.Sealer) {
 				lc.Append(worker.FxHook(sealer))
 			},
-			func(lc fx.Lifecycle, scheduler *state.PeriodScheduler) {
+			func(lc fx.Lifecycle, scheduler *state.ChapterScheduler) {
 				lc.Append(worker.FxHook(scheduler))
 			},
 			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, builder *plan.Builder) {

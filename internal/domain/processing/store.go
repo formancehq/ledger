@@ -74,9 +74,9 @@ type Scope interface {
 	// Maintenance mode operations
 	SetMaintenanceMode(enabled bool)
 
-	// Period schedule operations
-	SetPeriodSchedule(cron string)
-	DeletePeriodSchedule()
+	// Chapter schedule operations
+	SetChapterSchedule(cron string)
+	DeleteChapterSchedule()
 
 	// Events sink operations
 	GetSinkConfig(name string) (*commonpb.SinkConfig, error)
@@ -91,21 +91,21 @@ type Scope interface {
 	IncrementNextLedgerID() uint32
 	GetDate() *commonpb.Timestamp
 
-	// Period operations
-	GetCurrentOpenPeriod() (*commonpb.Period, bool)
-	GetClosingPeriods() []*commonpb.Period
-	GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool)
-	SetCurrentOpenPeriod(period *commonpb.Period)
-	AddClosingPeriod(period *commonpb.Period)
-	RemoveClosingPeriod(periodID uint64)
-	GetNextPeriodID() uint64
-	IncrementNextPeriodID() uint64
+	// Chapter operations
+	GetCurrentOpenChapter() (*commonpb.Chapter, bool)
+	GetClosingChapters() []*commonpb.Chapter
+	GetClosingChapterByID(chapterID uint64) (*commonpb.Chapter, bool)
+	SetCurrentOpenChapter(chapter *commonpb.Chapter)
+	AddClosingChapter(chapter *commonpb.Chapter)
+	RemoveClosingChapter(chapterID uint64)
+	GetNextChapterID() uint64
+	IncrementNextChapterID() uint64
 
-	// Archive period operations
-	GetPeriodByID(periodID uint64) (*commonpb.Period, bool)
-	UpdatePeriod(period *commonpb.Period)
-	SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
-	SetPendingArchive(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
+	// Archive chapter operations
+	GetChapterByID(chapterID uint64) (*commonpb.Chapter, bool)
+	UpdateChapter(chapter *commonpb.Chapter)
+	SetPurgeRange(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
+	SetPendingArchive(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
 
 	// Metadata conversion requests
 	AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType)

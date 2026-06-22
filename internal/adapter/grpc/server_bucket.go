@@ -227,7 +227,7 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 		tx.GetId(),
 		tx.GetPostings(),
 		tx.GetTimestamp(),
-		created.GetPeriodId(),
+		created.GetChapterId(),
 	)
 	if err != nil {
 		impl.logger.Errorf("Failed to sign receipt for tx %d: %v", tx.GetId(), err)
@@ -238,8 +238,8 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 	log.Receipt = receiptToken
 }
 
-func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsRequest, stream servicepb.BucketService_ListPeriodsServer) error {
-	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListPeriods")
+func (impl *BucketServiceServerImpl) ListChapters(req *servicepb.ListChaptersRequest, stream servicepb.BucketService_ListChaptersServer) error {
+	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListChapters")
 	defer span.End()
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
@@ -248,7 +248,7 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 
 	opts := req.GetOptions()
 
-	// Periods are raft-state-backed; filter and checkpoint_id are not
+	// Chapters are raft-state-backed; filter and checkpoint_id are not
 	// applicable. Reverse is honored at the handler layer (drain + reverse).
 	if err := ValidateListOptions(opts, ListOptionsSupport{Reverse: true}); err != nil {
 		return err
@@ -258,9 +258,9 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 		return err
 	}
 
-	c, err := impl.ctrl.ListPeriods(ctx)
+	c, err := impl.ctrl.ListChapters(ctx)
 	if err != nil {
-		return fmt.Errorf("listing periods: %w", err)
+		return fmt.Errorf("listing chapters: %w", err)
 	}
 
 	cursorKey, err := parseUint64Cursor(opts.GetCursor())
@@ -273,14 +273,14 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 
 	c, err = ApplyHandlerPagination(
 		c,
-		skipByUint64Key(cursorKey, reverse, func(item *commonpb.Period) uint64 { return item.GetId() }),
+		skipByUint64Key(cursorKey, reverse, func(item *commonpb.Chapter) uint64 { return item.GetId() }),
 		reverse,
 	)
 	if err != nil {
-		return fmt.Errorf("paginating periods: %w", err)
+		return fmt.Errorf("paginating chapters: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "period", pageSize, func(p *commonpb.Period) string {
+	return sendPagedToStream(ctx, c, stream, "chapter", pageSize, func(p *commonpb.Chapter) string {
 		return strconv.FormatUint(p.GetId(), 10)
 	})
 }
@@ -340,7 +340,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 }
 
 // computeTransactionReceipt computes a JWT receipt for an existing transaction
-// by looking up its creation log to extract the period ID. Ledger info and the
+// by looking up its creation log to extract the chapter ID. Ledger info and the
 // creation log are read from the supplied reader — the same store the
 // transaction was read from — so checkpoint reads stay self-consistent.
 func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Context, reader dal.PebbleGetter, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
@@ -370,7 +370,7 @@ func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Conte
 		return "", nil
 	}
 
-	return impl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetPeriodId())
+	return impl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetChapterId())
 }
 
 // openCheckpointStores opens the checkpoint's main store and read index in read-only mode.
@@ -1056,17 +1056,17 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 	}, nil
 }
 
-func (impl *BucketServiceServerImpl) GetPeriodSchedule(ctx context.Context, _ *servicepb.GetPeriodScheduleRequest) (*servicepb.GetPeriodScheduleResponse, error) {
+func (impl *BucketServiceServerImpl) GetChapterSchedule(ctx context.Context, _ *servicepb.GetChapterScheduleRequest) (*servicepb.GetChapterScheduleResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
 	}
 
-	cronExpr, err := impl.ctrl.GetPeriodSchedule(ctx)
+	cronExpr, err := impl.ctrl.GetChapterSchedule(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("loading period schedule: %w", err)
+		return nil, fmt.Errorf("loading chapter schedule: %w", err)
 	}
 
-	return &servicepb.GetPeriodScheduleResponse{Cron: cronExpr}, nil
+	return &servicepb.GetChapterScheduleResponse{Cron: cronExpr}, nil
 }
 
 func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {

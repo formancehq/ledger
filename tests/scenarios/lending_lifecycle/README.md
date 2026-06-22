@@ -82,7 +82,7 @@ Special cases:
 - **Defaulters (borrowers 3, 7, months 3-6)**: no payments, outstanding balance accrues
 - **All borrowers**: principal capped to outstanding, total payment capped to wallet balance
 
-Period close after each month.
+Chapter close after each month.
 
 ### Phase 4: Provisions
 

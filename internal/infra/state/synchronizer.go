@@ -46,7 +46,7 @@ func (s *Synchronizer) SynchronizeWithLeader(ctx context.Context, snapshotFetche
 	s.apply.StopBackgroundTasks()
 
 	// Drop any background-request messages enqueued by the FSM hot path
-	// pre-sync: their payloads reference period IDs / sequence ranges /
+	// pre-sync: their payloads reference chapter IDs / sequence ranges /
 	// checkpoint paths that the leader's checkpoint may have already
 	// superseded. The Archiver consume-time guard catches most cases on its
 	// own, but a stale ArchiveRequest consumed against a post-sync Pebble

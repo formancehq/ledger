@@ -9,11 +9,11 @@ import (
 )
 
 // IsCheckpointTriggerOrder reports whether o is a checkpoint-triggering order
-// (CreateQueryCheckpoint or ClosePeriod). These orders cause the FSM to enter
+// (CreateQueryCheckpoint or CloseChapter). These orders cause the FSM to enter
 // a maintenance window after their batch is committed.
 func IsCheckpointTriggerOrder(o *raftcmdpb.Order) bool {
 	switch o.GetType().(type) {
-	case *raftcmdpb.Order_CreateQueryCheckpoint, *raftcmdpb.Order_ClosePeriod:
+	case *raftcmdpb.Order_CreateQueryCheckpoint, *raftcmdpb.Order_CloseChapter:
 		return true
 	default:
 		return false

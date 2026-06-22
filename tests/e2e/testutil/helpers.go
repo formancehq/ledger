@@ -31,10 +31,10 @@ var (
 	SetSigningConfigAction             = actions.SetSigningConfigAction
 	FindSigningKey                     = actions.FindSigningKey
 	FindMetadataValue                  = actions.FindMetadataValue
-	ClosePeriodAction                  = actions.ClosePeriodAction
+	CloseChapterAction                 = actions.CloseChapterAction
 	SetMaintenanceModeAction           = actions.SetMaintenanceModeAction
-	SetPeriodScheduleAction            = actions.SetPeriodScheduleAction
-	DeletePeriodScheduleAction         = actions.DeletePeriodScheduleAction
+	SetChapterScheduleAction           = actions.SetChapterScheduleAction
+	DeleteChapterScheduleAction        = actions.DeleteChapterScheduleAction
 	SetMetadataFieldTypeAction         = actions.SetMetadataFieldTypeAction
 	RemoveMetadataFieldTypeAction      = actions.RemoveMetadataFieldTypeAction
 	CreateLedgerWithSchemaAction       = actions.CreateLedgerWithSchemaAction
@@ -48,7 +48,7 @@ var (
 	DropBuiltinTxIndexAction           = actions.DropBuiltinTxIndexAction
 	CreateAccountMetadataIndexAction   = actions.CreateAccountMetadataIndexAction
 	DropAccountMetadataIndexAction     = actions.DropAccountMetadataIndexAction
-	ArchivePeriodAction                = actions.ArchivePeriodAction
+	ArchiveChapterAction               = actions.ArchiveChapterAction
 	GetCreatedTransactionID            = actions.GetCreatedTransactionID
 
 	// Filter builders.
@@ -78,7 +78,7 @@ var (
 	ListAllAccounts                = actions.ListAllAccounts
 	ListAllTransactions            = actions.ListAllTransactions
 	ListAllLogs                    = actions.ListAllLogs
-	ListAllPeriods                 = actions.ListAllPeriods
+	ListAllChapters                = actions.ListAllChapters
 	GetAccount                     = actions.GetAccount
 	GetTransaction                 = actions.GetTransaction
 	GetLedger                      = actions.GetLedger
@@ -87,7 +87,7 @@ var (
 	AggregateVolumes               = actions.AggregateVolumes
 	ListAuditEntries               = actions.ListAuditEntries
 	GetMetadataSchemaStatus        = actions.GetMetadataSchemaStatus
-	GetPeriodSchedule              = actions.GetPeriodSchedule
+	GetChapterSchedule             = actions.GetChapterSchedule
 	AnalyzeAccounts                = actions.AnalyzeAccounts
 	AnalyzeTransactions            = actions.AnalyzeTransactions
 	GetLog                         = actions.GetLog

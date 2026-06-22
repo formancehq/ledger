@@ -97,7 +97,7 @@ neither `--page-size` nor `--cursor` is set:
 
 | Group | Commands | Default behaviour |
 |---|---|---|
-| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `periods list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and surface the resume cursor on stderr). |
+| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `chapters list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and surface the resume cursor on stderr). |
 | Single-page-only | `audit list`, `logs list` | Always print one page and surface the resume cursor on stderr, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
 
 Both groups expose the same `--page-size` / `--cursor` semantics; only the
@@ -1791,7 +1791,7 @@ ledgerctl store check --json
 
 #### store primary compact
 
-Trigger a synchronous compaction of the primary Pebble store. Useful after bulk deletes, period archival, or before taking a backup.
+Trigger a synchronous compaction of the primary Pebble store. Useful after bulk deletes, chapter archival, or before taking a backup.
 
 **Aliases:** `store p gc`
 
@@ -3079,66 +3079,66 @@ ledgerctl signing require false --signing-key /path/to/seed
 
 ---
 
-### periods
+### chapters
 
-Manage accounting periods.
+Manage accounting chapters.
 
-**Aliases:** `period`, `pd`
+**Aliases:** `chapter`, `pd`
 
-#### periods list
+#### chapters list
 
-List all periods with their status.
+List all chapters with their status.
 
 ```bash
-ledgerctl periods list
+ledgerctl chapters list
 ```
 
 **Output columns:**
 
 | Column | Description |
 |--------|-------------|
-| ID | Period identifier |
+| ID | Chapter identifier |
 | Status | OPEN, CLOSING, CLOSED, or ARCHIVED |
-| Start | Period start timestamp |
-| End | Period end timestamp (set when closed) |
-| Close Seq | Log sequence at which the period was closed |
+| Start | Chapter start timestamp |
+| End | Chapter end timestamp (set when closed) |
+| Close Seq | Log sequence at which the chapter was closed |
 
 **Example:**
 
 ```bash
-# List all periods
-ledgerctl periods list
+# List all chapters
+ledgerctl chapters list
 
 # With remote server
-ledgerctl --server node1:8888 periods list
+ledgerctl --server node1:8888 chapters list
 ```
 
-#### periods close
+#### chapters close
 
-Close the current open period and open a new one. A background seal process will compute the sealing hash.
+Close the current open chapter and open a new one. A background seal process will compute the sealing hash.
 
 ```bash
-ledgerctl periods close
+ledgerctl chapters close
 ```
 
 **Example:**
 
 ```bash
-# Close the current period
-ledgerctl periods close
+# Close the current chapter
+ledgerctl chapters close
 
 # Output:
-#  SUCCESS  Period 1 closed successfully
-#  INFO  New period 2 opened
+#  SUCCESS  Chapter 1 closed successfully
+#  INFO  New chapter 2 opened
 #  INFO  Background sealing process will compute the sealing hash
 ```
 
-#### periods set-schedule
+#### chapters set-schedule
 
-Set a cron schedule for automatic period rotation. The schedule is stored in Raft and takes effect immediately on the leader.
+Set a cron schedule for automatic chapter rotation. The schedule is stored in Raft and takes effect immediately on the leader.
 
 ```bash
-ledgerctl periods set-schedule <cron-expression>
+ledgerctl chapters set-schedule <cron-expression>
 ```
 
 | Flag | Required | Description |
@@ -3151,40 +3151,21 @@ The cron expression uses the standard 5-field format (`minute hour day-of-month 
 
 ```bash
 # Rotate every day at midnight
-ledgerctl periods set-schedule "0 0 * * *"
+ledgerctl chapters set-schedule "0 0 * * *"
 
 # Rotate on the 1st of every month at midnight
-ledgerctl periods set-schedule "0 0 1 * *"
+ledgerctl chapters set-schedule "0 0 1 * *"
 
 # Rotate every 30 seconds (6-field format)
-ledgerctl periods set-schedule "*/30 * * * * *"
+ledgerctl chapters set-schedule "*/30 * * * * *"
 ```
 
-#### periods delete-schedule
+#### chapters delete-schedule
 
-Remove the cron schedule for automatic period rotation, disabling automatic rotation.
-
-```bash
-ledgerctl periods delete-schedule
-```
-
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--timeout` | No | Request timeout (default: 10s) |
-
-**Example:**
+Remove the cron schedule for automatic chapter rotation, disabling automatic rotation.
 
 ```bash
-ledgerctl periods delete-schedule
-#  SUCCESS  Period schedule deleted
-```
-
-#### periods get-schedule
-
-Display the current cron schedule for automatic period rotation.
-
-```bash
-ledgerctl periods get-schedule
+ledgerctl chapters delete-schedule
 ```
 
 | Flag | Required | Description |
@@ -3194,36 +3175,55 @@ ledgerctl periods get-schedule
 **Example:**
 
 ```bash
-ledgerctl periods get-schedule
+ledgerctl chapters delete-schedule
+#  SUCCESS  Chapter schedule deleted
+```
+
+#### chapters get-schedule
+
+Display the current cron schedule for automatic chapter rotation.
+
+```bash
+ledgerctl chapters get-schedule
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
+
+**Example:**
+
+```bash
+ledgerctl chapters get-schedule
 
 # Output (schedule set):
-#  SUCCESS  Period schedule: 0 0 1 * *
+#  SUCCESS  Chapter schedule: 0 0 1 * *
 
 # Output (no schedule):
-#  SUCCESS  No period schedule configured (automatic rotation disabled)
+#  SUCCESS  No chapter schedule configured (automatic rotation disabled)
 ```
 
-#### periods archive
+#### chapters archive
 
-Archive a closed period to cold storage. This exports logs and audit entries to the configured cold storage backend and purges them from hot storage. Attributes (volumes, metadata) remain in Pebble.
+Archive a closed chapter to cold storage. This exports logs and audit entries to the configured cold storage backend and purges them from hot storage. Attributes (volumes, metadata) remain in Pebble.
 
 ```bash
-ledgerctl periods archive <period-id>
+ledgerctl chapters archive <chapter-id>
 ```
 
 **Example:**
 
 ```bash
-# Archive period 1 (must be in CLOSED state)
-ledgerctl periods archive 1
+# Archive chapter 1 (must be in CLOSED state)
+ledgerctl chapters archive 1
 
 # Output:
-#  SUCCESS  Period 1 archival initiated
+#  SUCCESS  Chapter 1 archival initiated
 #  INFO  Background archiver will export data to cold storage and confirm
 ```
 
 **Notes:**
-- The period must be in `CLOSED` state (sealed). `OPEN`, `CLOSING`, or `ARCHIVED` periods are rejected.
+- The chapter must be in `CLOSED` state (sealed). `OPEN`, `CLOSING`, or `ARCHIVED` chapters are rejected.
 - Archival is asynchronous: the command returns immediately after validation, and a background Archiver exports the data and confirms the transition to `ARCHIVED`.
 - Cold storage is configured on the server with `--cold-storage-driver`, `--cold-storage-path`, and S3 flags (`--cold-storage-bucket-id`, `--cold-storage-s3-bucket`, `--cold-storage-s3-region`, `--cold-storage-s3-endpoint`).
 
@@ -4038,11 +4038,11 @@ ledger run --snapshot-session-ttl 15m [other flags...]
 
 ### Server Cold Storage Flags
 
-Configure cold storage for period archival. Logs and audit entries for closed periods are exported to the cold storage backend and purged from hot storage. Attributes (volumes, metadata) remain in Pebble.
+Configure cold storage for chapter archival. Logs and audit entries for closed chapters are exported to the cold storage backend and purged from hot storage. Attributes (volumes, metadata) remain in Pebble.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--cold-storage-driver` | string | `none` | Cold storage driver for period archival (`none`, `filesystem`, `s3`) |
+| `--cold-storage-driver` | string | `none` | Cold storage driver for chapter archival (`none`, `filesystem`, `s3`) |
 | `--cold-storage-path` | string | `""` | Base path for cold storage (default: `<data-dir>/cold-storage`) |
 | `--cold-storage-bucket-id` | string | `""` | Shared namespace prefix for archives (default: cluster-id) |
 | `--cold-storage-s3-bucket` | string | `""` | S3 bucket name (required when driver=s3) |

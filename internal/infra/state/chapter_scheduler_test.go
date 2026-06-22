@@ -12,13 +12,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 )
 
-func TestPeriodSchedulerStartStop(t *testing.T) {
+func TestChapterSchedulerStartStop(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
-	ps := NewPeriodScheduler(
+	ps := NewChapterScheduler(
 		logger,
 		func() bool { return true },
 		func() string { return "" },
@@ -30,7 +30,7 @@ func TestPeriodSchedulerStartStop(t *testing.T) {
 	// No deadlock or panic means success
 }
 
-func TestPeriodSchedulerEmptySchedule(t *testing.T) {
+func TestChapterSchedulerEmptySchedule(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -38,7 +38,7 @@ func TestPeriodSchedulerEmptySchedule(t *testing.T) {
 
 	var called atomic.Int32
 
-	ps := NewPeriodScheduler(
+	ps := NewChapterScheduler(
 		logger,
 		func() bool { return true },
 		func() string { return "" }, // empty schedule - should not fire
@@ -57,7 +57,7 @@ func TestPeriodSchedulerEmptySchedule(t *testing.T) {
 	ps.Stop()
 }
 
-func TestPeriodSchedulerInvalidCron(t *testing.T) {
+func TestChapterSchedulerInvalidCron(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -65,7 +65,7 @@ func TestPeriodSchedulerInvalidCron(t *testing.T) {
 
 	var called atomic.Int32
 
-	ps := NewPeriodScheduler(
+	ps := NewChapterScheduler(
 		logger,
 		func() bool { return true },
 		func() string { return "not-a-cron" }, // invalid cron
@@ -84,7 +84,7 @@ func TestPeriodSchedulerInvalidCron(t *testing.T) {
 	ps.Stop()
 }
 
-func TestPeriodSchedulerScheduleChanged(t *testing.T) {
+func TestChapterSchedulerScheduleChanged(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -94,7 +94,7 @@ func TestPeriodSchedulerScheduleChanged(t *testing.T) {
 	var schedule atomic.Value
 	schedule.Store("")
 
-	ps := NewPeriodScheduler(
+	ps := NewChapterScheduler(
 		logger,
 		func() bool { return true },
 		func() string { return schedule.Load().(string) },
@@ -120,7 +120,7 @@ func TestPeriodSchedulerScheduleChanged(t *testing.T) {
 	// No panic or deadlock = success
 }
 
-func TestPeriodSchedulerNonLeaderDoesNotPropose(t *testing.T) {
+func TestChapterSchedulerNonLeaderDoesNotPropose(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -129,7 +129,7 @@ func TestPeriodSchedulerNonLeaderDoesNotPropose(t *testing.T) {
 	var called atomic.Int32
 
 	// Use a cron that fires every second
-	ps := NewPeriodScheduler(
+	ps := NewChapterScheduler(
 		logger,
 		func() bool { return false }, // not leader
 		func() string { return "* * * * * *" },

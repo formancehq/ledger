@@ -34,7 +34,7 @@ func (n *Needs) TotalKeys() int {
 // they are excluded: a proposal with idempotency keys only does not
 // need the cache-epoch revalidation that the slow path performs. The
 // runner uses this count to gate runWithoutPreload, so idempotency-only
-// proposals (maintenance, signing, period schedule) take the fast
+// proposals (maintenance, signing, chapter schedule) take the fast
 // path and avoid spurious ErrStaleProposal on cluster-config resets.
 func (n *Needs) AttributeKeysCount() int {
 	return len(n.Ledgers) + len(n.Boundaries) + len(n.Volumes) +
