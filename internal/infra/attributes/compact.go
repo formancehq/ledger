@@ -25,13 +25,6 @@ type typedCompactor[V proto.Message] struct {
 	batch *dal.WriteSession
 }
 
-func newCompactor[V proto.Message](attr *Attribute[V], batch *dal.WriteSession) *typedCompactor[V] {
-	return &typedCompactor[V]{
-		accumulatorBase: accumulatorBase[V]{attr: attr},
-		batch:           batch,
-	}
-}
-
 func (c *typedCompactor[V]) Feed(pebbleKey, pebbleValue []byte) error {
 	_, prev, err := c.feed(pebbleKey, pebbleValue)
 	if err != nil {
@@ -87,18 +80,13 @@ func CompactAllForBackup(s *dal.Store) error {
 		return fmt.Errorf("deleting attribute range: %w", err)
 	}
 
-	// Build dispatch table: attrType byte → compactor
-	dispatch := map[byte]compactor{
-		dal.SubAttrVolume:           newCompactor(attrs.Volume, batch),
-		dal.SubAttrMetadata:         newCompactor(attrs.Metadata, batch),
-		dal.SubAttrReference:        newCompactor(attrs.References, batch),
-		dal.SubAttrLedger:           newCompactor(attrs.Ledger, batch),
-		dal.SubAttrBoundary:         newCompactor(attrs.Boundary, batch),
-		dal.SubAttrTransaction:      newCompactor(attrs.Transaction, batch),
-		dal.SubAttrSinkConfig:       newCompactor(attrs.SinkConfig, batch),
-		dal.SubAttrNumscriptVersion: newCompactor(attrs.NumscriptVersion, batch),
-		dal.SubAttrNumscriptContent: newCompactor(attrs.NumscriptContent, batch),
-		dal.SubAttrPreparedQuery:    newCompactor(attrs.PreparedQuery, batch),
+	// Build dispatch table from the attribute registry so every registered
+	// attribute type is covered automatically; a newly added attribute needs no
+	// edit here. See attributes.All().
+	all := attrs.All()
+	dispatch := make(map[byte]compactor, len(all))
+	for _, attr := range all {
+		dispatch[attr.Prefix()] = attr.newCompactor(batch)
 	}
 
 	// Single scan over the entire attribute range
@@ -136,7 +124,10 @@ func CompactAllForBackup(s *dal.Store) error {
 
 		handler, ok := dispatch[attrType]
 		if !ok {
-			continue
+			_ = iter.Close()
+			_ = batch.Cancel()
+
+			return fmt.Errorf("invariant: no compactor registered for attribute type 0x%02x in backup compaction", attrType)
 		}
 
 		valueBytes, err := iter.ValueAndErr()

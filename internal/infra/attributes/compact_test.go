@@ -670,3 +670,106 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 		require.Equal(t, uint64(0), lastIdx)
 	}()
 }
+
+func TestAttributesAllCoversEveryRegisteredType(t *testing.T) {
+	t.Parallel()
+
+	attrs := New()
+	all := attrs.All()
+
+	got := make(map[byte]struct{}, len(all))
+	for _, a := range all {
+		got[a.Prefix()] = struct{}{}
+	}
+
+	want := []byte{
+		dal.SubAttrVolume,
+		dal.SubAttrMetadata,
+		dal.SubAttrTransaction,
+		dal.SubAttrLedger,
+		dal.SubAttrBoundary,
+		dal.SubAttrReference,
+		dal.SubAttrLedgerMetadata,
+		dal.SubAttrSinkConfig,
+		dal.SubAttrNumscriptVersion,
+		dal.SubAttrNumscriptContent,
+		dal.SubAttrPreparedQuery,
+	}
+
+	require.Len(t, all, len(want), "All() must return every registered attribute")
+	for _, w := range want {
+		_, ok := got[w]
+		require.Truef(t, ok, "All() missing attribute prefix 0x%02x", w)
+	}
+}
+
+func TestCompactPreservesLedgerMetadata(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	logger := logging.FromContext(logging.TestingContext())
+	s, err := dal.OpenDirect(tmpDir, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	canonicalKey := []byte("test-ledger")
+
+	// Write a ledger-metadata entry (SubAttrLedgerMetadata, 0x07).
+	metaAttr := NewAttribute[*commonpb.MetadataValue](dal.SubAttrLedgerMetadata)
+	batch := s.OpenWriteSession()
+	_, err = metaAttr.Set(batch, canonicalKey, &commonpb.MetadataValue{
+		Type: &commonpb.MetadataValue_StringValue{StringValue: "keep-me"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	// Visible before compaction.
+	val, err := metaAttr.Get(s, canonicalKey)
+	require.NoError(t, err)
+	require.NotNil(t, val)
+	require.Equal(t, "keep-me", val.GetStringValue())
+
+	// Compact for backup.
+	require.NoError(t, CompactAllForBackup(s))
+
+	// Still visible after compaction — the bug is that it was silently destroyed.
+	val, err = metaAttr.Get(s, canonicalKey)
+	require.NoError(t, err)
+	require.NotNil(t, val, "ledger metadata must survive backup compaction")
+	require.Equal(t, "keep-me", val.GetStringValue())
+}
+
+func TestCompactPreservesAllRegisteredAttributes(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	logger := logging.FromContext(logging.TestingContext())
+	s, err := dal.OpenDirect(tmpDir, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	prefixes := make([]byte, 0)
+	for _, a := range New().All() {
+		prefixes = append(prefixes, a.Prefix())
+	}
+	require.NotEmpty(t, prefixes)
+
+	// Write one entry per registered prefix: key = [ZoneAttributes][prefix]['k'].
+	// An empty value is a valid (empty) proto and round-trips through the compactor.
+	batch := s.OpenWriteSession()
+	for _, p := range prefixes {
+		require.NoError(t, batch.SetBytes([]byte{dal.ZoneAttributes, p, 'k'}, nil))
+	}
+	require.NoError(t, batch.Commit())
+
+	// Compaction must succeed: every prefix has a compactor (no fail-loud error).
+	require.NoError(t, CompactAllForBackup(s))
+
+	// Every key must still be present after compaction.
+	for _, p := range prefixes {
+		value, closer, err := s.Get([]byte{dal.ZoneAttributes, p, 'k'})
+		require.NoErrorf(t, err, "entry for attribute prefix 0x%02x must survive compaction", p)
+		_ = value
+		require.NoError(t, closer.Close())
+	}
+}

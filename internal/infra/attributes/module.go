@@ -44,6 +44,27 @@ func New() *Attributes {
 	}
 }
 
+// All returns every registered attribute as a type-erased slice, derived by
+// reflection over the Attributes struct fields. Any field that implements
+// anyAttribute (i.e. every *Attribute[V]) is included, so an attribute added to
+// the struct and New() is automatically covered everywhere the full set is needed
+// (notably backup compaction). This is a one-time, off-the-hot-path enumeration
+// over a handful of fields; reflection is already used in NewAttribute.
+func (a *Attributes) All() []anyAttribute {
+	v := reflect.ValueOf(a).Elem()
+
+	out := make([]anyAttribute, 0, v.NumField())
+	for _, field := range v.Fields() {
+		// A field that does not implement anyAttribute (ok == false) is skipped;
+		// every *Attribute[V] field from New() does, so all are collected.
+		if attr, ok := field.Interface().(anyAttribute); ok {
+			out = append(out, attr)
+		}
+	}
+
+	return out
+}
+
 // NewAttribute creates a new Attribute for the given prefix byte.
 // The proto.Message type V is instantiated via reflection.
 func NewAttribute[V proto.Message](prefix byte) *Attribute[V] {
