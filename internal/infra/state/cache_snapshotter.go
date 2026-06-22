@@ -139,9 +139,17 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.WriteSession, gen0Byte byt
 			id, s.cacheType, s.ac.Gen0().Size(), s.ac.Gen1().Size())
 	}
 
-	valueBytes, err := s.marshalValue(entry.Data)
-	if err != nil {
-		return fmt.Errorf("marshaling touched value: %w", err)
+	// A tombstone keeps the pre-delete value in entry.Data (AttributeCache.Del
+	// only flips Deleted), so marshalValue would persist a live value to 0xFF and
+	// resurrect the key when a node rehydrates its cache from the snapshot zone.
+	// Empty bytes are the tombstone form RestoreEntry reads back as Deleted.
+	var valueBytes []byte
+	if !entry.Deleted {
+		var err error
+		valueBytes, err = s.marshalValue(entry.Data)
+		if err != nil {
+			return fmt.Errorf("marshaling touched value: %w", err)
+		}
 	}
 
 	if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, entry.Tag, valueBytes); err != nil {

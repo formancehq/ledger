@@ -539,3 +539,64 @@ func TestCacheSnapshotter_MachineIntegration(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, int64(100), restored.Data.GetInput().ToBigInt().Int64())
 }
+
+// Regression for the delete-resurrection-across-recovery bug found via the
+// singleton_driver_model antithesis workload: a deleted ledger-metadata key
+// must not reappear after a node rebuilds its cache from the 0xFF snapshot zone.
+//
+// AttributeCache.Del marks a tombstone but keeps the old value in entry.Data.
+// MirrorTouch promotes a gen1 entry to gen0 and mirrors it to 0xFF; without the
+// Deleted guard it persists marshalValue(entry.Data) — a NON-EMPTY value — so a
+// CacheNeedsTouch on a gen1-only deleted key writes the deleted key's old value
+// back as a live 0xFF entry. The live cache still reads "deleted" (it keeps the
+// flag), so it only surfaces when a node rehydrates from 0xFF (RestoreFromStore):
+// RestoreEntry sees non-empty bytes and restores a live value.
+//
+// This drives that exact sequence against a real Pebble store: a gen1 tombstone
+// (the deleted-then-rotated state) + the 0xFF tombstone a delete writes, then
+// MirrorTouch, then RestoreFromStore — and asserts the key stays deleted.
+func TestCacheSnapshotter_MirrorTouchDoesNotResurrectDeletedMetadata(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	lmk := domain.LedgerMetadataKey{LedgerName: "test-ledger", Key: "k0"}
+	u128, tag := attributes.MakeKey(lmk.Bytes())
+	deletedValue := commonpb.NewStringValue("should-stay-deleted")
+
+	// In-memory state after a delete followed by a rotation: the entry is a
+	// tombstone in gen1 (Deleted, but Del retained the old value in Data) and
+	// absent from gen0 — i.e. gen1-only, which CheckCache reports as CacheNeedsTouch.
+	registry.Cache.LedgerMetadata.Gen1().Put(u128, attributes.Entry[*commonpb.MetadataValue]{
+		Tag:     tag,
+		Data:    deletedValue,
+		Deleted: true,
+	})
+
+	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+
+	batch := dataStore.OpenWriteSession()
+	// The delete wrote a tombstone to the 0xFF zone (both generations).
+	require.NoError(t, writeCacheTombstone(batch, dal.SubAttrLedgerMetadata, u128, tag))
+	// The leader's CacheNeedsTouch promotes the gen1 tombstone to gen0. MirrorTouch
+	// must persist a tombstone for it — not the retained value.
+	require.NoError(t, snapshotter.MirrorTouch(batch, dal.SubAttrLedgerMetadata, gen0Byte, u128))
+	require.NoError(t, batch.Commit())
+
+	// Rehydrate the cache from the 0xFF zone, exactly as a node does on restart.
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+
+	// The key must still be deleted in the restored cache. On the buggy code the
+	// restored gen0 entry is a live value (Deleted=false): the deleted key
+	// resurrected to its pre-delete value.
+	if e, ok := registry.Cache.LedgerMetadata.Gen0().Get(u128); ok {
+		require.True(t, e.Deleted,
+			"deleted ledger-metadata key resurrected after restore: gen0 holds live value %q",
+			e.Data.GetStringValue())
+	}
+	if e, ok := registry.Cache.LedgerMetadata.Gen1().Get(u128); ok && !e.Deleted {
+		t.Fatalf("deleted ledger-metadata key resurrected after restore: gen1 holds live value %q",
+			e.Data.GetStringValue())
+	}
+}
