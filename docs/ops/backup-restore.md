@@ -47,7 +47,7 @@ All backup/restore commands accept the same provider flags; only the `--driver` 
 │  a. restore download         │ │    --s3-bucket ... --data-dir ./data │
 │  b. restore validate         │ │                                      │
 │  c. restore preview          │ │  No server needed.                   │
-│  d. restore finalize         │ │  Download → compact → finalize.      │
+│  d. restore finalize         │ │  Download → prepare → finalize.      │
 └──────────────────────────────┘ └──────────────────────────────────────┘
                  │                             │
                  └──────────────┬──────────────┘
@@ -118,15 +118,15 @@ New files are uploaded to the storage backend. A manifest JSON file is written l
 
 The temporary checkpoint is removed from the leader's filesystem after the backup completes.
 
-### Compaction on Restore
+### Backup Preparation on Restore
 
-Attribute compaction is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. This means backups contain raw Pebble data, while the restore process prepares it for standalone use:
+Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It performs three Global-zone resets and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one Pebble entry (no per-index history to fold):
 
-1. **Attribute compaction**: All versioned attribute entries are compacted to index 0.
-2. **Reset lastAppliedIndex**: The Raft applied index is reset to 0.
-3. **Remove persisted config**: Node and cluster IDs are stripped for portability.
+1. **Reset lastAppliedIndex**: The Raft applied index is reset to 0, so the restored cluster starts fresh.
+2. **Remove persisted config**: Node and cluster IDs are stripped for portability.
+3. **Drop persisted bloom blocks**: Stale bloom blocks are cleared so the booting node rebuilds the bloom from a full attribute scan using its own config.
 
-**File**: `internal/infra/attributes/compact.go` — `CompactAllForBackup()`
+**File**: `internal/infra/attributes/prepare.go` — `PrepareForBackup()`
 
 ### What the Backup Contains
 
@@ -134,7 +134,7 @@ The backup is a complete Pebble database that contains:
 
 | Zone | Prefix | Contents |
 |------|--------|----------|
-| Attributes | `0x01` | Volumes, account metadata, ledger metadata, reversions, references, ledger info, boundaries (compacted to index 0) |
+| Attributes | `0x01` | Volumes, account metadata, ledger metadata, reversions, references, ledger info, boundaries |
 | Cache | `0x02` | Derived/cached state |
 | Per-Ledger | `0x03` | Per-ledger data |
 | Cold | `0x04` | Transaction logs (`{0x04, 0x01}`), audit entries (`{0x04, 0x02}`) |
@@ -461,7 +461,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
 5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`.
 6. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
-7. **Compact**: Compacts all attributes for restore compatibility.
+7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index → 0, persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
 8. **Finalize**: Hard-links staging to `{data-dir}/checkpoints/0`, writes the `RESTORED` marker JSON.
 9. **Cleanup**: Removes the staging directory.
 
@@ -526,7 +526,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 }
 ```
 
-- `lastAppliedIndex`: The Raft index of the last applied entry in the backup (reset to 0 after compaction, so this is always 0 in practice).
+- `lastAppliedIndex`: The Raft index of the last applied entry in the backup (reset to 0 during backup preparation, so this is always 0 in practice).
 - `lastAppliedTimestamp`: The HLC timestamp (microseconds) of the last applied entry.
 
 **File**: `internal/infra/node/restored_marker.go`
@@ -539,7 +539,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 |-----------|-----------|
 | **Consistent snapshot** | Backup checkpoint is created as a direct Pebble checkpoint. Boundaries are always up-to-date in Pebble (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
 | **Incremental efficiency** | SST files are immutable — same name means same content. Only new/changed files are uploaded; stale files are deleted. |
-| **Self-contained on restore** | During restore finalize, attributes are compacted to index 0 and `lastAppliedIndex` is reset. No dependency on the original cluster's Raft indices. |
+| **Self-contained on restore** | During restore finalize, the applied index, persisted config and bloom blocks are reset (Global-zone); the attribute zone is preserved byte-for-byte. No dependency on the original cluster's Raft indices. |
 | **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log sequence continuity, volume balance verification, metadata consistency. |
 | **Fresh directory required** | Restore mode refuses to start if existing checkpoints are found in `checkpoints/`, preventing accidental overwrites. |
 | **Atomic finalize** | Checkpoint placement uses `HardLink()` (temp directory + atomic `os.Rename`) for crash safety. |
@@ -598,7 +598,7 @@ See [Chapters](../technical/architecture/data-model/chapters.md) for the full ch
 | `internal/infra/backup/manager.go` | `RunBackup()` — diff, upload, manifest |
 | `internal/infra/backup/s3.go` | S3 storage driver |
 | `internal/infra/backup/storage.go` | Storage interface and driver factory |
-| `internal/infra/attributes/compact.go` | `CompactAllForBackup()` — attribute compaction (used during restore) |
+| `internal/infra/attributes/prepare.go` | `PrepareForBackup()` — Global-zone resets for portable backup (used during restore) |
 | **Restore (gRPC)** | |
 | `misc/proto/restore.proto` | RestoreService proto definition |
 | `internal/proto/restorepb/` | Generated proto code |

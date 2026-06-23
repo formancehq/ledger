@@ -458,9 +458,9 @@ FSM flushes at apply time (batch, no sync):
 - overwrite the absolute volume value for each touched canonical key (a single `Set` per key)
 - no cleanup needed: `Set` overwrites the previous value in place
 
-### 12.3 Compaction (backup only)
+### 12.3 Backup preparation (backup only)
 
-During normal operation, there is only one entry per canonical key, so no per-key cleanup is needed. The only bulk cleanup happens during backup compaction (`CompactAllForBackup`): a single `DeleteRange` over the entire attribute zone `[0xF1, 0xF2)` followed by rewriting compacted values.
+There is exactly one entry per canonical key, so there is no attribute compaction. Backup preparation (`PrepareForBackup`) leaves the attribute zone byte-for-byte intact and performs only three Global-zone resets: applied index → 0, persisted config deleted, and persisted bloom blocks dropped.
 
 ### 12.4 Pebble key layout
 

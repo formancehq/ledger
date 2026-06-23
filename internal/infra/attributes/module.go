@@ -48,8 +48,9 @@ func New() *Attributes {
 // reflection over the Attributes struct fields. Any field that implements
 // anyAttribute (i.e. every *Attribute[V]) is included, so an attribute added to
 // the struct and New() is automatically covered everywhere the full set is needed
-// (notably backup compaction). This is a one-time, off-the-hot-path enumeration
-// over a handful of fields; reflection is already used in NewAttribute.
+// (e.g. the byte-for-byte preservation test that must exercise every attribute
+// prefix). This is a one-time, off-the-hot-path enumeration over a handful of
+// fields; reflection is already used in NewAttribute.
 func (a *Attributes) All() []anyAttribute {
 	v := reflect.ValueOf(a).Elem()
 

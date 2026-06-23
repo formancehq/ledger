@@ -308,7 +308,7 @@ func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restor
 	}, nil
 }
 
-// FinalizeRestore compacts attributes and commits the staged backup as the live data.
+// FinalizeRestore prepares the staged backup (Global-zone resets) and commits it as the live data.
 func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restorepb.FinalizeRestoreRequest) (*restorepb.FinalizeRestoreResponse, error) {
 	s.mu.Lock()
 	downloaded := s.downloaded
@@ -321,14 +321,14 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 
 	stagingDir := s.stagingDir()
 
-	// Compact attributes to index 0 and reset lastAppliedIndex.
-	s.logger.Infof("Compacting backup for restore compatibility")
+	// Reset Global-zone keys so the staged backup is restartable on a fresh cluster.
+	s.logger.Infof("Preparing backup for restore compatibility")
 
-	if err := attributes.CompactAllForBackup(store); err != nil {
-		return nil, fmt.Errorf("compacting backup attributes: %w", err)
+	if err := attributes.PrepareForBackup(store); err != nil {
+		return nil, fmt.Errorf("preparing backup attributes: %w", err)
 	}
 
-	// Read metadata after compaction. We can do this directly on the same RW
+	// Read metadata after backup preparation. We can do this directly on the same RW
 	// handle — query.ReadLast* only need a PebbleGetter, which *dal.Store
 	// satisfies in both RW and RO modes.
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(store)

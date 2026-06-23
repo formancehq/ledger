@@ -295,7 +295,7 @@ In practice, **three compaction mechanisms destroy historical data**:
 
 1. **Old entry cleanup** (at merge): during `WriteSet.Merge`, when a new value is written, the previous entry for the same key is deleted (point delete if index known, range delete otherwise). This keeps entries bounded.
 
-2. **Backup compaction** (`CompactAllForBackup`): consolidates all entries per key into a single entry at index 0 for portable backups.
+2. **Backup preparation** (`PrepareForBackup`): performs Global-zone resets only and leaves attribute entries byte-for-byte intact (it does not fold or consolidate values). Historically this was `CompactAllForBackup`, but attribute keys no longer carry per-index history to compact.
 
 **Consequence**: if you call `ComputeValue(store, pastIndex, key)`, the upperBound is `pastIndex + 1`. But:
 - The base may have been consolidated at a raft index **after** `pastIndex` → not found (outside range)

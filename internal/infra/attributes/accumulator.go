@@ -60,7 +60,8 @@ func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool,
 		return false, nil, fmt.Errorf("unmarshaling value: %w", err)
 	}
 
-	// Latest entry wins (entries are in Pebble key order = raft index order)
+	// Single entry per canonical key (Set overwrites in place since the
+	// raft-index suffix was removed); this assignment just records it.
 	ab.baseValue = v
 
 	return true, prev, nil

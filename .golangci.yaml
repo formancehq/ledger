@@ -115,7 +115,7 @@ linters:
         msg: |
           OpenWriteSession opens a write session on the main Pebble store. Outside the FSM
           hot path (internal/infra/state/machine.go), it is only allowed from declared
-          lifecycle paths (bootstrap, backup, attributes/compact). New call sites must be
+          lifecycle paths (bootstrap, backup, attributes/prepare). New call sites must be
           added to the .golangci.yaml exclusions block with a justification.
       # NewWriteSessionFromDB is a back door that takes a raw *pebble.DB. It
       # bypasses *Store and therefore the OpenWriteSession check above. Only
@@ -139,7 +139,7 @@ linters:
     - path: internal/infra/state/machine\.go
       linters: [forbidigo]
       source: 'sessions\.OpenWriteSession\(\)'
-    - path: internal/infra/attributes/compact\.go
+    - path: internal/infra/attributes/prepare\.go
       linters: [forbidigo]
     - path: internal/infra/backup/
       linters: [forbidigo]

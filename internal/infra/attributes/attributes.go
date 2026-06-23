@@ -31,26 +31,15 @@ type Attribute[V proto.Message] struct {
 }
 
 // anyAttribute is the type-erased view of an attribute used where the concrete
-// value type is not statically known — notably backup compaction, which builds a
-// dispatch table keyed by the attribute type byte. Implemented by *Attribute[V].
+// value type is not statically known — e.g. iterating every registered
+// attribute by its type byte via Attributes.All(). Implemented by *Attribute[V].
 type anyAttribute interface {
 	// Prefix returns the attribute type byte used at key offset 1.
 	Prefix() byte
-	// newCompactor returns a compactor bound to this attribute and the given batch.
-	newCompactor(batch *dal.WriteSession) compactor
 }
 
 // Prefix returns the attribute type byte for this attribute.
 func (a *Attribute[V]) Prefix() byte { return a.prefix }
-
-// newCompactor returns a compactor that accumulates and writes back base values
-// for this attribute's type. See typedCompactor in compact.go.
-func (a *Attribute[V]) newCompactor(batch *dal.WriteSession) compactor {
-	return &typedCompactor[V]{
-		accumulatorBase: accumulatorBase[V]{attr: a},
-		batch:           batch,
-	}
-}
 
 // ensureKeyBuf ensures keyBuf can hold at least n bytes.
 func (a *Attribute[V]) ensureKeyBuf(n int) {

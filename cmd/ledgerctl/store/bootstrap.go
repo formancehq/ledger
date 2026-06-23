@@ -258,32 +258,32 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Compact attributes
-	compactSpinner, _ := pterm.DefaultSpinner.Start("Compacting attributes for restore compatibility...")
+	// Prepare attributes for backup (Global-zone resets; no compaction).
+	prepareSpinner, _ := pterm.DefaultSpinner.Start("Preparing attributes for restore compatibility...")
 
-	compactStore, err := dal.OpenDirect(stagingDir, logger)
+	prepareStore, err := dal.OpenDirect(stagingDir, logger)
 	if err != nil {
-		compactSpinner.Fail("Failed to open staging for compaction")
+		prepareSpinner.Fail("Failed to open staging for backup preparation")
 
-		return cmdutil.Displayed(fmt.Errorf("opening staging for compaction: %w", err))
+		return cmdutil.Displayed(fmt.Errorf("opening staging for backup preparation: %w", err))
 	}
 
-	if err := attributes.CompactAllForBackup(compactStore); err != nil {
-		_ = compactStore.Close()
-		compactSpinner.Fail("Failed to compact attributes")
+	if err := attributes.PrepareForBackup(prepareStore); err != nil {
+		_ = prepareStore.Close()
+		prepareSpinner.Fail("Failed to prepare attributes for backup")
 
-		return cmdutil.Displayed(fmt.Errorf("compacting backup attributes: %w", err))
+		return cmdutil.Displayed(fmt.Errorf("preparing backup attributes: %w", err))
 	}
 
-	if err := compactStore.Close(); err != nil {
-		compactSpinner.Fail("Failed to close compacted store")
+	if err := prepareStore.Close(); err != nil {
+		prepareSpinner.Fail("Failed to close prepared store")
 
-		return cmdutil.Displayed(fmt.Errorf("closing compacted staging: %w", err))
+		return cmdutil.Displayed(fmt.Errorf("closing prepared staging: %w", err))
 	}
 
-	compactSpinner.Success("Attributes compacted")
+	prepareSpinner.Success("Attributes prepared for backup")
 
-	// Re-read metadata after compaction
+	// Re-read metadata after backup preparation
 	store, err = dal.OpenReadOnly(stagingDir, logger)
 	if err != nil {
 		return fmt.Errorf("re-opening staging store: %w", err)
@@ -293,7 +293,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		_ = store.Close()
 
-		return fmt.Errorf("re-reading preview data after compaction: %w", err)
+		return fmt.Errorf("re-reading preview data after backup preparation: %w", err)
 	}
 
 	_ = store.Close()
