@@ -1572,10 +1572,8 @@ func discoveryContext(timeout time.Duration) (context.Context, context.CancelFun
 }
 
 // TimeoutHTTPClient returns an *http.Client with Timeout set when timeout > 0,
-// otherwise http.DefaultClient (which has no timeout). Used by cmd/server to
-// shadow — via fx.Decorate — the http.DefaultClient that go-libs'
-// authnfx.JWTModule injects into NewKeySets, so OIDC discovery + JWKS reads
-// don't hang startup on a slow issuer.
+// otherwise http.DefaultClient (which has no timeout). buildAuthConfig uses it
+// to bound the JWKS reads performed by the OIDC remote keyset.
 func TimeoutHTTPClient(timeout time.Duration) *http.Client {
 	if timeout <= 0 {
 		return http.DefaultClient
@@ -1597,10 +1595,10 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 	}
 
 	// When auth is enabled and an issuer is configured but no external KeySet was injected,
-	// discover the OIDC configuration and create a remote KeySet. The
-	// discovery HTTP call uses http.DefaultClient (no Timeout) inside go-libs,
-	// so a slow or blackholed issuer would otherwise hang startup forever —
-	// bound it via a context deadline derived from cfg.AuthConfig.OIDCDiscoveryTimeout.
+	// discover the OIDC configuration and create a remote KeySet. Both the discovery
+	// call and the keyset's JWKS reads are bounded by OIDCDiscoveryTimeout so a slow or
+	// blackholed issuer cannot hang the process: the context deadline bounds
+	// oidc.Discover, and the keyset's http.Client.Timeout bounds JWKS fetches.
 	if oidcKeySet == nil && cfg.AuthConfig.Enabled && cfg.AuthConfig.Issuer != "" {
 		ctx, cancel := discoveryContext(cfg.AuthConfig.OIDCDiscoveryTimeout)
 		discovery, err := oidc.Discover(ctx, cfg.AuthConfig.Issuer, oidc.DiscoveryEndpoint)
@@ -1609,7 +1607,7 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 			return authCfg, fmt.Errorf("discovering OIDC configuration for issuer %q: %w", cfg.AuthConfig.Issuer, err)
 		}
 
-		oidcKeySet = oidcclient.NewRemoteKeySet(nil, discovery.JwksURI)
+		oidcKeySet = oidcclient.NewRemoteKeySet(TimeoutHTTPClient(cfg.AuthConfig.OIDCDiscoveryTimeout), discovery.JwksURI)
 
 		logger.WithFields(map[string]any{
 			"issuer":   cfg.AuthConfig.Issuer,
