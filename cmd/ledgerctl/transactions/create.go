@@ -82,7 +82,7 @@ Examples:
   ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD" --posting "bank,user,500,USD"
   ledgerctl transactions create --ledger my-ledger --script transfer.num --var "amount=1000" --var "asset=USD"
   ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD" --count 100
-  ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD" --count 100 --batch 10
+  ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD" --count 100 --batch-size 10
   ledgerctl transactions create --ledger my-ledger  # Interactive mode`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -98,7 +98,7 @@ Examples:
 	cmd.Flags().Bool("force", false, "Bypass balance checks (allow accounts to go negative)")
 	cmd.Flags().Bool("expand-volumes", false, "Include post-commit volumes in response")
 	cmd.Flags().Int("count", 1, "Number of times to send the transaction")
-	cmd.Flags().Int("batch", 1, "Bundle the transactions into batches of this size (transactions per Apply request)")
+	cmd.Flags().Int("batch-size", 1, "Bundle the transactions into batches of this size (transactions per Apply request)")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -365,7 +365,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	// Get repetition and batching flags
 	count, _ := cmd.Flags().GetInt("count")
-	batchSize, _ := cmd.Flags().GetInt("batch")
+	batchSize, _ := cmd.Flags().GetInt("batch-size")
 
 	if count < 1 {
 		pterm.Error.Println("--count must be at least 1")
@@ -374,9 +374,9 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	if batchSize < 1 {
-		pterm.Error.Println("--batch must be at least 1")
+		pterm.Error.Println("--batch-size must be at least 1")
 
-		return cmdutil.Displayed(errors.New("--batch must be at least 1"))
+		return cmdutil.Displayed(errors.New("--batch-size must be at least 1"))
 	}
 
 	// A transaction reference must be unique, so it cannot be reused across a
