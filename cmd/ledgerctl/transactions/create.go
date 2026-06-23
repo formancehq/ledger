@@ -412,9 +412,14 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Create the transaction(s)
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
+	// applyBatch sends one Apply request under its own context so the
+	// --timeout applies per request rather than cumulatively across batches.
+	applyBatch := func(applyReq *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+		ctx, cancel := cmdutil.GetContext(cmd)
+		defer cancel()
+
+		return client.Apply(ctx, applyReq)
+	}
 
 	spinnerText := "Creating transaction..."
 	if count > 1 {
@@ -445,7 +450,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			return cmdutil.Displayed(err)
 		}
 
-		resp, err := client.Apply(ctx, applyReq)
+		resp, err := applyBatch(applyReq)
 		if err != nil {
 			_ = spinner.Stop()
 
