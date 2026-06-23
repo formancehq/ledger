@@ -134,12 +134,13 @@ func (r *ColdReader) downloadSST(ctx context.Context, chapterID uint64, destPath
 		return fmt.Errorf("creating SST cache file: %w", err)
 	}
 
-	defer func() { _ = f.Close() }()
-
 	if _, err := io.Copy(f, rc); err != nil {
+		_ = f.Close()
+
 		return fmt.Errorf("writing SST cache file: %w", err)
 	}
 
+	// Close explicitly (not deferred) so the flush error is propagated.
 	return f.Close()
 }
 
