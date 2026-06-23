@@ -4233,7 +4233,7 @@ on/off TLS toggle workflow.
 |------|------|---------|-------------|
 | `--auth-scope-mapping-file` | string | `""` | Path to JSON file mapping virtual scopes (e.g. `ledger:read`) to granular scopes |
 | `--auth-anonymous-scopes` | string | `""` | Comma-separated granular scopes (or `*:read` / `*:write` wildcards) granted to requests that arrive without a bearer token |
-| `--auth-discovery-timeout` | duration | `10s` | Bound the HTTP calls used for OIDC discovery and JWKS fetches at startup (`0` = unbounded). Prevents a slow or blackholed issuer from hanging the process indefinitely. |
+| `--auth-discovery-timeout` | duration | `10s` | Bound the HTTP calls used for OIDC discovery and JWKS fetches (`0` = unbounded). Prevents a slow or blackholed issuer from hanging discovery at startup or a later JWKS refresh. |
 
 Allows expanding virtual scopes into fine-grained scopes. For example, mapping `ledger:read` to a set of more specific scopes. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
 
