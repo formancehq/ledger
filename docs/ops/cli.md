@@ -1343,7 +1343,8 @@ ledgerctl transactions create --ledger my-ledger \
 
 When `--count` is greater than 1 a summary is printed instead of each
 transaction's full detail. The `--json`/`--yaml` output becomes the array of
-created transactions.
+created transactions. `--reference` cannot be combined with `--count` greater
+than 1, because transaction references must be unique.
 
 **Creating transactions with Numscript:**
 

@@ -379,6 +379,15 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(errors.New("--batch must be at least 1"))
 	}
 
+	// A transaction reference must be unique, so it cannot be reused across a
+	// bulk create: the first transaction would commit and every subsequent one
+	// would fail with a reference conflict, leaving a partial result.
+	if reference != "" && count > 1 {
+		pterm.Error.Println("--reference cannot be combined with --count > 1 (references must be unique)")
+
+		return cmdutil.Displayed(errors.New("--reference cannot be combined with --count > 1 (references must be unique)"))
+	}
+
 	// newRequest builds a fresh Apply request for one transaction. It is called
 	// once per transaction so each envelope is signed independently.
 	newRequest := func() *servicepb.Request {
