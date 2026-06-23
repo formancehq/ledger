@@ -1217,6 +1217,16 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 
 	if result.snapshotApplied {
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+
+		// Re-sync the in-memory ConfState shadow from the just-installed
+		// snapshot. wal.ApplySnapshot already persisted the correct ConfState;
+		// without this, the reconcile block below loads the stale shadow and
+		// overwrites the WAL with it (EN-1278). Fresh pointer copy avoids
+		// aliasing the Ready's snapshot struct. Runs before the conf-change
+		// loop so a combined snapshot+conf-change Ready still layers the delta
+		// on top of the correct baseline.
+		cs := rd.Snapshot.Metadata.ConfState
+		node.confState.Store(&cs)
 	}
 
 	// Apply conf changes (rawNode.ApplyConfChange must run in orchestrate goroutine).
