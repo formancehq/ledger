@@ -453,11 +453,11 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 
 	pterm.Println()
 
-	if errorCount == 0 {
-		pterm.Success.Println("Backup is valid - no integrity errors found")
-	} else {
-		pterm.Error.Printfln("%d integrity error(s) found", errorCount)
+	if err := cmdutil.IntegrityResult("backup validation", errorCount); err != nil {
+		return err
 	}
+
+	pterm.Success.Println("Backup is valid - no integrity errors found")
 
 	return nil
 }

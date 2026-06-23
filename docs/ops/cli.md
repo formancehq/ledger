@@ -1777,6 +1777,7 @@ ledgerctl store check [flags]
 - Replays logs to compute expected volumes and metadata
 - Compares expected state against actual stored state
 - Streams progress and errors in real-time
+- Exits non-zero when integrity errors are found so it can gate scripts (the `--json` output instead reports `valid: false` and exits zero)
 
 **Checks performed:**
 - **SEQUENCE_GAP**: Missing log entries in the sequence
@@ -2039,7 +2040,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 2. Downloads backup files from the configured backend into a staging directory
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
-5. If `--validate` is set, runs the full integrity checker (same as `store check`)
+5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
 6. Prompts for confirmation (unless `--yes`)
 7. Prepares attributes for backup (Global-zone resets): resets applied index to 0, strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
@@ -3493,6 +3494,8 @@ ledgerctl restore validate
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--timeout` | No | Request timeout (default: 50s) |
+
+**Behavior:** Exits non-zero if any integrity error is found, so `restore validate && restore finalize` stops before finalizing a corrupt backup.
 
 #### restore preview
 

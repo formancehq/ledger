@@ -109,11 +109,11 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 
 	pterm.Println()
 
-	if errorCount == 0 {
-		pterm.Success.Println("Store is valid - no integrity errors found")
-	} else {
-		pterm.Error.Printfln("%d integrity error(s) found", errorCount)
+	if err := cmdutil.IntegrityResult("store validation", errorCount); err != nil {
+		return err
 	}
+
+	pterm.Success.Println("Store is valid - no integrity errors found")
 
 	return nil
 }
