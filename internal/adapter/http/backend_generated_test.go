@@ -751,6 +751,44 @@ func (c *MockBackendInspectIndexCall) DoAndReturn(f func(context.Context, *servi
 	return c
 }
 
+// IsClusterReady mocks base method.
+func (m *MockBackend) IsClusterReady() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsClusterReady")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsClusterReady indicates an expected call of IsClusterReady.
+func (mr *MockBackendMockRecorder) IsClusterReady() *MockBackendIsClusterReadyCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsClusterReady", reflect.TypeOf((*MockBackend)(nil).IsClusterReady))
+	return &MockBackendIsClusterReadyCall{Call: call}
+}
+
+// MockBackendIsClusterReadyCall wrap *gomock.Call
+type MockBackendIsClusterReadyCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendIsClusterReadyCall) Return(arg0 bool) *MockBackendIsClusterReadyCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendIsClusterReadyCall) Do(f func() bool) *MockBackendIsClusterReadyCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendIsClusterReadyCall) DoAndReturn(f func() bool) *MockBackendIsClusterReadyCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // IsHealthy mocks base method.
 func (m *MockBackend) IsHealthy() bool {
 	m.ctrl.T.Helper()
@@ -1174,6 +1212,44 @@ func (c *MockBackendListTransactionsCall) Do(f func(context.Context, string, uin
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockBackendListTransactionsCall) DoAndReturn(f func(context.Context, string, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Transaction], error)) *MockBackendListTransactionsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// NotClusterReadyReasons mocks base method.
+func (m *MockBackend) NotClusterReadyReasons() []string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NotClusterReadyReasons")
+	ret0, _ := ret[0].([]string)
+	return ret0
+}
+
+// NotClusterReadyReasons indicates an expected call of NotClusterReadyReasons.
+func (mr *MockBackendMockRecorder) NotClusterReadyReasons() *MockBackendNotClusterReadyReasonsCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotClusterReadyReasons", reflect.TypeOf((*MockBackend)(nil).NotClusterReadyReasons))
+	return &MockBackendNotClusterReadyReasonsCall{Call: call}
+}
+
+// MockBackendNotClusterReadyReasonsCall wrap *gomock.Call
+type MockBackendNotClusterReadyReasonsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendNotClusterReadyReasonsCall) Return(arg0 []string) *MockBackendNotClusterReadyReasonsCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendNotClusterReadyReasonsCall) Do(f func() []string) *MockBackendNotClusterReadyReasonsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendNotClusterReadyReasonsCall) DoAndReturn(f func() []string) *MockBackendNotClusterReadyReasonsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

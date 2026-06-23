@@ -1,0 +1,131 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cluster-cold-restart
+spec:
+  # Regression test for the cold-start bootstrap deadlock (EN-1328).
+  #
+  # The StatefulSet uses PodManagementPolicy: OrderedReady, so pod-N+1 is
+  # only created once pod-N reports Ready. Before this fix, /readyz required
+  # an elected Raft leader — which cannot happen on cold start until peer
+  # pods are scheduled — so killing all three pods at once permanently
+  # deadlocked the cluster: pod-0 stayed NotReady waiting for a leader, and
+  # pod-1 / pod-2 were never created.
+  #
+  # The fix relaxes /readyz to "Raft loop has started" (any soft state),
+  # decoupling the StatefulSet readiness gate from cluster availability.
+  # Reverting the fix must make this test fail.
+  timeouts:
+    assert: 5m
+  steps:
+    # 1. Deploy a 3-replica cluster and wait until it is fully Ready.
+    - name: Deploy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: cold-restart
+              status:
+                readyReplicas: 3
+
+    # 2. Record the initial pod UIDs to confirm they are actually replaced
+    #    by the kill rather than just transiently NotReady.
+    - name: Record initial pod UIDs
+      try:
+        - script:
+            content: |
+              set -e
+              for i in 0 1 2; do
+                POD_UID=$(kubectl get pod cold-restart-$i -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+                [ -n "$POD_UID" ] || { echo "FAIL: pod cold-restart-$i has no UID"; exit 1; }
+                kubectl annotate namespace "$NAMESPACE" "e2e-initial-uid-$i=$POD_UID" --overwrite
+                echo "cold-restart-$i UID=$POD_UID"
+              done
+            timeout: 30s
+
+    # 3. Provision some data so the post-restart assert can prove the
+    #    cluster came back with its state intact, not just up-and-running.
+    - name: Provision data
+      try:
+        - script:
+            content: |
+              kubectl exec cold-restart-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    # 4. Kill all three pods simultaneously. This is the trigger that used
+    #    to permanently deadlock the cluster.
+    - name: Kill all pods at once
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl delete pod -n "$NAMESPACE" \
+                cold-restart-0 cold-restart-1 cold-restart-2 \
+                --wait=false --grace-period=0 --force
+            timeout: 30s
+
+    # 5. The whole point of this test: the StatefulSet must recover on its
+    #    own. With the old /readyz semantics this never converges because
+    #    pod-0 cannot elect a leader without pod-1 and pod-2 being created
+    #    first. The 5-minute assert timeout configured in chainsaw.yaml is
+    #    generous enough to catch real flakiness but tight enough to fail
+    #    the deadlock case quickly.
+    - name: Wait for cluster to recover
+      try:
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: cold-restart
+              status:
+                readyReplicas: 3
+
+    # 6. Confirm that the pods we observe are actually new ones (different
+    #    UIDs from step 2), not stale Ready statuses from before the kill.
+    - name: Verify pods were actually replaced
+      try:
+        - script:
+            content: |
+              set -e
+              for i in 0 1 2; do
+                INITIAL=$(kubectl get namespace "$NAMESPACE" -o jsonpath="{.metadata.annotations.e2e-initial-uid-$i}")
+                NEW_UID=$(kubectl get pod cold-restart-$i -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+                if [ -z "$NEW_UID" ] || [ "$INITIAL" = "$NEW_UID" ]; then
+                  echo "FAIL: pod cold-restart-$i was not replaced (initial=$INITIAL new=$NEW_UID)"
+                  exit 1
+                fi
+                echo "OK: cold-restart-$i replaced (old=$INITIAL new=$NEW_UID)"
+              done
+            timeout: 30s
+
+    # 7. A successful read via gRPC proves three things at once: the node is
+    #    serving traffic, the cluster elected a leader (without one, reads
+    #    fail with ErrNoLeader), and the provisioned data survived the kill.
+    #
+    #    Retried in a loop because /readyz is intentionally permissive and
+    #    becomes 200 as soon as the Raft loop starts — well before quorum is
+    #    re-established. The election delay after a full restart is typically
+    #    a few seconds; the loop accommodates jitter.
+    - name: Verify cluster is serving and data survived
+      try:
+        - script:
+            content: |
+              set -e
+              for attempt in $(seq 1 60); do
+                if kubectl exec cold-restart-0 -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' 2>&1; then
+                  echo "OK: ledgers list succeeded on attempt $attempt"
+                  exit 0
+                fi
+                echo "attempt $attempt: ledgers list not ready yet, retrying in 2s"
+                sleep 2
+              done
+              echo "FAIL: cluster did not elect a leader within 120s after recovery"
+              exit 1
+            timeout: 180s

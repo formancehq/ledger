@@ -29,12 +29,30 @@ func (s *Server) handleLivez(w http.ResponseWriter, _ *http.Request) {
 	writeOK(w, HealthData{Status: "ok"})
 }
 
-// handleReadyz is a readiness probe: returns 200 only when the node is part of
-// a healthy cluster (Raft state healthy, leader elected, disk/clock OK).
+// handleReadyz is the StatefulSet readiness probe: returns 200 once the local
+// Raft loop has started, regardless of whether a leader has been elected. This
+// is intentionally permissive so the operator's OrderedReady gate can advance
+// during a cold start (where quorum cannot be reached until peer pods are
+// scheduled). Use /clusterz for the stricter cluster-availability signal.
 func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
 	if reasons := s.backend.NotReadyReasons(); len(reasons) > 0 {
 		s.logger.Infof("Readiness check failed: %s", strings.Join(reasons, "; "))
-		writeErrorResponse(w, http.StatusServiceUnavailable, "NOT_READY", errors.New("node is not ready to serve traffic"))
+		writeErrorResponse(w, http.StatusServiceUnavailable, "NOT_READY", errors.New("node is not ready"))
+
+		return
+	}
+
+	writeOK(w, HealthData{Status: "ok"})
+}
+
+// handleClusterz is a cluster-availability probe: returns 200 only when the
+// node is part of a healthy cluster (Raft state healthy, leader elected,
+// disk/clock OK). Use this for external monitoring or any client that wants
+// to wait until the node can actually serve cluster-dependent traffic.
+func (s *Server) handleClusterz(w http.ResponseWriter, _ *http.Request) {
+	if reasons := s.backend.NotClusterReadyReasons(); len(reasons) > 0 {
+		s.logger.Infof("Cluster readiness check failed: %s", strings.Join(reasons, "; "))
+		writeErrorResponse(w, http.StatusServiceUnavailable, "CLUSTER_NOT_READY", errors.New("node is not part of a healthy cluster"))
 
 		return
 	}

@@ -528,16 +528,37 @@ func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
 		// ClusterBootstrapService.GetPeers / JoinAsLearner there,
 		// gated by cluster-id metadata + cluster-secret bearer —
 		// without going through the user-JWT auth pipeline.
+		//
+		// Restart is detected by the presence of the CLUSTER_JOINED
+		// marker in the WAL directory. The marker is written by the
+		// server only AFTER the cluster has accepted this node: by
+		// the bootstrap path right after the initial ConfState
+		// snapshot is persisted (pod-0), and by tryAddLearner right
+		// after the leader returns OK / AlreadyExists on
+		// JoinAsLearner (other pods). A pod whose marker is present
+		// is safe to restart from its persisted ConfState with NO
+		// --bootstrap/--join flag — passing --join on a restart
+		// blocks indefinitely on GetPeers because the peers are
+		// themselves Candidates without a leader during a cold
+		// start.
+		//
+		// Using CLUSTER_JOINED rather than the WAL marker or a
+		// snapshot-file presence check is what handles the
+		// pre-registration race: NewNode writes the initial
+		// learner ConfState snapshot BEFORE tryAddLearner contacts
+		// the leader, so a kill in that window would otherwise look
+		// like a restart on a node the cluster never accepted —
+		// orphaning it on next boot. The CLUSTER_JOINED marker is
+		// only written once registration is known to have
+		// completed.
 		raftPort := raftPortFromBindAddr(spec.BindAddr)
-		clusterLogic = fmt.Sprintf(`if [ "$POD_INDEX" = "0" ]; then
-  if [ -d "%s/checkpoints" ] && [ "$(ls -A %s/checkpoints 2>/dev/null)" ]; then
-    CLUSTER_FLAG=""
-  else
-    CLUSTER_FLAG="--bootstrap"
-  fi
+		clusterLogic = fmt.Sprintf(`if [ -f "%s/CLUSTER_JOINED" ]; then
+  CLUSTER_FLAG=""
+elif [ "$POD_INDEX" = "0" ]; then
+  CLUSTER_FLAG="--bootstrap"
 else
   CLUSTER_FLAG="--join %s:%d"
-fi`, spec.DataDir, spec.DataDir, bootstrap0, raftPort)
+fi`, spec.WalDir, bootstrap0, raftPort)
 	}
 
 	script := fmt.Sprintf(`NODE_ID=$((POD_INDEX + 1))
@@ -643,7 +664,11 @@ func defaultLivenessProbe() *corev1.Probe {
 }
 
 // defaultReadinessProbe returns a sensible readiness probe for k8s that targets
-// the /readyz endpoint (200 only when the node is fully ready).
+// the /readyz endpoint. /readyz reports 200 once the local Raft loop has
+// started, regardless of leader election or quorum: it is intentionally
+// permissive so the StatefulSet's OrderedReady policy can advance peer pods
+// during a cold start where quorum cannot form until pod-1 and pod-2 exist.
+// The stricter "leader elected, cluster healthy" signal lives on /clusterz.
 func defaultReadinessProbe() *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{

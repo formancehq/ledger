@@ -55,7 +55,7 @@ The server enforces the following rules at startup:
 
 The following endpoints are always accessible without authentication:
 
-- **HTTP**: `/health`, `/livez`, `/readyz`
+- **HTTP**: `/health`, `/livez`, `/readyz`, `/clusterz`
 - **gRPC**: `grpc.health.v1.Health/*`, `BucketService.Discovery`, gRPC reflection
 
 ## Anonymous Scopes (writes-only mode)

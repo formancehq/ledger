@@ -82,15 +82,42 @@ paths:
     get:
       summary: Readiness probe
       description: |
-        Returns 200 only when the node is part of a healthy cluster (Raft state healthy,
-        leader elected, disk/clock OK). Returns 503 if the node is not ready. Suitable for
-        Kubernetes readiness probes.
+        Returns 200 once the local Raft loop has started, regardless of whether
+        a leader has been elected. Suitable for Kubernetes readiness probes and
+        StatefulSet `OrderedReady` ordering: it is intentionally permissive so
+        peer pods can be brought up during a cold start where quorum cannot
+        form until they exist. Use `/clusterz` for the stricter
+        cluster-availability signal.
       operationId: readyz
       tags:
         - Health
       responses:
         '200':
-          description: Node is ready to serve traffic
+          description: Local Raft loop has started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /clusterz:
+    get:
+      summary: Cluster-availability probe
+      description: |
+        Returns 200 only when the node is part of a healthy cluster (Raft state
+        healthy, leader elected, disk/clock OK). Returns 503 otherwise. Use this
+        for external monitoring or any client that needs to wait until the node
+        can actually serve cluster-dependent traffic. Kubernetes readiness
+        probes should target `/readyz` instead — this endpoint MUST NOT gate
+        StatefulSet ordering, otherwise the cluster cannot recover from a
+        full-kill cold start.
+      operationId: clusterz
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Node is part of a healthy cluster
           content:
             application/json:
               schema:

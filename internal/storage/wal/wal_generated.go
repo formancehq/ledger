@@ -385,6 +385,44 @@ func (c *MockWALLastIndexCall) DoAndReturn(f func() (uint64, error)) *MockWALLas
 	return c
 }
 
+// MarkClusterJoined mocks base method.
+func (m *MockWAL) MarkClusterJoined() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkClusterJoined")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkClusterJoined indicates an expected call of MarkClusterJoined.
+func (mr *MockWALMockRecorder) MarkClusterJoined() *MockWALMarkClusterJoinedCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkClusterJoined", reflect.TypeOf((*MockWAL)(nil).MarkClusterJoined))
+	return &MockWALMarkClusterJoinedCall{Call: call}
+}
+
+// MockWALMarkClusterJoinedCall wrap *gomock.Call
+type MockWALMarkClusterJoinedCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockWALMarkClusterJoinedCall) Return(arg0 error) *MockWALMarkClusterJoinedCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockWALMarkClusterJoinedCall) Do(f func() error) *MockWALMarkClusterJoinedCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockWALMarkClusterJoinedCall) DoAndReturn(f func() error) *MockWALMarkClusterJoinedCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // Snapshot mocks base method.
 func (m *MockWAL) Snapshot() (raftpb.Snapshot, error) {
 	m.ctrl.T.Helper()

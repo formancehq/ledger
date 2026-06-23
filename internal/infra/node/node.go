@@ -314,6 +314,19 @@ func NewNode(
 			if err := wal.CreateSnapshot(0, &initialConfState, data); err != nil {
 				return nil, fmt.Errorf("creating initial snapshot: %w", err)
 			}
+
+			// On bootstrap the node is, by definition, accepted by the
+			// (single-voter) cluster the moment its initial snapshot is
+			// persisted. Drop the CLUSTER_JOINED marker so the operator's
+			// StatefulSet entrypoint treats subsequent restarts as pure
+			// restarts. Joining nodes (--join path) write the marker
+			// later, after tryAddLearner succeeds — see
+			// internal/bootstrap/module.go.
+			if cfg.Bootstrap {
+				if err := wal.MarkClusterJoined(); err != nil {
+					return nil, fmt.Errorf("marking cluster joined after bootstrap: %w", err)
+				}
+			}
 		}
 	} else {
 		logger.WithFields(map[string]any{
@@ -1882,6 +1895,19 @@ func (node *Node) IsHealthy() bool {
 	}
 	// Node is healthy if it's a leader or follower
 	return ss.RaftState == raft.StateLeader || ss.RaftState == raft.StateFollower
+}
+
+// IsStarted returns true once the rawNode loop has produced a soft state,
+// regardless of the current Raft role (PreCandidate, Candidate, Follower,
+// Leader). It is a weaker liveness signal than IsHealthy and is intended for
+// the StatefulSet readiness gate: a node that has started its Raft loop is
+// ready to participate in elections and accept peer traffic, even when quorum
+// is not yet established. Decoupling the StatefulSet OrderedReady gate from
+// quorum availability is what prevents the cold-start deadlock where pod-0
+// blocks indefinitely waiting for a leader that cannot be elected until
+// pod-1 and pod-2 are launched.
+func (node *Node) IsStarted() bool {
+	return node.lastSoftState.Load() != nil
 }
 
 // pickBestTransferee selects the follower with the highest Match index (most synchronized).

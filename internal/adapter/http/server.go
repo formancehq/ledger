@@ -43,6 +43,8 @@ type Backend interface {
 	IsHealthy() bool
 	IsReady() bool
 	NotReadyReasons() []string
+	IsClusterReady() bool
+	NotClusterReadyReasons() []string
 }
 
 type DefaultBackend struct {
@@ -60,16 +62,39 @@ func (b *DefaultBackend) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
 
-// IsReady returns true when the node is part of a healthy cluster: the local
-// Raft state machine is healthy, a leader has been elected, and disk/clock
-// health checks pass.
+// IsReady returns true once the local Raft loop has started, regardless of
+// whether a leader has been elected. This is the StatefulSet readiness gate:
+// it must return true even during a cold-start where quorum is not yet
+// achievable, otherwise OrderedReady deadlocks the cluster on first boot.
+// Use IsClusterReady for the stricter "the node can actually serve traffic"
+// signal.
 func (b *DefaultBackend) IsReady() bool {
-	return b.Node.IsHealthy() && b.Node.GetLeader() != 0 && b.healthChecker.IsHealthy()
+	return b.Node.IsStarted()
 }
 
 // NotReadyReasons returns a list of human-readable reasons why the node is not
-// ready. Returns nil when the node is fully ready.
+// ready (i.e. its Raft loop has not started yet). Returns nil when the node is
+// ready.
 func (b *DefaultBackend) NotReadyReasons() []string {
+	if !b.Node.IsStarted() {
+		return []string{"raft loop has not started"}
+	}
+
+	return nil
+}
+
+// IsClusterReady returns true when the node is part of a healthy cluster: the
+// local Raft state machine is connected (leader or follower), a leader has
+// been elected, and disk/clock health checks pass. This is the strict signal
+// for "this node can serve cluster-dependent traffic"; expose it on /clusterz
+// for monitoring and clients that need cluster-availability semantics.
+func (b *DefaultBackend) IsClusterReady() bool {
+	return b.Node.IsHealthy() && b.Node.GetLeader() != 0 && b.healthChecker.IsHealthy()
+}
+
+// NotClusterReadyReasons returns a list of human-readable reasons why the
+// cluster-readiness check is failing. Returns nil when IsClusterReady is true.
+func (b *DefaultBackend) NotClusterReadyReasons() []string {
 	var reasons []string
 	if !b.Node.IsHealthy() {
 		reasons = append(reasons, "raft state machine is not healthy")

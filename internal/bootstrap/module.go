@@ -1404,6 +1404,10 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 					"peer": peer.ID,
 				}).Infof("Successfully registered as learner on the cluster")
 
+				if markErr := wal.MarkClusterJoined(cfg.RaftConfig.WalDir); markErr != nil {
+					return fmt.Errorf("marking cluster joined after learner registration: %w", markErr)
+				}
+
 				return nil
 			}
 
@@ -1412,6 +1416,10 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 				logger.WithFields(map[string]any{
 					"nodeID": cfg.RaftConfig.NodeID,
 				}).Infof("Already a cluster member, skipping learner registration")
+
+				if markErr := wal.MarkClusterJoined(cfg.RaftConfig.WalDir); markErr != nil {
+					return fmt.Errorf("marking cluster joined after AlreadyExists: %w", markErr)
+				}
 
 				return nil
 			}

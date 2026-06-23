@@ -74,18 +74,37 @@ func TestBuildCommand_BootstrapVsJoin(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
 		Spec: ledgerv1alpha1.LedgerServiceSpec{
 			DataDir: "/data/app",
+			WalDir:  "/data/raft",
 		},
 	}
 
 	script := strings.Join(buildCommand(ls), " ")
-	// Pod-0 with no checkpoints bootstraps; non-zero pods join pod-0 via
-	// the RaftServer port (extracted from BindAddr), not the external
-	// service gRPC port — see ClusterBootstrapService.
-	assert.Contains(t, script, `if [ "$POD_INDEX" = "0" ]; then`)
+	// Restart detection comes first: any pod that owns the CLUSTER_JOINED
+	// marker restarts from its persisted ConfState with no flag (neither
+	// --bootstrap nor --join), regardless of POD_INDEX. Otherwise pod-0
+	// bootstraps and non-zero pods join pod-0 via the RaftServer port
+	// (extracted from BindAddr), not the external gRPC service port — see
+	// ClusterBootstrapService.
+	assert.Contains(t, script, `if [ -f "/data/raft/CLUSTER_JOINED" ]`)
+	assert.Contains(t, script, `elif [ "$POD_INDEX" = "0" ]; then`)
 	assert.Contains(t, script, `CLUSTER_FLAG="--bootstrap"`)
 	assert.Contains(t, script, `CLUSTER_FLAG="--join test-svc-0.`)
 	assert.Contains(t, script, `:7777"`)
 	assert.NotContains(t, script, `:${GRPC_PORT}"`)
+
+	// The restart-from-marker branch must run BEFORE the POD_INDEX
+	// dispatch: passing --join on a restart blocks indefinitely on
+	// GetPeers when peer pods are themselves Candidates without a
+	// leader (cold-start deadlock — EN-1328). CLUSTER_JOINED is the
+	// right signal because it is only written by the server AFTER the
+	// cluster has accepted this node (initial snapshot persist for
+	// pod-0, JoinAsLearner success for the others); a snapshot-file
+	// presence check would mis-fire during the pre-registration window
+	// between snapshot write and learner acceptance, orphaning the pod.
+	markerBranch := strings.Index(script, `if [ -f "/data/raft/CLUSTER_JOINED" ]`)
+	podIndexBranch := strings.Index(script, `elif [ "$POD_INDEX" = "0" ]`)
+	assert.Less(t, markerBranch, podIndexBranch,
+		"CLUSTER_JOINED marker check must precede POD_INDEX dispatch")
 }
 
 func TestBuildEnvVars_AuthEd25519Keys(t *testing.T) {

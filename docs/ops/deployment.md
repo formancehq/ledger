@@ -327,12 +327,26 @@ When a threshold is exceeded, all write operations (create ledger, create transa
 
 ### Health Checks
 
+The server exposes four HTTP probes on the management port:
+
+| Endpoint    | 200 when…                                                                                  | Use it for                                                       |
+|-------------|--------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| `/livez`    | the process is running                                                                     | Kubernetes liveness probe                                        |
+| `/readyz`   | the local Raft loop has started (any role: PreCandidate, Candidate, Follower, Leader)      | Kubernetes readiness probe / StatefulSet `OrderedReady` gate     |
+| `/clusterz` | the local node is connected to a healthy cluster: leader elected, disk and clock checks OK | Monitoring; clients that need cluster-availability semantics     |
+| `/health`   | the local Raft node is a Leader or Follower (connected to the cluster)                     | Legacy compatibility check                                       |
+
+`/readyz` is intentionally permissive: it must report Ready even before quorum
+exists, so that the StatefulSet's `OrderedReady` policy can bring up peer pods
+during a cold start. The stricter "cluster is actually serving" signal lives
+on `/clusterz`.
+
 #### Liveness Probe
 
 ```yaml
 livenessProbe:
   httpGet:
-    path: /health
+    path: /livez
     port: http
   initialDelaySeconds: 30
   periodSeconds: 10
@@ -342,13 +356,12 @@ livenessProbe:
 
 #### Readiness Probe
 
-The readiness probe uses gRPC health check to verify the node is ready to serve traffic:
-
 ```yaml
 readinessProbe:
-  grpc:
-    port: 8888
-  initialDelaySeconds: 10
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 5
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 3
