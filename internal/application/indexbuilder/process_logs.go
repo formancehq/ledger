@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -46,26 +47,34 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 	defer func() { _ = logsCursor.Close() }()
 
-	// Open audit iterator for transient account filtering.
-	audit, err := newAuditSync(ctx, handle, b.lastAuditSeq)
+	// Open the AppliedProposal iterator for transient-account filtering.
+	proposals, err := newAppliedProposalSync(ctx, handle, b.lastAppliedProposalSeq)
 	if err != nil {
-		return cursor, fmt.Errorf("creating audit sync: %w", err)
+		return cursor, fmt.Errorf("creating applied proposal sync: %w", err)
 	}
 
-	defer func() { _ = audit.close() }()
+	defer func() { _ = proposals.close() }()
 
 	// Track whether we advanced the cursor without persisting it yet.
 	needsPersist := false
 	startCursor := cursor
 	lastProgressLog := time.Now()
-	persistAuditProgress := func(batch *dal.WriteSession, lastProcessedSeq uint64) error {
-		audit.advanceBefore(lastProcessedSeq + 1)
-		if auditSeq := audit.resumeSequence(); auditSeq > b.lastAuditSeq {
-			if err := b.readStore.WriteAuditProgress(batch, auditSeq); err != nil {
+	persistAppliedProposalProgress := func(batch *dal.WriteSession, lastProcessedSeq uint64) error {
+		proposals.advanceBefore(lastProcessedSeq + 1)
+		// Surface any non-EOF iterator error the AppliedProposal cursor
+		// saw during this advance. Letting it slide would mean the
+		// transient set we just consumed could be incomplete, and the
+		// indexer would persist account->tx mappings for volumes that
+		// should have been skipped.
+		if err := proposals.err(); err != nil {
+			return fmt.Errorf("applied proposal cursor failed: %w", err)
+		}
+		if seq := proposals.resumeSequence(); seq > b.lastAppliedProposalSeq {
+			if err := b.readStore.WriteAppliedProposalProgress(batch, seq); err != nil {
 				return err
 			}
 
-			b.lastAuditSeq = auditSeq
+			b.lastAppliedProposalSeq = seq
 		}
 
 		return nil
@@ -149,10 +158,9 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 
 			cfg := b.ledgerConfig(ledgerName)
-			var excludedAccounts map[string]struct{}
+			var excludedVolumes map[domain.AccountAssetKey]struct{}
 			if cfg.indexesPostingAddressMappings() {
-				// Sync audit iterator and load excluded accounts (transient + purged ephemeral).
-				excludedAccounts = audit.syncTo(lastSeq, ledgerName)
+				excludedVolumes = proposals.excludedForLog(lastSeq, ledgerName, ledgerLog)
 			}
 
 			// Per-ledger log index is always maintained — every log gets a
@@ -173,7 +181,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				}
 			}
 
-			if err := b.indexPayload(b.kb, cfg, ledgerName, ledgerLog.GetData().GetPayload(), excludedAccounts); err != nil {
+			if err := b.indexPayload(b.kb, cfg, ledgerName, ledgerLog.GetData().GetPayload(), excludedVolumes); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -196,8 +204,8 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				return cursor, err
 			}
 
-			// Persist only audit entries whose log range is fully behind lastSeq.
-			if err := persistAuditProgress(batch, lastSeq); err != nil {
+			// Persist only AppliedProposal entries whose log range is fully behind lastSeq.
+			if err := persistAppliedProposalProgress(batch, lastSeq); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -276,10 +284,10 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			return cursor, fmt.Errorf("writing progress: %w", err)
 		}
 
-		if err := persistAuditProgress(batch, cursor); err != nil {
+		if err := persistAppliedProposalProgress(batch, cursor); err != nil {
 			_ = batch.Cancel()
 
-			return cursor, fmt.Errorf("writing audit progress: %w", err)
+			return cursor, fmt.Errorf("writing applied proposal progress: %w", err)
 		}
 
 		if err := batch.Commit(); err != nil {
@@ -298,13 +306,13 @@ func (b *Builder) indexPayload(
 	cfg *ledgerIndexConfig,
 	ledgerName string,
 	payload any,
-	excludedAccounts map[string]struct{},
+	excludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	switch p := payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction, excludedAccounts)
+		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedAccounts)
+		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
@@ -362,7 +370,7 @@ func (b *Builder) RebuildAll() (uint64, error) {
 // It does NOT call WriteProgress — the caller batches that.
 // cfg is the index configuration to use for this log entry (may differ from
 // b.indexConfig during backfill, where a temporary config is used).
-func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, audit *auditSync) error {
+func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, proposals *appliedProposalSync) error {
 	if log.GetPayload() == nil {
 		return nil
 	}
@@ -382,15 +390,12 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, audit
 	}
 
 	ledgerName := applyLog.Apply.GetLedgerName()
-	var excludedAccounts map[string]struct{}
-	if audit != nil {
-		excludedAccounts = audit.syncTo(log.GetSequence(), ledgerName)
-	}
-
 	ledgerLog := applyLog.Apply.GetLog()
 	if ledgerLog == nil || ledgerLog.GetData() == nil {
 		return nil
 	}
+
+	excludedVolumes := proposals.excludedForLog(log.GetSequence(), ledgerName, ledgerLog)
 
 	// Per-ledger log index is always maintained — see the live-path comment.
 	if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence()); err != nil {
@@ -406,9 +411,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, audit
 
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedAccounts)
+		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedAccounts)
+		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
@@ -445,7 +450,7 @@ func (b *Builder) indexCreatedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	ct *commonpb.CreatedTransaction,
-	excludedAccounts map[string]struct{},
+	excludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	if ct.GetTransaction() == nil {
 		return nil
@@ -467,8 +472,8 @@ func (b *Builder) indexCreatedTransaction(
 		b.accounts[posting.GetDestination()] = struct{}{}
 
 		if err := b.indexPostingAddressMappings(
-			kb, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(),
-			indexAny, indexSrc, indexDst, excludedAccounts,
+			kb, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
+			indexAny, indexSrc, indexDst, excludedVolumes,
 		); err != nil {
 			return err
 		}
@@ -558,7 +563,7 @@ func (b *Builder) indexRevertedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	rt *commonpb.RevertedTransaction,
-	excludedAccounts map[string]struct{},
+	excludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	if rt.GetRevertTransaction() == nil {
 		return nil
@@ -579,8 +584,8 @@ func (b *Builder) indexRevertedTransaction(
 		b.accounts[posting.GetDestination()] = struct{}{}
 
 		if err := b.indexPostingAddressMappings(
-			kb, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(),
-			indexAny, indexSrc, indexDst, excludedAccounts,
+			kb, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
+			indexAny, indexSrc, indexDst, excludedVolumes,
 		); err != nil {
 			return err
 		}
@@ -631,14 +636,15 @@ func (b *Builder) indexPostingAddressMappings(
 	txID uint64,
 	source string,
 	destination string,
+	asset string,
 	indexAny bool,
 	indexSrc bool,
 	indexDst bool,
-	excludedAccounts map[string]struct{},
+	excludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	wb := b.wb
-	srcExcluded := isExcluded(excludedAccounts, source)
-	dstExcluded := isExcluded(excludedAccounts, destination)
+	srcExcluded := isExcluded(excludedVolumes, source, asset)
+	dstExcluded := isExcluded(excludedVolumes, destination, asset)
 
 	if indexAny {
 		if !srcExcluded {
@@ -654,7 +660,9 @@ func (b *Builder) indexPostingAddressMappings(
 		}
 	}
 
-	// Role-specific mappings skip transient and purged ephemeral accounts.
+	// Role-specific mappings skip transient and purged ephemeral volumes —
+	// matched per (account, asset) tuple so a multi-asset account keeps its
+	// mappings for the assets that survived this proposal.
 	if indexSrc && !srcExcluded {
 		if err := wb.WriteSourceAccountTxMapping(kb, ledger, source, txID); err != nil {
 			return err
@@ -969,14 +977,16 @@ func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
 	return ""
 }
 
-// isExcluded returns true if the account is in the excluded set
-// (transient or purged ephemeral).
-func isExcluded(excluded map[string]struct{}, account string) bool {
+// isExcluded returns true if the (account, asset) tuple is in the excluded
+// set (transient or purged ephemeral). Both dimensions matter — a multi-asset
+// account may have one asset purged while another stays kept, and we must
+// not over-skip mappings for the kept asset.
+func isExcluded(excluded map[domain.AccountAssetKey]struct{}, account, asset string) bool {
 	if excluded == nil {
 		return false
 	}
 
-	_, ok := excluded[account]
+	_, ok := excluded[domain.AccountAssetKey{Account: account, Asset: asset}]
 
 	return ok
 }

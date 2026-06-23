@@ -205,9 +205,10 @@ const (
 
 // Cold sub-prefixes (zone 0x04).
 const (
-	SubColdLog       byte = 0x01
-	SubColdAudit     byte = 0x02
-	SubColdAuditItem byte = 0x03 // [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4] → AuditItem
+	SubColdLog             byte = 0x01
+	SubColdAudit           byte = 0x02
+	SubColdAuditItem       byte = 0x03 // [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4] → AuditItem
+	SubColdAppliedProposal byte = 0x04 // [ZoneCold][SubColdAppliedProposal][applied_proposal_seq BE 8] → AppliedProposal
 )
 
 // Idempotency sub-prefixes (zone 0x05).
@@ -290,6 +291,7 @@ var (
 		{ZoneCold, SubColdLog},
 		{ZoneCold, SubColdAudit},
 		{ZoneCold, SubColdAuditItem},
+		{ZoneCold, SubColdAppliedProposal},
 	}
 )
 
@@ -1306,10 +1308,11 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 //
 // Logs and audit entries advance on independent sequence counters, so the
 // caller must supply both ranges. SubColdLog is scanned with the log range;
-// SubColdAudit and SubColdAuditItem are scanned with the audit range. Mixing
-// them (#312) drops every audit entry that happens to fall outside the log
-// window — and the matching purge still removes it from Pebble, permanently
-// losing the audit trail.
+// SubColdAudit, SubColdAuditItem and SubColdAppliedProposal are scanned with
+// the audit range (AppliedProposal sequences are 1:1 with AuditEntry on the
+// success path). Mixing them (#312) drops every audit entry that happens to
+// fall outside the log window — and the matching purge still removes it from
+// Pebble, permanently losing the audit trail.
 //
 // Transaction updates are not archived: they are redundant with log entries
 // which already contain all creation, revert, and metadata information.

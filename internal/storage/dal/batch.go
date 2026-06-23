@@ -14,6 +14,16 @@ type vtSizedBufferMarshaler interface {
 	MarshalToSizedBufferVT([]byte) (int, error)
 }
 
+// vtDeterministicMarshaler is implemented by messages that have a
+// protoc-gen-dethash generated `MarshalDeterministicVT(dAtA []byte) []byte`
+// method. Used by SetProtoDeterministic so the buffer is reused across
+// calls (the dethash plugin only allocates when the input buffer is too
+// small to hold the marshaled output).
+type vtDeterministicMarshaler interface {
+	SizeVT() int
+	MarshalDeterministicVT(dAtA []byte) []byte
+}
+
 // WriteSession provides atomic write operations on the store, backed by a
 // pebble.Batch with NoSync writes.
 //
@@ -128,6 +138,27 @@ func (b *WriteSession) SetProto(key []byte, msg proto.Message) error {
 	}
 
 	return b.batch.Set(key, data, pebble.NoSync)
+}
+
+// SetProtoDeterministic is the deterministic variant of SetProto: it
+// marshals via MarshalDeterministicVT (map keys sorted), which is
+// required for messages whose persisted bytes must be byte-identical
+// across nodes — currently only auditpb.AuditEntry. Reuses
+// b.protoBuffer the same way SetProto does, so the typical steady-state
+// allocation count is one slice grow on the first call per session.
+func (b *WriteSession) SetProtoDeterministic(key []byte, msg vtDeterministicMarshaler) error {
+	if b.committed {
+		return errors.New("write session already committed")
+	}
+
+	size := msg.SizeVT()
+	if cap(b.protoBuffer) < size {
+		b.protoBuffer = make([]byte, 0, size)
+	}
+
+	b.protoBuffer = msg.MarshalDeterministicVT(b.protoBuffer[:0])
+
+	return b.batch.Set(key, b.protoBuffer, pebble.NoSync)
 }
 
 // SetBytes stores raw bytes under key with NoSync.

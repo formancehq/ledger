@@ -32,12 +32,12 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 
 	defer func() { _ = iter.Close() }()
 
-	audit, err := newAuditSync(ctx, handle, task.auditSeq)
+	proposals, err := newAppliedProposalSync(ctx, handle, task.appliedProposalSeq)
 	if err != nil {
-		return fmt.Errorf("creating audit sync for postings backfill: %w", err)
+		return fmt.Errorf("creating applied proposal sync for postings backfill: %w", err)
 	}
 
-	defer func() { _ = audit.close() }()
+	defer func() { _ = proposals.close() }()
 
 	// Determine which address indexes are active.
 	builtin, ok := task.index.GetKind().(*commonpb.IndexID_TxBuiltin)
@@ -102,19 +102,32 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 			}
 
 			kb := b.kb
-			excludedAccounts := audit.syncTo(parsed.Sequence, parsed.Ledger)
+			excludedVolumes := proposals.excludedForLog(parsed.Sequence, parsed.Ledger, &parsed)
 
 			for i := range parsed.Postings {
 				p := &parsed.Postings[i]
 				if err := b.indexPostingAddressMappings(
-					kb, parsed.Ledger, parsed.TxID, p.Source, p.Destination,
-					indexAny, indexSrc, indexDst, excludedAccounts,
+					kb, parsed.Ledger, parsed.TxID, p.Source, p.Destination, p.Asset,
+					indexAny, indexSrc, indexDst, excludedVolumes,
 				); err != nil {
 					_ = batch.Cancel()
 
 					return err
 				}
 			}
+		}
+
+		// AppliedProposal cursor errors set during excludedForLog must be
+		// surfaced BEFORE the batch is flushed: any call in this batch
+		// could have stashed an iterErr (coverage mismatch or corrupt
+		// proto) and returned an empty exclusion set, in which case the
+		// posting mappings already written into b.wb are incomplete.
+		// Committing them would persist account->tx mappings for volumes
+		// that should have been excluded.
+		if err := proposals.err(); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("applied proposal cursor failed: %w", err)
 		}
 
 		// Persist backfill cursor and flush.
@@ -137,8 +150,11 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 		}
 
 		task.cursor = lastSeq
-		audit.advanceBefore(lastSeq + 1)
-		task.auditSeq = audit.resumeSequence()
+		proposals.advanceBefore(lastSeq + 1)
+		if err := proposals.err(); err != nil {
+			return fmt.Errorf("applied proposal cursor failed: %w", err)
+		}
+		task.appliedProposalSeq = proposals.resumeSequence()
 
 		if eof {
 			break

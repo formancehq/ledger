@@ -35,9 +35,13 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 
 	const clusterID = "golden-cluster-id"
 
-	// Realistic entry: success outcome, two ledgers in the proposal,
-	// transient + purged accounts (testing the map iteration order), a
-	// caller snapshot with two scopes + key_id source.
+	// Realistic SUCCESS entry: two ledgers in the proposal (unsorted to
+	// exercise the builder's sort), a caller snapshot with two scopes
+	// (also unsorted) + key_id source. The failure variant — which is
+	// the only path that still carries a Go map in the hashed pre-image
+	// (AuditFailure.context) — is covered by TestHashChain_Envelope_Failure
+	// below; we keep both around so any drift between the production
+	// builder and the golden spec is caught regardless of outcome.
 	entry := &auditpb.AuditEntry{
 		Sequence:    42,
 		Timestamp:   &commonpb.Timestamp{Data: 1700000000},
@@ -49,13 +53,6 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 			Success: &auditpb.AuditSuccess{
 				MinLogSequence: 100,
 				MaxLogSequence: 101,
-				TransientAccounts: map[string]*auditpb.AccountList{
-					"ledger-b": {Accounts: []string{"users:1", "users:0"}}, // builder must sort
-					"ledger-a": {Accounts: []string{"users:2"}},
-				},
-				PurgedAccounts: map[string]*auditpb.AccountList{
-					"ledger-a": {Accounts: []string{"world"}},
-				},
 			},
 		},
 		CallerSnapshot: &commonpb.CallerSnapshot{
@@ -119,6 +116,132 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 			"If this drift is intentional, bump commonpb.HashAlgorithm and add a new envelope version.")
 }
 
+// TestHashChain_Envelope_Failure exercises the failure outcome path. The
+// AuditFailure.context map<string,string> is the only Go map left in the
+// hashed pre-image after PR #542, so a desync between buildAuditFailurePayload
+// and goldenBuildFailure on key ordering would silently produce drifting
+// hashes — the success-only golden case above misses that drift entirely.
+// We deliberately seed the map with keys that hash-iterate in a different
+// order than they sort, forcing both builders to actually run the sort.
+func TestHashChain_Envelope_Failure(t *testing.T) {
+	t.Parallel()
+
+	const clusterID = "golden-cluster-id"
+
+	entry := &auditpb.AuditEntry{
+		Sequence:    43,
+		Timestamp:   &commonpb.Timestamp{Data: 1700000001},
+		ProposalId:  78,
+		OrderCount:  3,
+		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Ledgers:     []string{"ledger-a"},
+		Outcome: &auditpb.AuditEntry_Failure{
+			Failure: &auditpb.AuditFailure{
+				ErrorType: "INSUFFICIENT_FUNDS",
+				Message:   "balance too low",
+				// Intentionally unsorted: zebra, apple, mango force the
+				// builder to actually sort.
+				Context: map[string]string{
+					"zebra":  "z-value",
+					"apple":  "a-value",
+					"mango":  "m-value",
+					"banana": "b-value",
+				},
+			},
+		},
+	}
+
+	items := []*auditpb.AuditItem{
+		{OrderIndex: 0, LogSequence: 0, SerializedOrder: []byte("order-A")},
+		{OrderIndex: 1, LogSequence: 0, SerializedOrder: []byte("order-B")},
+		{OrderIndex: 2, LogSequence: 0, SerializedOrder: []byte("order-C")},
+	}
+
+	lastHash := []byte("previous-chain-link")
+
+	headerPayload, err := BuildHashedHeaderPayload(entry)
+	require.NoError(t, err)
+
+	expectedHeader := goldenBuildHeader(entry)
+	require.Equal(t, expectedHeader, headerPayload,
+		"BuildHashedHeaderPayload drifted from golden spec on the failure path "+
+			"(likely a regression on AuditFailure.context map sort order)")
+
+	hashSlices := make([][]byte, 0, 1+len(items))
+	hashSlices = append(hashSlices, headerPayload)
+	for _, item := range items {
+		hashSlices = append(hashSlices, BuildPerItemPayload(item))
+	}
+
+	g := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	_, gotHash := g.Compute(nil, lastHash, hashSlices)
+
+	keyMaterial := blake3.Sum256([]byte("audit-hash:blake3:v1:" + clusterID))
+	hasher, err := blake3.NewKeyed(keyMaterial[:])
+	require.NoError(t, err)
+	_, _ = hasher.Write(expectedHeader)
+	for _, item := range items {
+		_, _ = hasher.Write(goldenBuildPerItem(item))
+	}
+	_, _ = hasher.Write(lastHash)
+	expectedHash := hasher.Sum(nil)
+
+	require.Equal(t, expectedHash, gotHash,
+		"audit chain hash for a failure entry drifted from golden spec")
+
+	// Stability under repeated builds — protects against a future
+	// "optimization" that re-introduces map iteration order into the
+	// canonical payload.
+	for i := range 5 {
+		again, err := BuildHashedHeaderPayload(entry)
+		require.NoError(t, err)
+		require.Equal(t, headerPayload, again,
+			"BuildHashedHeaderPayload is not stable across calls (iteration %d)", i)
+	}
+}
+
+// TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns guards the OTHER
+// canonicalisation path: appendAuditEntries persists AuditEntry via
+// MarshalDeterministicVT, so cross-node byte compares on the audit stream
+// depend on this method being a pure function of the entry's contents.
+// vtproto's generated code sorts map keys, but the test pins that contract
+// explicitly — a future regeneration that flips back to map-iteration
+// order would break the persisted-byte invariant without warning today.
+func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
+	t.Parallel()
+
+	entry := &auditpb.AuditEntry{
+		Sequence:    99,
+		Timestamp:   &commonpb.Timestamp{Data: 1700000002},
+		ProposalId:  100,
+		OrderCount:  1,
+		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Ledgers:     []string{"ledger-a"},
+		Outcome: &auditpb.AuditEntry_Failure{
+			Failure: &auditpb.AuditFailure{
+				ErrorType: "X",
+				Message:   "y",
+				Context: map[string]string{
+					"k3": "v3",
+					"k1": "v1",
+					"k2": "v2",
+				},
+			},
+		},
+	}
+
+	baseline := entry.MarshalDeterministicVT(nil)
+	require.NotEmpty(t, baseline)
+
+	for i := range 10 {
+		got := entry.MarshalDeterministicVT(nil)
+		require.Equal(t, baseline, got,
+			"MarshalDeterministicVT is not stable across calls (iteration %d) — "+
+				"a regression here breaks cross-node byte compares on the audit stream",
+			i)
+	}
+}
+
 // goldenBuildHeader implements the envelope spec from scratch, without
 // using anything from audit_envelope.go. Any change to the production
 // builder that diverges from this spec must also update this function —
@@ -165,8 +288,6 @@ func goldenBuildSuccess(s *auditpb.AuditSuccess) []byte {
 	var buf []byte
 	buf = goldenU64(buf, s.GetMinLogSequence())
 	buf = goldenU64(buf, s.GetMaxLogSequence())
-	buf = goldenAccountMap(buf, s.GetTransientAccounts())
-	buf = goldenAccountMap(buf, s.GetPurgedAccounts())
 
 	return buf
 }
@@ -187,30 +308,6 @@ func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 	for _, k := range keys {
 		buf = goldenLenString(buf, k)
 		buf = goldenLenString(buf, f.GetContext()[k])
-	}
-
-	return buf
-}
-
-func goldenAccountMap(buf []byte, m map[string]*auditpb.AccountList) []byte {
-	ledgers := make([]string, 0, len(m))
-	for k := range m {
-		ledgers = append(ledgers, k)
-	}
-
-	goldenSortStrings(ledgers)
-	buf = goldenU32(buf, uint32(len(ledgers)))
-
-	for _, l := range ledgers {
-		buf = goldenLenString(buf, l)
-
-		accs := append([]string(nil), m[l].GetAccounts()...)
-		goldenSortStrings(accs)
-		buf = goldenU32(buf, uint32(len(accs)))
-
-		for _, a := range accs {
-			buf = goldenLenString(buf, a)
-		}
 	}
 
 	return buf

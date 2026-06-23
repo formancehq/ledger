@@ -697,6 +697,13 @@ enum CheckStoreErrorType {
   CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER = 5;
   CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH = 6;
   CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH = 7;
+  // Emitted when the (ledger, account, asset) tuples persisted in
+  // AppliedProposal.TransientVolumes or LedgerLog.PurgedVolumes do not
+  // match the set the replay-time SimulateEphemeralPurge derived for the
+  // same proposal. Surfaces corruption on the unhashed projection caches
+  // the index builder consumes — the audit hash chain itself is
+  // verified separately by HASH_MISMATCH.
+  CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH = 8;
 }
 
 message CheckStoreError {

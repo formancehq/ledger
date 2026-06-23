@@ -525,3 +525,40 @@ func TestExtractLogSequenceRange(t *testing.T) {
 	require.Equal(t, uint64(1), minSeq)
 	require.Equal(t, uint64(10), maxSeq)
 }
+
+// TestExtractLogSequenceRange_IgnoresReferenceSequenceOutsideCreatedRange
+// guards against the indexbuilder corruption described in the PR #542
+// blocker: when a successful proposal mixes an idempotent replay (pointing
+// at a log written by a much older proposal) with newly-created logs, the
+// returned range must reflect only the *new* logs. Otherwise
+// AppliedProposal.{min,max}LogSequence widens to span unrelated logs and
+// the indexbuilder applies this proposal's transient exclusions to logs
+// that belong to other proposals.
+func TestExtractLogSequenceRange_IgnoresReferenceSequenceOutsideCreatedRange(t *testing.T) {
+	t.Parallel()
+
+	logsOrRefs := []*raftcmdpb.CreatedLogOrReference{
+		{Type: &raftcmdpb.CreatedLogOrReference_ReferenceSequence{ReferenceSequence: 5}},
+		{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{CreatedLog: &commonpb.Log{Sequence: 100}}},
+		{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{CreatedLog: &commonpb.Log{Sequence: 110}}},
+	}
+	minSeq, maxSeq := extractLogSequenceRange(logsOrRefs)
+	require.Equal(t, uint64(100), minSeq, "min must come from CreatedLog only, ignoring ReferenceSequence")
+	require.Equal(t, uint64(110), maxSeq)
+}
+
+// TestExtractLogSequenceRange_AllReferences asserts the all-idempotent
+// sentinel: when a batch produced zero new logs, the range is (0, 0). The
+// AppliedProposal sync skips entries with MaxLogSequence == 0 — the value
+// here is load-bearing for that skip path.
+func TestExtractLogSequenceRange_AllReferences(t *testing.T) {
+	t.Parallel()
+
+	logsOrRefs := []*raftcmdpb.CreatedLogOrReference{
+		{Type: &raftcmdpb.CreatedLogOrReference_ReferenceSequence{ReferenceSequence: 5}},
+		{Type: &raftcmdpb.CreatedLogOrReference_ReferenceSequence{ReferenceSequence: 10}},
+	}
+	minSeq, maxSeq := extractLogSequenceRange(logsOrRefs)
+	require.Equal(t, uint64(0), minSeq)
+	require.Equal(t, uint64(0), maxSeq)
+}

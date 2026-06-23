@@ -131,6 +131,16 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			}
 		}
 
+		// Tag subsequent volume touches with this order's index so the
+		// WriteSet can compute per-log purged volumes at Merge time
+		// (see Log.purged_volumes). Scopes that don't implement
+		// OrderTagger (mocks, recovery, technical-only flows) skip the
+		// tagging silently — those code paths don't need the per-log
+		// accounting.
+		if tagger, ok := orderScope.(OrderTagger); ok {
+			tagger.BeginOrder(i)
+		}
+
 		// No idempotency key or key not found - process normally
 		payload, err := p.ProcessOrder(order, orderScope)
 		if err != nil {

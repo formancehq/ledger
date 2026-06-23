@@ -35,6 +35,13 @@ const (
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER              CheckStoreErrorType = 5
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH CheckStoreErrorType = 6
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH           CheckStoreErrorType = 7
+	// Emitted when the (ledger, account, asset) tuples persisted in
+	// AppliedProposal.TransientVolumes or LedgerLog.PurgedVolumes do not
+	// match the set the replay-time SimulateEphemeralPurge derived for the
+	// same proposal. Surfaces corruption on the unhashed projection caches
+	// the index builder consumes — the audit hash chain itself is
+	// verified separately by HASH_MISMATCH.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH CheckStoreErrorType = 8
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -48,6 +55,7 @@ var (
 		5: "CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER",
 		6: "CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH",
 		7: "CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH",
+		8: "CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
@@ -58,6 +66,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER":              5,
 		"CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH": 6,
 		"CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH":           7,
+		"CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH":   8,
 	}
 )
 
@@ -9032,7 +9041,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xfb\x02\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xb1\x03\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9041,7 +9050,8 @@ const file_bucket_proto_rawDesc = "" +
 	"(CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH\x10\x04\x12)\n" +
 	"%CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER\x10\x05\x126\n" +
 	"2CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH\x10\x06\x12,\n" +
-	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a*W\n" +
+	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a\x124\n" +
+	"0CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH\x10\b*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

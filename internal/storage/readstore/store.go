@@ -230,16 +230,16 @@ func (s *Store) NotifyProgress() {
 	s.progressCond.Broadcast()
 }
 
-// ReadAuditProgress returns the last consumed audit sequence.
-// Returns 0 if no audit progress has been recorded.
-func (s *Store) ReadAuditProgress() (uint64, error) {
-	v, closer, err := s.db.Get(AuditProgressKey())
+// ReadAppliedProposalProgress returns the last consumed AppliedProposal
+// sequence. Returns 0 if no progress has been recorded yet.
+func (s *Store) ReadAppliedProposalProgress() (uint64, error) {
+	v, closer, err := s.db.Get(AppliedProposalProgressKey())
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
 		}
 
-		return 0, fmt.Errorf("reading audit progress: %w", err)
+		return 0, fmt.Errorf("reading applied proposal progress: %w", err)
 	}
 
 	defer func() { _ = closer.Close() }()
@@ -251,12 +251,12 @@ func (s *Store) ReadAuditProgress() (uint64, error) {
 	return binary.BigEndian.Uint64(v), nil
 }
 
-// WriteAuditProgress stores the last consumed audit sequence.
-func (s *Store) WriteAuditProgress(batch *dal.WriteSession, sequence uint64) error {
+// WriteAppliedProposalProgress stores the last consumed AppliedProposal sequence.
+func (s *Store) WriteAppliedProposalProgress(batch *dal.WriteSession, sequence uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
-	return batch.SetBytes(AuditProgressKey(), buf[:])
+	return batch.SetBytes(AppliedProposalProgressKey(), buf[:])
 }
 
 // WriteBackfillProgress stores a backfill cursor.

@@ -13,6 +13,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -202,6 +203,10 @@ func decodeValue(key, val []byte) string {
 
 		if len(key) >= 2 && key[1] == dal.SubColdAudit {
 			return tryProtoJSON(val, &auditpb.AuditEntry{})
+		}
+
+		if len(key) >= 2 && key[1] == dal.SubColdAppliedProposal {
+			return tryProtoJSON(val, &proposalpb.AppliedProposal{})
 		}
 
 		return tryProtoJSON(val, &commonpb.Log{})
@@ -438,6 +443,14 @@ func describeColdKey(key []byte) string {
 		}
 
 		return "AUDIT_ITEM (short key)"
+	case dal.SubColdAppliedProposal:
+		if len(key) >= 10 {
+			seq := binary.BigEndian.Uint64(key[2:10])
+
+			return fmt.Sprintf("APPLIED_PROPOSAL seq=%d", seq)
+		}
+
+		return "APPLIED_PROPOSAL (short key)"
 	default:
 		return fmt.Sprintf("COLD(sub=0x%02X)", key[1])
 	}

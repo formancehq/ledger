@@ -66,7 +66,7 @@ func TestReadStoreSplit(t *testing.T) {
 		},
 		{
 			name:      "internal audit progress singleton",
-			key:       []byte{PrefixInternal, SubInternalAuditProgress},
+			key:       []byte{PrefixInternal, SubInternalAppliedProposalProgress},
 			wantSplit: 2, // full key
 		},
 		{
@@ -130,7 +130,7 @@ func TestReadStoreComparerOrdering(t *testing.T) {
 		ledgerKey(0x01, "b", 'x'),
 		ledgerKey(0x08, "a", 0x01),
 		{PrefixInternal, SubInternalProgress},
-		{PrefixInternal, SubInternalAuditProgress},
+		{PrefixInternal, SubInternalAppliedProposalProgress},
 	}
 
 	cmp := ReadStoreComparer.Compare

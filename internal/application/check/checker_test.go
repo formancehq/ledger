@@ -1662,3 +1662,107 @@ func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting
 
 	return err
 }
+
+// TestCompareExclusionProjections_Identical asserts the corruption-detection
+// pass stays silent when the stored AppliedProposal/LedgerLog projections
+// match the replay-derived set. This is the happy path the FSM produces on
+// every well-formed proposal.
+func TestCompareExclusionProjections_Identical(t *testing.T) {
+	t.Parallel()
+
+	set := excludedVolumesSet{
+		"L1": map[domain.AccountAssetKey]struct{}{
+			{Account: "ephemeral:a", Asset: "USD"}: {},
+			{Account: "transient:b", Asset: "EUR"}: {},
+		},
+		"L2": map[domain.AccountAssetKey]struct{}{
+			{Account: "x", Asset: "JPY"}: {},
+		},
+	}
+	other := excludedVolumesSet{
+		"L1": map[domain.AccountAssetKey]struct{}{
+			{Account: "ephemeral:a", Asset: "USD"}: {},
+			{Account: "transient:b", Asset: "EUR"}: {},
+		},
+		"L2": map[domain.AccountAssetKey]struct{}{
+			{Account: "x", Asset: "JPY"}: {},
+		},
+	}
+
+	var events []*servicepb.CheckStoreEvent
+	compareExclusionProjections(set, other, func(e *servicepb.CheckStoreEvent) {
+		events = append(events, e)
+	})
+
+	require.Empty(t, events, "compareExclusionProjections must stay silent on matching sets")
+}
+
+// TestCompareExclusionProjections_ExtraInStored mimics a corruption on the
+// AppliedProposal / LedgerLog projection caches (e.g. a tampered byte on
+// disk adding a spurious exclusion entry). The checker must surface it so
+// the operator can rebuild the projection from the audit log.
+func TestCompareExclusionProjections_ExtraInStored(t *testing.T) {
+	t.Parallel()
+
+	stored := excludedVolumesSet{
+		"L1": map[domain.AccountAssetKey]struct{}{
+			{Account: "ephemeral:a", Asset: "USD"}:      {},
+			{Account: "tampered:phantom", Asset: "USD"}: {}, // not in derived
+		},
+	}
+	derived := excludedVolumesSet{
+		"L1": map[domain.AccountAssetKey]struct{}{
+			{Account: "ephemeral:a", Asset: "USD"}: {},
+		},
+	}
+
+	var events []*servicepb.CheckStoreEvent
+	compareExclusionProjections(stored, derived, func(e *servicepb.CheckStoreEvent) {
+		events = append(events, e)
+	})
+
+	require.Len(t, events, 1)
+	err := events[0].GetError()
+	require.NotNil(t, err)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+		err.GetErrorType())
+	require.Equal(t, "L1", err.GetLedger())
+	require.Equal(t, "tampered:phantom", err.GetAccount())
+	require.Equal(t, "USD", err.GetAsset())
+}
+
+// TestCompareExclusionProjections_MissingFromStored covers the symmetric
+// failure mode: the projection is missing a record the replay says should
+// be there (e.g. a partial write). Also a tampering / hardware-fault
+// signal — the index builder will produce a wrong index in this case.
+func TestCompareExclusionProjections_MissingFromStored(t *testing.T) {
+	t.Parallel()
+
+	stored := excludedVolumesSet{
+		"L1": map[domain.AccountAssetKey]struct{}{
+			{Account: "ephemeral:a", Asset: "USD"}: {},
+		},
+	}
+	derived := excludedVolumesSet{
+		"L1": map[domain.AccountAssetKey]struct{}{
+			{Account: "ephemeral:a", Asset: "USD"}: {},
+			{Account: "ephemeral:b", Asset: "EUR"}: {}, // missing from stored
+		},
+	}
+
+	var events []*servicepb.CheckStoreEvent
+	compareExclusionProjections(stored, derived, func(e *servicepb.CheckStoreEvent) {
+		events = append(events, e)
+	})
+
+	require.Len(t, events, 1)
+	err := events[0].GetError()
+	require.NotNil(t, err)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+		err.GetErrorType())
+	require.Equal(t, "L1", err.GetLedger())
+	require.Equal(t, "ephemeral:b", err.GetAccount())
+	require.Equal(t, "EUR", err.GetAsset())
+}

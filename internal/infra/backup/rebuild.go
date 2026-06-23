@@ -127,7 +127,7 @@ func RebuildDelta(
 		seq := log.GetSequence()
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(writer, ledgerAccountTypes); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(writer, ledgerAccountTypes, nil); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
@@ -288,7 +288,7 @@ func RebuildDelta(
 		}
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(writer, ledgerAccountTypes); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(writer, ledgerAccountTypes, nil); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
@@ -322,7 +322,7 @@ func RebuildDelta(
 	}
 
 	if ephemeralPurgeBuffer != nil {
-		if err := ephemeralPurgeBuffer.Flush(writer, ledgerAccountTypes); err != nil {
+		if err := ephemeralPurgeBuffer.Flush(writer, ledgerAccountTypes, nil); err != nil {
 			_ = batch.Cancel()
 
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)

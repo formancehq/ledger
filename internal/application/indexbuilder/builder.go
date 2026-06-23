@@ -68,8 +68,8 @@ type Builder struct {
 	// Round-robin index for fair scheduling across backfill tasks.
 	nextBackfillIdx int
 
-	// Audit sync for transient account filtering.
-	lastAuditSeq uint64
+	// AppliedProposal sync for transient-account filtering.
+	lastAppliedProposalSeq uint64
 
 	// Reusable scratch objects to reduce allocations in the hot loop.
 	kb       *dal.KeyBuilder
@@ -222,9 +222,9 @@ func (b *Builder) loop(ctx context.Context) {
 
 	b.lastIndexedSeq.Store(cursor)
 
-	// Recover audit progress.
-	if auditSeq, err := b.readStore.ReadAuditProgress(); err == nil {
-		b.lastAuditSeq = auditSeq
+	// Recover AppliedProposal sync progress.
+	if seq, err := b.readStore.ReadAppliedProposalProgress(); err == nil {
+		b.lastAppliedProposalSeq = seq
 	}
 
 	// Seed pebble last sequence. The handle is closed immediately after use

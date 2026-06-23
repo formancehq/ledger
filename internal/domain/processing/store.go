@@ -9,6 +9,17 @@ import (
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source=store.go -destination=store_generated_test.go -typed -package=processing -mock_names=Scope=MockScope
 
+// OrderTagger is an optional capability a Scope implementation may expose to
+// receive the zero-based order index before its handler runs. ProcessOrders
+// invokes BeginOrder when the scope supports it so the underlying WriteSet
+// can attribute volume touches to the order that produced them (used to
+// build the per-log purged_volumes list at Merge time). Recovery scopes,
+// technical-update scopes, and test mocks intentionally skip this — they
+// don't need the per-log accounting.
+type OrderTagger interface {
+	BeginOrder(orderIndex int)
+}
+
 // Scope is the FSM-apply read/write facade — the only surface order
 // handlers and technical-update handlers should touch. Two
 // implementations:

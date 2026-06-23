@@ -19,12 +19,12 @@ import (
 
 // backfillTask tracks the progress of backfilling a single index.
 type backfillTask struct {
-	ledger   string // ledger name (used for BB keys, readstore keys, logging)
-	index    *commonpb.IndexID
-	cursor   uint64 // current position (persisted in Pebble)
-	auditSeq uint64 // safe audit resume sequence for transient-account filtering
-	bbKey    []byte // precomputed key for progress persistence
-	proposed bool   // true after IndexReady has been proposed; awaiting FSM apply
+	ledger             string // ledger name (used for BB keys, readstore keys, logging)
+	index              *commonpb.IndexID
+	cursor             uint64 // current position (persisted in Pebble)
+	appliedProposalSeq uint64 // safe AppliedProposal resume sequence for transient-account filtering
+	bbKey              []byte // precomputed key for progress persistence
+	proposed           bool   // true after IndexReady has been proposed; awaiting FSM apply
 
 	// Progress logging state.
 	lastProgressLog time.Time // last time a progress log was emitted
@@ -721,14 +721,14 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 	// Build a temporary index config with only the backfilling index enabled.
 	cfg := b.buildBackfillConfig(task)
 
-	var audit *auditSync
+	var proposals *appliedProposalSync
 	if cfg.indexesPostingAddressMappings() {
-		audit, err = newAuditSync(ctx, handle, task.auditSeq)
+		proposals, err = newAppliedProposalSync(ctx, handle, task.appliedProposalSeq)
 		if err != nil {
-			return fmt.Errorf("creating audit sync for backfill: %w", err)
+			return fmt.Errorf("creating applied proposal sync for backfill: %w", err)
 		}
 
-		defer func() { _ = audit.close() }()
+		defer func() { _ = proposals.close() }()
 	}
 
 	for time.Now().Before(deadline) {
@@ -769,7 +769,7 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				continue
 			}
 
-			if err := b.indexLogEntry(cfg, log, audit); err != nil {
+			if err := b.indexLogEntry(cfg, log, proposals); err != nil {
 				_ = batch.Cancel()
 
 				return err
@@ -777,6 +777,21 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 
 			lastSeq = log.GetSequence()
 			batchCount++
+		}
+
+		// AppliedProposal cursor errors set during indexLogEntry must be
+		// surfaced BEFORE the batch is flushed: every excludedForLog call
+		// in this batch could have stashed an iterErr (coverage mismatch
+		// or corrupt proto) and returned an empty exclusion set, in which
+		// case the per-log mappings already written into b.wb are
+		// incomplete. Committing them would persist account->tx mappings
+		// for volumes that should have been excluded.
+		if proposals != nil {
+			if err := proposals.err(); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("applied proposal cursor failed: %w", err)
+			}
 		}
 
 		// Persist backfill cursor and flush.
@@ -799,9 +814,12 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 		}
 
 		task.cursor = lastSeq
-		if audit != nil {
-			audit.advanceBefore(lastSeq + 1)
-			task.auditSeq = audit.resumeSequence()
+		if proposals != nil {
+			proposals.advanceBefore(lastSeq + 1)
+			if err := proposals.err(); err != nil {
+				return fmt.Errorf("applied proposal cursor failed: %w", err)
+			}
+			task.appliedProposalSeq = proposals.resumeSequence()
 		}
 
 		if eof {

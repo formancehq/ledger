@@ -5290,6 +5290,7 @@ type LedgerLogReader interface {
 	GetData() LedgerLogPayloadReader
 	GetDate() TimestampReader
 	GetId() uint64
+	GetPurgedVolumes() TouchedVolumeListReader
 	Mutate() *LedgerLog
 }
 
@@ -5313,6 +5314,10 @@ func (r *ledgerLogReadonly) GetDate() TimestampReader {
 
 func (r *ledgerLogReadonly) GetId() uint64 {
 	return r.v.GetId()
+}
+
+func (r *ledgerLogReadonly) GetPurgedVolumes() TouchedVolumeListReader {
+	return NewTouchedVolumeListReader(r.v.GetPurgedVolumes())
 }
 
 func (r *ledgerLogReadonly) Mutate() *LedgerLog {
@@ -5366,6 +5371,78 @@ func (l ledgerLogListReadonly) Range(yield func(int, LedgerLogReader) bool) {
 // NewLedgerLogListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewLedgerLogListReader(s []*LedgerLog) LedgerLogListReader { return ledgerLogListReadonly(s) }
+
+// TouchedVolumeReader provides read-only access to TouchedVolume.
+// Call Mutate() to obtain a mutable clone.
+type TouchedVolumeReader interface {
+	GetAccount() string
+	GetAsset() string
+	Mutate() *TouchedVolume
+}
+
+type touchedVolumeReadonly struct{ v *TouchedVolume }
+
+func (r *touchedVolumeReadonly) GetAccount() string {
+	return r.v.GetAccount()
+}
+
+func (r *touchedVolumeReadonly) GetAsset() string {
+	return r.v.GetAsset()
+}
+
+func (r *touchedVolumeReadonly) Mutate() *TouchedVolume {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this TouchedVolume.
+func (m *TouchedVolume) AsReader() TouchedVolumeReader {
+	if m == nil {
+		return nil
+	}
+	return &touchedVolumeReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this TouchedVolume.
+func (m *TouchedVolume) Mutate() *TouchedVolume {
+	return m.CloneVT()
+}
+
+// TouchedVolumeListReader provides read-only iteration over []*TouchedVolume.
+type TouchedVolumeListReader interface {
+	Len() int
+	Get(i int) TouchedVolumeReader
+	Range(yield func(int, TouchedVolumeReader) bool)
+}
+
+type touchedVolumeListReadonly []*TouchedVolume
+
+func (l touchedVolumeListReadonly) Len() int { return len(l) }
+
+func (l touchedVolumeListReadonly) Get(i int) TouchedVolumeReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l touchedVolumeListReadonly) Range(yield func(int, TouchedVolumeReader) bool) {
+	for i, v := range l {
+		var r TouchedVolumeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTouchedVolumeListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTouchedVolumeListReader(s []*TouchedVolume) TouchedVolumeListReader {
+	return touchedVolumeListReadonly(s)
+}
 
 // LedgerLogPayloadReader provides read-only access to LedgerLogPayload.
 // Call Mutate() to obtain a mutable clone.

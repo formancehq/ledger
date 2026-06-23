@@ -193,6 +193,15 @@ type pendingEphemeralPurge struct {
 	postings []*commonpb.Posting
 }
 
+// ExclusionCollector is called once per (ledger, account, asset) that the
+// replay-time purge logic decides to delete from the replay store. The
+// integrity checker uses it to derive its exclusion set independently of the
+// AppliedProposal.TransientVolumes / LedgerLog.PurgedVolumes records —
+// neither is bound to the audit hash chain, so trusting them would let a
+// tampered store hide live mutations on otherwise-purged accounts. Other
+// replay consumers (backup rebuild) pass nil to discard.
+type ExclusionCollector func(ledger, account, asset string)
+
 // EphemeralPurgeBuffer accumulates transaction postings until the caller reaches
 // the same proposal boundary used by the FSM's WriteSet.Merge().
 type EphemeralPurgeBuffer struct {
@@ -225,9 +234,13 @@ func (b *EphemeralPurgeBuffer) Add(ledger string, postings []*commonpb.Posting) 
 }
 
 // Flush applies the accumulated purge decisions once per replay batch.
+// collector — when non-nil — is invoked once per purged (ledger, account,
+// asset) so the integrity checker can derive its exclusion set from the
+// hash-bound audit trail rather than the unhashed proto records.
 func (b *EphemeralPurgeBuffer) Flush(
 	w Writer,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
+	collector ExclusionCollector,
 ) error {
 	if b == nil || len(b.byLedger) == 0 {
 		return nil
@@ -235,7 +248,7 @@ func (b *EphemeralPurgeBuffer) Flush(
 
 	for _, ledger := range b.ledgers {
 		pending := b.byLedger[ledger]
-		if err := SimulateEphemeralPurge(ledger, pending.postings, w, ledgerAccountTypes); err != nil {
+		if err := SimulateEphemeralPurge(ledger, pending.postings, w, ledgerAccountTypes, collector); err != nil {
 			return err
 		}
 	}
@@ -259,7 +272,10 @@ func replayEphemeralPurge(
 		return nil
 	}
 
-	return SimulateEphemeralPurge(ledger, postings, w, ledgerAccountTypes)
+	// Single-log replay path (no buffer): no exclusion collection — callers
+	// that need derived exclusions go through the buffered path which
+	// flushes at proposal boundaries.
+	return SimulateEphemeralPurge(ledger, postings, w, ledgerAccountTypes, nil)
 }
 
 // ProposalBoundaryTracker filters audit log ranges down to newly-created log
@@ -325,13 +341,18 @@ func ApplyPostings(
 }
 
 // SimulateEphemeralPurge checks if any account volumes affected by the postings
-// have reached zero balance (input == output) on an ephemeral account type.
-// If so, it deletes the volume, mirroring the real purge in WriteSet.Merge().
+// have reached zero balance (input == output) on an ephemeral or transient
+// account type. If so, it deletes the volume, mirroring the real purge in
+// WriteSet.Merge(). When collector is non-nil, every purged
+// (ledger, account, asset) tuple is reported to it — the integrity checker
+// uses this to build its exclusion set independently of the unhashed
+// AppliedProposal / LedgerLog proto records.
 func SimulateEphemeralPurge(
 	ledger string,
 	postings []*commonpb.Posting,
 	w Writer,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
+	collector ExclusionCollector,
 ) error {
 	compiled := ledgerAccountTypes[ledger]
 	if len(compiled) == 0 {
@@ -382,6 +403,9 @@ func SimulateEphemeralPurge(
 				if inBig.Cmp(outBig) == 0 {
 					if err := w.DeleteVolume(vk.Bytes()); err != nil {
 						return fmt.Errorf("deleting ephemeral volume: %w", err)
+					}
+					if collector != nil {
+						collector(ledger, addr, p.GetAsset())
 					}
 				}
 			}

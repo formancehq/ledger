@@ -14,8 +14,9 @@ import (
 )
 
 // ApplyExports downloads export segments from storage and writes their raw KV
-// pairs into the given Pebble store. The entries are log (0x01) and audit (0x02)
-// key-value pairs written directly — no deserialization is needed.
+// pairs into the given Pebble store. The segment types are log (0x01), audit
+// (0x02), audit-item (0x03), and applied-proposal (0x04) — all restored as raw
+// key-value pairs without deserialization.
 func ApplyExports(
 	ctx context.Context,
 	logger logging.Logger,

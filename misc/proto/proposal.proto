@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package proposal;
+
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/proposalpb";
+
+import "common.proto";
+
+// ============================================================================
+// Applied Proposal
+// ============================================================================
+
+// AppliedProposal records batch-level side effects produced by a successful
+// FSM proposal apply. Stored under [ZoneCold][SubColdAppliedProposal][sequence BE 8].
+//
+// Carries only the information needed by the index builder to decide which
+// (account, asset) volumes to exclude from account->transaction mappings. The
+// audit log (see audit.proto) remains the source of truth for integrity
+// (hash chain, caller, outcome); this message is a pure side-effect
+// projection consumed by the index builder so it does not need to read the
+// audit zone.
+//
+// One AppliedProposal per successful proposal. Failed proposals do not emit
+// an entry — the sequence space has gaps on failures and readers must tolerate
+// them. The sequence is 1:1 with the corresponding AuditEntry.sequence (the
+// FSM writes the AppliedProposal before AppendAuditEntry advances the audit
+// sequence counter).
+message AppliedProposal {
+  // Monotonic per-FSM sequence, 1:1 with AuditEntry.sequence on the success
+  // path. Acts both as the Pebble key and as a pointer for cross-references.
+  fixed64 sequence = 1;
+
+  // Inclusive [min, max] range of log sequences produced by this proposal.
+  // When every order was an idempotency replay (no new log produced), both
+  // values are zero.
+  fixed64 min_log_sequence = 2;
+  fixed64 max_log_sequence = 3;
+
+  // Volumes (account+asset) whose values were transient (never persisted)
+  // in this proposal, keyed by ledger. Batch-level because transientness
+  // depends on the WriteSet's final aggregate state and cannot be split per
+  // log. Carrying the asset dimension lets the indexer distinguish per-asset
+  // state inside a multi-asset account.
+  map<string, TouchedVolumeList> transient_volumes = 4;
+}
+
+// TouchedVolumeList wraps a list of common.TouchedVolume entries (proto3 does
+// not allow map<string, repeated common.TouchedVolume>).
+message TouchedVolumeList {
+  repeated common.TouchedVolume volumes = 1;
+}

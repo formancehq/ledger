@@ -20,6 +20,15 @@ func ExportAuditItemSegmentKey(bucketID string, startSeq, endSeq uint64) string 
 	return fmt.Sprintf("%s/backups/exports/audit-items-%020d-%020d.bin", bucketID, startSeq, endSeq)
 }
 
+// ExportAppliedProposalSegmentKey returns the S3 key for an AppliedProposal
+// export segment. AppliedProposal sequences are 1:1 with AuditEntry on the
+// success path, so the segment shares the audit range — restoring a backup
+// without this segment would leave the index builder unable to learn the
+// transient-account exclusion set for replayed logs.
+func ExportAppliedProposalSegmentKey(bucketID string, startSeq, endSeq uint64) string {
+	return fmt.Sprintf("%s/backups/exports/applied-proposals-%020d-%020d.bin", bucketID, startSeq, endSeq)
+}
+
 // CheckpointFileKey returns the S3 key for a checkpoint file.
 func CheckpointFileKey(bucketID, filename string) string {
 	return CheckpointPrefix(bucketID) + filename

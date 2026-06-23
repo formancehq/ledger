@@ -409,6 +409,32 @@ func RunIncrementalBackup(
 		})
 
 		segmentsUploaded++
+
+		// Export the AppliedProposal entries for the same range. Sequences
+		// are 1:1 with AuditEntry on the success path; ranges that contain
+		// only failed proposals carry NO AppliedProposal entries. In that
+		// case exportEntries uploads no object (count == 0) — we must not
+		// add a manifest entry referencing a key that does not exist on
+		// storage, or a subsequent ApplyExports will fail on GetFile.
+		appliedCount, err := exportEntries(
+			ctx, storage, readHandle, bucketID,
+			dal.ZoneCold, dal.SubColdAppliedProposal, afterAuditSeq, currentAuditSeq,
+			ExportAppliedProposalSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("exporting applied proposals: %w", err)
+		}
+
+		if appliedCount > 0 {
+			manifest.Exports = append(manifest.Exports, ExportSegment{
+				Type:     "appliedProposal",
+				StartSeq: afterAuditSeq + 1,
+				EndSeq:   currentAuditSeq,
+				Key:      ExportAppliedProposalSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
+			})
+
+			segmentsUploaded++
+		}
 	}
 
 	// 8. Write updated manifest

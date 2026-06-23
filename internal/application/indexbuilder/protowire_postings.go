@@ -5,22 +5,32 @@ import (
 	"fmt"
 
 	"google.golang.org/protobuf/encoding/protowire"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// rawPosting holds the source and destination extracted from a Posting message.
+// rawPosting holds the source, destination and asset extracted from a
+// Posting message. The asset is kept so per-asset exclusion lookups against
+// purged/transient volume sets stay precise inside multi-asset accounts.
 type rawPosting struct {
 	Source      string
 	Destination string
+	Asset       string
 }
 
 // parsedLog holds the fields extracted by the protowire fast path.
 type parsedLog struct {
-	Sequence uint64
-	Ledger   string
-	TxID     uint64
-	Postings []rawPosting // reused across iterations via truncate-to-zero
-	LogType  int32        // LedgerLogPayload oneof tag: 1=created, 2=reverted, 0=skip
+	Sequence      uint64
+	Ledger        string
+	TxID          uint64
+	Postings      []rawPosting              // reused across iterations via truncate-to-zero
+	LogType       int32                     // LedgerLogPayload oneof tag: 1=created, 2=reverted, 0=skip
+	PurgedVolumes []*commonpb.TouchedVolume // LedgerLog.purged_volumes (field 4), reused across iterations
 }
+
+// GetPurgedVolumes satisfies ledgerLogWithPurgedVolumes so extractPurgedVolumes
+// can consume the protowire fast path without going through commonpb.
+func (p *parsedLog) GetPurgedVolumes() []*commonpb.TouchedVolume { return p.PurgedVolumes }
 
 // parsePostingsFromLog extracts only the fields needed for posting indexation
 // from the raw bytes of a serialized Log message. It skips ~70% of the payload
@@ -32,17 +42,18 @@ type parsedLog struct {
 //	Log[1:sequence, 2:payload]
 //	  → LogPayload[oneof: 3=apply]
 //	    → ApplyLedgerLog[1:ledger_name, 2:log]
-//	      → LedgerLog[1:data]
+//	      → LedgerLog[1:data, 4:purged_volumes(repeated)]
 //	        → LedgerLogPayload[oneof: 1=created_tx, 2=reverted_tx]
 //	          → CreatedTransaction[1:transaction] / RevertedTransaction[2:revert_transaction]
 //	            → Transaction[1:postings(repeated), 5:id]
-//	              → Posting[1:source, 2:destination]
+//	              → Posting[1:source, 2:destination, 3:amount(skipped), 4:asset]
 func parsePostingsFromLog(data []byte, out *parsedLog) error {
 	out.LogType = 0
 	out.Postings = out.Postings[:0]
 	out.Sequence = 0
 	out.Ledger = ""
 	out.TxID = 0
+	out.PurgedVolumes = out.PurgedVolumes[:0]
 
 	// --- Log level: extract sequence (field 1) and payload (field 2) ---
 	var payloadBytes []byte
@@ -138,10 +149,46 @@ func parsePostingsFromLog(data []byte, out *parsedLog) error {
 		return nil
 	}
 
-	// --- LedgerLog level: extract data (field 1) ---
-	dataBytes, err := scanBytesField(ledgerLogBytes, 1)
-	if err != nil {
-		return fmt.Errorf("LedgerLog: %w", err)
+	// --- LedgerLog level: extract data (field 1) and purged_volumes (field 4, repeated TouchedVolume) ---
+	var dataBytes []byte
+
+	for len(ledgerLogBytes) > 0 {
+		num, typ, n := protowire.ConsumeTag(ledgerLogBytes)
+		if n < 0 {
+			return errors.New("protowire: invalid tag in LedgerLog")
+		}
+
+		ledgerLogBytes = ledgerLogBytes[n:]
+
+		switch {
+		case num == 1 && typ == protowire.BytesType:
+			b, bn := protowire.ConsumeBytes(ledgerLogBytes)
+			if bn < 0 {
+				return errors.New("protowire: invalid bytes for LedgerLog.data")
+			}
+
+			dataBytes = b
+			ledgerLogBytes = ledgerLogBytes[bn:]
+		case num == 4 && typ == protowire.BytesType:
+			b, bn := protowire.ConsumeBytes(ledgerLogBytes)
+			if bn < 0 {
+				return errors.New("protowire: invalid bytes for LedgerLog.purged_volumes")
+			}
+
+			vol, perr := parseTouchedVolume(b)
+			if perr != nil {
+				return fmt.Errorf("TouchedVolume: %w", perr)
+			}
+			out.PurgedVolumes = append(out.PurgedVolumes, vol)
+			ledgerLogBytes = ledgerLogBytes[bn:]
+		default:
+			n := protowire.ConsumeFieldValue(num, typ, ledgerLogBytes)
+			if n < 0 {
+				return errors.New("protowire: invalid field in LedgerLog")
+			}
+
+			ledgerLogBytes = ledgerLogBytes[n:]
+		}
 	}
 
 	if dataBytes == nil {
@@ -234,12 +281,12 @@ func parseTransaction(data []byte, postings []rawPosting) (txID uint64, result [
 				return 0, result, errors.New("protowire: invalid bytes for Posting")
 			}
 
-			src, dst, perr := parsePosting(b)
+			src, dst, asset, perr := parsePosting(b)
 			if perr != nil {
 				return 0, result, perr
 			}
 
-			result = append(result, rawPosting{Source: src, Destination: dst})
+			result = append(result, rawPosting{Source: src, Destination: dst, Asset: asset})
 			data = data[bn:]
 		case num == 5 && typ == protowire.Fixed64Type:
 			v, vn := protowire.ConsumeFixed64(data)
@@ -262,12 +309,14 @@ func parseTransaction(data []byte, postings []rawPosting) (txID uint64, result [
 	return txID, result, nil
 }
 
-// parsePosting extracts source and destination from Posting bytes.
-func parsePosting(data []byte) (source, destination string, err error) {
+// parseTouchedVolume extracts account (field 1) and asset (field 2) from a
+// commonpb.TouchedVolume sub-message embedded in LedgerLog.purged_volumes.
+func parseTouchedVolume(data []byte) (*commonpb.TouchedVolume, error) {
+	out := &commonpb.TouchedVolume{}
 	for len(data) > 0 {
 		num, typ, n := protowire.ConsumeTag(data)
 		if n < 0 {
-			return "", "", errors.New("protowire: invalid tag in Posting")
+			return nil, errors.New("protowire: invalid tag in TouchedVolume")
 		}
 
 		data = data[n:]
@@ -276,7 +325,47 @@ func parsePosting(data []byte) (source, destination string, err error) {
 		case num == 1 && typ == protowire.BytesType:
 			b, bn := protowire.ConsumeBytes(data)
 			if bn < 0 {
-				return "", "", errors.New("protowire: invalid bytes for Posting.source")
+				return nil, errors.New("protowire: invalid bytes for TouchedVolume.account")
+			}
+
+			out.Account = string(b)
+			data = data[bn:]
+		case num == 2 && typ == protowire.BytesType:
+			b, bn := protowire.ConsumeBytes(data)
+			if bn < 0 {
+				return nil, errors.New("protowire: invalid bytes for TouchedVolume.asset")
+			}
+
+			out.Asset = string(b)
+			data = data[bn:]
+		default:
+			n := protowire.ConsumeFieldValue(num, typ, data)
+			if n < 0 {
+				return nil, errors.New("protowire: invalid field in TouchedVolume")
+			}
+
+			data = data[n:]
+		}
+	}
+
+	return out, nil
+}
+
+// parsePosting extracts source, destination and asset from Posting bytes.
+func parsePosting(data []byte) (source, destination, asset string, err error) {
+	for len(data) > 0 {
+		num, typ, n := protowire.ConsumeTag(data)
+		if n < 0 {
+			return "", "", "", errors.New("protowire: invalid tag in Posting")
+		}
+
+		data = data[n:]
+
+		switch {
+		case num == 1 && typ == protowire.BytesType:
+			b, bn := protowire.ConsumeBytes(data)
+			if bn < 0 {
+				return "", "", "", errors.New("protowire: invalid bytes for Posting.source")
 			}
 
 			source = string(b)
@@ -284,22 +373,30 @@ func parsePosting(data []byte) (source, destination string, err error) {
 		case num == 2 && typ == protowire.BytesType:
 			b, bn := protowire.ConsumeBytes(data)
 			if bn < 0 {
-				return "", "", errors.New("protowire: invalid bytes for Posting.destination")
+				return "", "", "", errors.New("protowire: invalid bytes for Posting.destination")
 			}
 
 			destination = string(b)
 			data = data[bn:]
+		case num == 4 && typ == protowire.BytesType:
+			b, bn := protowire.ConsumeBytes(data)
+			if bn < 0 {
+				return "", "", "", errors.New("protowire: invalid bytes for Posting.asset")
+			}
+
+			asset = string(b)
+			data = data[bn:]
 		default:
 			n := protowire.ConsumeFieldValue(num, typ, data)
 			if n < 0 {
-				return "", "", errors.New("protowire: invalid field in Posting")
+				return "", "", "", errors.New("protowire: invalid field in Posting")
 			}
 
 			data = data[n:]
 		}
 	}
 
-	return source, destination, nil
+	return source, destination, asset, nil
 }
 
 // scanBytesField scans protobuf fields looking for a length-delimited field

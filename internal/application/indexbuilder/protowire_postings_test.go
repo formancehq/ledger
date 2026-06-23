@@ -82,8 +82,10 @@ func TestParsePostingsFromLog_CreatedTransaction(t *testing.T) {
 	require.Len(t, parsed.Postings, 2)
 	require.Equal(t, "users:alice", parsed.Postings[0].Source)
 	require.Equal(t, "orders:1234", parsed.Postings[0].Destination)
+	require.Equal(t, "USD", parsed.Postings[0].Asset, "asset must come from Posting field 4, not field 3 (amount)")
 	require.Equal(t, "orders:1234", parsed.Postings[1].Source)
 	require.Equal(t, "merchants:bob", parsed.Postings[1].Destination)
+	require.Equal(t, "USD", parsed.Postings[1].Asset)
 }
 
 func TestParsePostingsFromLog_RevertedTransaction(t *testing.T) {

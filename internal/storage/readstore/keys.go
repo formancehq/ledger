@@ -24,10 +24,10 @@ const (
 	// PrefixInternal groups all non-ledger-scoped keys under a single prefix
 	// so that Comparer.Split can treat them uniformly (full key = prefix).
 	// New internal keys should be added as sub-prefixes here.
-	PrefixInternal           byte = 0xFE
-	SubInternalProgress      byte = 0x01 // [0xFE][0x01] — last indexed log sequence
-	SubInternalAuditProgress byte = 0x02 // [0xFE][0x02] — last consumed audit sequence
-	SubInternalBackfill      byte = 0x03 // [0xFE][0x03][ledgerName padded 64B][kind][...] — backfill cursors
+	PrefixInternal                     byte = 0xFE
+	SubInternalProgress                byte = 0x01 // [0xFE][0x01] — last indexed log sequence
+	SubInternalAppliedProposalProgress byte = 0x02 // [0xFE][0x02] — last consumed AppliedProposal sequence
+	SubInternalBackfill                byte = 0x03 // [0xFE][0x03][ledgerName padded 64B][kind][...] — backfill cursors
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.
@@ -353,9 +353,10 @@ func ProgressKey() []byte {
 	return []byte{PrefixInternal, SubInternalProgress}
 }
 
-// AuditProgressKey returns the full key for the audit progress entry.
+// AppliedProposalProgressKey returns the full key for the AppliedProposal
+// sync progress entry.
 //
 //	[0xFE][0x02]
-func AuditProgressKey() []byte {
-	return []byte{PrefixInternal, SubInternalAuditProgress}
+func AppliedProposalProgressKey() []byte {
+	return []byte{PrefixInternal, SubInternalAppliedProposalProgress}
 }

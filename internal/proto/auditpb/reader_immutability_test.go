@@ -97,15 +97,3 @@ func TestAuditEntryReader_GetLedgers_NilStaysNil(t *testing.T) {
 	require.Nil(t, r.GetLedgers())
 	require.Nil(t, r.GetHash())
 }
-
-func TestAccountListReader_GetAccounts_ReturnsIndependentSlice(t *testing.T) {
-	t.Parallel()
-
-	list := &auditpb.AccountList{Accounts: []string{"world", "fees"}}
-	r := list.AsReader()
-
-	got := r.GetAccounts()
-	got[1] = "REWRITTEN"
-
-	require.Equal(t, []string{"world", "fees"}, list.GetAccounts())
-}

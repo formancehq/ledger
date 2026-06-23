@@ -50,6 +50,17 @@ type AccountKey struct {
 	Account    string
 }
 
+// AccountAssetKey identifies a single Pebble volume cell within a ledger by
+// its (account, asset) coordinates. It is the ledger-local subset of
+// VolumeKey (no LedgerName), used as map key in code that already scopes
+// data per ledger — exclusion sets in the index builder and the integrity
+// checker, transient/purged dedup helpers, etc. Keep this type plain (no
+// derived fields) so it is a value-equal map key.
+type AccountAssetKey struct {
+	Account string
+	Asset   string
+}
+
 type VolumeKey struct {
 	AccountKey
 

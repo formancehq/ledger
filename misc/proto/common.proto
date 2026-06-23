@@ -598,6 +598,24 @@ message LedgerLog {
   LedgerLogPayload data = 1;
   Timestamp date = 2;
   fixed64 id = 3;
+  // Volumes (account+asset) whose ephemeral state was purged (zero balance)
+  // by THIS log specifically. Subset of the proposal's purged universe —
+  // only volumes touched by the order that produced this log. Empty when
+  // the order did not contribute to any ephemeral purge. The index builder
+  // uses this to skip account->transaction mappings for the corresponding
+  // (account, asset) tuples without reading the audit zone. Carrying the
+  // asset dimension matters: a multi-asset account may have one asset
+  // purged while another stays kept; tagging the account as a whole would
+  // over-skip mappings for transactions that touched the kept asset.
+  repeated TouchedVolume purged_volumes = 4;
+}
+
+// TouchedVolume identifies a (ledger-local) volume cell — an account paired
+// with an asset. Used in transient/purged volume exclusion sets where the
+// indexer must distinguish per-asset state inside a multi-asset account.
+message TouchedVolume {
+  string account = 1;
+  string asset = 2;
 }
 
 message LedgerLogPayload {

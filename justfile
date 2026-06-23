@@ -258,8 +258,8 @@ generate:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
-    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go || true
-    mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb
+    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go || true
+    mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb
     @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
@@ -276,6 +276,8 @@ generate-proto:
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.TechnicalUpdate \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.EventsSinkUpdate \
         --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.MirrorSyncUpdate \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/auditpb.AuditEntry \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/proposalpb.AppliedProposal \
         --plugin=protoc-gen-dethash=build/protoc-gen-dethash \
         --dethash_out=. \
         --dethash_opt=module=github.com/formancehq/ledger/v3 \
@@ -293,7 +295,8 @@ generate-proto:
         misc/proto/audit.proto \
         misc/proto/signature.proto \
         misc/proto/events.proto \
-        misc/proto/restore.proto
+        misc/proto/restore.proto \
+        misc/proto/proposal.proto
 
 # --- Operator (Kubernetes) ---
 

@@ -26,7 +26,7 @@ type CheckpointManifest struct {
 
 // ExportSegment describes a single incremental export segment stored on S3.
 type ExportSegment struct {
-	Type     string `json:"type"` // "log" or "audit"
+	Type     string `json:"type"` // "log", "audit", "auditItem", or "appliedProposal"
 	StartSeq uint64 `json:"startSeq"`
 	EndSeq   uint64 `json:"endSeq"`
 	Key      string `json:"key"` // S3 object key

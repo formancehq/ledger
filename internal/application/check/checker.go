@@ -162,6 +162,39 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
 	)
 
+	// excluded is built incrementally as SimulateEphemeralPurge decides to
+	// delete a (ledger, account, asset) volume during replay. Deriving the
+	// set this way binds it to the audit hash chain via the orders the
+	// replay consumes — a tampered AppliedProposal.TransientVolumes or
+	// LedgerLog.PurgedVolumes record cannot influence the integrity check.
+	excluded := excludedVolumesSet{}
+	exclusionCollector := func(ledger, account, asset string) {
+		set, exists := excluded[ledger]
+		if !exists {
+			set = make(map[domain.AccountAssetKey]struct{})
+			excluded[ledger] = set
+		}
+		set[domain.AccountAssetKey{Account: account, Asset: asset}] = struct{}{}
+	}
+
+	// stored mirrors `excluded` but is built from the Pebble projections
+	// (LedgerLog.PurgedVolumes per log + AppliedProposal.TransientVolumes
+	// per proposal). It is compared to `excluded` at the end of replay so
+	// any corruption of those records — which the index builder consumes
+	// directly — surfaces as EXCLUSION_RECORD_MISMATCH instead of going
+	// silent. The audit hash chain protects the orders this comparison
+	// indirectly relies on, so a tampered cache cannot make a corrupted
+	// state look consistent.
+	stored := excludedVolumesSet{}
+	addStored := func(ledger, account, asset string) {
+		set, exists := stored[ledger]
+		if !exists {
+			set = make(map[domain.AccountAssetKey]struct{})
+			stored[ledger] = set
+		}
+		set[domain.AccountAssetKey{Account: account, Asset: asset}] = struct{}{}
+	}
+
 	nextProposalEnd, hasProposalEnd, err := proposalBoundaries.Next()
 	if err != nil {
 		return fmt.Errorf("reading first proposal log boundary: %w", err)
@@ -250,7 +283,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
 			}
 
@@ -311,13 +344,21 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						}
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
+
+						// Accumulate the LedgerLog.PurgedVolumes side of the
+						// stored projection while we have the log in hand;
+						// AppliedProposal.TransientVolumes is added in a
+						// single pass below.
+						for _, v := range payload.Apply.GetLog().GetPurgedVolumes() {
+							addStored(ledgerName, v.GetAccount(), v.GetAsset())
+						}
 					}
 				}
 			}
 		}
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
 			}
 
@@ -345,10 +386,29 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if ephemeralPurgeBuffer != nil {
-		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes); err != nil {
+		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
+
+	// Pull the AppliedProposal.TransientVolumes side of the stored
+	// projection. Combined with the LedgerLog.PurgedVolumes already
+	// accumulated above, `stored` now represents the full per-ledger
+	// exclusion set the index builder will consume.
+	if err := c.collectStoredTransientVolumes(ctx, snap, addStored); err != nil {
+		return fmt.Errorf("reading applied proposals for exclusion check: %w", err)
+	}
+
+	// Compare the stored projection against the replay-derived ground
+	// truth. Mismatches indicate either:
+	//   - a corrupted AppliedProposal / LedgerLog record (tampering or
+	//     hardware fault on the projection caches), or
+	//   - an FSM bug emitting projections that disagree with what
+	//     SimulateEphemeralPurge / partitionVolumes would produce for
+	//     the same orders.
+	// Both turn into spurious index entries downstream, so we surface
+	// them via EXCLUSION_RECORD_MISMATCH for human review.
+	compareExclusionProjections(stored, excluded, callback)
 
 	// Open baseline checkpoint for archived state comparison.
 	var baselineDB *pebble.DB
@@ -379,15 +439,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return nil
 	}
 
-	// Collect the per-ledger set of accounts that legitimately differ between
-	// live and replay: transient accounts (never persisted live) and ephemeral
-	// accounts that were purged at zero balance. The audit log is the source
-	// of truth — the comparison passes use this set to skip such accounts
-	// deterministically rather than heuristically (cf. #347).
-	excluded, err := c.collectExcludedAccounts(ctx, snap, knownLedgers, callback)
-	if err != nil {
-		return fmt.Errorf("collecting excluded accounts from audit log: %w", err)
-	}
+	// `excluded` was populated incrementally by the replay-time
+	// exclusionCollector. It is the audit-derived ground truth — the
+	// AppliedProposal.TransientVolumes and LedgerLog.PurgedVolumes proto
+	// records are intentionally NOT read here (they are not bound to the
+	// audit hash chain and would let a tampered store hide live mutations
+	// on otherwise-purged accounts).
 
 	// Comparison passes: 3-way merge (baseline + replay + live).
 	// When no archived chapters exist, baseline is nil and expected = replay delta only.
@@ -398,105 +455,133 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	return nil
 }
 
-// excludedAccountsSet maps ledger name to a set of account addresses that
-// legitimately diverge between the replay store and the live Pebble store.
-// Sources: AuditSuccess.TransientAccounts (never persisted live) and
-// AuditSuccess.PurgedAccounts (ephemeral, zeroed and purged). Mirrors the
-// indexbuilder's audit_sync exclusion set.
-type excludedAccountsSet map[string]map[string]struct{}
+// collectStoredTransientVolumes walks the AppliedProposal stream and feeds
+// every (ledger, account, asset) declared in TransientVolumes into the
+// addStored callback. Paired with the LedgerLog.PurgedVolumes captured
+// during the replay loop, this builds the "stored" projection the checker
+// compares against the audit-derived ground truth.
+func (c *Checker) collectStoredTransientVolumes(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	addStored func(ledger, account, asset string),
+) error {
+	proposals, err := query.ReadAppliedProposals(ctx, reader, nil)
+	if err != nil {
+		return fmt.Errorf("reading applied proposals: %w", err)
+	}
 
-func (e excludedAccountsSet) contains(ledgerName string, account string) bool {
+	defer func() { _ = proposals.Close() }()
+
+	for {
+		entry, err := proposals.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+
+			return fmt.Errorf("reading applied proposal: %w", err)
+		}
+
+		for ledgerName, volumeList := range entry.GetTransientVolumes() {
+			for _, v := range volumeList.GetVolumes() {
+				addStored(ledgerName, v.GetAccount(), v.GetAsset())
+			}
+		}
+	}
+}
+
+// compareExclusionProjections emits one EXCLUSION_RECORD_MISMATCH event
+// per (ledger, account, asset) tuple that appears in `stored` but not in
+// `derived` (corruption / spurious record) and per tuple that appears in
+// `derived` but not in `stored` (missing record). Identical sets emit
+// nothing. The comparison is symmetric difference rather than equality so
+// the report tells the operator exactly where the divergence is.
+//
+// Known limitation (tracked in EN-1329): the comparison is currently
+// ledger-wide. Tampering that MOVES a record between two logs (for
+// PurgedVolumes) or between two proposals (for TransientVolumes) of the
+// same ledger cancels out in the union and is not detected here. Per-log
+// / per-proposal scoping would require threading log_seq through the
+// replay-time ephemeralPurgeBuffer collector — a substantial refactor
+// of internal/domain/replay/replay.go that is deferred for now.
+func compareExclusionProjections(stored, derived excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) {
+	for ledger, set := range stored {
+		ref := derived[ledger]
+		for vk := range set {
+			if _, ok := ref[vk]; ok {
+				continue
+			}
+
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+				fmt.Sprintf("exclusion record for %q/%q exists in projections (AppliedProposal/LedgerLog) but not in the replay-derived set", vk.Account, vk.Asset),
+				0, ledger, vk.Account, vk.Asset,
+			))
+		}
+	}
+
+	for ledger, set := range derived {
+		ref := stored[ledger]
+		for vk := range set {
+			if _, ok := ref[vk]; ok {
+				continue
+			}
+
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+				fmt.Sprintf("replay-derived exclusion for %q/%q is missing from projections (AppliedProposal/LedgerLog)", vk.Account, vk.Asset),
+				0, ledger, vk.Account, vk.Asset,
+			))
+		}
+	}
+}
+
+// excludedVolumesSet maps ledger name to a set of (account, asset) tuples
+// that legitimately diverge between the replay store and the live Pebble
+// store. The set is populated incrementally by the replay-time
+// exclusionCollector in Check() — i.e. derived from the audit log (the
+// only hash-chain-bound source). AppliedProposal.TransientVolumes and
+// LedgerLog.PurgedVolumes are NOT consulted: they are caches for the
+// index builder and cannot be trusted by the integrity checker.
+type excludedVolumesSet map[string]map[domain.AccountAssetKey]struct{}
+
+func (e excludedVolumesSet) contains(ledgerName, account, asset string) bool {
 	if e == nil {
 		return false
 	}
 
-	accs, ok := e[ledgerName]
+	keys, ok := e[ledgerName]
 	if !ok {
 		return false
 	}
 
-	_, has := accs[account]
+	_, has := keys[domain.AccountAssetKey{Account: account, Asset: asset}]
 
 	return has
 }
 
-// collectExcludedAccounts iterates every non-archived audit entry and
-// accumulates the union of transient and purged-ephemeral accounts per
-// ledger. The result lets compare* passes skip volumes/metadata that the
-// audit log explicitly marks as non-persisted-live, replacing the older
-// "input == output" heuristic which masked symmetric mutations.
-func (c *Checker) collectExcludedAccounts(
-	ctx context.Context,
-	reader dal.PebbleReader,
-	knownLedgers map[string]struct{},
-	callback func(*servicepb.CheckStoreEvent),
-) (excludedAccountsSet, error) {
-	cursorIter, err := query.ReadAuditEntries(ctx, reader, nil)
-	if err != nil {
-		return nil, fmt.Errorf("reading audit entries: %w", err)
+// containsAccount returns true when any asset of the given account is in
+// the exclusion set. Used by compareMetadata which is keyed per account,
+// not per (account, asset).
+func (e excludedVolumesSet) containsAccount(ledgerName, account string) bool {
+	if e == nil {
+		return false
 	}
 
-	defer func() { _ = cursorIter.Close() }()
-
-	result := excludedAccountsSet{}
-
-	for {
-		entry, err := cursorIter.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			// Real iterator/unmarshal failure: propagate. Treating it as
-			// EOF would silently truncate the exclusion set and let
-			// compareVolumes / compareMetadata flag false positives on
-			// later transient/purged accounts (#347 review feedback).
-			return nil, fmt.Errorf("reading audit entry for exclusion set: %w", err)
+	for k := range e[ledgerName] {
+		if k.Account == account {
+			return true
 		}
-
-		success := entry.GetSuccess()
-		if success == nil {
-			continue
-		}
-
-		addAccounts := func(perLedger map[string]*auditpb.AccountList) {
-			for ledgerName, accountList := range perLedger {
-				if _, ok := knownLedgers[ledgerName]; !ok {
-					// Audit references a ledger we don't know about: surface
-					// it instead of silently skipping. A divergence here means
-					// the audit log and the ledger registry disagree, which
-					// is a real integrity issue.
-					callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER,
-						fmt.Sprintf("audit entry references unknown ledger %q in transient/purged set", ledgerName),
-						entry.GetSequence(), ledgerName, "", ""))
-
-					continue
-				}
-
-				set, exists := result[ledgerName]
-				if !exists {
-					set = make(map[string]struct{})
-					result[ledgerName] = set
-				}
-
-				for _, account := range accountList.GetAccounts() {
-					set[account] = struct{}{}
-				}
-			}
-		}
-
-		addAccounts(success.GetTransientAccounts())
-		addAccounts(success.GetPurgedAccounts())
 	}
 
-	return result, nil
+	return false
 }
 
 // compareVolumes performs a 3-way merge comparison for volumes.
 // expected = baseline + replay delta; compare with live (actual).
 // `excluded` lists per-ledger accounts whose volumes legitimately diverge
 // (transient + purged ephemeral, sourced from the audit log).
-func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, excluded excludedAccountsSet, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live volumes
@@ -654,13 +739,17 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 			actualOutput = actual.GetOutput().ToBigInt()
 		}
 
-		// Skip accounts that the audit log marks as transient or purged:
-		// transient accounts are never persisted live, ephemeral accounts may
-		// be purged at zero balance, so a per-account divergence between live
-		// and replay is expected and benign. Until #347 this used an
-		// input == output heuristic that also masked symmetric mutations
-		// (e.g. expected (100,100) vs actual (999,999) on a normal account).
-		if excluded.contains(vk.LedgerName, vk.Account) {
+		// Skip volumes the replay-time ephemeral-purge collector recorded
+		// during this Check() run (see exclusionCollector at the top of
+		// Check). That set is derived from the hash-chain-bound audit
+		// trail — NOT from AppliedProposal.TransientVolumes or
+		// LedgerLog.PurgedVolumes, which are unhashed caches and must
+		// stay untrusted here. The exclusion key is (account, asset) so a
+		// multi-asset account whose USD was purged still has its EUR
+		// compared. Do not "align" this code to consult those proto
+		// records — it would reintroduce the tampering vector this
+		// design deliberately removes.
+		if excluded.contains(vk.LedgerName, vk.Account, vk.Asset) {
 			continue
 		}
 
@@ -692,7 +781,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 // `excluded` lists per-ledger accounts whose state legitimately diverges
 // (transient + purged ephemeral, sourced from the audit log) — metadata on
 // such accounts is skipped to avoid false positives.
-func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, excluded excludedAccountsSet, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live metadata
@@ -830,7 +919,10 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 			continue
 		}
 
-		if excluded.contains(mk.LedgerName, mk.Account) {
+		// Metadata is keyed per account (no asset dimension). Skip when any
+		// asset of the account is in the exclusion set — conservative: if a
+		// single asset is transient/purged we assume the metadata diverges.
+		if excluded.containsAccount(mk.LedgerName, mk.Account) {
 			continue
 		}
 

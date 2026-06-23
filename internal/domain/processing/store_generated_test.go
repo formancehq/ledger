@@ -17,6 +17,66 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// MockOrderTagger is a mock of OrderTagger interface.
+type MockOrderTagger struct {
+	ctrl     *gomock.Controller
+	recorder *MockOrderTaggerMockRecorder
+	isgomock struct{}
+}
+
+// MockOrderTaggerMockRecorder is the mock recorder for MockOrderTagger.
+type MockOrderTaggerMockRecorder struct {
+	mock *MockOrderTagger
+}
+
+// NewMockOrderTagger creates a new mock instance.
+func NewMockOrderTagger(ctrl *gomock.Controller) *MockOrderTagger {
+	mock := &MockOrderTagger{ctrl: ctrl}
+	mock.recorder = &MockOrderTaggerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockOrderTagger) EXPECT() *MockOrderTaggerMockRecorder {
+	return m.recorder
+}
+
+// BeginOrder mocks base method.
+func (m *MockOrderTagger) BeginOrder(orderIndex int) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "BeginOrder", orderIndex)
+}
+
+// BeginOrder indicates an expected call of BeginOrder.
+func (mr *MockOrderTaggerMockRecorder) BeginOrder(orderIndex any) *MockOrderTaggerBeginOrderCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginOrder", reflect.TypeOf((*MockOrderTagger)(nil).BeginOrder), orderIndex)
+	return &MockOrderTaggerBeginOrderCall{Call: call}
+}
+
+// MockOrderTaggerBeginOrderCall wrap *gomock.Call
+type MockOrderTaggerBeginOrderCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockOrderTaggerBeginOrderCall) Return() *MockOrderTaggerBeginOrderCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockOrderTaggerBeginOrderCall) Do(f func(int)) *MockOrderTaggerBeginOrderCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockOrderTaggerBeginOrderCall) DoAndReturn(f func(int)) *MockOrderTaggerBeginOrderCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // MockScope is a mock of Scope interface.
 type MockScope struct {
 	ctrl     *gomock.Controller

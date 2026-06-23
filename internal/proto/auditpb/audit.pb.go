@@ -283,8 +283,10 @@ func (x *AuditItem) GetLogSequence() uint64 {
 	return 0
 }
 
-// AuditSuccess records the log sequence range created by a successful proposal
-// and batch-level side effects computed during Merge.
+// AuditSuccess records the log sequence range created by a successful proposal.
+// Batch-level side effects (transient accounts, purged ephemeral accounts) live
+// in proposalpb.AppliedProposal and on each Log directly — the audit log keeps
+// only the integrity-relevant outcome data.
 type AuditSuccess struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Contiguous log sequence range [min_log_sequence, max_log_sequence] produced
@@ -292,14 +294,6 @@ type AuditSuccess struct {
 	// min == max. When it produces no logs (all idempotent), both are 0.
 	MinLogSequence uint64 `protobuf:"fixed64,1,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
 	MaxLogSequence uint64 `protobuf:"fixed64,2,opt,name=max_log_sequence,json=maxLogSequence,proto3" json:"max_log_sequence,omitempty"`
-	// Accounts whose volumes were transient in this proposal, keyed by ledger.
-	// The index builder uses this to skip account→transaction mappings for
-	// transient accounts without any Pebble reads.
-	TransientAccounts map[string]*AccountList `protobuf:"bytes,3,rep,name=transient_accounts,json=transientAccounts,proto3" json:"transient_accounts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Accounts whose ephemeral volumes were purged (zero balance) in this
-	// proposal, keyed by ledger. The index builder uses this to skip
-	// account→transaction mappings for purged ephemeral accounts.
-	PurgedAccounts map[string]*AccountList `protobuf:"bytes,4,rep,name=purged_accounts,json=purgedAccounts,proto3" json:"purged_accounts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -348,65 +342,6 @@ func (x *AuditSuccess) GetMaxLogSequence() uint64 {
 	return 0
 }
 
-func (x *AuditSuccess) GetTransientAccounts() map[string]*AccountList {
-	if x != nil {
-		return x.TransientAccounts
-	}
-	return nil
-}
-
-func (x *AuditSuccess) GetPurgedAccounts() map[string]*AccountList {
-	if x != nil {
-		return x.PurgedAccounts
-	}
-	return nil
-}
-
-// AccountList is a list of account addresses.
-type AccountList struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Accounts      []string               `protobuf:"bytes,1,rep,name=accounts,proto3" json:"accounts,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AccountList) Reset() {
-	*x = AccountList{}
-	mi := &file_audit_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AccountList) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AccountList) ProtoMessage() {}
-
-func (x *AccountList) ProtoReflect() protoreflect.Message {
-	mi := &file_audit_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AccountList.ProtoReflect.Descriptor instead.
-func (*AccountList) Descriptor() ([]byte, []int) {
-	return file_audit_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *AccountList) GetAccounts() []string {
-	if x != nil {
-		return x.Accounts
-	}
-	return nil
-}
-
 // AuditFailure records the reason and context for a failed proposal.
 type AuditFailure struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -419,7 +354,7 @@ type AuditFailure struct {
 
 func (x *AuditFailure) Reset() {
 	*x = AuditFailure{}
-	mi := &file_audit_proto_msgTypes[4]
+	mi := &file_audit_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -431,7 +366,7 @@ func (x *AuditFailure) String() string {
 func (*AuditFailure) ProtoMessage() {}
 
 func (x *AuditFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_audit_proto_msgTypes[4]
+	mi := &file_audit_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -444,7 +379,7 @@ func (x *AuditFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditFailure.ProtoReflect.Descriptor instead.
 func (*AuditFailure) Descriptor() ([]byte, []int) {
-	return file_audit_proto_rawDescGZIP(), []int{4}
+	return file_audit_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *AuditFailure) GetErrorType() string {
@@ -494,20 +429,10 @@ const file_audit_proto_rawDesc = "" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
 	"orderIndex\x12)\n" +
 	"\x10serialized_order\x18\x02 \x01(\fR\x0fserializedOrder\x12!\n" +
-	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequenceR\x05order\"\xc0\x03\n" +
+	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequenceR\x05order\"b\n" +
 	"\fAuditSuccess\x12(\n" +
 	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
-	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\x12Y\n" +
-	"\x12transient_accounts\x18\x03 \x03(\v2*.audit.AuditSuccess.TransientAccountsEntryR\x11transientAccounts\x12P\n" +
-	"\x0fpurged_accounts\x18\x04 \x03(\v2'.audit.AuditSuccess.PurgedAccountsEntryR\x0epurgedAccounts\x1aX\n" +
-	"\x16TransientAccountsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12(\n" +
-	"\x05value\x18\x02 \x01(\v2\x12.audit.AccountListR\x05value:\x028\x01\x1aU\n" +
-	"\x13PurgedAccountsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12(\n" +
-	"\x05value\x18\x02 \x01(\v2\x12.audit.AccountListR\x05value:\x028\x01\")\n" +
-	"\vAccountList\x12\x1a\n" +
-	"\baccounts\x18\x01 \x03(\tR\baccounts\"\xbf\x01\n" +
+	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"\xbf\x01\n" +
 	"\fAuditFailure\x12\x1d\n" +
 	"\n" +
 	"error_type\x18\x01 \x01(\tR\terrorType\x12\x18\n" +
@@ -529,35 +454,28 @@ func file_audit_proto_rawDescGZIP() []byte {
 	return file_audit_proto_rawDescData
 }
 
-var file_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_audit_proto_goTypes = []any{
 	(*AuditEntry)(nil),              // 0: audit.AuditEntry
 	(*AuditItem)(nil),               // 1: audit.AuditItem
 	(*AuditSuccess)(nil),            // 2: audit.AuditSuccess
-	(*AccountList)(nil),             // 3: audit.AccountList
-	(*AuditFailure)(nil),            // 4: audit.AuditFailure
-	nil,                             // 5: audit.AuditSuccess.TransientAccountsEntry
-	nil,                             // 6: audit.AuditSuccess.PurgedAccountsEntry
-	nil,                             // 7: audit.AuditFailure.ContextEntry
-	(*commonpb.Timestamp)(nil),      // 8: common.Timestamp
-	(*commonpb.CallerSnapshot)(nil), // 9: common.CallerSnapshot
+	(*AuditFailure)(nil),            // 3: audit.AuditFailure
+	nil,                             // 4: audit.AuditFailure.ContextEntry
+	(*commonpb.Timestamp)(nil),      // 5: common.Timestamp
+	(*commonpb.CallerSnapshot)(nil), // 6: common.CallerSnapshot
 }
 var file_audit_proto_depIdxs = []int32{
-	8,  // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
-	2,  // 1: audit.AuditEntry.success:type_name -> audit.AuditSuccess
-	4,  // 2: audit.AuditEntry.failure:type_name -> audit.AuditFailure
-	1,  // 3: audit.AuditEntry.items:type_name -> audit.AuditItem
-	9,  // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
-	5,  // 5: audit.AuditSuccess.transient_accounts:type_name -> audit.AuditSuccess.TransientAccountsEntry
-	6,  // 6: audit.AuditSuccess.purged_accounts:type_name -> audit.AuditSuccess.PurgedAccountsEntry
-	7,  // 7: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
-	3,  // 8: audit.AuditSuccess.TransientAccountsEntry.value:type_name -> audit.AccountList
-	3,  // 9: audit.AuditSuccess.PurgedAccountsEntry.value:type_name -> audit.AccountList
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	5, // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
+	2, // 1: audit.AuditEntry.success:type_name -> audit.AuditSuccess
+	3, // 2: audit.AuditEntry.failure:type_name -> audit.AuditFailure
+	1, // 3: audit.AuditEntry.items:type_name -> audit.AuditItem
+	6, // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
+	4, // 5: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_audit_proto_init() }
@@ -575,7 +493,7 @@ func file_audit_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_audit_proto_rawDesc), len(file_audit_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

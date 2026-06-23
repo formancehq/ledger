@@ -15,7 +15,7 @@ audit_hash = H(key, header_payload || concat(per_item_payload) || previous_audit
 Where:
 - `H` is the configured keyed hash function (BLAKE3 or XXH3-128).
 - `key` is derived from the immutable `ClusterID` via domain-separated BLAKE3.
-- `header_payload` is the canonical binary encoding of EVERY AuditEntry field except `hash`: sequence, timestamp, proposal_id, outcome (success or failure with all sub-fields including maps), order_count, ledgers, hash_version, caller_snapshot.
+- `header_payload` is the canonical binary encoding of EVERY AuditEntry field except `hash`: sequence, timestamp, proposal_id, outcome (success with log-range bounds, or failure with all sub-fields including the context map), order_count, ledgers, hash_version, caller_snapshot.
 - `per_item_payload` is the canonical binary encoding of each AuditItem (order_index, log_sequence, serialized_order) — one payload per item, concatenated in order_index order.
 - `previous_audit_hash` is the hash of the immediately preceding audit entry (empty for the first entry).
 
@@ -62,14 +62,6 @@ HashedHeaderPayload {
 OutcomeSuccessPayload {
     u64 min_log_sequence
     u64 max_log_sequence
-    u32 transient_ledgers_count
-    repeated TransientEntry {
-        u32 ledger_len ; bytes ledger                // sorted
-        u32 accounts_count
-        repeated { u32 account_len ; bytes account } // sorted
-    }
-    u32 purged_ledgers_count
-    repeated PurgedEntry { ... }                     // same shape as transient
 }
 
 OutcomeFailurePayload {

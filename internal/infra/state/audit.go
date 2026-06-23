@@ -114,17 +114,25 @@ func extractLedgers(orders []*raftcmdpb.Order) []string {
 	return ledgers
 }
 
-// extractLogSequenceRange returns the min and max log sequence from a slice of
-// CreatedLogOrReference. For created logs it uses the log sequence; for
-// idempotent references it uses the reference sequence. Returns (0, 0) if empty.
+// extractLogSequenceRange returns the min and max sequence among the *created*
+// logs in the slice. Idempotent ReferenceSequence entries are ignored: they
+// point at logs created by older proposals, so including them would let
+// AppliedProposal.{min,max}LogSequence span an unrelated range and cause the
+// index builder to apply this proposal's transient exclusion set to logs that
+// belong to a different proposal (NumaryBot blocker — PR #542).
+//
+// Returns (0, 0) when there are no CreatedLog entries (all-idempotent batch).
+// Callers must skip the AppliedProposal in that case (see
+// appliedProposalSync.advance — MaxLogSequence == 0 is the "no logs touched"
+// sentinel).
 func extractLogSequenceRange(logsOrRefs []*raftcmdpb.CreatedLogOrReference) (minSeq, maxSeq uint64) {
 	for _, logOrRef := range logsOrRefs {
-		var seq uint64
-		if created := logOrRef.GetCreatedLog(); created != nil {
-			seq = created.GetSequence()
-		} else {
-			seq = logOrRef.GetReferenceSequence()
+		created := logOrRef.GetCreatedLog()
+		if created == nil {
+			continue
 		}
+
+		seq := created.GetSequence()
 
 		if minSeq == 0 || seq < minSeq {
 			minSeq = seq

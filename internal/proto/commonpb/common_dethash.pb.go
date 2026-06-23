@@ -1550,6 +1550,15 @@ func (m *LedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.PurgedVolumes) > 0 {
+		for iNdEx := len(m.PurgedVolumes) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.PurgedVolumes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x22
+		}
+	}
 	if m.Id != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Id))
@@ -1571,6 +1580,17 @@ func (m *LedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error
 		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
+}
+
+func (m *TouchedVolume) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
 }
 
 func (m *LedgerLogPayload) MarshalDeterministicVT(dAtA []byte) []byte {

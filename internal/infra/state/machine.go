@@ -24,6 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -1247,6 +1248,20 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// computed, because BuildHashedHeaderPayload binds them all into the
 	// chain. Tampering with any AuditEntry or AuditItem field on disk
 	// after this commit is detected by checker.verifyAuditHashChain.
+	//
+	// IMPORTANT — write failure convention: `appendAuditEntries`,
+	// `appendAuditItems`, and `appendAppliedProposal` (called by the
+	// success path right after this) write into the Pebble batch. If
+	// any of them returns an error AFTER `State.AppendAuditEntry` has
+	// advanced the in-memory audit state, the in-memory state is ahead
+	// of what will land on disk (the caller cancels the batch). The
+	// project convention is: any such error MUST propagate out of
+	// `Applier.Run()` and crash the process — a restart reloads
+	// `LastAppliedIndex` from Pebble and Raft redelivers the missing
+	// entries (cf. the lastPersistedIndex comment above). Properly-
+	// configured nodes have no realistic way to fail here (the writes
+	// go to an in-memory memtable), so we accept this in lieu of a
+	// transactional stage/commit rework. Tracked in EN-1330.
 	writeAuditEntry := func(entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
 		// Sequence must be set BEFORE the header payload is built —
 		// BuildHashedHeaderPayload binds entry.Sequence, and the
@@ -1321,7 +1336,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// FAILURE: write audit entry and return business error. `err` is
 		// produced by processor.ProcessOrders which now returns Describable
 		// directly — no boundary cast, no fallback path.
-		if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}}, nil, "failure"); appendErr != nil {
+		failureEntry := auditpb.AuditEntryFromVTPool()
+		failureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
+		appendErr := writeAuditEntry(failureEntry, nil, "failure")
+		failureEntry.ReturnToVTPool()
+		if appendErr != nil {
 			return nil, appendErr
 		}
 
@@ -1350,7 +1369,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			invariant = &domain.ErrInvalidExecutionPlan{Reason_: scopeErr.Error()}
 		}
 
-		if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(scopeErr)}}, nil, "validate-scope construction failure"); appendErr != nil {
+		scopeFailureEntry := auditpb.AuditEntryFromVTPool()
+		scopeFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(scopeErr)}
+		appendErr := writeAuditEntry(scopeFailureEntry, nil, "validate-scope construction failure")
+		scopeFailureEntry.ReturnToVTPool()
+		if appendErr != nil {
 			return nil, appendErr
 		}
 
@@ -1363,7 +1386,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	transientErr := buffer.ValidateTransientVolumes(validateScope)
 
 	if err := transientErr; err != nil {
-		if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}}, nil, "transient validation failure"); appendErr != nil {
+		transientFailureEntry := auditpb.AuditEntryFromVTPool()
+		transientFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}
+		appendErr := writeAuditEntry(transientFailureEntry, nil, "transient validation failure")
+		transientFailureEntry.ReturnToVTPool()
+		if appendErr != nil {
 			return nil, appendErr
 		}
 
@@ -1372,23 +1399,26 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
-	// Extract created logs (reference sequences are idempotent responses
-	// that don't produce new logs).
-	var createdLogs []*commonpb.Log
-
-	for _, logOrRef := range logs {
-		if created := logOrRef.GetCreatedLog(); created != nil {
-			createdLogs = append(createdLogs, created)
-		}
-	}
-
 	configChanged := buffer.HasPendingSinkChanges()
 	mirrorConfigChanged := hasMirrorConfigChange(proposal)
 	hasArchiveRequests := len(buffer.pendingArchives) > 0
 	hasPurges := buffer.HasPurges()
 
-	if err := buffer.Merge(batch, createdLogs); err != nil {
+	// Merge consumes the per-order log slice (CreatedLog or ReferenceSequence)
+	// so it can inject Log.purged_volumes using per-order tracking before
+	// AppendLogs runs.
+	if err := buffer.Merge(batch, logs); err != nil {
 		return nil, err
+	}
+
+	// Extract created logs for downstream checks (verifyVolumeDeltasMatchPostings,
+	// audit emission). Reference sequences are idempotent responses that did not
+	// produce a fresh log.
+	var createdLogs []*commonpb.Log
+	for _, logOrRef := range logs {
+		if created := logOrRef.GetCreatedLog(); created != nil {
+			createdLogs = append(createdLogs, created)
+		}
 	}
 
 	// Update bloom filters with newly written keys (before batch.Commit).
@@ -1415,29 +1445,54 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	preAuditHash := make([]byte, len(fsm.State.LastAuditHash))
 	copy(preAuditHash, fsm.State.LastAuditHash)
 
-	// SUCCESS: write audit entry with batch-level side effects.
+	// SUCCESS: emit batch-level side effects.
 	minLogSeq, maxLogSeq := extractLogSequenceRange(logs)
+
 	auditSuccess := &auditpb.AuditSuccess{
 		MinLogSequence: minLogSeq,
 		MaxLogSequence: maxLogSeq,
 	}
 
-	if ta := buffer.TransientAccounts(); len(ta) > 0 {
-		auditSuccess.TransientAccounts = make(map[string]*auditpb.AccountList, len(ta))
-		for ledgerName, accounts := range ta {
-			auditSuccess.TransientAccounts[ledgerName] = &auditpb.AccountList{Accounts: accounts}
-		}
-	}
-
-	if pa := buffer.PurgedAccounts(); len(pa) > 0 {
-		auditSuccess.PurgedAccounts = make(map[string]*auditpb.AccountList, len(pa))
-		for ledgerName, accounts := range pa {
-			auditSuccess.PurgedAccounts[ledgerName] = &auditpb.AccountList{Accounts: accounts}
-		}
-	}
-
-	if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Success{Success: auditSuccess}}, logs, "success"); appendErr != nil {
+	// SUCCESS: write the audit entry first (advances State + writes audit
+	// + audit items to the batch), then write the AppliedProposal record
+	// (SubColdAppliedProposal = 0x04, after the audit entries at 0x02 /
+	// 0x03 so the ZoneCold Pebble writes stay monotonically increasing
+	// on the sub-prefix dimension — preferred by the memtable skiplist).
+	//
+	// `auditEntry.GetSequence()` is set by writeAuditEntry to the
+	// peeked NextAuditSequenceID, preserving the 1:1
+	// AppliedProposal.sequence == AuditEntry.sequence invariant on the
+	// success path. Failure paths write no AppliedProposal — the
+	// sequence space has gaps that index builder cursors tolerate.
+	//
+	// Write-failure convention applies here too: if appendAppliedProposal
+	// returns an error, the audit state has already advanced in-memory
+	// (see writeAuditEntry). The convention is to let that error
+	// propagate out of Run() and crash the process; a restart reloads
+	// from Pebble and Raft redelivers. Tracked for hardening in EN-1330.
+	auditEntry := auditpb.AuditEntryFromVTPool()
+	auditEntry.Outcome = &auditpb.AuditEntry_Success{Success: auditSuccess}
+	appendErr := writeAuditEntry(auditEntry, logs, "success")
+	auditSequence := auditEntry.GetSequence()
+	auditEntry.ReturnToVTPool()
+	if appendErr != nil {
 		return nil, appendErr
+	}
+
+	applied := proposalpb.AppliedProposalFromVTPool()
+	applied.Sequence = auditSequence
+	applied.MinLogSequence = minLogSeq
+	applied.MaxLogSequence = maxLogSeq
+	if tv := buffer.TransientVolumes(); len(tv) > 0 {
+		applied.TransientVolumes = make(map[string]*proposalpb.TouchedVolumeList, len(tv))
+		for ledgerName, volumes := range tv {
+			applied.TransientVolumes[ledgerName] = &proposalpb.TouchedVolumeList{Volumes: volumes}
+		}
+	}
+	appendErr = appendAppliedProposal(batch, applied)
+	applied.ReturnToVTPool()
+	if appendErr != nil {
+		return nil, fmt.Errorf("appending applied proposal: %w", appendErr)
 	}
 
 	// Update closing chapter's LastAuditHash if this batch contains a CloseChapter.

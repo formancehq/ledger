@@ -139,12 +139,10 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 }
 
 func buildAuditSuccessPayload(s *auditpb.AuditSuccess) []byte {
-	buf := make([]byte, 0, 32)
+	buf := make([]byte, 0, 16)
 
 	buf = appendU64(buf, s.GetMinLogSequence())
 	buf = appendU64(buf, s.GetMaxLogSequence())
-	buf = appendAccountMap(buf, s.GetTransientAccounts())
-	buf = appendAccountMap(buf, s.GetPurgedAccounts())
 
 	return buf
 }
@@ -168,33 +166,6 @@ func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 	for _, k := range keys {
 		buf = appendLenString(buf, k)
 		buf = appendLenString(buf, ctx[k])
-	}
-
-	return buf
-}
-
-// appendAccountMap encodes a map<ledger, AccountList> with keys sorted
-// lexicographically and inner account slices sorted likewise. Shared by
-// transient_accounts and purged_accounts since they have the same shape.
-func appendAccountMap(buf []byte, m map[string]*auditpb.AccountList) []byte {
-	ledgers := make([]string, 0, len(m))
-	for ledger := range m {
-		ledgers = append(ledgers, ledger)
-	}
-
-	slices.Sort(ledgers)
-	buf = appendU32(buf, uint32(len(ledgers)))
-
-	for _, ledger := range ledgers {
-		buf = appendLenString(buf, ledger)
-
-		accounts := slices.Clone(m[ledger].GetAccounts())
-		slices.Sort(accounts)
-		buf = appendU32(buf, uint32(len(accounts)))
-
-		for _, account := range accounts {
-			buf = appendLenString(buf, account)
-		}
 	}
 
 	return buf

@@ -3,7 +3,7 @@ package state
 import (
 	"errors"
 	"fmt"
-	"slices"
+	"sort"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
@@ -128,13 +128,34 @@ type WriteSet struct {
 	// Used to exclude these from cross-entry post-commit verification.
 	purgedVolumeKeys []domain.VolumeKey
 
-	// transientAccounts holds unique transient account names per ledger,
-	// populated during Merge for inclusion in the audit entry.
-	transientAccounts map[string][]string
+	// transientVolumes holds unique transient (account, asset) volumes per
+	// ledger, populated during Merge for inclusion in the AppliedProposal
+	// entry. The asset dimension is preserved so a multi-asset account is
+	// correctly described when only some of its assets are transient.
+	transientVolumes map[string][]*commonpb.TouchedVolume
 
-	// purgedAccounts holds unique ephemeral account names per ledger whose
-	// volumes were purged (zero balance), populated during Merge.
-	purgedAccounts map[string][]string
+	// perOrderVolumeKeys[i] records the VolumeKeys touched by the order at
+	// zero-based index i within the current proposal. Populated by PutVolume
+	// (which reads currentOrderIndex set via BeginOrder) and drained at Merge
+	// time to compute purgedByLog. Reset to length 0 between proposals so the
+	// outer slice's backing array is reused; PutVolume overwrites each inner
+	// slot with a fresh nil before re-growing it, so inner backing arrays are
+	// not preserved.
+	perOrderVolumeKeys [][]domain.VolumeKey
+
+	// currentOrderIndex is the index passed to the most recent BeginOrder
+	// call. PutVolume uses it to attribute each volume touch to the order
+	// that produced it. Defaults to -1 before the first BeginOrder so that
+	// out-of-band PutVolume calls (recovery, technical updates) are not
+	// silently attributed to order 0.
+	currentOrderIndex int
+
+	// purgedByLog[i] is the deduplicated list of (account, asset) volumes
+	// that the log produced by order i touched and that the proposal-level
+	// partitionVolumes classified as purged. Computed during Merge from
+	// perOrderVolumeKeys ∩ partResult.purged. Injected into each
+	// LedgerLog.purged_volumes before AppendLogs.
+	purgedByLog [][]*commonpb.TouchedVolume
 
 	// bloomUpdates collects canonical keys per attribute type during Merge
 	// for bloom filter updates before batch.Commit().
@@ -175,7 +196,15 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 	b.pendingMirrorSyncs = append(b.pendingMirrorSyncs, w)
 }
 
-func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
+// Merge drains the WriteSet's accumulated overlay into the Pebble batch and
+// applies the side effects of the proposal. `logsOrRefs` is the per-order
+// output of processor.ProcessOrders (one entry per order: either a freshly
+// created log or a reference back to an idempotency-matched prior log).
+// Merge filters out the ReferenceSequence entries, injects the per-log
+// purged_volumes subset (see purgedByLog), and writes the resulting logs to
+// Pebble via AppendLogs. Pass nil when the proposal produced no orders
+// (technical-only path).
+func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.CreatedLogOrReference) error {
 	// gen0 byte for incremental 0xFF cache writes.
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
@@ -231,13 +260,12 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 		b.fsm.sentinelTracer.TraceVolumeUpdates(partResult.kept, partResult.transient, partResult.purged)
 	}
 
-	// Collect unique transient/purged account names per ledger for the audit entry.
+	// Collect unique transient (account, asset) volumes per ledger for the
+	// AppliedProposal entry. Purged volumes are not aggregated here — the
+	// per-log subset is computed below via buildPurgedByLog and injected
+	// into each LedgerLog.purged_volumes.
 	if len(partResult.transient) > 0 {
-		b.transientAccounts = collectUniqueAccounts(partResult.transient)
-	}
-
-	if len(partResult.purged) > 0 {
-		b.purgedAccounts = collectUniqueAccounts(partResult.purged)
+		b.transientVolumes = collectUniqueVolumes(partResult.transient)
 	}
 
 	// Defensive check: double-entry invariant (on all updates, including purged).
@@ -362,7 +390,40 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 		return err
 	}
 
-	err = AppendLogs(batch, logs)
+	// Build createdLogs (skipping idempotency replays) and inject the
+	// per-log purged_volumes subset before persisting. purgedByLog is
+	// indexed by ORDER index — same as logsOrRefs — so the mapping uses
+	// the loop's i, not the createdLogs append index.
+	purgedSet := makePurgedKeySet(partResult.purged)
+	b.purgedByLog = buildPurgedByLog(b.perOrderVolumeKeys, purgedSet)
+
+	createdLogs := make([]*commonpb.Log, 0, len(logsOrRefs))
+	for i, lr := range logsOrRefs {
+		log := lr.GetCreatedLog()
+		if log == nil {
+			// Idempotency replay (ReferenceSequence) — no fresh log to
+			// persist, and the prior log already carries any purged
+			// accounts from its original batch.
+			continue
+		}
+
+		if i < len(b.purgedByLog) && len(b.purgedByLog[i]) > 0 {
+			apply := log.GetPayload().GetApply()
+			if apply == nil {
+				return fmt.Errorf("invariant: order %d produced purged volumes %v but its log payload is not an ApplyLedgerLog (payload=%T)",
+					i, b.purgedByLog[i], log.GetPayload())
+			}
+			ledgerLog := apply.GetLog()
+			if ledgerLog == nil {
+				return fmt.Errorf("invariant: order %d produced purged volumes %v but its ApplyLedgerLog carries no LedgerLog", i, b.purgedByLog[i])
+			}
+			ledgerLog.PurgedVolumes = b.purgedByLog[i]
+		}
+
+		createdLogs = append(createdLogs, log)
+	}
+
+	err = AppendLogs(batch, createdLogs)
 	if err != nil {
 		return fmt.Errorf("failed appending pending logs: %w", err)
 	}
@@ -524,7 +585,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 	if len(b.pendingLedgerDeletions) > 0 {
 		deleteSequences := make(map[string]uint64, len(b.pendingLedgerDeletions))
 
-		for _, log := range logs {
+		for _, log := range createdLogs {
 			if dl := log.GetPayload().GetDeleteLedger(); dl != nil {
 				deleteSequences[dl.GetName()] = log.GetSequence()
 			}
@@ -602,9 +663,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 
 func NewWriteSet(fsm *Machine) *WriteSet {
 	return &WriteSet{
-		fsm:     fsm,
-		attrs:   fsm.Registry.Attrs,
-		Derived: NewDerivedRegistry(fsm.Registry),
+		fsm:               fsm,
+		attrs:             fsm.Registry.Attrs,
+		Derived:           NewDerivedRegistry(fsm.Registry),
+		currentOrderIndex: -1,
 	}
 }
 
@@ -635,8 +697,16 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.pendingLedgerDeletions = b.pendingLedgerDeletions[:0]
 	b.allVolumeUpdates = b.allVolumeUpdates[:0]
 	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
-	b.transientAccounts = nil
-	b.purgedAccounts = nil
+	b.transientVolumes = nil
+	// Outer-only truncate: PutVolume below overwrites each inner slot with a
+	// fresh nil before re-growing, so an inner [:0] loop would be wasted work
+	// — the preserved [:0] slices are clobbered on the next PutVolume.
+	b.perOrderVolumeKeys = b.perOrderVolumeKeys[:0]
+	b.currentOrderIndex = -1
+	for i := range b.purgedByLog {
+		b.purgedByLog[i] = nil
+	}
+	b.purgedByLog = b.purgedByLog[:0]
 	b.bloomUpdates.Reset()
 	b.pendingQueryCheckpointSaves = b.pendingQueryCheckpointSaves[:0]
 	b.pendingQueryCheckpointDeletes = b.pendingQueryCheckpointDeletes[:0]
@@ -704,6 +774,28 @@ func (b *WriteSet) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, 
 
 func (b *WriteSet) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 	b.Derived.Volumes.Put(key, value)
+
+	// Record the touch under the current order so Merge can compute the
+	// per-log subset of purged ephemeral accounts (see purgedByLog).
+	// currentOrderIndex < 0 means PutVolume is being called outside of an
+	// order — e.g. recovery, technical updates, ValidateTransientVolumes —
+	// where per-log attribution is meaningless; skip silently.
+	if b.currentOrderIndex < 0 {
+		return
+	}
+
+	for len(b.perOrderVolumeKeys) <= b.currentOrderIndex {
+		b.perOrderVolumeKeys = append(b.perOrderVolumeKeys, nil)
+	}
+	b.perOrderVolumeKeys[b.currentOrderIndex] = append(b.perOrderVolumeKeys[b.currentOrderIndex], key)
+}
+
+// BeginOrder tags subsequent PutVolume calls with the given zero-based order
+// index. Called by ProcessOrders before each handler invocation so the
+// WriteSet can attribute volume touches to the order that produced them. See
+// purgedByLog for how the recorded touches are consumed at Merge time.
+func (b *WriteSet) BeginOrder(orderIndex int) {
+	b.currentOrderIndex = orderIndex
 }
 
 // ValidateTransientVolumes checks that all transient account volumes have zero balance.
@@ -1215,6 +1307,16 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 		if err := batch.DeleteRange(auditStart, auditEnd, nil); err != nil {
 			return fmt.Errorf("purging audit [%d, %d]: %w", pr.startAuditSequence, pr.closeAuditSequence, err)
 		}
+
+		// AppliedProposal entries share the audit sequence counter (1:1 with
+		// AuditEntry on the success path). Failed proposals leave gaps but
+		// DeleteRange tolerates them.
+		proposalStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(pr.startAuditSequence).Build()
+		proposalEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(pr.closeAuditSequence + 1).Build()
+
+		if err := batch.DeleteRange(proposalStart, proposalEnd, nil); err != nil {
+			return fmt.Errorf("purging applied proposals [%d, %d]: %w", pr.startAuditSequence, pr.closeAuditSequence, err)
+		}
 	}
 
 	// Clean up per-ledger data for deleted ledgers whose delete log
@@ -1350,45 +1452,51 @@ func (b *WriteSet) PurgedVolumeKeys() []domain.VolumeKey {
 	return b.purgedVolumeKeys
 }
 
-// TransientAccounts returns unique transient account names per ledger,
-// collected during Merge from the transient volume partition.
-func (b *WriteSet) TransientAccounts() map[string][]string {
-	return b.transientAccounts
+// TransientVolumes returns the unique transient (account, asset) volumes
+// per ledger, collected during Merge from the transient volume partition.
+func (b *WriteSet) TransientVolumes() map[string][]*commonpb.TouchedVolume {
+	return b.transientVolumes
 }
 
-// PurgedAccounts returns unique ephemeral account names per ledger whose
-// volumes were purged (zero balance), collected during Merge.
-func (b *WriteSet) PurgedAccounts() map[string][]string {
-	return b.purgedAccounts
-}
-
-// collectUniqueAccounts extracts unique account names per ledger from
-// volume updates.
-func collectUniqueAccounts(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[string][]string {
-	// Deduplicate: a single account may appear multiple times (one per asset).
-	seen := make(map[string]map[string]struct{})
+// collectUniqueVolumes extracts unique (account, asset) tuples per ledger
+// from volume updates and emits them as deterministically-ordered
+// commonpb.TouchedVolume slices.
+func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[string][]*commonpb.TouchedVolume {
+	type accAsset struct{ Account, Asset string }
+	seen := make(map[string]map[accAsset]struct{})
 
 	for _, update := range updates {
 		ledgerName := update.Key.LedgerName
-		account := update.Key.Account
+		k := accAsset{Account: update.Key.Account, Asset: update.Key.Asset}
 
 		if seen[ledgerName] == nil {
-			seen[ledgerName] = make(map[string]struct{})
+			seen[ledgerName] = make(map[accAsset]struct{})
 		}
 
-		seen[ledgerName][account] = struct{}{}
+		seen[ledgerName][k] = struct{}{}
 	}
 
-	result := make(map[string][]string, len(seen))
-	for ledgerName, accounts := range seen {
-		list := make([]string, 0, len(accounts))
-		for account := range accounts {
-			list = append(list, account)
+	result := make(map[string][]*commonpb.TouchedVolume, len(seen))
+	for ledgerName, vols := range seen {
+		list := make([]accAsset, 0, len(vols))
+		for k := range vols {
+			list = append(list, k)
 		}
 
-		slices.Sort(list)
+		sort.Slice(list, func(a, b int) bool {
+			if list[a].Account != list[b].Account {
+				return list[a].Account < list[b].Account
+			}
 
-		result[ledgerName] = list
+			return list[a].Asset < list[b].Asset
+		})
+
+		out := make([]*commonpb.TouchedVolume, len(list))
+		for i, k := range list {
+			out[i] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset}
+		}
+
+		result[ledgerName] = out
 	}
 
 	return result

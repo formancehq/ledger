@@ -430,3 +430,34 @@ func TestIsVolumeZeroBalance_Transient(t *testing.T) {
 		require.False(t, isVolumeZeroBalance(vol))
 	})
 }
+
+// TestBuildPurgedByLog_KeepsAssetDimension guards against the over-attribution
+// bug where a multi-asset account would mark every log touching it as purged
+// regardless of which asset was actually purged. With (account, asset)
+// keying, only orders that touched the purged asset cell appear in the
+// resulting per-log slice.
+func TestBuildPurgedByLog_KeepsAssetDimension(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "ledger-a"
+	account := "ephemeral:multi"
+
+	// purged set contains only (account, USD) — the EUR cell is kept.
+	purged := map[purgedVolumeKey]struct{}{
+		{Ledger: ledger, Account: account, Asset: "USD"}: {},
+	}
+
+	// Order 0 touches (account, EUR) — must NOT appear in purgedByLog.
+	// Order 1 touches (account, USD) — must appear in purgedByLog[1].
+	perOrderVolumeKeys := [][]domain.VolumeKey{
+		{{AccountKey: domain.AccountKey{LedgerName: ledger, Account: account}, Asset: "EUR"}},
+		{{AccountKey: domain.AccountKey{LedgerName: ledger, Account: account}, Asset: "USD"}},
+	}
+
+	out := buildPurgedByLog(perOrderVolumeKeys, purged)
+	require.Len(t, out, 2)
+	require.Empty(t, out[0], "order touching only kept assets must not be flagged purged")
+	require.Len(t, out[1], 1)
+	require.Equal(t, account, out[1][0].GetAccount())
+	require.Equal(t, "USD", out[1][0].GetAsset())
+}

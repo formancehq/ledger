@@ -9,10 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -239,16 +240,16 @@ func TestIndexLogEntryUsesReplayAuditSyncForExcludedAccounts(t *testing.T) {
 	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
 	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
-	audit := newTestAuditSync(
-		testAuditEntry(1, 1, 10, "ledger-a", "stale:account"),
-		testAuditEntry(2, 20, 20, "ledger-b", "transient:source"),
+	proposals := newTestAppliedProposalSync(
+		testAppliedProposal(1, 1, 10, "ledger-a", "stale:account"),
+		testAppliedProposal(2, 20, 20, "ledger-b", "transient:source"),
 	)
 
 	log := makeCreatedTxLog(20, "ledger-b", 99, []*commonpb.Posting{
-		{Source: "transient:source", Destination: "kept:dest"},
+		{Source: "transient:source", Destination: "kept:dest", Asset: "USD"},
 	})
 
-	require.NoError(t, b.indexLogEntry(cfg, log, audit))
+	require.NoError(t, b.indexLogEntry(cfg, log, proposals))
 	require.NoError(t, b.wb.Flush())
 
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
@@ -275,18 +276,31 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	batch := store.NewBatch()
 	b.wb.Init(batch)
 
-	excludedAccounts := map[string]struct{}{
-		"transient:source": {},
-		"purged:dest":      {},
+	// Multi-asset case: account "shared:account" has USD purged but EUR
+	// kept. transient:source / purged:dest are excluded on USD only;
+	// shared:account on USD is excluded but shared:account on EUR must be
+	// indexed normally.
+	excludedVolumes := map[domain.AccountAssetKey]struct{}{
+		{Account: "transient:source", Asset: "USD"}: {},
+		{Account: "purged:dest", Asset: "USD"}:      {},
+		{Account: "shared:account", Asset: "USD"}:   {},
 	}
 
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, "test", 42, "transient:source", "kept:dest",
-		true, true, true, excludedAccounts,
+		b.kb, "test", 42, "transient:source", "kept:dest", "USD",
+		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, "test", 43, "kept:source", "purged:dest",
-		true, true, true, excludedAccounts,
+		b.kb, "test", 43, "kept:source", "purged:dest", "USD",
+		true, true, true, excludedVolumes,
+	))
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, "test", 44, "shared:account", "kept:dest", "USD",
+		true, true, true, excludedVolumes,
+	))
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, "test", 45, "shared:account", "kept:dest", "EUR",
+		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -314,59 +328,165 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixDestAccountTx, "test", "purged:dest", 43,
 	)))
+
+	// Multi-asset: shared:account USD (tx 44) is excluded, EUR (tx 45) is not.
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "shared:account", 44,
+	)))
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "shared:account", 44,
+	)))
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "shared:account", 45,
+	)))
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "shared:account", 45,
+	)))
 }
 
-func TestAuditSyncResumeSequenceOnlySkipsFullyConsumedRanges(t *testing.T) {
+func TestAppliedProposalSyncResumeSequenceOnlySkipsFullyConsumedRanges(t *testing.T) {
 	t.Parallel()
 
-	audit := newTestAuditSync(
-		testAuditEntry(1, 1, 10, "ledger", "old:account"),
-		testAuditEntry(2, 20, 30, "ledger", "current:account"),
+	proposals := newTestAppliedProposalSync(
+		testAppliedProposal(1, 1, 10, "ledger", "old:account"),
+		testAppliedProposal(2, 20, 30, "ledger", "current:account"),
 	)
 
-	excluded := audit.syncTo(25, "ledger")
-	require.Contains(t, excluded, "current:account")
-	assert.Equal(t, uint64(1), audit.resumeSequence())
+	excluded := proposals.transientForLedger(25, "ledger")
+	require.Contains(t, excluded, domain.AccountAssetKey{Account: "current:account", Asset: "USD"})
+	assert.Equal(t, uint64(1), proposals.resumeSequence())
 
-	audit.advanceBefore(31)
-	assert.Equal(t, uint64(2), audit.resumeSequence())
+	proposals.advanceBefore(31)
+	assert.Equal(t, uint64(2), proposals.resumeSequence())
 }
 
-func TestAuditSyncResumeSequenceKeepsInitialResumeFloor(t *testing.T) {
+func TestAppliedProposalSyncResumeSequenceKeepsInitialResumeFloor(t *testing.T) {
 	t.Parallel()
 
-	audit := newTestAuditSyncAfter(1,
-		testAuditEntry(2, 20, 30, "ledger", "current:account"),
+	proposals := newTestAppliedProposalSyncAfter(1,
+		testAppliedProposal(2, 20, 30, "ledger", "current:account"),
 	)
 
-	excluded := audit.syncTo(25, "ledger")
-	require.Contains(t, excluded, "current:account")
-	assert.Equal(t, uint64(1), audit.resumeSequence())
+	excluded := proposals.transientForLedger(25, "ledger")
+	require.Contains(t, excluded, domain.AccountAssetKey{Account: "current:account", Asset: "USD"})
+	assert.Equal(t, uint64(1), proposals.resumeSequence())
 }
 
-func newTestAuditSync(entries ...*auditpb.AuditEntry) *auditSync {
-	return newTestAuditSyncAfter(0, entries...)
+// TestAppliedProposalSyncSkipsAllIdempotentEntries guards the resume-advance
+// path for AppliedProposal entries with MaxLogSequence == 0 (all-idempotent
+// proposals: every order was a replay, no new log produced). The branch is
+// load-bearing for cursor correctness across gaps — if it regressed and
+// stopped advancing resumeAfterSeq on idempotent entries, a restart would
+// replay already-consumed proposals.
+func TestAppliedProposalSyncSkipsAllIdempotentEntries(t *testing.T) {
+	t.Parallel()
+
+	idempotent := &proposalpb.AppliedProposal{Sequence: 1, MinLogSequence: 0, MaxLogSequence: 0}
+
+	proposals := newTestAppliedProposalSync(
+		idempotent,
+		testAppliedProposal(2, 20, 30, "ledger", "current:account"),
+	)
+
+	// Hitting a log inside the second (real) entry must still resolve
+	// correctly even though the cursor advanced through an all-idempotent
+	// entry on the way.
+	excluded := proposals.transientForLedger(25, "ledger")
+	require.Contains(t, excluded, domain.AccountAssetKey{Account: "current:account", Asset: "USD"})
+
+	// The idempotent entry must have advanced the resume floor to its
+	// sequence so a restart skips it instead of replaying.
+	assert.GreaterOrEqual(t, proposals.resumeSequence(), uint64(1))
 }
 
-func newTestAuditSyncAfter(afterAuditSeq uint64, entries ...*auditpb.AuditEntry) *auditSync {
-	audit := &auditSync{cursor: cursor.NewSliceCursor(entries)}
-	audit.resumeAfterAuditSeq = afterAuditSeq
-	audit.advance()
+// TestAppliedProposalSyncFailsLoudlyWhenStreamExhaustedBeforeLog asserts
+// the coverage invariant: a transientForLedger call for a log seq that
+// falls beyond every entry in the stream stashes an error rather than
+// returning nil silently. Otherwise the indexer would persist
+// account->tx mappings on volumes that should have been excluded — a
+// corruption-tolerated path that NumaryBot flagged as a major (see PR
+// #542 thread on applied_proposal_sync.go:132).
+func TestAppliedProposalSyncFailsLoudlyWhenStreamExhaustedBeforeLog(t *testing.T) {
+	t.Parallel()
 
-	return audit
+	proposals := newTestAppliedProposalSync(
+		testAppliedProposal(1, 10, 15, "ledger", "transient:a"),
+	)
+
+	// Drain the only entry by asking about a log inside its range.
+	_ = proposals.transientForLedger(12, "ledger")
+	require.NoError(t, proposals.err(), "in-range query must not stash an error")
+
+	// Now ask about a log past the end of the stream. There is no
+	// AppliedProposal entry covering it — should-not-happen, must fail.
+	excluded := proposals.transientForLedger(99, "ledger")
+	require.Nil(t, excluded, "transient set must be nil on coverage error")
+	require.Error(t, proposals.err())
+	require.Contains(t, proposals.err().Error(), "applied proposal stream exhausted")
+	require.Contains(t, proposals.err().Error(), "log 99")
 }
 
-func testAuditEntry(sequence, minLogSeq, maxLogSeq uint64, ledger string, accounts ...string) *auditpb.AuditEntry {
-	return &auditpb.AuditEntry{
-		Sequence: sequence,
-		Outcome: &auditpb.AuditEntry_Success{
-			Success: &auditpb.AuditSuccess{
-				MinLogSequence: minLogSeq,
-				MaxLogSequence: maxLogSeq,
-				TransientAccounts: map[string]*auditpb.AccountList{
-					ledger: {Accounts: accounts},
-				},
-			},
+// TestAppliedProposalSyncFailsLoudlyOnEmptyStream guards the empty-stream
+// edge of the coverage invariant: if a log is being indexed but no
+// AppliedProposal exists at all (corrupted/missing projection), the
+// silent nil would mask the missing coverage.
+func TestAppliedProposalSyncFailsLoudlyOnEmptyStream(t *testing.T) {
+	t.Parallel()
+
+	proposals := newTestAppliedProposalSync()
+
+	excluded := proposals.transientForLedger(5, "ledger")
+	require.Nil(t, excluded)
+	require.Error(t, proposals.err())
+	require.Contains(t, proposals.err().Error(), "applied proposal stream exhausted")
+}
+
+// TestAppliedProposalSyncFailsLoudlyWhenLogPrecedesCurrentRange asserts
+// the second branch of the coverage invariant: if a logSeq lands in a
+// gap *before* the current proposal's minLogSequence (after
+// advanceBefore), it means the log has no covering proposal, which
+// every successful proposal is supposed to provide. Fail loudly.
+func TestAppliedProposalSyncFailsLoudlyWhenLogPrecedesCurrentRange(t *testing.T) {
+	t.Parallel()
+
+	// Single entry covering [10, 15]. Query for seq 5 — below the range.
+	proposals := newTestAppliedProposalSync(
+		testAppliedProposal(1, 10, 15, "ledger", "transient:a"),
+	)
+
+	excluded := proposals.transientForLedger(5, "ledger")
+	require.Nil(t, excluded)
+	require.Error(t, proposals.err())
+	require.Contains(t, proposals.err().Error(), "falls in a gap before applied proposal range")
+}
+
+func newTestAppliedProposalSync(entries ...*proposalpb.AppliedProposal) *appliedProposalSync {
+	return newTestAppliedProposalSyncAfter(0, entries...)
+}
+
+func newTestAppliedProposalSyncAfter(afterSeq uint64, entries ...*proposalpb.AppliedProposal) *appliedProposalSync {
+	s := &appliedProposalSync{cursor: cursor.NewSliceCursor(entries)}
+	s.resumeAfterSeq = afterSeq
+	s.advance()
+
+	return s
+}
+
+func testAppliedProposal(sequence, minLogSeq, maxLogSeq uint64, ledger string, accounts ...string) *proposalpb.AppliedProposal {
+	// Test fixture: each "account" is paired with a default asset so the
+	// (account, asset) granularity is exercised without requiring callers
+	// to thread the asset everywhere.
+	volumes := make([]*commonpb.TouchedVolume, len(accounts))
+	for i, a := range accounts {
+		volumes[i] = &commonpb.TouchedVolume{Account: a, Asset: "USD"}
+	}
+
+	return &proposalpb.AppliedProposal{
+		Sequence:       sequence,
+		MinLogSequence: minLogSeq,
+		MaxLogSequence: maxLogSeq,
+		TransientVolumes: map[string]*proposalpb.TouchedVolumeList{
+			ledger: {Volumes: volumes},
 		},
 	}
 }

@@ -63,18 +63,6 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		// AuditSuccess sub-fields.
 		{"success_min_log_sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetSuccess().MinLogSequence++ }},
 		{"success_max_log_sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetSuccess().MaxLogSequence++ }},
-		{"success_transient_add_ledger", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.GetSuccess().GetTransientAccounts()["fake-ledger"] = &auditpb.AccountList{Accounts: []string{"fake"}}
-		}},
-		{"success_transient_add_account", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			al := e.GetSuccess().GetTransientAccounts()["ledger-a"]
-			al.Accounts = append(al.GetAccounts(), "extra")
-		}},
-		{"success_purged_add_account", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			al := e.GetSuccess().GetPurgedAccounts()["ledger-a"]
-			al.Accounts = append(al.GetAccounts(), "extra")
-		}},
-
 		// AuditFailure sub-fields.
 		{"failure_error_type", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetFailure().ErrorType = "OTHER" }},
 		{"failure_message", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetFailure().Message = "tampered" }},
@@ -189,13 +177,6 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 			Success: &auditpb.AuditSuccess{
 				MinLogSequence: 100,
 				MaxLogSequence: 101,
-				TransientAccounts: map[string]*auditpb.AccountList{
-					"ledger-a": {Accounts: []string{"users:1"}},
-					"ledger-b": {Accounts: []string{"users:2", "users:3"}},
-				},
-				PurgedAccounts: map[string]*auditpb.AccountList{
-					"ledger-a": {Accounts: []string{"world"}},
-				},
 			},
 		}
 	case "failure":
