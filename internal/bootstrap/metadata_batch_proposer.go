@@ -127,16 +127,15 @@ func (m *metadataBatchProposer) Propose(
 	// dedup is needed across concurrent proposals.
 	result.Guard.ReleaseLoaders()
 
-	// WaitContext (not Wait): the converter passes a context derived from
-	// its stop channel. On shutdown the Raft node stops and these futures
-	// would never resolve, so a blind Wait() would hang the converter's
-	// OnStop (wg.Wait) past the stop timeout. Cancelling unblocks both
-	// waits and lets the retry loop observe stop and exit cleanly.
-	if _, err := result.Proposal.WaitContext(ctx); err != nil {
+	// The converter passes a context derived from its stop channel. On
+	// shutdown the Raft node stops and these futures would never
+	// resolve; cancelling ctx unblocks both waits and lets the retry
+	// loop observe stop and exit cleanly within OnStop's deadline.
+	if _, err := result.Proposal.Wait(ctx); err != nil {
 		return fmt.Errorf("waiting for raft acceptance: %w", err)
 	}
 
-	res, err := result.FSMFuture.WaitContext(ctx)
+	res, err := result.FSMFuture.Wait(ctx)
 	if err != nil {
 		return fmt.Errorf("waiting for FSM apply: %w", err)
 	}

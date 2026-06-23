@@ -89,16 +89,16 @@ func proposeTechnicalOnce(ctx context.Context, builder *plan.Builder, proposer p
 }
 
 // waitTechnical blocks on Raft acceptance then FSM apply, returning the
-// first error encountered. WaitContext (not Wait) is used so a node
-// stopping or losing leadership after Raft acceptance but before FSM
-// apply cancels the wait and lets the caller observe the shutdown
-// instead of hanging forever.
+// first error encountered. The caller's ctx (typically derived from a
+// stop channel) cancels the wait when the node stops or loses leadership
+// after Raft acceptance but before FSM apply, letting the caller observe
+// the shutdown instead of hanging forever.
 func waitTechnical(ctx context.Context, result *plan.RunResult) error {
-	if _, err := result.Proposal.WaitContext(ctx); err != nil {
+	if _, err := result.Proposal.Wait(ctx); err != nil {
 		return fmt.Errorf("waiting for raft acceptance: %w", err)
 	}
 
-	res, err := result.FSMFuture.WaitContext(ctx)
+	res, err := result.FSMFuture.Wait(ctx)
 	if err != nil {
 		return fmt.Errorf("waiting for FSM apply: %w", err)
 	}

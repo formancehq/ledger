@@ -2026,7 +2026,7 @@ func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, p
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	_, err = future.WaitContext(timeoutCtx)
+	_, err = future.Wait(timeoutCtx)
 	if err != nil {
 		// Timeout (deadline exceeded) means the proposal was likely dropped — not an error.
 		if timeoutCtx.Err() != nil && ctx.Err() == nil {

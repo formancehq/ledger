@@ -453,7 +453,7 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 	fsmFuture := runResult.FSMFuture
 	proposal := runResult.Proposal
 
-	if _, err := proposal.Wait(); err != nil {
+	if _, err := proposal.Wait(ctx); err != nil {
 		proposeSpan.End()
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
@@ -477,7 +477,7 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 	defer fsmSpan.End()
 
 	fsmWaitStart := time.Now()
-	result, err := fsmFuture.Wait()
+	result, err := fsmFuture.Wait(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -526,11 +526,11 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 
-	if _, err := proposal.Wait(); err != nil {
+	if _, err := proposal.Wait(ctx); err != nil {
 		return 0, err
 	}
 
-	result, err := fsmFuture.Wait()
+	result, err := fsmFuture.Wait(ctx)
 	if err != nil {
 		return 0, err
 	}

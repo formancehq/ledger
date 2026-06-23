@@ -146,7 +146,7 @@ func NewWorker(
 // Start begins the background sync loop.
 func (w *Worker) Start() {
 	w.w = worker.New()
-	w.w.Run(w.loop)
+	w.w.RunCtx(w.loop)
 }
 
 // Stop gracefully stops the sync loop and closes the source.
@@ -160,31 +160,30 @@ func (w *Worker) Notify() {
 	w.notify.Notify()
 }
 
-func (w *Worker) loop(stop <-chan struct{}) {
+func (w *Worker) loop(ctx context.Context) {
 	ticker := time.NewTicker(defaultPollInterval)
 	defer ticker.Stop()
 
-	// Initial source head query + catch-up
-	w.refreshSourceHead()
-	w.processLogs(stop)
+	w.refreshSourceHead(ctx)
+	w.processLogs(ctx)
 
 	for {
 		select {
-		case <-stop:
+		case <-ctx.Done():
 			return
 		case <-w.notify.C():
-			w.processLogs(stop)
+			w.processLogs(ctx)
 		case <-ticker.C:
-			w.refreshSourceHead()
-			w.processLogs(stop)
+			w.refreshSourceHead(ctx)
+			w.processLogs(ctx)
 		}
 	}
 }
 
 // refreshSourceHead queries the v2 source for its latest log ID and stores
 // it in the worker for inclusion in subsequent cursor reports.
-func (w *Worker) refreshSourceHead() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (w *Worker) refreshSourceHead(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	count, err := w.source.GetLatestLogID(ctx)
@@ -197,10 +196,10 @@ func (w *Worker) refreshSourceHead() {
 	w.sourceLogCount = count
 }
 
-func (w *Worker) processLogs(stop <-chan struct{}) {
+func (w *Worker) processLogs(ctx context.Context) {
 	for {
 		select {
-		case <-stop:
+		case <-ctx.Done():
 			return
 		default:
 		}
@@ -210,7 +209,7 @@ func (w *Worker) processLogs(stop <-chan struct{}) {
 			w.logger.Infof("Pausing mirror ingestion: Pebble write stall in progress")
 
 			select {
-			case <-stop:
+			case <-ctx.Done():
 				return
 			case <-w.store.WriteStallWaitCh():
 			}
@@ -218,10 +217,10 @@ func (w *Worker) processLogs(stop <-chan struct{}) {
 			w.logger.Infof("Resuming mirror ingestion: write stall cleared")
 		}
 
-		hasMore, err := w.processBatch()
+		hasMore, err := w.processBatch(ctx)
 		if err != nil {
 			w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Mirror sync error")
-			w.reportError(err.Error())
+			w.reportError(ctx, err.Error())
 
 			// Apply exponential backoff on persistent errors
 			if w.backoff == 0 {
@@ -231,7 +230,7 @@ func (w *Worker) processLogs(stop <-chan struct{}) {
 			}
 
 			select {
-			case <-stop:
+			case <-ctx.Done():
 			case <-time.After(w.backoff):
 			}
 
@@ -246,9 +245,8 @@ func (w *Worker) processLogs(stop <-chan struct{}) {
 	}
 }
 
-func (w *Worker) processBatch() (bool, error) {
+func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	batchStart := time.Now()
-	ctx := context.Background()
 	attrs := metric.WithAttributes(w.ledgerAttr)
 
 	// Load cursor from Pebble only once; subsequent batches use the in-memory value.
@@ -431,7 +429,10 @@ func (w *Worker) processBatch() (bool, error) {
 		go func() {
 			start := time.Now()
 
-			fCtx, fCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// Derive from the worker's ctx so Worker.Stop() unblocks the
+			// source fetch — without this, drainPrefetch can wait up to
+			// 30s on a fetch that won't return any faster.
+			fCtx, fCancel := context.WithTimeout(ctx, 30*time.Second)
 			defer fCancel()
 
 			logs, more, fetchErr := w.source.FetchLogs(fCtx, nextCursor, w.batchSize)
@@ -446,7 +447,7 @@ func (w *Worker) processBatch() (bool, error) {
 	}
 
 	// Wait for Raft acceptance (proposal enqueued by leader).
-	if _, err := proposal.Wait(); err != nil {
+	if _, err := proposal.Wait(ctx); err != nil {
 		w.drainPrefetch(nextPrefetchCh)
 
 		return false, err
@@ -460,7 +461,7 @@ func (w *Worker) processBatch() (bool, error) {
 	// Wait for FSM application and check for business errors.
 	// Without this, the cursor would advance past entries that failed to process.
 	fsmWaitStart := time.Now()
-	result, fsmErr := fsmFuture.Wait()
+	result, fsmErr := fsmFuture.Wait(ctx)
 
 	w.fsmWaitDuration.Record(ctx, time.Since(fsmWaitStart).Microseconds(), attrs)
 
@@ -496,7 +497,7 @@ func (w *Worker) drainPrefetch(ch chan prefetchResult) {
 	}
 }
 
-func (w *Worker) reportError(message string) {
+func (w *Worker) reportError(ctx context.Context, message string) {
 	cmd := &raftcmdpb.Proposal{
 		Date: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
@@ -538,7 +539,7 @@ func (w *Worker) reportError(message string) {
 		return
 	}
 
-	runResult, err := w.builder.Run(context.Background(), cmd, build, marshalMirrorCommand, w.proposer)
+	runResult, err := w.builder.Run(ctx, cmd, build, marshalMirrorCommand, w.proposer)
 	if err != nil {
 		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to report mirror error")
 
@@ -551,13 +552,13 @@ func (w *Worker) reportError(message string) {
 	// FSM could reject the proposal (ErrStaleProposal on tracker drift,
 	// for example) and reportError would return as if it succeeded — the
 	// mirror error status would never reach the store.
-	if _, err := runResult.Proposal.Wait(); err != nil {
+	if _, err := runResult.Proposal.Wait(ctx); err != nil {
 		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Mirror error report rejected by Raft")
 
 		return
 	}
 
-	result, fsmErr := runResult.FSMFuture.Wait()
+	result, fsmErr := runResult.FSMFuture.Wait(ctx)
 	if fsmErr != nil {
 		w.logger.WithFields(map[string]any{"error": fsmErr.Error()}).Errorf("Mirror error report rejected by FSM")
 

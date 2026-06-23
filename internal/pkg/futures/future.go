@@ -24,22 +24,16 @@ func (f *Future[T]) Resolve(value T, err error) {
 	f.mu.Unlock()
 }
 
-func (f *Future[T]) Wait() (T, error) {
-	f.mu.Lock()
-	for !f.done {
-		f.cond.Wait()
+// Wait blocks until the future is resolved or the context is cancelled.
+// If the context is cancelled before the future is resolved, the context
+// error is returned. A nil context panics: every caller must surface
+// cancellation, so accepting nil would silently re-introduce the
+// uncancellable wait this API was changed to eliminate.
+func (f *Future[T]) Wait(ctx context.Context) (T, error) {
+	if ctx == nil {
+		panic("futures: Wait called with nil context")
 	}
 
-	value := f.value
-	err := f.err
-	f.mu.Unlock()
-
-	return value, err
-}
-
-// WaitContext waits for the future to be resolved or the context to be cancelled.
-// If the context is cancelled before the future is resolved, the context error is returned.
-func (f *Future[T]) WaitContext(ctx context.Context) (T, error) {
 	// Fast path: already done or context already cancelled.
 	f.mu.Lock()
 	if f.done {
@@ -58,13 +52,21 @@ func (f *Future[T]) WaitContext(ctx context.Context) (T, error) {
 
 	// Spawn a goroutine that broadcasts on the cond when the context is cancelled,
 	// so any cond.Wait() call below wakes up and can check ctx.Err().
+	//
+	// The broadcast MUST happen under f.mu, otherwise a lost-wakeup race exists:
+	// the waiter could observe ctx.Err() == nil, the canceller could broadcast
+	// before the waiter parks in cond.Wait(), and the waiter would then park
+	// forever. Holding the lock during broadcast serializes against the waiter's
+	// ctx.Err() check + Wait() pair.
 	done := make(chan struct{})
 	defer close(done)
 
 	go func() {
 		select {
 		case <-ctx.Done():
+			f.mu.Lock()
 			f.cond.Broadcast()
+			f.mu.Unlock()
 		case <-done:
 		}
 	}()

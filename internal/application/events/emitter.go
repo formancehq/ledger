@@ -512,11 +512,11 @@ func (e *Emitter) proposeSinkUpdateOnce(ctx context.Context, update *raftcmdpb.E
 
 	result.Guard.ReleaseLoaders()
 
-	if _, err := result.Proposal.WaitContext(ctx); err != nil {
+	if _, err := result.Proposal.Wait(ctx); err != nil {
 		return fmt.Errorf("waiting for raft acceptance: %w", err)
 	}
 
-	applyResult, err := result.FSMFuture.WaitContext(ctx)
+	applyResult, err := result.FSMFuture.Wait(ctx)
 	if err != nil {
 		return fmt.Errorf("waiting for FSM apply: %w", err)
 	}

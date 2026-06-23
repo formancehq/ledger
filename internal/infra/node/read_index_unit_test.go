@@ -86,13 +86,13 @@ func TestFailAllPendingReads(t *testing.T) {
 	n.failAllPendingReads(testErr)
 
 	// All futures should be resolved with the error
-	_, err := f1.Wait()
+	_, err := f1.Wait(t.Context())
 	require.ErrorIs(t, err, testErr)
 
-	_, err = f2.Wait()
+	_, err = f2.Wait(t.Context())
 	require.ErrorIs(t, err, testErr)
 
-	_, err = f3.Wait()
+	_, err = f3.Wait(t.Context())
 	require.ErrorIs(t, err, testErr)
 
 	// pendingReads should be empty

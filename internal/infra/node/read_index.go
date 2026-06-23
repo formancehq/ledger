@@ -75,7 +75,7 @@ func (node *Node) ReadIndex(ctx context.Context) (uint64, error) {
 		return 0, fmt.Errorf("dispatching ReadIndex: %w", err)
 	}
 
-	commitIndex, err := req.future.WaitContext(ctx)
+	commitIndex, err := req.future.Wait(ctx)
 	if err != nil {
 		node.pendingReads.Delete(reqID)
 

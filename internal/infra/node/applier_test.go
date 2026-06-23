@@ -413,7 +413,7 @@ func TestApplierFutureResolution(t *testing.T) {
 	errCh := make(chan error, 1)
 
 	go func() {
-		result, err := future.Wait()
+		result, err := future.Wait(t.Context())
 		if err != nil {
 			errCh <- err
 
@@ -488,7 +488,7 @@ func waitFutureBounded(f *futures.Future[state.ApplyResult], d time.Duration) (e
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
 
-	_, werr := f.WaitContext(ctx)
+	_, werr := f.Wait(ctx)
 	if errors.Is(werr, context.DeadlineExceeded) {
 		return nil, false
 	}

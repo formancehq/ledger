@@ -16,7 +16,7 @@ func TestFuture_ResolveAndWait(t *testing.T) {
 	f := New[string]()
 	f.Resolve("hello", nil)
 
-	val, err := f.Wait()
+	val, err := f.Wait(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, "hello", val)
 }
@@ -28,7 +28,7 @@ func TestFuture_ResolveWithError(t *testing.T) {
 	f := New[int]()
 	f.Resolve(0, expected)
 
-	val, err := f.Wait()
+	val, err := f.Wait(t.Context())
 	require.ErrorIs(t, err, expected)
 	require.Equal(t, 0, val)
 }
@@ -37,6 +37,7 @@ func TestFuture_WaitBlocksUntilResolve(t *testing.T) {
 	t.Parallel()
 
 	f := New[int]()
+	ctx := t.Context()
 
 	var (
 		wg  sync.WaitGroup
@@ -45,7 +46,7 @@ func TestFuture_WaitBlocksUntilResolve(t *testing.T) {
 	)
 
 	wg.Go(func() {
-		got, err = f.Wait()
+		got, err = f.Wait(ctx)
 	})
 
 	f.Resolve(42, nil)
@@ -59,6 +60,7 @@ func TestFuture_MultipleWaiters(t *testing.T) {
 	t.Parallel()
 
 	f := New[string]()
+	ctx := t.Context()
 
 	const n = 10
 
@@ -73,7 +75,7 @@ func TestFuture_MultipleWaiters(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 
-			results[idx], errs[idx] = f.Wait()
+			results[idx], errs[idx] = f.Wait(ctx)
 		}(i)
 	}
 
@@ -92,8 +94,7 @@ func TestFuture_ResolveBeforeWait(t *testing.T) {
 	f := New[int]()
 	f.Resolve(99, nil)
 
-	// Wait should return immediately since it's already resolved
-	val, err := f.Wait()
+	val, err := f.Wait(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, 99, val)
 }
@@ -104,40 +105,24 @@ func TestFuture_ZeroValue(t *testing.T) {
 	f := New[string]()
 	f.Resolve("", nil)
 
-	val, err := f.Wait()
+	val, err := f.Wait(t.Context())
 	require.NoError(t, err)
 	require.Empty(t, val)
 }
 
-func TestFuture_WaitContext_ResolveBeforeCancel(t *testing.T) {
-	t.Parallel()
-
-	f := New[int]()
-
-	ctx := t.Context()
-
-	f.Resolve(42, nil)
-
-	val, err := f.WaitContext(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 42, val)
-}
-
-func TestFuture_WaitContext_CancelBeforeResolve(t *testing.T) {
+func TestFuture_Wait_CancelBeforeResolve(t *testing.T) {
 	t.Parallel()
 
 	f := New[int]()
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// Cancel immediately
 	cancel()
 
-	val, err := f.WaitContext(ctx)
+	val, err := f.Wait(ctx)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, val)
 }
 
-func TestFuture_WaitContext_CancelDuringWait(t *testing.T) {
+func TestFuture_Wait_CancelDuringWait(t *testing.T) {
 	t.Parallel()
 
 	f := New[int]()
@@ -145,16 +130,16 @@ func TestFuture_WaitContext_CancelDuringWait(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	val, err := f.WaitContext(ctx)
+	val, err := f.Wait(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Equal(t, 0, val)
 }
 
-func TestFuture_WaitContext_ResolveDuringWait(t *testing.T) {
+func TestFuture_Wait_ResolveDuringWait(t *testing.T) {
 	t.Parallel()
 
 	f := New[string]()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	var (
 		wg  sync.WaitGroup
@@ -163,16 +148,60 @@ func TestFuture_WaitContext_ResolveDuringWait(t *testing.T) {
 	)
 
 	wg.Go(func() {
-		got, err = f.WaitContext(ctx)
+		got, err = f.Wait(ctx)
 	})
 
 	// Resolve concurrently with the waiter. The scheduler decides whether the
-	// goroutine is already parked in WaitContext or resolves first; both
-	// orderings are valid and must yield the resolved value. wg.Wait barriers
-	// on completion, so no fixed sleep is needed.
+	// goroutine is already parked in Wait or resolves first; both orderings
+	// are valid and must yield the resolved value. wg.Wait barriers on
+	// completion, so no fixed sleep is needed.
 	f.Resolve("hello", nil)
 	wg.Wait()
 
 	require.NoError(t, err)
 	require.Equal(t, "hello", got)
+}
+
+// TestFuture_Wait_NoLostWakeup exercises the cancellation path under heavy
+// contention to catch a lost-wakeup regression: if the canceller broadcasts
+// while the waiter is between its ctx.Err() check and cond.Wait()'s park,
+// the waiter must still observe the cancellation. Without the lock around
+// Broadcast in Wait(), this test deadlocks roughly 1/N iterations under -race.
+func TestFuture_Wait_NoLostWakeup(t *testing.T) {
+	t.Parallel()
+
+	const iterations = 500
+
+	for range iterations {
+		f := New[int]()
+		ctx, cancel := context.WithCancel(context.Background())
+
+		errCh := make(chan error, 1)
+
+		go func() {
+			_, err := f.Wait(ctx)
+			errCh <- err
+		}()
+
+		cancel()
+
+		select {
+		case err := <-errCh:
+			require.ErrorIs(t, err, context.Canceled)
+		case <-time.After(time.Second):
+			t.Fatal("Wait did not return after ctx cancellation (lost wakeup)")
+		}
+	}
+}
+
+func TestFuture_Wait_NilContext(t *testing.T) {
+	t.Parallel()
+
+	f := New[int]()
+	f.Resolve(1, nil)
+
+	require.PanicsWithValue(t, "futures: Wait called with nil context", func() {
+		//nolint:staticcheck // intentional nil context to assert the contract
+		_, _ = f.Wait(nil)
+	})
 }
