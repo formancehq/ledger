@@ -171,7 +171,7 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 			for i := range parsed.Postings {
 				p := &parsed.Postings[i]
 				if err := b.indexPostingAddressMappings(
-					kb, cfg, parsed.Ledger, parsed.TxID, p.Source, p.Destination, p.Asset,
+					kb, cfg, parsed.Ledger, parsed.TxID, p.Source, p.Destination, p.Asset, p.Color,
 					indexAny, indexSrc, indexDst, excludedVolumes,
 				); err != nil {
 					_ = batch.Cancel()

@@ -99,6 +99,10 @@ message GetAccountRequest {
   string address = 2;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
   fixed64 checkpoint_id = 3;
+  // When true, colored buckets are summed into a single entry per asset
+  // with color = "" in the returned Account.volumes list. By default each
+  // (asset, color) tuple gets its own entry.
+  bool collapse_colors = 4;
 }
 
 message GetTransactionRequest {
@@ -919,6 +923,11 @@ message NormalizedPosting {
   string source_pattern = 1;       // e.g. "users:{id}:main"
   string destination_pattern = 2;  // e.g. "bank:fees"
   string asset = 3;
+  // color discriminates postings on the same (source,destination,asset) but
+  // different color buckets in the FSM. Two flows that share addresses and
+  // asset but differ in color must produce distinct flow signatures so the
+  // analysis endpoint does not silently merge segregated buckets.
+  string color = 4;
 }
 
 enum PostingStructure {
@@ -1083,6 +1092,10 @@ message AggregateVolumesRequest {
   repeated string group_by_prefixes = 5;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
   fixed64 checkpoint_id = 6;
+  // When true, amounts in colored buckets are summed into the uncolored bucket
+  // ("" color). Result entries are produced with color = "". By default each
+  // (asset, color) bucket yields its own AggregatedVolume entry.
+  bool collapse_colors = 7;
 }
 
 // ============================================================================

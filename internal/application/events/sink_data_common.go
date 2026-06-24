@@ -70,6 +70,11 @@ type sinkPosting struct {
 	Destination string   `json:"destination"`
 	Amount      *big.Int `json:"amount"`
 	Asset       string   `json:"asset"`
+	// Color is always emitted (no `omitempty`) so downstream analytical
+	// consumers can distinguish the uncolored bucket (`color:""`) from an
+	// older payload that predates the dimension — same contract as
+	// commonpb.Posting.MarshalJSON, VolumeEntry, accountVolumeJSON.
+	Color string `json:"color"`
 }
 
 // ---------- Conversion from Event protobuf ----------
@@ -178,6 +183,7 @@ func sinkConvertTransaction(tx *commonpb.Transaction) *sinkTransaction {
 			Source:      p.GetSource(),
 			Destination: p.GetDestination(),
 			Asset:       p.GetAsset(),
+			Color:       p.GetColor(),
 			Amount:      p.GetAmount().ToBigInt(),
 		}
 	}

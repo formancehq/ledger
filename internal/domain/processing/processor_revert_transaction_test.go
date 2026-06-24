@@ -44,10 +44,10 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	// Reversed posting: destination becomes source, source becomes destination
 	// Original: bank -> users:123 for 100 USD
 	// Revert:   users:123 -> bank for 100 USD
-	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD"), sourceVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD"), nil)
-	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD"), destVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD"), nil)
+	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD", ""), sourceVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD", ""), nil)
+	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD", ""), destVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD", ""), nil)
 
 	mockStore.EXPECT().PutReverted(txKey, true)
 
@@ -132,10 +132,10 @@ func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 
-	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD"), sourceVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD"), nil)
-	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD"), destVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD"), nil)
+	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD", ""), sourceVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD", ""), nil)
+	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD", ""), destVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD", ""), nil)
 
 	mockStore.EXPECT().PutReverted(txKey, true)
 
@@ -210,10 +210,10 @@ func TestProcessRevertTransaction_AtEffectiveDate_MissingOriginalTimestamp(t *te
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 
-	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD"), sourceVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD"), nil)
-	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD"), destVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD"), nil)
+	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD", ""), sourceVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "users:123", "USD", ""), nil)
+	expectGetVolume(mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD", ""), destVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("test-ledger", "bank", "USD", ""), nil)
 
 	mockStore.EXPECT().PutReverted(txKey, true)
 

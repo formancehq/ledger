@@ -32,12 +32,18 @@ type compactSubIter struct {
 
 	// Current account state — populated by advance().
 	addr          []byte
-	assets        []string // only for V type
+	assets        []string // only for V type — deduped asset names (color-collapsed)
+	seenAssets    map[string]struct{}
 	metadataKeys  []string // only for M type
 	lastCanonical []byte   // for dedup
 
 	valid   bool
 	started bool
+
+	// err is set when the iterator encounters a malformed key (a "should not
+	// happen" branch per CLAUDE.md invariant #7) so the outer Next() can
+	// surface the violation instead of silently dropping the entry.
+	err error
 }
 
 // NewCompactAccountIterator creates an iterator that yields CompactAccount
@@ -89,6 +95,9 @@ func (si *compactSubIter) advance() bool {
 	si.metadataKeys = si.metadataKeys[:0]
 	si.lastCanonical = si.lastCanonical[:0]
 	si.addr = nil
+	if si.seenAssets != nil {
+		clear(si.seenAssets)
+	}
 
 	if !si.started {
 		si.started = true
@@ -138,8 +147,40 @@ func (si *compactSubIter) advance() bool {
 
 			switch si.attrType {
 			case dal.SubAttrVolume:
-				if len(nameBytes) >= 2 {
-					si.assets = append(si.assets, domain.FormatAsset(string(nameBytes[:len(nameBytes)-1]), nameBytes[len(nameBytes)-1]))
+				// Volume key layout after the account separator is
+				//   [color]\x00[asset_base][precision_byte]
+				// We surface deduped asset names (color is collapsed at the
+				// analysis layer — pattern discovery does not care about
+				// color), so split on the second 0x00 to skip the color.
+				colorSep := bytes.IndexByte(nameBytes, dal.CanonicalKeySepVolume)
+				if colorSep < 0 {
+					// "Should not happen": every volume key written by the
+					// FSM carries the color separator (CLAUDE.md invariant
+					// #7). Surface the violation loudly instead of silently
+					// skipping the entry — a missing separator means either
+					// pre-color legacy data or storage corruption.
+					si.err = fmt.Errorf("compact_account: volume key missing color separator (canonical=%x)", canonical)
+					si.valid = false
+
+					return false
+				}
+				assetBytes := nameBytes[colorSep+1:]
+				if len(assetBytes) < 2 {
+					// Same class of invariant: asset_base must be at least
+					// one byte plus the trailing precision byte. Anything
+					// shorter is corrupt.
+					si.err = fmt.Errorf("compact_account: volume key asset section too short (canonical=%x)", canonical)
+					si.valid = false
+
+					return false
+				}
+				asset := domain.FormatAsset(string(assetBytes[:len(assetBytes)-1]), assetBytes[len(assetBytes)-1])
+				if si.seenAssets == nil {
+					si.seenAssets = make(map[string]struct{})
+				}
+				if _, ok := si.seenAssets[asset]; !ok {
+					si.seenAssets[asset] = struct{}{}
+					si.assets = append(si.assets, asset)
 				}
 			case dal.SubAttrMetadata:
 				si.metadataKeys = append(si.metadataKeys, string(nameBytes))
@@ -167,6 +208,20 @@ func (it *CompactAccountIterator) Next() (analysis.CompactAccount, error) {
 	}
 	if !it.m.valid {
 		it.m.advance()
+	}
+
+	// An invariant violation surfaced by advance() must not be silently
+	// dropped: the upstream key layout is wrong and the consumer needs to
+	// know rather than silently miss volume entries.
+	if it.v.err != nil {
+		it.done = true
+
+		return analysis.CompactAccount{}, it.v.err
+	}
+	if it.m.err != nil {
+		it.done = true
+
+		return analysis.CompactAccount{}, it.m.err
 	}
 
 	if !it.v.valid && !it.m.valid {

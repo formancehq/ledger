@@ -190,7 +190,11 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		postCommitVolumes = buildPostCommitVolumes(s, ledger, result.Postings)
+		var pcvErr domain.Describable
+		postCommitVolumes, pcvErr = buildPostCommitVolumes(s, ledger, result.Postings)
+		if pcvErr != nil {
+			return nil, pcvErr
+		}
 	}
 
 	// Get the current open chapter ID for the receipt
@@ -233,6 +237,10 @@ func validatePostings(postings []*commonpb.Posting) domain.Describable {
 		}
 
 		if err := domain.ValidateAsset(p.GetAsset()); err != nil {
+			return err
+		}
+
+		if err := domain.ValidateColor(p.GetColor()); err != nil {
 			return err
 		}
 	}

@@ -193,14 +193,17 @@ type pendingEphemeralPurge struct {
 	postings []*commonpb.Posting
 }
 
-// ExclusionCollector is called once per (ledger, account, asset) that the
-// replay-time purge logic decides to delete from the replay store. The
-// integrity checker uses it to derive its exclusion set independently of the
+// ExclusionCollector is called once per (ledger, account, asset, color) that
+// the replay-time purge logic decides to delete from the replay store. Color
+// is part of the volume identity: two color buckets of the same (account,
+// asset) can have different purge fates, and collapsing them would let
+// EXCLUSION_RECORD_MISMATCH miss a real divergence. The integrity checker
+// uses it to derive its exclusion set independently of the
 // AppliedProposal.TransientVolumes / LedgerLog.PurgedVolumes records —
 // neither is bound to the audit hash chain, so trusting them would let a
 // tampered store hide live mutations on otherwise-purged accounts. Other
 // replay consumers (backup rebuild) pass nil to discard.
-type ExclusionCollector func(ledger, account, asset string)
+type ExclusionCollector func(ledger, account, asset, color string)
 
 // EphemeralPurgeBuffer accumulates transaction postings until the caller reaches
 // the same proposal boundary used by the FSM's WriteSet.Merge().
@@ -311,6 +314,7 @@ func ApplyPostings(
 ) error {
 	for _, posting := range postings {
 		amount := posting.GetAmount().ToBigInt()
+		color := posting.GetColor()
 
 		sourceKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{
@@ -318,6 +322,7 @@ func ApplyPostings(
 				Account:    posting.GetSource(),
 			},
 			Asset: posting.GetAsset(),
+			Color: color,
 		}
 
 		if err := w.AddVolumeDelta(sourceKey.Bytes(), big.NewInt(0), amount); err != nil {
@@ -330,6 +335,7 @@ func ApplyPostings(
 				Account:    posting.GetDestination(),
 			},
 			Asset: posting.GetAsset(),
+			Color: color,
 		}
 
 		if err := w.AddVolumeDelta(destKey.Bytes(), amount, big.NewInt(0)); err != nil {
@@ -386,6 +392,7 @@ func SimulateEphemeralPurge(
 				vk := domain.VolumeKey{
 					AccountKey: domain.AccountKey{LedgerName: ledger, Account: addr},
 					Asset:      p.GetAsset(),
+					Color:      p.GetColor(),
 				}
 
 				pair, err := w.GetVolume(vk.Bytes())
@@ -405,7 +412,7 @@ func SimulateEphemeralPurge(
 						return fmt.Errorf("deleting ephemeral volume: %w", err)
 					}
 					if collector != nil {
-						collector(ledger, addr, p.GetAsset())
+						collector(ledger, addr, p.GetAsset(), p.GetColor())
 					}
 				}
 			}

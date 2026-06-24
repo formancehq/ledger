@@ -3,7 +3,6 @@ package accounts
 import (
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -129,18 +128,13 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	if len(account.GetVolumes()) > 0 {
 		volumesTable := pterm.TableData{
-			{"ASSET", "INPUT", "OUTPUT", "BALANCE"},
+			{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 		}
 
-		assets := make([]string, 0, len(account.GetVolumes()))
-		for asset := range account.GetVolumes() {
-			assets = append(assets, asset)
-		}
-
-		sort.Strings(assets)
-
-		for _, asset := range assets {
-			vol := account.GetVolumes()[asset]
+		// account.GetVolumes() is already sorted by (asset, color) ascending
+		// server-side, so we just render in-order.
+		for _, entry := range account.GetVolumes() {
+			vol := entry.GetVolumes()
 			balance := vol.GetBalance()
 
 			balanceColor := pterm.Green
@@ -148,8 +142,14 @@ func runGet(cmd *cobra.Command, args []string) error {
 				balanceColor = pterm.Red
 			}
 
+			displayColor := entry.GetColor()
+			if displayColor == "" {
+				displayColor = "-"
+			}
+
 			volumesTable = append(volumesTable, []string{
-				asset,
+				entry.GetAsset(),
+				displayColor,
 				vol.GetInput(),
 				vol.GetOutput(),
 				balanceColor(balance),

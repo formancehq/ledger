@@ -235,3 +235,40 @@ func TestHandleAggregateVolumes_FullRouteIntegration(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
+
+// TestHandleAggregateVolumes_EmitsColorAlways pins the wire shape: the
+// `color` field is present on every aggregate entry, including for the
+// uncolored bucket (empty string). The OpenAPI contract documents
+// color as first-class; an `omitempty` tag would drop the field exactly
+// when color="" and break clients that expect it on every entry.
+func TestHandleAggregateVolumes_EmitsColorAlways(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+			require.True(t, opts.CollapseColors, "?collapseColors=true must reach the backend")
+
+			return &commonpb.AggregateResult{
+				Volumes: []*commonpb.AggregatedVolume{
+					{
+						Asset:  "USD/2",
+						Color:  "", // uncolored / collapsed bucket
+						Input:  commonpb.NewUint256FromUint64(100),
+						Output: commonpb.NewUint256FromUint64(30),
+					},
+				},
+			}, nil
+		})
+
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/my-ledger/volumes?collapseColors=true", nil)
+
+	handler.ServeHTTP(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"color":""`,
+		`empty color must surface as "color":"" not be omitted by omitempty`)
+}

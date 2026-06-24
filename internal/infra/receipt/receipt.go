@@ -22,11 +22,15 @@ func NewSigner(key []byte) *Signer {
 }
 
 // PostingClaim is the JSON representation of a posting inside a JWT.
+// Color is part of the receipt-bound identity because balances are
+// segregated per (account, asset, color); a receipt that did not bind
+// the color would be verifiable against the wrong bucket on revert.
 type PostingClaim struct {
 	Source      string `json:"source"`
 	Destination string `json:"destination"`
 	Amount      string `json:"amount"`
 	Asset       string `json:"asset"`
+	Color       string `json:"color,omitempty"`
 }
 
 // Claims are the custom JWT claims for a transaction receipt.
@@ -48,6 +52,7 @@ func (s *Signer) Sign(ledger string, txID uint64, postings []*commonpb.Posting, 
 			Destination: p.GetDestination(),
 			Amount:      p.GetAmount().Dec(),
 			Asset:       p.GetAsset(),
+			Color:       p.GetColor(),
 		}
 	}
 
@@ -117,6 +122,7 @@ func ClaimsToPostings(claims []PostingClaim) []*commonpb.Posting {
 			Destination: c.Destination,
 			Amount:      commonpb.NewUint256(&v),
 			Asset:       c.Asset,
+			Color:       c.Color,
 		}
 	}
 

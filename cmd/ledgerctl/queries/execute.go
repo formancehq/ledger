@@ -232,10 +232,11 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 	}
 
 	if len(result.GetVolumes()) > 0 {
-		tableData := pterm.TableData{{"ASSET", "INPUT", "OUTPUT"}}
+		tableData := pterm.TableData{{"ASSET", "COLOR", "INPUT", "OUTPUT"}}
 		for _, v := range result.GetVolumes() {
 			tableData = append(tableData, []string{
 				v.GetAsset(),
+				v.GetColor(),
 				v.GetInput().ToBigInt().String(),
 				v.GetOutput().ToBigInt().String(),
 			})
@@ -248,10 +249,11 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 		pterm.Println()
 		pterm.Printfln("Group: %s", g.GetPrefix())
 
-		tableData := pterm.TableData{{"ASSET", "INPUT", "OUTPUT"}}
+		tableData := pterm.TableData{{"ASSET", "COLOR", "INPUT", "OUTPUT"}}
 		for _, v := range g.GetVolumes() {
 			tableData = append(tableData, []string{
 				v.GetAsset(),
+				v.GetColor(),
 				v.GetInput().ToBigInt().String(),
 				v.GetOutput().ToBigInt().String(),
 			})

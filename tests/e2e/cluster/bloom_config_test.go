@@ -210,7 +210,9 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 			Eventually(func(g Gomega) {
 				account, err := actions.GetAccount(ctx, srv.Client, "post-bloom-change", "user:1")
 				g.Expect(err).To(Succeed())
-				g.Expect(account.Volumes["EUR"].Input).To(Equal("999"))
+				eurVol := account.FindVolume("EUR", "")
+				g.Expect(eurVol).NotTo(BeNil(), "expected EUR volumes on user:1")
+				g.Expect(eurVol.GetInput()).To(Equal("999"))
 			}).
 				WithTimeout(30 * time.Second).
 				WithPolling(500 * time.Millisecond).

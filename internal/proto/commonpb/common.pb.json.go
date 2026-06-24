@@ -149,17 +149,54 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// MarshalJSON implements json.Marshaler for VolumeEntry. Color is always
+// emitted (even when empty) so clients can distinguish the uncolored bucket
+// from an older response shape — same contract as accountVolumeJSON and
+// aggregatedVolumeJSON in the REST handler layer.
+func (x *VolumeEntry) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Asset   string   `json:"asset"`
+		Color   string   `json:"color"`
+		Volumes *Volumes `json:"volumes,omitempty"`
+	}{
+		Asset:   x.GetAsset(),
+		Color:   x.GetColor(),
+		Volumes: x.GetVolumes(),
+	})
+}
+
+// accountVolumeJSON is the JSON shape for AccountVolume. Color is always
+// emitted (even empty) because the API treats the empty bucket as a
+// first-class entry and clients cannot otherwise tell "uncolored bucket"
+// from "field absent in an older response shape".
+type accountVolumeJSON struct {
+	Asset   string              `json:"asset"`
+	Color   string              `json:"color"`
+	Volumes *VolumesWithBalance `json:"volumes,omitempty"`
+}
+
 // MarshalJSON implements json.Marshaler for Account.
 func (x *Account) MarshalJSON() ([]byte, error) {
+	volumes := make([]*accountVolumeJSON, 0, len(x.GetVolumes()))
+	for _, v := range x.GetVolumes() {
+		volumes = append(volumes, &accountVolumeJSON{
+			Asset:   v.GetAsset(),
+			Color:   v.GetColor(),
+			Volumes: v.GetVolumes(),
+		})
+	}
+
 	return json.Marshal(&struct {
-		Address       string         `json:"address,omitempty"`
-		Metadata      map[string]any `json:"metadata,omitempty"`
-		FirstUsage    *Timestamp     `json:"firstUsage,omitempty"`
-		InsertionDate *Timestamp     `json:"insertionDate,omitempty"`
-		UpdatedAt     *Timestamp     `json:"updatedAt,omitempty"`
+		Address       string               `json:"address,omitempty"`
+		Metadata      map[string]any       `json:"metadata,omitempty"`
+		Volumes       []*accountVolumeJSON `json:"volumes"`
+		FirstUsage    *Timestamp           `json:"firstUsage,omitempty"`
+		InsertionDate *Timestamp           `json:"insertionDate,omitempty"`
+		UpdatedAt     *Timestamp           `json:"updatedAt,omitempty"`
 	}{
 		Address:       x.GetAddress(),
 		Metadata:      MetadataToAnyMap(x.GetMetadata()),
+		Volumes:       volumes,
 		FirstUsage:    x.GetFirstUsage(),
 		InsertionDate: x.GetInsertionDate(),
 		UpdatedAt:     x.GetUpdatedAt(),

@@ -293,19 +293,19 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	}
 
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 42, "transient:source", "kept:dest", "USD",
+		b.kb, cfg, "test", 42, "transient:source", "kept:dest", "USD", "",
 		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 43, "kept:source", "purged:dest", "USD",
+		b.kb, cfg, "test", 43, "kept:source", "purged:dest", "USD", "",
 		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 44, "shared:account", "kept:dest", "USD",
+		b.kb, cfg, "test", 44, "shared:account", "kept:dest", "USD", "",
 		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 45, "shared:account", "kept:dest", "EUR",
+		b.kb, cfg, "test", 45, "shared:account", "kept:dest", "EUR", "",
 		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.wb.Flush())

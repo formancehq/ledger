@@ -33,6 +33,12 @@ const maxSigningKeyIDLength = 256
 // maxAccountAddressLength is the maximum allowed length for an account address.
 const maxAccountAddressLength = 1024
 
+// maxColorLength caps the optional Color tag on a Posting. Color is a small
+// dimension label (e.g. "GRANTS", "OPS") not a free-form string; 32 bytes is
+// large enough for any sensible tag and short enough to stay cheap to repeat
+// inside every volume key.
+const maxColorLength = 32
+
 // Storage-safety validation sentinels. All are Describable so they flow
 // through BusinessError with Kind=KindValidation.
 var (
@@ -56,6 +62,9 @@ var (
 	ErrAccountAddressTooLong         = newValidationSentinel(fmt.Sprintf("account address exceeds maximum length of %d bytes", maxAccountAddressLength))
 
 	ErrAssetInvalid = newValidationSentinel("asset must match [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/[1-9][0-9]{0,2})? with precision in [1, 255]")
+
+	ErrColorInvalid = newValidationSentinel("color must match ^[A-Z]*$ (uppercase letters only)")
+	ErrColorTooLong = newValidationSentinel(fmt.Sprintf("color exceeds maximum length of %d bytes", maxColorLength))
 )
 
 // isPrintableASCII reports whether every byte of s is in the printable ASCII
@@ -254,6 +263,32 @@ func ValidateAsset(asset string) Describable {
 
 	if hasPrecision && !validateAssetPrecision(precisionStr) {
 		return ErrAssetInvalid
+	}
+
+	return nil
+}
+
+// ValidateColor checks that a posting Color tag is safe for use in the
+// canonical volume key encoding. The Color value is embedded raw between
+// two 0x00 separators in `[ledgerID][account]\x00[color]\x00[asset_base][precision]`
+// so any byte that aliases the separator or shifts the parser is a key-collision
+// vector: two distinct (account, asset, color) tuples could fuse onto a single
+// Pebble row and silently merge balances — the same class of bug as
+// metadata keys (#322) and asset names (#303).
+//
+// The rule is ^[A-Z]*$: uppercase letters only. Empty is allowed (the
+// "uncolored" bucket) but anything else must be uppercase ASCII. Length is
+// capped to keep the key short.
+func ValidateColor(color string) Describable {
+	if len(color) > maxColorLength {
+		return ErrColorTooLong
+	}
+
+	for i := range len(color) {
+		c := color[i]
+		if c < 'A' || c > 'Z' {
+			return ErrColorInvalid
+		}
 	}
 
 	return nil

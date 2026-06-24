@@ -168,6 +168,8 @@ const (
 	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
 	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
 	ErrReasonVolumeOverflow                = "VOLUME_OVERFLOW"
+	ErrReasonAggregateOverflow             = "AGGREGATE_OVERFLOW"
+	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
 	ErrReasonValidation                    = "VALIDATION"
@@ -493,23 +495,40 @@ func (e *ErrTransactionAlreadyReverted) Metadata() map[string]string {
 	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
 }
 
-// ErrInsufficientFunds — source account does not have enough balance.
+// ErrInsufficientFunds is returned when a source account does not have enough
+// balance in the requested (asset, color) bucket. The empty color is the
+// uncolored bucket and is segregated from any colored bucket of the same
+// (account, asset).
 type ErrInsufficientFunds struct {
 	Account string
 	Asset   string
+	Color   string
 	Amount  string // requested amount (decimal string)
 	Balance string // available balance (decimal string)
 }
 
 func (e *ErrInsufficientFunds) Error() string {
+	if e.Color == "" {
+		return fmt.Sprintf(
+			"insufficient funds on account %q for asset %s: needed %s, available %s",
+			e.Account, e.Asset, e.Amount, e.Balance,
+		)
+	}
+
 	return fmt.Sprintf(
-		"insufficient funds on account %q for asset %s: needed %s, available %s",
-		e.Account, e.Asset, e.Amount, e.Balance,
+		"insufficient funds on account %q for asset %s color %q: needed %s, available %s",
+		e.Account, e.Asset, e.Color, e.Amount, e.Balance,
 	)
 }
 func (*ErrInsufficientFunds) Reason() string { return ErrReasonInsufficientFunds }
 func (e *ErrInsufficientFunds) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset, "amount": e.Amount, "balance": e.Balance}
+	return map[string]string{
+		"account": e.Account,
+		"asset":   e.Asset,
+		"color":   e.Color,
+		"amount":  e.Amount,
+		"balance": e.Balance,
+	}
 }
 
 // ErrVolumeOverflow — a posting would push an account's volume past 2^256.
@@ -521,6 +540,7 @@ func (e *ErrInsufficientFunds) Metadata() map[string]string {
 type ErrVolumeOverflow struct {
 	Account string
 	Asset   string
+	Color   string
 	Side    string // "input" or "output"
 	Amount  string // requested amount (decimal string)
 	Current string // current volume on that side (decimal string)
@@ -528,8 +548,8 @@ type ErrVolumeOverflow struct {
 
 func (e *ErrVolumeOverflow) Error() string {
 	return fmt.Sprintf(
-		"%s volume overflow on account %q for asset %s: current=%s + amount=%s exceeds 2^256",
-		e.Side, e.Account, e.Asset, e.Current, e.Amount,
+		"%s volume overflow on account %q for asset %s color=%q: current=%s + amount=%s exceeds 2^256",
+		e.Side, e.Account, e.Asset, e.Color, e.Current, e.Amount,
 	)
 }
 func (*ErrVolumeOverflow) Reason() string { return ErrReasonVolumeOverflow }
@@ -537,11 +557,45 @@ func (e *ErrVolumeOverflow) Metadata() map[string]string {
 	return map[string]string{
 		"account": e.Account,
 		"asset":   e.Asset,
+		"color":   e.Color,
 		"side":    e.Side,
 		"amount":  e.Amount,
 		"current": e.Current,
 	}
 }
+
+// ErrAggregateOverflow signals that summing colored or precision-rescaled
+// buckets in the read-side aggregator exceeded the 2^256 uint256 ceiling.
+// The FSM already rejects per-bucket overflow on write (#321); this guards
+// the aggregator with the same discipline since collapseColors and
+// use_max_precision can sum many buckets together.
+type ErrAggregateOverflow struct {
+	Stage string // "collapse-colors" or "max-precision-rescale"
+	Side  string // "input" or "output"
+}
+
+func (e *ErrAggregateOverflow) Error() string {
+	return fmt.Sprintf("aggregate volume %s overflowed 2^256 during %s", e.Side, e.Stage)
+}
+func (*ErrAggregateOverflow) Reason() string { return ErrReasonAggregateOverflow }
+func (e *ErrAggregateOverflow) Metadata() map[string]string {
+	return map[string]string{"stage": e.Stage, "side": e.Side}
+}
+
+// ErrBalanceNotFound — balance for a source account cannot be determined.
+type ErrBalanceNotFound struct {
+	Account string
+	Asset   string
+}
+
+func (e *ErrBalanceNotFound) Error() string {
+	return fmt.Sprintf("balance not found for account %q asset %q", e.Account, e.Asset)
+}
+func (*ErrBalanceNotFound) Reason() string { return ErrReasonBalanceNotFound }
+func (e *ErrBalanceNotFound) Metadata() map[string]string {
+	return map[string]string{"account": e.Account, "asset": e.Asset}
+}
+
 
 // ErrSinkAlreadyExists — adding a sink that already exists.
 type ErrSinkAlreadyExists struct {
@@ -945,22 +999,27 @@ func (e *ErrDependencyDiscoveryFailed) Metadata() map[string]string {
 	return map[string]string{"details": e.Error()}
 }
 
-// ErrBalanceNotPreloaded — a balance the script reads was not preloaded into
-// the cache by admission. A transient server-side gap (e.g. the boot-time
-// bloom-populate window, #318), not a caller-satisfiable precondition: a retry
-// re-runs preload and can succeed — hence KindUnavailable, and never frozen as
-// an idempotency outcome.
+// ErrBalanceNotPreloaded — a balance the script reads (account, asset, color)
+// was not preloaded into the cache by admission. A transient server-side gap
+// (e.g. the boot-time bloom-populate window, #318), not a caller-satisfiable
+// precondition: a retry re-runs preload and can succeed — hence
+// KindUnavailable, and never frozen as an idempotency outcome.
 type ErrBalanceNotPreloaded struct {
 	Account string
 	Asset   string
+	Color   string
 }
 
 func (e *ErrBalanceNotPreloaded) Error() string {
-	return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
+	if e.Color == "" {
+		return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
+	}
+
+	return fmt.Sprintf("balance not preloaded for account %q asset %q color %q", e.Account, e.Asset, e.Color)
 }
 func (*ErrBalanceNotPreloaded) Reason() string { return ErrReasonBalanceNotPreloaded }
 func (e *ErrBalanceNotPreloaded) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset}
+	return map[string]string{"account": e.Account, "asset": e.Asset, "color": e.Color}
 }
 
 // ErrTransientAccountNonZero — transient account has non-zero balance at end of batch.
@@ -1136,22 +1195,23 @@ func (e *ErrNumscriptRuntime) Metadata() map[string]string {
 	return map[string]string{"detail": e.Detail}
 }
 
-// ErrVolumeNotMaterialized — a posting references a (Account, Asset) pair
-// whose Input/Output volumes have not been fully fetched into the FSM's
+// ErrVolumeNotMaterialized — a posting references an (Account, Asset, Color)
+// tuple whose Input/Output volumes have not been fully fetched into the FSM's
 // working set. KindInternal: indicates a preloading miss the admission
 // layer should have caught; reaching this branch is a server bug.
 type ErrVolumeNotMaterialized struct {
 	Account string
 	Asset   string
+	Color   string
 	Side    string // "source" or "destination"
 }
 
 func (e *ErrVolumeNotMaterialized) Error() string {
-	return fmt.Sprintf("%s volume %s/%s not fully materialized", e.Side, e.Account, e.Asset)
+	return fmt.Sprintf("%s volume %s/%s color=%q not fully materialized", e.Side, e.Account, e.Asset, e.Color)
 }
 func (*ErrVolumeNotMaterialized) Reason() string { return ErrReasonVolumeNotMaterialized }
 func (e *ErrVolumeNotMaterialized) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset, "side": e.Side}
+	return map[string]string{"account": e.Account, "asset": e.Asset, "color": e.Color, "side": e.Side}
 }
 
 // ErrMetadataKeyValidation wraps another Describable to add the metadata-key

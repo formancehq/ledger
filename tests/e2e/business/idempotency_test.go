@@ -114,7 +114,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Address: "account-dup",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Volumes["USD"].Input).To(Equal("100"))
+			Expect(account.FindVolume("USD", "").Input).To(Equal("100"))
 		})
 
 		It("Should fail when reusing idempotency key with different transaction content", func() {
@@ -159,7 +159,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Address: "account-multi",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Volumes["USD"].Input).To(Equal("200"))
+			Expect(account.FindVolume("USD", "").Input).To(Equal("200"))
 		})
 	})
 
@@ -225,7 +225,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Address: "ttl-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Volumes["USD"].Input).To(Equal("200"))
+			Expect(account.FindVolume("USD", "").Input).To(Equal("200"))
 		})
 	})
 
@@ -282,14 +282,14 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Address: "bulk-account-1",
 			})
 			Expect(err).To(Succeed())
-			Expect(account1.Volumes["USD"].Input).To(Equal("100"))
+			Expect(account1.FindVolume("USD", "").Input).To(Equal("100"))
 
 			account2, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "bulk-account-2",
 			})
 			Expect(err).To(Succeed())
-			Expect(account2.Volumes["USD"].Input).To(Equal("200"))
+			Expect(account2.FindVolume("USD", "").Input).To(Equal("200"))
 		})
 	})
 })

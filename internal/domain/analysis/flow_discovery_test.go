@@ -296,3 +296,42 @@ func TestAnalyzeTransactions_GroupedBySignature(t *testing.T) {
 	assert.Equal(t, uint64(2), resp.GetFlowPatterns()[0].GetTransactionCount())
 	assert.Equal(t, uint64(1), resp.GetFlowPatterns()[1].GetTransactionCount())
 }
+
+// TestFlowSignaturePart_NoCollisionWithSeparatorsInComponents guards the
+// signature format against component-vs-separator confusion. Even if the
+// upstream validators ever loosened to allow `->`, `[`, `|`, or `]` inside
+// account / asset / color components, the NUL-byte separator keeps the
+// signature unambiguous.
+func TestFlowSignaturePart_NoCollisionWithSeparatorsInComponents(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		a, b *servicepb.NormalizedPosting
+	}{
+		{
+			name: "arrow-in-account vs literal arrow",
+			a:    &servicepb.NormalizedPosting{SourcePattern: "src->x", DestinationPattern: "dst", Asset: "USD", Color: ""},
+			b:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "x->dst", Asset: "USD", Color: ""},
+		},
+		{
+			name: "bracket-in-color vs literal",
+			a:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD", Color: "A]B"},
+			b:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD]A", Color: "B"},
+		},
+		{
+			name: "pipe in components",
+			a:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD|X", Color: ""},
+			b:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD", Color: "X"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.NotEqual(t, flowSignaturePart(tc.a), flowSignaturePart(tc.b),
+				"signatures must not collide when separators appear inside components")
+		})
+	}
+}

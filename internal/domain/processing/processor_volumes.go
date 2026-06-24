@@ -9,43 +9,55 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// buildPostCommitVolumes computes the post-commit volumes for all (account, asset)
-// pairs involved in the given postings. It reads the current volume state from the
-// in-memory store (after postings have been applied) and converts Known values
-// into concrete Input/Output values as big integer strings.
-func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) *commonpb.PostCommitVolumes {
-	// Collect unique (account, asset) pairs
-	type accountAsset struct {
+// buildPostCommitVolumes computes the post-commit volumes for all
+// (account, asset, color) tuples involved in the given postings. It reads the
+// current volume state from the in-memory store (after postings have been
+// applied) and converts Known values into concrete Input/Output values as big
+// integer strings.
+//
+// The returned VolumesByAssets list is sorted by (asset, color) ascending so
+// the response is deterministic across reads.
+//
+// A non-NotFound storage error from GetVolume is surfaced through the
+// returned error (rather than silently skipping the tuple): two nodes with
+// different transient store errors would otherwise emit divergent PCV
+// payloads for the same applied index, breaking the determinism invariant.
+func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) (*commonpb.PostCommitVolumes, domain.Describable) {
+	type tuple struct {
 		account string
 		asset   string
+		color   string
 	}
 
-	seen := make(map[accountAsset]struct{})
+	seen := make(map[tuple]struct{})
 
-	var pairs []accountAsset
+	var tuples []tuple
+
+	add := func(t tuple) {
+		if _, ok := seen[t]; ok {
+			return
+		}
+		seen[t] = struct{}{}
+		tuples = append(tuples, t)
+	}
 
 	for _, p := range postings {
-		srcKey := accountAsset{account: p.GetSource(), asset: p.GetAsset()}
-		if _, ok := seen[srcKey]; !ok {
-			seen[srcKey] = struct{}{}
-			pairs = append(pairs, srcKey)
-		}
-
-		dstKey := accountAsset{account: p.GetDestination(), asset: p.GetAsset()}
-		if _, ok := seen[dstKey]; !ok {
-			seen[dstKey] = struct{}{}
-			pairs = append(pairs, dstKey)
-		}
+		color := p.GetColor()
+		add(tuple{account: p.GetSource(), asset: p.GetAsset(), color: color})
+		add(tuple{account: p.GetDestination(), asset: p.GetAsset(), color: color})
 	}
 
-	volumesByAccount := make(map[string]*commonpb.VolumesByAssets, len(pairs))
+	volumesByAccount := make(map[string]*commonpb.VolumesByAssets, len(tuples))
 
 	var scratch uint256.Int
 
-	for _, pair := range pairs {
-		vol, err := s.Volumes().Get(domain.NewVolumeKey(ledgerName, pair.account, pair.asset))
+	for _, t := range tuples {
+		vol, err := s.Volumes().Get(domain.NewVolumeKey(ledgerName, t.account, t.asset, t.color))
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			continue
+			return nil, &domain.ErrStorageOperation{
+				Operation: "buildPostCommitVolumes: loading volume",
+				Cause:     err,
+			}
 		}
 
 		var inputStr, outputStr string
@@ -60,21 +72,23 @@ func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Pos
 			outputStr = "0"
 		}
 
-		byAssets, ok := volumesByAccount[pair.account]
+		byAssets, ok := volumesByAccount[t.account]
 		if !ok {
-			byAssets = &commonpb.VolumesByAssets{
-				Volumes: make(map[string]*commonpb.Volumes),
-			}
-			volumesByAccount[pair.account] = byAssets
+			byAssets = &commonpb.VolumesByAssets{}
+			volumesByAccount[t.account] = byAssets
 		}
-
-		byAssets.Volumes[pair.asset] = &commonpb.Volumes{
-			Input:  inputStr,
-			Output: outputStr,
-		}
+		byAssets.Volumes = append(byAssets.Volumes, &commonpb.VolumeEntry{
+			Asset: t.asset,
+			Color: t.color,
+			Volumes: &commonpb.Volumes{
+				Input:  inputStr,
+				Output: outputStr,
+			},
+		})
 	}
 
-	return &commonpb.PostCommitVolumes{
-		VolumesByAccount: volumesByAccount,
-	}
+	out := &commonpb.PostCommitVolumes{VolumesByAccount: volumesByAccount}
+	out.SortVolumes()
+
+	return out, nil
 }

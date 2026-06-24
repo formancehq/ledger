@@ -18,6 +18,10 @@ func padName(name string) []byte {
 }
 
 func newVolumeKey(ak AccountKey, asset string) VolumeKey {
+	return newColoredVolumeKey(ak, asset, "")
+}
+
+func newColoredVolumeKey(ak AccountKey, asset, color string) VolumeKey {
 	base, prec := ParseAssetPrecision(asset)
 
 	return VolumeKey{
@@ -25,6 +29,7 @@ func newVolumeKey(ak AccountKey, asset string) VolumeKey {
 		Asset:          asset,
 		AssetBase:      base,
 		AssetPrecision: prec,
+		Color:          color,
 	}
 }
 
@@ -74,8 +79,8 @@ func TestVolumeKey_ByteFormat(t *testing.T) {
 	vk := newVolumeKey(AccountKey{LedgerName: "test", Account: "a"}, "USD/4")
 
 	data := vk.Bytes()
-	// Expected: [ledgerName padded 64B] "a" \x00 "USD" \x04
-	expected := append(padName("test"), 'a', 0x00, 'U', 'S', 'D', 0x04)
+	// Expected: [ledgerName padded 64B] "a" \x00 [color=""] \x00 "USD" \x04
+	expected := append(padName("test"), 'a', 0x00, 0x00, 'U', 'S', 'D', 0x04)
 	require.Equal(t, expected, data)
 }
 
@@ -89,8 +94,65 @@ func TestVolumeKey_StructLiteralFallback(t *testing.T) {
 	}
 
 	data := vk.Bytes()
-	expected := append(padName("test"), 'a', 0x00, 'E', 'U', 'R', 0x02)
+	expected := append(padName("test"), 'a', 0x00, 0x00, 'E', 'U', 'R', 0x02)
 	require.Equal(t, expected, data)
+}
+
+func TestVolumeKey_ColorByteFormat(t *testing.T) {
+	t.Parallel()
+
+	vk := newColoredVolumeKey(AccountKey{LedgerName: "test", Account: "a"}, "USD/4", "RED")
+
+	data := vk.Bytes()
+	// Expected: [ledgerName padded 64B] "a" \x00 "RED" \x00 "USD" \x04
+	expected := append(padName("test"), 'a', 0x00, 'R', 'E', 'D', 0x00, 'U', 'S', 'D', 0x04)
+	require.Equal(t, expected, data)
+}
+
+func TestVolumeKey_ColorRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		asset string
+		color string
+	}{
+		{"uncolored EUR", "EUR", ""},
+		{"uncolored USD/4", "USD/4", ""},
+		{"colored RED USD/4", "USD/4", "RED"},
+		{"colored GRANTS USD", "USD", "GRANTS"},
+		{"colored long name BTC/8", "BTC/8", "TREASURY"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			vk := newColoredVolumeKey(AccountKey{LedgerName: "test", Account: "users:alice"}, tc.asset, tc.color)
+			data := vk.Bytes()
+
+			var decoded VolumeKey
+			require.NoError(t, decoded.Unmarshal(data))
+			require.Equal(t, vk, decoded)
+			require.Equal(t, tc.color, decoded.Color)
+		})
+	}
+}
+
+// Distinct colors on the same (account, asset) must serialize to distinct
+// byte sequences — the whole point of the segregation.
+func TestVolumeKey_ColorSegregatesBytes(t *testing.T) {
+	t.Parallel()
+
+	ak := AccountKey{LedgerName: "test", Account: "alice"}
+
+	uncolored := newColoredVolumeKey(ak, "USD/2", "").Bytes()
+	red := newColoredVolumeKey(ak, "USD/2", "RED").Bytes()
+	blue := newColoredVolumeKey(ak, "USD/2", "BLUE").Bytes()
+
+	require.NotEqual(t, uncolored, red)
+	require.NotEqual(t, uncolored, blue)
+	require.NotEqual(t, red, blue)
 }
 
 func TestMetadataKey_RoundTrip(t *testing.T) {

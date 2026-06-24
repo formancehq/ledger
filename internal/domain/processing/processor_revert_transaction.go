@@ -34,15 +34,17 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	}
 
 	// Create reversed postings and update volumes
-	// For a revert: original destination becomes source, original source becomes destination
+	// For a revert: original destination becomes source, original source becomes destination.
+	// Color carries over from the original posting — the funds were segregated under
+	// (account, asset, color) on the way out, so they must return under the same bucket.
 	revertPostings := make([]*commonpb.Posting, len(order.GetOriginalPostings()))
 	for i, originalPosting := range order.GetOriginalPostings() {
-		// Create reversed posting
 		revertPostings[i] = &commonpb.Posting{
-			Source:      originalPosting.GetDestination(), // Original destination is now source
-			Destination: originalPosting.GetSource(),      // Original source is now destination
+			Source:      originalPosting.GetDestination(),
+			Destination: originalPosting.GetSource(),
 			Amount:      originalPosting.GetAmount(),
 			Asset:       originalPosting.GetAsset(),
+			Color:       originalPosting.GetColor(),
 		}
 	}
 
@@ -108,7 +110,11 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		postCommitVolumes = buildPostCommitVolumes(s, ledger, revertPostings)
+		var pcvErr domain.Describable
+		postCommitVolumes, pcvErr = buildPostCommitVolumes(s, ledger, revertPostings)
+		if pcvErr != nil {
+			return nil, pcvErr
+		}
 	}
 
 	return &commonpb.LedgerLogPayload{

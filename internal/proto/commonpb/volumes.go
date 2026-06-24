@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/invopop/jsonschema"
@@ -42,18 +43,6 @@ func (v *Volumes) Scan(src any) error {
 func (*Volumes) JSONSchemaExtend(schema *jsonschema.Schema) {
 	inputProperty, _ := schema.Properties.Get("input")
 	schema.Properties.Set("balance", inputProperty)
-}
-
-// Copy creates a deep copy of Volumes.
-func (v *Volumes) Copy() *Volumes {
-	if v == nil {
-		return &Volumes{}
-	}
-
-	return &Volumes{
-		Input:  v.GetInput(),
-		Output: v.GetOutput(),
-	}
 }
 
 // NewEmptyVolumes creates new empty volumes.
@@ -114,198 +103,55 @@ func (v *Volumes) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// BalancesByAssets is a type alias for map[string]*big.Int.
-type BalancesByAssets = map[string]*big.Int
-
-// BalancesByAssetsByAccounts is a type alias for map[string]BalancesByAssets.
-type BalancesByAssetsByAccounts = map[string]BalancesByAssets
-
-// Balances calculates balances from VolumesByAssets.
-func (v *VolumesByAssets) Balances() BalancesByAssets {
-	if v == nil || v.Volumes == nil {
-		return BalancesByAssets{}
-	}
-
-	balances := BalancesByAssets{}
-
-	for asset, vol := range v.GetVolumes() {
-		if vol != nil {
-			input, _ := new(big.Int).SetString(vol.GetInput(), 10)
-			output, _ := new(big.Int).SetString(vol.GetOutput(), 10)
-
-			if input == nil {
-				input = big.NewInt(0)
-			}
-
-			if output == nil {
-				output = big.NewInt(0)
-			}
-
-			balances[asset] = new(big.Int).Sub(input, output)
-		}
-	}
-
-	return balances
-}
-
-// Copy creates a deep copy of VolumesByAssets.
-func (v *VolumesByAssets) Copy() *VolumesByAssets {
+// SortVolumes orders the inner volumes list by (asset, color) ascending.
+// Stable order is required so JSON / proto output is deterministic across
+// reads and so snapshot tests don't flap.
+func (v *VolumesByAssets) SortVolumes() {
 	if v == nil {
-		return &VolumesByAssets{Volumes: make(map[string]*Volumes)}
+		return
 	}
+	sort.Slice(v.GetVolumes(), func(i, j int) bool {
+		if a, b := v.GetVolumes()[i].GetAsset(), v.GetVolumes()[j].GetAsset(); a != b {
+			return a < b
+		}
 
-	ret := &VolumesByAssets{
-		Volumes: make(map[string]*Volumes),
-	}
-	for key, volumes := range v.GetVolumes() {
-		ret.Volumes[key] = volumes.Copy()
-	}
-
-	return ret
+		return v.GetVolumes()[i].GetColor() < v.GetVolumes()[j].GetColor()
+	})
 }
 
-// AddInput adds an input volume to the specified account and asset.
-func (a *PostCommitVolumes) AddInput(account, asset string, input *big.Int) {
+// FindVolume returns the *Volumes for a given (asset, color) tuple, or nil
+// when no entry matches. Color "" is the uncolored bucket.
+//
+// VolumesByAssets is a sorted list, so this is an O(n) linear scan. For
+// repeated lookups, callers should build their own map.
+func (v *VolumesByAssets) FindVolume(asset, color string) *Volumes {
+	if entry := v.findVolumeEntry(asset, color); entry != nil {
+		return entry.GetVolumes()
+	}
+
+	return nil
+}
+
+// findVolumeEntry returns the *VolumeEntry matching (asset, color), or nil.
+func (v *VolumesByAssets) findVolumeEntry(asset, color string) *VolumeEntry {
+	if v == nil {
+		return nil
+	}
+	for _, entry := range v.GetVolumes() {
+		if entry.GetAsset() == asset && entry.GetColor() == color {
+			return entry
+		}
+	}
+
+	return nil
+}
+
+// SortVolumes sorts every per-account volume list deterministically.
+func (a *PostCommitVolumes) SortVolumes() {
 	if a == nil {
 		return
 	}
-
-	if a.VolumesByAccount == nil {
-		a.VolumesByAccount = make(map[string]*VolumesByAssets)
+	for _, vba := range a.GetVolumesByAccount() {
+		vba.SortVolumes()
 	}
-
-	if _, ok := a.GetVolumesByAccount()[account]; !ok {
-		a.VolumesByAccount[account] = &VolumesByAssets{
-			Volumes: make(map[string]*Volumes),
-		}
-	}
-
-	if _, ok := a.GetVolumesByAccount()[account].GetVolumes()[asset]; !ok {
-		a.VolumesByAccount[account].Volumes[asset] = NewEmptyVolumes()
-	}
-
-	currentInput, _ := new(big.Int).SetString(a.GetVolumesByAccount()[account].GetVolumes()[asset].GetInput(), 10)
-	if currentInput == nil {
-		currentInput = big.NewInt(0)
-	}
-
-	a.VolumesByAccount[account].Volumes[asset].Input = currentInput.Add(currentInput, input).String()
 }
-
-// AddOutput adds an output volume to the specified account and asset.
-func (a *PostCommitVolumes) AddOutput(account, asset string, output *big.Int) {
-	if a == nil {
-		return
-	}
-
-	if a.VolumesByAccount == nil {
-		a.VolumesByAccount = make(map[string]*VolumesByAssets)
-	}
-
-	if _, ok := a.GetVolumesByAccount()[account]; !ok {
-		a.VolumesByAccount[account] = &VolumesByAssets{
-			Volumes: make(map[string]*Volumes),
-		}
-	}
-
-	if _, ok := a.GetVolumesByAccount()[account].GetVolumes()[asset]; !ok {
-		a.VolumesByAccount[account].Volumes[asset] = NewEmptyVolumes()
-	}
-
-	currentOutput, _ := new(big.Int).SetString(a.GetVolumesByAccount()[account].GetVolumes()[asset].GetOutput(), 10)
-	if currentOutput == nil {
-		currentOutput = big.NewInt(0)
-	}
-
-	a.VolumesByAccount[account].Volumes[asset].Output = currentOutput.Add(currentOutput, output).String()
-}
-
-// Copy creates a deep copy of PostCommitVolumes.
-func (a *PostCommitVolumes) Copy() *PostCommitVolumes {
-	if a == nil || len(a.GetVolumesByAccount()) == 0 {
-		return &PostCommitVolumes{VolumesByAccount: make(map[string]*VolumesByAssets)}
-	}
-
-	ret := &PostCommitVolumes{
-		VolumesByAccount: make(map[string]*VolumesByAssets),
-	}
-	for key, volumes := range a.GetVolumesByAccount() {
-		ret.VolumesByAccount[key] = volumes.Copy()
-	}
-
-	return ret
-}
-
-// SubtractPostings subtracts postings from PostCommitVolumes.
-func (a *PostCommitVolumes) SubtractPostings(postings []*Posting) *PostCommitVolumes {
-	if a == nil || len(a.GetVolumesByAccount()) == 0 {
-		return &PostCommitVolumes{VolumesByAccount: make(map[string]*VolumesByAssets)}
-	}
-
-	ret := a.Copy()
-
-	for _, posting := range postings {
-		if posting == nil {
-			continue
-		}
-
-		ret.AddOutput(posting.GetSource(), posting.GetAsset(), big.NewInt(0).Neg(posting.GetAmount().ToBigInt()))
-		ret.AddInput(posting.GetDestination(), posting.GetAsset(), big.NewInt(0).Neg(posting.GetAmount().ToBigInt()))
-	}
-
-	return ret
-}
-
-// Merge merges volumes into PostCommitVolumes.
-func (a *PostCommitVolumes) Merge(volumes *PostCommitVolumes) *PostCommitVolumes {
-	if a == nil {
-		a = &PostCommitVolumes{VolumesByAccount: make(map[string]*VolumesByAssets)}
-	}
-
-	if volumes == nil || volumes.VolumesByAccount == nil {
-		return a
-	}
-
-	for account, volumesByAssets := range volumes.GetVolumesByAccount() {
-		if _, ok := a.GetVolumesByAccount()[account]; !ok {
-			a.VolumesByAccount[account] = &VolumesByAssets{
-				Volumes: make(map[string]*Volumes),
-			}
-		}
-
-		for asset, vol := range volumesByAssets.GetVolumes() {
-			if _, ok := a.GetVolumesByAccount()[account].GetVolumes()[asset]; !ok {
-				a.VolumesByAccount[account].Volumes[asset] = NewEmptyVolumes()
-			}
-
-			currentInput, _ := new(big.Int).SetString(a.GetVolumesByAccount()[account].GetVolumes()[asset].GetInput(), 10)
-			currentOutput, _ := new(big.Int).SetString(a.GetVolumesByAccount()[account].GetVolumes()[asset].GetOutput(), 10)
-			volInput, _ := new(big.Int).SetString(vol.GetInput(), 10)
-			volOutput, _ := new(big.Int).SetString(vol.GetOutput(), 10)
-
-			if currentInput == nil {
-				currentInput = big.NewInt(0)
-			}
-
-			if currentOutput == nil {
-				currentOutput = big.NewInt(0)
-			}
-
-			if volInput == nil {
-				volInput = big.NewInt(0)
-			}
-
-			if volOutput == nil {
-				volOutput = big.NewInt(0)
-			}
-
-			a.VolumesByAccount[account].Volumes[asset].Input = currentInput.Add(currentInput, volInput).String()
-			a.VolumesByAccount[account].Volumes[asset].Output = currentOutput.Add(currentOutput, volOutput).String()
-		}
-	}
-
-	return a
-}
-
-// Balances is a type alias for map[string]map[string]*big.Int.
-type Balances = map[string]map[string]*big.Int
