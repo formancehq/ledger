@@ -22,24 +22,22 @@ var _ = Describe("ColorNumscript", Ordered, func() {
 	const ledgerName = "color-numscript"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateLedgerAction(ledgerName, nil),
+		))
 		Expect(err).To(Succeed())
 
 		// Seed alice with three segregated buckets on USD/2:
 		//   uncolored ""  : 300
 		//   GRANTS         : 200
 		//   OPS            : 100
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewColoredPosting("world", "alice", big.NewInt(300), "USD/2", ""),
-					actions.NewColoredPosting("world", "alice", big.NewInt(200), "USD/2", "GRANTS"),
-					actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", "OPS"),
-				}, nil, nil),
-			),
-		})
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewColoredPosting("world", "alice", big.NewInt(300), "USD/2", ""),
+				actions.NewColoredPosting("world", "alice", big.NewInt(200), "USD/2", "GRANTS"),
+				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", "OPS"),
+			}, nil, nil),
+		))
 		Expect(err).To(Succeed())
 	})
 
@@ -55,11 +53,9 @@ send [USD/2 60] (
   destination = @bob
 )
 `
-		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
-			),
-		})
+		resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
+		))
 		Expect(err).To(Succeed())
 		Expect(resp.Logs).To(HaveLen(1))
 
@@ -108,11 +104,9 @@ send [USD/2 1] (
   destination = @bob
 )
 `
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
-			),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
+		))
 		Expect(err).To(HaveOccurred(),
 			"a colored draw must not be satisfied from uncolored funds even via numscript")
 	})
@@ -127,11 +121,9 @@ send [USD/2 90] (
   destination = @bob
 )
 `
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
-			),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
+		))
 		Expect(err).To(Succeed())
 
 		Eventually(func(g Gomega) {
@@ -191,9 +183,9 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 	const ledgerName = "agg-vol-color"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateLedgerAction(ledgerName, nil),
+		))
 		Expect(err).To(Succeed())
 
 		// Fund three (asset, color) buckets on alice. We mix assets and
@@ -202,16 +194,14 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 		//   alice / USD/2 / "GRANTS" : 100
 		//   alice / USD/2 / "OPS"    :  40
 		//   alice / EUR/2 / "GRANTS" :  50
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewColoredPosting("world", "alice", big.NewInt(10), "USD/2", ""),
-					actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", "GRANTS"),
-					actions.NewColoredPosting("world", "alice", big.NewInt(40), "USD/2", "OPS"),
-					actions.NewColoredPosting("world", "alice", big.NewInt(50), "EUR/2", "GRANTS"),
-				}, nil, nil),
-			),
-		})
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewColoredPosting("world", "alice", big.NewInt(10), "USD/2", ""),
+				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", "GRANTS"),
+				actions.NewColoredPosting("world", "alice", big.NewInt(40), "USD/2", "OPS"),
+				actions.NewColoredPosting("world", "alice", big.NewInt(50), "EUR/2", "GRANTS"),
+			}, nil, nil),
+		))
 		Expect(err).To(Succeed())
 	})
 
@@ -289,29 +279,25 @@ var _ = Describe("ColorRevert", Ordered, func() {
 	var revertTargetTxID uint64
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateLedgerAction(ledgerName, nil),
+		))
 		Expect(err).To(Succeed())
 
 		// world → alice 200 USD/2 color=GRANTS, world → alice 100 USD/2 uncolored.
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", ""),
-				}, nil, nil),
-			),
-		})
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", ""),
+			}, nil, nil),
+		))
 		Expect(err).To(Succeed())
 
 		// The colored transaction is the one we'll revert.
-		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewColoredPosting("world", "alice", big.NewInt(200), "USD/2", "GRANTS"),
-				}, nil, nil),
-			),
-		})
+		resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewColoredPosting("world", "alice", big.NewInt(200), "USD/2", "GRANTS"),
+			}, nil, nil),
+		))
 		Expect(err).To(Succeed())
 		Expect(resp.Logs).To(HaveLen(1))
 		createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -320,9 +306,9 @@ var _ = Describe("ColorRevert", Ordered, func() {
 	})
 
 	It("Should drive the revert against the same color bucket", func() {
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, revertTargetTxID, false, false, nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.RevertTransactionAction(ledgerName, revertTargetTxID, false, false, nil),
+		))
 		Expect(err).To(Succeed())
 
 		Eventually(func(g Gomega) {

@@ -596,7 +596,6 @@ func (e *ErrBalanceNotFound) Metadata() map[string]string {
 	return map[string]string{"account": e.Account, "asset": e.Asset}
 }
 
-
 // ErrSinkAlreadyExists — adding a sink that already exists.
 type ErrSinkAlreadyExists struct {
 	Name string
