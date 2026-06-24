@@ -6221,8 +6221,6 @@ func NewCheckStoreProgressListReader(s []*CheckStoreProgress) CheckStoreProgress
 // Call Mutate() to obtain a mutable clone.
 type ListAuditEntriesRequestReader interface {
 	GetOptions() commonpb.ListOptionsReader
-	GetFailuresOnly() bool
-	GetLedger() string
 	Mutate() *ListAuditEntriesRequest
 }
 
@@ -6234,14 +6232,6 @@ func (r *listAuditEntriesRequestReadonly) GetOptions() commonpb.ListOptionsReade
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *listAuditEntriesRequestReadonly) GetFailuresOnly() bool {
-	return r.v.GetFailuresOnly()
-}
-
-func (r *listAuditEntriesRequestReadonly) GetLedger() string {
-	return r.v.GetLedger()
 }
 
 func (r *listAuditEntriesRequestReadonly) Mutate() *ListAuditEntriesRequest {

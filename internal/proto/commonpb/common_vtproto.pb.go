@@ -2855,6 +2855,15 @@ func (m *QueryFilter_AccountHasAsset) CloneVT() isQueryFilter_Filter {
 	return r
 }
 
+func (m *QueryFilter_Audit) CloneVT() isQueryFilter_Filter {
+	if m == nil {
+		return (*QueryFilter_Audit)(nil)
+	}
+	r := new(QueryFilter_Audit)
+	r.Audit = m.Audit.CloneVT()
+	return r
+}
+
 func (m *ReferenceCondition) CloneVT() *ReferenceCondition {
 	if m == nil {
 		return (*ReferenceCondition)(nil)
@@ -2958,6 +2967,55 @@ func (m *AccountHasAssetCondition) CloneVT() *AccountHasAssetCondition {
 
 func (m *AccountHasAssetCondition) CloneMessageVT() proto.Message {
 	return m.CloneVT()
+}
+
+func (m *AuditCondition) CloneVT() *AuditCondition {
+	if m == nil {
+		return (*AuditCondition)(nil)
+	}
+	r := new(AuditCondition)
+	r.Field = m.Field
+	if m.Condition != nil {
+		r.Condition = m.Condition.(interface {
+			CloneVT() isAuditCondition_Condition
+		}).CloneVT()
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AuditCondition) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *AuditCondition_StringCond) CloneVT() isAuditCondition_Condition {
+	if m == nil {
+		return (*AuditCondition_StringCond)(nil)
+	}
+	r := new(AuditCondition_StringCond)
+	r.StringCond = m.StringCond.CloneVT()
+	return r
+}
+
+func (m *AuditCondition_UintCond) CloneVT() isAuditCondition_Condition {
+	if m == nil {
+		return (*AuditCondition_UintCond)(nil)
+	}
+	r := new(AuditCondition_UintCond)
+	r.UintCond = m.UintCond.CloneVT()
+	return r
+}
+
+func (m *AuditCondition_BoolCond) CloneVT() isAuditCondition_Condition {
+	if m == nil {
+		return (*AuditCondition_BoolCond)(nil)
+	}
+	r := new(AuditCondition_BoolCond)
+	r.BoolCond = m.BoolCond.CloneVT()
+	return r
 }
 
 func (m *AndFilter) CloneVT() *AndFilter {
@@ -8428,6 +8486,31 @@ func (this *QueryFilter_AccountHasAsset) EqualVT(thatIface isQueryFilter_Filter)
 	return true
 }
 
+func (this *QueryFilter_Audit) EqualVT(thatIface isQueryFilter_Filter) bool {
+	that, ok := thatIface.(*QueryFilter_Audit)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Audit, that.Audit; p != q {
+		if p == nil {
+			p = &AuditCondition{}
+		}
+		if q == nil {
+			q = &AuditCondition{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *ReferenceCondition) EqualVT(that *ReferenceCondition) bool {
 	if this == that {
 		return true
@@ -8551,6 +8634,112 @@ func (this *AccountHasAssetCondition) EqualMessageVT(thatMsg proto.Message) bool
 	}
 	return this.EqualVT(that)
 }
+func (this *AuditCondition) EqualVT(that *AuditCondition) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Condition == nil && that.Condition != nil {
+		return false
+	} else if this.Condition != nil {
+		if that.Condition == nil {
+			return false
+		}
+		if !this.Condition.(interface {
+			EqualVT(isAuditCondition_Condition) bool
+		}).EqualVT(that.Condition) {
+			return false
+		}
+	}
+	if this.Field != that.Field {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *AuditCondition) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AuditCondition)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AuditCondition_StringCond) EqualVT(thatIface isAuditCondition_Condition) bool {
+	that, ok := thatIface.(*AuditCondition_StringCond)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.StringCond, that.StringCond; p != q {
+		if p == nil {
+			p = &StringCondition{}
+		}
+		if q == nil {
+			q = &StringCondition{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *AuditCondition_UintCond) EqualVT(thatIface isAuditCondition_Condition) bool {
+	that, ok := thatIface.(*AuditCondition_UintCond)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.UintCond, that.UintCond; p != q {
+		if p == nil {
+			p = &UintCondition{}
+		}
+		if q == nil {
+			q = &UintCondition{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *AuditCondition_BoolCond) EqualVT(thatIface isAuditCondition_Condition) bool {
+	that, ok := thatIface.(*AuditCondition_BoolCond)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.BoolCond, that.BoolCond; p != q {
+		if p == nil {
+			p = &BoolCondition{}
+		}
+		if q == nil {
+			q = &BoolCondition{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *AndFilter) EqualVT(that *AndFilter) bool {
 	if this == that {
 		return true
@@ -16844,6 +17033,25 @@ func (m *QueryFilter_AccountHasAsset) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	}
 	return len(dAtA) - i, nil
 }
+func (m *QueryFilter_Audit) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *QueryFilter_Audit) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Audit != nil {
+		size, err := m.Audit.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x62
+	}
+	return len(dAtA) - i, nil
+}
 func (m *ReferenceCondition) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -17114,6 +17322,110 @@ func (m *AccountHasAssetCondition) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	return len(dAtA) - i, nil
 }
 
+func (m *AuditCondition) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AuditCondition) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AuditCondition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if vtmsg, ok := m.Condition.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	if m.Field != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Field))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AuditCondition_StringCond) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AuditCondition_StringCond) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StringCond != nil {
+		size, err := m.StringCond.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *AuditCondition_UintCond) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AuditCondition_UintCond) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.UintCond != nil {
+		size, err := m.UintCond.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *AuditCondition_BoolCond) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AuditCondition_BoolCond) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.BoolCond != nil {
+		size, err := m.BoolCond.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AndFilter) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -21906,6 +22218,18 @@ func (m *QueryFilter_AccountHasAsset) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *QueryFilter_Audit) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Audit != nil {
+		l = m.Audit.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *ReferenceCondition) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -21999,6 +22323,58 @@ func (m *AccountHasAssetCondition) SizeVT() (n int) {
 	return n
 }
 
+func (m *AuditCondition) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Field != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Field))
+	}
+	if vtmsg, ok := m.Condition.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AuditCondition_StringCond) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StringCond != nil {
+		l = m.StringCond.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *AuditCondition_UintCond) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UintCond != nil {
+		l = m.UintCond.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *AuditCondition_BoolCond) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.BoolCond != nil {
+		l = m.BoolCond.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *AndFilter) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -40170,6 +40546,47 @@ func (m *QueryFilter) UnmarshalVT(dAtA []byte) error {
 				m.Filter = &QueryFilter_AccountHasAsset{AccountHasAsset: v}
 			}
 			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Audit", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Filter.(*QueryFilter_Audit); ok {
+				if err := oneof.Audit.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AuditCondition{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Filter = &QueryFilter_Audit{Audit: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -40745,6 +41162,199 @@ func (m *AccountHasAssetCondition) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AuditCondition) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AuditCondition: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AuditCondition: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Field", wireType)
+			}
+			m.Field = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Field |= AuditField(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StringCond", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Condition.(*AuditCondition_StringCond); ok {
+				if err := oneof.StringCond.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &StringCondition{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Condition = &AuditCondition_StringCond{StringCond: v}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UintCond", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Condition.(*AuditCondition_UintCond); ok {
+				if err := oneof.UintCond.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &UintCondition{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Condition = &AuditCondition_UintCond{UintCond: v}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BoolCond", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Condition.(*AuditCondition_BoolCond); ok {
+				if err := oneof.BoolCond.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &BoolCondition{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Condition = &AuditCondition_BoolCond{BoolCond: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -758,10 +758,10 @@ message CheckStoreProgress {
 
 message ListAuditEntriesRequest {
   common.ListOptions options = 1;
-  // failures_only filters audit entries to only those carrying a failure status.
-  bool failures_only = 2;
-  // ledger filters audit entries to only those containing orders targeting this ledger.
-  string ledger = 3;
+  // Field 2 (failures_only) and 3 (ledger) folded into options.filter
+  // (audit[outcome]==failure, audit[ledger]==X) — EN-1305.
+  reserved 2, 3;
+  reserved "failures_only", "ledger";
 }
 
 message GetAuditEntryRequest {
