@@ -15,6 +15,13 @@ func uintEq(v uint64) *commonpb.UintCondition {
 	return &commonpb.UintCondition{Min: &v, Max: &v}
 }
 
+// uintMax builds an upper-bounded-only condition (half-open: matches
+// `log_seq < v`), the shape that exposes the no-log-success regression: with no
+// Min set the overlap check reduces to the exclusive Max comparison.
+func uintMax(v uint64) *commonpb.UintCondition {
+	return &commonpb.UintCondition{Max: &v}
+}
+
 func auditFilter(field commonpb.AuditField, cond any) *commonpb.QueryFilter {
 	ac := &commonpb.AuditCondition{Field: field}
 	switch c := cond.(type) {
@@ -71,6 +78,12 @@ func TestCompileAuditPredicate_HeaderFields(t *testing.T) {
 		Sequence: 8,
 		Outcome:  &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS}},
 	}
+	// A successful all-idempotent batch produced no logs: extractLogSequenceRange
+	// records (0,0), so MaxLogSequence == 0 is the "no logs touched" sentinel.
+	noLogSuccess := &auditpb.AuditEntry{
+		Sequence: 9,
+		Outcome:  &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{MinLogSequence: 0, MaxLogSequence: 0}},
+	}
 
 	tests := []struct {
 		name   string
@@ -95,6 +108,10 @@ func TestCompileAuditPredicate_HeaderFields(t *testing.T) {
 		{"log seq overlap", auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintEq(103)), success, true},
 		{"log seq outside", auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintEq(200)), success, false},
 		{"log seq on failure", auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintEq(103)), failure, false},
+		// No-log success: its (0,0) sentinel must not be treated as a real range.
+		// Equality and (the regression-exposing) upper-bounded filters both miss.
+		{"log seq on no-log success", auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintEq(103)), noLogSuccess, false},
+		{"log seq upper bound on no-log success", auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintMax(100)), noLogSuccess, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

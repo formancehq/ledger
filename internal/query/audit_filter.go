@@ -196,8 +196,8 @@ func matchUintBounds(b resolvedUintBounds, v uint64) bool {
 }
 
 // logSequencePredicate matches when the entry's produced log range
-// [min,max] overlaps the requested bounds. Failures produce no logs and never
-// match a positive log-sequence filter.
+// [min,max] overlaps the requested bounds. Failures and no-log successes (an
+// all-idempotent batch) produce no logs and never match a log-sequence filter.
 func logSequencePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error) {
 	uc := cond.GetUintCond()
 	if uc == nil {
@@ -211,6 +211,14 @@ func logSequencePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error)
 	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) (bool, error) {
 		s := e.GetSuccess()
 		if s == nil {
+			return false, nil
+		}
+		// A no-log success (all-idempotent batch) produced no log range:
+		// extractLogSequenceRange records (0,0) and MaxLogSequence == 0 is the
+		// canonical "no logs touched" sentinel (see applied_proposal_sync /
+		// checker / rebuild). Treating (0,0) as a real range would wrongly match
+		// upper-bounded filters (e.g. log_seq <= 100), so skip it like failures.
+		if s.GetMaxLogSequence() == 0 {
 			return false, nil
 		}
 		if bounds.empty {
