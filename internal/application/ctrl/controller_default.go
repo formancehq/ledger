@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -1105,8 +1104,14 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	return cursor.NewClosingCursor(c, handle), nil
 }
 
-// ListAuditEntries returns a cursor over audit entries, applying optional filters.
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
+// ListAuditEntries returns a cursor over audit entries, applying an optional
+// scan-time filter compiled from the QueryFilter DSL.
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	pred, needsItems, err := query.CompileAuditPredicate(filter)
+	if err != nil {
+		return nil, domain.WrapCompileError(err)
+	}
+
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -1119,32 +1124,23 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequen
 		return nil, fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	var result = cursor.NewClosingCursor(c, handle)
+	base := cursor.NewClosingCursor(c, handle)
 
-	if ledger != "" {
-		result = cursor.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
-			return auditEntryTargetsLedger(entry, ledger)
-		})
-	}
+	filtered := cursor.NewFilteredCursorE(base, func(entry *auditpb.AuditEntry) (bool, error) {
+		var items []*auditpb.AuditItem
+		if needsItems {
+			its, itErr := query.ReadAuditItems(ctx, handle, entry.GetSequence())
+			if itErr != nil {
+				return false, fmt.Errorf("loading audit items for entry %d: %w", entry.GetSequence(), itErr)
+			}
+			items = its
+		}
 
-	if failuresOnly {
-		result = cursor.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
-			return entry.GetFailure() != nil
-		})
-	}
+		return pred(entry, items), nil
+	})
 
-	// Always cap audit-entry materialization. A caller that needs more than
-	// MaxPageSize entries paginates by passing the previous page's last
-	// AfterSequence — there is no "unlimited" option at the public boundary.
-	result = cursor.NewLimitedCursor(result, ClampFetchSize(pageSize))
-
-	return result, nil
-}
-
-// auditEntryTargetsLedger returns true if the audit entry targets the given ledger.
-// Uses the pre-computed ledgers field stored on the entry header.
-func auditEntryTargetsLedger(entry *auditpb.AuditEntry, ledger string) bool {
-	return slices.Contains(entry.GetLedgers(), ledger)
+	// Always cap audit-entry materialization (pagination via AfterSequence).
+	return cursor.NewLimitedCursor(filtered, ClampFetchSize(pageSize)), nil
 }
 
 // GetLog returns a single system log by sequence number.

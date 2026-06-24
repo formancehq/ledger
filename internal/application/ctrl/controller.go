@@ -33,7 +33,7 @@ type Controller interface {
 	GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 
 	// Audit operations
-	ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error)
+	ListAuditEntries(ctx context.Context, afterSequence *uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*auditpb.AuditEntry], error)
 	GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
 
 	// Chapter operations
