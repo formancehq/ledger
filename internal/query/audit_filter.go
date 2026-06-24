@@ -118,7 +118,7 @@ func (c *auditCompiler) compileCondition(cond *commonpb.AuditCondition) (AuditPr
 			if e.GetFailure() == nil {
 				return nil
 			}
-			return []string{e.GetFailure().GetErrorType()}
+			return []string{domain.ReasonString(e.GetFailure().GetReason())}
 		})
 	case commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:
 		return stringFieldPredicate(cond, func(e *auditpb.AuditEntry) []string {

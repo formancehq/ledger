@@ -49,7 +49,7 @@ func TestCompileAuditPredicate_HeaderFields(t *testing.T) {
 	}
 	failure := &auditpb.AuditEntry{
 		Sequence: 8,
-		Outcome:  &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{ErrorType: "insufficient_funds"}},
+		Outcome:  &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS}},
 	}
 
 	tests := []struct {
@@ -64,8 +64,8 @@ func TestCompileAuditPredicate_HeaderFields(t *testing.T) {
 		{"timestamp", auditFilter(commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, uintEq(1700000000000000000)), success, true},
 		{"outcome success", auditFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, strEq("success")), success, true},
 		{"outcome failure on success", auditFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, strEq("failure")), success, false},
-		{"error type", auditFilter(commonpb.AuditField_AUDIT_FIELD_ERROR_TYPE, strEq("insufficient_funds")), failure, true},
-		{"error type on success", auditFilter(commonpb.AuditField_AUDIT_FIELD_ERROR_TYPE, strEq("insufficient_funds")), success, false},
+		{"error type", auditFilter(commonpb.AuditField_AUDIT_FIELD_ERROR_TYPE, strEq("INSUFFICIENT_FUNDS")), failure, true},
+		{"error type on success", auditFilter(commonpb.AuditField_AUDIT_FIELD_ERROR_TYPE, strEq("INSUFFICIENT_FUNDS")), success, false},
 		{"caller subject", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, strEq("alice")), success, true},
 		{"caller scope contains", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_SCOPE, strEq("ledger:write")), success, true},
 		{"caller scope miss", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_SCOPE, strEq("admin")), success, false},
@@ -99,7 +99,7 @@ func TestCompileAuditPredicate_NilMatchesAll(t *testing.T) {
 func TestCompileAuditPredicate_Composition(t *testing.T) {
 	t.Parallel()
 	entry := &auditpb.AuditEntry{
-		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{ErrorType: "x"}},
+		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION}},
 		Ledgers: []string{"main"},
 	}
 	and := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{

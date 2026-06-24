@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -32,7 +33,9 @@ func NewListCommand() *cobra.Command {
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{})
 	cmdutil.AddMinLogSequenceFlag(cmd)
 	cmdutil.AddOutputFlags(cmd)
-	cmd.Flags().Bool("failures-only", false, "Show only failed entries")
+	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
+	cmd.Flags().Bool("failures-only", false, "Shorthand for --filter 'audit[outcome] == failure'")
+	cmd.Flags().String("ledger", "", "Shorthand for --filter 'audit[ledger] == <name>'")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("expand", false, "Expand orders within each audit entry")
 
@@ -50,14 +53,20 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
+	failuresOnly, _ := cmd.Flags().GetBool("failures-only")
+	ledger, _ := cmd.Flags().GetString("ledger")
 	expand, _ := cmd.Flags().GetBool("expand")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	pgn := cmdutil.GetPaginationFlags(cmd)
+	ff := cmdutil.GetFilterFlags(cmd)
 
-	// NOTE(EN-1305): the failures-only filter now flows through
-	// options.filter; the CLI flag wiring is completed in a follow-up task.
+	filter, err := buildAuditFilter(ff.Expr, failuresOnly, ledger)
+	if err != nil {
+		return err
+	}
+
 	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		Options: cmdutil.BuildListOptions(pgn, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, nil),
+		Options: cmdutil.BuildListOptions(pgn, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, filter),
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to list audit entries", err)
@@ -110,6 +119,43 @@ func runList(cmd *cobra.Command, _ []string) error {
 	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
+}
+
+// buildAuditFilter combines --filter with the --failures-only / --ledger
+// shorthands into a single QueryFilter (AND-combined). Returns nil when empty.
+func buildAuditFilter(expr string, failuresOnly bool, ledger string) (*commonpb.QueryFilter, error) {
+	var parts []*commonpb.QueryFilter
+
+	if expr != "" {
+		parsed, err := filterexpr.Parse(expr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid filter expression: %w", err)
+		}
+		parts = append(parts, parsed)
+	}
+	if failuresOnly {
+		f, err := filterexpr.Parse(`audit[outcome] == failure`)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, f)
+	}
+	if ledger != "" {
+		f, err := filterexpr.Parse(fmt.Sprintf("audit[ledger] == %q", ledger))
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, f)
+	}
+
+	switch len(parts) {
+	case 0:
+		return nil, nil
+	case 1:
+		return parts[0], nil
+	default:
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: parts}}}, nil
+	}
 }
 
 // printAuditEntry prints a single audit entry in a human-readable format.
