@@ -3,6 +3,7 @@ on:
   merge_group:
   push:
     branches:
+      - main
       - master
       - release/*
   pull_request:
@@ -214,7 +215,7 @@ jobs:
           if-no-files-found: ignore
 
   Release-Latest:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     needs:
       [
         Dirty,
