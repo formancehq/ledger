@@ -317,7 +317,7 @@ func TestListAuditEntries_Success(t *testing.T) {
 
 	client := NewLedgerGrpcClient(mock)
 	seq := uint64(5)
-	cursor, err := client.ListAuditEntries(context.Background(), &seq, true, 10, "")
+	cursor, err := client.ListAuditEntries(context.Background(), &seq, 10, nil)
 	require.NoError(t, err)
 
 	entry, err := cursor.Next()
@@ -333,7 +333,7 @@ func TestListAuditEntries_StreamError(t *testing.T) {
 	mock.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any()).Return(nil, errors.New("audit error"))
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.ListAuditEntries(context.Background(), nil, false, 10, "")
+	_, err := client.ListAuditEntries(context.Background(), nil, 10, nil)
 	require.Error(t, err)
 }
 

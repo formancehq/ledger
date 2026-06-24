@@ -746,18 +746,18 @@ func (c *MockControllerListAccountsCall) DoAndReturn(f func(context.Context, str
 }
 
 // ListAuditEntries mocks base method.
-func (m *MockController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (m *MockController) ListAuditEntries(ctx context.Context, afterSequence *uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListAuditEntries", ctx, afterSequence, failuresOnly, pageSize, ledger)
+	ret := m.ctrl.Call(m, "ListAuditEntries", ctx, afterSequence, pageSize, filter)
 	ret0, _ := ret[0].(cursor.Cursor[*auditpb.AuditEntry])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListAuditEntries indicates an expected call of ListAuditEntries.
-func (mr *MockControllerMockRecorder) ListAuditEntries(ctx, afterSequence, failuresOnly, pageSize, ledger any) *MockControllerListAuditEntriesCall {
+func (mr *MockControllerMockRecorder) ListAuditEntries(ctx, afterSequence, pageSize, filter any) *MockControllerListAuditEntriesCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuditEntries", reflect.TypeOf((*MockController)(nil).ListAuditEntries), ctx, afterSequence, failuresOnly, pageSize, ledger)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuditEntries", reflect.TypeOf((*MockController)(nil).ListAuditEntries), ctx, afterSequence, pageSize, filter)
 	return &MockControllerListAuditEntriesCall{Call: call}
 }
 
@@ -773,13 +773,13 @@ func (c *MockControllerListAuditEntriesCall) Return(arg0 cursor.Cursor[*auditpb.
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListAuditEntriesCall) Do(f func(context.Context, *uint64, bool, uint32, string) (cursor.Cursor[*auditpb.AuditEntry], error)) *MockControllerListAuditEntriesCall {
+func (c *MockControllerListAuditEntriesCall) Do(f func(context.Context, *uint64, uint32, *commonpb.QueryFilter) (cursor.Cursor[*auditpb.AuditEntry], error)) *MockControllerListAuditEntriesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListAuditEntriesCall) DoAndReturn(f func(context.Context, *uint64, bool, uint32, string) (cursor.Cursor[*auditpb.AuditEntry], error)) *MockControllerListAuditEntriesCall {
+func (c *MockControllerListAuditEntriesCall) DoAndReturn(f func(context.Context, *uint64, uint32, *commonpb.QueryFilter) (cursor.Cursor[*auditpb.AuditEntry], error)) *MockControllerListAuditEntriesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

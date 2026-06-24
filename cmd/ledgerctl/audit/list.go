@@ -50,14 +50,14 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	failuresOnly, _ := cmd.Flags().GetBool("failures-only")
 	expand, _ := cmd.Flags().GetBool("expand")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	pgn := cmdutil.GetPaginationFlags(cmd)
 
+	// NOTE(EN-1305): the failures-only filter now flows through
+	// options.filter; the CLI flag wiring is completed in a follow-up task.
 	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		Options:      cmdutil.BuildListOptions(pgn, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, nil),
-		FailuresOnly: failuresOnly,
+		Options: cmdutil.BuildListOptions(pgn, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, nil),
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to list audit entries", err)

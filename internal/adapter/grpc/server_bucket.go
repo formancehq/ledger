@@ -1072,9 +1072,9 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 
 	opts := req.GetOptions()
 
-	// The audit controller does not yet honor filter / reverse /
-	// checkpoint_id — see #436 for the alignment work.
-	if err := ValidateListOptions(opts, ListOptionsSupport{}); err != nil {
+	// Audit honors filter (scan-time predicates over the cold-zone audit log).
+	// reverse / checkpoint_id are not supported — see #436.
+	if err := ValidateListOptions(opts, ListOptionsSupport{Filter: true}); err != nil {
 		return err
 	}
 
@@ -1094,7 +1094,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		afterSeqPtr = &afterSeq
 	}
 
-	c, err := impl.ctrl.ListAuditEntries(ctx, afterSeqPtr, req.GetFailuresOnly(), pageSizePlusOne(pageSize), req.GetLedger())
+	c, err := impl.ctrl.ListAuditEntries(ctx, afterSeqPtr, pageSizePlusOne(pageSize), opts.GetFilter())
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}

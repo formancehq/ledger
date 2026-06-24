@@ -184,7 +184,7 @@ func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 	})
 }
 
-func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	var cursorStr string
 	if afterSequence != nil {
 		cursorStr = strconv.FormatUint(*afterSequence, 10)
@@ -194,9 +194,8 @@ func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   cursorStr,
+			Filter:   filter,
 		},
-		FailuresOnly: failuresOnly,
-		Ledger:       ledger,
 	})
 	if err != nil {
 		return nil, err

@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -268,8 +269,8 @@ func TestListAuditEntries(t *testing.T) {
 		t.Parallel()
 
 		impl, mockCtrl := newListHandlerHarness(t)
-		// ListAuditEntries(ctx, afterSeq*uint64, failuresOnly, pageSize, ledger)
-		mockCtrl.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), false, uint32(3), "").
+		// ListAuditEntries(ctx, afterSeq *uint64, pageSize, filter)
+		mockCtrl.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), uint32(3), gomock.Any()).
 			Return(page(
 				&auditpb.AuditEntry{Sequence: 1},
 				&auditpb.AuditEntry{Sequence: 2},
@@ -282,6 +283,50 @@ func TestListAuditEntries(t *testing.T) {
 		require.NoError(t, impl.ListAuditEntries(req, stream))
 		require.Equal(t, "2", stream.trailerCursor())
 	})
+}
+
+// TestListAuditEntries_ForwardsFilter asserts the handler threads
+// options.filter through to the controller unchanged.
+func TestListAuditEntries_ForwardsFilter(t *testing.T) {
+	t.Parallel()
+
+	impl, mockCtrl := newListHandlerHarness(t)
+
+	filter, err := filterexpr.Parse("audit[outcome] == failure")
+	require.NoError(t, err)
+
+	var captured *commonpb.QueryFilter
+	mockCtrl.EXPECT().
+		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Not(gomock.Nil())).
+		DoAndReturn(func(_ context.Context, _ *uint64, _ uint32, f *commonpb.QueryFilter) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			captured = f
+			return page[auditpb.AuditEntry](), nil
+		})
+
+	stream := newFakeServerStream[auditpb.AuditEntry](t)
+	req := &servicepb.ListAuditEntriesRequest{
+		Options: &commonpb.ListOptions{PageSize: 2, Filter: filter},
+	}
+
+	require.NoError(t, impl.ListAuditEntries(req, stream))
+	require.NotNil(t, captured)
+}
+
+// TestListAuditEntries_RejectsReverse asserts the handler rejects the
+// unsupported reverse option with InvalidArgument before touching the
+// controller.
+func TestListAuditEntries_RejectsReverse(t *testing.T) {
+	t.Parallel()
+
+	impl, _ := newListHandlerHarness(t)
+
+	stream := newFakeServerStream[auditpb.AuditEntry](t)
+	req := &servicepb.ListAuditEntriesRequest{
+		Options: &commonpb.ListOptions{PageSize: 2, Reverse: true},
+	}
+
+	err := impl.ListAuditEntries(req, stream)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
 // TestListChapters covers chapter listing — the cursor is the chapter id.

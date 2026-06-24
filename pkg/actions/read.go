@@ -3,11 +3,13 @@ package actions
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -329,10 +331,24 @@ func AggregateVolumes(ctx context.Context, client servicepb.BucketServiceClient,
 	})
 }
 
-// ListAuditEntries collects all audit entries from the streaming RPC.
+// ListAuditEntries collects all audit entries from the streaming RPC. When
+// failuresOnly is set, it scopes the scan to failed orders via the audit
+// outcome filter (the server-side FailuresOnly field was replaced by the
+// generic options.filter — see EN-1305).
 func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, failuresOnly bool) ([]*auditpb.AuditEntry, error) {
+	var filter *commonpb.QueryFilter
+	if failuresOnly {
+		parsed, err := filterexpr.Parse("audit[outcome] == failure")
+		if err != nil {
+			return nil, fmt.Errorf("building audit failures filter: %w", err)
+		}
+		filter = parsed
+	}
+
 	return ListAuditEntriesWithRequest(ctx, client, &servicepb.ListAuditEntriesRequest{
-		FailuresOnly: failuresOnly,
+		Options: &commonpb.ListOptions{
+			Filter: filter,
+		},
 	})
 }
 
@@ -347,17 +363,17 @@ func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketSer
 	// messages embed a sync.Mutex (in MessageState) so value copy trips
 	// govet (copylocks). We only need the request fields used by the
 	// underlying RPC; the per-page cursor is updated below.
-	// Preserve the caller's Read (min_log_sequence, checkpoint_id) on every
-	// page request — dropping it would silently turn a freshness-gated audit
-	// scan into a stale read against a lagging follower.
+	// Preserve the caller's Read (min_log_sequence, checkpoint_id) and Filter
+	// on every page request — dropping Read would silently turn a
+	// freshness-gated audit scan into a stale read against a lagging follower,
+	// and dropping Filter would widen the scan past the caller's predicate.
 	page := &servicepb.ListAuditEntriesRequest{
 		Options: &commonpb.ListOptions{
 			Read:     req.GetOptions().GetRead(),
 			PageSize: listAllPageSize,
 			Cursor:   req.GetOptions().GetCursor(),
+			Filter:   req.GetOptions().GetFilter(),
 		},
-		FailuresOnly: req.GetFailuresOnly(),
-		Ledger:       req.GetLedger(),
 	}
 
 	var entries []*auditpb.AuditEntry
