@@ -138,6 +138,8 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Duration("health-check-interval", 30*time.Second, "Interval between health checks (default: 30s)")
 	runCmd.Flags().Float64("health-wal-threshold", 0.8, "WAL volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
 	runCmd.Flags().Float64("health-data-threshold", 0.8, "Data volume usage threshold (0.0-1.0, default: 0.8 = 80%)")
+	runCmd.Flags().Float64("health-wal-resume-threshold", 0.75, "WAL volume usage resume threshold for hysteresis (must satisfy 0 < resume < health-wal-threshold; when unset, derived as 0.9375 x the block threshold)")
+	runCmd.Flags().Float64("health-data-resume-threshold", 0.75, "Data volume usage resume threshold for hysteresis (must satisfy 0 < resume < health-data-threshold; when unset, derived as 0.9375 x the block threshold)")
 	runCmd.Flags().Duration("health-clock-skew-threshold", 500*time.Millisecond, "Maximum allowed clock skew between nodes (0 to disable)")
 	runCmd.Flags().String("cluster-id", "", "Cluster ID for inter-node communication validation")
 
@@ -544,6 +546,24 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.HealthConfig.Interval = getDuration("health-check-interval", 30*time.Second)
 	cfg.HealthConfig.WALThreshold, _ = cmd.Flags().GetFloat64("health-wal-threshold")
 	cfg.HealthConfig.DataThreshold, _ = cmd.Flags().GetFloat64("health-data-threshold")
+
+	// resumeThreshold honors an explicitly-set resume flag, otherwise derives the
+	// resume (low-water) mark from the block (high-water) threshold. A fixed
+	// default rejects startup whenever an operator lowered the block threshold
+	// below it (config validation requires 0 < resume < block); deriving from
+	// block keeps the gap valid for any block in (0,1]. The 0.9375 factor
+	// reproduces the shipped 0.75/0.8 default exactly.
+	resumeThreshold := func(flagName string, block float64) float64 {
+		if cmd.Flags().Changed(flagName) {
+			val, _ := cmd.Flags().GetFloat64(flagName)
+
+			return val
+		}
+
+		return block * 0.9375
+	}
+	cfg.HealthConfig.WALResumeThreshold = resumeThreshold("health-wal-resume-threshold", cfg.HealthConfig.WALThreshold)
+	cfg.HealthConfig.DataResumeThreshold = resumeThreshold("health-data-resume-threshold", cfg.HealthConfig.DataThreshold)
 	cfg.HealthConfig.ClockSkewThreshold = getDuration("health-clock-skew-threshold", 500*time.Millisecond)
 
 	cfg.ClusterID = getString("cluster-id", "")

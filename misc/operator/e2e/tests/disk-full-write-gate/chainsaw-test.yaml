@@ -1,0 +1,161 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disk-full-write-gate
+spec:
+  timeouts:
+    assert: 2m
+  steps:
+    # 1. Set up a small tmpfs on the kind node so we can fill it predictably.
+    - name: Setup small filesystem on kind node
+      try:
+        - script:
+            content: |
+              docker exec ledger-e2e-control-plane sh -c '
+                mkdir -p /mnt/tiny-data &&
+                (mountpoint -q /mnt/tiny-data || mount -t tmpfs -o size=64m,mode=0777 tmpfs /mnt/tiny-data) &&
+                rm -rf /mnt/tiny-data/* &&
+                df -h /mnt/tiny-data
+              '
+            timeout: 30s
+
+    # 2. Deploy the 1-replica LedgerService and wait for it to be Ready.
+    - name: Deploy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: disk-gate
+              status:
+                readyReplicas: 1
+
+    # 3. Baseline write: create a ledger while disk is healthy. Proves the write
+    #    path is functional before we fill the disk.
+    - name: Baseline write succeeds
+      try:
+        - script:
+            content: |
+              kubectl exec disk-gate-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers create --name baseline-ledger \
+                  --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 30s
+
+    # 4. Fill the data volume past the 80% block threshold.
+    #    The data volume is mounted at /data/app inside the pod.
+    #    With a 64 MiB tmpfs, 55 MiB of filler pushes usage past 80%.
+    - name: Fill data volume past threshold
+      try:
+        - script:
+            content: |
+              kubectl exec disk-gate-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c '
+                  dd if=/dev/zero of=/data/app/filler bs=1M count=55 2>&1
+                  df -h /data/app
+                '
+            timeout: 30s
+
+    # 5. THE REGRESSION ASSERTION: the node must stay Ready despite the full disk.
+    #    A readyReplicas drop here would mean the disk gate is incorrectly
+    #    affecting the readiness probe, which is the bug this test guards against.
+    - name: Node stays Ready while disk is full
+      try:
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: disk-gate
+              status:
+                readyReplicas: 1
+
+    # 6. Reads still work while disk is full. The read path must be unaffected.
+    - name: Reads still served while disk is full
+      try:
+        - script:
+            content: |
+              # Load-bearing: assert the read path actually returns the ledger
+              # created in step 3 (not merely a zero exit code) while disk is full.
+              kubectl exec disk-gate-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list \
+                  --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
+                | grep baseline-ledger
+            timeout: 30s
+
+    # 7. Writes blocked: poll until the health checker trips the gate and the
+    #    write command returns WRITES_BLOCKED_DISK_FULL. The health checker runs
+    #    on a 2s interval (HEALTH_CHECK_INTERVAL=2s), so the gate should trip
+    #    within a few seconds. We allow up to 20 retries × 2s each = 40s.
+    - name: Writes blocked with WRITES_BLOCKED_DISK_FULL
+      try:
+        - script:
+            content: |
+              kubectl exec disk-gate-0 -n $NAMESPACE -c ledger -- /bin/sh -c '
+                for i in $(seq 1 20); do
+                  echo "Attempt $i: checking write gate..."
+                  # Unique name per iteration: a create that lands before the
+                  # gate trips must not poison later attempts with
+                  # LEDGER_ALREADY_EXISTS. The loop only succeeds when it
+                  # actually observes the disk-full marker, never on a plain
+                  # successful create.
+                  OUTPUT=$(./ledgerctl ledgers create --name gated-ledger-$i \
+                    --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET" 2>&1 || true)
+                  echo "$OUTPUT"
+                  if echo "$OUTPUT" | grep -q "WRITES_BLOCKED_DISK_FULL"; then
+                    exit 0
+                  fi
+                  sleep 2
+                done
+                echo "FAIL: write gate did not trip within timeout"
+                exit 1
+              '
+            timeout: 60s
+
+    # 8. Recovery: remove the filler, then poll until writes resume.
+    #    This proves the hysteresis works: the gate only clears once usage
+    #    drops below the resume threshold (0.75), not immediately at removal.
+    - name: Recover by removing filler and verify writes resume
+      try:
+        - script:
+            content: |
+              kubectl exec disk-gate-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c 'rm /data/app/filler && df -h /data/app'
+            timeout: 15s
+        - script:
+            content: |
+              # The entire retry loop runs inside the pod's shell so that $i and
+              # $(seq ...) expand there, not in the outer chainsaw shell. Each
+              # iteration uses a unique ledger name so a successful create after
+              # the gate clears cannot collide with a prior attempt.
+              kubectl exec disk-gate-0 -n $NAMESPACE -c ledger -- /bin/sh -c '
+                for i in $(seq 1 20); do
+                  echo "Attempt $i: checking write gate cleared..."
+                  if ./ledgerctl ledgers create --name recovered-ledger-$i \
+                    --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"; then
+                    exit 0
+                  fi
+                  sleep 2
+                done
+                echo "FAIL: writes did not resume within timeout"
+                exit 1
+              '
+            timeout: 60s
+
+  catch:
+    - describe:
+        apiVersion: apps/v1
+        kind: StatefulSet
+        name: disk-gate
+    - podLogs:
+        name: disk-gate-0
+        container: ledger
+
+  cleanup:
+    - script:
+        content: |
+          kubectl delete ledgerservice disk-gate -n $NAMESPACE --ignore-not-found=true
+          docker exec ledger-e2e-control-plane sh -c 'umount /mnt/tiny-data 2>/dev/null || true'
+        timeout: 60s

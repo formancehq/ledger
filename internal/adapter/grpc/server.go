@@ -32,7 +32,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -523,21 +522,6 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	// Convert ErrNodeAlreadyInCluster to AlreadyExists (idempotent AddLearner).
 	if errors.Is(err, node.ErrNodeAlreadyInCluster) {
 		return status.Error(codes.AlreadyExists, err.Error())
-	}
-
-	// Convert ErrUnhealthy to Unavailable with ErrorInfo (client should retry later)
-	if errors.Is(err, health.ErrUnhealthy) {
-		st := status.New(codes.Unavailable, err.Error())
-
-		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: domain.ErrReasonClusterUnhealthy,
-			Domain: errorDomain,
-		})
-		if detailErr == nil {
-			return detailed.Err()
-		}
-
-		return st.Err()
 	}
 
 	// Convert NotFoundError to NotFound

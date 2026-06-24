@@ -621,6 +621,16 @@ type HealthConfig struct {
 	// +optional
 	DataThreshold string `json:"dataThreshold,omitempty"`
 
+	// WalResumeThreshold is the WAL usage resume (low-water) threshold for
+	// disk-usage hysteresis. Must be < WalThreshold. Maps to HEALTH_WAL_RESUME_THRESHOLD.
+	// +optional
+	WalResumeThreshold string `json:"walResumeThreshold,omitempty"`
+
+	// DataResumeThreshold is the data usage resume (low-water) threshold for
+	// disk-usage hysteresis. Must be < DataThreshold. Maps to HEALTH_DATA_RESUME_THRESHOLD.
+	// +optional
+	DataResumeThreshold string `json:"dataResumeThreshold,omitempty"`
+
 	// ClockSkewThreshold is the maximum allowed clock skew between nodes.
 	// +optional
 	ClockSkewThreshold string `json:"clockSkewThreshold,omitempty"`

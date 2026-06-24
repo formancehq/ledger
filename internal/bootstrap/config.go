@@ -92,10 +92,12 @@ type TLSConfig struct {
 }
 
 type HealthConfig struct {
-	Interval           time.Duration
-	WALThreshold       float64
-	DataThreshold      float64
-	ClockSkewThreshold time.Duration
+	Interval            time.Duration
+	WALThreshold        float64
+	DataThreshold       float64
+	WALResumeThreshold  float64
+	DataResumeThreshold float64
+	ClockSkewThreshold  time.Duration
 }
 
 // ReadIndexConfig holds configuration for the Pebble read index store.
@@ -277,7 +279,18 @@ func (c Config) Validate() error {
 		return fmt.Errorf("--metrics-naming: %w", err)
 	}
 
-	return c.SnapshotSyncConfig.Validate()
+	if err := c.SnapshotSyncConfig.Validate(); err != nil {
+		return err
+	}
+
+	if err := validateHealthThresholds(c.HealthConfig.WALThreshold, c.HealthConfig.WALResumeThreshold); err != nil {
+		return fmt.Errorf("wal: %w", err)
+	}
+	if err := validateHealthThresholds(c.HealthConfig.DataThreshold, c.HealthConfig.DataResumeThreshold); err != nil {
+		return fmt.Errorf("data: %w", err)
+	}
+
+	return nil
 }
 
 // validateTLSConfig enforces TLS configuration invariants.

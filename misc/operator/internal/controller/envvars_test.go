@@ -866,6 +866,69 @@ func TestBuildEnvVars_ReadIndexBatchSize(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Health resume thresholds (disk-usage hysteresis)
+// ---------------------------------------------------------------------------
+
+func TestBuildEnvVars_HealthResumeThresholds(t *testing.T) {
+	t.Parallel()
+
+	t.Run("wal resume threshold set", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.Health = &ledgerv1alpha1.HealthConfig{
+			WalResumeThreshold: "0.65",
+		}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "HEALTH_WAL_RESUME_THRESHOLD", "0.65")
+		assertNoEnv(t, envs, "HEALTH_DATA_RESUME_THRESHOLD")
+	})
+
+	t.Run("data resume threshold set", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.Health = &ledgerv1alpha1.HealthConfig{
+			DataResumeThreshold: "0.70",
+		}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "HEALTH_DATA_RESUME_THRESHOLD", "0.70")
+		assertNoEnv(t, envs, "HEALTH_WAL_RESUME_THRESHOLD")
+	})
+
+	t.Run("both resume thresholds set alongside block thresholds", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.Health = &ledgerv1alpha1.HealthConfig{
+			WalThreshold:        "0.90",
+			DataThreshold:       "0.85",
+			WalResumeThreshold:  "0.75",
+			DataResumeThreshold: "0.70",
+		}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "HEALTH_WAL_THRESHOLD", "0.90")
+		assertEnv(t, envs, "HEALTH_DATA_THRESHOLD", "0.85")
+		assertEnv(t, envs, "HEALTH_WAL_RESUME_THRESHOLD", "0.75")
+		assertEnv(t, envs, "HEALTH_DATA_RESUME_THRESHOLD", "0.70")
+	})
+
+	t.Run("omitted when empty", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.Health = &ledgerv1alpha1.HealthConfig{}
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertNoEnv(t, envs, "HEALTH_WAL_RESUME_THRESHOLD")
+		assertNoEnv(t, envs, "HEALTH_DATA_RESUME_THRESHOLD")
+	})
+
+	t.Run("nil health omitted", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertNoEnv(t, envs, "HEALTH_WAL_RESUME_THRESHOLD")
+		assertNoEnv(t, envs, "HEALTH_DATA_RESUME_THRESHOLD")
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Full config: all new fields together
 // ---------------------------------------------------------------------------
 

@@ -66,6 +66,11 @@ const (
 	// KindInternal: an invariant on the server side is broken. The caller
 	// cannot fix it. gRPC: Internal. HTTP: 500.
 	KindInternal
+
+	// KindResourceExhausted maps to gRPC ResourceExhausted / HTTP 429. Used for
+	// limit/quota conditions that will not clear on a fast retry (e.g. disk-full
+	// write gate), signalling clients to back off rather than hammer-retry.
+	KindResourceExhausted
 )
 
 // String returns the canonical name of the kind. Used in tests and logging,
@@ -90,6 +95,8 @@ func (k ErrorKind) String() string {
 		return "PermissionDenied"
 	case KindInternal:
 		return "Internal"
+	case KindResourceExhausted:
+		return "ResourceExhausted"
 	default:
 		return fmt.Sprintf("ErrorKind(%d)", int(k))
 	}
@@ -210,10 +217,16 @@ const (
 	ErrReasonNumscriptRuntime              = "NUMSCRIPT_RUNTIME"
 	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
 	ErrReasonNonDeterministicScript        = "NON_DETERMINISTIC_SCRIPT"
-	// ErrReasonClusterUnhealthy is consumed by health.ErrUnhealthy in the gRPC
-	// interceptor; the underlying error lives in internal/infra/health, not
-	// in domain. Kept here as the wire-contract identifier.
-	ErrReasonClusterUnhealthy = "CLUSTER_UNHEALTHY"
+
+	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
+	// request because disk usage is at or above the configured block threshold.
+	// Maps to gRPC ResourceExhausted / HTTP 429.
+	ErrReasonWritesBlockedDiskFull = "WRITES_BLOCKED_DISK_FULL"
+
+	// ErrReasonWritesBlockedClockSkew signals that the write gate rejected the
+	// request because cluster clock skew exceeds the configured threshold.
+	// Maps to gRPC Unavailable / HTTP 503.
+	ErrReasonWritesBlockedClockSkew = "WRITES_BLOCKED_CLOCK_SKEW"
 )
 
 // BusinessError wraps a Describable so it can flow through code paths that
@@ -323,6 +336,31 @@ func (errStaleProposal) Reason() string              { return ErrReasonStaleProp
 func (errStaleProposal) Metadata() map[string]string { return nil }
 
 var ErrStaleProposal Describable = errStaleProposal{}
+
+// ErrWritesBlockedDiskFull is returned by the write gate when disk usage is at
+// or above the configured block threshold. Maps to gRPC ResourceExhausted / HTTP 429.
+type errWritesBlockedDiskFull struct{}
+
+func (errWritesBlockedDiskFull) Error() string {
+	return "writes blocked: disk usage exceeds threshold"
+}
+func (errWritesBlockedDiskFull) Reason() string              { return ErrReasonWritesBlockedDiskFull }
+func (errWritesBlockedDiskFull) Metadata() map[string]string { return nil }
+
+var ErrWritesBlockedDiskFull Describable = errWritesBlockedDiskFull{}
+
+// ErrWritesBlockedClockSkew is returned by the write gate when cluster clock
+// skew exceeds the configured threshold. Maps to gRPC Unavailable / HTTP 503.
+type errWritesBlockedClockSkew struct{}
+
+func (errWritesBlockedClockSkew) Error() string {
+	return "writes blocked: clock skew exceeds threshold"
+}
+func (errWritesBlockedClockSkew) Kind() ErrorKind             { return KindUnavailable }
+func (errWritesBlockedClockSkew) Reason() string              { return ErrReasonWritesBlockedClockSkew }
+func (errWritesBlockedClockSkew) Metadata() map[string]string { return nil }
+
+var ErrWritesBlockedClockSkew Describable = errWritesBlockedClockSkew{}
 
 // ErrNoChapterOpen — no open chapter exists.
 type errNoChapterOpen struct{}

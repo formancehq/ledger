@@ -181,6 +181,8 @@ func grpcCodeToKind(c codes.Code) domain.ErrorKind {
 		return domain.KindAlreadyExists
 	case codes.FailedPrecondition:
 		return domain.KindPrecondition
+	case codes.ResourceExhausted:
+		return domain.KindResourceExhausted
 	case codes.Unavailable:
 		return domain.KindUnavailable
 	case codes.Unauthenticated:

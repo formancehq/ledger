@@ -46,9 +46,10 @@ func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handleClusterz is a cluster-availability probe: returns 200 only when the
-// node is part of a healthy cluster (Raft state healthy, leader elected,
-// disk/clock OK). Use this for external monitoring or any client that wants
-// to wait until the node can actually serve cluster-dependent traffic.
+// node is part of a healthy cluster (Raft state healthy and a leader elected).
+// Disk and clock skew gate writes (see admission), not cluster readiness. Use
+// this for external monitoring or any client that wants to wait until the node
+// can actually serve cluster-dependent traffic.
 func (s *Server) handleClusterz(w http.ResponseWriter, _ *http.Request) {
 	if reasons := s.backend.NotClusterReadyReasons(); len(reasons) > 0 {
 		s.logger.Infof("Cluster readiness check failed: %s", strings.Join(reasons, "; "))

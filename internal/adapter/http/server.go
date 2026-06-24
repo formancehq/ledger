@@ -6,7 +6,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
-	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -50,8 +49,7 @@ type Backend interface {
 type DefaultBackend struct {
 	ctrl.Controller
 
-	Node          *node.Node
-	healthChecker health.Checker
+	Node *node.Node
 }
 
 func (b *DefaultBackend) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
@@ -84,12 +82,13 @@ func (b *DefaultBackend) NotReadyReasons() []string {
 }
 
 // IsClusterReady returns true when the node is part of a healthy cluster: the
-// local Raft state machine is connected (leader or follower), a leader has
-// been elected, and disk/clock health checks pass. This is the strict signal
-// for "this node can serve cluster-dependent traffic"; expose it on /clusterz
-// for monitoring and clients that need cluster-availability semantics.
+// local Raft state machine is connected (leader or follower) and a leader has
+// been elected. Disk and clock skew gate writes (see admission), not cluster
+// readiness. This is the strict signal for "this node can serve
+// cluster-dependent traffic"; expose it on /clusterz for monitoring and
+// clients that need cluster-availability semantics.
 func (b *DefaultBackend) IsClusterReady() bool {
-	return b.Node.IsHealthy() && b.Node.GetLeader() != 0 && b.healthChecker.IsHealthy()
+	return b.Node.IsHealthy() && b.Node.GetLeader() != 0
 }
 
 // NotClusterReadyReasons returns a list of human-readable reasons why the
@@ -99,13 +98,8 @@ func (b *DefaultBackend) NotClusterReadyReasons() []string {
 	if !b.Node.IsHealthy() {
 		reasons = append(reasons, "raft state machine is not healthy")
 	}
-
 	if b.Node.GetLeader() == 0 {
 		reasons = append(reasons, "no leader elected")
-	}
-
-	if !b.healthChecker.IsHealthy() {
-		reasons = append(reasons, "cluster health check failing (disk usage or clock skew)")
 	}
 
 	return reasons
@@ -113,10 +107,9 @@ func (b *DefaultBackend) NotClusterReadyReasons() []string {
 
 var _ Backend = (*DefaultBackend)(nil)
 
-func NewDefaultBackend(node *node.Node, ctrl ctrl.Controller, healthChecker health.Checker) *DefaultBackend {
+func NewDefaultBackend(node *node.Node, ctrl ctrl.Controller) *DefaultBackend {
 	return &DefaultBackend{
-		Node:          node,
-		Controller:    ctrl,
-		healthChecker: healthChecker,
+		Node:       node,
+		Controller: ctrl,
 	}
 }

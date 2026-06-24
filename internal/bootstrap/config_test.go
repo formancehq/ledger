@@ -48,6 +48,12 @@ func validBaseConfig() Config {
 			RetryCount:     5,
 			FileRetryCount: 3,
 		},
+		HealthConfig: HealthConfig{
+			WALThreshold:        0.8,
+			DataThreshold:       0.8,
+			WALResumeThreshold:  0.75,
+			DataResumeThreshold: 0.75,
+		},
 	}
 }
 

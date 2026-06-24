@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -204,6 +205,37 @@ func TestValidateOrPersistConfig_SchemaVersionTooNew(t *testing.T) {
 	err = ValidateOrPersistConfig(store, cfg, logger, true)
 	require.Error(t, err)
 	require.ErrorAs(t, err, &schemaErr)
+}
+
+func TestHealthThresholdsHysteresisValidation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		block, resume float64
+		wantErr       bool
+	}{
+		{"valid", 0.8, 0.75, false},
+		{"valid low block", 0.7, 0.65, false},
+		{"resume equals block", 0.8, 0.8, true},
+		{"resume above block", 0.8, 0.85, true},
+		{"resume negative", 0.8, -0.1, true},
+		{"resume zero", 0.8, 0, true},
+		{"block above one", 1.5, 0.75, true},
+		{"block zero", 0, 0, true},
+		{"block NaN", math.NaN(), 0.75, true},
+		{"resume NaN", 0.8, math.NaN(), true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateHealthThresholds(tc.block, tc.resume)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestValidateOrPersistConfig_SchemaVersionTooOld(t *testing.T) {

@@ -2,11 +2,12 @@ package health
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -17,37 +18,46 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
 
-// ErrUnhealthy is returned when the cluster is not healthy (e.g. disk usage or clock skew exceeded threshold).
-var ErrUnhealthy = errors.New("cluster is unhealthy")
-
 // healthCheckCallTimeout is the per-gRPC-call timeout used when checking peer
 // health. It prevents a single unreachable peer from blocking the entire
 // health-check cycle (and therefore blocking shutdown).
 const healthCheckCallTimeout = 5 * time.Second
 
-// Checker is the interface for health checking. It allows consumers (e.g. admission)
-// to query the cluster health without depending on a concrete implementation.
+// WriteGate reports whether writes are currently permitted. A nil return means
+// writes are allowed; a non-nil return is a domain.Describable error
+// (ErrWritesBlockedDiskFull or ErrWritesBlockedClockSkew) identifying why.
 //
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source healthcheck.go -destination healthcheck_generated.go -package health . Checker
-type Checker interface {
-	IsHealthy() bool
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source healthcheck.go -destination healthcheck_generated.go -package health . WriteGate
+type WriteGate interface {
+	CheckWritesAllowed() error
 }
 
-// HealthChecker periodically checks disk usage and clock skew across all cluster nodes.
-// It runs on every node but only performs checks when the node is the leader.
-// The health state is stored and can be queried via IsHealthy().
+// gateState is the write-gate verdict published as one atomic value so
+// CheckWritesAllowed observes both block reasons consistently — no torn read
+// between separate stores during a block-reason transition (e.g. disk recovers
+// below resume while clock skew is newly detected in the same cycle).
+type gateState struct {
+	diskBlocked bool
+	skewBlocked bool
+}
+
+// HealthChecker periodically samples disk usage and clock skew across cluster
+// nodes and maintains the write-gate state (gateState). It runs on every node
+// but only evaluates when this node is the leader: the leader owns the
+// cluster-wide write verdict via its own disk plus peer polls. Readiness does
+// NOT depend on this state (see grpc_health_updater / http).
 type HealthChecker struct {
-	node        *node.Node
+	node        nodeState
 	collector   *diskusage.Collector
 	servicePool *transport.ConnectionPool
 	logger      logging.Logger
 	interval    time.Duration
 
-	walThreshold       float64
-	dataThreshold      float64
+	thresholds         Thresholds
 	clockSkewThreshold time.Duration
 
-	healthy atomic.Bool
+	gate         atomic.Pointer[gateState]
+	pollFailures metric.Int64Counter
 
 	w worker.Worker
 }
@@ -60,9 +70,9 @@ func NewHealthChecker(
 	servicePool *transport.ConnectionPool,
 	logger logging.Logger,
 	interval time.Duration,
-	walThreshold float64,
-	dataThreshold float64,
+	thresholds Thresholds,
 	clockSkewThreshold time.Duration,
+	meter metric.Meter,
 ) *HealthChecker {
 	hc := &HealthChecker{
 		node:               n,
@@ -70,13 +80,22 @@ func NewHealthChecker(
 		servicePool:        servicePool,
 		logger:             logger,
 		interval:           interval,
-		walThreshold:       walThreshold,
-		dataThreshold:      dataThreshold,
+		thresholds:         thresholds,
 		clockSkewThreshold: clockSkewThreshold,
 		w:                  worker.New(),
 	}
-	hc.healthy.Store(true)
 
+	// Callers always pass a real or noop meter (never nil). The constructor
+	// error is ignored per the codebase idiom: modern otel returns a usable
+	// (non-nil) instrument even on error.
+	hc.pollFailures, _ = meter.Int64Counter(
+		"health.disk.poll.failures",
+		metric.WithDescription("Count of failed GetDiskUsage polls to peers (write gate stays fail-open)"),
+	)
+
+	// The gate pointer defaults to nil, which CheckWritesAllowed treats as
+	// fail-open (writes allowed) — the correct safe default before the first
+	// leader evaluation publishes a gateState.
 	return hc
 }
 
@@ -95,9 +114,16 @@ func (hc *HealthChecker) Stop() {
 	hc.w.Stop()
 }
 
-// IsHealthy returns true if the last health check passed (no node exceeded the disk usage threshold).
-func (hc *HealthChecker) IsHealthy() bool {
-	return hc.healthy.Load()
+// CheckWritesAllowed implements WriteGate. It Loads the gate once so both block
+// reasons are read from a single consistent snapshot. A nil gate (before the
+// first leader evaluation) is the safe fail-open default: writes allowed.
+func (hc *HealthChecker) CheckWritesAllowed() error {
+	s := hc.gate.Load()
+	if s == nil {
+		return nil
+	}
+
+	return writeGateErrorForState(s.diskBlocked, s.skewBlocked)
 }
 
 // nodeUsageReport holds the disk usage data for a single node, used for info logging.
@@ -112,13 +138,21 @@ type nodeUsageReport struct {
 	fetchErr    error
 }
 
-// check performs the disk usage check on all nodes if this node is the leader.
-// It updates the healthy state atomically.
+// check samples disk usage and clock skew across all nodes if this node is the
+// leader, then publishes the write-gate state (gateState) as a single atomic swap.
 //
 // stop is the worker's stop channel; it is used to derive a cancellable context
 // so that in-flight gRPC calls are interrupted promptly during shutdown.
 func (hc *HealthChecker) check(stop <-chan struct{}) {
 	if !hc.node.IsLeader() {
+		// Only the leader owns the cluster-wide write verdict (its own disk plus
+		// peer polls). A node that was leader while a volume was full and then
+		// lost leadership must not keep enforcing that stale block — otherwise it
+		// would fail-closed and spuriously reject writes (HTTP 429) until it
+		// becomes leader again. Reset to the safe default; the real verdict is
+		// always re-derived on the current leader.
+		hc.gate.Store(&gateState{})
+
 		return
 	}
 
@@ -136,17 +170,20 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	}()
 
 	var reports []nodeUsageReport
+	var samples []VolumeSample
+	skewExceeded := false
 
 	localWalUsed := uint64(hc.collector.WALVolume.UsedBytes())
 	localWalTotal := uint64(hc.collector.WALVolume.TotalBytes())
 	localDataUsed := uint64(hc.collector.DataVolume.UsedBytes())
 	localDataTotal := uint64(hc.collector.DataVolume.TotalBytes())
 
-	healthy := !hc.exceedsThreshold(
-		hc.node.GetNodeID(),
-		localWalUsed, localWalTotal,
-		localDataUsed, localDataTotal,
-	)
+	hc.logIfAtBlock(hc.node.GetNodeID(), localWalUsed, localWalTotal, localDataUsed, localDataTotal)
+
+	samples = append(samples, VolumeSample{
+		WALFraction:  safeFraction(localWalUsed, localWalTotal),
+		DataFraction: safeFraction(localDataUsed, localDataTotal),
+	})
 
 	reports = append(reports, nodeUsageReport{
 		nodeID:      hc.node.GetNodeID(),
@@ -186,6 +223,8 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				"error":   err,
 			}).Errorf("Failed to get disk usage from peer")
 
+			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.Int64("node_id", int64(peerID))))
+
 			reports = append(reports, nodeUsageReport{
 				nodeID:   peerID,
 				fetchErr: err,
@@ -196,9 +235,12 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			dataUsed := resp.GetDataVolume().GetUsedBytes()
 			dataTotal := resp.GetDataVolume().GetTotalBytes()
 
-			if hc.exceedsThreshold(peerID, walUsed, walTotal, dataUsed, dataTotal) {
-				healthy = false
-			}
+			hc.logIfAtBlock(peerID, walUsed, walTotal, dataUsed, dataTotal)
+
+			samples = append(samples, VolumeSample{
+				WALFraction:  safeFraction(walUsed, walTotal),
+				DataFraction: safeFraction(dataUsed, dataTotal),
+			})
 
 			reports = append(reports, nodeUsageReport{
 				nodeID:      peerID,
@@ -214,22 +256,35 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		// Check clock skew
 		if hc.clockSkewThreshold > 0 {
 			if hc.exceedsClockSkew(baseCtx, client, peerID) {
-				healthy = false
+				skewExceeded = true
 			}
 		}
 	}
 
-	hc.healthy.Store(healthy)
+	// Publish both block reasons as a single gateState swap so CheckWritesAllowed
+	// can never observe a torn intermediate state (e.g. disk cleared but skew not
+	// yet set) during a block-reason transition. The disk hysteresis read of the
+	// previous state (prev.diskBlocked below) is race-free without a lock because
+	// check() runs only on the single worker goroutine — it is the sole writer of
+	// the gate. CheckWritesAllowed only ever Loads it.
+	var prevDiskBlocked bool
+	if prev := hc.gate.Load(); prev != nil {
+		prevDiskBlocked = prev.diskBlocked
+	}
 
-	hc.logDiskUsageSummary(reports, healthy)
+	hc.gate.Store(&gateState{
+		diskBlocked: hc.thresholds.NextDiskBlocked(prevDiskBlocked, samples),
+		skewBlocked: skewExceeded,
+	})
+
+	hc.logDiskUsageSummary(reports)
 }
 
 // logDiskUsageSummary logs an info-level message summarizing disk usage across all nodes.
-func (hc *HealthChecker) logDiskUsageSummary(reports []nodeUsageReport, healthy bool) {
+func (hc *HealthChecker) logDiskUsageSummary(reports []nodeUsageReport) {
 	for _, r := range reports {
 		fields := map[string]any{
 			"node_id": r.nodeID,
-			"healthy": healthy,
 		}
 
 		if r.fetchErr != nil {
@@ -258,14 +313,24 @@ func safePercent(used, total uint64) float64 {
 	return float64(used) / float64(total) * 100
 }
 
-// exceedsThreshold checks the WAL and data volume usage for a given node,
-// logs a warning if either exceeds its respective threshold, and returns true if so.
-func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, dataUsed, dataTotal uint64) bool {
-	exceeded := false
+// safeFraction returns used/total in [0,1], or 0 when total is zero.
+func safeFraction(used, total uint64) float64 {
+	if total == 0 {
+		return 0
+	}
 
+	return float64(used) / float64(total)
+}
+
+// logIfAtBlock emits the warning + antithesis assert for any volume of a node
+// that is at or above its block threshold. It has no return value: the
+// block/resume verdict is owned by Thresholds.NextDiskBlocked; this method
+// exists purely to preserve the per-volume observability (loud signal when a
+// volume crosses the high-water mark).
+func (hc *HealthChecker) logIfAtBlock(nodeID uint64, walUsed, walTotal, dataUsed, dataTotal uint64) {
 	if walTotal > 0 {
 		percent := float64(walUsed) / float64(walTotal)
-		if percent >= hc.walThreshold {
+		if percent >= hc.thresholds.WALBlock {
 			details := map[string]any{
 				"node_id": nodeID,
 				"volume":  "wal",
@@ -277,15 +342,13 @@ func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, data
 			assert.Unreachable("disk usage exceeds threshold", details)
 
 			hc.logger.WithFields(details).
-				Errorf("Disk usage exceeds threshold (%.0f%%)", hc.walThreshold*100)
-
-			exceeded = true
+				Errorf("Disk usage exceeds threshold (%.0f%%)", hc.thresholds.WALBlock*100)
 		}
 	}
 
 	if dataTotal > 0 {
 		percent := float64(dataUsed) / float64(dataTotal)
-		if percent >= hc.dataThreshold {
+		if percent >= hc.thresholds.DataBlock {
 			details := map[string]any{
 				"node_id": nodeID,
 				"volume":  "data",
@@ -297,13 +360,9 @@ func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, data
 			assert.Unreachable("disk usage exceeds threshold", details)
 
 			hc.logger.WithFields(details).
-				Errorf("Disk usage exceeds threshold (%.0f%%)", hc.dataThreshold*100)
-
-			exceeded = true
+				Errorf("Disk usage exceeds threshold (%.0f%%)", hc.thresholds.DataBlock*100)
 		}
 	}
-
-	return exceeded
 }
 
 // exceedsClockSkew queries a peer's physical clock and returns true if the skew

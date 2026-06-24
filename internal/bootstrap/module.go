@@ -568,16 +568,21 @@ func Module() fx.Option {
 					cfg.ClusterID,
 				)
 			},
-			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
+			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
 					n, collector, servicePool,
 					logger,
 					cfg.HealthConfig.Interval,
-					cfg.HealthConfig.WALThreshold,
-					cfg.HealthConfig.DataThreshold,
+					clusterhealth.Thresholds{
+						WALBlock:   cfg.HealthConfig.WALThreshold,
+						WALResume:  cfg.HealthConfig.WALResumeThreshold,
+						DataBlock:  cfg.HealthConfig.DataThreshold,
+						DataResume: cfg.HealthConfig.DataResumeThreshold,
+					},
 					cfg.HealthConfig.ClockSkewThreshold,
+					meterProvider.Meter("health"),
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
 			keystore.NewKeyStore,
 			state.NewSharedState,
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"events"`)),
@@ -608,8 +613,8 @@ func Module() fx.Option {
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig) http.Handler {
 				return httpcompat.NewHandler(logger, backend, authCfg)
 			},
-			func(node *node.Node, ctrl ctrl.Controller, hc *clusterhealth.HealthChecker) httpcompat.Backend {
-				return httpcompat.NewDefaultBackend(node, ctrl, hc)
+			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
+				return httpcompat.NewDefaultBackend(node, ctrl)
 			},
 			func(
 				cfg Config,
@@ -737,11 +742,11 @@ func Module() fx.Option {
 					servicePool,
 				), defaultCtrl
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`, ``)),
-			func(serviceServer *grpcadp.ServiceServer, n *node.Node, hc *clusterhealth.HealthChecker) *clusterhealth.GRPCHealthUpdater {
+			func(serviceServer *grpcadp.ServiceServer, n *node.Node) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
 
-				return clusterhealth.NewGRPCHealthUpdater(n, hc, hs)
+				return clusterhealth.NewGRPCHealthUpdater(n, hs)
 			},
 		),
 		fx.Decorate(func(

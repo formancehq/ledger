@@ -53,7 +53,7 @@ type Admission struct {
 	store              *dal.Store
 	logger             logging.Logger
 	proposer           Proposer
-	healthChecker      health.Checker
+	writeGate          health.WriteGate
 	keyStore           *keystore.KeyStore
 	sharedState        *state.SharedState
 	receiptSigner      *receipt.Signer
@@ -109,7 +109,7 @@ func NewAdmission(
 	proposer Proposer,
 	builder *plan.Builder,
 	meterProvider metric.MeterProvider,
-	healthChecker health.Checker,
+	writeGate health.WriteGate,
 	keyStore *keystore.KeyStore,
 	sharedState *state.SharedState,
 	attrs *attributes.Attributes,
@@ -122,7 +122,7 @@ func NewAdmission(
 		logger:          logger,
 		proposer:        proposer,
 		builder:         builder,
-		healthChecker:   healthChecker,
+		writeGate:       writeGate,
 		keyStore:        keyStore,
 		sharedState:     sharedState,
 		attrs:           attrs,
@@ -292,8 +292,8 @@ func NewAdmission(
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
 func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-	if !a.healthChecker.IsHealthy() {
-		return nil, health.ErrUnhealthy
+	if err := a.writeGate.CheckWritesAllowed(); err != nil {
+		return nil, err
 	}
 
 	// Wait for the FSM to be caught up after a leadership transition.
@@ -523,6 +523,14 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 // When Barrier returns, all previously proposed entries are guaranteed applied
 // due to Raft log ordering. Returns the Raft commit index at which the barrier was applied.
 func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
+	// Barrier proposes a no-op entry that still appends to the Raft WAL and
+	// consumes consensus capacity like a write, so it must honor the same
+	// write gate as Admit. Without this, a disk-full leader would keep growing
+	// the WAL via Barrier even while normal writes return WRITES_BLOCKED_DISK_FULL.
+	if err := a.writeGate.CheckWritesAllowed(); err != nil {
+		return 0, err
+	}
+
 	cmd := commands.NewCommand() // no orders = no-op
 	proposalData, err := a.marshalCommand(ctx, cmd)
 	if err != nil {

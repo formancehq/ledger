@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -319,12 +320,14 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		// Unexported sentinel struct types; each is exposed once via a
 		// package-level Describable var (ErrColdStorageDisabled, etc.)
 		// and must implement the interface.
-		"validationSentinel":     &validationSentinel{},
-		"errColdStorageDisabled": errColdStorageDisabled{},
-		"errAuditDisabled":       errAuditDisabled{},
-		"errMaintenanceMode":     errMaintenanceMode{},
-		"errStaleProposal":       errStaleProposal{},
-		"errNoChapterOpen":       errNoChapterOpen{},
+		"validationSentinel":        &validationSentinel{},
+		"errColdStorageDisabled":    errColdStorageDisabled{},
+		"errAuditDisabled":          errAuditDisabled{},
+		"errMaintenanceMode":        errMaintenanceMode{},
+		"errStaleProposal":          errStaleProposal{},
+		"errNoChapterOpen":          errNoChapterOpen{},
+		"errWritesBlockedDiskFull":  errWritesBlockedDiskFull{},
+		"errWritesBlockedClockSkew": errWritesBlockedClockSkew{},
 	}
 
 	// Walk the AST to discover every type declaration that starts with
@@ -411,4 +414,18 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 	for name := range instances {
 		require.True(t, discovered[name], "instances entry %s does not match any type declared in internal/domain — remove it", name)
 	}
+}
+
+func TestWriteGateErrorsDescribable(t *testing.T) {
+	t.Parallel()
+
+	// Kind is derived from the reason via the KindForReason switch (master's
+	// single source of truth), not declared per type — read it through Kind().
+	require.Equal(t, KindResourceExhausted, Kind(ErrWritesBlockedDiskFull))
+	require.Equal(t, ErrReasonWritesBlockedDiskFull, ErrWritesBlockedDiskFull.Reason())
+	require.Equal(t, KindUnavailable, Kind(ErrWritesBlockedClockSkew))
+	require.Equal(t, ErrReasonWritesBlockedClockSkew, ErrWritesBlockedClockSkew.Reason())
+
+	wrapped := fmt.Errorf("admission: %w", ErrWritesBlockedDiskFull)
+	require.ErrorIs(t, wrapped, ErrWritesBlockedDiskFull)
 }

@@ -31,6 +31,8 @@ func kindToHTTPStatus(k domain.ErrorKind) int {
 		return http.StatusForbidden
 	case domain.KindInternal:
 		return http.StatusInternalServerError
+	case domain.KindResourceExhausted:
+		return http.StatusTooManyRequests
 	}
 
 	// Unreachable when the exhaustive linter is enabled.

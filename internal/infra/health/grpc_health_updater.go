@@ -17,8 +17,7 @@ const grpcHealthUpdateInterval = 5 * time.Second
 // (used by k8s gRPC probes or grpc-health-probe) reflect actual readiness
 // rather than always reporting SERVING.
 type GRPCHealthUpdater struct {
-	node         *node.Node
-	checker      Checker
+	node         nodeState
 	healthServer *health.Server
 	interval     time.Duration
 	w            worker.Worker
@@ -26,10 +25,9 @@ type GRPCHealthUpdater struct {
 
 // NewGRPCHealthUpdater creates a new updater that will poll readiness at the
 // given interval and set the gRPC serving status on healthServer.
-func NewGRPCHealthUpdater(n *node.Node, checker Checker, healthServer *health.Server) *GRPCHealthUpdater {
+func NewGRPCHealthUpdater(n *node.Node, healthServer *health.Server) *GRPCHealthUpdater {
 	return &GRPCHealthUpdater{
 		node:         n,
-		checker:      checker,
 		healthServer: healthServer,
 		interval:     grpcHealthUpdateInterval,
 		w:            worker.New(),
@@ -50,7 +48,7 @@ func (u *GRPCHealthUpdater) Stop() {
 }
 
 func (u *GRPCHealthUpdater) update() {
-	ready := u.node.IsHealthy() && u.node.GetLeader() != 0 && u.checker.IsHealthy()
+	ready := u.node.IsHealthy() && u.node.GetLeader() != 0
 
 	status := healthpb.HealthCheckResponse_NOT_SERVING
 	if ready {

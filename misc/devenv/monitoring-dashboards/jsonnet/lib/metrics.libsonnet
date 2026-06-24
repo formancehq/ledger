@@ -147,6 +147,11 @@
     cache_misses: 'readindex.cache.misses',
   },
 
+  // health — internal/infra/health/healthcheck.go
+  health:: {
+    disk_poll_failures: 'health.disk.poll.failures',
+  },
+
   // storage (custom — disk usage) — internal/infra/monitoring/diskusage/diskusage.go
   storage:: {
     disk_volume_bytes: 'storage.disk.volume.bytes',

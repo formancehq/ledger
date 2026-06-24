@@ -12,6 +12,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+func TestKindResourceExhaustedMapsTo429(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, http.StatusTooManyRequests, kindToHTTPStatus(domain.KindResourceExhausted))
+}
+
 func TestHandleError(t *testing.T) {
 	t.Parallel()
 

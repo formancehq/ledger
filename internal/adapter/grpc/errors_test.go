@@ -17,7 +17,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -662,16 +661,29 @@ func TestConvertToGRPCError_ColdStorageDisabled(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 }
 
-func TestConvertToGRPCError_ClusterUnhealthy(t *testing.T) {
+func TestConvertToGRPCError_WritesBlockedDiskFull(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(health.ErrUnhealthy, testLogger())
+	grpcErr := convertToGRPCError(domain.ErrWritesBlockedDiskFull, testLogger())
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.ResourceExhausted, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonWritesBlockedDiskFull, info.GetReason())
+	require.Equal(t, errorDomain, info.GetDomain())
+}
+
+func TestConvertToGRPCError_WritesBlockedClockSkew(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(domain.ErrWritesBlockedClockSkew, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.Unavailable, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonClusterUnhealthy, info.GetReason())
+	require.Equal(t, domain.ErrReasonWritesBlockedClockSkew, info.GetReason())
 	require.Equal(t, errorDomain, info.GetDomain())
 }
 
@@ -709,6 +721,11 @@ func TestConvertToGRPCError_AlreadyGRPCStatus(t *testing.T) {
 	original := status.Error(codes.Internal, "already grpc")
 	grpcErr := convertToGRPCError(original, testLogger())
 	require.Equal(t, original, grpcErr)
+}
+
+func TestKindResourceExhaustedMapsToGRPC(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, codes.ResourceExhausted, kindToGRPCCode(domain.KindResourceExhausted))
 }
 
 // extractErrorInfo extracts the ErrorInfo detail from a gRPC status.

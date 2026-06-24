@@ -1430,12 +1430,22 @@ spec:
                     description: ClockSkewThreshold is the maximum allowed clock skew
                       between nodes.
                     type: string
+                  dataResumeThreshold:
+                    description: |-
+                      DataResumeThreshold is the data usage resume (low-water) threshold for
+                      disk-usage hysteresis. Must be < DataThreshold. Maps to HEALTH_DATA_RESUME_THRESHOLD.
+                    type: string
                   dataThreshold:
                     description: DataThreshold is the data volume usage threshold
                       (0.0-1.0).
                     type: string
                   interval:
                     description: Interval between health checks.
+                    type: string
+                  walResumeThreshold:
+                    description: |-
+                      WalResumeThreshold is the WAL usage resume (low-water) threshold for
+                      disk-usage hysteresis. Must be < WalThreshold. Maps to HEALTH_WAL_RESUME_THRESHOLD.
                     type: string
                   walThreshold:
                     description: WalThreshold is the WAL volume usage threshold (0.0-1.0).

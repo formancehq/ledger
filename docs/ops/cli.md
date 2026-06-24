@@ -3979,6 +3979,59 @@ ledger run --admission-metrics [other flags...]
 
 ---
 
+### Server Health Check Flags
+
+Configure disk-usage and clock-skew monitoring. The health checker runs on the cluster leader and polls all peer nodes at the configured interval. Disk-usage and clock-skew conditions gate **writes only** — a node that exceeds a threshold stays `Ready` and continues serving reads; only write commands are rejected.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--health-check-interval` | duration | `30s` | Interval between health-check polls |
+| `--health-wal-threshold` | float64 | `0.8` | WAL volume usage fraction (0.0–1.0) at which writes are blocked (high-water / block mark) |
+| `--health-data-threshold` | float64 | `0.8` | Data volume usage fraction (0.0–1.0) at which writes are blocked (high-water / block mark) |
+| `--health-wal-resume-threshold` | float64 | `0.75` | WAL volume usage fraction below which a blocked write gate re-opens (low-water / resume mark). Must be `< --health-wal-threshold` |
+| `--health-data-resume-threshold` | float64 | `0.75` | Data volume usage fraction below which a blocked write gate re-opens (low-water / resume mark). Must be `< --health-data-threshold` |
+| `--health-clock-skew-threshold` | duration | `500ms` | Maximum allowed clock skew between nodes before writes are blocked (0 to disable) |
+
+#### Hysteresis (resume thresholds)
+
+The block and resume thresholds form a hysteresis band that prevents rapid oscillation when disk usage hovers near the limit. Once the write gate opens (usage drops below the resume mark), it stays open until usage climbs back to the block mark.
+
+```
+writes blocked ──────────────── block mark (e.g. 0.80)
+                    hysteresis band
+writes resume ──────────────── resume mark (e.g. 0.75)
+```
+
+The constraint `resume < block` is validated at startup; the server refuses to start if either pair violates it.
+
+#### Write-gate error semantics
+
+When the write gate is active, write commands are rejected with a structured gRPC/HTTP error:
+
+| Condition | gRPC status | HTTP status | `ErrorInfo.reason` |
+|-----------|-------------|-------------|-------------------|
+| Disk full (WAL or data volume at or above block mark) | `ResourceExhausted` | 429 | `WRITES_BLOCKED_DISK_FULL` |
+| Clock skew (any peer exceeds `--health-clock-skew-threshold`) | `Unavailable` | 503 | `WRITES_BLOCKED_CLOCK_SKEW` |
+
+The node remains `Ready` (gRPC health: `SERVING`) and continues to serve reads in both cases. Readiness is unaffected by disk usage and clock skew.
+
+```bash
+# Default: block at 80%, resume at 75%, check every 30s
+ledger run [other flags...]
+
+# Tighter band: block at 90%, resume at 85%
+ledger run --health-wal-threshold 0.9 --health-wal-resume-threshold 0.85 \
+  --health-data-threshold 0.9 --health-data-resume-threshold 0.85 [other flags...]
+
+# More frequent health checks
+ledger run --health-check-interval 10s [other flags...]
+
+# Disable clock-skew gating
+ledger run --health-clock-skew-threshold 0 [other flags...]
+```
+
+---
+
 ### Server Metrics Naming Flag
 
 | Flag | Type | Default | Description |

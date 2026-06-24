@@ -106,7 +106,8 @@ paths:
       summary: Cluster-availability probe
       description: |
         Returns 200 only when the node is part of a healthy cluster (Raft state
-        healthy, leader elected, disk/clock OK). Returns 503 otherwise. Use this
+        healthy and a leader elected). Disk and clock skew gate writes (see
+        admission), not cluster readiness. Returns 503 otherwise. Use this
         for external monitoring or any client that needs to wait until the node
         can actually serve cluster-dependent traffic. Kubernetes readiness
         probes should target `/readyz` instead — this endpoint MUST NOT gate

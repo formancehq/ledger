@@ -131,4 +131,52 @@ func TestLoadConfig_DefaultsApplyWhenFlagUnset(t *testing.T) {
 	require.Equal(t, 10, cfg.RaftConfig.ElectionTick)
 	require.Equal(t, 1, cfg.RaftConfig.HeartbeatTick)
 	require.Equal(t, 100*time.Millisecond, cfg.RaftConfig.TickInterval)
+	// Resume thresholds, unset, derive from the block defaults (0.8 * 0.9375),
+	// reproducing the shipped 0.75 default exactly.
+	require.InDelta(t, 0.75, cfg.HealthConfig.WALResumeThreshold, 1e-9)
+	require.InDelta(t, 0.75, cfg.HealthConfig.DataResumeThreshold, 1e-9)
+}
+
+// TestLoadConfig_ResumeThresholdDerivedFromBlock pins the upgrade-safety fix:
+// when an operator lowered a block threshold below the old fixed 0.75 resume
+// default and did not set the new resume flag, a static 0.75 default would make
+// resume >= block and Config.Validate reject startup. The resume default now
+// tracks the block threshold so the gap stays valid for any block.
+func TestLoadConfig_ResumeThresholdDerivedFromBlock(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRunCommand()
+	require.NoError(t, cmd.Flags().Set("node-id", "1"))
+	// Lower the block thresholds below the old fixed 0.75 resume default.
+	require.NoError(t, cmd.Flags().Set("health-wal-threshold", "0.7"))
+	require.NoError(t, cmd.Flags().Set("health-data-threshold", "0.6"))
+
+	cfg, err := LoadConfig(context.Background(), cmd)
+	require.NoError(t, err)
+
+	require.InDelta(t, 0.7*0.9375, cfg.HealthConfig.WALResumeThreshold, 1e-9)
+	require.InDelta(t, 0.6*0.9375, cfg.HealthConfig.DataResumeThreshold, 1e-9)
+	// The derived resume stays strictly between 0 and its block mark, so the
+	// pair Config.Validate enforces (0 < resume < block) holds.
+	require.Greater(t, cfg.HealthConfig.WALResumeThreshold, 0.0)
+	require.Less(t, cfg.HealthConfig.WALResumeThreshold, cfg.HealthConfig.WALThreshold)
+	require.Greater(t, cfg.HealthConfig.DataResumeThreshold, 0.0)
+	require.Less(t, cfg.HealthConfig.DataResumeThreshold, cfg.HealthConfig.DataThreshold)
+}
+
+// TestLoadConfig_ResumeThresholdExplicitHonored confirms an explicitly-set
+// resume flag is used verbatim instead of the derived value.
+func TestLoadConfig_ResumeThresholdExplicitHonored(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRunCommand()
+	require.NoError(t, cmd.Flags().Set("node-id", "1"))
+	require.NoError(t, cmd.Flags().Set("health-wal-resume-threshold", "0.5"))
+
+	cfg, err := LoadConfig(context.Background(), cmd)
+	require.NoError(t, err)
+
+	require.InDelta(t, 0.5, cfg.HealthConfig.WALResumeThreshold, 1e-9)
+	// Data resume, left unset, still derives from its block default.
+	require.InDelta(t, 0.75, cfg.HealthConfig.DataResumeThreshold, 1e-9)
 }

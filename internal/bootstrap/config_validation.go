@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -148,6 +149,29 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		}
 		// Return the first mismatch as a fatal error
 		return mismatches[0]
+	}
+
+	return nil
+}
+
+// validateHealthThresholds enforces 0 < resume < block <= 1 (both strictly
+// positive) so disk-usage hysteresis has a real gap between the block
+// (high-water) and resume (low-water) marks. A resume mark of 0 is rejected:
+// usage fractions are always >= 0, so a blocked gate would never observe every
+// volume strictly below 0 and could never clear (see Thresholds.allBelowResume).
+// NaN is rejected explicitly: every ordered comparison with NaN is false, so an
+// unchecked NaN would slip past the range guards below and silently disable the
+// gate (block=NaN: usage >= block is never true; resume=NaN: allBelowResume is
+// always true so a block clears regardless of real usage).
+func validateHealthThresholds(block, resume float64) error {
+	if math.IsNaN(block) || math.IsNaN(resume) {
+		return fmt.Errorf("health thresholds must be finite numbers, got block=%v resume=%v", block, resume)
+	}
+	if block <= 0 || block > 1 {
+		return fmt.Errorf("health threshold %.3f out of range (0,1]", block)
+	}
+	if resume <= 0 || resume >= block {
+		return fmt.Errorf("health resume threshold %.3f must satisfy 0 < resume < block (%.3f)", resume, block)
 	}
 
 	return nil

@@ -161,6 +161,15 @@ func TestBusinessErrorFromGRPC_NonGRPCError(t *testing.T) {
 	require.Nil(t, bizErr)
 }
 
+func TestGRPCCodeToKind_ResourceExhausted(t *testing.T) {
+	t.Parallel()
+
+	// Round-trip symmetry with the server-side kindToGRPCCode: a disk-full /
+	// clock-skew write rejection (KindResourceExhausted) is sent as
+	// codes.ResourceExhausted and must reconstruct to the same Kind client-side.
+	require.Equal(t, domain.KindResourceExhausted, grpcCodeToKind(codes.ResourceExhausted))
+}
+
 func TestBusinessErrorRoundTrip(t *testing.T) {
 	t.Parallel()
 

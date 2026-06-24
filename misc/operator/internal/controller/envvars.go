@@ -202,6 +202,8 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, ag
 		envs = appendIfStr(envs, "HEALTH_CHECK_INTERVAL", spec.Health.Interval)
 		envs = appendIfStr(envs, "HEALTH_WAL_THRESHOLD", spec.Health.WalThreshold)
 		envs = appendIfStr(envs, "HEALTH_DATA_THRESHOLD", spec.Health.DataThreshold)
+		envs = appendIfStr(envs, "HEALTH_WAL_RESUME_THRESHOLD", spec.Health.WalResumeThreshold)
+		envs = appendIfStr(envs, "HEALTH_DATA_RESUME_THRESHOLD", spec.Health.DataResumeThreshold)
 		envs = appendIfStr(envs, "HEALTH_CLOCK_SKEW_THRESHOLD", spec.Health.ClockSkewThreshold)
 	}
 

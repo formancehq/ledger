@@ -724,7 +724,8 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Audit disabled | `FAILED_PRECONDITION` | `AUDIT_DISABLED` | *(none)* |
 | Maintenance mode | `UNAVAILABLE` | `MAINTENANCE_MODE` | *(none)* |
 | Stale proposal | `UNAVAILABLE` | `STALE_PROPOSAL` | *(none)* |
-| Cluster unhealthy | `UNAVAILABLE` | `CLUSTER_UNHEALTHY` | *(none)* |
+| Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
+| Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
 | Cold storage disabled | `FAILED_PRECONDITION` | `COLD_STORAGE_DISABLED` | *(none)* |
 | No chapter open | `FAILED_PRECONDITION` | `NO_CHAPTER_OPEN` | *(none)* |
 | Chapter not found | `NOT_FOUND` | `CHAPTER_NOT_FOUND` | `chapterId` |
@@ -768,6 +769,7 @@ The REST adapter uses the same `Describable.Reason()` as the JSON `errorCode` fi
 | `KindConflict` | 409 Conflict |
 | `KindPrecondition` | 400 Bad Request |
 | `KindUnavailable` | 503 Service Unavailable |
+| `KindResourceExhausted` | 429 Too Many Requests |
 | `KindUnauthenticated` | 401 Unauthorized |
 | `KindPermissionDenied` | 403 Forbidden |
 | `KindInternal` | 500 Internal Server Error |

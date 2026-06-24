@@ -52,6 +52,8 @@ func kindToGRPCCode(k domain.ErrorKind) codes.Code {
 		return codes.PermissionDenied
 	case domain.KindInternal:
 		return codes.Internal
+	case domain.KindResourceExhausted:
+		return codes.ResourceExhausted
 	}
 
 	// Unreachable: every Kind defined in domain has a branch above, and
