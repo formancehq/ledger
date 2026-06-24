@@ -89,11 +89,13 @@ func (c *FilteredCursorE[T]) Next() (T, error) {
 		item, err := c.inner.Next()
 		if err != nil {
 			var zero T
+
 			return zero, err
 		}
 		ok, perr := c.predicate(item)
 		if perr != nil {
 			var zero T
+
 			return zero, perr
 		}
 		if ok {

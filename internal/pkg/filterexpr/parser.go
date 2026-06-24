@@ -408,6 +408,7 @@ func (a *AuditCond) toProto() (*commonpb.QueryFilter, error) {
 
 func auditQF(field commonpb.AuditField, cond *commonpb.AuditCondition) *commonpb.QueryFilter {
 	cond.Field = field
+
 	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: cond}}
 }
 
@@ -423,6 +424,7 @@ func (a *AuditCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilte
 		if err != nil {
 			return 0, fmt.Errorf("audit field %q requires an unsigned integer, got %q", a.Field, v.resolve())
 		}
+
 		return n, nil
 	}
 	switch {
@@ -437,8 +439,8 @@ func (a *AuditCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilte
 		if err != nil {
 			return nil, err
 		}
-		min, max := n, n
-		eq := auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: &commonpb.UintCondition{Min: &min, Max: &max}}})
+		eq := auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: &commonpb.UintCondition{Min: &n, Max: &n}}})
+
 		return auditNot(eq), nil
 	case op.Gt != nil:
 		n, err := parse(op.Gt)
@@ -477,6 +479,7 @@ func (a *AuditCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilte
 	default:
 		return nil, fmt.Errorf("audit field %q does not support this operator", a.Field)
 	}
+
 	return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: uc}}), nil
 }
 
@@ -497,6 +500,7 @@ func (a *AuditCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFil
 		for i, v := range op.In {
 			filters[i] = mk(v)
 		}
+
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: filters}}}, nil
 	default:
 		return nil, fmt.Errorf("audit field %q only supports ==, != and in", a.Field)
@@ -511,6 +515,7 @@ func (a *AuditCond) boolToProto(field commonpb.AuditField) (*commonpb.QueryFilte
 	if raw != "true" && raw != "false" {
 		return nil, fmt.Errorf("audit field %q requires true or false, got %q", a.Field, raw)
 	}
+
 	return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_BoolCond{
 		BoolCond: &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: raw == "true"}},
 	}}), nil

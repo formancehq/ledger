@@ -667,7 +667,6 @@ func TestFormat_AuditRoundTrip(t *testing.T) {
 		`audit[order_type] == apply`,
 	}
 	for _, in := range inputs {
-		in := in
 		t.Run(in, func(t *testing.T) {
 			t.Parallel()
 			f, err := Parse(in)

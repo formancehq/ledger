@@ -300,6 +300,7 @@ func TestListAuditEntries_ForwardsFilter(t *testing.T) {
 		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Not(gomock.Nil())).
 		DoAndReturn(func(_ context.Context, _ *uint64, _ uint32, f *commonpb.QueryFilter) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			captured = f
+
 			return page[auditpb.AuditEntry](), nil
 		})
 

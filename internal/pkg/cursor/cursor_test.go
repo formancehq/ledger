@@ -182,6 +182,7 @@ func TestNewFilteredCursorE_PropagatesError(t *testing.T) {
 		if v == 2 {
 			return false, sentinel
 		}
+
 		return true, nil
 	})
 	got, err := c.Next()

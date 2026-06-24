@@ -25,6 +25,7 @@ func auditFilter(field commonpb.AuditField, cond any) *commonpb.QueryFilter {
 	case *commonpb.BoolCondition:
 		ac.Condition = &commonpb.AuditCondition_BoolCond{BoolCond: c}
 	}
+
 	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: ac}}
 }
 
@@ -77,7 +78,6 @@ func TestCompileAuditPredicate_HeaderFields(t *testing.T) {
 		{"log seq on failure", auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintEq(103)), failure, false},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			pred, needsItems, err := CompileAuditPredicate(tc.filter)
@@ -130,7 +130,6 @@ func TestCompileAuditPredicate_Rejections(t *testing.T) {
 		{"bad outcome value", auditFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, strEq("maybe"))},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, _, err := CompileAuditPredicate(tc.filter)
@@ -143,6 +142,7 @@ func itemWithOrder(t *testing.T, order *raftcmdpb.Order) *auditpb.AuditItem {
 	t.Helper()
 	b, err := proto.Marshal(order)
 	require.NoError(t, err)
+
 	return &auditpb.AuditItem{SerializedOrder: b}
 }
 

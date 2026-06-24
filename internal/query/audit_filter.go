@@ -57,6 +57,7 @@ func (c *auditCompiler) compile(filter *commonpb.QueryFilter, depth int) (AuditP
 		if err != nil {
 			return nil, err
 		}
+
 		return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) bool { return !inner(e, items) }, nil
 	default:
 		return nil, domain.NewFilterCompilationError("unsupported condition for audit target: %T", filter.GetFilter())
@@ -72,12 +73,14 @@ func (c *auditCompiler) compileAnd(and *commonpb.AndFilter, depth int) (AuditPre
 		}
 		preds = append(preds, p)
 	}
+
 	return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) bool {
 		for _, p := range preds {
 			if !p(e, items) {
 				return false
 			}
 		}
+
 		return true
 	}, nil
 }
@@ -91,12 +94,14 @@ func (c *auditCompiler) compileOr(or *commonpb.OrFilter, depth int) (AuditPredic
 		}
 		preds = append(preds, p)
 	}
+
 	return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) bool {
 		for _, p := range preds {
 			if p(e, items) {
 				return true
 			}
 		}
+
 		return false
 	}, nil
 }
@@ -118,6 +123,7 @@ func (c *auditCompiler) compileCondition(cond *commonpb.AuditCondition) (AuditPr
 			if e.GetFailure() == nil {
 				return nil
 			}
+
 			return []string{domain.ReasonString(e.GetFailure().GetReason())}
 		})
 	case commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:
@@ -134,6 +140,7 @@ func (c *auditCompiler) compileCondition(cond *commonpb.AuditCondition) (AuditPr
 		return stringFieldPredicate(cond, func(e *auditpb.AuditEntry) []string { return e.GetLedgers() })
 	case commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:
 		c.needsItems = true
+
 		return orderTypePredicate(cond)
 	default:
 		return nil, domain.NewFilterCompilationError("unsupported audit field: %v", cond.GetField())
@@ -151,6 +158,7 @@ func uintFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEn
 	if err != nil {
 		return nil, err
 	}
+
 	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool {
 		return matchUintBounds(bounds, get(e))
 	}, nil
@@ -166,6 +174,7 @@ func matchUintBounds(b resolvedUintBounds, v uint64) bool {
 	if b.hasMax && v >= b.max { // max is exclusive (half-open)
 		return false
 	}
+
 	return true
 }
 
@@ -181,6 +190,7 @@ func logSequencePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error)
 	if err != nil {
 		return nil, err
 	}
+
 	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool {
 		s := e.GetSuccess()
 		if s == nil {
@@ -197,6 +207,7 @@ func logSequencePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error)
 		if bounds.hasMax && lo >= bounds.max {
 			return false
 		}
+
 		return true
 	}, nil
 }
@@ -227,6 +238,7 @@ func stringFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.Audit
 		return nil, domain.NewFilterCompilationError("audit field %v requires a string condition", cond.GetField())
 	}
 	want := sc.GetHardcoded()
+
 	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool {
 		return slices.Contains(get(e), want)
 	}, nil
@@ -238,6 +250,7 @@ func boolFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEn
 		return nil, domain.NewFilterCompilationError("audit field %v requires a bool condition", cond.GetField())
 	}
 	want := bc.GetHardcoded()
+
 	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool {
 		return get(e) == want
 	}, nil
@@ -253,6 +266,7 @@ func orderTypePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error) {
 		return nil, domain.NewFilterCompilationError("audit field order_type requires a string condition")
 	}
 	want := sc.GetHardcoded()
+
 	return func(_ *auditpb.AuditEntry, items []*auditpb.AuditItem) bool {
 		for _, it := range items {
 			order := &raftcmdpb.Order{}
@@ -263,6 +277,7 @@ func orderTypePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error) {
 				return true
 			}
 		}
+
 		return false
 	}, nil
 }
@@ -291,5 +306,6 @@ func activeOneofName(m protoreflect.Message, oneof protoreflect.Name) string {
 	if fd == nil {
 		return ""
 	}
+
 	return string(fd.Name())
 }
