@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
 	"math/big"
 	"strconv"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -26,6 +28,18 @@ import (
 // collectAuditEntries collects all audit entries from the streaming RPC.
 func collectAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListAuditEntriesRequest) ([]*auditpb.AuditEntry, error) {
 	return actions.ListAuditEntriesWithRequest(ctx, client, req)
+}
+
+// auditFilterRequest builds a ListAuditEntriesRequest carrying the given filter
+// DSL expression in options.filter (EN-1305: server-side audit narrowing now
+// flows exclusively through the generic filter, not bespoke request fields).
+func auditFilterRequest(expr string) *servicepb.ListAuditEntriesRequest {
+	parsed, err := filterexpr.Parse(expr)
+	Expect(err).To(Succeed())
+
+	return &servicepb.ListAuditEntriesRequest{
+		Options: &commonpb.ListOptions{Filter: parsed},
+	}
 }
 
 // decodeOrder unmarshals AuditItem.serialized_order back into a typed Order.
@@ -106,9 +120,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Filter by the original ledger — should not include the second ledger's entries
-		filtered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			Ledger: ledgerName,
-		})
+		filtered, err := collectAuditEntries(sharedCtx, sharedClient,
+			auditFilterRequest(`audit[ledger] == "`+ledgerName+`"`))
 		Expect(err).To(Succeed())
 
 		for _, entry := range filtered {
@@ -124,9 +137,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		}
 
 		// Filter by the other ledger — should include at least 2 entries (create + transaction)
-		otherFiltered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			Ledger: otherLedger,
-		})
+		otherFiltered, err := collectAuditEntries(sharedCtx, sharedClient,
+			auditFilterRequest(`audit[ledger] == "`+otherLedger+`"`))
 		Expect(err).To(Succeed())
 		Expect(len(otherFiltered)).To(BeNumerically(">=", 2))
 	})
@@ -145,9 +157,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(HaveOccurred())
 
 		// Get failures only — every returned entry must be a failure
-		failures, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			FailuresOnly: true,
-		})
+		failures, err := collectAuditEntries(sharedCtx, sharedClient,
+			auditFilterRequest(`audit[outcome] == failure`))
 		Expect(err).To(Succeed())
 		Expect(failures).NotTo(BeEmpty())
 		for _, entry := range failures {
@@ -321,9 +332,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		}, nil, nil)))
 		Expect(err).To(HaveOccurred())
 
-		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			FailuresOnly: true,
-		})
+		entries, err := collectAuditEntries(sharedCtx, sharedClient,
+			auditFilterRequest(`audit[outcome] == failure`))
 		Expect(err).To(Succeed())
 		Expect(entries).NotTo(BeEmpty())
 
@@ -408,9 +418,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 	})
 
 	It("Should have ledgers field populated on list entries when filtering by ledger", func() {
-		filtered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			Ledger: ledgerName,
-		})
+		filtered, err := collectAuditEntries(sharedCtx, sharedClient,
+			auditFilterRequest(`audit[ledger] == "`+ledgerName+`"`))
 		Expect(err).To(Succeed())
 		Expect(filtered).NotTo(BeEmpty())
 
@@ -443,5 +452,171 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(status.Code(err)).To(Equal(codes.NotFound))
+	})
+})
+
+// This suite proves the options.filter DSL narrows audit results server-side
+// (CompileAuditPredicate runs in the controller scan, not client-side) and
+// rejects conditions that do not target the audit log. It runs on a dedicated
+// single node so sequence numbers and per-filter counts are deterministic,
+// uncontaminated by the shared suite's accumulated entries.
+var _ = Describe("Audit Log filter DSL", Ordered, func() {
+	const (
+		ledgerA = "audit-filter-a"
+		ledgerB = "audit-filter-b"
+	)
+
+	var (
+		filterCtx    context.Context
+		filterClient servicepb.BucketServiceClient
+	)
+
+	// listFiltered scans audit entries through the options.filter DSL.
+	listFiltered := func(expr string) []*auditpb.AuditEntry {
+		entries, err := collectAuditEntries(filterCtx, filterClient, auditFilterRequest(expr))
+		Expect(err).To(Succeed())
+
+		return entries
+	}
+
+	BeforeAll(func() {
+		filterCtx, filterClient, _ = testutil.SetupSingleNode(9110, 8110)
+
+		// Two ledgers created in separate Apply calls so each audit entry targets
+		// exactly one ledger (a single multi-ledger batch would produce one entry
+		// whose Ledgers slice contains both, which would defeat the leak check).
+		_, err := filterClient.Apply(filterCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerA, nil)))
+		Expect(err).To(Succeed())
+
+		_, err = filterClient.Apply(filterCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerB, nil)))
+		Expect(err).To(Succeed())
+
+		// ... a successful transaction on ledgerA (success entry) ...
+		_, err = filterClient.Apply(filterCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+			}, nil, nil),
+		))
+		Expect(err).To(Succeed())
+
+		// ... and a failing transaction on ledgerB (failure entry).
+		_, err = filterClient.Apply(filterCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerB, []*commonpb.Posting{
+				actions.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
+			}, nil, nil),
+		))
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("narrows to failures only via audit[outcome] == failure", func() {
+		failures := listFiltered(`audit[outcome] == failure`)
+		Expect(failures).NotTo(BeEmpty())
+		for _, e := range failures {
+			Expect(e.GetFailure()).NotTo(BeNil(), "expected only failure entries")
+			Expect(e.GetSuccess()).To(BeNil())
+		}
+
+		successes := listFiltered(`audit[outcome] == success`)
+		Expect(successes).NotTo(BeEmpty())
+		for _, e := range successes {
+			Expect(e.GetSuccess()).NotTo(BeNil(), "expected only success entries")
+		}
+	})
+
+	It("narrows by targeted ledger via audit[ledger] == X", func() {
+		onA := listFiltered(`audit[ledger] == "` + ledgerA + `"`)
+		Expect(onA).NotTo(BeEmpty())
+		for _, e := range onA {
+			Expect(e.GetLedgers()).To(ContainElement(ledgerA))
+			Expect(e.GetLedgers()).NotTo(ContainElement(ledgerB),
+				"ledgerA filter must not leak ledgerB-only entries")
+		}
+
+		onB := listFiltered(`audit[ledger] == "` + ledgerB + `"`)
+		Expect(onB).NotTo(BeEmpty())
+		for _, e := range onB {
+			Expect(e.GetLedgers()).To(ContainElement(ledgerB))
+		}
+	})
+
+	It("narrows by sequence range via audit[seq] between A and B", func() {
+		all := listFiltered(`audit[seq] >= 0`)
+		Expect(len(all)).To(BeNumerically(">=", 3))
+
+		// Pick a window strictly inside the populated range so we prove the
+		// bound is honored (not just that everything comes back).
+		lo := all[0].GetSequence()
+		hi := all[len(all)-1].GetSequence()
+		Expect(hi).To(BeNumerically(">", lo))
+
+		windowed := listFiltered(fmt.Sprintf("audit[seq] between %d and %d", lo+1, hi))
+		Expect(windowed).NotTo(BeEmpty())
+		Expect(len(windowed)).To(BeNumerically("<", len(all)),
+			"a sub-range must return fewer entries than the full scan")
+		for _, e := range windowed {
+			Expect(e.GetSequence()).To(BeNumerically(">=", lo+1))
+			Expect(e.GetSequence()).To(BeNumerically("<=", hi))
+		}
+	})
+
+	It("narrows by order payload type via audit[order_type] == apply", func() {
+		// Apply (create transaction) entries exist; create_ledger entries exist
+		// too. The order_type filter loads AuditItems per entry to match, so a
+		// non-empty, correct result proves the needsItems path works server-side.
+		applies := listFiltered(`audit[order_type] == apply`)
+		Expect(applies).NotTo(BeEmpty(), "expected at least the success/failure tx entries")
+		for _, e := range applies {
+			full, err := filterClient.GetAuditEntry(filterCtx, &servicepb.GetAuditEntryRequest{
+				Sequence: e.GetSequence(),
+			})
+			Expect(err).To(Succeed())
+
+			hasApply := false
+			for _, item := range full.GetItems() {
+				if decodeOrder(item).GetLedgerScoped().GetApply() != nil {
+					hasApply = true
+
+					break
+				}
+			}
+			Expect(hasApply).To(BeTrue(), "order_type=apply entry must contain an apply order")
+		}
+
+		creates := listFiltered(`audit[order_type] == create_ledger`)
+		Expect(creates).NotTo(BeEmpty())
+		for _, e := range creates {
+			full, err := filterClient.GetAuditEntry(filterCtx, &servicepb.GetAuditEntryRequest{
+				Sequence: e.GetSequence(),
+			})
+			Expect(err).To(Succeed())
+
+			hasCreate := false
+			for _, item := range full.GetItems() {
+				if decodeOrder(item).GetLedgerScoped().GetCreateLedger() != nil {
+					hasCreate = true
+
+					break
+				}
+			}
+			Expect(hasCreate).To(BeTrue(), "order_type=create_ledger entry must contain a create_ledger order")
+		}
+	})
+
+	It("rejects an unsupported (non-audit) condition with InvalidArgument", func() {
+		// metadata[...] is a transaction/account predicate, not an audit field.
+		// CompileAuditPredicate must reject it and the gRPC boundary must map
+		// the FilterCompilationError to InvalidArgument.
+		parsed, err := filterexpr.Parse("metadata[k] == v")
+		Expect(err).To(Succeed())
+
+		stream, err := filterClient.ListAuditEntries(filterCtx, &servicepb.ListAuditEntriesRequest{
+			Options: &commonpb.ListOptions{Filter: parsed},
+		})
+		Expect(err).To(Succeed())
+
+		_, recvErr := stream.Recv()
+		Expect(recvErr).To(HaveOccurred())
+		Expect(status.Code(recvErr)).To(Equal(codes.InvalidArgument),
+			"unsupported audit condition must surface as InvalidArgument")
 	})
 })
