@@ -2149,10 +2149,12 @@ ledgerctl audit list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--failures-only` | `false` | Show only failed entries |
+| `--filter` | | Boolean filter expression targeting the audit log (see [Audit Filter Expressions](#audit-filter-expressions) below) |
+| `--failures-only` | `false` | Shorthand for `--filter 'audit[outcome] == failure'`; show only failed entries |
+| `--ledger` | | Shorthand for `--filter 'audit[ledger] == <name>'`; show entries for a specific ledger |
 | `--expand` | `false` | Expand orders within each audit entry |
 
-Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
+`--failures-only` and `--ledger` combine with `--filter` via AND when all are provided. Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
 
 **Behavior:**
 - Streams audit entries from the server
@@ -2164,6 +2166,7 @@ Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `-
   - Consecutive identical orders are grouped compactly (e.g. `MirrorIngest x500`)
 - If audit is disabled on the server, a warning message is displayed instead of an error
 - When `--page-size N` is set and more entries exist, the command prints `More results available — resume with --cursor <token>` so the listing can be chained
+- Filters are evaluated as **scan-time predicates** on the sequential cold-zone audit log — there is no audit index. Filtering by `order_type` additionally loads each candidate entry's AuditItems lazily (only when the condition is evaluated). Unsupported conditions are rejected with gRPC `InvalidArgument`.
 
 **Example:**
 
@@ -2171,8 +2174,20 @@ Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `-
 # List audit entries
 ledgerctl audit list
 
-# Show only failures
+# Show only failures (shorthand)
 ledgerctl audit list --failures-only
+
+# Show entries for a specific ledger (shorthand)
+ledgerctl audit list --ledger my-ledger
+
+# Combine shorthands with an explicit filter
+ledgerctl audit list --failures-only --ledger my-ledger
+
+# Filter using the DSL directly
+ledgerctl audit list --filter 'audit[outcome] == failure'
+ledgerctl audit list --filter 'audit[caller.subject] == "alice" and audit[ledger] == "main"'
+ledgerctl audit list --filter 'audit[order_type] in (apply, save_numscript)'
+ledgerctl audit list --filter 'audit[seq] between 1000 and 2000'
 
 # Resume after a previous page
 ledgerctl audit list --page-size 20 --cursor <token>
@@ -2182,6 +2197,47 @@ ledgerctl audit list --expand
 
 # Output as JSON
 ledgerctl audit list --json
+```
+
+#### Audit Filter Expressions
+
+The `--filter` flag accepts a boolean expression using `audit[field]` conditions. All conditions are evaluated as scan-time predicates; there is no dedicated audit index.
+
+**Supported fields:**
+
+| DSL key | Meaning | Value kind | Supported operators |
+|---|---|---|---|
+| `seq` | Audit sequence number | uint | `==`, `!=`, `>`, `>=`, `<`, `<=`, `between` |
+| `proposal_id` | Proposal ID | uint | `==`, `!=`, `>`, `>=`, `<`, `<=`, `between` |
+| `timestamp` | Entry timestamp (Unix nanoseconds) | uint | `==`, `!=`, `>`, `>=`, `<`, `<=`, `between` |
+| `log_seq` | Overlaps the produced log-sequence range | uint | `==`, `!=`, `>`, `>=`, `<`, `<=`, `between` |
+| `outcome` | `success` or `failure` | string | `==` |
+| `error_type` | Failure error type (e.g. `INSUFFICIENT_FUNDS`) | string | `==`, `!=`, `in` |
+| `caller.subject` | Caller subject | string | `==`, `!=`, `in` |
+| `caller.scope` | Caller scope (match-any) | string | `==`, `!=`, `in` |
+| `caller.god` | Caller god flag | bool | `== true` / `== false` |
+| `ledger` | Targeted ledger name (match-any) | string | `==`, `!=`, `in` |
+| `order_type` | Order payload variant, e.g. `apply`, `create_ledger`, `save_numscript` (match-any) | string | `==`, `!=`, `in` |
+
+Multiple conditions can be combined with `and`. Unsupported conditions are rejected with gRPC `InvalidArgument`.
+
+**Examples:**
+
+```bash
+# All failures
+--filter 'audit[outcome] == failure'
+
+# A specific caller on a specific ledger
+--filter 'audit[caller.subject] == "alice" and audit[ledger] == "main"'
+
+# Multiple order types
+--filter 'audit[order_type] in (apply, save_numscript)'
+
+# Sequence range
+--filter 'audit[seq] between 1000 and 2000'
+
+# Specific error type
+--filter 'audit[error_type] == INSUFFICIENT_FUNDS'
 ```
 
 **Sample output:**

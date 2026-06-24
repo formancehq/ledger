@@ -712,7 +712,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListNumscripts` | List all saved numscripts | ✅ |
 | `Apply(CloseChapter)` | Close the current open chapter | ✅ |
 | `ListChapters` | Stream all chapters | ✅ |
-| `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
+| `ListAuditEntries` | Stream audit log entries (success + failure); honors `options.filter` with the `QUERY_TARGET_AUDIT` DSL (seq, proposal_id, timestamp, log_seq, outcome, error_type, caller.subject, caller.scope, caller.god, ledger, order_type). Dedicated `failures_only` / `ledger` request fields removed in favor of the filter. Unsupported conditions rejected with `InvalidArgument`. | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination) | ✅ |
 | `GetLog` | Get a single system log by sequence number | ✅ |
