@@ -230,20 +230,22 @@ func logSequencePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error)
 }
 
 // hardcodedAuditString extracts the hardcoded value of cond's StringCondition.
-// It rejects a missing condition and a parameterized ($param) value: audit
-// filters are evaluated at scan time and have no parameter-resolution context,
-// so a Param would otherwise read as GetHardcoded() == "" and silently match
-// the empty string.
+// Like hardcodedAuditBool, it rejects a missing condition and any non-hardcoded
+// value (a $param, or an unset oneof): audit filters are evaluated at scan time
+// with no parameter-resolution context, so a Param — or an unset value, which
+// reads as GetHardcoded() == "" — would otherwise silently match the empty
+// string instead of returning InvalidArgument.
 func hardcodedAuditString(cond *commonpb.AuditCondition, field string) (string, error) {
 	sc := cond.GetStringCond()
 	if sc == nil {
 		return "", domain.NewFilterCompilationError("audit field %s requires a string condition", field)
 	}
-	if _, ok := sc.GetValue().(*commonpb.StringCondition_Param); ok {
+	hc, ok := sc.GetValue().(*commonpb.StringCondition_Hardcoded)
+	if !ok {
 		return "", domain.NewFilterCompilationError("audit field %s does not support parameterized conditions", field)
 	}
 
-	return sc.GetHardcoded(), nil
+	return hc.Hardcoded, nil
 }
 
 // hardcodedAuditBool extracts the hardcoded value of cond's BoolCondition.

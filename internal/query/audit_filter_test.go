@@ -171,6 +171,9 @@ func TestCompileAuditPredicate_Rejections(t *testing.T) {
 		{"parameterized order_type", auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, strParam("t"))},
 		{"parameterized caller.god", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_GOD, boolParam("g"))},
 		{"unset bool oneof caller.god", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_GOD, &commonpb.BoolCondition{})},
+		{"unset string oneof caller.subject", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, &commonpb.StringCondition{})},
+		{"unset string oneof outcome", auditFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, &commonpb.StringCondition{})},
+		{"unset string oneof order_type", auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, &commonpb.StringCondition{})},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
