@@ -43,6 +43,8 @@ func formatFilter(f *commonpb.QueryFilter) (string, int) {
 		return formatNot(v.Not)
 	case *commonpb.QueryFilter_AccountHasAsset:
 		return formatAccountHasAsset(v.AccountHasAsset), precLeaf
+	case *commonpb.QueryFilter_Audit:
+		return formatAuditCondition(v.Audit), precLeaf
 	default:
 		return "<unknown filter>", precLeaf
 	}
@@ -57,6 +59,79 @@ func formatAccountHasAsset(c *commonpb.AccountHasAssetCondition) string {
 	}
 
 	return fmt.Sprintf("has asset %s/%d", c.GetAssetBase(), c.GetPrecision())
+}
+
+// auditFieldNames is the inverse of auditFieldKeys (parser.go): enum -> DSL key.
+// Keep it in sync with auditFieldKeys — it is the single source of truth for the
+// DSL key strings.
+var auditFieldNames = func() map[commonpb.AuditField]string {
+	m := make(map[commonpb.AuditField]string, len(auditFieldKeys))
+	for key, spec := range auditFieldKeys {
+		m[spec.field] = key
+	}
+
+	return m
+}()
+
+func formatAuditCondition(ac *commonpb.AuditCondition) string {
+	key, ok := auditFieldNames[ac.GetField()]
+	if !ok {
+		return "<unknown audit field>"
+	}
+
+	switch cond := ac.GetCondition().(type) {
+	case *commonpb.AuditCondition_StringCond:
+		return fmt.Sprintf("audit[%s] == %s", key, formatStringCondValue(cond.StringCond))
+	case *commonpb.AuditCondition_UintCond:
+		return fmt.Sprintf("audit[%s] %s", key, formatAuditUintCond(cond.UintCond))
+	case *commonpb.AuditCondition_BoolCond:
+		return fmt.Sprintf("audit[%s] == %s", key, formatBoolCondValue(cond.BoolCond))
+	default:
+		return fmt.Sprintf("audit[%s] <unknown>", key)
+	}
+}
+
+// formatAuditUintCond renders the operator+value tail of an audit uint condition
+// (everything after the `audit[key] ` prefix). It mirrors formatUintCondition's
+// equality/single-bound/range logic but without the metadata key prefix, so it
+// can be reused under the `audit[...]` lead.
+func formatAuditUintCond(uc *commonpb.UintCondition) string {
+	// Equality: min == max, both set, no exclusion.
+	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
+		return fmt.Sprintf("== %d", uc.GetMin())
+	}
+
+	hasLow := uc.Min != nil || uc.GetParamMin() != ""
+	hasHigh := uc.Max != nil || uc.GetParamMax() != ""
+
+	if hasLow && hasHigh {
+		return fmt.Sprintf("between %s and %s", formatUintLowInclusive(uc), formatUintHighInclusive(uc))
+	}
+
+	if hasLow {
+		op := ">="
+		if uc.GetMinExclusive() {
+			op = ">"
+		}
+		if uc.GetParamMin() != "" {
+			return fmt.Sprintf("%s $%s", op, uc.GetParamMin())
+		}
+
+		return fmt.Sprintf("%s %d", op, uc.GetMin())
+	}
+	if hasHigh {
+		op := "<="
+		if uc.GetMaxExclusive() {
+			op = "<"
+		}
+		if uc.GetParamMax() != "" {
+			return fmt.Sprintf("%s $%s", op, uc.GetParamMax())
+		}
+
+		return fmt.Sprintf("%s %d", op, uc.GetMax())
+	}
+
+	return "<uint?>"
 }
 
 // formatWithPrec formats a child filter, wrapping it in parentheses if its

@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -652,4 +653,29 @@ func TestFormatIntConditionEdgeCases(t *testing.T) {
 		f := intField("x", &commonpb.IntCondition{})
 		assert.Equal(t, "metadata[x] <int?>", Format(f))
 	})
+}
+
+func TestFormat_AuditRoundTrip(t *testing.T) {
+	t.Parallel()
+	inputs := []string{
+		`audit[outcome] == failure`,
+		`audit[ledger] == "main"`,
+		`audit[caller.god] == true`,
+		`audit[seq] >= 5000`,
+		`audit[proposal_id] between 100 and 200`,
+		`audit[error_type] == "insufficient_funds"`,
+		`audit[order_type] == apply`,
+	}
+	for _, in := range inputs {
+		in := in
+		t.Run(in, func(t *testing.T) {
+			t.Parallel()
+			f, err := Parse(in)
+			require.NoError(t, err)
+			out := Format(f)
+			reparsed, err := Parse(out)
+			require.NoError(t, err)
+			require.True(t, proto.Equal(f, reparsed), "round-trip mismatch: %q -> %q", in, out)
+		})
+	}
 }
