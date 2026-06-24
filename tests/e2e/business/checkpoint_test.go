@@ -18,18 +18,12 @@ var _ = Describe("CreateCheckpoint", Ordered, func() {
 	BeforeAll(func() {
 
 		// Create a ledger with some data so the checkpoint is non-trivial
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("checkpoint-test", nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-test", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
-					actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
-				}, nil, nil),
-			),
-		})
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
+			actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
+		}, nil, nil)))
 		Expect(err).To(Succeed())
 	})
 
@@ -59,13 +53,9 @@ var _ = Describe("CreateCheckpoint", Ordered, func() {
 		Expect(state.Leader).NotTo(BeZero())
 
 		// Verify we can still create transactions after checkpoint
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
-					actions.NewPosting("world", "user", big.NewInt(500), "USD"),
-				}, nil, nil),
-			),
-		})
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
+			actions.NewPosting("world", "user", big.NewInt(500), "USD"),
+		}, nil, nil)))
 		Expect(err).To(Succeed())
 	})
 })

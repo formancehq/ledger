@@ -44,26 +44,24 @@ func main() {
 			for range 5 {
 				writeAttempts++
 
-				_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-						Type: &servicepb.Request_Apply{
-							Apply: &servicepb.LedgerApplyRequest{
-								Ledger: ledger,
-								Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-									CreateTransaction: &servicepb.CreateTransactionPayload{
-										Postings: []*commonpb.Posting{{
-											Source:      "world",
-											Destination: fmt.Sprintf("users:%d", r.Uint64()%internal.UserAccountCount),
-											Amount:      commonpb.NewUint256FromUint64(100),
-											Asset:       "USD/2",
-										}},
-										Force: true,
-									},
-								}},
-							},
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+					Type: &servicepb.Request_Apply{
+						Apply: &servicepb.LedgerApplyRequest{
+							Ledger: ledger,
+							Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+								CreateTransaction: &servicepb.CreateTransactionPayload{
+									Postings: []*commonpb.Posting{{
+										Source:      "world",
+										Destination: fmt.Sprintf("users:%d", r.Uint64()%internal.UserAccountCount),
+										Amount:      commonpb.NewUint256FromUint64(100),
+										Asset:       "USD/2",
+									}},
+									Force: true,
+								},
+							}},
 						},
-					}),
-				})
+					},
+				}))
 				if err != nil {
 					if internal.IsLedgerDeleted(err) || internal.IsLedgerNotFound(err) {
 						deletedSeen = true
@@ -88,13 +86,11 @@ func main() {
 		go func() {
 			defer wg.Done()
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-					Type: &servicepb.Request_DeleteLedger{
-						DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
-					},
-				}),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_DeleteLedger{
+					DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
+				},
+			}))
 			if err == nil {
 				deleteOK = true
 
@@ -118,26 +114,24 @@ func main() {
 		}
 
 		// 3. After deletion, any write should fail with LEDGER_DELETED or LEDGER_NOT_FOUND.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: "users:0",
-									Amount:      commonpb.NewUint256FromUint64(1),
-									Asset:       "USD/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: "users:0",
+								Amount:      commonpb.NewUint256FromUint64(1),
+								Asset:       "USD/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		if err == nil {
 			assert.Unreachable("write after delete should fail",

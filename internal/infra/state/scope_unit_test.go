@@ -28,7 +28,7 @@ func TestErrCoverageMiss_Describable(t *testing.T) {
 		RaftIndex:    42,
 	}
 
-	require.Equal(t, domain.KindInternal, miss.Kind())
+	require.Equal(t, domain.KindInternal, domain.Kind(miss))
 	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
 
 	md := miss.Metadata()

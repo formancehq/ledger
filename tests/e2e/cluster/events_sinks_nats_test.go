@@ -10,13 +10,13 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	natsserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 var _ = Describe("Events Sinks NATS", Ordered, func() {
@@ -51,7 +51,7 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		ns.Start()
-		Expect(ns.ReadyForConnections(5 * time.Second)).To(BeTrue(), "NATS server should become ready")
+		Expect(ns.ReadyForConnections(5*time.Second)).To(BeTrue(), "NATS server should become ready")
 
 		// Create JetStream stream
 		natsConn, err = nats.Connect(ns.ClientURL())
@@ -90,43 +90,31 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Add NATS sink via Apply
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				addEventsSinkAction(&commonpb.SinkConfig{
-					Name:         "nats-e2e",
-					Format:       "json",
-					BatchSize:    10,
-					BatchDelayMs: 50,
-					Type: &commonpb.SinkConfig_Nats{
-						Nats: &commonpb.NatsSinkConfig{
-							Url:   ns.ClientURL(),
-							Topic: topic,
-						},
-					},
-				}),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+			Name:         "nats-e2e",
+			Format:       "json",
+			BatchSize:    10,
+			BatchDelayMs: 50,
+			Type: &commonpb.SinkConfig_Nats{
+				Nats: &commonpb.NatsSinkConfig{
+					Url:   ns.ClientURL(),
+					Topic: topic,
+				},
+			},
+		})))
 		Expect(err).To(Succeed())
 
 		// Create a ledger
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction("nats-test", nil),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("nats-test", nil)))
 		Expect(err).To(Succeed())
 
 		// Create a transaction (force=true to bypass balance checks)
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("nats-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("nats-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		// Fetch events from NATS — expect at least CREATED_LEDGER + COMMITTED_TRANSACTION
@@ -142,8 +130,8 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 
 		// Find CREATED_LEDGER and COMMITTED_TRANSACTION among received events
 		var (
-			foundCreatedLedger      bool
-			foundCommittedTx        bool
+			foundCreatedLedger bool
+			foundCommittedTx   bool
 		)
 		for _, msg := range msgs {
 			var evt map[string]any

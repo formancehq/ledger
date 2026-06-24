@@ -74,31 +74,24 @@ func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
 	return nil
 }
 
-// BuildEnvelopes wraps each request into an Envelope, signing those it can
-// when a signing key is configured on the command flags. Requests passed in
-// without a key configured are wrapped as unsigned envelopes.
-func BuildEnvelopes(cmd *cobra.Command, requests []*servicepb.Request) ([]*servicepb.Envelope, error) {
+// BuildApplyRequest assembles the requests into one atomic ApplyBatch and
+// returns the ApplyRequest to pass to Apply — signed as a whole when a signing
+// key is configured on the command flags, unsigned otherwise. Signing the batch
+// authenticates its composition and ordering.
+func BuildApplyRequest(cmd *cobra.Command, requests ...*servicepb.Request) (*servicepb.ApplyRequest, error) {
 	keyID, privKey, err := LoadSigningKey(cmd)
 	if err != nil {
 		return nil, err
 	}
 
-	envelopes := make([]*servicepb.Envelope, len(requests))
-
-	for i, req := range requests {
-		if privKey == nil {
-			envelopes[i] = servicepb.UnsignedEnvelope(req)
-
-			continue
-		}
-
-		sr, err := signing.Sign(req, keyID, privKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to sign request: %w", err)
-		}
-
-		envelopes[i] = servicepb.SignedEnvelope(sr)
+	if privKey == nil {
+		return servicepb.UnsignedApplyRequest("", requests...), nil
 	}
 
-	return envelopes, nil
+	sb, err := signing.Sign(&servicepb.ApplyBatch{Requests: requests}, keyID, privKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign batch: %w", err)
+	}
+
+	return servicepb.SignedApplyRequest(sb), nil
 }

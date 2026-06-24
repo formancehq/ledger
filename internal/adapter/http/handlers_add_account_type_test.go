@@ -20,7 +20,7 @@ func TestHandleAddAccountType_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -100,7 +100,7 @@ func TestHandleAddAccountType_AlreadyExists(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrAccountTypeAlreadyExists{Name: "users"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

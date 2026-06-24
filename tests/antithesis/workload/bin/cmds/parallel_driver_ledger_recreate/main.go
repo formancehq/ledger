@@ -50,27 +50,25 @@ func createTx(
 	client servicepb.BucketServiceClient,
 	ledger, ref, destination string,
 ) (*servicepb.ApplyResponse, error) {
-	return client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
-								Source:      "world",
-								Destination: destination,
-								Amount:      commonpb.NewUint256FromUint64(100),
-								Asset:       "USD/2",
-							}},
-							Reference: ref,
-							Force:     true,
-						},
-					}},
-				},
+	return client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledger,
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings: []*commonpb.Posting{{
+							Source:      "world",
+							Destination: destination,
+							Amount:      commonpb.NewUint256FromUint64(100),
+							Asset:       "USD/2",
+						}},
+						Reference: ref,
+						Force:     true,
+					},
+				}},
 			},
-		}),
-	})
+		},
+	}))
 }
 
 // listMatches lists transactions matching the filter at the MinLogSequence
@@ -154,13 +152,11 @@ func main() {
 		}
 
 		// 2. Delete the first incarnation.
-		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_DeleteLedger{
-					DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
-				},
-			}),
-		}); err != nil && !internal.IsTransient(err) {
+		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_DeleteLedger{
+				DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
+			},
+		})); err != nil && !internal.IsTransient(err) {
 			// Ambiguous deletes are resolved by step 3 (recreate succeeds only
 			// if the delete committed); definitive failures are inconclusive
 			// for this property.

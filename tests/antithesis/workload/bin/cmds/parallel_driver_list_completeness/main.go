@@ -54,27 +54,25 @@ func main() {
 		)
 
 		for i := range txCount {
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-					Type: &servicepb.Request_Apply{
-						Apply: &servicepb.LedgerApplyRequest{
-							Ledger: ledger,
-							Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-								CreateTransaction: &servicepb.CreateTransactionPayload{
-									Postings: []*commonpb.Posting{{
-										Source:      "world",
-										Destination: fmt.Sprintf("listcomp-dst:%d", i%4),
-										Amount:      commonpb.NewUint256FromUint64(1),
-										Asset:       "USD/2",
-									}},
-									Reference: fmt.Sprintf("listcomp-%d-%d", run, i),
-									Force:     true,
-								},
-							}},
-						},
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_Apply{
+					Apply: &servicepb.LedgerApplyRequest{
+						Ledger: ledger,
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: &servicepb.CreateTransactionPayload{
+								Postings: []*commonpb.Posting{{
+									Source:      "world",
+									Destination: fmt.Sprintf("listcomp-dst:%d", i%4),
+									Amount:      commonpb.NewUint256FromUint64(1),
+									Asset:       "USD/2",
+								}},
+								Reference: fmt.Sprintf("listcomp-%d-%d", run, i),
+								Force:     true,
+							},
+						}},
 					},
-				}),
-			})
+				},
+			}))
 			if err != nil {
 				// Ambiguous outcome: may have committed. Not acked, and the
 				// completeness check below tolerates extra (non-acked) IDs.

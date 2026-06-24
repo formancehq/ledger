@@ -88,23 +88,15 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 
 	It("should succeed with explicit credentials in the backup request", func() {
 		// Create a ledger with data
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction("creds-test", nil),
-			),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("creds-test", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("creds-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("creds-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		// Trigger backup with explicit credentials — the server has bogus env vars,
@@ -126,16 +118,12 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 
 	It("should succeed with explicit credentials in the incremental backup request", func() {
 		// Add more data
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("creds-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "users:bob", big.NewInt(500), "EUR"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("creds-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "users:bob", big.NewInt(500), "EUR"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{

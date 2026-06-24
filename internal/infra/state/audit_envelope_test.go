@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 // TestHashChain_Envelope_Golden pins the WHOLE chain spec — both the
@@ -62,6 +63,12 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 			},
 			Scopes: []string{"write", "read"}, // builder must sort
 			God:    false,
+		},
+		Idempotency: &commonpb.Idempotency{Key: "batch-key-42"},
+		Signature: &signaturepb.SignedApplyBatch{
+			KeyId:     "sign-kid",
+			Signature: []byte("sig-bytes"),
+			Payload:   []byte("batch-payload"),
 		},
 	}
 
@@ -137,8 +144,8 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				ErrorType: "INSUFFICIENT_FUNDS",
-				Message:   "balance too low",
+				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Message: "balance too low",
 				// Intentionally unsorted: zebra, apple, mango force the
 				// builder to actually sort.
 				Context: map[string]string{
@@ -219,8 +226,8 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 		Ledgers:     []string{"ledger-a"},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				ErrorType: "X",
-				Message:   "y",
+				Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
+				Message: "y",
 				Context: map[string]string{
 					"k3": "v3",
 					"k1": "v1",
@@ -281,6 +288,22 @@ func goldenBuildHeader(e *auditpb.AuditEntry) []byte {
 		buf = goldenLenBytes(buf, nil)
 	}
 
+	buf = goldenLenString(buf, e.GetIdempotency().GetKey())
+	buf = goldenLenBytes(buf, goldenBuildSignature(e.GetSignature()))
+
+	return buf
+}
+
+func goldenBuildSignature(sb *signaturepb.SignedApplyBatch) []byte {
+	if sb == nil {
+		return nil
+	}
+
+	var buf []byte
+	buf = goldenLenString(buf, sb.GetKeyId())
+	buf = goldenLenBytes(buf, sb.GetSignature())
+	buf = goldenLenBytes(buf, sb.GetPayload())
+
 	return buf
 }
 
@@ -294,7 +317,7 @@ func goldenBuildSuccess(s *auditpb.AuditSuccess) []byte {
 
 func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 	var buf []byte
-	buf = goldenLenString(buf, f.GetErrorType())
+	buf = goldenU32(buf, uint32(f.GetReason()))
 	buf = goldenLenString(buf, f.GetMessage())
 
 	keys := make([]string, 0, len(f.GetContext()))

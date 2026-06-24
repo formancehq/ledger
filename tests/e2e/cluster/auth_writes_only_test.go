@@ -125,11 +125,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		// Seed a ledger that the read tests can target.
 		writeToken, err := signJWT(privKey, makeAuthClaims(oidcServer.URL, "ledger:write"))
 		Expect(err).To(Succeed())
-		_, err = client.Apply(withAuthToken(ctx, writeToken), &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction("writes-only-ledger", nil),
-			),
-		})
+		_, err = client.Apply(withAuthToken(ctx, writeToken), servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("writes-only-ledger", nil)))
 		Expect(err).To(Succeed())
 	})
 
@@ -149,13 +145,9 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		})
 
 		It("rejects writes without a token", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction("writes-only-ledger", []*commonpb.Posting{
-						actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
-					}, nil, nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -167,13 +159,9 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			_, err = client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction("writes-only-ledger", []*commonpb.Posting{
-						actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
-					}, nil, nil),
-				),
-			})
+			_, err = client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("writes-only-ledger", []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 		})
 	})

@@ -21,36 +21,39 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// SignedRequest is the opaque envelope for a signed client request.
-// The client serializes its Request, signs the bytes, and ships
-// (key_id, signature, payload). The server verifies the signature
-// against payload, then unmarshals payload to obtain the request
-// content. The server never re-serializes — this makes the envelope
-// safe across protobuf implementations (Go, Java, Python, ...) since
-// no implementation needs to reproduce another's exact byte layout.
-type SignedRequest struct {
+// SignedApplyBatch is the opaque envelope for a signed client batch.
+// The client serializes its ApplyBatch (the atomic unit: ordered requests
+// + idempotency key), signs those exact bytes, and ships
+// (key_id, signature, payload). The server verifies the signature against
+// payload, then unmarshals payload to obtain the trusted batch. The server
+// never re-serializes — this makes the envelope safe across protobuf
+// implementations (Go, Java, Python, ...) since no implementation needs to
+// reproduce another's exact byte layout. Signing the whole batch (not each
+// request) covers composition and ordering, so the atomic operation as a
+// whole is authentic, integrity-protected, and non-repudiable.
+type SignedApplyBatch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"` // ID of the public key used to sign
 	Signature     []byte                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`      // Ed25519 signature (64 bytes)
-	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`          // Exact serialized Request bytes signed by the client
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`          // Exact serialized ApplyBatch bytes signed by the client
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SignedRequest) Reset() {
-	*x = SignedRequest{}
+func (x *SignedApplyBatch) Reset() {
+	*x = SignedApplyBatch{}
 	mi := &file_signature_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SignedRequest) String() string {
+func (x *SignedApplyBatch) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SignedRequest) ProtoMessage() {}
+func (*SignedApplyBatch) ProtoMessage() {}
 
-func (x *SignedRequest) ProtoReflect() protoreflect.Message {
+func (x *SignedApplyBatch) ProtoReflect() protoreflect.Message {
 	mi := &file_signature_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -62,26 +65,26 @@ func (x *SignedRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SignedRequest.ProtoReflect.Descriptor instead.
-func (*SignedRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use SignedApplyBatch.ProtoReflect.Descriptor instead.
+func (*SignedApplyBatch) Descriptor() ([]byte, []int) {
 	return file_signature_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *SignedRequest) GetKeyId() string {
+func (x *SignedApplyBatch) GetKeyId() string {
 	if x != nil {
 		return x.KeyId
 	}
 	return ""
 }
 
-func (x *SignedRequest) GetSignature() []byte {
+func (x *SignedApplyBatch) GetSignature() []byte {
 	if x != nil {
 		return x.Signature
 	}
 	return nil
 }
 
-func (x *SignedRequest) GetPayload() []byte {
+func (x *SignedApplyBatch) GetPayload() []byte {
 	if x != nil {
 		return x.Payload
 	}
@@ -157,8 +160,8 @@ var File_signature_proto protoreflect.FileDescriptor
 
 const file_signature_proto_rawDesc = "" +
 	"\n" +
-	"\x0fsignature.proto\x12\tsignature\"^\n" +
-	"\rSignedRequest\x12\x15\n" +
+	"\x0fsignature.proto\x12\tsignature\"a\n" +
+	"\x10SignedApplyBatch\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x18\n" +
 	"\apayload\x18\x03 \x01(\fR\apayload\"Z\n" +
@@ -181,8 +184,8 @@ func file_signature_proto_rawDescGZIP() []byte {
 
 var file_signature_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_signature_proto_goTypes = []any{
-	(*SignedRequest)(nil), // 0: signature.SignedRequest
-	(*SignedLog)(nil),     // 1: signature.SignedLog
+	(*SignedApplyBatch)(nil), // 0: signature.SignedApplyBatch
+	(*SignedLog)(nil),        // 1: signature.SignedLog
 }
 var file_signature_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type

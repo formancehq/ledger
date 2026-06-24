@@ -46,27 +46,25 @@ func createWithReference(
 	client servicepb.BucketServiceClient,
 	ledger, ref, destination string,
 ) (*servicepb.ApplyResponse, error) {
-	return client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
-								Source:      "world",
-								Destination: destination,
-								Amount:      commonpb.NewUint256FromUint64(1),
-								Asset:       "USD/2",
-							}},
-							Reference: ref,
-							Force:     true,
-						},
-					}},
-				},
+	return client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledger,
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings: []*commonpb.Posting{{
+							Source:      "world",
+							Destination: destination,
+							Amount:      commonpb.NewUint256FromUint64(1),
+							Asset:       "USD/2",
+						}},
+						Reference: ref,
+						Force:     true,
+					},
+				}},
 			},
-		}),
-	})
+		},
+	}))
 }
 
 // writeMarker commits a reference-less marker transaction and returns its log
@@ -75,26 +73,24 @@ func createWithReference(
 // marker covers any write those responses could correspond to. Returns
 // (0, false) when the barrier could not be established (inconclusive).
 func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (uint64, bool) {
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{{
-								Source:      "world",
-								Destination: "refrace-marker",
-								Amount:      commonpb.NewUint256FromUint64(1),
-								Asset:       "USD/2",
-							}},
-							Force: true,
-						},
-					}},
-				},
+	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledger,
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings: []*commonpb.Posting{{
+							Source:      "world",
+							Destination: "refrace-marker",
+							Amount:      commonpb.NewUint256FromUint64(1),
+							Asset:       "USD/2",
+						}},
+						Force: true,
+					},
+				}},
 			},
-		}),
-	})
+		},
+	}))
 	if err != nil {
 		return 0, false
 	}

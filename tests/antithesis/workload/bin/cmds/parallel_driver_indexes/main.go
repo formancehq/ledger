@@ -19,18 +19,16 @@ func main() {
 
 		// The metadata schema field must exist before its index — declare it
 		// (idempotent / harmless if already declared).
-		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SetMetadataFieldType{
-					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
-						Ledger:     ledger,
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        metadataKey,
-						Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-					},
+		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SetMetadataFieldType{
+				SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+					Ledger:     ledger,
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        metadataKey,
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 				},
-			}),
-		}); err != nil {
+			},
+		})); err != nil {
 			st, _ := status.FromError(err)
 			// AlreadyExists means the field is declared — fall through to
 			// CreateIndex. Any other failure (including a transient one that may
@@ -51,16 +49,14 @@ func main() {
 		}}}
 
 		// Create the account metadata index.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_CreateIndex{
-					CreateIndex: &servicepb.CreateIndexRequest{
-						Ledger: ledger,
-						Id:     indexID,
-					},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreateIndex{
+				CreateIndex: &servicepb.CreateIndexRequest{
+					Ledger: ledger,
+					Id:     indexID,
 				},
-			}),
-		})
+			},
+		}))
 
 		if err != nil {
 			if internal.IsTransient(err) {
@@ -86,16 +82,14 @@ func main() {
 		assert.AlwaysOrUnreachable(statusResp != nil, "GetIndexStatus should return a response", details)
 
 		// Drop the index.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_DropIndex{
-					DropIndex: &servicepb.DropIndexRequest{
-						Ledger: ledger,
-						Id:     indexID,
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_DropIndex{
+				DropIndex: &servicepb.DropIndexRequest{
+					Ledger: ledger,
+					Id:     indexID,
 				},
-			}),
-		})
+			},
+		}))
 
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)

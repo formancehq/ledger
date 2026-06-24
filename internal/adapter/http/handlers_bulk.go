@@ -70,6 +70,7 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	opts := bulkOptions{
 		continueOnFailure: queryParamBool(r, "continueOnFailure"),
 		atomic:            queryParamBool(r, "atomic"),
+		idempotencyKey:    r.Header.Get("Idempotency-Key"),
 	}
 	results := s.runBulk(r.Context(), ledgerName, elements, opts)
 
@@ -81,6 +82,10 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 type bulkOptions struct {
 	continueOnFailure bool
 	atomic            bool
+	// idempotencyKey is the batch-level key (Idempotency-Key header) used when
+	// atomic — the whole bulk is one proposal, so it has one identity. In
+	// non-atomic mode each element keeps its own per-element key instead.
+	idempotencyKey string
 }
 
 // bulkResult represents the result of a single bulk element.
@@ -97,7 +102,6 @@ func convertBulkElementToRequest(ledgerName string, elem *servicepb.BulkElement)
 	}
 
 	return &servicepb.Request{
-		IdempotencyKey: elem.IdempotencyKey,
 		Type: &servicepb.Request_Apply{
 			Apply: applyRequest,
 		},
@@ -110,24 +114,28 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*ser
 		return nil
 	}
 
-	// Build requests slice
+	// Build requests slice + parallel per-element idempotency keys (used only in
+	// non-atomic mode, where each element is its own proposal).
 	requests := make([]*servicepb.Request, len(elements))
+	keys := make([]string, len(elements))
 	for i, elem := range elements {
 		requests[i] = convertBulkElementToRequest(ledgerName, elem)
+		keys[i] = elem.IdempotencyKey
 	}
 
 	if opts.atomic {
-		return s.runBulkAtomic(ctx, requests)
+		return s.runBulkAtomic(ctx, opts.idempotencyKey, requests)
 	}
 
-	return s.runBulkSequential(ctx, requests, opts.continueOnFailure)
+	return s.runBulkSequential(ctx, requests, keys, opts.continueOnFailure)
 }
 
-// runBulkAtomic applies all requests in a single batch.
-func (s *Server) runBulkAtomic(ctx context.Context, requests []*servicepb.Request) []bulkResult {
+// runBulkAtomic applies all requests as one atomic batch under a single
+// idempotency key (the bulk-level Idempotency-Key header).
+func (s *Server) runBulkAtomic(ctx context.Context, idempotencyKey string, requests []*servicepb.Request) []bulkResult {
 	results := make([]bulkResult, len(requests))
 
-	logs, err := s.applyUnsigned(ctx, requests...)
+	logs, err := s.applyUnsigned(ctx, idempotencyKey, requests...)
 	if err != nil {
 		// In atomic mode, if any action fails, all fail with the same error
 		for i := range results {
@@ -144,8 +152,9 @@ func (s *Server) runBulkAtomic(ctx context.Context, requests []*servicepb.Reques
 	return results
 }
 
-// runBulkSequential applies requests one by one.
-func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Request, continueOnFailure bool) []bulkResult {
+// runBulkSequential applies requests one by one, each as its own proposal under
+// its per-element idempotency key.
+func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Request, keys []string, continueOnFailure bool) []bulkResult {
 	results := make([]bulkResult, len(requests))
 	hasError := false
 
@@ -156,7 +165,7 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 			continue
 		}
 
-		logs, err := s.applyUnsigned(ctx, request)
+		logs, err := s.applyUnsigned(ctx, keys[i], request)
 		if err != nil {
 			hasError = true
 			results[i] = bulkResult{err: err}

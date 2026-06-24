@@ -28,8 +28,6 @@ func (m *Order) CloneVT() *Order {
 		return (*Order)(nil)
 	}
 	r := OrderFromVTPool()
-	r.Idempotency = m.Idempotency.CloneVT()
-	r.Signature = m.Signature.CloneVT()
 	if m.Type != nil {
 		r.Type = m.Type.(interface{ CloneVT() isOrder_Type }).CloneVT()
 	}
@@ -1491,6 +1489,8 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.ExecutionPlan = m.ExecutionPlan.CloneVT()
 	r.PredictedIndex = m.PredictedIndex
 	r.CallerSnapshot = m.CallerSnapshot.CloneVT()
+	r.Idempotency = m.Idempotency.CloneVT()
+	r.Signature = m.Signature.CloneVT()
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -2481,12 +2481,6 @@ func (this *Order) EqualVT(that *Order) bool {
 		if !this.Type.(interface{ EqualVT(isOrder_Type) bool }).EqualVT(that.Type) {
 			return false
 		}
-	}
-	if !this.Idempotency.EqualVT(that.Idempotency) {
-		return false
-	}
-	if !this.Signature.EqualVT(that.Signature) {
-		return false
 	}
 	if string(this.CoverageBits) != string(that.CoverageBits) {
 		return false
@@ -5073,6 +5067,12 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 			}
 		}
 	}
+	if !this.Idempotency.EqualVT(that.Idempotency) {
+		return false
+	}
+	if !this.Signature.EqualVT(that.Signature) {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -6690,26 +6690,6 @@ func (m *Order) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.CoverageBits)))
 		i--
 		dAtA[i] = 0x2a
-	}
-	if m.Signature != nil {
-		size, err := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.Idempotency != nil {
-		size, err := m.Idempotency.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -10169,6 +10149,30 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Signature != nil {
+		size, err := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x8a
+	}
+	if m.Idempotency != nil {
+		size, err := m.Idempotency.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x82
+	}
 	if len(m.TechnicalUpdates) > 0 {
 		for iNdEx := len(m.TechnicalUpdates) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.TechnicalUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -12783,16 +12787,8 @@ func (m *Order) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Idempotency != nil {
-		l = m.Idempotency.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if vtmsg, ok := m.Type.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
-	}
-	if m.Signature != nil {
-		l = m.Signature.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	l = len(m.CoverageBits)
 	if l > 0 {
@@ -14332,6 +14328,14 @@ func (m *Proposal) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
+	if m.Idempotency != nil {
+		l = m.Idempotency.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Signature != nil {
+		l = m.Signature.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -15340,42 +15344,6 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: Order: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Idempotency", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Idempotency == nil {
-				m.Idempotency = &commonpb.Idempotency{}
-			}
-			if err := m.Idempotency.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerScoped", wireType)
@@ -15456,42 +15424,6 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Type = &Order_SystemScoped{SystemScoped: v}
-			}
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Signature", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Signature == nil {
-				m.Signature = &signaturepb.SignedRequest{}
-			}
-			if err := m.Signature.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
 			}
 			iNdEx = postIndex
 		case 5:
@@ -23717,6 +23649,78 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			if err := m.TechnicalUpdates[len(m.TechnicalUpdates)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 16:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Idempotency", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Idempotency == nil {
+				m.Idempotency = &commonpb.Idempotency{}
+			}
+			if err := m.Idempotency.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 17:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Signature", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Signature == nil {
+				m.Signature = &signaturepb.SignedApplyBatch{}
+			}
+			if err := m.Signature.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

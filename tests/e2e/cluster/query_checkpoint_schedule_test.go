@@ -59,11 +59,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Create a ledger so the cluster is fully bootstrapped.
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction(ledgerName, nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -74,9 +70,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should accept a valid cron expression", func() {
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setQueryCheckpointScheduleAction("0 0 1 * *")),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("0 0 1 * *")))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
 		})
@@ -88,9 +82,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should reject an invalid cron expression", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setQueryCheckpointScheduleAction("not-a-cron")),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("not-a-cron")))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -103,9 +95,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should reject an empty cron expression", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setQueryCheckpointScheduleAction("")),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("")))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -114,9 +104,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should delete the schedule", func() {
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(deleteQueryCheckpointScheduleAction()),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
 		})
@@ -147,11 +135,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Create a ledger so there is data to checkpoint.
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction(ledgerName, nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -163,9 +147,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 
 		It("should set a fast cron schedule", func() {
 			// Every 5 seconds (6-field format with leading seconds)
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setQueryCheckpointScheduleAction("*/5 * * * * *")),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("*/5 * * * * *")))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
 		})
@@ -199,9 +181,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should disable the schedule after the test", func() {
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(deleteQueryCheckpointScheduleAction()),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogs()).To(HaveLen(1))
 		})
@@ -223,19 +203,13 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		BeforeAll(func() {
 			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction(ledgerName, nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("should update the schedule from monthly to per-second", func() {
 			// Set a monthly schedule (won't fire during test)
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setQueryCheckpointScheduleAction("0 0 1 * *")),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("0 0 1 * *")))
 			Expect(err).To(Succeed())
 
 			resp, err := clusterClient.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
@@ -243,9 +217,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			Expect(resp.GetCron()).To(Equal("0 0 1 * *"))
 
 			// Update to a fast schedule
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setQueryCheckpointScheduleAction("*/5 * * * * *")),
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("*/5 * * * * *")))
 			Expect(err).To(Succeed())
 
 			resp, err = clusterClient.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
@@ -263,9 +235,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 
 		It("should stop creating checkpoints after deleting the schedule", func() {
 			// Delete the schedule
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(deleteQueryCheckpointScheduleAction()),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 
 			// Record the current count
@@ -298,11 +268,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		BeforeAll(func() {
 			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction(ledgerName, nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -310,9 +276,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 
 		It("should create a checkpoint, add a transaction, then create another checkpoint", func() {
 			// Create first checkpoint via schedule
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setQueryCheckpointScheduleAction("*/3 * * * * *")),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("*/3 * * * * *")))
 			Expect(err).To(Succeed())
 
 			// Wait for first checkpoint
@@ -328,13 +292,9 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 			firstCheckpointMaxSeq = resp.GetCheckpoints()[0].GetMaxSequence()
 
 			// Create a transaction (this happens after the first checkpoint)
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
-					}, nil),
-				),
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
+			}, nil)))
 			Expect(err).To(Succeed())
 
 			// Wait for a second checkpoint (has higher max_sequence)
@@ -349,9 +309,7 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		})
 
 		It("should disable schedule", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(deleteQueryCheckpointScheduleAction()),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
 			Expect(err).To(Succeed())
 		})
 	})

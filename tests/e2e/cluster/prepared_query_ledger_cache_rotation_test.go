@@ -66,11 +66,7 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 
 		// 1. Create the ledger — populates LedgerInfo in Pebble (Global +
 		//    attributes) and in the FSM's in-memory cache (current gen0).
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction(ledgerName, nil),
-			),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
 		// 2. Advance the Raft commit index past 2 * rotationThreshold using
@@ -139,18 +135,16 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 			Expect(err).To(Succeed())
 		}
 
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SaveNumscript{
-					SaveNumscript: &servicepb.SaveNumscriptRequest{
-						Name:    "transfer",
-						Content: numscriptTransfer,
-						Version: "1.0.0",
-						Ledger:  ledgerName,
-					},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SaveNumscript{
+				SaveNumscript: &servicepb.SaveNumscriptRequest{
+					Name:    "transfer",
+					Content: numscriptTransfer,
+					Version: "1.0.0",
+					Ledger:  ledgerName,
 				},
-			}),
-		})
+			},
+		}))
 		Expect(err).To(Succeed())
 	})
 
@@ -160,16 +154,14 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 			Expect(err).To(Succeed())
 		}
 
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_DeleteNumscript{
-					DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-						Name:   "transfer",
-						Ledger: ledgerName,
-					},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_DeleteNumscript{
+				DeleteNumscript: &servicepb.DeleteNumscriptRequest{
+					Name:   "transfer",
+					Ledger: ledgerName,
 				},
-			}),
-		})
+			},
+		}))
 		Expect(err).To(Succeed())
 	})
 })

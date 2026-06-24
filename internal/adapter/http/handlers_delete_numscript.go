@@ -23,7 +23,7 @@ func (s *Server) handleDeleteNumscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), &servicepb.Request{
+	_, err := s.applyUnsigned(r.Context(), "", &servicepb.Request{
 		Type: &servicepb.Request_DeleteNumscript{
 			DeleteNumscript: &servicepb.DeleteNumscriptRequest{
 				Ledger: ledgerName,

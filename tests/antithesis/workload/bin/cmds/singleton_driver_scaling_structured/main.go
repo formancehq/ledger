@@ -111,22 +111,20 @@ func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterCl
 }
 
 func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient, details internal.Details) {
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Ledger: sentinelLedger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:      []*commonpb.Posting{commonpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
-							Force:         true,
-							ExpandVolumes: true,
-						},
-					}},
-				},
+	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: sentinelLedger,
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings:      []*commonpb.Posting{commonpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
+						Force:         true,
+						ExpandVolumes: true,
+					},
+				}},
 			},
-		}),
-	})
+		},
+	}))
 	assert.Sometimes(err == nil || internal.IsTransient(err), "fresh commit during stable window should succeed", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return

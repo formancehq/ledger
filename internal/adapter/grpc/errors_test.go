@@ -169,23 +169,6 @@ func TestBusinessErrorToGRPCStatus_InsufficientFunds(t *testing.T) {
 	require.Equal(t, "500", info.GetMetadata()["balance"])
 }
 
-func TestBusinessErrorToGRPCStatus_BalanceNotFound(t *testing.T) {
-	t.Parallel()
-
-	bizErr := &domain.BusinessError{Err: &domain.ErrBalanceNotFound{
-		Account: "user:002",
-		Asset:   "EUR",
-	}}
-	st := businessErrorToGRPCStatus(bizErr)
-
-	require.Equal(t, codes.FailedPrecondition, st.Code())
-
-	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonBalanceNotFound, info.GetReason())
-	require.Equal(t, "user:002", info.GetMetadata()["account"])
-	require.Equal(t, "EUR", info.GetMetadata()["asset"])
-}
-
 func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 	t.Parallel()
 
@@ -195,7 +178,9 @@ func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 	}}
 	st := businessErrorToGRPCStatus(bizErr)
 
-	require.Equal(t, codes.FailedPrecondition, st.Code())
+	// Unavailable, not FailedPrecondition: a preload miss is a transient
+	// server-side gap the caller should retry, not a precondition they failed.
+	require.Equal(t, codes.Unavailable, st.Code())
 
 	info := extractErrorInfo(t, st)
 	require.Equal(t, domain.ErrReasonBalanceNotPreloaded, info.GetReason())

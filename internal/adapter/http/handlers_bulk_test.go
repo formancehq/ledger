@@ -89,13 +89,13 @@ func TestRunBulkAtomic_AllFail(t *testing.T) {
 	expectedErr := errors.New("atomic failure")
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, expectedErr
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	requests := []*servicepb.Request{{}, {}}
-	results := srv.runBulkAtomic(context.Background(), requests)
+	results := srv.runBulkAtomic(context.Background(), "", requests)
 
 	require.Len(t, results, 2)
 
@@ -109,7 +109,7 @@ func TestRunBulkAtomic_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Id: 1}}}}},
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Id: 2}}}}},
@@ -118,7 +118,7 @@ func TestRunBulkAtomic_Success(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	requests := []*servicepb.Request{{}, {}}
-	results := srv.runBulkAtomic(context.Background(), requests)
+	results := srv.runBulkAtomic(context.Background(), "", requests)
 
 	require.Len(t, results, 2)
 
@@ -134,7 +134,7 @@ func TestRunBulkSequential_StopOnError(t *testing.T) {
 	callCount := 0
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			callCount++
 			if callCount == 1 {
 				return nil, errors.New("first fails")
@@ -147,7 +147,8 @@ func TestRunBulkSequential_StopOnError(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	requests := []*servicepb.Request{{}, {}, {}}
-	results := srv.runBulkSequential(context.Background(), requests, false)
+	keys := []string{"", "", ""}
+	results := srv.runBulkSequential(context.Background(), requests, keys, false)
 
 	require.Len(t, results, 3)
 	require.Error(t, results[0].err)
@@ -161,7 +162,7 @@ func TestRunBulkSequential_ContinueOnFailure(t *testing.T) {
 	callCount := 0
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			callCount++
 			if callCount == 1 {
 				return nil, errors.New("first fails")
@@ -174,7 +175,8 @@ func TestRunBulkSequential_ContinueOnFailure(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	requests := []*servicepb.Request{{}, {}}
-	results := srv.runBulkSequential(context.Background(), requests, true)
+	keys := []string{"", ""}
+	results := srv.runBulkSequential(context.Background(), requests, keys, true)
 
 	require.Len(t, results, 2)
 	require.Error(t, results[0].err)

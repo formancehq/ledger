@@ -406,8 +406,7 @@ func TestAppliedProposalSyncSkipsAllIdempotentEntries(t *testing.T) {
 // falls beyond every entry in the stream stashes an error rather than
 // returning nil silently. Otherwise the indexer would persist
 // account->tx mappings on volumes that should have been excluded — a
-// corruption-tolerated path that NumaryBot flagged as a major (see PR
-// #542 thread on applied_proposal_sync.go:132).
+// corruption-tolerated path.
 func TestAppliedProposalSyncFailsLoudlyWhenStreamExhaustedBeforeLog(t *testing.T) {
 	t.Parallel()
 

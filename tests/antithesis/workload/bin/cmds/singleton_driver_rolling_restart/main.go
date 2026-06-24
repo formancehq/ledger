@@ -182,21 +182,19 @@ func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, commi
 			return
 		case <-tick.C:
 		}
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: rrSentinelLedger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{commonpb.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
-								Force:    true,
-							},
-						}},
-					},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: rrSentinelLedger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{commonpb.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
+							Force:    true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 		if err == nil {
 			committed.Add(1)
 		}

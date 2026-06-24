@@ -170,9 +170,6 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 						WithDate(now),
 				},
 			}},
-			Idempotency: &commonpb.Idempotency{
-				Key: "idempotency-key-1",
-			},
 		},
 		{
 			Sequence: startSequence + 1,
@@ -195,9 +192,6 @@ func createTestLogsForLedger(ledgerName string, startSequence uint64) []*commonp
 						WithDate(now.Add(time.Second)),
 				},
 			}},
-			Idempotency: &commonpb.Idempotency{
-				Key: "idempotency-key-2",
-			},
 		},
 		{
 			Sequence: startSequence + 2,

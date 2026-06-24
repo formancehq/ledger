@@ -31,8 +31,8 @@ func NewServer(logger logging.Logger, backend Backend, bulkMaxSize int) *Server 
 // applyUnsigned wraps Requests into unsigned Envelopes and forwards to the
 // backend. The HTTP API never signs requests itself — signing flows through
 // gRPC where the caller controls the envelope construction.
-func (s *Server) applyUnsigned(ctx context.Context, reqs ...*servicepb.Request) ([]*commonpb.Log, error) {
-	return s.backend.Apply(ctx, servicepb.UnsignedEnvelopes(reqs...)...)
+func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs ...*servicepb.Request) ([]*commonpb.Log, error) {
+	return s.backend.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey, reqs...))
 }
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -destination backend_generated_test.go -typed -package http . Backend

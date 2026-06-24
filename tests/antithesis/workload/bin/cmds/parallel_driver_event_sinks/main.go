@@ -29,25 +29,23 @@ func main() {
 	details := internal.Details{"sinkName": sinkName, "topic": topic}
 
 	// 1. Add a NATS event sink.
-	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_AddEventsSink{
-				AddEventsSink: &servicepb.AddEventsSinkRequest{
-					Config: &commonpb.SinkConfig{
-						Name: sinkName,
-						Type: &commonpb.SinkConfig_Nats{
-							Nats: &commonpb.NatsSinkConfig{
-								Url:   "nats://nats:4222",
-								Topic: topic,
-							},
+	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_AddEventsSink{
+			AddEventsSink: &servicepb.AddEventsSinkRequest{
+				Config: &commonpb.SinkConfig{
+					Name: sinkName,
+					Type: &commonpb.SinkConfig_Nats{
+						Nats: &commonpb.NatsSinkConfig{
+							Url:   "nats://nats:4222",
+							Topic: topic,
 						},
-						Format:    "json",
-						BatchSize: 32,
 					},
+					Format:    "json",
+					BatchSize: 32,
 				},
 			},
-		}),
-	})
+		},
+	}))
 
 	assert.Sometimes(err == nil || internal.IsTransient(err),
 		"should be able to add NATS event sink", details.With(internal.Details{"error": err}))
@@ -80,33 +78,29 @@ func main() {
 		return
 	}
 
-	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: internal.RandomPostings(),
-							Force:    true,
-						},
-					}},
-				},
+	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledger,
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings: internal.RandomPostings(),
+						Force:    true,
+					},
+				}},
 			},
-		}),
-	})
+		},
+	}))
 	// Transaction creation is best-effort here; the sink test is what matters.
 
 	// 4. Remove the event sink.
-	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_RemoveEventsSink{
-				RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{
-					Name: sinkName,
-				},
+	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_RemoveEventsSink{
+			RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{
+				Name: sinkName,
 			},
-		}),
-	})
+		},
+	}))
 
 	assert.Sometimes(err == nil || internal.IsTransient(err),
 		"should be able to remove event sink", details.With(internal.Details{"error": err}))

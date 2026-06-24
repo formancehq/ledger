@@ -11,11 +11,11 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
@@ -50,42 +50,30 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 
 	It("Should deliver events to ClickHouse when transactions are created", func() {
 		// Add ClickHouse sink via Apply
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				addEventsSinkAction(&commonpb.SinkConfig{
-					Name:         "ch-e2e",
-					BatchSize:    10,
-					BatchDelayMs: 50,
-					Type: &commonpb.SinkConfig_Clickhouse{
-						Clickhouse: &commonpb.ClickHouseSinkConfig{
-							Dsn:   chDSN,
-							Table: table,
-						},
-					},
-				}),
-			),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+			Name:         "ch-e2e",
+			BatchSize:    10,
+			BatchDelayMs: 50,
+			Type: &commonpb.SinkConfig_Clickhouse{
+				Clickhouse: &commonpb.ClickHouseSinkConfig{
+					Dsn:   chDSN,
+					Table: table,
+				},
+			},
+		})))
 		Expect(err).To(Succeed())
 
 		// Create a ledger
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction("ch-test", nil),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("ch-test", nil)))
 		Expect(err).To(Succeed())
 
 		// Create a transaction (force=true to bypass balance checks)
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("ch-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("ch-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		// Query ClickHouse and verify events arrived

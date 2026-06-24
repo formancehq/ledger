@@ -679,11 +679,10 @@ func WithReference(req *servicepb.Request, reference string) *servicepb.Request 
 	return req
 }
 
-// WithIdempotencyKey sets the idempotency key on a request.
-func WithIdempotencyKey(req *servicepb.Request, key string) *servicepb.Request {
-	req.IdempotencyKey = key
-
-	return req
+// WithIdempotencyKey wraps requests into an unsigned ApplyRequest under the
+// given idempotency key — idempotency is keyed per atomic batch.
+func WithIdempotencyKey(key string, reqs ...*servicepb.Request) *servicepb.ApplyRequest {
+	return servicepb.UnsignedApplyRequest(key, reqs...)
 }
 
 // GetCreatedTransactionID extracts the first created transaction ID from an ApplyResponse.

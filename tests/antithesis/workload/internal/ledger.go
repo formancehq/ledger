@@ -35,13 +35,11 @@ var restrictedPrefixes = []string{
 func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, name string) error {
 	details := Details{"ledger": name}
 
-	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{Name: name},
-			},
-		}),
-	})
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_CreateLedger{
+			CreateLedger: &servicepb.CreateLedgerRequest{Name: name},
+		},
+	}))
 	assert.Sometimes(err == nil || IsUnavailable(err), "should be able to create ledger", details.With(Details{"error": err}))
 	if err != nil {
 		return err

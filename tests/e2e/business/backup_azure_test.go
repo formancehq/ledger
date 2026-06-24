@@ -119,23 +119,15 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 	}
 
 	It("should create a full backup on Azure with checkpoint manifest", func() {
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction("azure-backup-test", nil),
-			),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("azure-backup-test", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("azure-backup-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
@@ -167,16 +159,12 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 		checkpointLogSeq := fullResp.GetLastLogSequence()
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("azure-backup-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("azure-backup-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		incrResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{

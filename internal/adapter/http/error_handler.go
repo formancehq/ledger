@@ -66,7 +66,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	// Catches BusinessError too (it implements Describable transparently).
 	var d domain.Describable
 	if errors.As(err, &d) {
-		writeErrorResponse(w, kindToHTTPStatus(d.Kind()), d.Reason(), err)
+		writeErrorResponse(w, kindToHTTPStatus(domain.Kind(d)), d.Reason(), err)
 
 		return
 	}

@@ -265,9 +265,9 @@ message IdempotencyEntry {
 message Log {
   fixed64 sequence = 1;
   LogPayload payload = 2;
-  Idempotency idempotency = 3;
+  // Batch identity (idempotency key + signature) lives on AppliedProposal
+  // (proposal.proto), not on the log.
   reserved 4; // was: bytes hash (moved to AuditEntry)
-  signature.SignedRequest signature = 5;
   string receipt = 6;
   signature.SignedLog response_signature = 7;
   reserved 8; // was: uint32 hash_version (moved to AuditEntry)
@@ -836,12 +836,102 @@ message TransactionState {
   Timestamp timestamp = 4;
 }
 
-// IdempotencyKeyValue stores the log sequence associated with an idempotency key.
+// IdempotencyKeyValue stores the outcome associated with a proposal's
+// idempotency key: the committed logs on success, or a replayed failure when
+// the first apply was a definitive business rejection (exactly-once: every
+// duplicate observes the same outcome). A proposal commits N contiguous logs,
+// so success is encoded as (first_log_sequence, log_count).
 message IdempotencyKeyValue {
-  fixed64 log_sequence = 1;
+  fixed64 first_log_sequence = 1;  // sequence of the proposal's first committed log
   bytes hash = 2;
   uint32 hash_version = 3;  // Hash algorithm version (0 = legacy = v1)
   fixed64 created_at = 4;    // HLC microseconds (from Raft entry timestamp)
+  IdempotencyFailure failure = 5;  // set instead of the log refs when the first apply was a definitive business failure
+  uint32 log_count = 6;  // number of contiguous logs the proposal committed; 0 with failure set
+}
+
+// ErrorReason is the typed, wire-bound form of a domain error's Reason()
+// identifier. Each value mirrors a domain.ErrReason* constant: the enum name is
+// "ERROR_REASON_" + that constant's string, so the two map mechanically
+// (domain.ReasonCode / domain.ReasonString) with no hand-maintained table.
+// AuditFailure and IdempotencyFailure store this instead of a free string so
+// the error kind is re-derivable from the reason (domain.KindForReason) at
+// replay and check time, and a typo cannot silently decode into a known reason.
+// Do NOT renumber or remove values; append new ones. Completeness against the
+// domain errors is enforced by TestEveryDomainErrorImplementsDescribable.
+enum ErrorReason {
+  ERROR_REASON_UNSPECIFIED = 0;
+  ERROR_REASON_LEDGER_ALREADY_EXISTS = 1;
+  ERROR_REASON_LEDGER_NOT_FOUND = 2;
+  ERROR_REASON_LEDGER_DELETED = 3;
+  ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT = 4;
+  ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT = 5;
+  ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND = 6;
+  ERROR_REASON_TRANSACTION_NOT_FOUND = 7;
+  ERROR_REASON_TRANSACTION_ALREADY_REVERTED = 8;
+  ERROR_REASON_INSUFFICIENT_FUNDS = 9;
+  ERROR_REASON_VOLUME_OVERFLOW = 10;
+  ERROR_REASON_BALANCE_NOT_PRELOADED = 11;
+  ERROR_REASON_NUMSCRIPT_PARSE_ERROR = 12;
+  ERROR_REASON_VALIDATION = 13;
+  ERROR_REASON_AUDIT_DISABLED = 14;
+  ERROR_REASON_SINK_ALREADY_EXISTS = 15;
+  ERROR_REASON_SINK_NOT_FOUND = 16;
+  ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE = 17;
+  ERROR_REASON_NO_CHAPTER_OPEN = 18;
+  ERROR_REASON_CHAPTER_NOT_FOUND = 19;
+  ERROR_REASON_CHAPTER_NOT_CLOSING = 20;
+  ERROR_REASON_CHAPTER_NOT_CLOSED = 21;
+  ERROR_REASON_CHAPTER_NOT_ARCHIVING = 22;
+  ERROR_REASON_METADATA_NOT_FOUND = 23;
+  ERROR_REASON_INVALID_RECEIPT = 24;
+  ERROR_REASON_MAINTENANCE_MODE = 25;
+  ERROR_REASON_STALE_PROPOSAL = 26;
+  ERROR_REASON_INVALID_CRON_EXPRESSION = 27;
+  ERROR_REASON_LEDGER_IN_MIRROR_MODE = 28;
+  ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE = 29;
+  ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS = 30;
+  ERROR_REASON_PREPARED_QUERY_NOT_FOUND = 31;
+  ERROR_REASON_INDEX_NOT_FOUND = 32;
+  ERROR_REASON_INDEX_BUILDING = 33;
+  ERROR_REASON_INDEX_INCONSISTENT = 34;
+  ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA = 35;
+  ERROR_REASON_NUMSCRIPT_NOT_FOUND = 36;
+  ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS = 37;
+  ERROR_REASON_NUMSCRIPT_INVALID_VERSION = 38;
+  ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE = 39;
+  ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND = 40;
+  ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS = 41;
+  ERROR_REASON_INVALID_PATTERN = 42;
+  ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS = 43;
+  ERROR_REASON_ACCOUNT_TYPE_CONFLICT = 44;
+  ERROR_REASON_COLD_STORAGE_DISABLED = 45;
+  ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO = 46;
+  ERROR_REASON_FILTER_COMPILATION_ERROR = 47;
+  ERROR_REASON_INVALID_ORDER_TYPE = 48;
+  ERROR_REASON_INVALID_APPLY_TYPE = 49;
+  ERROR_REASON_INVALID_EXECUTION_PLAN = 50;
+  ERROR_REASON_EXECUTION_PLAN_TOO_LARGE = 51;
+  ERROR_REASON_COVERAGE_MISS = 52;
+  ERROR_REASON_IDEMPOTENCY_CHECK_FAILED = 53;
+  ERROR_REASON_STORAGE_OPERATION_FAILED = 54;
+  ERROR_REASON_TRANSACTION_STATE_INCONSISTENT = 55;
+  ERROR_REASON_CHECKPOINT_ID_REQUIRED = 56;
+  ERROR_REASON_NUMSCRIPT_RUNTIME = 57;
+  ERROR_REASON_VOLUME_NOT_MATERIALIZED = 58;
+  ERROR_REASON_NON_DETERMINISTIC_SCRIPT = 59;
+  ERROR_REASON_CLUSTER_UNHEALTHY = 60;
+}
+
+// IdempotencyFailure captures a definitive business rejection so a retried key
+// replays the original error instead of re-executing. The error kind is NOT
+// stored: it is re-derived from reason at replay time (domain.KindForReason),
+// so a reclassified error replays under its current kind and the checker can
+// verify this projection against the hash-chained AuditFailure.
+message IdempotencyFailure {
+  ErrorReason reason = 1;             // typed reason; kind derived via domain.KindForReason
+  string message = 2;                 // client-facing error message
+  map<string, string> metadata = 3;   // ErrorInfo metadata
 }
 
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.

@@ -15,22 +15,20 @@ import (
 func main() {
 	internal.RunDriver("parallel_driver_concurrent_revert", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		// 1. Create a transaction to revert.
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings:      internal.RandomPostings(),
-								Force:         true,
-								ExpandVolumes: true,
-							},
-						}},
-					},
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings:      internal.RandomPostings(),
+							Force:         true,
+							ExpandVolumes: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to create a transaction for concurrent revert",
@@ -48,22 +46,20 @@ func main() {
 		details := internal.Details{"ledger": ledger, "txId": txID}
 
 		// 2. Fire two reverts concurrently.
-		revertReq := &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
-							RevertTransaction: &servicepb.RevertTransactionPayload{
-								TransactionId: txID,
-								Force:         true,
-								ExpandVolumes: true,
-							},
-						}},
-					},
+		revertReq := servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
+						RevertTransaction: &servicepb.RevertTransactionPayload{
+							TransactionId: txID,
+							Force:         true,
+							ExpandVolumes: true,
+						},
+					}},
 				},
-			}),
-		}
+			},
+		})
 
 		var (
 			wg   sync.WaitGroup
@@ -116,10 +112,10 @@ func main() {
 			assert.AlwaysOrUnreachable(successes <= 1,
 				"at most one concurrent revert should succeed",
 				details.With(internal.Details{
-					"successes":      successes,
+					"successes":       successes,
 					"alreadyReverted": alreadyReverted,
-					"err1":           err1,
-					"err2":           err2,
+					"err1":            err1,
+					"err2":            err2,
 				}))
 		}
 

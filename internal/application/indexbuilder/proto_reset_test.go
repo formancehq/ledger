@@ -55,8 +55,6 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 	assert.Empty(t, log.GetReceipt())
 
 	// Optional fields must be nil'd.
-	assert.Nil(t, log.GetIdempotency())
-	assert.Nil(t, log.GetSignature())
 	assert.Nil(t, log.GetResponseSignature())
 
 	apply := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
@@ -193,7 +191,6 @@ func TestResetLogForReuse_RoundTrip(t *testing.T) {
 	// Verify log2 values — no stale data from log1.
 	assert.Equal(t, uint64(99999), m.GetSequence())
 	assert.Empty(t, m.GetReceipt(), "Receipt should be empty (not stale)")
-	assert.Nil(t, m.GetIdempotency(), "Idempotency should be nil (not stale)")
 
 	apply := m.GetPayload().GetApply()
 	assert.Equal(t, "other-ledger", apply.GetLedgerName())
@@ -245,9 +242,6 @@ func buildTestLog() *commonpb.Log {
 	return &commonpb.Log{
 		Sequence: 12345,
 		Receipt:  "test-receipt",
-		Idempotency: &commonpb.Idempotency{
-			Key: "test-key",
-		},
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_Apply{
 				Apply: &commonpb.ApplyLedgerLog{

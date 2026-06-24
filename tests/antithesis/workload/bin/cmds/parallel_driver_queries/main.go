@@ -17,29 +17,27 @@ func main() {
 		queryName := fmt.Sprintf("q-%d", internal.Rand().Uint64()%100)
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_CreatePreparedQuery{
-					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
-						Ledger: ledger,
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledger,
 
-						Query: &commonpb.PreparedQuery{
-							Name:   queryName,
-							Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-							Filter: &commonpb.QueryFilter{
-								Filter: &commonpb.QueryFilter_Address{
-									Address: &commonpb.AddressMatch{
-										Match: &commonpb.AddressMatch_HardcodedPrefix{
-											HardcodedPrefix: "users:",
-										},
+					Query: &commonpb.PreparedQuery{
+						Name:   queryName,
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &commonpb.QueryFilter{
+							Filter: &commonpb.QueryFilter_Address{
+								Address: &commonpb.AddressMatch{
+									Match: &commonpb.AddressMatch_HardcodedPrefix{
+										HardcodedPrefix: "users:",
 									},
 								},
 							},
 						},
 					},
 				},
-			}),
-		})
+			},
+		}))
 
 		if err != nil {
 			if internal.IsTransient(err) {
@@ -65,16 +63,14 @@ func main() {
 
 		assert.AlwaysOrUnreachable(execResp != nil, "prepared query should return a response", details)
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_DeletePreparedQuery{
-					DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
-						Ledger: ledger,
-						Name:   queryName,
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+					Ledger: ledger,
+					Name:   queryName,
 				},
-			}),
-		})
+			},
+		}))
 
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)

@@ -168,22 +168,20 @@ message GetLedgerRequest {
   reserved "checkpoint_id";
 }
 
+// ApplyRequest is the wire input to Apply(): an atomic batch that is either
+// unsigned (ApplyBatch carried directly) or signed (an opaque
+// SignedApplyBatch whose payload is the serialized ApplyBatch). The
+// discriminated union is schema-enforced — a client cannot send both, and the
+// wrapper/payload divergence class disappears by construction.
+//
+// forwarded_caller_snapshot and skip_response sit OUTSIDE the signed payload:
+// the snapshot is added by a forwarding follower (not client-signed), and
+// skip_response is a response-shaping transport option, not part of the intent.
 message ApplyRequest {
-  repeated Envelope envelopes = 1;
-  // skip_response, when true, strips log payloads from the response.
-  // Only the sequence number is returned for each log. Useful for
-  // historical ingestion where the client does not need the full response.
-  bool skip_response = 2;
-  // Field 3 previously held `common.CallerIdentity forwarded_caller`
-  // (subject + scopes + god + source). The type was split into
-  // `CallerIdentity` (identification only) and `CallerSnapshot`
-  // (admission-time identity + scopes + god). Reusing the field with the
-  // new type is unsafe across rolling upgrades — both old and new bytes
-  // are length-delimited and decode silently into a snapshot with empty
-  // scopes/subject. Keep 3 reserved forever and write the new snapshot
-  // at field 4.
-  reserved 3;
-  reserved "forwarded_caller";
+  oneof variant {
+    ApplyBatch unsigned = 1;
+    signature.SignedApplyBatch signed = 2;
+  }
 
   // forwarded_caller_snapshot carries the admission-time caller snapshot
   // (identity + scopes + god) captured by the forwarding follower. The
@@ -191,19 +189,21 @@ message ApplyRequest {
   // via cluster-secret (trusted peer); direct client requests have it
   // derived from validated JWT/Ed25519 claims on the leader and any value
   // sent here is ignored.
-  common.CallerSnapshot forwarded_caller_snapshot = 4;
+  common.CallerSnapshot forwarded_caller_snapshot = 3;
+
+  // skip_response, when true, strips log payloads from the response.
+  // Only the sequence number is returned for each log. Useful for
+  // historical ingestion where the client does not need the full response.
+  bool skip_response = 4;
 }
 
-// Envelope wraps a Request on the wire. Unsigned requests carry the
-// Request directly; signed requests carry an opaque SignedRequest that
-// the server verifies before unmarshaling the payload bytes. The proto
-// schema enforces the discriminated union — clients cannot send both,
-// and the wrapper/payload divergence class disappears by construction.
-message Envelope {
-  oneof variant {
-    Request unsigned = 1;
-    signature.SignedRequest signed = 2;
-  }
+// ApplyBatch is the atomic unit: an ordered set of requests applied
+// all-or-nothing, identified for idempotency by a single key. It is the unit
+// of atomicity, idempotency, AND signing — a SignedApplyBatch signs exactly
+// these bytes, so the batch's composition and ordering are authenticated.
+message ApplyBatch {
+  repeated Request requests = 1;
+  string idempotency_key = 2;
 }
 
 message ApplyResponse {
@@ -211,7 +211,11 @@ message ApplyResponse {
 }
 
 message Request {
-  string idempotency_key = 1;
+  // Field 1 previously held a per-request `string idempotency_key`. Idempotency
+  // is now keyed per atomic batch (ApplyBatch.idempotency_key), matching the
+  // atomic/signed unit. Reserved so it cannot be reintroduced per-request.
+  reserved 1;
+  reserved "idempotency_key";
   oneof type {
     LedgerApplyRequest apply = 2;
     CreateLedgerRequest create_ledger = 3;
@@ -248,10 +252,9 @@ message Request {
     SaveLedgerMetadataRequest save_ledger_metadata = 36;
     DeleteLedgerMetadataRequest delete_ledger_metadata = 37;
   }
-  // Field 5 used to carry signature.RequestSignature alongside the
-  // wrapper fields. Signed requests now travel as an Envelope with
-  // signature.SignedRequest as the opaque envelope variant; the
-  // Request payload bytes inside the envelope are the source of truth.
+  // Field 5 used to carry a per-request signature. Signing now happens at the
+  // batch level: a signed ApplyRequest carries an opaque SignedApplyBatch
+  // whose payload is the serialized ApplyBatch (these requests + the key).
   reserved 5;
   reserved "signature";
 }
@@ -704,6 +707,13 @@ enum CheckStoreErrorType {
   // the index builder consumes — the audit hash chain itself is
   // verified separately by HASH_MISMATCH.
   CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH = 8;
+  // Emitted when a frozen idempotency outcome persisted under SubIdempKeys (the
+  // proposal hash, the failure reason/message/metadata, or the success log
+  // range) does not match the value re-derived from the hash-chained
+  // AuditEntry that froze it. The idempotency store is a replay cache; a
+  // tampered frozen outcome would otherwise replay an arbitrary error or wrong
+  // log range to a duplicate caller. The audit chain is the source of truth.
+  CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH = 9;
 }
 
 message CheckStoreError {

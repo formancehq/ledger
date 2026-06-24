@@ -6,6 +6,7 @@ package auditpb
 import (
 	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	slices "slices"
 )
 
@@ -21,6 +22,8 @@ type AuditEntryReader interface {
 	GetHash() []byte
 	GetHashVersion() uint32
 	GetCallerSnapshot() commonpb.CallerSnapshotReader
+	GetIdempotency() commonpb.IdempotencyReader
+	GetSignature() signaturepb.SignedApplyBatchReader
 	GetOutcome() isAuditEntry_Outcome
 	Mutate() *AuditEntry
 }
@@ -65,6 +68,22 @@ func (r *auditEntryReadonly) GetHashVersion() uint32 {
 
 func (r *auditEntryReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
 	v := r.v.GetCallerSnapshot()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *auditEntryReadonly) GetIdempotency() commonpb.IdempotencyReader {
+	v := r.v.GetIdempotency()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *auditEntryReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
+	v := r.v.GetSignature()
 	if v == nil {
 		return nil
 	}
@@ -277,7 +296,7 @@ func NewAuditSuccessListReader(s []*AuditSuccess) AuditSuccessListReader {
 // AuditFailureReader provides read-only access to AuditFailure.
 // Call Mutate() to obtain a mutable clone.
 type AuditFailureReader interface {
-	GetErrorType() string
+	GetReason() commonpb.ErrorReason
 	GetMessage() string
 	GetContext() AuditFailure_ContextMapReader
 	Mutate() *AuditFailure
@@ -285,8 +304,8 @@ type AuditFailureReader interface {
 
 type auditFailureReadonly struct{ v *AuditFailure }
 
-func (r *auditFailureReadonly) GetErrorType() string {
-	return r.v.GetErrorType()
+func (r *auditFailureReadonly) GetReason() commonpb.ErrorReason {
+	return r.v.GetReason()
 }
 
 func (r *auditFailureReadonly) GetMessage() string {

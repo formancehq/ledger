@@ -20,8 +20,7 @@ type ErrNonDeterministicScript struct {
 func (e *ErrNonDeterministicScript) Error() string {
 	return fmt.Sprintf("non-deterministic script: %s called more than once", e.Method)
 }
-func (*ErrNonDeterministicScript) Kind() domain.ErrorKind { return domain.KindValidation }
-func (*ErrNonDeterministicScript) Reason() string         { return domain.ErrReasonNonDeterministicScript }
+func (*ErrNonDeterministicScript) Reason() string { return domain.ErrReasonNonDeterministicScript }
 func (e *ErrNonDeterministicScript) Metadata() map[string]string {
 	return map[string]string{"method": e.Method}
 }
@@ -34,7 +33,6 @@ type errMetaNotSupported struct{}
 func (errMetaNotSupported) Error() string {
 	return "meta() is not supported: scripts must use static account references"
 }
-func (errMetaNotSupported) Kind() domain.ErrorKind      { return domain.KindValidation }
 func (errMetaNotSupported) Reason() string              { return domain.ErrReasonValidation }
 func (errMetaNotSupported) Metadata() map[string]string { return nil }
 

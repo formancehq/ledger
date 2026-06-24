@@ -33,7 +33,7 @@ func (s *Server) handleRemoveMetadataType(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), &servicepb.Request{
+	_, err = s.applyUnsigned(r.Context(), "", &servicepb.Request{
 		Type: &servicepb.Request_RemoveMetadataFieldType{
 			RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
 				Ledger:     ledgerName,

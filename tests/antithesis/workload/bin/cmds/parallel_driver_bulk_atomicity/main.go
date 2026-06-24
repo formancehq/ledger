@@ -175,7 +175,7 @@ func main() {
 			},
 		})
 
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(requests...)})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", requests...))
 
 		details := internal.Details{"ledger": ledger, "bulkSize": bulkSize}
 
@@ -199,26 +199,24 @@ func main() {
 			return
 		}
 
-		markerResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: helper,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: "bulkatom-marker",
-									Amount:      commonpb.NewUint256FromUint64(1),
-									Asset:       "USD/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		markerResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: helper,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: "bulkatom-marker",
+								Amount:      commonpb.NewUint256FromUint64(1),
+								Asset:       "USD/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil || len(markerResp.GetLogs()) == 0 {
 			return
 		}

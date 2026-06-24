@@ -175,7 +175,6 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 		{"transaction not found", &domain.ErrTransactionNotFound{TransactionID: 100}},
 		{"transaction already reverted", &domain.ErrTransactionAlreadyReverted{TransactionID: 100}},
 		{"insufficient funds", &domain.ErrInsufficientFunds{Account: "a", Asset: "USD", Amount: "10", Balance: "5"}},
-		{"balance not found", &domain.ErrBalanceNotFound{Account: "a", Asset: "USD"}},
 		{"balance not preloaded", &domain.ErrBalanceNotPreloaded{Account: "a", Asset: "USD"}},
 		{"numscript parse error", &domain.ErrNumscriptParse{Details: "bad syntax"}},
 		{"index not found", &domain.ErrIndexNotFound{Index: "metadata[\"role\"] on a:"}},
@@ -294,7 +293,6 @@ func serverSideConvert(bizErr *domain.BusinessError) *status.Status {
 			e4  *domain.ErrTransactionNotFound
 			e5  *domain.ErrTransactionAlreadyReverted
 			e6  *domain.ErrInsufficientFunds
-			e7  *domain.ErrBalanceNotFound
 			e8  *domain.ErrBalanceNotPreloaded
 			e9  *domain.ErrNumscriptParse
 			e10 *domain.ErrIndexNotFound
@@ -323,11 +321,8 @@ func serverSideConvert(bizErr *domain.BusinessError) *status.Status {
 		case errors.As(inner, &e6):
 			code, reason = codes.FailedPrecondition, domain.ErrReasonInsufficientFunds
 			metadata = map[string]string{"account": e6.Account, "asset": e6.Asset, "amount": e6.Amount, "balance": e6.Balance}
-		case errors.As(inner, &e7):
-			code, reason = codes.FailedPrecondition, domain.ErrReasonBalanceNotFound
-			metadata = map[string]string{"account": e7.Account, "asset": e7.Asset}
 		case errors.As(inner, &e8):
-			code, reason = codes.FailedPrecondition, domain.ErrReasonBalanceNotPreloaded
+			code, reason = codes.Unavailable, domain.ErrReasonBalanceNotPreloaded
 			metadata = map[string]string{"account": e8.Account, "asset": e8.Asset}
 		case errors.As(inner, &e9):
 			code, reason = codes.InvalidArgument, domain.ErrReasonNumscriptParseError
@@ -336,7 +331,7 @@ func serverSideConvert(bizErr *domain.BusinessError) *status.Status {
 			code, reason = codes.FailedPrecondition, domain.ErrReasonIndexNotFound
 			metadata = map[string]string{"index": e10.Index}
 		case errors.As(inner, &e11):
-			code, reason = codes.FailedPrecondition, domain.ErrReasonIndexBuilding
+			code, reason = codes.Unavailable, domain.ErrReasonIndexBuilding
 			metadata = map[string]string{"index": e11.Index}
 		default:
 			return status.New(codes.Internal, inner.Error())

@@ -7,58 +7,58 @@ import (
 	bytes "bytes"
 )
 
-// SignedRequestReader provides read-only access to SignedRequest.
+// SignedApplyBatchReader provides read-only access to SignedApplyBatch.
 // Call Mutate() to obtain a mutable clone.
-type SignedRequestReader interface {
+type SignedApplyBatchReader interface {
 	GetKeyId() string
 	GetSignature() []byte
 	GetPayload() []byte
-	Mutate() *SignedRequest
+	Mutate() *SignedApplyBatch
 }
 
-type signedRequestReadonly struct{ v *SignedRequest }
+type signedApplyBatchReadonly struct{ v *SignedApplyBatch }
 
-func (r *signedRequestReadonly) GetKeyId() string {
+func (r *signedApplyBatchReadonly) GetKeyId() string {
 	return r.v.GetKeyId()
 }
 
-func (r *signedRequestReadonly) GetSignature() []byte {
+func (r *signedApplyBatchReadonly) GetSignature() []byte {
 	return bytes.Clone(r.v.GetSignature())
 }
 
-func (r *signedRequestReadonly) GetPayload() []byte {
+func (r *signedApplyBatchReadonly) GetPayload() []byte {
 	return bytes.Clone(r.v.GetPayload())
 }
 
-func (r *signedRequestReadonly) Mutate() *SignedRequest {
+func (r *signedApplyBatchReadonly) Mutate() *SignedApplyBatch {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this SignedRequest.
-func (m *SignedRequest) AsReader() SignedRequestReader {
+// AsReader returns a read-only view of this SignedApplyBatch.
+func (m *SignedApplyBatch) AsReader() SignedApplyBatchReader {
 	if m == nil {
 		return nil
 	}
-	return &signedRequestReadonly{v: m}
+	return &signedApplyBatchReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this SignedRequest.
-func (m *SignedRequest) Mutate() *SignedRequest {
+// Mutate returns a mutable deep clone of this SignedApplyBatch.
+func (m *SignedApplyBatch) Mutate() *SignedApplyBatch {
 	return m.CloneVT()
 }
 
-// SignedRequestListReader provides read-only iteration over []*SignedRequest.
-type SignedRequestListReader interface {
+// SignedApplyBatchListReader provides read-only iteration over []*SignedApplyBatch.
+type SignedApplyBatchListReader interface {
 	Len() int
-	Get(i int) SignedRequestReader
-	Range(yield func(int, SignedRequestReader) bool)
+	Get(i int) SignedApplyBatchReader
+	Range(yield func(int, SignedApplyBatchReader) bool)
 }
 
-type signedRequestListReadonly []*SignedRequest
+type signedApplyBatchListReadonly []*SignedApplyBatch
 
-func (l signedRequestListReadonly) Len() int { return len(l) }
+func (l signedApplyBatchListReadonly) Len() int { return len(l) }
 
-func (l signedRequestListReadonly) Get(i int) SignedRequestReader {
+func (l signedApplyBatchListReadonly) Get(i int) SignedApplyBatchReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -66,9 +66,9 @@ func (l signedRequestListReadonly) Get(i int) SignedRequestReader {
 	return v.AsReader()
 }
 
-func (l signedRequestListReadonly) Range(yield func(int, SignedRequestReader) bool) {
+func (l signedApplyBatchListReadonly) Range(yield func(int, SignedApplyBatchReader) bool) {
 	for i, v := range l {
-		var r SignedRequestReader
+		var r SignedApplyBatchReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -78,10 +78,10 @@ func (l signedRequestListReadonly) Range(yield func(int, SignedRequestReader) bo
 	}
 }
 
-// NewSignedRequestListReader wraps s for read-only iteration. The returned
+// NewSignedApplyBatchListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewSignedRequestListReader(s []*SignedRequest) SignedRequestListReader {
-	return signedRequestListReadonly(s)
+func NewSignedApplyBatchListReader(s []*SignedApplyBatch) SignedApplyBatchListReader {
+	return signedApplyBatchListReadonly(s)
 }
 
 // SignedLogReader provides read-only access to SignedLog.

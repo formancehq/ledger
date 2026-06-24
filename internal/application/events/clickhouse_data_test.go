@@ -29,7 +29,6 @@ func TestEventToClickHouseJSON_NilLog(t *testing.T) {
 
 	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
-	require.Nil(t, result.IdempotencyKey)
 }
 
 func TestEventToClickHouseJSON_NilPayload(t *testing.T) {
@@ -41,9 +40,6 @@ func TestEventToClickHouseJSON_NilPayload(t *testing.T) {
 		LogSequence: 1,
 		Log: &commonpb.Log{
 			Sequence: 1,
-			Idempotency: &commonpb.Idempotency{
-				Key: "ik-001",
-			},
 		},
 	}
 
@@ -52,8 +48,6 @@ func TestEventToClickHouseJSON_NilPayload(t *testing.T) {
 
 	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
-	require.NotNil(t, result.IdempotencyKey)
-	require.Equal(t, "ik-001", *result.IdempotencyKey)
 }
 
 func TestEventToClickHouseJSON_CreateLedger(t *testing.T) {

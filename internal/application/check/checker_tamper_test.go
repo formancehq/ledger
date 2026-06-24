@@ -13,7 +13,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -54,7 +56,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 
 		// Outcome flips — same `hash` field, different outcome semantics.
 		{"outcome_flip_success_to_failure", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{ErrorType: "FORGED", Message: "fake"}}
+			e.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_VALIDATION, Message: "fake"}}
 		}},
 		{"outcome_flip_failure_to_success", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			e.Outcome = &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 1}}
@@ -64,7 +66,9 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		{"success_min_log_sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetSuccess().MinLogSequence++ }},
 		{"success_max_log_sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetSuccess().MaxLogSequence++ }},
 		// AuditFailure sub-fields.
-		{"failure_error_type", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetFailure().ErrorType = "OTHER" }},
+		{"failure_reason", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
+			e.GetFailure().Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+		}},
 		{"failure_message", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.GetFailure().Message = "tampered" }},
 		{"failure_context_add", "failure", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			e.GetFailure().GetContext()["new-key"] = "new-value"
@@ -93,6 +97,13 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		{"caller_scopes_add", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
 			e.CallerSnapshot.Scopes = append(e.CallerSnapshot.GetScopes(), "admin")
 		}},
+
+		// Batch identity — bound into header_payload.
+		{"idempotency_key", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Idempotency.Key = "tampered-key" }},
+		{"signature_key_id", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Signature.KeyId = "evil-kid" }},
+		{"signature_bytes", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Signature.Signature = []byte("forged") }},
+		{"signature_payload", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Signature.Payload = []byte("swapped-batch") }},
+		{"signature_drop_to_nil", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Signature = nil }},
 
 		// AuditItem fields.
 		{"item_order_index", "success", func(_ *auditpb.AuditEntry, items []*auditpb.AuditItem) { items[0].OrderIndex = 99 }},
@@ -169,6 +180,12 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 			Scopes: []string{"read", "write"},
 			God:    false,
 		},
+		Idempotency: &commonpb.Idempotency{Key: "batch-key-1"},
+		Signature: &signaturepb.SignedApplyBatch{
+			KeyId:     "sign-kid",
+			Signature: []byte("sig-bytes"),
+			Payload:   []byte("batch-payload"),
+		},
 	}
 
 	switch outcomeKind {
@@ -182,8 +199,8 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 	case "failure":
 		entry.Outcome = &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				ErrorType: "INSUFFICIENT_FUNDS",
-				Message:   "balance too low",
+				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Message: "balance too low",
 				Context: map[string]string{
 					"original-key": "original-value",
 					"ledger":       "ledger-a",
@@ -246,6 +263,137 @@ func rewriteAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry
 		require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), item))
 	}
 
+	require.NoError(t, batch.Commit())
+}
+
+// TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering covers the
+// SubIdempKeys projection check: a frozen idempotency outcome is compared to
+// the value re-derived from the hash-chained audit entry that wrote it. A
+// faithful entry passes; tampering with the failure reason/message, the
+// outcome kind, or the proposal hash is flagged — without breaking the chain.
+func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterID = "idem-outcome-cluster"
+		idemKey   = "batch-key-1"
+		createdAt = 1700000000
+	)
+
+	collectIdempotencyMismatches := func(store *dal.Store) []*servicepb.CheckStoreError {
+		attrs := attributes.New()
+		checker := NewChecker(store, attrs, clusterID, logging.Testing())
+
+		handle, err := store.NewReadHandle()
+		require.NoError(t, err)
+
+		defer func() { _ = handle.Close() }()
+
+		var got []*servicepb.CheckStoreError
+
+		require.NoError(t, checker.verifyAuditHashChain(context.Background(), handle, nil, nil, func(event *servicepb.CheckStoreEvent) {
+			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
+				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
+				got = append(got, e.Error)
+			}
+		}))
+
+		return got
+	}
+
+	store := createTestStore(t)
+
+	// A failure proposal that froze its outcome under idemKey: one real order,
+	// its audit failure entry, and the matching SubIdempKeys projection.
+	orders := []*raftcmdpb.Order{{}}
+	serialized := orders[0].MarshalDeterministicVT(nil)
+	proposalHash := processing.HashOrders(orders)
+
+	entry := &auditpb.AuditEntry{
+		Sequence:    1,
+		Timestamp:   &commonpb.Timestamp{Data: createdAt},
+		ProposalId:  7,
+		OrderCount:  1,
+		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Idempotency: &commonpb.Idempotency{Key: idemKey},
+		Outcome: &auditpb.AuditEntry_Failure{
+			Failure: &auditpb.AuditFailure{
+				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Message: "balance too low",
+				Context: map[string]string{"account": "bank"},
+			},
+		},
+	}
+	items := []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized}}
+	persistAuditEntry(t, store, entry, items, clusterID)
+
+	faithful := &commonpb.IdempotencyKeyValue{
+		CreatedAt: createdAt,
+		Hash:      proposalHash,
+		Failure: &commonpb.IdempotencyFailure{
+			Reason:   commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+			Message:  "balance too low",
+			Metadata: map[string]string{"account": "bank"},
+		},
+	}
+
+	writeIdempotencyEntry(t, store, idemKey, faithful)
+	require.Empty(t, collectIdempotencyMismatches(store),
+		"a frozen outcome matching its audit entry must not be flagged")
+
+	tampered := faithful.CloneVT()
+	tampered.Failure.Message = "you have plenty of money"
+	writeIdempotencyEntry(t, store, idemKey, tampered)
+	require.NotEmpty(t, collectIdempotencyMismatches(store),
+		"a tampered frozen failure message must be flagged")
+
+	tampered = faithful.CloneVT()
+	tampered.Failure.Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+	writeIdempotencyEntry(t, store, idemKey, tampered)
+	require.NotEmpty(t, collectIdempotencyMismatches(store),
+		"a tampered frozen failure reason must be flagged")
+
+	tampered = faithful.CloneVT()
+	tampered.Hash = []byte("forged-hash")
+	writeIdempotencyEntry(t, store, idemKey, tampered)
+	require.NotEmpty(t, collectIdempotencyMismatches(store),
+		"a tampered proposal hash must be flagged")
+
+	// Tampering created_at to another post-boundary value would otherwise dodge
+	// the (keyHash, created_at) lookup and skip verification; the archive-boundary
+	// guard reports it (no audit entry froze the key at this timestamp).
+	tampered = faithful.CloneVT()
+	tampered.CreatedAt = createdAt + 5
+	writeIdempotencyEntry(t, store, idemKey, tampered)
+	require.NotEmpty(t, collectIdempotencyMismatches(store),
+		"a live entry whose created_at matches no audit entry must be flagged")
+
+	// A created_at before the verified range looks like an archived freeze
+	// (not re-derivable here) and is skipped rather than falsely flagged.
+	tampered = faithful.CloneVT()
+	tampered.CreatedAt = 1
+	writeIdempotencyEntry(t, store, idemKey, tampered)
+	require.Empty(t, collectIdempotencyMismatches(store),
+		"an entry created before the verified range must be skipped, not flagged")
+}
+
+// writeIdempotencyEntry persists a frozen idempotency value at its canonical
+// SubIdempKeys location (the layout state.saveIdempotencyKey uses).
+func writeIdempotencyEntry(t *testing.T, store *dal.Store, key string, value *commonpb.IdempotencyKeyValue) {
+	t.Helper()
+
+	keyHash := state.HashIdempotencyKey(key)
+
+	pebbleKey := make([]byte, 2+16)
+	pebbleKey[0] = dal.ZoneIdempotency
+	pebbleKey[1] = dal.SubIdempKeys
+	copy(pebbleKey[2:], keyHash[:])
+
+	data, err := value.MarshalVT()
+	require.NoError(t, err)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes(pebbleKey, data))
 	require.NoError(t, batch.Commit())
 }
 

@@ -16,15 +16,14 @@ var ErrNotFound = errors.New("not found")
 // ErrorKind classifies a domain error semantically — independent of any
 // transport (gRPC, HTTP, CLI). Adapters translate Kind → their own status
 // code via an exhaustive switch; adding a new Kind without updating every
-// switch fails the build (golangci-lint `exhaustive` rule + ad-hoc reflection
-// test). Adding a new Describable type without declaring a Kind() fails to
-// compile because BusinessError.Err is typed as Describable.
+// switch fails the build (golangci-lint `exhaustive` rule).
 //
-// This file is the single source of truth for the (error type, Kind, Reason,
-// Metadata) tuple. Anything stored in BusinessError must implement
-// Describable; anything outside BusinessError (signing.*, raft.*, ctx errors,
-// AWS smithy, etc.) is sanitised by convertToGRPCError's defence-in-depth
-// default branch and does NOT need a Kind. See #431.
+// Kind is NOT declared per error type: it is derived from the error's Reason
+// via KindForReason (one exhaustive switch — the single source of truth for
+// reason→kind), and read through domain.Kind(d). A new domain error declares
+// only its Reason; its kind follows. Anything outside BusinessError (signing.*,
+// raft.*, ctx errors, AWS smithy, etc.) is sanitised by convertToGRPCError's
+// defence-in-depth default branch. See #431.
 type ErrorKind int
 
 const (
@@ -97,10 +96,10 @@ func (k ErrorKind) String() string {
 }
 
 // Describable is the contract every domain business error must satisfy.
-// Adapters consume Kind() to pick a transport status code, Reason() for the
-// stable client-facing identifier, and Metadata() for the structured
-// error-info payload (field values that let the client format a precise
-// user message — names, IDs, etc.).
+// Adapters derive a transport status code from domain.Kind(d) — a function of
+// Reason — read Reason() for the stable client-facing identifier, and
+// Metadata() for the structured error-info payload (field values that let the
+// client format a precise user message — names, IDs, etc.).
 //
 // The interface embeds `error` so `errors.As(err, &target Describable)` works
 // transparently from any chain. Implementations should be value-comparable
@@ -109,18 +108,43 @@ func (k ErrorKind) String() string {
 type Describable interface {
 	error
 
-	// Kind returns the semantic category. Determines the transport status.
-	Kind() ErrorKind
-
 	// Reason returns a stable, client-facing identifier (UPPER_SNAKE_CASE).
 	// Clients pattern-match on this string; never rename a Reason once
-	// shipped — add a new Describable type instead.
+	// shipped — add a new Describable type instead. The error's semantic
+	// kind is derived from it via domain.Kind / KindForReason.
 	Reason() string
 
 	// Metadata returns structured context the client uses to format a
 	// user-facing message (e.g. {"name": "default"}). Return nil when
 	// there is no per-occurrence context.
 	Metadata() map[string]string
+}
+
+// ReplayedFailure is a Describable reconstructed from a stored idempotency
+// outcome. When a retried idempotency key's first apply was a definitive
+// business rejection, the FSM replays this so every duplicate observes the same
+// error instead of re-executing in a changed context.
+type ReplayedFailure struct {
+	ErrReason string
+	Msg       string
+	Meta      map[string]string
+}
+
+func (e *ReplayedFailure) Error() string               { return e.Msg }
+func (e *ReplayedFailure) Reason() string              { return e.ErrReason }
+func (e *ReplayedFailure) Metadata() map[string]string { return e.Meta }
+
+// IsFreezableFailure reports whether a rejection is a definitive, deterministic
+// business outcome safe to freeze against an idempotency key. Retryable /
+// infrastructure kinds (Unavailable, Internal, auth) are never frozen — they did
+// not produce a definitive business result.
+func IsFreezableFailure(k ErrorKind) bool {
+	switch k {
+	case KindValidation, KindNotFound, KindAlreadyExists, KindConflict, KindPrecondition:
+		return true
+	default:
+		return false
+	}
 }
 
 // Reason constants shared between server and client. Wire contract: do NOT
@@ -137,7 +161,6 @@ const (
 	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
 	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
 	ErrReasonVolumeOverflow                = "VOLUME_OVERFLOW"
-	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
 	ErrReasonValidation                    = "VALIDATION"
@@ -196,15 +219,15 @@ const (
 // BusinessError wraps a Describable so it can flow through code paths that
 // only understand the standard `error` interface (futures, admission,
 // controller) while still carrying the structured information adapters need
-// at the API edge. The field is typed as Describable, NOT error — adding a
-// new domain failure case without declaring its Kind() does not compile.
+// at the API edge. The field is typed as Describable, NOT error — a new domain
+// failure case that does not implement Describable (Error/Reason/Metadata) does
+// not compile.
 type BusinessError struct {
 	Err Describable
 }
 
 func (e *BusinessError) Error() string               { return e.Err.Error() }
 func (e *BusinessError) Unwrap() error               { return e.Err }
-func (e *BusinessError) Kind() ErrorKind             { return e.Err.Kind() }
 func (e *BusinessError) Reason() string              { return e.Err.Reason() }
 func (e *BusinessError) Metadata() map[string]string { return e.Err.Metadata() }
 
@@ -243,7 +266,6 @@ type validationSentinel struct {
 }
 
 func (e *validationSentinel) Error() string             { return e.msg }
-func (*validationSentinel) Kind() ErrorKind             { return KindValidation }
 func (*validationSentinel) Reason() string              { return ErrReasonValidation }
 func (*validationSentinel) Metadata() map[string]string { return nil }
 
@@ -266,7 +288,6 @@ type errColdStorageDisabled struct{}
 func (errColdStorageDisabled) Error() string {
 	return "cold storage is disabled: archiving is not available"
 }
-func (errColdStorageDisabled) Kind() ErrorKind             { return KindPrecondition }
 func (errColdStorageDisabled) Reason() string              { return ErrReasonColdStorageDisabled }
 func (errColdStorageDisabled) Metadata() map[string]string { return nil }
 
@@ -276,7 +297,6 @@ var ErrColdStorageDisabled Describable = errColdStorageDisabled{}
 type errAuditDisabled struct{}
 
 func (errAuditDisabled) Error() string               { return "audit log is disabled on this server" }
-func (errAuditDisabled) Kind() ErrorKind             { return KindPrecondition }
 func (errAuditDisabled) Reason() string              { return ErrReasonAuditDisabled }
 func (errAuditDisabled) Metadata() map[string]string { return nil }
 
@@ -288,7 +308,6 @@ type errMaintenanceMode struct{}
 func (errMaintenanceMode) Error() string {
 	return "cluster is in maintenance mode: write operations are blocked"
 }
-func (errMaintenanceMode) Kind() ErrorKind             { return KindUnavailable }
 func (errMaintenanceMode) Reason() string              { return ErrReasonMaintenanceMode }
 func (errMaintenanceMode) Metadata() map[string]string { return nil }
 
@@ -300,7 +319,6 @@ type errStaleProposal struct{}
 func (errStaleProposal) Error() string {
 	return "proposal rejected: predicted index mismatch (stale tracker after leadership transition)"
 }
-func (errStaleProposal) Kind() ErrorKind             { return KindUnavailable }
 func (errStaleProposal) Reason() string              { return ErrReasonStaleProposal }
 func (errStaleProposal) Metadata() map[string]string { return nil }
 
@@ -310,7 +328,6 @@ var ErrStaleProposal Describable = errStaleProposal{}
 type errNoChapterOpen struct{}
 
 func (errNoChapterOpen) Error() string               { return "no open chapter exists" }
-func (errNoChapterOpen) Kind() ErrorKind             { return KindPrecondition }
 func (errNoChapterOpen) Reason() string              { return ErrReasonNoChapterOpen }
 func (errNoChapterOpen) Metadata() map[string]string { return nil }
 
@@ -344,7 +361,6 @@ type ErrLedgerAlreadyExists struct {
 }
 
 func (e *ErrLedgerAlreadyExists) Error() string { return "ledger already exists: " + e.Name }
-func (*ErrLedgerAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
 func (*ErrLedgerAlreadyExists) Reason() string  { return ErrReasonLedgerAlreadyExists }
 func (e *ErrLedgerAlreadyExists) Metadata() map[string]string {
 	return map[string]string{"name": e.Name}
@@ -356,7 +372,6 @@ type ErrLedgerNotFound struct {
 }
 
 func (e *ErrLedgerNotFound) Error() string               { return "ledger does not exist: " + e.Name }
-func (*ErrLedgerNotFound) Kind() ErrorKind               { return KindNotFound }
 func (*ErrLedgerNotFound) Reason() string                { return ErrReasonLedgerNotFound }
 func (e *ErrLedgerNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
 
@@ -366,7 +381,6 @@ type ErrLedgerDeleted struct {
 }
 
 func (e *ErrLedgerDeleted) Error() string               { return "ledger has been deleted: " + e.Name }
-func (*ErrLedgerDeleted) Kind() ErrorKind               { return KindConflict }
 func (*ErrLedgerDeleted) Reason() string                { return ErrReasonLedgerDeleted }
 func (e *ErrLedgerDeleted) Metadata() map[string]string { return map[string]string{"name": e.Name} }
 
@@ -378,8 +392,7 @@ type ErrIdempotencyKeyConflict struct {
 func (e *ErrIdempotencyKeyConflict) Error() string {
 	return fmt.Sprintf("idempotency key conflict: key %q used with different request content", e.Key)
 }
-func (*ErrIdempotencyKeyConflict) Kind() ErrorKind { return KindAlreadyExists }
-func (*ErrIdempotencyKeyConflict) Reason() string  { return ErrReasonIdempotencyKeyConflict }
+func (*ErrIdempotencyKeyConflict) Reason() string { return ErrReasonIdempotencyKeyConflict }
 func (e *ErrIdempotencyKeyConflict) Metadata() map[string]string {
 	return map[string]string{"key": e.Key}
 }
@@ -393,8 +406,7 @@ type ErrTransactionReferenceConflict struct {
 func (e *ErrTransactionReferenceConflict) Error() string {
 	return fmt.Sprintf("transaction reference %q already exists in ledger %s", e.Reference, e.Ledger)
 }
-func (*ErrTransactionReferenceConflict) Kind() ErrorKind { return KindAlreadyExists }
-func (*ErrTransactionReferenceConflict) Reason() string  { return ErrReasonTransactionReferenceConflict }
+func (*ErrTransactionReferenceConflict) Reason() string { return ErrReasonTransactionReferenceConflict }
 func (e *ErrTransactionReferenceConflict) Metadata() map[string]string {
 	return map[string]string{"ledger": e.Ledger, "reference": e.Reference}
 }
@@ -407,8 +419,7 @@ type ErrTransactionNotFound struct {
 func (e *ErrTransactionNotFound) Error() string {
 	return fmt.Sprintf("transaction %d does not exist", e.TransactionID)
 }
-func (*ErrTransactionNotFound) Kind() ErrorKind { return KindNotFound }
-func (*ErrTransactionNotFound) Reason() string  { return ErrReasonTransactionNotFound }
+func (*ErrTransactionNotFound) Reason() string { return ErrReasonTransactionNotFound }
 func (e *ErrTransactionNotFound) Metadata() map[string]string {
 	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
 }
@@ -422,8 +433,7 @@ type ErrTransactionReferenceNotFound struct {
 func (e *ErrTransactionReferenceNotFound) Error() string {
 	return fmt.Sprintf("transaction with reference %q does not exist", e.Reference)
 }
-func (*ErrTransactionReferenceNotFound) Kind() ErrorKind { return KindNotFound }
-func (*ErrTransactionReferenceNotFound) Reason() string  { return ErrReasonTransactionReferenceNotFound }
+func (*ErrTransactionReferenceNotFound) Reason() string { return ErrReasonTransactionReferenceNotFound }
 func (e *ErrTransactionReferenceNotFound) Metadata() map[string]string {
 	return map[string]string{"reference": e.Reference}
 }
@@ -440,8 +450,7 @@ type ErrTransactionAlreadyReverted struct {
 func (e *ErrTransactionAlreadyReverted) Error() string {
 	return fmt.Sprintf("transaction %d is already reverted", e.TransactionID)
 }
-func (*ErrTransactionAlreadyReverted) Kind() ErrorKind { return KindConflict }
-func (*ErrTransactionAlreadyReverted) Reason() string  { return ErrReasonTransactionAlreadyReverted }
+func (*ErrTransactionAlreadyReverted) Reason() string { return ErrReasonTransactionAlreadyReverted }
 func (e *ErrTransactionAlreadyReverted) Metadata() map[string]string {
 	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
 }
@@ -460,8 +469,7 @@ func (e *ErrInsufficientFunds) Error() string {
 		e.Account, e.Asset, e.Amount, e.Balance,
 	)
 }
-func (*ErrInsufficientFunds) Kind() ErrorKind { return KindPrecondition }
-func (*ErrInsufficientFunds) Reason() string  { return ErrReasonInsufficientFunds }
+func (*ErrInsufficientFunds) Reason() string { return ErrReasonInsufficientFunds }
 func (e *ErrInsufficientFunds) Metadata() map[string]string {
 	return map[string]string{"account": e.Account, "asset": e.Asset, "amount": e.Amount, "balance": e.Balance}
 }
@@ -486,8 +494,7 @@ func (e *ErrVolumeOverflow) Error() string {
 		e.Side, e.Account, e.Asset, e.Current, e.Amount,
 	)
 }
-func (*ErrVolumeOverflow) Kind() ErrorKind { return KindPrecondition }
-func (*ErrVolumeOverflow) Reason() string  { return ErrReasonVolumeOverflow }
+func (*ErrVolumeOverflow) Reason() string { return ErrReasonVolumeOverflow }
 func (e *ErrVolumeOverflow) Metadata() map[string]string {
 	return map[string]string{
 		"account": e.Account,
@@ -498,28 +505,12 @@ func (e *ErrVolumeOverflow) Metadata() map[string]string {
 	}
 }
 
-// ErrBalanceNotFound — balance for a source account cannot be determined.
-type ErrBalanceNotFound struct {
-	Account string
-	Asset   string
-}
-
-func (e *ErrBalanceNotFound) Error() string {
-	return fmt.Sprintf("balance not found for account %q asset %q", e.Account, e.Asset)
-}
-func (*ErrBalanceNotFound) Kind() ErrorKind { return KindPrecondition }
-func (*ErrBalanceNotFound) Reason() string  { return ErrReasonBalanceNotFound }
-func (e *ErrBalanceNotFound) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset}
-}
-
 // ErrSinkAlreadyExists — adding a sink that already exists.
 type ErrSinkAlreadyExists struct {
 	Name string
 }
 
 func (e *ErrSinkAlreadyExists) Error() string               { return "event sink already exists: " + e.Name }
-func (*ErrSinkAlreadyExists) Kind() ErrorKind               { return KindAlreadyExists }
 func (*ErrSinkAlreadyExists) Reason() string                { return ErrReasonSinkAlreadyExists }
 func (e *ErrSinkAlreadyExists) Metadata() map[string]string { return map[string]string{"name": e.Name} }
 
@@ -542,8 +533,7 @@ func (e *ErrSinkBatchSizeTooLarge) Error() string {
 	return fmt.Sprintf("event sink %q has batchSize=%d, exceeds maximum %d",
 		e.Name, e.BatchSize, e.Max)
 }
-func (*ErrSinkBatchSizeTooLarge) Kind() ErrorKind { return KindValidation }
-func (*ErrSinkBatchSizeTooLarge) Reason() string  { return ErrReasonSinkBatchSizeTooLarge }
+func (*ErrSinkBatchSizeTooLarge) Reason() string { return ErrReasonSinkBatchSizeTooLarge }
 func (e *ErrSinkBatchSizeTooLarge) Metadata() map[string]string {
 	return map[string]string{
 		"name":      e.Name,
@@ -561,8 +551,7 @@ type ErrMetadataNotFound struct {
 func (e *ErrMetadataNotFound) Error() string {
 	return fmt.Sprintf("metadata key %q not found on %s", e.Key, e.Target)
 }
-func (*ErrMetadataNotFound) Kind() ErrorKind { return KindNotFound }
-func (*ErrMetadataNotFound) Reason() string  { return ErrReasonMetadataNotFound }
+func (*ErrMetadataNotFound) Reason() string { return ErrReasonMetadataNotFound }
 func (e *ErrMetadataNotFound) Metadata() map[string]string {
 	return map[string]string{"target": e.Target, "key": e.Key}
 }
@@ -573,7 +562,6 @@ type ErrSinkNotFound struct {
 }
 
 func (e *ErrSinkNotFound) Error() string               { return "event sink not found: " + e.Name }
-func (*ErrSinkNotFound) Kind() ErrorKind               { return KindNotFound }
 func (*ErrSinkNotFound) Reason() string                { return ErrReasonSinkNotFound }
 func (e *ErrSinkNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
 
@@ -583,7 +571,6 @@ type ErrChapterNotFound struct {
 }
 
 func (e *ErrChapterNotFound) Error() string { return fmt.Sprintf("chapter %d not found", e.ChapterID) }
-func (*ErrChapterNotFound) Kind() ErrorKind { return KindNotFound }
 func (*ErrChapterNotFound) Reason() string  { return ErrReasonChapterNotFound }
 func (e *ErrChapterNotFound) Metadata() map[string]string {
 	return map[string]string{"chapterId": strconv.FormatUint(e.ChapterID, 10)}
@@ -597,8 +584,7 @@ type ErrChapterNotClosing struct {
 func (e *ErrChapterNotClosing) Error() string {
 	return fmt.Sprintf("chapter %d is not in CLOSING state", e.ChapterID)
 }
-func (*ErrChapterNotClosing) Kind() ErrorKind { return KindPrecondition }
-func (*ErrChapterNotClosing) Reason() string  { return ErrReasonChapterNotClosing }
+func (*ErrChapterNotClosing) Reason() string { return ErrReasonChapterNotClosing }
 func (e *ErrChapterNotClosing) Metadata() map[string]string {
 	return map[string]string{"chapterId": strconv.FormatUint(e.ChapterID, 10)}
 }
@@ -611,8 +597,7 @@ type ErrChapterNotClosed struct {
 func (e *ErrChapterNotClosed) Error() string {
 	return fmt.Sprintf("chapter %d is not in CLOSED state", e.ChapterID)
 }
-func (*ErrChapterNotClosed) Kind() ErrorKind { return KindPrecondition }
-func (*ErrChapterNotClosed) Reason() string  { return ErrReasonChapterNotClosed }
+func (*ErrChapterNotClosed) Reason() string { return ErrReasonChapterNotClosed }
 func (e *ErrChapterNotClosed) Metadata() map[string]string {
 	return map[string]string{"chapterId": strconv.FormatUint(e.ChapterID, 10)}
 }
@@ -625,8 +610,7 @@ type ErrChapterNotArchiving struct {
 func (e *ErrChapterNotArchiving) Error() string {
 	return fmt.Sprintf("chapter %d is not in ARCHIVING state", e.ChapterID)
 }
-func (*ErrChapterNotArchiving) Kind() ErrorKind { return KindPrecondition }
-func (*ErrChapterNotArchiving) Reason() string  { return ErrReasonChapterNotArchiving }
+func (*ErrChapterNotArchiving) Reason() string { return ErrReasonChapterNotArchiving }
 func (e *ErrChapterNotArchiving) Metadata() map[string]string {
 	return map[string]string{"chapterId": strconv.FormatUint(e.ChapterID, 10)}
 }
@@ -640,8 +624,7 @@ type ErrInvalidCronExpression struct {
 func (e *ErrInvalidCronExpression) Error() string {
 	return fmt.Sprintf("invalid cron expression %q: %s", e.Expression, e.Details)
 }
-func (*ErrInvalidCronExpression) Kind() ErrorKind { return KindValidation }
-func (*ErrInvalidCronExpression) Reason() string  { return ErrReasonInvalidCronExpression }
+func (*ErrInvalidCronExpression) Reason() string { return ErrReasonInvalidCronExpression }
 func (e *ErrInvalidCronExpression) Metadata() map[string]string {
 	return map[string]string{"expression": e.Expression, "details": e.Details}
 }
@@ -654,8 +637,7 @@ type ErrLedgerInMirrorMode struct {
 func (e *ErrLedgerInMirrorMode) Error() string {
 	return fmt.Sprintf("ledger %s is in mirror mode: write operations are blocked", e.Name)
 }
-func (*ErrLedgerInMirrorMode) Kind() ErrorKind { return KindConflict }
-func (*ErrLedgerInMirrorMode) Reason() string  { return ErrReasonLedgerInMirrorMode }
+func (*ErrLedgerInMirrorMode) Reason() string { return ErrReasonLedgerInMirrorMode }
 func (e *ErrLedgerInMirrorMode) Metadata() map[string]string {
 	return map[string]string{"name": e.Name}
 }
@@ -668,8 +650,7 @@ type ErrLedgerNotInMirrorMode struct {
 func (e *ErrLedgerNotInMirrorMode) Error() string {
 	return fmt.Sprintf("ledger %s is not in mirror mode", e.Name)
 }
-func (*ErrLedgerNotInMirrorMode) Kind() ErrorKind { return KindPrecondition }
-func (*ErrLedgerNotInMirrorMode) Reason() string  { return ErrReasonLedgerNotInMirrorMode }
+func (*ErrLedgerNotInMirrorMode) Reason() string { return ErrReasonLedgerNotInMirrorMode }
 func (e *ErrLedgerNotInMirrorMode) Metadata() map[string]string {
 	return map[string]string{"name": e.Name}
 }
@@ -683,8 +664,7 @@ type ErrPreparedQueryAlreadyExists struct {
 func (e *ErrPreparedQueryAlreadyExists) Error() string {
 	return fmt.Sprintf("prepared query %s/%s already exists", e.Ledger, e.Name)
 }
-func (*ErrPreparedQueryAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
-func (*ErrPreparedQueryAlreadyExists) Reason() string  { return ErrReasonPreparedQueryAlreadyExists }
+func (*ErrPreparedQueryAlreadyExists) Reason() string { return ErrReasonPreparedQueryAlreadyExists }
 func (e *ErrPreparedQueryAlreadyExists) Metadata() map[string]string {
 	return map[string]string{"ledger": e.Ledger, "name": e.Name}
 }
@@ -698,8 +678,7 @@ type ErrPreparedQueryNotFound struct {
 func (e *ErrPreparedQueryNotFound) Error() string {
 	return fmt.Sprintf("prepared query %s/%s not found", e.Ledger, e.Name)
 }
-func (*ErrPreparedQueryNotFound) Kind() ErrorKind { return KindNotFound }
-func (*ErrPreparedQueryNotFound) Reason() string  { return ErrReasonPreparedQueryNotFound }
+func (*ErrPreparedQueryNotFound) Reason() string { return ErrReasonPreparedQueryNotFound }
 func (e *ErrPreparedQueryNotFound) Metadata() map[string]string {
 	return map[string]string{"ledger": e.Ledger, "name": e.Name}
 }
@@ -710,7 +689,6 @@ type ErrIndexNotFound struct {
 }
 
 func (e *ErrIndexNotFound) Error() string               { return "index not found: " + e.Index }
-func (*ErrIndexNotFound) Kind() ErrorKind               { return KindPrecondition }
 func (*ErrIndexNotFound) Reason() string                { return ErrReasonIndexNotFound }
 func (e *ErrIndexNotFound) Metadata() map[string]string { return map[string]string{"index": e.Index} }
 
@@ -724,19 +702,18 @@ type ErrMetadataFieldNotInSchema struct {
 func (e *ErrMetadataFieldNotInSchema) Error() string {
 	return "metadata field not declared in schema: " + e.Target + "/" + e.Key
 }
-func (*ErrMetadataFieldNotInSchema) Kind() ErrorKind { return KindPrecondition }
-func (*ErrMetadataFieldNotInSchema) Reason() string  { return ErrReasonMetadataFieldNotInSchema }
+func (*ErrMetadataFieldNotInSchema) Reason() string { return ErrReasonMetadataFieldNotInSchema }
 func (e *ErrMetadataFieldNotInSchema) Metadata() map[string]string {
 	return map[string]string{"target": e.Target, "key": e.Key}
 }
 
 // ErrIndexBuilding — query references an index that is still being built.
+// Transient: the caller should retry once the build completes.
 type ErrIndexBuilding struct {
 	Index string
 }
 
 func (e *ErrIndexBuilding) Error() string               { return "index is still building: " + e.Index }
-func (*ErrIndexBuilding) Kind() ErrorKind               { return KindPrecondition }
 func (*ErrIndexBuilding) Reason() string                { return ErrReasonIndexBuilding }
 func (e *ErrIndexBuilding) Metadata() map[string]string { return map[string]string{"index": e.Index} }
 
@@ -754,8 +731,7 @@ type ErrIndexInconsistent struct {
 func (e *ErrIndexInconsistent) Error() string {
 	return fmt.Sprintf("index %s is inconsistent: %s", e.Index, e.Detail)
 }
-func (*ErrIndexInconsistent) Kind() ErrorKind { return KindInternal }
-func (*ErrIndexInconsistent) Reason() string  { return ErrReasonIndexInconsistent }
+func (*ErrIndexInconsistent) Reason() string { return ErrReasonIndexInconsistent }
 func (e *ErrIndexInconsistent) Metadata() map[string]string {
 	return map[string]string{"index": e.Index, "detail": e.Detail}
 }
@@ -768,7 +744,6 @@ type ErrInvalidReceipt struct {
 }
 
 func (e *ErrInvalidReceipt) Error() string { return "invalid receipt: " + e.Detail }
-func (*ErrInvalidReceipt) Kind() ErrorKind { return KindValidation }
 func (*ErrInvalidReceipt) Reason() string  { return ErrReasonInvalidReceipt }
 func (e *ErrInvalidReceipt) Metadata() map[string]string {
 	return map[string]string{"reason": e.Detail}
@@ -780,7 +755,6 @@ type ErrNumscriptNotFound struct {
 }
 
 func (e *ErrNumscriptNotFound) Error() string               { return "numscript not found: " + e.Name }
-func (*ErrNumscriptNotFound) Kind() ErrorKind               { return KindNotFound }
 func (*ErrNumscriptNotFound) Reason() string                { return ErrReasonNumscriptNotFound }
 func (e *ErrNumscriptNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
 
@@ -793,7 +767,6 @@ type ErrNumscriptVersionAlreadyExists struct {
 func (e *ErrNumscriptVersionAlreadyExists) Error() string {
 	return fmt.Sprintf("numscript %q version %s already exists", e.Name, e.Version)
 }
-func (*ErrNumscriptVersionAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
 func (*ErrNumscriptVersionAlreadyExists) Reason() string {
 	return ErrReasonNumscriptVersionAlreadyExists
 }
@@ -809,8 +782,7 @@ type ErrNumscriptInvalidVersion struct {
 func (e *ErrNumscriptInvalidVersion) Error() string {
 	return fmt.Sprintf("invalid numscript version %q: must be semver (major.minor.patch) or \"latest\"", e.Version)
 }
-func (*ErrNumscriptInvalidVersion) Kind() ErrorKind { return KindValidation }
-func (*ErrNumscriptInvalidVersion) Reason() string  { return ErrReasonNumscriptInvalidVersion }
+func (*ErrNumscriptInvalidVersion) Reason() string { return ErrReasonNumscriptInvalidVersion }
 func (e *ErrNumscriptInvalidVersion) Metadata() map[string]string {
 	return map[string]string{"version": e.Version}
 }
@@ -823,8 +795,7 @@ type ErrAccountNotMatchingType struct {
 func (e *ErrAccountNotMatchingType) Error() string {
 	return "account does not match any account type pattern: " + e.Address
 }
-func (*ErrAccountNotMatchingType) Kind() ErrorKind { return KindPrecondition }
-func (*ErrAccountNotMatchingType) Reason() string  { return ErrReasonAccountNotMatchingType }
+func (*ErrAccountNotMatchingType) Reason() string { return ErrReasonAccountNotMatchingType }
 func (e *ErrAccountNotMatchingType) Metadata() map[string]string {
 	return map[string]string{"address": e.Address}
 }
@@ -835,7 +806,6 @@ type ErrAccountTypeNotFound struct {
 }
 
 func (e *ErrAccountTypeNotFound) Error() string { return "account type not found: " + e.Name }
-func (*ErrAccountTypeNotFound) Kind() ErrorKind { return KindNotFound }
 func (*ErrAccountTypeNotFound) Reason() string  { return ErrReasonAccountTypeNotFound }
 func (e *ErrAccountTypeNotFound) Metadata() map[string]string {
 	return map[string]string{"name": e.Name}
@@ -847,7 +817,6 @@ type ErrAccountTypeAlreadyExists struct {
 }
 
 func (e *ErrAccountTypeAlreadyExists) Error() string { return "account type already exists: " + e.Name }
-func (*ErrAccountTypeAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
 func (*ErrAccountTypeAlreadyExists) Reason() string  { return ErrReasonAccountTypeAlreadyExists }
 func (e *ErrAccountTypeAlreadyExists) Metadata() map[string]string {
 	return map[string]string{"name": e.Name}
@@ -865,8 +834,7 @@ func (e *ErrAccountTypeConflict) Error() string {
 	return fmt.Sprintf("pattern %q conflicts with existing account type %q (pattern %q): ambiguous match possible",
 		e.NewPattern, e.ExistingName, e.ExistingPattern)
 }
-func (*ErrAccountTypeConflict) Kind() ErrorKind { return KindConflict }
-func (*ErrAccountTypeConflict) Reason() string  { return ErrReasonAccountTypeConflict }
+func (*ErrAccountTypeConflict) Reason() string { return ErrReasonAccountTypeConflict }
 func (e *ErrAccountTypeConflict) Metadata() map[string]string {
 	return map[string]string{"pattern": e.NewPattern, "existingName": e.ExistingName, "existingPattern": e.ExistingPattern}
 }
@@ -880,8 +848,7 @@ type ErrInvalidPattern struct {
 func (e *ErrInvalidPattern) Error() string {
 	return fmt.Sprintf("invalid pattern %q: %s", e.Pattern, e.Details)
 }
-func (*ErrInvalidPattern) Kind() ErrorKind { return KindValidation }
-func (*ErrInvalidPattern) Reason() string  { return ErrReasonInvalidPattern }
+func (*ErrInvalidPattern) Reason() string { return ErrReasonInvalidPattern }
 func (e *ErrInvalidPattern) Metadata() map[string]string {
 	return map[string]string{"pattern": e.Pattern, "details": e.Details}
 }
@@ -894,8 +861,7 @@ type ErrAccountTypeHasAccounts struct {
 func (e *ErrAccountTypeHasAccounts) Error() string {
 	return fmt.Sprintf("account type %q still has matching accounts", e.Name)
 }
-func (*ErrAccountTypeHasAccounts) Kind() ErrorKind { return KindConflict }
-func (*ErrAccountTypeHasAccounts) Reason() string  { return ErrReasonAccountTypeHasAccounts }
+func (*ErrAccountTypeHasAccounts) Reason() string { return ErrReasonAccountTypeHasAccounts }
 func (e *ErrAccountTypeHasAccounts) Metadata() map[string]string {
 	return map[string]string{"name": e.Name}
 }
@@ -906,7 +872,6 @@ type ErrNumscriptParse struct {
 }
 
 func (e *ErrNumscriptParse) Error() string { return "numscript parse error: " + e.Details }
-func (*ErrNumscriptParse) Kind() ErrorKind { return KindValidation }
 func (*ErrNumscriptParse) Reason() string  { return ErrReasonNumscriptParseError }
 func (e *ErrNumscriptParse) Metadata() map[string]string {
 	return map[string]string{"details": e.Details}
@@ -930,7 +895,6 @@ func (e *ErrDependencyDiscoveryFailed) Unwrap() error {
 	return e.Cause
 }
 
-func (*ErrDependencyDiscoveryFailed) Kind() ErrorKind { return KindValidation }
 func (e *ErrDependencyDiscoveryFailed) Reason() string {
 	var describable Describable
 	if errors.As(e.Cause, &describable) {
@@ -943,8 +907,11 @@ func (e *ErrDependencyDiscoveryFailed) Metadata() map[string]string {
 	return map[string]string{"details": e.Error()}
 }
 
-// ErrBalanceNotPreloaded — balance for an account was not preloaded by the
-// admission layer before script execution.
+// ErrBalanceNotPreloaded — a balance the script reads was not preloaded into
+// the cache by admission. A transient server-side gap (e.g. the boot-time
+// bloom-populate window, #318), not a caller-satisfiable precondition: a retry
+// re-runs preload and can succeed — hence KindUnavailable, and never frozen as
+// an idempotency outcome.
 type ErrBalanceNotPreloaded struct {
 	Account string
 	Asset   string
@@ -953,8 +920,7 @@ type ErrBalanceNotPreloaded struct {
 func (e *ErrBalanceNotPreloaded) Error() string {
 	return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
 }
-func (*ErrBalanceNotPreloaded) Kind() ErrorKind { return KindPrecondition }
-func (*ErrBalanceNotPreloaded) Reason() string  { return ErrReasonBalanceNotPreloaded }
+func (*ErrBalanceNotPreloaded) Reason() string { return ErrReasonBalanceNotPreloaded }
 func (e *ErrBalanceNotPreloaded) Metadata() map[string]string {
 	return map[string]string{"account": e.Account, "asset": e.Asset}
 }
@@ -968,8 +934,7 @@ type ErrTransientAccountNonZero struct {
 func (e *ErrTransientAccountNonZero) Error() string {
 	return fmt.Sprintf("transient account %s/%s has non-zero balance at end of batch (input != output)", e.Account, e.Asset)
 }
-func (*ErrTransientAccountNonZero) Kind() ErrorKind { return KindPrecondition }
-func (*ErrTransientAccountNonZero) Reason() string  { return ErrReasonTransientAccountNonZero }
+func (*ErrTransientAccountNonZero) Reason() string { return ErrReasonTransientAccountNonZero }
 func (e *ErrTransientAccountNonZero) Metadata() map[string]string {
 	return map[string]string{"account": e.Account, "asset": e.Asset}
 }
@@ -997,9 +962,15 @@ type RemoteError struct {
 var _ Describable = (*RemoteError)(nil)
 
 func (e *RemoteError) Error() string               { return e.Message }
-func (e *RemoteError) Kind() ErrorKind             { return e.KindValue }
 func (e *RemoteError) Reason() string              { return e.ReasonValue }
 func (e *RemoteError) Metadata() map[string]string { return e.Meta }
+
+// kindOverride makes domain.Kind return the kind observed off the wire
+// (derived from the gRPC status code) rather than re-deriving it from Reason.
+// This matters for forward compatibility: a client older than the server may
+// receive a reason its ErrorReason enum does not know, which would otherwise
+// collapse to KindInternal and lose the status the wire already carried.
+func (e *RemoteError) kindOverride() ErrorKind { return e.KindValue }
 
 // ErrFilterCompilation — query-filter compilation failure: schema-type
 // mismatches (e.g. string condition on an int64 field) and prepared-query
@@ -1010,7 +981,6 @@ type ErrFilterCompilation struct {
 }
 
 func (e *ErrFilterCompilation) Error() string { return "compiling filter: " + e.Detail }
-func (*ErrFilterCompilation) Kind() ErrorKind { return KindValidation }
 func (*ErrFilterCompilation) Reason() string  { return ErrReasonFilterCompilation }
 func (e *ErrFilterCompilation) Metadata() map[string]string {
 	return map[string]string{"detail": e.Detail}
@@ -1029,8 +999,7 @@ type ErrInvalidOrderType struct {
 func (e *ErrInvalidOrderType) Error() string {
 	return "invalid order type: " + e.TypeName
 }
-func (*ErrInvalidOrderType) Kind() ErrorKind { return KindInternal }
-func (*ErrInvalidOrderType) Reason() string  { return ErrReasonInvalidOrderType }
+func (*ErrInvalidOrderType) Reason() string { return ErrReasonInvalidOrderType }
 func (e *ErrInvalidOrderType) Metadata() map[string]string {
 	return map[string]string{"typeName": e.TypeName}
 }
@@ -1048,7 +1017,6 @@ type ErrIdempotencyCheckFailed struct {
 
 func (*ErrIdempotencyCheckFailed) Error() string               { return "checking idempotency key" }
 func (e *ErrIdempotencyCheckFailed) Unwrap() error             { return e.Cause }
-func (*ErrIdempotencyCheckFailed) Kind() ErrorKind             { return KindInternal }
 func (*ErrIdempotencyCheckFailed) Reason() string              { return ErrReasonIdempotencyCheckFailed }
 func (*ErrIdempotencyCheckFailed) Metadata() map[string]string { return nil }
 
@@ -1061,7 +1029,6 @@ type ErrInvalidApplyType struct {
 }
 
 func (e *ErrInvalidApplyType) Error() string { return "invalid apply type: " + e.TypeName }
-func (*ErrInvalidApplyType) Kind() ErrorKind { return KindInternal }
 func (*ErrInvalidApplyType) Reason() string  { return ErrReasonInvalidApplyType }
 func (e *ErrInvalidApplyType) Metadata() map[string]string {
 	return map[string]string{"typeName": e.TypeName}
@@ -1081,7 +1048,6 @@ type ErrStorageOperation struct {
 
 func (e *ErrStorageOperation) Error() string { return "storage operation failed: " + e.Operation }
 func (e *ErrStorageOperation) Unwrap() error { return e.Cause }
-func (*ErrStorageOperation) Kind() ErrorKind { return KindInternal }
 func (*ErrStorageOperation) Reason() string  { return ErrReasonStorageOperation }
 func (e *ErrStorageOperation) Metadata() map[string]string {
 	return map[string]string{"operation": e.Operation}
@@ -1099,8 +1065,7 @@ type ErrTransactionStateInconsistent struct {
 func (e *ErrTransactionStateInconsistent) Error() string {
 	return fmt.Sprintf("transaction %d state inconsistent (%s)", e.TransactionID, e.Operation)
 }
-func (*ErrTransactionStateInconsistent) Kind() ErrorKind { return KindInternal }
-func (*ErrTransactionStateInconsistent) Reason() string  { return ErrReasonTransactionStateInconsistent }
+func (*ErrTransactionStateInconsistent) Reason() string { return ErrReasonTransactionStateInconsistent }
 func (e *ErrTransactionStateInconsistent) Metadata() map[string]string {
 	return map[string]string{
 		"transactionId": strconv.FormatUint(e.TransactionID, 10),
@@ -1113,7 +1078,6 @@ func (e *ErrTransactionStateInconsistent) Metadata() map[string]string {
 type errCheckpointIDRequired struct{}
 
 func (errCheckpointIDRequired) Error() string               { return "checkpoint_id must be non-zero" }
-func (errCheckpointIDRequired) Kind() ErrorKind             { return KindValidation }
 func (errCheckpointIDRequired) Reason() string              { return ErrReasonCheckpointIDRequired }
 func (errCheckpointIDRequired) Metadata() map[string]string { return nil }
 
@@ -1129,7 +1093,6 @@ type ErrNumscriptRuntime struct {
 }
 
 func (e *ErrNumscriptRuntime) Error() string { return "numscript runtime error: " + e.Detail }
-func (*ErrNumscriptRuntime) Kind() ErrorKind { return KindInternal }
 func (*ErrNumscriptRuntime) Reason() string  { return ErrReasonNumscriptRuntime }
 func (e *ErrNumscriptRuntime) Metadata() map[string]string {
 	return map[string]string{"detail": e.Detail}
@@ -1148,8 +1111,7 @@ type ErrVolumeNotMaterialized struct {
 func (e *ErrVolumeNotMaterialized) Error() string {
 	return fmt.Sprintf("%s volume %s/%s not fully materialized", e.Side, e.Account, e.Asset)
 }
-func (*ErrVolumeNotMaterialized) Kind() ErrorKind { return KindInternal }
-func (*ErrVolumeNotMaterialized) Reason() string  { return ErrReasonVolumeNotMaterialized }
+func (*ErrVolumeNotMaterialized) Reason() string { return ErrReasonVolumeNotMaterialized }
 func (e *ErrVolumeNotMaterialized) Metadata() map[string]string {
 	return map[string]string{"account": e.Account, "asset": e.Asset, "side": e.Side}
 }
@@ -1168,9 +1130,8 @@ type ErrMetadataKeyValidation struct {
 func (e *ErrMetadataKeyValidation) Error() string {
 	return fmt.Sprintf("metadata key %q value: %s", e.Key, e.Cause.Error())
 }
-func (e *ErrMetadataKeyValidation) Unwrap() error   { return e.Cause }
-func (e *ErrMetadataKeyValidation) Kind() ErrorKind { return e.Cause.Kind() }
-func (e *ErrMetadataKeyValidation) Reason() string  { return e.Cause.Reason() }
+func (e *ErrMetadataKeyValidation) Unwrap() error  { return e.Cause }
+func (e *ErrMetadataKeyValidation) Reason() string { return e.Cause.Reason() }
 func (e *ErrMetadataKeyValidation) Metadata() map[string]string {
 	out := map[string]string{"key": e.Key}
 
@@ -1192,9 +1153,8 @@ type ErrAccountValidation struct {
 func (e *ErrAccountValidation) Error() string {
 	return fmt.Sprintf("account %q: %s", e.Account, e.Cause.Error())
 }
-func (e *ErrAccountValidation) Unwrap() error   { return e.Cause }
-func (e *ErrAccountValidation) Kind() ErrorKind { return e.Cause.Kind() }
-func (e *ErrAccountValidation) Reason() string  { return e.Cause.Reason() }
+func (e *ErrAccountValidation) Unwrap() error  { return e.Cause }
+func (e *ErrAccountValidation) Reason() string { return e.Cause.Reason() }
 func (e *ErrAccountValidation) Metadata() map[string]string {
 	out := map[string]string{"account": e.Account}
 
@@ -1219,7 +1179,6 @@ type ErrInvalidExecutionPlan struct {
 }
 
 func (e *ErrInvalidExecutionPlan) Error() string { return "invalid execution plan: " + e.Reason_ }
-func (*ErrInvalidExecutionPlan) Kind() ErrorKind { return KindInternal }
 func (*ErrInvalidExecutionPlan) Reason() string  { return ErrReasonInvalidExecutionPlan }
 func (e *ErrInvalidExecutionPlan) Metadata() map[string]string {
 	return map[string]string{"reason": e.Reason_}
@@ -1241,8 +1200,7 @@ type ErrExecutionPlanTooLarge struct {
 func (e *ErrExecutionPlanTooLarge) Error() string {
 	return fmt.Sprintf("execution plan too large: %d attributes (limit %d)", e.Size, e.Limit)
 }
-func (*ErrExecutionPlanTooLarge) Kind() ErrorKind { return KindValidation }
-func (*ErrExecutionPlanTooLarge) Reason() string  { return ErrReasonExecutionPlanTooLarge }
+func (*ErrExecutionPlanTooLarge) Reason() string { return ErrReasonExecutionPlanTooLarge }
 func (e *ErrExecutionPlanTooLarge) Metadata() map[string]string {
 	return map[string]string{
 		"size":  strconv.Itoa(e.Size),

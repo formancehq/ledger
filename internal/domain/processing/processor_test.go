@@ -11,135 +11,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
-	t.Parallel()
+// Per-order idempotency dedup/replay/conflict has moved to the FSM apply path
+// (covered by internal/infra/state/idempotency_apply_test.go); ProcessOrders no
+// longer performs it, so those tests were removed.
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
-
-	now := &commonpb.Timestamp{Data: 1234567890}
-
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "test-ledger",
-				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
-					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
-				},
-			},
-		},
-		Idempotency: &commonpb.Idempotency{
-			Key: "unique-key-123",
-		},
-	}
-
-	proposal := &raftcmdpb.Proposal{
-		Id:     1,
-		Orders: []*raftcmdpb.Order{order},
-	}
-
-	// Idempotency key not found
-	mockStore.EXPECT().GetIdempotencyKey(domain.IdempotencyKey{Key: "unique-key-123"}).Return(nil, domain.ErrNotFound)
-
-	// Process the order normally
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
-	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
-	mockStore.EXPECT().GetDate().Return(now)
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-
-	// Increment sequence ID and store idempotency key
-	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
-	mockStore.EXPECT().PutIdempotencyKey(
-		domain.IdempotencyKey{Key: "unique-key-123"},
-		gomock.Any(),
-	).Do(func(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
-		require.Equal(t, uint64(100), value.GetLogSequence())
-		require.NotEmpty(t, value.GetHash())
-	})
-
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore))
-	require.NoError(t, err)
-	require.NotNil(t, response)
-	require.Len(t, response, 1)
-
-	// Should be a created log, not a reference
-	createdLog := response[0].GetCreatedLog()
-	require.NotNil(t, createdLog)
-	require.Equal(t, uint64(100), createdLog.GetSequence())
-	require.NotNil(t, createdLog.GetIdempotency())
-	require.Equal(t, "unique-key-123", createdLog.GetIdempotency().GetKey())
-}
-
-func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
-
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "test-ledger",
-				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
-					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
-				},
-			},
-		},
-		Idempotency: &commonpb.Idempotency{
-			Key: "unique-key-123",
-		},
-	}
-
-	// Compute the expected hash for this order
-	expectedHash := processor.computeOrderHash(order)
-
-	proposal := &raftcmdpb.Proposal{
-		Id:     1,
-		Orders: []*raftcmdpb.Order{order},
-	}
-
-	// Idempotency key found with matching hash
-	mockStore.EXPECT().GetIdempotencyKey(domain.IdempotencyKey{Key: "unique-key-123"}).Return(
-		&commonpb.IdempotencyKeyValue{
-			LogSequence: 42,
-			Hash:        expectedHash,
-		},
-		nil,
-	)
-
-	// No other calls should be made - the order should not be processed
-
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore))
-	require.NoError(t, err)
-	require.NotNil(t, response)
-	require.Len(t, response, 1)
-
-	// Should be a reference, not a created log
-	refSequence := response[0].GetReferenceSequence()
-	require.Equal(t, uint64(42), refSequence)
-}
-
-// TestComputeOrderHash_ExcludesPerAttemptFields pins the contract that
-// the idempotency hash is computed over only the user-supplied request
-// content — never the per-attempt fields admission rebuilds from the
-// proposal context. A retry of the same logical request that lands in
-// a different batch (and therefore gets different CoverageBits /
-// Idempotency nonce) MUST hash identically; otherwise the idempotency
+// TestComputeOrderHash_ExcludesCoverageBits pins the contract that the
+// idempotency hash is computed over only the user-supplied request content —
+// never CoverageBits, which admission rebuilds from the proposal-wide
+// ExecutionPlan. The same logical order in a different batch (and therefore a
+// different CoverageBits) MUST hash identically; otherwise the idempotency
 // check would reject a legitimate retry.
-func TestComputeOrderHash_ExcludesPerAttemptFields(t *testing.T) {
+func TestHashOrders_ExcludesCoverageBits(t *testing.T) {
 	t.Parallel()
-
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	base := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -150,63 +33,45 @@ func TestComputeOrderHash_ExcludesPerAttemptFields(t *testing.T) {
 				},
 			},
 		},
-		Idempotency: &commonpb.Idempotency{Key: "unique-key-123"},
 	}
-	baseHash := processor.computeOrderHash(base)
+	baseHash := HashOrders([]*raftcmdpb.Order{base})
 
 	withCoverage := &raftcmdpb.Order{
 		Type:         base.GetType(),
-		Idempotency:  &commonpb.Idempotency{Key: "different-attempt"},
 		CoverageBits: []byte{0b0101},
 	}
-	require.Equal(t, baseHash, processor.computeOrderHash(withCoverage),
-		"CoverageBits + Idempotency nonce must not change the idempotency hash")
+	require.Equal(t, baseHash, HashOrders([]*raftcmdpb.Order{withCoverage}),
+		"CoverageBits must not change the idempotency hash")
 }
 
-func TestProcessOrders_WithIdempotencyKey_Conflict(t *testing.T) {
+// TestHashOrders_MatchesHashProposal pins the equivalence the integrity checker
+// relies on: re-deriving a proposal's frozen hash via HashOrders (from the
+// audit orders) must be byte-identical to the hot-path HashProposal.
+func TestHashOrders_MatchesHashProposal(t *testing.T) {
 	t.Parallel()
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "test-ledger",
-				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
-					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+	orders := []*raftcmdpb.Order{
+		{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger:  "L",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
 				},
 			},
+			CoverageBits: []byte{0b1},
 		},
-		Idempotency: &commonpb.Idempotency{
-			Key: "unique-key-123",
+		{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "M"},
+			},
 		},
 	}
 
-	proposal := &raftcmdpb.Proposal{
-		Id:     1,
-		Orders: []*raftcmdpb.Order{order},
-	}
-
-	// Idempotency key found with DIFFERENT hash (conflict)
-	mockStore.EXPECT().GetIdempotencyKey(domain.IdempotencyKey{Key: "unique-key-123"}).Return(
-		&commonpb.IdempotencyKeyValue{
-			LogSequence: 42,
-			Hash:        []byte("different-hash"),
-		},
-		nil,
-	)
-
-	// No other calls should be made - should fail immediately
-
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore))
-	require.Error(t, err)
-	require.Nil(t, response)
-	require.ErrorAs(t, err, new(*domain.ErrIdempotencyKeyConflict))
+	require.Equal(t, processor.HashProposal(&raftcmdpb.Proposal{Orders: orders}), HashOrders(orders),
+		"HashOrders must be byte-identical to HashProposal so the checker re-derives the frozen hash")
 }
 
 func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {

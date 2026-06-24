@@ -40,7 +40,7 @@ func (s *Server) handleSetDefaultEnforcementMode(w http.ResponseWriter, r *http.
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), &servicepb.Request{
+	_, err = s.applyUnsigned(r.Context(), "", &servicepb.Request{
 		Type: &servicepb.Request_SetDefaultEnforcementMode{
 			SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
 				Ledger:          ledgerName,

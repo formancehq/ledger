@@ -121,7 +121,7 @@ fuzz duration="30s":
         "FuzzProposalUnmarshalVT ./internal/proto/raftcmdpb/"
         "FuzzOrderUnmarshalVT ./internal/proto/raftcmdpb/"
         "FuzzStateUnmarshalVT ./internal/proto/raftcmdpb/"
-        "FuzzSignedRequestUnmarshalVT ./internal/proto/signaturepb/"
+        "FuzzSignedApplyBatchUnmarshalVT ./internal/proto/signaturepb/"
         "FuzzSignedLogUnmarshalVT ./internal/proto/signaturepb/"
         "FuzzFetchSnapshotResponseUnmarshalVT ./internal/proto/snapshotpb/"
         "FuzzFilterExprParse ./internal/pkg/filterexpr/"

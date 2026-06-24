@@ -19,11 +19,11 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-func (m *SignedRequest) CloneVT() *SignedRequest {
+func (m *SignedApplyBatch) CloneVT() *SignedApplyBatch {
 	if m == nil {
-		return (*SignedRequest)(nil)
+		return (*SignedApplyBatch)(nil)
 	}
-	r := new(SignedRequest)
+	r := new(SignedApplyBatch)
 	r.KeyId = m.KeyId
 	if rhs := m.Signature; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
@@ -42,7 +42,7 @@ func (m *SignedRequest) CloneVT() *SignedRequest {
 	return r
 }
 
-func (m *SignedRequest) CloneMessageVT() proto.Message {
+func (m *SignedApplyBatch) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -73,7 +73,7 @@ func (m *SignedLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (this *SignedRequest) EqualVT(that *SignedRequest) bool {
+func (this *SignedApplyBatch) EqualVT(that *SignedApplyBatch) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -91,8 +91,8 @@ func (this *SignedRequest) EqualVT(that *SignedRequest) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *SignedRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SignedRequest)
+func (this *SignedApplyBatch) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SignedApplyBatch)
 	if !ok {
 		return false
 	}
@@ -123,7 +123,7 @@ func (this *SignedLog) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (m *SignedRequest) MarshalVT() (dAtA []byte, err error) {
+func (m *SignedApplyBatch) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -136,12 +136,12 @@ func (m *SignedRequest) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SignedRequest) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SignedApplyBatch) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SignedRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SignedApplyBatch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -231,7 +231,7 @@ func (m *SignedLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SignedRequest) SizeVT() (n int) {
+func (m *SignedApplyBatch) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -275,7 +275,7 @@ func (m *SignedLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *SignedRequest) UnmarshalVT(dAtA []byte) error {
+func (m *SignedApplyBatch) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -298,10 +298,10 @@ func (m *SignedRequest) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SignedRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: SignedApplyBatch: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SignedRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SignedApplyBatch: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

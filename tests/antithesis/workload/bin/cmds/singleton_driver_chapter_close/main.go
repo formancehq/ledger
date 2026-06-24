@@ -41,13 +41,11 @@ func main() {
 }
 
 func closeChapter(ctx context.Context, client servicepb.BucketServiceClient) {
-	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_CloseChapter{
-				CloseChapter: &servicepb.CloseChapterRequest{},
-			},
-		}),
-	})
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_CloseChapter{
+			CloseChapter: &servicepb.CloseChapterRequest{},
+		},
+	}))
 
 	if err != nil {
 		if internal.IsTransient(err) {
@@ -79,15 +77,13 @@ func archiveClosedChapters(ctx context.Context, client servicepb.BucketServiceCl
 		details := internal.Details{"chapterId": chapterID}
 
 		// Archive the closed chapter (uploads logs to cold storage).
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_ArchiveChapter{
-					ArchiveChapter: &servicepb.ArchiveChapterRequest{
-						ChapterId: chapterID,
-					},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_ArchiveChapter{
+				ArchiveChapter: &servicepb.ArchiveChapterRequest{
+					ChapterId: chapterID,
 				},
-			}),
-		})
+			},
+		}))
 
 		if err != nil {
 			if internal.IsTransient(err) {
@@ -100,15 +96,13 @@ func archiveClosedChapters(ctx context.Context, client servicepb.BucketServiceCl
 		}
 
 		// Confirm the archive (purges hot data).
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_ConfirmArchiveChapter{
-					ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{
-						ChapterId: chapterID,
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_ConfirmArchiveChapter{
+				ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{
+					ChapterId: chapterID,
 				},
-			}),
-		})
+			},
+		}))
 
 		if err != nil {
 			if internal.IsTransient(err) {

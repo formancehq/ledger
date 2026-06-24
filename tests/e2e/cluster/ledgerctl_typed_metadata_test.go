@@ -16,12 +16,12 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/transactions"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -190,9 +190,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-set-type"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -242,22 +240,18 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-rm-type"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "temp_field",
-							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "keep_field",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					}),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "temp_field",
+					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "keep_field",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
@@ -291,22 +285,18 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-get-schema"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "verified",
-							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-							Key:        "amount_cents",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					}),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "verified",
+					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+					Key:        "amount_cents",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
@@ -330,9 +320,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		It("Should show empty schema for a ledger without schema", func() {
 			const emptyLedger = "cli-get-schema-empty"
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(emptyLedger, nil)),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(emptyLedger, nil)))
 			Expect(err).To(Succeed())
 
 			var resp servicepb.GetMetadataSchemaStatusResponse
@@ -379,15 +367,11 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should accept typed metadata writes and surface raw client values", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{
-						"age":    "25",
-						"active": "true",
-						"score":  "100",
-					}),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{
+				"age":    "25",
+				"active": "true",
+				"score":  "100",
+			})))
 			Expect(err).To(Succeed())
 
 			account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
@@ -494,9 +478,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-all-types"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -551,18 +533,12 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-bg-conversion"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Write untyped metadata before schema exists
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"score": "42"}),
-					actions.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"score": "99"}),
-				),
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"score": "42"}),
+				actions.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"score": "99"})))
 			Expect(err).To(Succeed())
 		})
 
@@ -606,17 +582,13 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-aliases"
 
 		BeforeAll(func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "test_field",
-							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
-						},
-					}),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "test_field",
+					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 

@@ -37,8 +37,6 @@ func (x *Log) MarshalJSON() ([]byte, error) {
 	type Aux struct {
 		Sequence          uint64        `json:"sequence,omitempty"`
 		Payload           *LogPayload   `json:"payload,omitempty"`
-		Idempotency       json.RawValue `json:"idempotency,omitempty"`
-		Signature         json.RawValue `json:"signature,omitempty"`
 		Receipt           string        `json:"receipt,omitempty"`
 		ResponseSignature json.RawValue `json:"responseSignature,omitempty"`
 	}
@@ -46,8 +44,6 @@ func (x *Log) MarshalJSON() ([]byte, error) {
 	aux := Aux{
 		Sequence:          x.GetSequence(),
 		Payload:           x.GetPayload(),
-		Idempotency:       protoFieldJSON(x.GetIdempotency()),
-		Signature:         protoFieldJSON(x.GetSignature()),
 		ResponseSignature: protoFieldJSON(x.GetResponseSignature()),
 		Receipt:           x.GetReceipt(),
 	}

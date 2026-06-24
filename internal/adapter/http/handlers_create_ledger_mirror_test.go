@@ -21,8 +21,8 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			capturedReq = requests[0].GetUnsigned()
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			capturedReq = req.GetUnsigned().GetRequests()[0]
 
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
@@ -71,8 +71,8 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			capturedReq = requests[0].GetUnsigned()
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			capturedReq = req.GetUnsigned().GetRequests()[0]
 
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
@@ -114,8 +114,8 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			capturedReq = requests[0].GetUnsigned()
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			capturedReq = req.GetUnsigned().GetRequests()[0]
 
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{

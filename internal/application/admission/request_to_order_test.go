@@ -530,7 +530,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			order, err := admission.requestToOrder(context.Background(), verifiedRequest{req: tc.req}, newBulkOverlay())
+			order, err := admission.requestToOrder(context.Background(), tc.req, nil, newBulkOverlay())
 			require.NoError(t, err)
 			require.NotNil(t, order)
 

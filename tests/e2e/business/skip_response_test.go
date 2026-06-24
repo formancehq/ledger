@@ -16,21 +16,18 @@ var _ = Describe("SkipResponse", Ordered, func() {
 	var ledgerName = "skip-response-ledger"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 	})
 
 	It("Should strip log payloads when skip_response=true", func() {
-		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-1", big.NewInt(100), "USD"),
-				}, nil, nil),
-			),
-			SkipResponse: true,
-		})
+		applyReq := servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "skip-resp-1", big.NewInt(100), "USD"),
+			}, nil, nil),
+		)
+		applyReq.SkipResponse = true
+		resp, err := sharedClient.Apply(sharedCtx, applyReq)
 		Expect(err).To(Succeed())
 		Expect(resp).NotTo(BeNil())
 		Expect(resp.Logs).To(HaveLen(1))
@@ -38,20 +35,16 @@ var _ = Describe("SkipResponse", Ordered, func() {
 		log := resp.Logs[0]
 		Expect(log.Sequence).NotTo(BeZero())
 		Expect(log.Payload).To(BeNil())
-		Expect(log.Idempotency).To(BeNil())
-		Expect(log.Signature).To(BeNil())
 		Expect(log.Receipt).To(BeEmpty())
 		Expect(log.ResponseSignature).To(BeNil())
 	})
 
 	It("Should include full payloads by default", func() {
-		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-2", big.NewInt(200), "USD"),
-				}, nil, nil),
-			),
-		})
+		resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "skip-resp-2", big.NewInt(200), "USD"),
+			}, nil, nil),
+		))
 		Expect(err).To(Succeed())
 		Expect(resp).NotTo(BeNil())
 		Expect(resp.Logs).To(HaveLen(1))
@@ -64,20 +57,19 @@ var _ = Describe("SkipResponse", Ordered, func() {
 	})
 
 	It("Should strip payloads for batch operations", func() {
-		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-batch-1", big.NewInt(100), "USD"),
-				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-batch-2", big.NewInt(200), "USD"),
-				}, nil, nil),
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-batch-3", big.NewInt(300), "USD"),
-				}, nil, nil),
-			),
-			SkipResponse: true,
-		})
+		applyReq := servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "skip-resp-batch-1", big.NewInt(100), "USD"),
+			}, nil, nil),
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "skip-resp-batch-2", big.NewInt(200), "USD"),
+			}, nil, nil),
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "skip-resp-batch-3", big.NewInt(300), "USD"),
+			}, nil, nil),
+		)
+		applyReq.SkipResponse = true
+		resp, err := sharedClient.Apply(sharedCtx, applyReq)
 		Expect(err).To(Succeed())
 		Expect(resp).NotTo(BeNil())
 		Expect(resp.Logs).To(HaveLen(3))
@@ -90,14 +82,13 @@ var _ = Describe("SkipResponse", Ordered, func() {
 
 	It("Should still apply transactions even when response is skipped", func() {
 		// Create a transaction with skip_response
-		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-verify", big.NewInt(500), "USD"),
-				}, nil, nil),
-			),
-			SkipResponse: true,
-		})
+		applyReq := servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "skip-resp-verify", big.NewInt(500), "USD"),
+			}, nil, nil),
+		)
+		applyReq.SkipResponse = true
+		resp, err := sharedClient.Apply(sharedCtx, applyReq)
 		Expect(err).To(Succeed())
 		Expect(resp.Logs).To(HaveLen(1))
 

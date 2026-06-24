@@ -37,13 +37,11 @@ func runClose(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_CloseChapter{
-				CloseChapter: &servicepb.CloseChapterRequest{},
-			},
-		}),
-	})
+	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_CloseChapter{
+			CloseChapter: &servicepb.CloseChapterRequest{},
+		},
+	}))
 	if err != nil {
 		return fmt.Errorf("closing chapter: %w", err)
 	}

@@ -45,8 +45,7 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		target = commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
 	}
 
-	_, err = s.applyUnsigned(r.Context(), &servicepb.Request{
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+	_, err = s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_CreatePreparedQuery{
 			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 				Ledger: ledgerName,

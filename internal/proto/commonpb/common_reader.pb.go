@@ -2130,8 +2130,6 @@ func NewIdempotencyEntryListReader(s []*IdempotencyEntry) IdempotencyEntryListRe
 type LogReader interface {
 	GetSequence() uint64
 	GetPayload() LogPayloadReader
-	GetIdempotency() IdempotencyReader
-	GetSignature() signaturepb.SignedRequestReader
 	GetReceipt() string
 	GetResponseSignature() signaturepb.SignedLogReader
 	Mutate() *Log
@@ -2145,22 +2143,6 @@ func (r *logReadonly) GetSequence() uint64 {
 
 func (r *logReadonly) GetPayload() LogPayloadReader {
 	v := r.v.GetPayload()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *logReadonly) GetIdempotency() IdempotencyReader {
-	v := r.v.GetIdempotency()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *logReadonly) GetSignature() signaturepb.SignedRequestReader {
-	v := r.v.GetSignature()
 	if v == nil {
 		return nil
 	}
@@ -7607,17 +7589,19 @@ func (m transactionState_metadataMapReadonly) Range(yield func(string, MetadataV
 // IdempotencyKeyValueReader provides read-only access to IdempotencyKeyValue.
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyKeyValueReader interface {
-	GetLogSequence() uint64
+	GetFirstLogSequence() uint64
 	GetHash() []byte
 	GetHashVersion() uint32
 	GetCreatedAt() uint64
+	GetFailure() IdempotencyFailureReader
+	GetLogCount() uint32
 	Mutate() *IdempotencyKeyValue
 }
 
 type idempotencyKeyValueReadonly struct{ v *IdempotencyKeyValue }
 
-func (r *idempotencyKeyValueReadonly) GetLogSequence() uint64 {
-	return r.v.GetLogSequence()
+func (r *idempotencyKeyValueReadonly) GetFirstLogSequence() uint64 {
+	return r.v.GetFirstLogSequence()
 }
 
 func (r *idempotencyKeyValueReadonly) GetHash() []byte {
@@ -7630,6 +7614,18 @@ func (r *idempotencyKeyValueReadonly) GetHashVersion() uint32 {
 
 func (r *idempotencyKeyValueReadonly) GetCreatedAt() uint64 {
 	return r.v.GetCreatedAt()
+}
+
+func (r *idempotencyKeyValueReadonly) GetFailure() IdempotencyFailureReader {
+	v := r.v.GetFailure()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *idempotencyKeyValueReadonly) GetLogCount() uint32 {
+	return r.v.GetLogCount()
 }
 
 func (r *idempotencyKeyValueReadonly) Mutate() *IdempotencyKeyValue {
@@ -7684,6 +7680,107 @@ func (l idempotencyKeyValueListReadonly) Range(yield func(int, IdempotencyKeyVal
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewIdempotencyKeyValueListReader(s []*IdempotencyKeyValue) IdempotencyKeyValueListReader {
 	return idempotencyKeyValueListReadonly(s)
+}
+
+// IdempotencyFailureReader provides read-only access to IdempotencyFailure.
+// Call Mutate() to obtain a mutable clone.
+type IdempotencyFailureReader interface {
+	GetReason() ErrorReason
+	GetMessage() string
+	GetMetadata() IdempotencyFailure_MetadataMapReader
+	Mutate() *IdempotencyFailure
+}
+
+type idempotencyFailureReadonly struct{ v *IdempotencyFailure }
+
+func (r *idempotencyFailureReadonly) GetReason() ErrorReason {
+	return r.v.GetReason()
+}
+
+func (r *idempotencyFailureReadonly) GetMessage() string {
+	return r.v.GetMessage()
+}
+
+func (r *idempotencyFailureReadonly) GetMetadata() IdempotencyFailure_MetadataMapReader {
+	return idempotencyFailure_metadataMapReadonly(r.v.GetMetadata())
+}
+
+func (r *idempotencyFailureReadonly) Mutate() *IdempotencyFailure {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this IdempotencyFailure.
+func (m *IdempotencyFailure) AsReader() IdempotencyFailureReader {
+	if m == nil {
+		return nil
+	}
+	return &idempotencyFailureReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this IdempotencyFailure.
+func (m *IdempotencyFailure) Mutate() *IdempotencyFailure {
+	return m.CloneVT()
+}
+
+// IdempotencyFailureListReader provides read-only iteration over []*IdempotencyFailure.
+type IdempotencyFailureListReader interface {
+	Len() int
+	Get(i int) IdempotencyFailureReader
+	Range(yield func(int, IdempotencyFailureReader) bool)
+}
+
+type idempotencyFailureListReadonly []*IdempotencyFailure
+
+func (l idempotencyFailureListReadonly) Len() int { return len(l) }
+
+func (l idempotencyFailureListReadonly) Get(i int) IdempotencyFailureReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l idempotencyFailureListReadonly) Range(yield func(int, IdempotencyFailureReader) bool) {
+	for i, v := range l {
+		var r IdempotencyFailureReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewIdempotencyFailureListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewIdempotencyFailureListReader(s []*IdempotencyFailure) IdempotencyFailureListReader {
+	return idempotencyFailureListReadonly(s)
+}
+
+// IdempotencyFailure_MetadataMapReader provides read-only access to IdempotencyFailure.Metadata.
+type IdempotencyFailure_MetadataMapReader interface {
+	Len() int
+	Get(k string) (string, bool)
+	Range(yield func(string, string) bool)
+}
+
+type idempotencyFailure_metadataMapReadonly map[string]string
+
+func (m idempotencyFailure_metadataMapReadonly) Len() int { return len(m) }
+
+func (m idempotencyFailure_metadataMapReadonly) Get(k string) (string, bool) {
+	v, ok := m[k]
+	return v, ok
+}
+
+func (m idempotencyFailure_metadataMapReadonly) Range(yield func(string, string) bool) {
+	for k, v := range m {
+		if !yield(k, v) {
+			return
+		}
+	}
 }
 
 // TransactionReferenceValueReader provides read-only access to TransactionReferenceValue.

@@ -30,23 +30,21 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 	ref := fmt.Sprintf("sentinel-%d-%d", Rand().Uint64(), Rand().Uint64())
 	destination := fmt.Sprintf("sentinel:%d", Rand().Uint64())
 
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:      []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
-							Reference:     ref,
-							Force:         true,
-							ExpandVolumes: true,
-						},
-					}},
-				},
+	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledger,
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings:      []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
+						Reference:     ref,
+						Force:         true,
+						ExpandVolumes: true,
+					},
+				}},
 			},
-		}),
-	})
+		},
+	}))
 	if err != nil {
 		return nil, err
 	}

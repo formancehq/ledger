@@ -25,7 +25,7 @@ func TestHandleCreatePreparedQuery_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -54,8 +54,8 @@ func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 	var captured *servicepb.Request
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, reqs ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			captured = reqs[0].GetUnsigned()
+		func(_ context.Context, reqs *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			captured = reqs.GetUnsigned().GetRequests()[0]
 
 			return []*commonpb.Log{{}}, nil
 		}).AnyTimes()
@@ -184,7 +184,7 @@ func TestHandleCreatePreparedQuery_AlreadyExists(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrPreparedQueryAlreadyExists{Ledger: "ledger1", Name: "my-query"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

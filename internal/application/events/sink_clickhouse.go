@@ -67,8 +67,7 @@ func ClickHouseCreateTableDDL(table string) string {
         publicKey Nullable(String),
         requireSignatures Nullable(Bool),
         sinkName Nullable(String),
-        hash Nullable(String),
-        idempotencyKey Nullable(String)
+        hash Nullable(String)
     )
 ) ENGINE = MergeTree()
 ORDER BY (ledger, log_sequence)`, table, clickhouseTransactionColumns, clickhouseTransactionColumns)

@@ -524,7 +524,7 @@ The response will include a `postCommitVolumes` field:
 ### 4. Idempotency
 
 **POC:**
-- Supported via `Idempotency-Key` header (HTTP) or `idempotency_key` field (gRPC)
+- Supported via `Idempotency-Key` header (HTTP) or `ApplyBatch.idempotency_key` (gRPC) — keyed per atomic batch
 - System-level scope (not per-ledger)
 - Hash-based content verification (BLAKE3)
 - Stored in generation-based cache and persisted to Pebble
@@ -671,7 +671,7 @@ The `Apply` method is the **single entry point for all ledger write operations**
 
 **Request:** `ApplyRequest` containing a `LedgerAction` with:
 - `ledger_id`: Target ledger ID
-- `idempotency_key`: Optional idempotency key
+- `idempotency_key`: Optional idempotency key (on the enclosing `ApplyBatch` — one per atomic batch)
 - `skip_response`: When `true`, strips log payloads from the response (only `sequence` is returned per log). Useful for historical ingestion where the client does not need the full response on success.
 - One of:
   - `create_transaction`: Create a new transaction

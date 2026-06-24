@@ -90,7 +90,7 @@ func TestPreload_IdempotencyOnlyProposalAppliesKeys(t *testing.T) {
 
 	const gen0Byte byte = 0
 
-	value := &commonpb.IdempotencyKeyValue{LogSequence: 42, Hash: []byte("h"), HashVersion: 1, CreatedAt: 1700000000}
+	value := &commonpb.IdempotencyKeyValue{FirstLogSequence: 42, LogCount: 1, Hash: []byte("h"), HashVersion: 1, CreatedAt: 1700000000}
 
 	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
@@ -107,7 +107,7 @@ func TestPreload_IdempotencyOnlyProposalAppliesKeys(t *testing.T) {
 
 	got, ok := machine.Registry.Idempotency.Get("idem-only")
 	require.True(t, ok, "idempotency key must be present after Preload even with no AttributePlan entries")
-	require.Equal(t, uint64(42), got.GetLogSequence())
+	require.Equal(t, uint64(42), got.GetFirstLogSequence())
 }
 
 // Asserts a CacheTouch promotion lands at 0xFF gen0Byte and survives a

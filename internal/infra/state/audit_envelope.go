@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 // ErrAuditEntryMissingOutcome is returned by BuildHashedHeaderPayload when the
@@ -135,7 +136,31 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 		buf = appendLenBytes(buf, nil)
 	}
 
+	// Batch identity: the idempotency key, then the signature sub-payload
+	// (0-length when unsigned). Binding both makes the AppliedProposal
+	// idempotency projection and the batch's non-repudiation proof
+	// tamper-evident via the chain.
+	buf = appendLenString(buf, entry.GetIdempotency().GetKey())
+	buf = appendLenBytes(buf, buildSignaturePayload(entry.GetSignature()))
+
 	return buf, nil
+}
+
+// buildSignaturePayload encodes a SignedApplyBatch as key_id || signature ||
+// payload, each length-prefixed. Returns nil for an unsigned (nil) batch, which
+// the caller length-prefixes to a bare 0x00000000 — bytes-equal to an empty
+// signature, matching the envelope's absent/empty conflation.
+func buildSignaturePayload(sb *signaturepb.SignedApplyBatch) []byte {
+	if sb == nil {
+		return nil
+	}
+
+	buf := make([]byte, 0, 64)
+	buf = appendLenString(buf, sb.GetKeyId())
+	buf = appendLenBytes(buf, sb.GetSignature())
+	buf = appendLenBytes(buf, sb.GetPayload())
+
+	return buf
 }
 
 func buildAuditSuccessPayload(s *auditpb.AuditSuccess) []byte {
@@ -150,7 +175,7 @@ func buildAuditSuccessPayload(s *auditpb.AuditSuccess) []byte {
 func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 	buf := make([]byte, 0, 64)
 
-	buf = appendLenString(buf, f.GetErrorType())
+	buf = appendU32(buf, uint32(f.GetReason()))
 	buf = appendLenString(buf, f.GetMessage())
 
 	ctx := f.GetContext()

@@ -159,7 +159,7 @@ func ColdStorageModule(coldStorageDriver string) fx.Option {
 					cold,
 					machine.ArchiveRequestCh(),
 					func(chapterID uint64) error {
-						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
+						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 							Type: &servicepb.Request_ConfirmArchiveChapter{
 								ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{
 									ChapterId: chapterID,
@@ -661,7 +661,7 @@ func Module() fx.Option {
 				raftNode *node.Node,
 			) *state.Sealer {
 				return state.NewSealer(logger, store, attrs, machine.SealRequestCh(), func(chapterID uint64, sealingHash, stateHash []byte) error {
-					_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
+					_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 						Type: &servicepb.Request_SealChapter{
 							SealChapter: &servicepb.SealChapterRequest{
 								ChapterId:   chapterID,
@@ -685,7 +685,7 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					machine.ChapterSchedule,
 					func() error {
-						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
+						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 							Type: &servicepb.Request_CloseChapter{
 								CloseChapter: &servicepb.CloseChapterRequest{},
 							},
@@ -707,7 +707,7 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					machine.QueryCheckpointSchedule,
 					func() error {
-						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
+						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 							Type: &servicepb.Request_CreateQueryCheckpoint{
 								CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
 							},
@@ -1720,7 +1720,6 @@ func applyAnonymousScopes(mapping internalauth.ScopeMapping, raw string, logger 
 	return nil
 }
 
-// handleLeadershipChangeEvent notifies the event and mirror Managers of leadership changes.
 // handleLeadershipChangeEvent reconciles event emitter and mirror
 // workers on leadership transitions. Runs in a goroutine — see the
 // observer callback above for the dispatch and the reason

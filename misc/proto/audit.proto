@@ -5,6 +5,7 @@ package audit;
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/auditpb";
 
 import "common.proto";
+import "signature.proto";
 
 // ============================================================================
 // Audit Log
@@ -65,6 +66,14 @@ message AuditEntry {
   // authorization granted at admission. Nil when auth is disabled or
   // for system-initiated proposals.
   common.CallerSnapshot caller_snapshot = 12;
+  // Batch identity, bound into the hash chain (header_payload) so it is
+  // tamper-evident. idempotency is the batch dedup key; signature is the
+  // client's proof over the whole ApplyBatch (nil for unsigned batches).
+  // This is the authoritative, chain-verified home for batch non-repudiation;
+  // the AppliedProposal projection carries a copy of the idempotency key for
+  // event consumers, which the checker verifies against this entry.
+  common.Idempotency idempotency = 13;
+  signature.SignedApplyBatch signature = 14;
 }
 
 // AuditItem represents one order within a proposal, stored separately from the
@@ -99,9 +108,12 @@ message AuditSuccess {
   fixed64 max_log_sequence = 2;
 }
 
-// AuditFailure records the reason and context for a failed proposal.
+// AuditFailure records the reason and context for a failed proposal. reason is
+// the typed, hash-chain-bound identifier; the numeric error kind is re-derived
+// from it (domain.KindForReason) rather than stored, so it cannot drift from
+// the reason and the idempotency failure projection is verifiable against it.
 message AuditFailure {
-  string error_type = 1;
+  common.ErrorReason reason = 1;
   string message = 2;
   map<string, string> context = 3;
 }

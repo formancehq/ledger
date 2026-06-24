@@ -4,11 +4,11 @@ import (
 	"testing"
 )
 
-// FuzzSignedRequestUnmarshalVT fuzzes the binary protobuf decoder for Ed25519
-// request signatures. These are embedded in every Raft Order and verified on
-// every request. Malformed signatures must not cause panics or bypass validation.
-func FuzzSignedRequestUnmarshalVT(f *testing.F) {
-	valid := &SignedRequest{
+// FuzzSignedApplyBatchUnmarshalVT fuzzes the binary protobuf decoder for Ed25519
+// batch signatures. These are embedded in every Raft Proposal and verified on
+// every batch. Malformed signatures must not cause panics or bypass validation.
+func FuzzSignedApplyBatchUnmarshalVT(f *testing.F) {
+	valid := &SignedApplyBatch{
 		KeyId:     "key-1",
 		Signature: []byte("fake-ed25519-sig-64-bytes-padding-padding-padding-padding-padding"),
 		Payload:   []byte("payload-bytes"),
@@ -17,7 +17,7 @@ func FuzzSignedRequestUnmarshalVT(f *testing.F) {
 		f.Add(data)
 	}
 
-	empty := &SignedRequest{}
+	empty := &SignedApplyBatch{}
 	if data, err := empty.MarshalVT(); err == nil {
 		f.Add(data)
 	}
@@ -27,7 +27,7 @@ func FuzzSignedRequestUnmarshalVT(f *testing.F) {
 	f.Add([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		var msg SignedRequest
+		var msg SignedApplyBatch
 		_ = msg.UnmarshalVT(data)
 	})
 }

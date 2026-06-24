@@ -78,12 +78,6 @@ func TestHandleError(t *testing.T) {
 			expectedCode:   "INSUFFICIENT_FUNDS",
 		},
 		{
-			name:           "balance not found",
-			err:            &domain.ErrBalanceNotFound{Account: "a", Asset: "USD"},
-			expectedStatus: http.StatusBadRequest,
-			expectedCode:   "BALANCE_NOT_FOUND",
-		},
-		{
 			name:           "numscript parse error",
 			err:            &domain.ErrNumscriptParse{Details: "syntax error"},
 			expectedStatus: http.StatusBadRequest,

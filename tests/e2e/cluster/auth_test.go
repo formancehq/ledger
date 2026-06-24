@@ -224,11 +224,7 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("auth-test-ledger", nil),
-				),
-			})
+			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("auth-test-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -239,11 +235,7 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			_, err = client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("auth-test-ledger-2", nil),
-				),
-			})
+			_, err = client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("auth-test-ledger-2", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -265,13 +257,9 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction("auth-test-ledger", []*commonpb.Posting{
-						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
-					}, nil, nil),
-				),
-			})
+			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auth-test-ledger", []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -281,17 +269,13 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					&servicepb.Request{
-						Type: &servicepb.Request_SetMaintenanceMode{
-							SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
-								Enabled: false,
-							},
-						},
+			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_SetMaintenanceMode{
+					SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
+						Enabled: false,
 					},
-				),
-			})
+				},
+			}))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})

@@ -16,9 +16,7 @@ var _ = Describe("Barrier", Ordered, func() {
 	var ledgerName = "test-barrier"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 	})
 
@@ -29,13 +27,9 @@ var _ = Describe("Barrier", Ordered, func() {
 
 	It("Should guarantee prior writes are visible after return", func() {
 		// Create a transaction
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "barrier-test-account", big.NewInt(500), "USD"),
-				}, nil, nil),
-			),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.NewPosting("world", "barrier-test-account", big.NewInt(500), "USD"),
+		}, nil, nil)))
 		Expect(err).To(Succeed())
 
 		// Call Barrier to ensure the write is fully applied

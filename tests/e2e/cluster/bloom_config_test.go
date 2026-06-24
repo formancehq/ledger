@@ -135,9 +135,7 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 	It("should create data with initial bloom config", func() {
 		client := servers[*leaderID-1].Client
 
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("bloom-test", nil)),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("bloom-test", nil)))
 		Expect(err).To(Succeed())
 
 		// Create enough transactions to populate bloom filters and trigger rotations.
@@ -145,13 +143,9 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 		expectVolumeAllNodes(ctx, servers, "bloom-test", "2000")
 
 		// Also set metadata to exercise the metadata bloom filter.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.SaveAccountMetadataAction("bloom-test", "bank", map[string]string{
-					"category": "main",
-				}),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction("bloom-test", "bank", map[string]string{
+			"category": "main",
+		})))
 		Expect(err).To(Succeed())
 	})
 
@@ -202,18 +196,12 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 	It("should handle new ledger after bloom config changes", func() {
 		client := servers[*leaderID-1].Client
 
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("post-bloom-change", nil)),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("post-bloom-change", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction("post-bloom-change", []*commonpb.Posting{
-					actions.NewPosting("world", "user:1", big.NewInt(999), "EUR"),
-				}, nil, nil),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("post-bloom-change", []*commonpb.Posting{
+			actions.NewPosting("world", "user:1", big.NewInt(999), "EUR"),
+		}, nil, nil)))
 		Expect(err).To(Succeed())
 
 		expectVolumeAllNodes(ctx, servers, "bloom-test", "6000")

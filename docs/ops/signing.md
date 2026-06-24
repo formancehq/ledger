@@ -2,7 +2,7 @@
 
 The ledger supports Ed25519 signing in two directions:
 
-- **Request signing** (client → server): guarantees **authenticity** (who issued a request), **integrity** (detect any modification in transit), and **non-repudiation** (cryptographic proof stored with each log entry for audit).
+- **Request signing** (client → server): the client signs the whole **batch** (an `ApplyBatch` — its ordered requests plus idempotency key), guaranteeing **authenticity** (who issued the batch), **integrity** (detect any modification in transit, including reordering, regrouping, or dropping requests), and **non-repudiation** (the batch signature is stored with every log the batch commits, for audit). Signing the batch — rather than each request — is what makes the *composition and ordering* of the atomic operation provable.
 - **Response signing** (server → client): guarantees that response logs truly come from the server and haven't been tampered with.
 
 ## Request Signing
@@ -15,11 +15,11 @@ Signing is **optional by default**. It can be made mandatory via the `signing re
                     ┌──────────────────────────────────────────────┐
                     │               Client (ledgerctl)             │
                     │                                              │
-                    │  1. Build Request                            │
+                    │  1. Build ApplyBatch{requests, idem key}     │
                     │  2. Serialize → payload (bytes)              │
                     │  3. Ed25519.Sign(privkey, payload)           │
-                    │  4. Build SignedRequest{key_id, sig, bytes}  │
-                    │  5. Wrap in Envelope.signed                  │
+                    │  4. Build SignedApplyBatch{key_id, sig, b}   │
+                    │  5. Send as ApplyRequest.signed              │
                     └──────────────────┬───────────────────────────┘
                                        │ gRPC Apply()
                                        ▼
@@ -28,44 +28,45 @@ Signing is **optional by default**. It can be made mandatory via the `signing re
                     │                                              │
                     │  1. Lookup public key by key_id              │
                     │  2. Ed25519.Verify(pubkey, payload)          │
-                    │  3. Unmarshal(payload) → trusted Request     │
-                    │  4. Convert trusted Request → Order          │
-                    │  5. Propagate SignedRequest onto Order       │
+                    │  3. Unmarshal(payload) → trusted ApplyBatch  │
+                    │  4. Convert each request → Order (1 Proposal)│
+                    │  5. Put SignedApplyBatch on Proposal.Signature│
                     └──────────────────┬───────────────────────────┘
                                        │ Raft Proposal
                                        ▼
                     ┌──────────────────────────────────────────────┐
                     │              FSM (all replicas)              │
                     │                                              │
-                    │  Order.Signature → Log.Signature             │
+                    │  Proposal.Signature → every Log.Signature    │
                     │  Log → AuditEntry (contains signature proof) │
                     └──────────────────────────────────────────────┘
 ```
 
 ## Envelope Pattern
 
-Protobuf serialization is **not deterministic** across implementations (Go, Java, Python, etc.): map field iteration order, default value encoding, and unknown field handling all vary. If the server tried to re-serialize a client's `Request` to verify a signature, two implementations would diverge.
+Protobuf serialization is **not deterministic** across implementations (Go, Java, Python, etc.): map field iteration order, default value encoding, and unknown field handling all vary. If the server tried to re-serialize a client's `ApplyBatch` to verify a signature, two implementations would diverge.
 
-The solution is the **opaque envelope**: signed requests do not travel as a structured `Request` on the wire. The client serializes its `Request` once, signs those exact bytes, and ships the result as `SignedRequest{key_id, signature, payload}`. The server verifies the Ed25519 signature against `payload` and then unmarshals `payload` to obtain the trusted `Request` — **the server never re-serializes anything**, so cross-language clients are safe regardless of their protobuf implementation's quirks.
+The solution is the **opaque envelope**: a signed batch does not travel as a structured `ApplyBatch` on the wire. The client serializes its `ApplyBatch` once, signs those exact bytes, and ships the result as `SignedApplyBatch{key_id, signature, payload}`. The server verifies the Ed25519 signature against `payload` and then unmarshals `payload` to obtain the trusted `ApplyBatch` — **the server never re-serializes anything**, so cross-language clients are safe regardless of their protobuf implementation's quirks.
 
 ```protobuf
-// bucket.proto — wire wrapper that gRPC carries for each ApplyRequest entry.
-message Envelope {
+// bucket.proto — the Apply RPC input: one atomic batch, signed or not.
+message ApplyRequest {
   oneof variant {
-    Request unsigned = 1;        // raw request (used when signing is not required)
-    SignedRequest signed = 2;    // opaque envelope for signed requests
+    ApplyBatch unsigned = 1;          // raw batch (used when signing is not required)
+    signature.SignedApplyBatch signed = 2;  // opaque envelope for a signed batch
   }
+  // ... forwarded_caller_snapshot, skip_response (outside the signed payload)
 }
 
 // signature.proto
-message SignedRequest {
+message SignedApplyBatch {
   string key_id = 1;    // ID of the public key used to sign
   bytes signature = 2;  // Ed25519 signature (64 bytes)
-  bytes payload = 3;    // Exact serialized Request bytes signed by the client
+  bytes payload = 3;    // Exact serialized ApplyBatch bytes signed by the client
 }
 ```
 
-Because the wire form for a signed request is a discriminated `oneof`, the request bytes appear only once. There is no wrapper-vs-payload divergence class to guard against — the proto schema itself enforces "either you ship the raw `Request`, or you ship the opaque envelope, not both".
+Because the wire form for a batch is a discriminated `oneof`, the batch bytes appear only once. There is no wrapper-vs-payload divergence class to guard against — the proto schema itself enforces "either you ship the raw `ApplyBatch`, or you ship the opaque signed envelope, not both".
 
 ## Key Management
 
@@ -152,13 +153,13 @@ Signing keys and configuration are persisted in **Pebble** under the Global zone
 
 ## Signature Propagation
 
-The signature is carried through the entire pipeline for audit purposes:
+The batch signature is carried through the entire pipeline for audit purposes:
 
 ```
-Envelope.signed (SignedRequest) → Order.Signature → Log.Signature → AuditEntry (via Order)
+ApplyRequest.signed (SignedApplyBatch) → Proposal.Signature → every Log.Signature → AuditEntry
 ```
 
-Any auditor can verify a log entry's signature after the fact by calling `Ed25519.Verify(pubkey, log.Signature.Payload, log.Signature.Signature)`.
+The same signature is shared by every log the batch commits. An auditor verifies a log entry by calling `Ed25519.Verify(pubkey, log.Signature.Payload, log.Signature.Signature)` — `payload` is the serialized `ApplyBatch`, so the proof covers the whole atomic operation (its requests and their order), and verifying one log pulls in its batch-mates. Non-repudiation is therefore **per batch**, not per individual request.
 
 ## Design Decisions
 
@@ -166,13 +167,13 @@ Any auditor can verify a log entry's signature after the fact by calling `Ed2551
 
 Signature verification is performed in the **Admission layer** (before Raft consensus), not in the FSM. This is deliberate:
 
-- **Valid signatures**: the cryptographic proof is propagated through Order → Log → AuditEntry. Auditors can verify signatures from the stored `SignedRequest.payload` at any time.
+- **Valid signatures**: the cryptographic proof is propagated through Proposal → Log → AuditEntry. Auditors can verify signatures from the stored `SignedApplyBatch.payload` at any time.
 - **Invalid/missing signatures**: rejected immediately in Admission. These failures do **not** appear in the replicated audit log because no Proposal is created.
 
 Moving verification into the FSM was considered but rejected for two reasons:
 
 1. **DoS risk**: invalid signatures would traverse Raft consensus (network round-trips + log persistence on all replicas) before being rejected, allowing an attacker to waste cluster resources with bad signatures.
-2. **Architectural complexity**: `SignedRequest.payload` contains a serialized `Request`, but the FSM operates on `Order` objects. Verifying in the FSM would require re-converting Request → Order to confirm the Order matches the signed content, duplicating the Admission conversion logic.
+2. **Architectural complexity**: `SignedApplyBatch.payload` contains a serialized `ApplyBatch`, but the FSM operates on `Order` objects. Verifying in the FSM would require re-converting the batch → orders to confirm the Order matches the signed content, duplicating the Admission conversion logic.
 
 If traceability of rejected signatures is needed, application-level logging on the leader node (non-replicated) can be added at the Admission layer.
 
@@ -195,7 +196,7 @@ This is inherent to the Raft consensus model where all state changes are eventua
 | `internal/application/admission/` | Signature verification, bootstrap logic, Request → Order conversion |
 | `internal/infra/state/write_set.go` | Signing key changes accumulated during processing, applied in `Merge()` |
 | `internal/storage/dal/` | Pebble persistence for signing keys (compound keys `{0x06, 0x04}`/`{0x06, 0x05}` within the Global zone) |
-| `misc/proto/signature.proto` | `SignedRequest` and `SignedLog` protobuf messages |
+| `misc/proto/signature.proto` | `SignedApplyBatch` and `SignedLog` protobuf messages |
 
 ## CLI Reference
 

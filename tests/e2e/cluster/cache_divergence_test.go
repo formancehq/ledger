@@ -65,9 +65,7 @@ var _ = Describe("Cache divergence under chaos", func() {
 
 		It("should maintain volume consistency across kill/restart cycles with parallel load", func() {
 			// Step 1: Create ledger
-			_, err := servers[0].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Step 2: Initial parallel load to populate cache
@@ -142,17 +140,13 @@ func sendParallelTransactions(
 			for i := 0; i < txPerWorker; i++ {
 				account := fmt.Sprintf("user:%d", accountOffset+workerID*txPerWorker+i)
 
-				_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(
-						actions.CreateForceTransactionAction(
-							ledgerName,
-							[]*commonpb.Posting{
-								actions.NewPosting("world", account, big.NewInt(100), asset),
-							},
-							nil,
-						),
-					),
-				})
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(
+					ledgerName,
+					[]*commonpb.Posting{
+						actions.NewPosting("world", account, big.NewInt(100), asset),
+					},
+					nil,
+				)))
 				if err != nil {
 					failures.Add(1)
 				}

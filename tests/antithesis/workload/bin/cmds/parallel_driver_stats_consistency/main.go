@@ -2,10 +2,10 @@
 // self-consistent values and that AggregateVolumes sums to zero (double-entry).
 //
 // All invariants hold at any point in time regardless of concurrent writes:
-// - Structural: logCount >= txCount, postingCount >= txCount, etc.
-// - Double-entry: sum(input) == sum(output) for each asset (AggregateVolumes
-//   reads from the sequentially-applied read-index, so a transaction is either
-//   fully included or not — partial postings are impossible).
+//   - Structural: logCount >= txCount, postingCount >= txCount, etc.
+//   - Double-entry: sum(input) == sum(output) for each asset (AggregateVolumes
+//     reads from the sequentially-applied read-index, so a transaction is either
+//     fully included or not — partial postings are impossible).
 //
 // No Barrier is needed.
 package main

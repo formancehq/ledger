@@ -86,18 +86,16 @@ func main() {
 				payload.Timestamp = &commonpb.Timestamp{Data: backdatedEpochMicros}
 			}
 
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-					Type: &servicepb.Request_Apply{
-						Apply: &servicepb.LedgerApplyRequest{
-							Ledger: ledger,
-							Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-								CreateTransaction: payload,
-							}},
-						},
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_Apply{
+					Apply: &servicepb.LedgerApplyRequest{
+						Ledger: ledger,
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: payload,
+						}},
 					},
-				}),
-			})
+				},
+			}))
 			if err != nil {
 				// Ambiguous: may have committed; harmless for ordering, skip.
 				continue

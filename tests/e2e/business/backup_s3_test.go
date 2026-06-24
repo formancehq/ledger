@@ -152,23 +152,15 @@ var _ = Describe("S3 Backup", Ordered, func() {
 
 	It("should create a full backup on S3 with checkpoint manifest", func() {
 		// Create a ledger with data
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction("s3-backup-test", nil),
-			),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("s3-backup-test", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("s3-backup-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		// Trigger full backup via gRPC
@@ -204,16 +196,12 @@ var _ = Describe("S3 Backup", Ordered, func() {
 
 		// Add more data
 		for i := range 5 {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction("s3-backup-test",
-						[]*commonpb.Posting{
-							actions.NewPosting("world", "users:bob", big.NewInt(int64(100*(i+1))), "EUR"),
-						},
-						nil,
-					),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
+				[]*commonpb.Posting{
+					actions.NewPosting("world", "users:bob", big.NewInt(int64(100*(i+1))), "EUR"),
+				},
+				nil,
+			)))
 			Expect(err).To(Succeed())
 		}
 
@@ -282,16 +270,12 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		checkpointAuditSeq := fullResp.GetLastAuditSequence()
 
 		// Add more data
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("s3-backup-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		// Run incremental backup
@@ -323,16 +307,12 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		exportCountBefore := len(manifestBefore.Exports)
 
 		// Add more data
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("s3-backup-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "users:dave", big.NewInt(200), "JPY"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("s3-backup-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "users:dave", big.NewInt(200), "JPY"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		// Run another incremental

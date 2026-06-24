@@ -879,7 +879,7 @@ func TestApply_Success(t *testing.T) {
 	)
 
 	client := NewLedgerGrpcClient(mock)
-	result, err := client.Apply(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{}))
+	result, err := client.Apply(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	require.Equal(t, uint64(1), result[0].GetSequence())
@@ -893,7 +893,7 @@ func TestApply_Error(t *testing.T) {
 	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, errors.New("apply failed"))
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.Apply(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{}))
+	_, err := client.Apply(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "gRPC call failed")
 }
@@ -927,7 +927,7 @@ func TestApply_ForwardsCallerSnapshot(t *testing.T) {
 	ctx := auth.WithClaims(context.Background(), claims)
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{}))
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
 	require.NoError(t, err)
 
 	fc := capturedApplyReq.GetForwardedCallerSnapshot()
@@ -964,7 +964,7 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	ctx := auth.WithForwardedSnapshot(context.Background(), original)
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{}))
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
 	require.NoError(t, err)
 
 	fc := capturedApplyReq.GetForwardedCallerSnapshot()

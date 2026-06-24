@@ -29,27 +29,25 @@ func main() {
 		details := internal.Details{"ledger": ledger, "account": account, "asset": asset, "fundAmount": fundAmount}
 
 		// 1. Fund the account from world with a known amount.
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: account,
-									Amount:      commonpb.NewUint256FromUint64(fundAmount),
-									Asset:       asset,
-								}},
-								Force:         true,
-								ExpandVolumes: true,
-							},
-						}},
-					},
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: account,
+								Amount:      commonpb.NewUint256FromUint64(fundAmount),
+								Asset:       asset,
+							}},
+							Force:         true,
+							ExpandVolumes: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil {
 			if internal.IsTransient(err) {
 				return
@@ -65,26 +63,24 @@ func main() {
 		}
 
 		// 2. Attempt exact balance transfer (should succeed without Force).
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      account,
-									Destination: "world",
-									Amount:      commonpb.NewUint256FromUint64(fundAmount),
-									Asset:       asset,
-								}},
-								ExpandVolumes: true,
-							},
-						}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      account,
+								Destination: "world",
+								Amount:      commonpb.NewUint256FromUint64(fundAmount),
+								Asset:       asset,
+							}},
+							ExpandVolumes: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"exact balance transfer should succeed",
@@ -94,25 +90,23 @@ func main() {
 		}
 
 		// 3. Now the balance is 0. Attempt to send 1 unit — must get INSUFFICIENT_FUNDS.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      account,
-									Destination: "world",
-									Amount:      commonpb.NewUint256FromUint64(1),
-									Asset:       asset,
-								}},
-							},
-						}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      account,
+								Destination: "world",
+								Amount:      commonpb.NewUint256FromUint64(1),
+								Asset:       asset,
+							}},
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		if err == nil {
 			assert.Unreachable("overdraft without Force should fail", details)

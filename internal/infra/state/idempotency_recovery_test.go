@@ -23,9 +23,9 @@ func TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble(t *testing.T) {
 	batch := store.OpenWriteSession()
 
 	values := map[string]*commonpb.IdempotencyKeyValue{
-		"alpha": {LogSequence: 1, CreatedAt: 1_000_000},
-		"beta":  {LogSequence: 2, CreatedAt: 2_000_000},
-		"gamma": {LogSequence: 3, CreatedAt: 3_000_000},
+		"alpha": {FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000},
+		"beta":  {FirstLogSequence: 2, LogCount: 2, CreatedAt: 2_000_000},
+		"gamma": {FirstLogSequence: 3, LogCount: 1, CreatedAt: 3_000_000},
 	}
 
 	for key, value := range values {
@@ -52,7 +52,8 @@ func TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble(t *testing.T) {
 	for key, want := range values {
 		got, ok := idemp.Get(key)
 		require.Truef(t, ok, "Get(%q) after restore must hit", key)
-		require.Equal(t, want.GetLogSequence(), got.GetLogSequence())
+		require.Equal(t, want.GetFirstLogSequence(), got.GetFirstLogSequence())
+		require.Equal(t, want.GetLogCount(), got.GetLogCount())
 		require.Equal(t, want.GetCreatedAt(), got.GetCreatedAt())
 	}
 }
@@ -78,12 +79,14 @@ func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *tes
 	batch := store.OpenWriteSession()
 
 	require.NoError(t, saveIdempotencyKey(batch, "ancient", &commonpb.IdempotencyKeyValue{
-		LogSequence: 1,
-		CreatedAt:   ancientCreatedAt,
+		FirstLogSequence: 1,
+		LogCount:         1,
+		CreatedAt:        ancientCreatedAt,
 	}))
 	require.NoError(t, saveIdempotencyKey(batch, "fresh", &commonpb.IdempotencyKeyValue{
-		LogSequence: 2,
-		CreatedAt:   freshCreatedAt,
+		FirstLogSequence: 2,
+		LogCount:         1,
+		CreatedAt:        freshCreatedAt,
 	}))
 	require.NoError(t, batch.Commit())
 
@@ -98,11 +101,11 @@ func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *tes
 
 	got, ok := idemp.Get("ancient")
 	require.True(t, ok, "expired entries MUST be restored — eviction is the Raft command's job, not boot's")
-	require.Equal(t, uint64(1), got.GetLogSequence())
+	require.Equal(t, uint64(1), got.GetFirstLogSequence())
 
 	got, ok = idemp.Get("fresh")
 	require.True(t, ok)
-	require.Equal(t, uint64(2), got.GetLogSequence())
+	require.Equal(t, uint64(2), got.GetFirstLogSequence())
 }
 
 // TestIdempotencyStore_RestoreFromStore_EmptyStore confirms the scan
@@ -139,14 +142,15 @@ func TestIdempotencyStore_RestoreFromStore_OverwritesPriorEntries(t *testing.T) 
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, saveIdempotencyKey(batch, "persisted", &commonpb.IdempotencyKeyValue{
-		LogSequence: 42,
-		CreatedAt:   1_000,
+		FirstLogSequence: 42,
+		LogCount:         1,
+		CreatedAt:        1_000,
 	}))
 	require.NoError(t, batch.Commit())
 
 	idemp := NewIdempotencyStore(0)
 	// Pre-populate with a value that ONLY lives in memory.
-	idemp.Put("memory-only", &commonpb.IdempotencyKeyValue{LogSequence: 99})
+	idemp.Put("memory-only", &commonpb.IdempotencyKeyValue{FirstLogSequence: 99, LogCount: 1})
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -157,7 +161,7 @@ func TestIdempotencyStore_RestoreFromStore_OverwritesPriorEntries(t *testing.T) 
 
 	got, ok := idemp.Get("persisted")
 	require.True(t, ok)
-	require.Equal(t, uint64(42), got.GetLogSequence())
+	require.Equal(t, uint64(42), got.GetFirstLogSequence())
 
 	// "memory-only" was never persisted to Pebble, so it survives only because
 	// RestoreFromStore is additive. Callers (RecoverState / CacheSnapshotter)

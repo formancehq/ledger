@@ -121,11 +121,11 @@ func TestWriteSetGetPutIdempotencyKey(t *testing.T) {
 	_, err := buf.GetIdempotencyKey(key)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	buf.PutIdempotencyKey(key, &commonpb.IdempotencyKeyValue{LogSequence: 5})
+	buf.PutIdempotencyKey(key, &commonpb.IdempotencyKeyValue{FirstLogSequence: 5, LogCount: 1})
 	val, err := buf.GetIdempotencyKey(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
-	require.Equal(t, uint64(5), val.GetLogSequence())
+	require.Equal(t, uint64(5), val.GetFirstLogSequence())
 }
 
 func TestWriteSetGetPutTransactionReference(t *testing.T) {
@@ -457,7 +457,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	)
 	buf.PutIdempotencyKey(
 		domain.IdempotencyKey{Key: "ik-leak"},
-		&commonpb.IdempotencyKeyValue{LogSequence: 7},
+		&commonpb.IdempotencyKeyValue{FirstLogSequence: 7, LogCount: 1},
 	)
 	buf.PutTransactionReference(
 		domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-leak"},

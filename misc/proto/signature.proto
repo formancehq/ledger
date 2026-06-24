@@ -4,17 +4,20 @@ package signature;
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/signaturepb";
 
-// SignedRequest is the opaque envelope for a signed client request.
-// The client serializes its Request, signs the bytes, and ships
-// (key_id, signature, payload). The server verifies the signature
-// against payload, then unmarshals payload to obtain the request
-// content. The server never re-serializes — this makes the envelope
-// safe across protobuf implementations (Go, Java, Python, ...) since
-// no implementation needs to reproduce another's exact byte layout.
-message SignedRequest {
+// SignedApplyBatch is the opaque envelope for a signed client batch.
+// The client serializes its ApplyBatch (the atomic unit: ordered requests
+// + idempotency key), signs those exact bytes, and ships
+// (key_id, signature, payload). The server verifies the signature against
+// payload, then unmarshals payload to obtain the trusted batch. The server
+// never re-serializes — this makes the envelope safe across protobuf
+// implementations (Go, Java, Python, ...) since no implementation needs to
+// reproduce another's exact byte layout. Signing the whole batch (not each
+// request) covers composition and ordering, so the atomic operation as a
+// whole is authentic, integrity-protected, and non-repudiable.
+message SignedApplyBatch {
   string key_id = 1;    // ID of the public key used to sign
   bytes signature = 2;  // Ed25519 signature (64 bytes)
-  bytes payload = 3;    // Exact serialized Request bytes signed by the client
+  bytes payload = 3;    // Exact serialized ApplyBatch bytes signed by the client
 }
 
 // SignedLog is the opaque envelope for a server-signed response Log.

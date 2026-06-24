@@ -17,18 +17,16 @@ func main() {
 
 		details := internal.Details{"ledger": ledger, "scriptName": scriptName, "version": version}
 
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SaveNumscript{
-					SaveNumscript: &servicepb.SaveNumscriptRequest{
-						Name:    scriptName,
-						Content: transferScript,
-						Version: version,
-						Ledger:  ledger,
-					},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SaveNumscript{
+				SaveNumscript: &servicepb.SaveNumscriptRequest{
+					Name:    scriptName,
+					Content: transferScript,
+					Version: version,
+					Ledger:  ledger,
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to save numscript", details.With(internal.Details{"error": err}))
 		if err != nil {
@@ -52,24 +50,22 @@ func main() {
 			"amount": fmt.Sprintf("COIN %v", internal.RandomBigInt().String()),
 		}
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								ScriptReference: &servicepb.ScriptReference{
-									Name: scriptName,
-									Vars: vars,
-								},
-								Force: true,
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							ScriptReference: &servicepb.ScriptReference{
+								Name: scriptName,
+								Vars: vars,
 							},
-						}},
-					},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to use saved numscript in transaction", details.With(internal.Details{"error": err}))
 	})

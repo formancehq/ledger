@@ -280,24 +280,16 @@ var _ = Describe("TLS", Ordered, func() {
 		It("should accept connections from a TLS client with the correct CA", func() {
 			// The client was already created with the correct CA in setupTLSSingleNode.
 			// Verify it can perform actual operations.
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("tls-test-ledger", nil),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-test-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
 
 		It("should serve data over TLS", func() {
 			// Create a transaction to verify full round-trip
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction("tls-test-ledger", []*commonpb.Posting{
-						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
-					}, nil, nil),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-test-ledger", []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -348,11 +340,7 @@ var _ = Describe("TLS", Ordered, func() {
 			Expect(err).To(Succeed())
 			defer func() { _ = conn2.Close() }()
 
-			resp, err := client2.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("tls-test-ledger-2", nil),
-				),
-			})
+			resp, err := client2.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-test-ledger-2", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -379,11 +367,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 
 		It("should replicate ledger creation across TLS nodes", func() {
 			// Create a ledger via node 0
-			resp, err := servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("tls-multi-ledger", nil),
-				),
-			})
+			resp, err := servers[0].client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-multi-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
@@ -405,13 +389,9 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			var resp *servicepb.ApplyResponse
 			Eventually(func(g Gomega) {
 				var err error
-				resp, err = servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(
-						actions.CreateTransactionAction("tls-multi-ledger", []*commonpb.Posting{
-							actions.NewPosting("world", "bank", big.NewInt(5000), "USD"),
-						}, nil, nil),
-					),
-				})
+				resp, err = servers[0].client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger", []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(5000), "USD"),
+				}, nil, nil)))
 				g.Expect(err).To(Succeed())
 				g.Expect(resp).NotTo(BeNil())
 			}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -441,22 +421,14 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 
 		It("should allow operations through any TLS node", func() {
 			// Create a ledger via node 1 (non-bootstrap)
-			resp, err := servers[1].client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("tls-multi-ledger-node1", nil),
-				),
-			})
+			resp, err := servers[1].client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("tls-multi-ledger-node1", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
 			// Create a transaction via node 2
-			resp, err = servers[2].client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction("tls-multi-ledger-node1", []*commonpb.Posting{
-						actions.NewPosting("world", "alice", big.NewInt(100), "EUR"),
-					}, nil, nil),
-				),
-			})
+			resp, err = servers[2].client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("tls-multi-ledger-node1", []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(100), "EUR"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})

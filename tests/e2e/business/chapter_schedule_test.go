@@ -40,9 +40,7 @@ var _ = Describe("Chapter Schedule", Ordered, func() {
 	BeforeAll(func() {
 
 		// Create a ledger so chapter auto-bootstrap happens
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("schedule-test", nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("schedule-test", nil)))
 		Expect(err).To(Succeed())
 	})
 
@@ -58,9 +56,7 @@ var _ = Describe("Chapter Schedule", Ordered, func() {
 		const cronExpr = "0 0 1 * *" // first day of every month
 
 		It("should accept a valid cron expression", func() {
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setChapterScheduleAction(cronExpr)),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", setChapterScheduleAction(cronExpr)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -74,9 +70,7 @@ var _ = Describe("Chapter Schedule", Ordered, func() {
 
 	Context("Reject invalid cron expression", func() {
 		It("should return InvalidArgument for a bad cron expression", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setChapterScheduleAction("not-a-cron")),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", setChapterScheduleAction("not-a-cron")))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -91,9 +85,7 @@ var _ = Describe("Chapter Schedule", Ordered, func() {
 
 	Context("Reject empty cron in SetChapterSchedule", func() {
 		It("should return InvalidArgument for an empty cron expression", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setChapterScheduleAction("")),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", setChapterScheduleAction("")))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -108,17 +100,13 @@ var _ = Describe("Chapter Schedule", Ordered, func() {
 
 	Context("Delete schedule", Ordered, func() {
 		It("should set a schedule first", func() {
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setChapterScheduleAction("0 0 1 * *")),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", setChapterScheduleAction("0 0 1 * *")))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should accept a delete-schedule request", func() {
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(deleteChapterScheduleAction()),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", deleteChapterScheduleAction()))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -142,9 +130,7 @@ var _ = Describe("Chapter Schedule", Ordered, func() {
 
 		It("should set a per-second cron schedule", func() {
 			// Every 5 seconds (6-field format with leading seconds)
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(setChapterScheduleAction("*/5 * * * * *")),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", setChapterScheduleAction("*/5 * * * * *")))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -161,9 +147,7 @@ var _ = Describe("Chapter Schedule", Ordered, func() {
 		})
 
 		It("should disable the schedule after the test", func() {
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(deleteChapterScheduleAction()),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", deleteChapterScheduleAction()))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})

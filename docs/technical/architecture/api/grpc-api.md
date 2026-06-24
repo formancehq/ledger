@@ -153,50 +153,45 @@ All write operations go through the unified `Apply` method, which accepts a batc
 
 ### Request Structure
 
-> ⚠️ **Breaking wire-contract change.** `ApplyRequest` field 1 was previously
-> `repeated Request requests` and is now `repeated Envelope envelopes`. The
-> field number is reused with a different message type, so old generated gRPC
-> clients sending `repeated Request` on field 1 will be silently decoded as
-> `Envelope` and rejected at admission. Clients **must** be regenerated
+> ⚠️ **Breaking wire-contract change.** `ApplyRequest` is now a signed-or-unsigned
+> wrapper over an `ApplyBatch` (the atomic unit). Idempotency and signing are
+> **per batch**, not per request: `Request.idempotency_key` and the per-`Order`
+> signature are gone, replaced by `ApplyBatch.idempotency_key` and a single
+> `SignedApplyBatch` over the whole batch. Clients **must** be regenerated
 > against the new proto; mixed client/server versions and rolling wire-format
-> upgrades are not supported for this change. Same posture as
-> the drop of `Target.transaction` / `RevertTransactionPayload.transaction_reference`
-> (see `common.proto` for the same single-version cluster contract).
+> upgrades are not supported for this change (single-version cluster contract,
+> same posture as `common.proto`).
 
 ```protobuf
+// The Apply RPC input: one atomic batch, signed or unsigned at the batch level.
 message ApplyRequest {
-  repeated Envelope envelopes = 1;
-  bool skip_response = 2;  // Strip log payloads from response (only sequence returned)
-  reserved 3;
-  reserved "forwarded_caller";  // was: common.CallerIdentity (pre-split, see common.proto)
-  // Internal: set by a follower when forwarding a write to the leader, so the
-  // audit entry attributes the operation to the original user even though the
-  // inter-node connection authenticates via cluster-secret. Honored ONLY when
-  // the request is cluster-internal; ignored on direct client requests.
-  common.CallerSnapshot forwarded_caller_snapshot = 4;
+  oneof variant {
+    ApplyBatch unsigned = 1;
+    signature.SignedApplyBatch signed = 2;   // payload = serialized ApplyBatch
+  }
+  // forwarded_caller_snapshot + skip_response sit OUTSIDE the signed payload:
+  common.CallerSnapshot forwarded_caller_snapshot = 3;  // follower-forwarded, honored only cluster-internal
+  bool skip_response = 4;  // strip log payloads from response (only sequence returned)
 }
 
-// Envelope wraps a Request on the wire. Unsigned requests carry the Request
-// directly; signed requests carry an opaque SignedRequest (key_id + signature
-// + bytes the client serialized and signed). The proto schema enforces the
-// "either one or the other" invariant — no wrapper/payload divergence is
-// possible. See docs/ops/signing.md for the rationale.
-message Envelope {
-  oneof variant {
-    Request unsigned = 1;
-    signature.SignedRequest signed = 2;
-  }
+// ApplyBatch is the atomic unit — ordered requests applied all-or-nothing,
+// identified for idempotency by one key, and signed as a whole (its composition
+// and ordering are authenticated). See docs/ops/signing.md.
+message ApplyBatch {
+  repeated Request requests = 1;
+  string idempotency_key = 2;  // optional; one identity for the whole batch
 }
 
 message Request {
-  string idempotency_key = 1;  // Optional idempotency key
+  reserved 1;
+  reserved "idempotency_key";  // moved to ApplyBatch (idempotency is per batch)
   oneof type {
     LedgerApplyRequest apply = 2;        // Ledger operations
     CreateLedgerRequest create_ledger = 3;
     DeleteLedgerRequest delete_ledger = 4;
   }
   reserved 5;
-  reserved "signature";  // signed requests travel as Envelope.signed (SignedRequest)
+  reserved "signature";  // signing is per batch (SignedApplyBatch), not per request
 }
 
 message LedgerApplyRequest {

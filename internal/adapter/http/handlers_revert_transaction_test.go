@@ -20,7 +20,7 @@ func TestHandleRevertTransaction_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -61,7 +61,7 @@ func TestHandleRevertTransaction_NoLogReturned(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -84,7 +84,7 @@ func TestHandleRevertTransaction_AlreadyReverted(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: 1}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -123,7 +123,7 @@ func TestHandleRevertTransaction_WithBody(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{

@@ -84,14 +84,14 @@ func runRegisterKey(cmd *cobra.Command, _ []string) error {
 		},
 	}
 
-	envelopes, err := cmdutil.BuildEnvelopes(cmd, requests)
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
 	if err != nil {
 		spinner.Fail("Failed to sign request")
 
 		return cmdutil.Displayed(err)
 	}
 
-	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: envelopes})
+	_, err = client.Apply(ctx, applyReq)
 	if err != nil {
 		_ = spinner.Stop()
 

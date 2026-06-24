@@ -17,27 +17,24 @@ func main() {
 		details := internal.Details{"ledger": ledger, "idempotencyKey": idemKey}
 
 		// 1. Create a transaction with an idempotency key.
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				IdempotencyKey: idemKey,
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: "users:0",
-									Amount:      commonpb.NewUint256FromUint64(100),
-									Asset:       "USD/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(idemKey, &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: "users:0",
+								Amount:      commonpb.NewUint256FromUint64(100),
+								Asset:       "USD/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to create idempotent transaction",
@@ -55,27 +52,24 @@ func main() {
 
 		// 2. Reuse the same idempotency key with a DIFFERENT payload.
 		//    This must return IDEMPOTENCY_KEY_CONFLICT.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				IdempotencyKey: idemKey,
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: "users:1",
-									Amount:      commonpb.NewUint256FromUint64(999),
-									Asset:       "EUR/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest(idemKey, &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: "users:1",
+								Amount:      commonpb.NewUint256FromUint64(999),
+								Asset:       "EUR/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		if err == nil {
 			assert.Unreachable("reusing idempotency key with different payload should fail", details)

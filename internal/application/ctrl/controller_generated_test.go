@@ -89,23 +89,18 @@ func (mr *MockControllerMockRecorder) AnalyzeTransactions(ctx, ledgerName, varia
 }
 
 // Apply mocks base method.
-func (m *MockController) Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+func (m *MockController) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range envelopes {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Apply", varargs...)
+	ret := m.ctrl.Call(m, "Apply", ctx, req)
 	ret0, _ := ret[0].([]*commonpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Apply indicates an expected call of Apply.
-func (mr *MockControllerMockRecorder) Apply(ctx any, envelopes ...any) *gomock.Call {
+func (mr *MockControllerMockRecorder) Apply(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, envelopes...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockController)(nil).Apply), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockController)(nil).Apply), ctx, req)
 }
 
 // Barrier mocks base method.

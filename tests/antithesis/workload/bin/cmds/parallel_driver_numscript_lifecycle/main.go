@@ -19,18 +19,16 @@ func main() {
 		details := internal.Details{"ledger": ledger, "scriptName": scriptName}
 
 		// 1. Save a numscript.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SaveNumscript{
-					SaveNumscript: &servicepb.SaveNumscriptRequest{
-						Name:    scriptName,
-						Content: transferScript,
-						Version: version,
-						Ledger:  ledger,
-					},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SaveNumscript{
+				SaveNumscript: &servicepb.SaveNumscriptRequest{
+					Name:    scriptName,
+					Content: transferScript,
+					Version: version,
+					Ledger:  ledger,
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to save numscript", details.With(internal.Details{"error": err}))
 		if err != nil {
@@ -74,18 +72,16 @@ func main() {
 
 		// 3. Save a new version.
 		version2 := "2.0.0"
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SaveNumscript{
-					SaveNumscript: &servicepb.SaveNumscriptRequest{
-						Name:    scriptName,
-						Content: transferScript,
-						Version: version2,
-						Ledger:  ledger,
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SaveNumscript{
+				SaveNumscript: &servicepb.SaveNumscriptRequest{
+					Name:    scriptName,
+					Content: transferScript,
+					Version: version2,
+					Ledger:  ledger,
 				},
-			}),
-		})
+			},
+		}))
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to save second numscript version", details.With(internal.Details{"version": version2, "error": err}))
 		if err != nil {
@@ -107,16 +103,14 @@ func main() {
 			details.With(internal.Details{"expected": version2, "actual": nsInfo.GetVersion()}))
 
 		// 5. Delete the numscript.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_DeleteNumscript{
-					DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-						Name:   scriptName,
-						Ledger: ledger,
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_DeleteNumscript{
+				DeleteNumscript: &servicepb.DeleteNumscriptRequest{
+					Name:   scriptName,
+					Ledger: ledger,
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to delete numscript", details.With(internal.Details{"error": err}))
 	})

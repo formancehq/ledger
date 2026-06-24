@@ -15,8 +15,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/stretchr/testify/require"
 
@@ -28,7 +28,7 @@ import (
 // Generates ~30 Apply calls with moderate operational complexity.
 func TestOperationsLifecycle(t *testing.T) {
 	const (
-		ledger    = scenario.OperationsLifecycleLedger
+		ledger      = scenario.OperationsLifecycleLedger
 		numDeposits = 5
 	)
 
@@ -247,9 +247,9 @@ func TestOperationsLifecycle(t *testing.T) {
 
 		// Register second key (must be signed by existing key)
 		regReq := actions.RegisterSigningKeyAction("key-2", pubKey2)
-		regEnv, err := actions.SignRequest(regReq, "key-1", privKey1)
+		regEnv, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{regReq}}, "key-1", privKey1)
 		require.NoError(t, err)
-		scenariotest.ApplyEnvelopes(t, ctx, client, regEnv)
+		scenariotest.ApplyBatch(t, ctx, client, regEnv)
 
 		// Verify both keys are registered
 		keys = listSigningKeys(t, ctx, client)
@@ -263,9 +263,9 @@ func TestOperationsLifecycle(t *testing.T) {
 
 		// Revoke key-2 (must be signed since keys exist)
 		revokeReq := actions.RevokeSigningKeyAction("key-2", false)
-		revokeEnv, err := actions.SignRequest(revokeReq, "key-1", privKey1)
+		revokeEnv, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{revokeReq}}, "key-1", privKey1)
 		require.NoError(t, err)
-		scenariotest.ApplyEnvelopes(t, ctx, client, revokeEnv)
+		scenariotest.ApplyBatch(t, ctx, client, revokeEnv)
 
 		// Verify key-2 is removed
 		keys = listSigningKeys(t, ctx, client)
@@ -273,16 +273,16 @@ func TestOperationsLifecycle(t *testing.T) {
 		require.Nil(t, actions.FindSigningKey(keys, "key-2"), "key-2 should be removed after revocation")
 		require.NotNil(t, actions.FindSigningKey(keys, "key-1"), "key-1 should still exist")
 
-		// Signed transaction should persist signature in log
+		// Signed transaction is accepted. The batch signature lives on
+		// AppliedProposal (proposal.proto); no public read endpoint yet — only
+		// acceptance of the signed batch is observable here.
 		signedTxReq := actions.CreateTransactionAction(ledger, []*commonpb.Posting{
 			actions.NewPosting("world", "ops:1", big.NewInt(10), "USD/2"),
 		}, nil, nil)
-		signedTxEnv, err := actions.SignRequest(signedTxReq, "key-1", privKey1)
+		signedTxEnv, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{signedTxReq}}, "key-1", privKey1)
 		require.NoError(t, err)
-		txResp := scenariotest.ApplyEnvelopes(t, ctx, client, signedTxEnv)
+		txResp := scenariotest.ApplyBatch(t, ctx, client, signedTxEnv)
 		require.NotEmpty(t, txResp.Logs)
-		require.NotNil(t, txResp.Logs[0].Signature, "signed transaction should have signature in log")
-		require.Equal(t, "key-1", txResp.Logs[0].Signature.GetKeyId())
 	})
 
 	// --- Phase 6: Delete Ledger ---

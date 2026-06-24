@@ -10,8 +10,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
@@ -410,13 +410,12 @@ send $amount (
 		err := scenariotest.ApplyActionsExpectError(ctx, client, refAction2)
 		require.Error(t, err, "expected reference conflict error")
 
-		// Idempotency: create a transaction with an idempotency key
+		// Idempotency: create a transaction in a batch carrying an idempotency key
 		ikAction := actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 			"customer": "customer:1",
 			"amount":   "USD/2 200",
 		}, nil)
-		ikAction.IdempotencyKey = "ik-deposit-001"
-		scenariotest.ApplyActions(t, ctx, client, ikAction)
+		scenariotest.ApplyBatch(t, ctx, client, actions.WithIdempotencyKey("ik-deposit-001", ikAction))
 		customerBalance[1].Add(customerBalance[1], big.NewInt(200))
 
 		// Idempotency replay: same key + same content → should succeed (return original result)
@@ -424,8 +423,7 @@ send $amount (
 			"customer": "customer:1",
 			"amount":   "USD/2 200",
 		}, nil)
-		ikReplay.IdempotencyKey = "ik-deposit-001"
-		scenariotest.ApplyActions(t, ctx, client, ikReplay)
+		scenariotest.ApplyBatch(t, ctx, client, actions.WithIdempotencyKey("ik-deposit-001", ikReplay))
 		// No balance change — idempotent replay returns the original log
 
 		// Idempotency conflict: same key + different content
@@ -433,8 +431,7 @@ send $amount (
 			"customer": "customer:2",
 			"amount":   "USD/2 999",
 		}, nil)
-		ikConflict.IdempotencyKey = "ik-deposit-001"
-		err = scenariotest.ApplyActionsExpectError(ctx, client, ikConflict)
+		_, err = client.Apply(ctx, actions.WithIdempotencyKey("ik-deposit-001", ikConflict))
 		require.Error(t, err, "expected idempotency key conflict")
 	})
 

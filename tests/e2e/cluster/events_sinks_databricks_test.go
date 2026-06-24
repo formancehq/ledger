@@ -13,10 +13,10 @@ import (
 	_ "github.com/databricks/databricks-sql-go"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Events Sinks Databricks", Ordered, func() {
@@ -74,47 +74,35 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 
 	It("Should deliver events to Databricks when transactions are created", func() {
 		// Add Databricks sink via Apply
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				addEventsSinkAction(&commonpb.SinkConfig{
-					Name:         "databricks-e2e",
-					BatchSize:    10,
-					BatchDelayMs: 500,
-					Type: &commonpb.SinkConfig_Databricks{
-						Databricks: &commonpb.DatabricksSinkConfig{
-							ServerHostname: dbHost,
-							HttpPath:       dbHTTPPath,
-							Auth:           &commonpb.DatabricksSinkConfig_Token{Token: dbToken},
-							Catalog:        dbCatalog,
-							Schema:         dbSchema,
-							Table:          table,
-							Port:           443,
-						},
-					},
-				}),
-			),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+			Name:         "databricks-e2e",
+			BatchSize:    10,
+			BatchDelayMs: 500,
+			Type: &commonpb.SinkConfig_Databricks{
+				Databricks: &commonpb.DatabricksSinkConfig{
+					ServerHostname: dbHost,
+					HttpPath:       dbHTTPPath,
+					Auth:           &commonpb.DatabricksSinkConfig_Token{Token: dbToken},
+					Catalog:        dbCatalog,
+					Schema:         dbSchema,
+					Table:          table,
+					Port:           443,
+				},
+			},
+		})))
 		Expect(err).To(Succeed())
 
 		// Create a ledger
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction("db-test", nil),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("db-test", nil)))
 		Expect(err).To(Succeed())
 
 		// Create a transaction (force=true to bypass balance checks)
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction("db-test",
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
-					},
-					nil,
-				),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("db-test",
+			[]*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+			},
+			nil,
+		)))
 		Expect(err).To(Succeed())
 
 		// Query Databricks and verify events arrived

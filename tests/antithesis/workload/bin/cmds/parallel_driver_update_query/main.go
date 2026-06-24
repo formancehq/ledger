@@ -20,29 +20,27 @@ func main() {
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
 		// 1. Create a prepared query filtering by "users:" prefix.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_CreatePreparedQuery{
-					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
-						Ledger: ledger,
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledger,
 
-						Query: &commonpb.PreparedQuery{
-							Name:   queryName,
-							Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-							Filter: &commonpb.QueryFilter{
-								Filter: &commonpb.QueryFilter_Address{
-									Address: &commonpb.AddressMatch{
-										Match: &commonpb.AddressMatch_HardcodedPrefix{
-											HardcodedPrefix: "users:",
-										},
+					Query: &commonpb.PreparedQuery{
+						Name:   queryName,
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &commonpb.QueryFilter{
+							Filter: &commonpb.QueryFilter_Address{
+								Address: &commonpb.AddressMatch{
+									Match: &commonpb.AddressMatch_HardcodedPrefix{
+										HardcodedPrefix: "users:",
 									},
 								},
 							},
 						},
 					},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
 			if st.Code() != codes.AlreadyExists {
@@ -51,25 +49,23 @@ func main() {
 		}
 
 		// 2. Update the query filter to "world" prefix.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_UpdatePreparedQuery{
-					UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
-						Ledger: ledger,
-						Name:   queryName,
-						Filter: &commonpb.QueryFilter{
-							Filter: &commonpb.QueryFilter_Address{
-								Address: &commonpb.AddressMatch{
-									Match: &commonpb.AddressMatch_HardcodedPrefix{
-										HardcodedPrefix: "world",
-									},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_UpdatePreparedQuery{
+				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+					Ledger: ledger,
+					Name:   queryName,
+					Filter: &commonpb.QueryFilter{
+						Filter: &commonpb.QueryFilter_Address{
+							Address: &commonpb.AddressMatch{
+								Match: &commonpb.AddressMatch_HardcodedPrefix{
+									HardcodedPrefix: "world",
 								},
 							},
 						},
 					},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to update prepared query",
@@ -92,16 +88,14 @@ func main() {
 		assert.AlwaysOrUnreachable(execResp != nil, "updated query should return a response", details)
 
 		// 4. Cleanup.
-		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_DeletePreparedQuery{
-					DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
-						Ledger: ledger,
-						Name:   queryName,
-					},
+		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+					Ledger: ledger,
+					Name:   queryName,
 				},
-			}),
-		}); err != nil {
+			},
+		})); err != nil {
 			internal.LogCleanupError(fmt.Sprintf("delete prepared query %q", queryName), err)
 		}
 	})

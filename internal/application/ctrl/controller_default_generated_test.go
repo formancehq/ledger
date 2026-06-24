@@ -41,23 +41,18 @@ func (m *MockAdmission) EXPECT() *MockAdmissionMockRecorder {
 }
 
 // Admit mocks base method.
-func (m *MockAdmission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+func (m *MockAdmission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range envelopes {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Admit", varargs...)
+	ret := m.ctrl.Call(m, "Admit", ctx, req)
 	ret0, _ := ret[0].([]*commonpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Admit indicates an expected call of Admit.
-func (mr *MockAdmissionMockRecorder) Admit(ctx any, envelopes ...any) *gomock.Call {
+func (mr *MockAdmissionMockRecorder) Admit(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, envelopes...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Admit", reflect.TypeOf((*MockAdmission)(nil).Admit), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Admit", reflect.TypeOf((*MockAdmission)(nil).Admit), ctx, req)
 }
 
 // Barrier mocks base method.

@@ -23,9 +23,7 @@ var _ = Describe("Numscript", Ordered, func() {
 		var ledgerName = "numscript-ledger"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -42,15 +40,11 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"source":      "world",
-						"destination": "bank",
-						"amount":      "USD/2 1000",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"source":      "world",
+				"destination": "bank",
+				"amount":      "USD/2 1000",
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -92,14 +86,10 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"destination": "users:alice",
-						"amount":      "EUR/2 5000",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"destination": "users:alice",
+				"amount":      "EUR/2 5000",
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -118,16 +108,12 @@ send $amount (
 
 		It("Should create a transaction with multiple destinations (percentage split)", func() {
 			// First fund the source account
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 10000] (
   source = @world
   destination = @sales:revenue
 )
-`, nil, nil),
-				),
-			})
+`, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Now split the payment
@@ -147,16 +133,12 @@ send $amount (
   }
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"source":       "sales:revenue",
-						"tax_account":  "taxes:vat",
-						"main_account": "bank:main",
-						"amount":       "USD/2 1000",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"source":       "sales:revenue",
+				"tax_account":  "taxes:vat",
+				"main_account": "bank:main",
+				"amount":       "USD/2 1000",
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -191,22 +173,18 @@ send $amount (
 
 		It("Should create a transaction with multiple sources (fallback)", func() {
 			// Fund the wallet and bank accounts
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 50] (
   source = @world
   destination = @users:bob:wallet
 )
 `, nil, nil),
-					actions.CreateScriptTransactionAction(ledgerName, `
+				actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 200] (
   source = @world
   destination = @users:bob:bank
 )
-`, nil, nil),
-				),
-			})
+`, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Now pay from multiple sources
@@ -226,16 +204,12 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"wallet":      "users:bob:wallet",
-						"bank":        "users:bob:bank",
-						"destination": "merchants:shop",
-						"amount":      "USD/2 150",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"wallet":      "users:bob:wallet",
+				"bank":        "users:bob:bank",
+				"destination": "merchants:shop",
+				"amount":      "USD/2 150",
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -274,16 +248,12 @@ send $amount (
 
 		It("Should create a transaction with bounded overdraft", func() {
 			// Fund the account with some initial balance
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [EUR/2 100] (
   source = @world
   destination = @users:charlie
 )
-`, nil, nil),
-				),
-			})
+`, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Allow overdraft up to 500
@@ -301,15 +271,11 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"source":      "users:charlie",
-						"destination": "merchants:store",
-						"amount":      "EUR/2 400",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"source":      "users:charlie",
+				"destination": "merchants:store",
+				"amount":      "EUR/2 400",
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -328,16 +294,12 @@ send $amount (
 
 		It("Should fail when overdraft limit is exceeded", func() {
 			// Fund the account with some initial balance
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 100] (
   source = @world
   destination = @users:dave
 )
-`, nil, nil),
-				),
-			})
+`, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Try to overdraft more than allowed
@@ -355,15 +317,11 @@ send $amount (
   destination = $destination
 )
 `
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"source":      "users:dave",
-						"destination": "merchants:store",
-						"amount":      "USD/2 500", // 100 balance + 200 overdraft = 300 max, but we try 500
-					}, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"source":      "users:dave",
+				"destination": "merchants:store",
+				"amount":      "USD/2 500", // 100 balance + 200 overdraft = 300 max, but we try 500
+			}, nil)))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -390,15 +348,11 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"credit_line": "credit:eve",
-						"destination": "bank:main",
-						"amount":      "USD/2 100000",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"credit_line": "credit:eve",
+				"destination": "bank:main",
+				"amount":      "USD/2 100000",
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
@@ -430,15 +384,11 @@ send $amount (
   destination = $seller
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"buyer":  "users:frank",
-						"seller": "merchants:gadgets",
-						"amount": "USD/2 299",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"buyer":  "users:frank",
+				"seller": "merchants:gadgets",
+				"amount": "USD/2 299",
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -468,14 +418,10 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"destination": "users:grace:savings",
-						"amount":      "USD/2 1000",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"destination": "users:grace:savings",
+				"amount":      "USD/2 1000",
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
@@ -506,28 +452,20 @@ send $amount (
 )
 `
 			// First fund the buyer
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 1000] (
   source = @world
   destination = @users:henry
 )
-`, nil, nil),
-				),
-			})
+`, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Create escrow transaction with dynamic address
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"buyer":    "users:henry",
-						"order_id": "order-12345",
-						"amount":   "USD/2 500",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"buyer":    "users:henry",
+				"order_id": "order-12345",
+				"amount":   "USD/2 500",
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
@@ -547,11 +485,7 @@ send [USD/2 100] (
   destination = // missing destination
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -577,14 +511,10 @@ send $amount (
   destination = $destination
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"source": "world",
-						// missing "destination" and "amount"
-					}, nil),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"source": "world",
+				// missing "destination" and "amount"
+			}, nil)))
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -600,22 +530,18 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"destination": "bulk:account1",
-						"amount":      "USD/2 100",
-					}, nil),
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"destination": "bulk:account2",
-						"amount":      "USD/2 200",
-					}, nil),
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"destination": "bulk:account3",
-						"amount":      "USD/2 300",
-					}, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"destination": "bulk:account1",
+				"amount":      "USD/2 100",
+			}, nil),
+				actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					"destination": "bulk:account2",
+					"amount":      "USD/2 200",
+				}, nil),
+				actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					"destination": "bulk:account3",
+					"amount":      "USD/2 300",
+				}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(3))
@@ -641,9 +567,7 @@ send $amount (
 	Context("When using Numscript with meta() calls", func() {
 		It("Should reject scripts that use meta() to resolve variables", func() {
 			ledgerName := "numscript-meta-rejected"
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			script := `
@@ -657,13 +581,9 @@ send $amount (
   destination = $dest
 )
 `
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"amount": "USD/2 5000",
-					}, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+				"amount": "USD/2 5000",
+			}, nil)))
 			Expect(err).To(HaveOccurred())
 			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 		})

@@ -23,7 +23,7 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 
 	var d domain.Describable
 	if errors.As(err, &d) {
-		failure.ErrorType = d.Reason()
+		failure.Reason = domain.ReasonCode(d.Reason())
 
 		maps.Copy(failure.GetContext(), d.Metadata())
 
@@ -33,9 +33,7 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	// Reaching here means a non-Describable error escaped the typed
 	// processing pipeline. After #431 this branch is structurally
 	// unreachable in production; kept as a safety net for tests that
-	// fabricate raw errors.
-	failure.ErrorType = "UNKNOWN"
-
+	// fabricate raw errors. Reason stays ERROR_REASON_UNSPECIFIED.
 	return failure
 }
 

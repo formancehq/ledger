@@ -65,8 +65,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), &servicepb.Request{
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,

@@ -133,26 +133,24 @@ func main() {
 				asset = "!!not a valid asset!!"
 			}
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-					Type: &servicepb.Request_Apply{
-						Apply: &servicepb.LedgerApplyRequest{
-							Ledger: ledger,
-							Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-								CreateTransaction: &servicepb.CreateTransactionPayload{
-									Postings: []*commonpb.Posting{{
-										Source:      source,
-										Destination: "deferr-sink",
-										Amount:      amounts[i%len(amounts)],
-										Asset:       asset,
-									}},
-									Reference: ref,
-								},
-							}},
-						},
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_Apply{
+					Apply: &servicepb.LedgerApplyRequest{
+						Ledger: ledger,
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: &servicepb.CreateTransactionPayload{
+								Postings: []*commonpb.Posting{{
+									Source:      source,
+									Destination: "deferr-sink",
+									Amount:      amounts[i%len(amounts)],
+									Asset:       asset,
+								}},
+								Reference: ref,
+							},
+						}},
 					},
-				}),
-			})
+				},
+			}))
 			if err == nil {
 				// Unexpected success: not this property's concern (the
 				// insufficient-funds driver owns "overdraft must fail").
@@ -191,26 +189,24 @@ func main() {
 		// store past the window where a committed-but-rejected write could
 		// hide. Transparent UNAVAILABLE retries of the marker are harmless
 		// (no reference, idempotent for this purpose).
-		markerResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: "deferr-marker",
-									Amount:      commonpb.NewUint256FromUint64(1),
-									Asset:       "USD/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		markerResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: "deferr-marker",
+								Amount:      commonpb.NewUint256FromUint64(1),
+								Asset:       "USD/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil {
 			// Without the barrier the absence check would race read-staleness
 			// (#398 class) — bail out, inconclusive.

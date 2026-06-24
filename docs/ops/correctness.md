@@ -15,7 +15,7 @@ audit_hash = H(key, header_payload || concat(per_item_payload) || previous_audit
 Where:
 - `H` is the configured keyed hash function (BLAKE3 or XXH3-128).
 - `key` is derived from the immutable `ClusterID` via domain-separated BLAKE3.
-- `header_payload` is the canonical binary encoding of EVERY AuditEntry field except `hash`: sequence, timestamp, proposal_id, outcome (success with log-range bounds, or failure with all sub-fields including the context map), order_count, ledgers, hash_version, caller_snapshot.
+- `header_payload` is the canonical binary encoding of EVERY AuditEntry field except `hash`: sequence, timestamp, proposal_id, outcome (success with log-range bounds, or failure with all sub-fields including the context map), order_count, ledgers, hash_version, caller_snapshot, idempotency key, signature.
 - `per_item_payload` is the canonical binary encoding of each AuditItem (order_index, log_sequence, serialized_order) — one payload per item, concatenated in order_index order.
 - `previous_audit_hash` is the hash of the immediately preceding audit entry (empty for the first entry).
 
@@ -35,6 +35,8 @@ The verifier rebuilds `header_payload` and each `per_item_payload` from the stor
 | `AuditEntry.hash` | output of chain — not in pre-image by construction | — |
 | `AuditEntry.hash_version` | `header_payload` | ✓ |
 | `AuditEntry.caller_snapshot` | `header_payload` (identity, source oneof, god, sorted scopes) | ✓ |
+| `AuditEntry.idempotency` | `header_payload` (key string) | ✓ |
+| `AuditEntry.signature` | `header_payload` (key_id, signature, payload) | ✓ |
 | `AuditItem.order_index` | `per_item_payload` | ✓ |
 | `AuditItem.serialized_order` | `per_item_payload` | ✓ |
 | `AuditItem.log_sequence` | `per_item_payload` | ✓ |
@@ -57,6 +59,15 @@ HashedHeaderPayload {
     bytes outcome_payload                            // shape selon outcome_tag
     u32 caller_snapshot_len                          // 0 when CallerSnapshot is absent
     bytes caller_snapshot_payload
+    u32 idempotency_key_len ; bytes idempotency_key  // 0 when the batch is unkeyed
+    u32 signature_len                                // 0 when the batch is unsigned
+    bytes signature_payload
+}
+
+SignaturePayload {                                  // empty buffer when unsigned
+    u32 key_id_len ; bytes key_id
+    u32 signature_len ; bytes signature
+    u32 payload_len ; bytes payload
 }
 
 OutcomeSuccessPayload {
@@ -65,7 +76,7 @@ OutcomeSuccessPayload {
 }
 
 OutcomeFailurePayload {
-    u32 error_type_len ; bytes error_type
+    u32 reason                                          // common.ErrorReason enum value
     u32 message_len ; bytes message
     u32 context_count
     repeated { u32 key_len ; bytes key ; u32 value_len ; bytes value }  // sorted by key
@@ -131,7 +142,7 @@ The chain is **not broken** by Raft snapshots: the snapshot contains all Pebble 
 
 ### Failure Isolation
 
-If a proposal fails (e.g., insufficient funds, ledger not found), a failure audit entry is created. The hash binds the failure outcome (error_type, message, context) alongside the orders, so a failure cannot silently be relabelled as a success (or vice versa) without breaking the chain. The `WriteSet` state is discarded without being merged into the `Machine`, but the audit chain advances. This ensures failed proposals are tamper-evident.
+If a proposal fails (e.g., insufficient funds, ledger not found), a failure audit entry is created. The hash binds the failure outcome (reason, message, context) alongside the orders, so a failure cannot silently be relabelled as a success (or vice versa) without breaking the chain. The `WriteSet` state is discarded without being merged into the `Machine`, but the audit chain advances. This ensures failed proposals are tamper-evident.
 
 ### Idempotent Responses
 

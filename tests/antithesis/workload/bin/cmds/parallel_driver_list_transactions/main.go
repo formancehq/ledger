@@ -14,21 +14,19 @@ import (
 func main() {
 	internal.RunDriver("parallel_driver_list_transactions", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		// 1. Create a transaction so there is at least one.
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: internal.RandomPostings(),
-								Force:    true,
-							},
-						}},
-					},
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: internal.RandomPostings(),
+							Force:    true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create tx for list test", internal.Details{"ledger": ledger, "error": err})
 		if err != nil {
@@ -52,10 +50,10 @@ func main() {
 
 		// 2. Paginate through all transactions until we find the one we created.
 		var (
-			totalCount  int
-			found       bool
-			afterTxID   uint64
-			streamErr   bool
+			totalCount int
+			found      bool
+			afterTxID  uint64
+			streamErr  bool
 		)
 
 		for !found {

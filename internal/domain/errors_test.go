@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestBusinessError(t *testing.T) {
@@ -22,9 +24,30 @@ func TestBusinessError(t *testing.T) {
 	require.Equal(t, "ledger does not exist: missing", bErr.Error())
 	require.ErrorIs(t, bErr, inner)
 	require.Equal(t, inner, bErr.Unwrap())
-	require.Equal(t, KindNotFound, bErr.Kind())
+	require.Equal(t, KindNotFound, Kind(bErr))
 	require.Equal(t, ErrReasonLedgerNotFound, bErr.Reason())
 	require.Equal(t, map[string]string{"name": "missing"}, bErr.Metadata())
+}
+
+func TestIsFreezableFailure(t *testing.T) {
+	t.Parallel()
+
+	// Deterministic business rejections are frozen so a retry under the same
+	// idempotency key replays the same outcome.
+	freezable := []Describable{
+		&ErrInsufficientFunds{},
+		&ErrTransactionNotFound{},
+		&ErrLedgerAlreadyExists{},
+	}
+	for _, d := range freezable {
+		require.Truef(t, IsFreezableFailure(Kind(d)), "%T should be freezable", d)
+	}
+
+	// A preload miss is a transient server-side gap, not a definitive business
+	// outcome — it must never be frozen, or a retry replays the cache miss
+	// until TTL instead of rebuilding preload and re-executing.
+	require.False(t, IsFreezableFailure(Kind(new(ErrBalanceNotPreloaded))),
+		"preload miss must not be freezable")
 }
 
 func TestErrDependencyDiscoveryFailed_Error(t *testing.T) {
@@ -100,11 +123,6 @@ func TestErrorTypes(t *testing.T) {
 			name:     "ErrInsufficientFunds",
 			err:      &ErrInsufficientFunds{Account: "bank", Asset: "USD", Amount: "1000", Balance: "500"},
 			expected: `insufficient funds on account "bank" for asset USD: needed 1000, available 500`,
-		},
-		{
-			name:     "ErrBalanceNotFound",
-			err:      &ErrBalanceNotFound{Account: "bank", Asset: "USD"},
-			expected: `balance not found for account "bank" asset "USD"`,
 		},
 		{
 			name:     "ErrSinkAlreadyExists",
@@ -254,7 +272,6 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrTransactionAlreadyReverted":    &ErrTransactionAlreadyReverted{},
 		"ErrInsufficientFunds":             &ErrInsufficientFunds{},
 		"ErrVolumeOverflow":                &ErrVolumeOverflow{},
-		"ErrBalanceNotFound":               &ErrBalanceNotFound{},
 		"ErrSinkAlreadyExists":             &ErrSinkAlreadyExists{},
 		"ErrSinkBatchSizeTooLarge":         &ErrSinkBatchSizeTooLarge{},
 		"ErrMetadataNotFound":              &ErrMetadataNotFound{},
@@ -371,6 +388,21 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 			reflect.TypeOf(inst).Implements(describableType),
 			"type %s in internal/domain does not implement Describable — every domain error type must declare Kind(), Reason(), and Metadata() so the gRPC and HTTP adapters can route it",
 			name)
+
+		// Every domain reason must resolve to an ErrorReason enum value — kind
+		// is derived from it (domain.Kind / KindForReason), so a reason with no
+		// enum value would silently classify as Internal. The two wrapper types
+		// delegate Reason() to a Cause and panic on a nil zero-value; their
+		// reason is the cause's, covered by the cause's own entry.
+		switch name {
+		case "ErrMetadataKeyValidation", "ErrAccountValidation":
+			continue
+		}
+
+		d := inst.(Describable)
+
+		require.NotEqualf(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, ReasonCode(d.Reason()),
+			"reason %q of %s has no ErrorReason enum value — add ERROR_REASON_%s to common.proto", d.Reason(), name, d.Reason())
 	}
 
 	// And conversely: every entry in instances must correspond to a

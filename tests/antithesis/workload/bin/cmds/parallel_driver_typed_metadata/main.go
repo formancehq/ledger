@@ -27,36 +27,32 @@ func main() {
 		}
 
 		// 1. Declare the metadata key as INT64.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SetMetadataFieldType{
-					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
-						Ledger:     ledger,
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        metaKey,
-						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-					},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SetMetadataFieldType{
+				SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+					Ledger:     ledger,
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        metaKey,
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil && !internal.IsTransient(err) {
 			return
 		}
 
 		// 2. Create an index on this metadata key.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_CreateIndex{
-					CreateIndex: &servicepb.CreateIndexRequest{
-						Ledger: ledger,
-						Id: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-							Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:    metaKey,
-						}}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreateIndex{
+				CreateIndex: &servicepb.CreateIndexRequest{
+					Ledger: ledger,
+					Id: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+						Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						Key:    metaKey,
+					}}},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
 			if st.Code() != codes.AlreadyExists {
@@ -65,27 +61,25 @@ func main() {
 		}
 
 		// 3. Save typed metadata on the account.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-							AddMetadata: &commonpb.SaveMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{
-										Account: &commonpb.TargetAccount{Addr: address},
-									},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+						AddMetadata: &commonpb.SaveMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{Addr: address},
 								},
-								Metadata: commonpb.MetadataFromGoMap(map[string]string{
-									metaKey: fmt.Sprintf("%d", metaValue),
-								}),
 							},
-						}},
-					},
+							Metadata: commonpb.MetadataFromGoMap(map[string]string{
+								metaKey: fmt.Sprintf("%d", metaValue),
+							}),
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil {
 			return
 		}
@@ -95,24 +89,22 @@ func main() {
 		minVal := int64(0)
 		maxVal := int64(999)
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_CreatePreparedQuery{
-					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
-						Ledger: ledger,
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledger,
 
-						Query: &commonpb.PreparedQuery{
-							Name:   queryName,
-							Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-							Filter: &commonpb.QueryFilter{
-								Filter: &commonpb.QueryFilter_Field{
-									Field: &commonpb.FieldCondition{
-										Field: &commonpb.FieldRef{Metadata: metaKey},
-										Condition: &commonpb.FieldCondition_IntCond{
-											IntCond: &commonpb.IntCondition{
-												Min: &minVal,
-												Max: &maxVal,
-											},
+					Query: &commonpb.PreparedQuery{
+						Name:   queryName,
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &commonpb.QueryFilter{
+							Filter: &commonpb.QueryFilter_Field{
+								Field: &commonpb.FieldCondition{
+									Field: &commonpb.FieldRef{Metadata: metaKey},
+									Condition: &commonpb.FieldCondition_IntCond{
+										IntCond: &commonpb.IntCondition{
+											Min: &minVal,
+											Max: &maxVal,
 										},
 									},
 								},
@@ -120,8 +112,8 @@ func main() {
 						},
 					},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
 			if st.Code() != codes.AlreadyExists {
@@ -170,18 +162,16 @@ func main() {
 			commonpb.MetadataType_METADATA_TYPE_INT64,
 		}
 		for _, newType := range newTypes {
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-					Type: &servicepb.Request_SetMetadataFieldType{
-						SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
-							Ledger:     ledger,
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        metaKey,
-							Type:       newType,
-						},
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+						Ledger:     ledger,
+						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						Key:        metaKey,
+						Type:       newType,
 					},
-				}),
-			})
+				},
+			}))
 			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 				"changing metadata type should not crash", details.With(internal.Details{
 					"newType": newType.String(),
@@ -190,17 +180,15 @@ func main() {
 		}
 
 		// 8. Remove the type declaration entirely.
-		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_RemoveMetadataFieldType{
-					RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
-						Ledger:     ledger,
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        metaKey,
-					},
+		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_RemoveMetadataFieldType{
+				RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
+					Ledger:     ledger,
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        metaKey,
 				},
-			}),
-		}); err != nil {
+			},
+		})); err != nil {
 			internal.LogCleanupError(fmt.Sprintf("remove metadata field type %q", metaKey), err)
 		}
 
@@ -229,40 +217,36 @@ func main() {
 		// this driver only asserts no crash).
 		badKey := fmt.Sprintf("bad-convert-%d", r.Uint64())
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-							AddMetadata: &commonpb.SaveMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{
-										Account: &commonpb.TargetAccount{Addr: address},
-									},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+						AddMetadata: &commonpb.SaveMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{Addr: address},
 								},
-								Metadata: commonpb.MetadataFromGoMap(map[string]string{
-									badKey: "not-a-number",
-								}),
 							},
-						}},
+							Metadata: commonpb.MetadataFromGoMap(map[string]string{
+								badKey: "not-a-number",
+							}),
+						},
+					}},
+				},
+			},
+		}))
+		if err == nil {
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+						Ledger:     ledger,
+						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						Key:        badKey,
+						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 					},
 				},
-			}),
-		})
-		if err == nil {
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-					Type: &servicepb.Request_SetMetadataFieldType{
-						SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
-							Ledger:     ledger,
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        badKey,
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					},
-				}),
-			})
+			}))
 			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 				"declaring an int64 type over an uncoercible value should not crash",
 				internal.Details{
@@ -272,18 +256,16 @@ func main() {
 					"error":  err,
 				})
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-					Type: &servicepb.Request_SetMetadataFieldType{
-						SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
-							Ledger:     ledger,
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        metaKey,
-							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
-						},
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+						Ledger:     ledger,
+						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						Key:        metaKey,
+						Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
 					},
-				}),
-			})
+				},
+			}))
 			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 				"declaring a bool type over a numeric value should not crash",
 				internal.Details{
@@ -295,16 +277,14 @@ func main() {
 		}
 
 		// Cleanup: delete the prepared query.
-		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_DeletePreparedQuery{
-					DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
-						Ledger: ledger,
-						Name:   queryName,
-					},
+		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+					Ledger: ledger,
+					Name:   queryName,
 				},
-			}),
-		}); err != nil {
+			},
+		})); err != nil {
 			internal.LogCleanupError(fmt.Sprintf("delete prepared query %q", queryName), err)
 		}
 	})

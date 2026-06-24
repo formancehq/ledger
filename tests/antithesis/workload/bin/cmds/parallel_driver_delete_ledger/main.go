@@ -34,23 +34,21 @@ func main() {
 	}
 
 	// Create a transaction in it so it's not empty.
-	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Ledger: ledgerName,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
-							},
-							Force: true,
+	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledgerName,
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings: []*commonpb.Posting{
+							commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 						},
-					}},
-				},
+						Force: true,
+					},
+				}},
 			},
-		}),
-	})
+		},
+	}))
 	assert.Sometimes(err == nil || internal.IsTransient(err),
 		"should be able to seed ephemeral ledger before delete", details.With(internal.Details{"error": err}))
 	if err != nil {
@@ -58,15 +56,13 @@ func main() {
 	}
 
 	// Delete the ledger.
-	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_DeleteLedger{
-				DeleteLedger: &servicepb.DeleteLedgerRequest{
-					Name: ledgerName,
-				},
+	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_DeleteLedger{
+			DeleteLedger: &servicepb.DeleteLedgerRequest{
+				Name: ledgerName,
 			},
-		}),
-	})
+		},
+	}))
 
 	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to delete ledger", details.With(internal.Details{"error": err}))
 	if err != nil {

@@ -141,7 +141,7 @@ func TestAuditLogOnFailure(t *testing.T) {
 	require.Equal(t, uint64(2), failEntry.GetProposalId())
 	require.NotNil(t, failEntry.GetFailure(), "should be failure")
 	// The error is INSUFFICIENT_FUNDS because nil Input is treated as zero balance
-	require.Equal(t, domain.ErrReasonInsufficientFunds, failEntry.GetFailure().GetErrorType())
+	require.Equal(t, domain.ErrReasonInsufficientFunds, domain.ReasonString(failEntry.GetFailure().GetReason()))
 	require.NotEmpty(t, failEntry.GetFailure().GetMessage())
 	require.Contains(t, failEntry.GetFailure().GetContext(), "account")
 	require.Contains(t, failEntry.GetFailure().GetContext(), "asset")
@@ -275,7 +275,7 @@ func TestBuildAuditFailure(t *testing.T) {
 			Asset:   "USD",
 		}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonInsufficientFunds, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonInsufficientFunds, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "user:alice", failure.GetContext()["account"])
 		require.Equal(t, "USD", failure.GetContext()["asset"])
 	})
@@ -285,7 +285,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := &domain.ErrLedgerNotFound{Name: "missing-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonLedgerNotFound, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonLedgerNotFound, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "missing-ledger", failure.GetContext()["name"])
 	})
 
@@ -294,7 +294,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := &domain.ErrLedgerAlreadyExists{Name: "existing-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonLedgerAlreadyExists, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonLedgerAlreadyExists, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "existing-ledger", failure.GetContext()["name"])
 	})
 
@@ -303,7 +303,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := &domain.ErrTransactionNotFound{TransactionID: 42}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonTransactionNotFound, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonTransactionNotFound, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "42", failure.GetContext()["transactionId"])
 	})
 
@@ -312,7 +312,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := domain.ErrScriptRequired
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonValidation, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonValidation, domain.ReasonString(failure.GetReason()))
 	})
 
 	t.Run("LedgerInMirrorMode", func(t *testing.T) {
@@ -320,7 +320,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := &domain.ErrLedgerInMirrorMode{Name: "mirror-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonLedgerInMirrorMode, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonLedgerInMirrorMode, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "mirror-ledger", failure.GetContext()["name"])
 	})
 
@@ -329,7 +329,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := &domain.ErrLedgerNotInMirrorMode{Name: "normal-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonLedgerNotInMirrorMode, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonLedgerNotInMirrorMode, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "normal-ledger", failure.GetContext()["name"])
 	})
 
@@ -338,7 +338,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := domain.ErrMaintenanceMode
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonMaintenanceMode, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonMaintenanceMode, domain.ReasonString(failure.GetReason()))
 	})
 
 	t.Run("InvalidCronExpression", func(t *testing.T) {
@@ -346,7 +346,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := &domain.ErrInvalidCronExpression{Expression: "bad", Details: "parse error"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonInvalidCronExpression, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonInvalidCronExpression, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "bad", failure.GetContext()["expression"])
 		require.Equal(t, "parse error", failure.GetContext()["details"])
 	})
@@ -356,7 +356,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := &domain.ErrSinkAlreadyExists{Name: "my-sink"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonSinkAlreadyExists, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonSinkAlreadyExists, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "my-sink", failure.GetContext()["name"])
 	})
 
@@ -365,7 +365,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := &domain.ErrSinkNotFound{Name: "missing-sink"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonSinkNotFound, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonSinkNotFound, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "missing-sink", failure.GetContext()["name"])
 	})
 
@@ -374,7 +374,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := &domain.ErrChapterNotClosed{ChapterID: 3}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonChapterNotClosed, failure.GetErrorType())
+		require.Equal(t, domain.ErrReasonChapterNotClosed, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "3", failure.GetContext()["chapterId"])
 	})
 
@@ -383,7 +383,7 @@ func TestBuildAuditFailure(t *testing.T) {
 
 		err := errors.New("some unknown error")
 		failure := buildAuditFailure(err)
-		require.Equal(t, "UNKNOWN", failure.GetErrorType())
+		require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, failure.GetReason())
 	})
 }
 

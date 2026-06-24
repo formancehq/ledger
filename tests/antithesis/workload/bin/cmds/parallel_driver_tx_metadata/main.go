@@ -17,21 +17,19 @@ func main() {
 		value := fmt.Sprintf("val-%d", r.Uint64())
 
 		// 1. Create a transaction to attach metadata to.
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: internal.RandomPostings(),
-								Force:    true,
-							},
-						}},
-					},
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: internal.RandomPostings(),
+							Force:    true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create tx for metadata test", internal.Details{"ledger": ledger, "error": err})
 		if err != nil {
@@ -47,23 +45,21 @@ func main() {
 		details := internal.Details{"ledger": ledger, "txId": txID, "key": key}
 
 		// 2. Save metadata on the transaction.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-							AddMetadata: &commonpb.SaveMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_TransactionId{TransactionId: txID},
-								},
-								Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+						AddMetadata: &commonpb.SaveMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_TransactionId{TransactionId: txID},
 							},
-						}},
-					},
+							Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to save transaction metadata", details.With(internal.Details{"error": err}))
 		if err != nil {
@@ -87,23 +83,21 @@ func main() {
 		)
 
 		// 4. Delete the metadata key.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
-							DeleteMetadata: &commonpb.DeleteMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_TransactionId{TransactionId: txID},
-								},
-								Key: key,
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+						DeleteMetadata: &commonpb.DeleteMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_TransactionId{TransactionId: txID},
 							},
-						}},
-					},
+							Key: key,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to delete transaction metadata", details.With(internal.Details{"error": err}))
 		if err != nil {

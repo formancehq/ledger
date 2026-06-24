@@ -53,8 +53,6 @@ type sinkEventData struct {
 
 	// Sink events
 	SinkName *string `json:"sinkName,omitempty"`
-
-	IdempotencyKey *string `json:"idempotencyKey,omitempty"`
 }
 
 type sinkTransaction struct {
@@ -85,10 +83,6 @@ func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
 	log := event.GetLog()
 	if log == nil {
 		return json.Marshal(data)
-	}
-
-	if log.GetIdempotency() != nil && log.GetIdempotency().GetKey() != "" {
-		data.IdempotencyKey = &log.Idempotency.Key
 	}
 
 	if log.GetPayload() == nil {

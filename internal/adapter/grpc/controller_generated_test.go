@@ -161,23 +161,18 @@ func (c *MockControllerAnalyzeTransactionsCall) DoAndReturn(f func(context.Conte
 }
 
 // Apply mocks base method.
-func (m *MockController) Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+func (m *MockController) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range envelopes {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Apply", varargs...)
+	ret := m.ctrl.Call(m, "Apply", ctx, req)
 	ret0, _ := ret[0].([]*commonpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Apply indicates an expected call of Apply.
-func (mr *MockControllerMockRecorder) Apply(ctx any, envelopes ...any) *MockControllerApplyCall {
+func (mr *MockControllerMockRecorder) Apply(ctx, req any) *MockControllerApplyCall {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, envelopes...)
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockController)(nil).Apply), varargs...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockController)(nil).Apply), ctx, req)
 	return &MockControllerApplyCall{Call: call}
 }
 
@@ -193,13 +188,13 @@ func (c *MockControllerApplyCall) Return(arg0 []*commonpb.Log, arg1 error) *Mock
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerApplyCall) Do(f func(context.Context, ...*servicepb.Envelope) ([]*commonpb.Log, error)) *MockControllerApplyCall {
+func (c *MockControllerApplyCall) Do(f func(context.Context, *servicepb.ApplyRequest) ([]*commonpb.Log, error)) *MockControllerApplyCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerApplyCall) DoAndReturn(f func(context.Context, ...*servicepb.Envelope) ([]*commonpb.Log, error)) *MockControllerApplyCall {
+func (c *MockControllerApplyCall) DoAndReturn(f func(context.Context, *servicepb.ApplyRequest) ([]*commonpb.Log, error)) *MockControllerApplyCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

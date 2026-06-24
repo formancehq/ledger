@@ -21,32 +21,22 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 
 		It("Should start with a ledger with transactions and metadata", func() {
 			// Create the ledger
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create transactions
 			for i := 0; i < 3; i++ {
-				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100*int64(i+1)), "USD"),
-						}, nil, nil),
-					),
-				})
+				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100*int64(i+1)), "USD"),
+				}, nil, nil)))
 				Expect(err).To(Succeed())
 			}
 
 			// Set account metadata
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "user-0", map[string]string{
-						"role": "admin",
-						"tier": "premium",
-					}),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user-0", map[string]string{
+				"role": "admin",
+				"tier": "premium",
+			})))
 			Expect(err).To(Succeed())
 
 			// Verify transactions exist
@@ -62,9 +52,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 		})
 
 		It("Should delete the ledger", func() {
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteLedgerAction(ledgerName)),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeleteLedgerAction(ledgerName)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
@@ -79,20 +67,14 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 
 		It("Should reject operations on the deleted ledger", func() {
 			// Creating a transaction on a deleted ledger should fail
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "new-user", big.NewInt(50), "USD"),
-					}, nil, nil),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "new-user", big.NewInt(50), "USD"),
+			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("Should reject re-creating a deleted ledger", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(HaveOccurred())
 		})
 	})
@@ -102,30 +84,20 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create a transaction
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "alice", big.NewInt(500), "USD"),
-					}, nil, nil),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(500), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			txID, ok := actions.GetCreatedTransactionID(resp)
 			Expect(ok).To(BeTrue())
 
 			// Revert the transaction
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.RevertTransactionAction(ledgerName, txID, false, false, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, txID, false, false, nil)))
 			Expect(err).To(Succeed())
 
 			// Verify alice has zero balance after revert
@@ -142,9 +114,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 
 		It("Should delete and reject further operations", func() {
 			// Delete the ledger
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteLedgerAction(ledgerName)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeleteLedgerAction(ledgerName)))
 			Expect(err).To(Succeed())
 
 			// Wait for deletion
@@ -156,13 +126,9 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 			}).Within(15 * time.Second).WithPolling(500 * time.Millisecond).Should(BeTrue())
 
 			// Operations should be rejected
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bob", big.NewInt(300), "EUR"),
-					}, nil, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "bob", big.NewInt(300), "EUR"),
+			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
 		})
 	})

@@ -19,7 +19,7 @@ func TestHandleDeleteTransactionMetadata_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -75,7 +75,7 @@ func TestHandleDeleteTransactionMetadata_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrMetadataNotFound{Target: "transaction:1", Key: "category"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

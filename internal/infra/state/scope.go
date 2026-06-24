@@ -43,8 +43,7 @@ func (e *ErrCoverageMiss) Error() string {
 		e.Attribute, e.IDHex, e.RaftIndex)
 }
 
-func (*ErrCoverageMiss) Kind() domain.ErrorKind { return domain.KindInternal }
-func (*ErrCoverageMiss) Reason() string         { return domain.ErrReasonCoverageMiss }
+func (*ErrCoverageMiss) Reason() string { return domain.ErrReasonCoverageMiss }
 func (e *ErrCoverageMiss) Metadata() map[string]string {
 	return map[string]string{
 		"attribute":     e.Attribute,

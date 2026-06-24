@@ -26,7 +26,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a, _ := createTestAdmission(t, store)
 		a.healthChecker = mockChecker
 
-		_, err := a.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
+		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{
 				CreateLedger: &servicepb.CreateLedgerRequest{
 					Name: "test-ledger-rejected",
@@ -49,26 +49,28 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a.healthChecker = mockChecker
 
 		_, err := a.Admit(context.Background(),
-			servicepb.UnsignedEnvelope(&servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
-						Name: "ledger1",
+			servicepb.UnsignedApplyRequest("",
+				&servicepb.Request{
+					Type: &servicepb.Request_CreateLedger{
+						CreateLedger: &servicepb.CreateLedgerRequest{
+							Name: "ledger1",
+						},
 					},
 				},
-			}),
-			servicepb.UnsignedEnvelope(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: "ledger1",
-						Action: &servicepb.LedgerAction{
-							Data: &servicepb.LedgerAction_CreateTransaction{
-								CreateTransaction: &servicepb.CreateTransactionPayload{
-									Postings: []*commonpb.Posting{
-										{
-											Source:      "world",
-											Destination: "user:alice",
-											Amount:      commonpb.NewUint256FromUint64(0),
-											Asset:       "USD",
+				&servicepb.Request{
+					Type: &servicepb.Request_Apply{
+						Apply: &servicepb.LedgerApplyRequest{
+							Ledger: "ledger1",
+							Action: &servicepb.LedgerAction{
+								Data: &servicepb.LedgerAction_CreateTransaction{
+									CreateTransaction: &servicepb.CreateTransactionPayload{
+										Postings: []*commonpb.Posting{
+											{
+												Source:      "world",
+												Destination: "user:alice",
+												Amount:      commonpb.NewUint256FromUint64(0),
+												Asset:       "USD",
+											},
 										},
 									},
 								},
@@ -76,7 +78,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 						},
 					},
 				},
-			}),
+			),
 		)
 
 		require.ErrorIs(t, err, health.ErrUnhealthy)
@@ -93,7 +95,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a, _ := createTestAdmission(t, store)
 		a.healthChecker = mockChecker
 
-		_, err := a.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
+		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,

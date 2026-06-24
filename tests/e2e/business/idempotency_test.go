@@ -20,11 +20,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 
 	Context("When using idempotency keys for ledger creation", func() {
 		It("Should create a ledger with idempotency key", func() {
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(actions.CreateLedgerAction("idempotent-ledger", nil), "create-ledger-key-1"),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey("create-ledger-key-1", actions.CreateLedgerAction("idempotent-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -41,22 +37,14 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			idempotencyKey := "duplicate-create-ledger-key"
 
 			// First request
-			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(actions.CreateLedgerAction("duplicate-ledger", nil), idempotencyKey),
-				),
-			})
+			resp1, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateLedgerAction("duplicate-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp1).NotTo(BeNil())
 			Expect(resp1.Logs).To(HaveLen(1))
 			firstLogSequence := resp1.Logs[0].Sequence
 
 			// Second request with same idempotency key and same content
-			resp2, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(actions.CreateLedgerAction("duplicate-ledger", nil), idempotencyKey),
-				),
-			})
+			resp2, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateLedgerAction("duplicate-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp2).NotTo(BeNil())
 			Expect(resp2.Logs).To(HaveLen(1))
@@ -69,20 +57,12 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			idempotencyKey := "conflict-ledger-key"
 
 			// First request - create ledger "ledger-a"
-			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(actions.CreateLedgerAction("ledger-a", nil), idempotencyKey),
-				),
-			})
+			resp1, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateLedgerAction("ledger-a", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp1).NotTo(BeNil())
 
 			// Second request with same idempotency key but different content (different ledger name)
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(actions.CreateLedgerAction("ledger-b", nil), idempotencyKey),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateLedgerAction("ledger-b", nil)))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("idempotency key conflict"))
 		})
@@ -92,23 +72,14 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 		var ledgerName = "idempotency-tx-ledger"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should create a transaction with idempotency key", func() {
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
-						}, nil, nil),
-						"tx-key-1",
-					),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey("tx-key-1", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -118,32 +89,18 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			idempotencyKey := "duplicate-tx-key"
 
 			// First request
-			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
-						}, nil, nil),
-						idempotencyKey,
-					),
-				),
-			})
+			resp1, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp1).NotTo(BeNil())
 			Expect(resp1.Logs).To(HaveLen(1))
 			firstLogSequence := resp1.Logs[0].Sequence
 
 			// Second request with same idempotency key and same content
-			resp2, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
-						}, nil, nil),
-						idempotencyKey,
-					),
-				),
-			})
+			resp2, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp2).NotTo(BeNil())
 			Expect(resp2.Logs).To(HaveLen(1))
@@ -164,60 +121,32 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			idempotencyKey := "conflict-tx-key"
 
 			// First request - transfer 100 USD
-			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-conflict", big.NewInt(100), "USD"),
-						}, nil, nil),
-						idempotencyKey,
-					),
-				),
-			})
+			resp1, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-conflict", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp1).NotTo(BeNil())
 
 			// Second request with same idempotency key but different amount (200 instead of 100)
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-conflict", big.NewInt(200), "USD"),
-						}, nil, nil),
-						idempotencyKey,
-					),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-conflict", big.NewInt(200), "USD"),
+			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("idempotency key conflict"))
 		})
 
 		It("Should allow same content with different idempotency keys", func() {
 			// First request with key-a
-			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
-						}, nil, nil),
-						"key-a",
-					),
-				),
-			})
+			resp1, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey("key-a", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp1).NotTo(BeNil())
 
 			// Second request with key-b (same content, different key)
-			resp2, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
-						}, nil, nil),
-						"key-b",
-					),
-				),
-			})
+			resp2, err := sharedClient.Apply(sharedCtx, actions.WithIdempotencyKey("key-b", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp2).NotTo(BeNil())
 
@@ -254,39 +183,23 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			ledgerName := "ttl-test-ledger"
 
 			// Create ledger
-			_, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := ttlClient.Apply(ttlCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			idempotencyKey := "ttl-expire-key"
 
 			// First request: create a transaction with idempotency key
-			resp1, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
-						}, nil, nil),
-						idempotencyKey,
-					),
-				),
-			})
+			resp1, err := ttlClient.Apply(ttlCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp1.Logs).To(HaveLen(1))
 			firstSeq := resp1.Logs[0].Sequence
 
 			// Immediately retry should return the same log (idempotent)
-			resp2, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
-						}, nil, nil),
-						idempotencyKey,
-					),
-				),
-			})
+			resp2, err := ttlClient.Apply(ttlCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp2.Logs[0].Sequence).To(Equal(firstSeq))
 
@@ -297,16 +210,9 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// expiry exactly one new transaction is created, after which the key
 			// maps to that new transaction and further retries stay stable.
 			Eventually(func(g Gomega) {
-				resp3, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(
-						actions.WithIdempotencyKey(
-							actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-								actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
-							}, nil, nil),
-							idempotencyKey,
-						),
-					),
-				})
+				resp3, err := ttlClient.Apply(ttlCtx, actions.WithIdempotencyKey(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+				}, nil, nil)))
 				g.Expect(err).To(Succeed())
 				g.Expect(resp3.Logs).To(HaveLen(1))
 				// A NEW log sequence (not a reference to the old one).
@@ -327,58 +233,48 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 		var ledgerName = "idempotency-bulk-ledger"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
-		It("Should handle idempotency for multiple requests in bulk", func() {
-			// First bulk request with multiple transactions
-			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
-						}, nil, nil),
-						"bulk-tx-1",
-					),
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
-						}, nil, nil),
-						"bulk-tx-2",
-					),
-				),
-			})
-			Expect(err).To(Succeed())
-			Expect(resp1).NotTo(BeNil())
-			Expect(resp1.Logs).To(HaveLen(2))
+		It("Should handle idempotency across separate keyed batches", func() {
+			// Idempotency is keyed per atomic batch, so each transaction carries its
+			// own key in its own Apply call. Replaying both must dedup against the
+			// originals (same log sequences, balances not doubled).
+			batch1 := func() *servicepb.ApplyRequest {
+				return actions.WithIdempotencyKey("bulk-tx-1",
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
+					}, nil, nil),
+				)
+			}
+			batch2 := func() *servicepb.ApplyRequest {
+				return actions.WithIdempotencyKey("bulk-tx-2",
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
+					}, nil, nil),
+				)
+			}
 
-			// Second bulk request - replay the same
-			resp2, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
-						}, nil, nil),
-						"bulk-tx-1",
-					),
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
-						}, nil, nil),
-						"bulk-tx-2",
-					),
-				),
-			})
+			// First applies
+			resp1a, err := sharedClient.Apply(sharedCtx, batch1())
 			Expect(err).To(Succeed())
-			Expect(resp2).NotTo(BeNil())
-			Expect(resp2.Logs).To(HaveLen(2))
+			Expect(resp1a.Logs).To(HaveLen(1))
+			resp1b, err := sharedClient.Apply(sharedCtx, batch2())
+			Expect(err).To(Succeed())
+			Expect(resp1b.Logs).To(HaveLen(1))
+
+			// Replays - same keys, same content
+			resp2a, err := sharedClient.Apply(sharedCtx, batch1())
+			Expect(err).To(Succeed())
+			Expect(resp2a.Logs).To(HaveLen(1))
+			resp2b, err := sharedClient.Apply(sharedCtx, batch2())
+			Expect(err).To(Succeed())
+			Expect(resp2b.Logs).To(HaveLen(1))
 
 			// Should return same log sequences
-			Expect(resp2.Logs[0].Sequence).To(Equal(resp1.Logs[0].Sequence))
-			Expect(resp2.Logs[1].Sequence).To(Equal(resp1.Logs[1].Sequence))
+			Expect(resp2a.Logs[0].Sequence).To(Equal(resp1a.Logs[0].Sequence))
+			Expect(resp2b.Logs[0].Sequence).To(Equal(resp1b.Logs[0].Sequence))
 
 			// Verify balances are correct (not doubled)
 			account1, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{

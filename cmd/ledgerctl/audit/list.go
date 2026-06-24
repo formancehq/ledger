@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -126,7 +127,7 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 	} else if entry.GetFailure() != nil {
 		f := entry.GetFailure()
 		statusIcon = pterm.Red("FAIL")
-		statusText = fmt.Sprintf("[%s] %s", f.GetErrorType(), f.GetMessage())
+		statusText = fmt.Sprintf("[%s] %s", domain.ReasonString(f.GetReason()), f.GetMessage())
 	}
 
 	// Caller info (compact or verbose)
@@ -237,10 +238,9 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 	for _, order := range orders {
 		desc := describeOrder(order, verbose)
 
+		// Signatures are batch-level now (carried on the Log / audit entry), not
+		// per order, so the per-order grouping no longer surfaces a signing key.
 		keyStr := pterm.Gray("unsigned")
-		if sig := order.GetSignature(); sig != nil && sig.GetKeyId() != "" {
-			keyStr = pterm.Yellow(sig.GetKeyId())
-		}
 
 		// Merge with previous group if same type+detail+key and no map lines
 		if len(groups) > 0 && len(desc.MapLines) == 0 {

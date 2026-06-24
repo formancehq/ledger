@@ -15,27 +15,28 @@ var (
 	ErrUnknownKeyID     = errors.New("unknown key ID")
 )
 
-// Sign serializes a Request and returns a SignedRequest envelope carrying
-// the exact bytes signed by the client. The returned envelope is opaque:
-// the server verifies the signature against payload and then unmarshals
-// payload — it never re-serializes the request, so cross-language clients
-// are safe regardless of their protobuf implementation's quirks.
-func Sign(req *servicepb.Request, keyID string, privateKey ed25519.PrivateKey) (*signaturepb.SignedRequest, error) {
-	payload, err := req.MarshalVT()
+// Sign serializes an ApplyBatch and returns a SignedApplyBatch envelope
+// carrying the exact bytes signed by the client. The returned envelope is
+// opaque: the server verifies the signature against payload and then unmarshals
+// payload — it never re-serializes the batch, so cross-language clients are safe
+// regardless of their protobuf implementation's quirks. Signing the batch (not
+// each request) authenticates its composition and ordering.
+func Sign(batch *servicepb.ApplyBatch, keyID string, privateKey ed25519.PrivateKey) (*signaturepb.SignedApplyBatch, error) {
+	payload, err := batch.MarshalVT()
 	if err != nil {
-		return nil, fmt.Errorf("marshaling request for signing: %w", err)
+		return nil, fmt.Errorf("marshaling batch for signing: %w", err)
 	}
 
-	return &signaturepb.SignedRequest{
+	return &signaturepb.SignedApplyBatch{
 		KeyId:     keyID,
 		Signature: ed25519.Sign(privateKey, payload),
 		Payload:   payload,
 	}, nil
 }
 
-// Verify checks the Ed25519 signature on a SignedRequest envelope.
+// Verify checks the Ed25519 signature on a SignedApplyBatch envelope.
 // It verifies the exact bytes provided by the client; no re-serialization.
-func Verify(sr *signaturepb.SignedRequest, publicKey ed25519.PublicKey) error {
+func Verify(sr *signaturepb.SignedApplyBatch, publicKey ed25519.PublicKey) error {
 	if sr == nil {
 		return ErrMissingSignature
 	}
@@ -55,9 +56,9 @@ func Verify(sr *signaturepb.SignedRequest, publicKey ed25519.PublicKey) error {
 	return nil
 }
 
-// ExtractRequest deserializes the envelope payload into a trusted Request.
-// Callers must call Verify first; ExtractRequest does not check the signature.
-func ExtractRequest(sr *signaturepb.SignedRequest) (*servicepb.Request, error) {
+// ExtractBatch deserializes the envelope payload into a trusted ApplyBatch.
+// Callers must call Verify first; ExtractBatch does not check the signature.
+func ExtractBatch(sr *signaturepb.SignedApplyBatch) (*servicepb.ApplyBatch, error) {
 	if sr == nil {
 		return nil, ErrMissingSignature
 	}
@@ -66,11 +67,11 @@ func ExtractRequest(sr *signaturepb.SignedRequest) (*servicepb.Request, error) {
 		return nil, fmt.Errorf("%w: empty payload", ErrInvalidSignature)
 	}
 
-	req := &servicepb.Request{}
+	batch := &servicepb.ApplyBatch{}
 
-	if err := req.UnmarshalVT(sr.GetPayload()); err != nil {
+	if err := batch.UnmarshalVT(sr.GetPayload()); err != nil {
 		return nil, fmt.Errorf("unmarshaling payload: %w", err)
 	}
 
-	return req, nil
+	return batch, nil
 }

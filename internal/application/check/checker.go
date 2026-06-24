@@ -1212,6 +1212,15 @@ func (c *Checker) verifyAuditHashChain(
 		hashBuf    []byte
 		checked    uint64
 		generators = make(map[uint32]processing.HashGenerator, 2)
+		// Frozen idempotency outcomes the projection should hold, re-derived
+		// from each verified audit entry and compared to SubIdempKeys below.
+		expectedIdem = make(map[idemExpectedKey]expectedIdempotency)
+		// Timestamp of the first (lowest-sequence) verified entry — the archive
+		// boundary. HLC timestamps are monotonic with sequence, so every freeze
+		// in the verified range is at/after it; a stored idempotency entry that
+		// claims a created_at >= this but matches no expected freeze is tampered
+		// or fabricated (see compareIdempotencyOutcomes). 0 = no verified entry.
+		verifiedRangeStartTs uint64
 	)
 
 	for {
@@ -1226,6 +1235,10 @@ func (c *Checker) verifyAuditHashChain(
 			// hash chain and report "no mismatch" even though entries
 			// past the failure point were never checked.
 			return fmt.Errorf("reading audit entry for hash chain verification: %w", err)
+		}
+
+		if verifiedRangeStartTs == 0 {
+			verifiedRangeStartTs = entry.GetTimestamp().GetData()
 		}
 
 		// `items` on the stored AuditEntry value is reserved for
@@ -1305,13 +1318,243 @@ func (c *Checker) verifyAuditHashChain(
 
 		lastHash = entry.GetHash()
 		checked++
+
+		// Now that the entry is chain-verified, re-derive the idempotency
+		// outcome a keyed proposal would have frozen under it. items carries
+		// the serialized orders, reused to recompute the proposal hash.
+		if key := entry.GetIdempotency().GetKey(); key != "" {
+			if exp, ok := expectedIdempotencyOutcome(entry, items); ok {
+				expectedIdem[idemExpectedKey{
+					keyHash:   state.HashIdempotencyKey(key),
+					createdAt: entry.GetTimestamp().GetData(),
+				}] = exp
+			}
+		}
 	}
 
 	if checked > 0 {
 		c.logger.Infof("Audit hash chain verified: %d entries checked", checked)
 	}
 
+	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, verifiedRangeStartTs, callback); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// idemExpectedKey identifies the frozen idempotency entry an audit outcome
+// should have produced. created_at equals the freezing audit entry's timestamp,
+// so it pins a stored entry to exactly one outcome even when a key is re-frozen
+// after a prior outcome expired.
+type idemExpectedKey struct {
+	keyHash   attributes.U128
+	createdAt uint64
+}
+
+// expectedIdempotency is the SubIdempKeys value re-derived from a hash-chained
+// audit outcome.
+type expectedIdempotency struct {
+	proposalHash []byte
+	failure      bool
+	reason       commonpb.ErrorReason
+	message      string
+	metadata     map[string]string
+	firstLog     uint64
+	logCount     uint32
+}
+
+// expectedIdempotencyOutcome re-derives the frozen idempotency value a keyed
+// proposal would have written, from its audit entry + items. ok is false when
+// the proposal froze nothing under its key: an all-replay success (no log
+// produced) or a non-freezable failure (retryable/internal) — neither writes
+// SubIdempKeys.
+func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) (expectedIdempotency, bool) {
+	switch out := entry.GetOutcome().(type) {
+	case *auditpb.AuditEntry_Failure:
+		reason := out.Failure.GetReason()
+		if !domain.IsFreezableFailure(domain.KindForReason(reason)) {
+			return expectedIdempotency{}, false
+		}
+
+		return expectedIdempotency{
+			proposalHash: recomputeProposalHash(items),
+			failure:      true,
+			reason:       reason,
+			message:      out.Failure.GetMessage(),
+			metadata:     out.Failure.GetContext(),
+		}, true
+	case *auditpb.AuditEntry_Success:
+		maxSeq := out.Success.GetMaxLogSequence()
+		if maxSeq == 0 {
+			return expectedIdempotency{}, false
+		}
+
+		minSeq := out.Success.GetMinLogSequence()
+
+		return expectedIdempotency{
+			proposalHash: recomputeProposalHash(items),
+			firstLog:     minSeq,
+			logCount:     uint32(maxSeq - minSeq + 1),
+		}, true
+	default:
+		return expectedIdempotency{}, false
+	}
+}
+
+// recomputeProposalHash re-derives a proposal's idempotency hash from its
+// persisted audit orders, reusing the FSM's hashing so the result is
+// byte-identical to what was frozen. The orders round-trip from the chain-bound
+// serialized_order bytes; a corrupt order would already have broken the audit
+// chain above, so a nil here only forces a loud hash mismatch.
+func recomputeProposalHash(items []*auditpb.AuditItem) []byte {
+	orders := make([]*raftcmdpb.Order, 0, len(items))
+
+	for _, item := range items {
+		order := &raftcmdpb.Order{}
+		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+			return nil
+		}
+
+		orders = append(orders, order)
+	}
+
+	return processing.HashOrders(orders)
+}
+
+// compareIdempotencyOutcomes scans the frozen idempotency entries
+// (SubIdempKeys) and verifies each against the outcome re-derived from the
+// hash-chained audit entry that wrote it. A divergence is a tampered replay
+// cache — left unchecked, a duplicate caller would replay an arbitrary error or
+// wrong log range while Check() passed.
+//
+// Entries are matched by (key hash, created_at). A miss is classified by
+// verifiedRangeStartTs (the archive boundary): an entry whose created_at is
+// at/after the boundary must have its freeze in the verified range, so a miss
+// there is tampered created_at or a fabricated entry and is reported; an entry
+// before the boundary was frozen by an already-archived entry that is no longer
+// re-derivable here, so it is skipped — the same scoping the hash-chain
+// verification uses. This closes the gap where tampering the created_at of a
+// live, post-boundary entry would otherwise dodge the lookup and skip
+// verification entirely. (When verifiedRangeStartTs is 0 — no verified entries —
+// nothing is re-derivable, so all entries are skipped.)
+//
+// Residual limitation: a stored entry created before the boundary is skipped
+// even when it is still live — reachable only when the idempotency TTL outlives
+// the age at which chapters are archived. In that window a tampered outcome on
+// such an entry goes undetected here; fully closing it requires re-deriving the
+// archived freezes from cold storage (the same boundary that already scopes the
+// hash-chain verification).
+func (c *Checker) compareIdempotencyOutcomes(
+	reader dal.PebbleReader,
+	expected map[idemExpectedKey]expectedIdempotency,
+	verifiedRangeStartTs uint64,
+	callback func(*servicepb.CheckStoreEvent),
+) error {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys},
+		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys + 1},
+	})
+	if err != nil {
+		return fmt.Errorf("scanning idempotency keys: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) != 2+16 {
+			continue
+		}
+
+		var stored commonpb.IdempotencyKeyValue
+		if err := stored.UnmarshalVT(iter.Value()); err != nil {
+			return fmt.Errorf("unmarshalling idempotency value: %w", err)
+		}
+
+		exp, ok := expected[idemExpectedKey{
+			keyHash:   attributes.U128FromBytes(key[2:18]),
+			createdAt: stored.GetCreatedAt(),
+		}]
+		if !ok {
+			// No matching freeze. If the entry claims a created_at at/after the
+			// archive boundary, its freeze must be in the verified range — its
+			// absence is tampering or fabrication. Older entries are archived
+			// (not re-derivable here) and are skipped.
+			if verifiedRangeStartTs != 0 && stored.GetCreatedAt() >= verifiedRangeStartTs {
+				callback(errorEvent(
+					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
+					fmt.Sprintf("frozen idempotency outcome (created_at=%d) has no matching audit entry in the verified range — tampered created_at or fabricated entry",
+						stored.GetCreatedAt()),
+					0, "", "", "",
+				))
+			}
+
+			continue
+		}
+
+		if msg := idempotencyMismatch(&stored, exp); msg != "" {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
+				fmt.Sprintf("frozen idempotency outcome (created_at=%d) diverges from its audit entry: %s",
+					stored.GetCreatedAt(), msg),
+				0, "", "", "",
+			))
+		}
+	}
+
+	return nil
+}
+
+// idempotencyMismatch returns a human-readable reason the stored frozen outcome
+// diverges from the audit-derived expectation, or "" when they agree.
+func idempotencyMismatch(stored *commonpb.IdempotencyKeyValue, exp expectedIdempotency) string {
+	if !bytes.Equal(stored.GetHash(), exp.proposalHash) {
+		return fmt.Sprintf("proposal hash %x does not match audit-derived %x", stored.GetHash(), exp.proposalHash)
+	}
+
+	if exp.failure {
+		f := stored.GetFailure()
+		switch {
+		case f == nil:
+			return "stored a success outcome where the audit recorded a failure"
+		case f.GetReason() != exp.reason:
+			return fmt.Sprintf("failure reason %s does not match audit %s", f.GetReason(), exp.reason)
+		case f.GetMessage() != exp.message:
+			return "failure message does not match the audit"
+		case !metadataEqual(f.GetMetadata(), exp.metadata):
+			return "failure metadata does not match the audit"
+		default:
+			return ""
+		}
+	}
+
+	switch {
+	case stored.GetFailure() != nil:
+		return "stored a failure outcome where the audit recorded a success"
+	case stored.GetFirstLogSequence() != exp.firstLog || stored.GetLogCount() != exp.logCount:
+		return fmt.Sprintf("log range (first=%d count=%d) does not match audit (first=%d count=%d)",
+			stored.GetFirstLogSequence(), stored.GetLogCount(), exp.firstLog, exp.logCount)
+	default:
+		return ""
+	}
+}
+
+// metadataEqual compares two metadata maps treating nil and empty as equal:
+// buildAuditFailure stores an empty (non-nil) context map while
+// recordIdempotencyFailure may store a nil metadata map for the same error.
+func metadataEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+
+	return true
 }
 
 type proposalBoundaryReader struct {

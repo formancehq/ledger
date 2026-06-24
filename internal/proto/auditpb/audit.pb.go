@@ -8,6 +8,7 @@ package auditpb
 
 import (
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -72,8 +73,16 @@ type AuditEntry struct {
 	// authorization granted at admission. Nil when auth is disabled or
 	// for system-initiated proposals.
 	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,12,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Batch identity, bound into the hash chain (header_payload) so it is
+	// tamper-evident. idempotency is the batch dedup key; signature is the
+	// client's proof over the whole ApplyBatch (nil for unsigned batches).
+	// This is the authoritative, chain-verified home for batch non-repudiation;
+	// the AppliedProposal projection carries a copy of the idempotency key for
+	// event consumers, which the checker verifies against this entry.
+	Idempotency   *commonpb.Idempotency         `protobuf:"bytes,13,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Signature     *signaturepb.SignedApplyBatch `protobuf:"bytes,14,opt,name=signature,proto3" json:"signature,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AuditEntry) Reset() {
@@ -190,6 +199,20 @@ func (x *AuditEntry) GetHashVersion() uint32 {
 func (x *AuditEntry) GetCallerSnapshot() *commonpb.CallerSnapshot {
 	if x != nil {
 		return x.CallerSnapshot
+	}
+	return nil
+}
+
+func (x *AuditEntry) GetIdempotency() *commonpb.Idempotency {
+	if x != nil {
+		return x.Idempotency
+	}
+	return nil
+}
+
+func (x *AuditEntry) GetSignature() *signaturepb.SignedApplyBatch {
+	if x != nil {
+		return x.Signature
 	}
 	return nil
 }
@@ -342,10 +365,13 @@ func (x *AuditSuccess) GetMaxLogSequence() uint64 {
 	return 0
 }
 
-// AuditFailure records the reason and context for a failed proposal.
+// AuditFailure records the reason and context for a failed proposal. reason is
+// the typed, hash-chain-bound identifier; the numeric error kind is re-derived
+// from it (domain.KindForReason) rather than stored, so it cannot drift from
+// the reason and the idempotency failure projection is verifiable against it.
 type AuditFailure struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ErrorType     string                 `protobuf:"bytes,1,opt,name=error_type,json=errorType,proto3" json:"error_type,omitempty"`
+	Reason        commonpb.ErrorReason   `protobuf:"varint,1,opt,name=reason,proto3,enum=common.ErrorReason" json:"reason,omitempty"`
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 	Context       map[string]string      `protobuf:"bytes,3,rep,name=context,proto3" json:"context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
@@ -382,11 +408,11 @@ func (*AuditFailure) Descriptor() ([]byte, []int) {
 	return file_audit_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *AuditFailure) GetErrorType() string {
+func (x *AuditFailure) GetReason() commonpb.ErrorReason {
 	if x != nil {
-		return x.ErrorType
+		return x.Reason
 	}
-	return ""
+	return commonpb.ErrorReason(0)
 }
 
 func (x *AuditFailure) GetMessage() string {
@@ -407,7 +433,7 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\"\xd0\x03\n" +
+	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xc2\x04\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
@@ -423,7 +449,9 @@ const file_audit_proto_rawDesc = "" +
 	"\x04hash\x18\t \x01(\fR\x04hash\x12!\n" +
 	"\fhash_version\x18\n" +
 	" \x01(\rR\vhashVersion\x12?\n" +
-	"\x0fcaller_snapshot\x18\f \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshotB\t\n" +
+	"\x0fcaller_snapshot\x18\f \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
+	"\vidempotency\x18\r \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
+	"\tsignature\x18\x0e \x01(\v2\x1b.signature.SignedApplyBatchR\tsignatureB\t\n" +
 	"\aoutcomeJ\x04\b\v\x10\fR\x06caller\"\x81\x01\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
@@ -432,10 +460,9 @@ const file_audit_proto_rawDesc = "" +
 	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequenceR\x05order\"b\n" +
 	"\fAuditSuccess\x12(\n" +
 	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
-	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"\xbf\x01\n" +
-	"\fAuditFailure\x12\x1d\n" +
-	"\n" +
-	"error_type\x18\x01 \x01(\tR\terrorType\x12\x18\n" +
+	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"\xcd\x01\n" +
+	"\fAuditFailure\x12+\n" +
+	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12:\n" +
 	"\acontext\x18\x03 \x03(\v2 .audit.AuditFailure.ContextEntryR\acontext\x1a:\n" +
 	"\fContextEntry\x12\x10\n" +
@@ -456,13 +483,16 @@ func file_audit_proto_rawDescGZIP() []byte {
 
 var file_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_audit_proto_goTypes = []any{
-	(*AuditEntry)(nil),              // 0: audit.AuditEntry
-	(*AuditItem)(nil),               // 1: audit.AuditItem
-	(*AuditSuccess)(nil),            // 2: audit.AuditSuccess
-	(*AuditFailure)(nil),            // 3: audit.AuditFailure
-	nil,                             // 4: audit.AuditFailure.ContextEntry
-	(*commonpb.Timestamp)(nil),      // 5: common.Timestamp
-	(*commonpb.CallerSnapshot)(nil), // 6: common.CallerSnapshot
+	(*AuditEntry)(nil),                   // 0: audit.AuditEntry
+	(*AuditItem)(nil),                    // 1: audit.AuditItem
+	(*AuditSuccess)(nil),                 // 2: audit.AuditSuccess
+	(*AuditFailure)(nil),                 // 3: audit.AuditFailure
+	nil,                                  // 4: audit.AuditFailure.ContextEntry
+	(*commonpb.Timestamp)(nil),           // 5: common.Timestamp
+	(*commonpb.CallerSnapshot)(nil),      // 6: common.CallerSnapshot
+	(*commonpb.Idempotency)(nil),         // 7: common.Idempotency
+	(*signaturepb.SignedApplyBatch)(nil), // 8: signature.SignedApplyBatch
+	(commonpb.ErrorReason)(0),            // 9: common.ErrorReason
 }
 var file_audit_proto_depIdxs = []int32{
 	5, // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
@@ -470,12 +500,15 @@ var file_audit_proto_depIdxs = []int32{
 	3, // 2: audit.AuditEntry.failure:type_name -> audit.AuditFailure
 	1, // 3: audit.AuditEntry.items:type_name -> audit.AuditItem
 	6, // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
-	4, // 5: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	7, // 5: audit.AuditEntry.idempotency:type_name -> common.Idempotency
+	8, // 6: audit.AuditEntry.signature:type_name -> signature.SignedApplyBatch
+	9, // 7: audit.AuditFailure.reason:type_name -> common.ErrorReason
+	4, // 8: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_audit_proto_init() }

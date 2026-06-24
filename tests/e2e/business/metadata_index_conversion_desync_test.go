@@ -45,27 +45,19 @@ var _ = Describe("MetadataIndexConversionDesync", Ordered, func() {
 				env = append(env, makeReq(i))
 			}
 
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(env...),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", env...))
 			g.Expect(err).To(Succeed())
 		}
 	}
 
 	It("does not leave stale index entries after a mid-BUILDING overwrite", func() {
 		// Ledger with a STRING field + an index on it.
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-					{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: key, Type: commonpb.MetadataType_METADATA_TYPE_STRING},
-				}),
-			),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: key, Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+		})))
 		Expect(err).To(Succeed())
 
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateAccountMetadataIndexAction(ledgerName, key)),
-		})
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 		Expect(err).To(Succeed())
 		Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,
 			commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)).To(Succeed())
@@ -77,12 +69,8 @@ var _ = Describe("MetadataIndexConversionDesync", Ordered, func() {
 
 		// Declare INT64: starts the index schema-rewrite (BUILDING) and the value
 		// converter (CONVERTING).
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key,
-					commonpb.MetadataType_METADATA_TYPE_INT64),
-			),
-		})
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key,
+			commonpb.MetadataType_METADATA_TYPE_INT64)))
 		Expect(err).To(Succeed())
 
 		// Immediately overwrite every account to a value >= 1_000_000, racing the

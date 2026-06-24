@@ -102,14 +102,14 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	envelopes, err := cmdutil.BuildEnvelopes(cmd, requests)
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
 	if err != nil {
 		spinner.Fail("Failed to sign request")
 
 		return cmdutil.Displayed(err)
 	}
 
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: envelopes})
+	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		_ = spinner.Stop()
 

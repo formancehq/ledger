@@ -24,25 +24,23 @@ func main() {
 		}
 
 		// Save metadata.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
-							AddMetadata: &commonpb.SaveMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{
-										Account: &commonpb.TargetAccount{Addr: address},
-									},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+						AddMetadata: &commonpb.SaveMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{Addr: address},
 								},
-								Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
 							},
-						}},
-					},
+							Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to save account metadata", details.With(internal.Details{"error": err}))
 		if err != nil {
@@ -68,25 +66,23 @@ func main() {
 		}))
 
 		// Delete the metadata key.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
-							DeleteMetadata: &commonpb.DeleteMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{
-										Account: &commonpb.TargetAccount{Addr: address},
-									},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+						DeleteMetadata: &commonpb.DeleteMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{Addr: address},
 								},
-								Key: key,
 							},
-						}},
-					},
+							Key: key,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to delete account metadata", details.With(internal.Details{"error": err}))
 		if err != nil {

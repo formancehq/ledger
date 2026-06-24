@@ -111,5 +111,5 @@ func GetNonRevertedTransaction(ctx context.Context, client servicepb.BucketServi
 
 // ApplyActions sends a batch of actions and returns the response.
 func ApplyActions(ctx context.Context, client servicepb.BucketServiceClient, reqs ...*servicepb.Request) (*servicepb.ApplyResponse, error) {
-	return client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(reqs...)})
+	return client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...))
 }

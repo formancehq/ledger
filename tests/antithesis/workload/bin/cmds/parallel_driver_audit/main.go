@@ -14,23 +14,21 @@ import (
 func main() {
 	internal.RunDriver("parallel_driver_audit", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		// Create a transaction so the audit trail has something.
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{
-									commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
-								},
-								Force: true,
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{
+								commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 							},
-						}},
-					},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to create tx for audit trail", internal.Details{"ledger": ledger, "error": err})
 		if err != nil {

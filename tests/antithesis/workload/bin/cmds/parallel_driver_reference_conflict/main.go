@@ -16,22 +16,20 @@ func main() {
 		details := internal.Details{"ledger": ledger, "reference": ref}
 
 		// 1. Create a transaction with a unique reference.
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings:  internal.RandomPostings(),
-								Reference: ref,
-								Force:     true,
-							},
-						}},
-					},
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings:  internal.RandomPostings(),
+							Reference: ref,
+							Force:     true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to create a transaction with reference",
@@ -48,22 +46,20 @@ func main() {
 		details["firstTxId"] = createdTx.Transaction.Id
 
 		// 2. Create a different transaction with the same reference — must fail.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings:  internal.RandomPostings(),
-								Reference: ref,
-								Force:     true,
-							},
-						}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings:  internal.RandomPostings(),
+							Reference: ref,
+							Force:     true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		if err == nil {
 			assert.Unreachable("duplicate reference should be rejected", details)

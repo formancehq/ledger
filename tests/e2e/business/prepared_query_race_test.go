@@ -36,9 +36,7 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 	})
 

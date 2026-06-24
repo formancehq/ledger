@@ -43,24 +43,16 @@ var _ = Describe("Log date index", Ordered, func() {
 	BeforeAll(func() {
 		// Create ledger with the date index enabled.
 		// The per-ledger log index is always-on (no explicit CreateIndex needed).
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction(ledgerName, nil),
-				actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
-			),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil),
+			actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)))
 		Expect(err).To(Succeed())
 
 		// Create 3 transactions. Log dates will be close to wall-clock time.
 		nowRef = time.Now()
 
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "alice", big.NewInt(100), "USD")}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "bob", big.NewInt(200), "USD")}, nil),
-				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "carol", big.NewInt(300), "USD")}, nil),
-			),
-		})
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "alice", big.NewInt(100), "USD")}, nil),
+			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "bob", big.NewInt(200), "USD")}, nil),
+			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "carol", big.NewInt(300), "USD")}, nil)))
 		Expect(err).To(Succeed())
 
 		// Wait for the date index to be ready.

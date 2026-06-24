@@ -19,7 +19,6 @@ const errorDomain = "ledger"
 type validationError struct{ msg string }
 
 func (e *validationError) Error() string             { return e.msg }
-func (*validationError) Kind() domain.ErrorKind      { return domain.KindValidation }
 func (*validationError) Reason() string              { return domain.ErrReasonValidation }
 func (*validationError) Metadata() map[string]string { return nil }
 
@@ -65,7 +64,7 @@ func kindToGRPCCode(k domain.ErrorKind) codes.Code {
 // code via the exhaustive switch above; the Reason and Metadata carry the
 // per-type wire contract.
 func describableToGRPCStatus(d domain.Describable) *status.Status {
-	st := status.New(kindToGRPCCode(d.Kind()), d.Error())
+	st := status.New(kindToGRPCCode(domain.Kind(d)), d.Error())
 
 	detailed, err := st.WithDetails(&errdetails.ErrorInfo{
 		Reason:   d.Reason(),

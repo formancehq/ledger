@@ -78,8 +78,8 @@ func chaosRound(ctx context.Context, lsClient dynamic.ResourceInterface, cluster
 		lastTarget = target
 
 		details := internal.Details{
-			"step":    fmt.Sprintf("%d/%d", i+1, steps),
-			"target":  target,
+			"step":   fmt.Sprintf("%d/%d", i+1, steps),
+			"target": target,
 		}
 
 		log.Printf("chaos-scaling: step %d/%d → %d replicas (fire-and-forget)", i+1, steps, target)

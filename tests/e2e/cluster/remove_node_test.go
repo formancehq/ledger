@@ -10,10 +10,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 // waitForNodeRemoved polls the cluster state on the leader until the given node is no longer present.
@@ -77,19 +77,13 @@ var _ = Describe("Remove node", func() {
 			lid := *leaderID
 			ledgerName := "remove-voter-test"
 
-			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			for i := range 3 {
-				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
-						}, nil, nil),
-					),
-				})
+				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+				}, nil, nil)))
 				Expect(err).To(Succeed())
 			}
 		})
@@ -196,19 +190,13 @@ var _ = Describe("Remove node", func() {
 			lid := *leaderID
 			ledgerName := "force-remove-test"
 
-			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			for i := range 3 {
-				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
-						}, nil, nil),
-					),
-				})
+				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+				}, nil, nil)))
 				Expect(err).To(Succeed())
 			}
 		})
@@ -267,18 +255,12 @@ var _ = Describe("Remove node", func() {
 			lid := *leaderID
 			ledgerName := "quorum-restore-test"
 
-			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "alice", big.NewInt(500), "USD"),
-					}, nil, nil),
-				),
-			})
+			_, err = servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(500), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 		})
 	})

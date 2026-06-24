@@ -13,10 +13,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// hashIdempotencyKey returns a 128-bit hash of the idempotency key string,
+// HashIdempotencyKey returns a 128-bit hash of the idempotency key string,
 // used both as the Pebble key suffix under `[0x05][0x01]` and as the
 // in-memory map key.
-func hashIdempotencyKey(key string) attributes.U128 {
+func HashIdempotencyKey(key string) attributes.U128 {
 	h := blake3.Sum256([]byte(key))
 
 	return attributes.U128FromBytes(h[:16])
@@ -47,14 +47,14 @@ func NewIdempotencyStore(ttlMicros uint64) *IdempotencyStore {
 
 // Get returns the idempotency value for the given key, if present in the in-memory map.
 func (s *IdempotencyStore) Get(key string) (*commonpb.IdempotencyKeyValue, bool) {
-	v, ok := s.entries[hashIdempotencyKey(key)]
+	v, ok := s.entries[HashIdempotencyKey(key)]
 
 	return v, ok
 }
 
 // Put writes an idempotency key to the in-memory map.
 func (s *IdempotencyStore) Put(key string, value *commonpb.IdempotencyKeyValue) {
-	s.entries[hashIdempotencyKey(key)] = value
+	s.entries[HashIdempotencyKey(key)] = value
 }
 
 // IsExpired returns true if the value's created_at is older than TTL relative to nowMicros.
@@ -301,7 +301,7 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 // SaveIdempotencyKey writes an idempotency key-value pair to Pebble under prefix 0x03,
 // and creates a time index entry under prefix 0x04 for efficient eviction.
 func saveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.IdempotencyKeyValue) error {
-	keyHash := hashIdempotencyKey(key)
+	keyHash := HashIdempotencyKey(key)
 
 	// Main entry: [0x05][0x01][key_hash 16 bytes] -> marshaled IdempotencyKeyValue
 	mainKey := make([]byte, 2+16)
@@ -309,6 +309,9 @@ func saveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.Ide
 	mainKey[1] = dal.SubIdempKeys
 	copy(mainKey[2:], keyHash[:])
 
+	// Marshal order need not match across replicas: these Pebble bytes are
+	// local durability (read back via UnmarshalVT), and the cross-node state
+	// hash re-marshals deterministically in the sealer.
 	data, err := value.MarshalVT()
 	if err != nil {
 		return fmt.Errorf("marshaling idempotency value: %w", err)
@@ -335,7 +338,7 @@ func saveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.Ide
 // LoadIdempotencyKey reads an idempotency key from Pebble under prefix 0x03.
 // Returns nil if the key does not exist.
 func LoadIdempotencyKey(reader dal.PebbleReader, key string) (*commonpb.IdempotencyKeyValue, error) {
-	keyHash := hashIdempotencyKey(key)
+	keyHash := HashIdempotencyKey(key)
 
 	pebbleKey := make([]byte, 2+16)
 	pebbleKey[0] = dal.ZoneIdempotency

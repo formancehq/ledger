@@ -18,15 +18,16 @@ func GenerateTestKeypair() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	return ed25519.GenerateKey(rand.Reader)
 }
 
-// SignRequest signs a request with the given key and returns the resulting
-// signed envelope, ready to be placed into an ApplyRequest.Envelopes slice.
-func SignRequest(req *servicepb.Request, keyID string, privKey ed25519.PrivateKey) (*servicepb.Envelope, error) {
-	sr, err := signing.Sign(req, keyID, privKey)
+// SignBatch signs an ApplyBatch (the atomic unit: ordered requests + idempotency
+// key) and returns a signed ApplyRequest ready to pass to Apply. Signing the
+// whole batch authenticates its composition and ordering.
+func SignBatch(batch *servicepb.ApplyBatch, keyID string, privKey ed25519.PrivateKey) (*servicepb.ApplyRequest, error) {
+	sb, err := signing.Sign(batch, keyID, privKey)
 	if err != nil {
-		return nil, fmt.Errorf("signing request: %w", err)
+		return nil, fmt.Errorf("signing batch: %w", err)
 	}
 
-	return servicepb.SignedEnvelope(sr), nil
+	return servicepb.SignedApplyRequest(sb), nil
 }
 
 // ListAllSigningKeys collects every signing key from the ListSigningKeys

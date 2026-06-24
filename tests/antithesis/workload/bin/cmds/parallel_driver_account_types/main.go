@@ -29,19 +29,17 @@ func main() {
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
 		// 1. Add an account type with a pattern.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_AddAccountType{
-					AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
-						Ledger: ledger,
-						AccountType: &commonpb.AccountType{
-							Name:    typeName,
-							Pattern: pattern,
-						},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_AddAccountType{
+				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+					Ledger: ledger,
+					AccountType: &commonpb.AccountType{
+						Name:    typeName,
+						Pattern: pattern,
 					},
 				},
-			}),
-		})
+			},
+		}))
 		assert.Sometimes(err == nil || internal.IsTransient(err) || status.Code(err) == codes.AlreadyExists,
 			"should be able to add account type", details.With(internal.Details{"error": err}))
 		if err != nil && !internal.IsTransient(err) {
@@ -68,73 +66,65 @@ func main() {
 
 		// 3. Create a transaction using an address matching the pattern.
 		matchingAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: matchingAddr,
-									Amount:      commonpb.NewUint256FromUint64(100),
-									Asset:       "USD/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: matchingAddr,
+								Amount:      commonpb.NewUint256FromUint64(100),
+								Asset:       "USD/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to create tx with typed account address",
 			details.With(internal.Details{"address": matchingAddr, "error": err}))
 
 		// 4. Set enforcement mode to AUDIT (permissive logging).
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SetDefaultEnforcementMode{
-					SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
-						Ledger:          ledger,
-						EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+					Ledger:          ledger,
+					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to set enforcement mode", details.With(internal.Details{"error": err}))
 
 		// 5. Remove the account type.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_RemoveAccountType{
-					RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
-						Ledger: ledger,
-						Name:   typeName,
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_RemoveAccountType{
+				RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
+					Ledger: ledger,
+					Name:   typeName,
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to remove account type", details.With(internal.Details{"error": err}))
 
 		// 6. Reset enforcement mode to STRICT. This ledger is selectable by other
 		// drivers, so a silent failure leaves it in AUDIT mode for them.
-		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SetDefaultEnforcementMode{
-					SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
-						Ledger:          ledger,
-						EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
-					},
+		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+					Ledger:          ledger,
+					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 				},
-			}),
-		}); err != nil {
+			},
+		})); err != nil {
 			internal.LogCleanupError("reset enforcement mode to STRICT", err)
 		}
 	})

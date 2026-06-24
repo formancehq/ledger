@@ -42,6 +42,13 @@ const (
 	// the index builder consumes — the audit hash chain itself is
 	// verified separately by HASH_MISMATCH.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH CheckStoreErrorType = 8
+	// Emitted when a frozen idempotency outcome persisted under SubIdempKeys (the
+	// proposal hash, the failure reason/message/metadata, or the success log
+	// range) does not match the value re-derived from the hash-chained
+	// AuditEntry that froze it. The idempotency store is a replay cache; a
+	// tampered frozen outcome would otherwise replay an arbitrary error or wrong
+	// log range to a duplicate caller. The audit chain is the source of truth.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH CheckStoreErrorType = 9
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -56,6 +63,7 @@ var (
 		6: "CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH",
 		7: "CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH",
 		8: "CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH",
+		9: "CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
@@ -67,6 +75,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH": 6,
 		"CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH":           7,
 		"CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH":   8,
+		"CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH":        9,
 	}
 )
 
@@ -782,22 +791,35 @@ func (x *GetLedgerRequest) GetRead() *commonpb.ReadOptions {
 	return nil
 }
 
+// ApplyRequest is the wire input to Apply(): an atomic batch that is either
+// unsigned (ApplyBatch carried directly) or signed (an opaque
+// SignedApplyBatch whose payload is the serialized ApplyBatch). The
+// discriminated union is schema-enforced — a client cannot send both, and the
+// wrapper/payload divergence class disappears by construction.
+//
+// forwarded_caller_snapshot and skip_response sit OUTSIDE the signed payload:
+// the snapshot is added by a forwarding follower (not client-signed), and
+// skip_response is a response-shaping transport option, not part of the intent.
 type ApplyRequest struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	Envelopes []*Envelope            `protobuf:"bytes,1,rep,name=envelopes,proto3" json:"envelopes,omitempty"`
-	// skip_response, when true, strips log payloads from the response.
-	// Only the sequence number is returned for each log. Useful for
-	// historical ingestion where the client does not need the full response.
-	SkipResponse bool `protobuf:"varint,2,opt,name=skip_response,json=skipResponse,proto3" json:"skip_response,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Variant:
+	//
+	//	*ApplyRequest_Unsigned
+	//	*ApplyRequest_Signed
+	Variant isApplyRequest_Variant `protobuf_oneof:"variant"`
 	// forwarded_caller_snapshot carries the admission-time caller snapshot
 	// (identity + scopes + god) captured by the forwarding follower. The
 	// leader honors this field ONLY when the incoming connection authenticates
 	// via cluster-secret (trusted peer); direct client requests have it
 	// derived from validated JWT/Ed25519 claims on the leader and any value
 	// sent here is ignored.
-	ForwardedCallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,4,opt,name=forwarded_caller_snapshot,json=forwardedCallerSnapshot,proto3" json:"forwarded_caller_snapshot,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	ForwardedCallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,3,opt,name=forwarded_caller_snapshot,json=forwardedCallerSnapshot,proto3" json:"forwarded_caller_snapshot,omitempty"`
+	// skip_response, when true, strips log payloads from the response.
+	// Only the sequence number is returned for each log. Useful for
+	// historical ingestion where the client does not need the full response.
+	SkipResponse  bool `protobuf:"varint,4,opt,name=skip_response,json=skipResponse,proto3" json:"skip_response,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ApplyRequest) Reset() {
@@ -830,9 +852,34 @@ func (*ApplyRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *ApplyRequest) GetEnvelopes() []*Envelope {
+func (x *ApplyRequest) GetVariant() isApplyRequest_Variant {
 	if x != nil {
-		return x.Envelopes
+		return x.Variant
+	}
+	return nil
+}
+
+func (x *ApplyRequest) GetUnsigned() *ApplyBatch {
+	if x != nil {
+		if x, ok := x.Variant.(*ApplyRequest_Unsigned); ok {
+			return x.Unsigned
+		}
+	}
+	return nil
+}
+
+func (x *ApplyRequest) GetSigned() *signaturepb.SignedApplyBatch {
+	if x != nil {
+		if x, ok := x.Variant.(*ApplyRequest_Signed); ok {
+			return x.Signed
+		}
+	}
+	return nil
+}
+
+func (x *ApplyRequest) GetForwardedCallerSnapshot() *commonpb.CallerSnapshot {
+	if x != nil {
+		return x.ForwardedCallerSnapshot
 	}
 	return nil
 }
@@ -844,43 +891,48 @@ func (x *ApplyRequest) GetSkipResponse() bool {
 	return false
 }
 
-func (x *ApplyRequest) GetForwardedCallerSnapshot() *commonpb.CallerSnapshot {
-	if x != nil {
-		return x.ForwardedCallerSnapshot
-	}
-	return nil
+type isApplyRequest_Variant interface {
+	isApplyRequest_Variant()
 }
 
-// Envelope wraps a Request on the wire. Unsigned requests carry the
-// Request directly; signed requests carry an opaque SignedRequest that
-// the server verifies before unmarshaling the payload bytes. The proto
-// schema enforces the discriminated union — clients cannot send both,
-// and the wrapper/payload divergence class disappears by construction.
-type Envelope struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Variant:
-	//
-	//	*Envelope_Unsigned
-	//	*Envelope_Signed
-	Variant       isEnvelope_Variant `protobuf_oneof:"variant"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+type ApplyRequest_Unsigned struct {
+	Unsigned *ApplyBatch `protobuf:"bytes,1,opt,name=unsigned,proto3,oneof"`
 }
 
-func (x *Envelope) Reset() {
-	*x = Envelope{}
+type ApplyRequest_Signed struct {
+	Signed *signaturepb.SignedApplyBatch `protobuf:"bytes,2,opt,name=signed,proto3,oneof"`
+}
+
+func (*ApplyRequest_Unsigned) isApplyRequest_Variant() {}
+
+func (*ApplyRequest_Signed) isApplyRequest_Variant() {}
+
+// ApplyBatch is the atomic unit: an ordered set of requests applied
+// all-or-nothing, identified for idempotency by a single key. It is the unit
+// of atomicity, idempotency, AND signing — a SignedApplyBatch signs exactly
+// these bytes, so the batch's composition and ordering are authenticated.
+type ApplyBatch struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Requests       []*Request             `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests,omitempty"`
+	IdempotencyKey string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ApplyBatch) Reset() {
+	*x = ApplyBatch{}
 	mi := &file_bucket_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Envelope) String() string {
+func (x *ApplyBatch) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Envelope) ProtoMessage() {}
+func (*ApplyBatch) ProtoMessage() {}
 
-func (x *Envelope) ProtoReflect() protoreflect.Message {
+func (x *ApplyBatch) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -892,51 +944,24 @@ func (x *Envelope) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Envelope.ProtoReflect.Descriptor instead.
-func (*Envelope) Descriptor() ([]byte, []int) {
+// Deprecated: Use ApplyBatch.ProtoReflect.Descriptor instead.
+func (*ApplyBatch) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *Envelope) GetVariant() isEnvelope_Variant {
+func (x *ApplyBatch) GetRequests() []*Request {
 	if x != nil {
-		return x.Variant
+		return x.Requests
 	}
 	return nil
 }
 
-func (x *Envelope) GetUnsigned() *Request {
+func (x *ApplyBatch) GetIdempotencyKey() string {
 	if x != nil {
-		if x, ok := x.Variant.(*Envelope_Unsigned); ok {
-			return x.Unsigned
-		}
+		return x.IdempotencyKey
 	}
-	return nil
+	return ""
 }
-
-func (x *Envelope) GetSigned() *signaturepb.SignedRequest {
-	if x != nil {
-		if x, ok := x.Variant.(*Envelope_Signed); ok {
-			return x.Signed
-		}
-	}
-	return nil
-}
-
-type isEnvelope_Variant interface {
-	isEnvelope_Variant()
-}
-
-type Envelope_Unsigned struct {
-	Unsigned *Request `protobuf:"bytes,1,opt,name=unsigned,proto3,oneof"`
-}
-
-type Envelope_Signed struct {
-	Signed *signaturepb.SignedRequest `protobuf:"bytes,2,opt,name=signed,proto3,oneof"`
-}
-
-func (*Envelope_Unsigned) isEnvelope_Variant() {}
-
-func (*Envelope_Signed) isEnvelope_Variant() {}
 
 type ApplyResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -983,8 +1008,7 @@ func (x *ApplyResponse) GetLogs() []*commonpb.Log {
 }
 
 type Request struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	IdempotencyKey string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Type:
 	//
 	//	*Request_Apply
@@ -1054,13 +1078,6 @@ func (x *Request) ProtoReflect() protoreflect.Message {
 // Deprecated: Use Request.ProtoReflect.Descriptor instead.
 func (*Request) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *Request) GetIdempotencyKey() string {
-	if x != nil {
-		return x.IdempotencyKey
-	}
-	return ""
 }
 
 func (x *Request) GetType() isRequest_Type {
@@ -8482,19 +8499,20 @@ const file_bucket_proto_rawDesc = "" +
 	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptionsJ\x04\b\x02\x10\x03R\tpage_sizeR\rcheckpoint_id\"b\n" +
 	"\x10GetLedgerRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12'\n" +
-	"\x04read\x18\x02 \x01(\v2\x13.common.ReadOptionsR\x04readR\rcheckpoint_id\"\xcf\x01\n" +
-	"\fApplyRequest\x12.\n" +
-	"\tenvelopes\x18\x01 \x03(\v2\x10.ledger.EnvelopeR\tenvelopes\x12#\n" +
-	"\rskip_response\x18\x02 \x01(\bR\fskipResponse\x12R\n" +
-	"\x19forwarded_caller_snapshot\x18\x04 \x01(\v2\x16.common.CallerSnapshotR\x17forwardedCallerSnapshotJ\x04\b\x03\x10\x04R\x10forwarded_caller\"x\n" +
-	"\bEnvelope\x12-\n" +
-	"\bunsigned\x18\x01 \x01(\v2\x0f.ledger.RequestH\x00R\bunsigned\x122\n" +
-	"\x06signed\x18\x02 \x01(\v2\x18.signature.SignedRequestH\x00R\x06signedB\t\n" +
-	"\avariant\"0\n" +
+	"\x04read\x18\x02 \x01(\v2\x13.common.ReadOptionsR\x04readR\rcheckpoint_id\"\xfb\x01\n" +
+	"\fApplyRequest\x120\n" +
+	"\bunsigned\x18\x01 \x01(\v2\x12.ledger.ApplyBatchH\x00R\bunsigned\x125\n" +
+	"\x06signed\x18\x02 \x01(\v2\x1b.signature.SignedApplyBatchH\x00R\x06signed\x12R\n" +
+	"\x19forwarded_caller_snapshot\x18\x03 \x01(\v2\x16.common.CallerSnapshotR\x17forwardedCallerSnapshot\x12#\n" +
+	"\rskip_response\x18\x04 \x01(\bR\fskipResponseB\t\n" +
+	"\avariant\"b\n" +
+	"\n" +
+	"ApplyBatch\x12+\n" +
+	"\brequests\x18\x01 \x03(\v2\x0f.ledger.RequestR\brequests\x12'\n" +
+	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\"0\n" +
 	"\rApplyResponse\x12\x1f\n" +
-	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\xfb\x16\n" +
-	"\aRequest\x12'\n" +
-	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x122\n" +
+	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\xe9\x16\n" +
+	"\aRequest\x122\n" +
 	"\x05apply\x18\x02 \x01(\v2\x1a.ledger.LedgerApplyRequestH\x00R\x05apply\x12B\n" +
 	"\rcreate_ledger\x18\x03 \x01(\v2\x1b.ledger.CreateLedgerRequestH\x00R\fcreateLedger\x12B\n" +
 	"\rdelete_ledger\x18\x04 \x01(\v2\x1b.ledger.DeleteLedgerRequestH\x00R\fdeleteLedger\x12U\n" +
@@ -8531,7 +8549,7 @@ const file_bucket_proto_rawDesc = "" +
 	" delete_query_checkpoint_schedule\x18# \x01(\v2,.ledger.DeleteQueryCheckpointScheduleRequestH\x00R\x1ddeleteQueryCheckpointSchedule\x12U\n" +
 	"\x14save_ledger_metadata\x18$ \x01(\v2!.ledger.SaveLedgerMetadataRequestH\x00R\x12saveLedgerMetadata\x12[\n" +
 	"\x16delete_ledger_metadata\x18% \x01(\v2#.ledger.DeleteLedgerMetadataRequestH\x00R\x14deleteLedgerMetadataB\x06\n" +
-	"\x04typeJ\x04\b\x05\x10\x06R\tsignature\"\x1e\n" +
+	"\x04typeJ\x04\b\x01\x10\x02J\x04\b\x05\x10\x06R\x0fidempotency_keyR\tsignature\"\x1e\n" +
 	"\x1cCreateQueryCheckpointRequest\"C\n" +
 	"\x1cDeleteQueryCheckpointRequest\x12#\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\".\n" +
@@ -9032,7 +9050,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xb1\x03\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xe2\x03\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9042,7 +9060,8 @@ const file_bucket_proto_rawDesc = "" +
 	"%CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER\x10\x05\x126\n" +
 	"2CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH\x10\x06\x12,\n" +
 	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a\x124\n" +
-	"0CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH\x10\b*W\n" +
+	"0CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH\x10\b\x12/\n" +
+	"+CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH\x10\t*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +
@@ -9123,7 +9142,7 @@ var file_bucket_proto_goTypes = []any{
 	(*ListLedgersRequest)(nil),                     // 12: ledger.ListLedgersRequest
 	(*GetLedgerRequest)(nil),                       // 13: ledger.GetLedgerRequest
 	(*ApplyRequest)(nil),                           // 14: ledger.ApplyRequest
-	(*Envelope)(nil),                               // 15: ledger.Envelope
+	(*ApplyBatch)(nil),                             // 15: ledger.ApplyBatch
 	(*ApplyResponse)(nil),                          // 16: ledger.ApplyResponse
 	(*Request)(nil),                                // 17: ledger.Request
 	(*CreateQueryCheckpointRequest)(nil),           // 18: ledger.CreateQueryCheckpointRequest
@@ -9255,8 +9274,8 @@ var file_bucket_proto_goTypes = []any{
 	(*commonpb.MirrorSourceConfig)(nil),            // 144: common.MirrorSourceConfig
 	(commonpb.ChartEnforcementMode)(0),             // 145: common.ChartEnforcementMode
 	(*commonpb.ReadOptions)(nil),                   // 146: common.ReadOptions
-	(*commonpb.CallerSnapshot)(nil),                // 147: common.CallerSnapshot
-	(*signaturepb.SignedRequest)(nil),              // 148: signature.SignedRequest
+	(*signaturepb.SignedApplyBatch)(nil),           // 147: signature.SignedApplyBatch
+	(*commonpb.CallerSnapshot)(nil),                // 148: common.CallerSnapshot
 	(*commonpb.Log)(nil),                           // 149: common.Log
 	(*commonpb.SinkConfig)(nil),                    // 150: common.SinkConfig
 	(commonpb.TargetType)(0),                       // 151: common.TargetType
@@ -9297,10 +9316,10 @@ var file_bucket_proto_depIdxs = []int32{
 	145, // 7: ledger.CreateLedgerRequest.default_enforcement_mode:type_name -> common.ChartEnforcementMode
 	141, // 8: ledger.ListLedgersRequest.options:type_name -> common.ListOptions
 	146, // 9: ledger.GetLedgerRequest.read:type_name -> common.ReadOptions
-	15,  // 10: ledger.ApplyRequest.envelopes:type_name -> ledger.Envelope
-	147, // 11: ledger.ApplyRequest.forwarded_caller_snapshot:type_name -> common.CallerSnapshot
-	17,  // 12: ledger.Envelope.unsigned:type_name -> ledger.Request
-	148, // 13: ledger.Envelope.signed:type_name -> signature.SignedRequest
+	15,  // 10: ledger.ApplyRequest.unsigned:type_name -> ledger.ApplyBatch
+	147, // 11: ledger.ApplyRequest.signed:type_name -> signature.SignedApplyBatch
+	148, // 12: ledger.ApplyRequest.forwarded_caller_snapshot:type_name -> common.CallerSnapshot
+	17,  // 13: ledger.ApplyBatch.requests:type_name -> ledger.Request
 	149, // 14: ledger.ApplyResponse.logs:type_name -> common.Log
 	56,  // 15: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
 	9,   // 16: ledger.Request.create_ledger:type_name -> ledger.CreateLedgerRequest
@@ -9517,9 +9536,9 @@ func file_bucket_proto_init() {
 	if File_bucket_proto != nil {
 		return
 	}
-	file_bucket_proto_msgTypes[11].OneofWrappers = []any{
-		(*Envelope_Unsigned)(nil),
-		(*Envelope_Signed)(nil),
+	file_bucket_proto_msgTypes[10].OneofWrappers = []any{
+		(*ApplyRequest_Unsigned)(nil),
+		(*ApplyRequest_Signed)(nil),
 	}
 	file_bucket_proto_msgTypes[13].OneofWrappers = []any{
 		(*Request_Apply)(nil),

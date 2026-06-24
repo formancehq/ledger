@@ -797,21 +797,13 @@ func NewGetLedgerRequestListReader(s []*GetLedgerRequest) GetLedgerRequestListRe
 // ApplyRequestReader provides read-only access to ApplyRequest.
 // Call Mutate() to obtain a mutable clone.
 type ApplyRequestReader interface {
-	GetEnvelopes() EnvelopeListReader
-	GetSkipResponse() bool
 	GetForwardedCallerSnapshot() commonpb.CallerSnapshotReader
+	GetSkipResponse() bool
+	GetVariant() isApplyRequest_Variant
 	Mutate() *ApplyRequest
 }
 
 type applyRequestReadonly struct{ v *ApplyRequest }
-
-func (r *applyRequestReadonly) GetEnvelopes() EnvelopeListReader {
-	return NewEnvelopeListReader(r.v.GetEnvelopes())
-}
-
-func (r *applyRequestReadonly) GetSkipResponse() bool {
-	return r.v.GetSkipResponse()
-}
 
 func (r *applyRequestReadonly) GetForwardedCallerSnapshot() commonpb.CallerSnapshotReader {
 	v := r.v.GetForwardedCallerSnapshot()
@@ -819,6 +811,14 @@ func (r *applyRequestReadonly) GetForwardedCallerSnapshot() commonpb.CallerSnaps
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *applyRequestReadonly) GetSkipResponse() bool {
+	return r.v.GetSkipResponse()
+}
+
+func (r *applyRequestReadonly) GetVariant() isApplyRequest_Variant {
+	return r.v.GetVariant()
 }
 
 func (r *applyRequestReadonly) Mutate() *ApplyRequest {
@@ -875,48 +875,53 @@ func NewApplyRequestListReader(s []*ApplyRequest) ApplyRequestListReader {
 	return applyRequestListReadonly(s)
 }
 
-// EnvelopeReader provides read-only access to Envelope.
+// ApplyBatchReader provides read-only access to ApplyBatch.
 // Call Mutate() to obtain a mutable clone.
-type EnvelopeReader interface {
-	GetVariant() isEnvelope_Variant
-	Mutate() *Envelope
+type ApplyBatchReader interface {
+	GetRequests() RequestListReader
+	GetIdempotencyKey() string
+	Mutate() *ApplyBatch
 }
 
-type envelopeReadonly struct{ v *Envelope }
+type applyBatchReadonly struct{ v *ApplyBatch }
 
-func (r *envelopeReadonly) GetVariant() isEnvelope_Variant {
-	return r.v.GetVariant()
+func (r *applyBatchReadonly) GetRequests() RequestListReader {
+	return NewRequestListReader(r.v.GetRequests())
 }
 
-func (r *envelopeReadonly) Mutate() *Envelope {
+func (r *applyBatchReadonly) GetIdempotencyKey() string {
+	return r.v.GetIdempotencyKey()
+}
+
+func (r *applyBatchReadonly) Mutate() *ApplyBatch {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this Envelope.
-func (m *Envelope) AsReader() EnvelopeReader {
+// AsReader returns a read-only view of this ApplyBatch.
+func (m *ApplyBatch) AsReader() ApplyBatchReader {
 	if m == nil {
 		return nil
 	}
-	return &envelopeReadonly{v: m}
+	return &applyBatchReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this Envelope.
-func (m *Envelope) Mutate() *Envelope {
+// Mutate returns a mutable deep clone of this ApplyBatch.
+func (m *ApplyBatch) Mutate() *ApplyBatch {
 	return m.CloneVT()
 }
 
-// EnvelopeListReader provides read-only iteration over []*Envelope.
-type EnvelopeListReader interface {
+// ApplyBatchListReader provides read-only iteration over []*ApplyBatch.
+type ApplyBatchListReader interface {
 	Len() int
-	Get(i int) EnvelopeReader
-	Range(yield func(int, EnvelopeReader) bool)
+	Get(i int) ApplyBatchReader
+	Range(yield func(int, ApplyBatchReader) bool)
 }
 
-type envelopeListReadonly []*Envelope
+type applyBatchListReadonly []*ApplyBatch
 
-func (l envelopeListReadonly) Len() int { return len(l) }
+func (l applyBatchListReadonly) Len() int { return len(l) }
 
-func (l envelopeListReadonly) Get(i int) EnvelopeReader {
+func (l applyBatchListReadonly) Get(i int) ApplyBatchReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -924,9 +929,9 @@ func (l envelopeListReadonly) Get(i int) EnvelopeReader {
 	return v.AsReader()
 }
 
-func (l envelopeListReadonly) Range(yield func(int, EnvelopeReader) bool) {
+func (l applyBatchListReadonly) Range(yield func(int, ApplyBatchReader) bool) {
 	for i, v := range l {
-		var r EnvelopeReader
+		var r ApplyBatchReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -936,9 +941,9 @@ func (l envelopeListReadonly) Range(yield func(int, EnvelopeReader) bool) {
 	}
 }
 
-// NewEnvelopeListReader wraps s for read-only iteration. The returned
+// NewApplyBatchListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewEnvelopeListReader(s []*Envelope) EnvelopeListReader { return envelopeListReadonly(s) }
+func NewApplyBatchListReader(s []*ApplyBatch) ApplyBatchListReader { return applyBatchListReadonly(s) }
 
 // ApplyResponseReader provides read-only access to ApplyResponse.
 // Call Mutate() to obtain a mutable clone.
@@ -1010,16 +1015,11 @@ func NewApplyResponseListReader(s []*ApplyResponse) ApplyResponseListReader {
 // RequestReader provides read-only access to Request.
 // Call Mutate() to obtain a mutable clone.
 type RequestReader interface {
-	GetIdempotencyKey() string
 	GetType() isRequest_Type
 	Mutate() *Request
 }
 
 type requestReadonly struct{ v *Request }
-
-func (r *requestReadonly) GetIdempotencyKey() string {
-	return r.v.GetIdempotencyKey()
-}
 
 func (r *requestReadonly) GetType() isRequest_Type {
 	return r.v.GetType()

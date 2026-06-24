@@ -85,27 +85,25 @@ func main() {
 		for i := range rounds {
 			attempted++
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-					Type: &servicepb.Request_Apply{
-						Apply: &servicepb.LedgerApplyRequest{
-							Ledger: ledger,
-							Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-								CreateTransaction: &servicepb.CreateTransactionPayload{
-									Postings: []*commonpb.Posting{{
-										Source:      "world",
-										Destination: probeAccount,
-										Amount:      commonpb.NewUint256FromUint64(1),
-										Asset:       probeAsset,
-									}},
-									Reference: fmt.Sprintf("stale-%d-%d", run, i),
-									Force:     true,
-								},
-							}},
-						},
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_Apply{
+					Apply: &servicepb.LedgerApplyRequest{
+						Ledger: ledger,
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: &servicepb.CreateTransactionPayload{
+								Postings: []*commonpb.Posting{{
+									Source:      "world",
+									Destination: probeAccount,
+									Amount:      commonpb.NewUint256FromUint64(1),
+									Asset:       probeAsset,
+								}},
+								Reference: fmt.Sprintf("stale-%d-%d", run, i),
+								Force:     true,
+							},
+						}},
 					},
-				}),
-			})
+				},
+			}))
 
 			switch {
 			case err == nil:

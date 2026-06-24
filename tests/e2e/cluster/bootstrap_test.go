@@ -148,47 +148,29 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"})),
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"})))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
-					}, map[string]string{"type": "funding"}, nil),
-				),
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
+			}, map[string]string{"type": "funding"}, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("bank", "alice", big.NewInt(3000), "USD"),
-						actions.NewPosting("bank", "bob", big.NewInt(2000), "USD"),
-					}, nil, nil),
-				),
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("bank", "alice", big.NewInt(3000), "USD"),
+				actions.NewPosting("bank", "bob", big.NewInt(2000), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})),
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledger2, nil)),
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger2, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledger2, []*commonpb.Posting{
-						actions.NewPosting("world", "treasury", big.NewInt(50000), "EUR"),
-					}, nil, nil),
-				),
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger2, []*commonpb.Posting{
+				actions.NewPosting("world", "treasury", big.NewInt(50000), "EUR"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -217,13 +199,9 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 		It("should run incremental backup after adding more data", func() {
 			// Add more data after the full backup
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("bank", "eve", big.NewInt(500), "USD"),
-					}, nil, nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("bank", "eve", big.NewInt(500), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			// Run incremental backup
@@ -388,13 +366,9 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		})
 
 		It("should accept new transactions after bootstrap", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
-					}, nil, nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})

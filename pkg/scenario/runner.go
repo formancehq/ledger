@@ -55,7 +55,7 @@ func (r *Runner) Iterations(n int) int {
 
 // Apply sends a batch of actions to the server.
 func (r *Runner) Apply(actions ...*servicepb.Request) (*servicepb.ApplyResponse, error) {
-	return r.client.Apply(r.ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(actions...)})
+	return r.client.Apply(r.ctx, servicepb.UnsignedApplyRequest("", actions...))
 }
 
 // Step logs the step name, then applies the actions.

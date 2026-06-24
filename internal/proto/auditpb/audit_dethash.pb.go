@@ -29,6 +29,20 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Signature != nil {
+		size, _ := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x72
+	}
+	if m.Idempotency != nil {
+		size, _ := m.Idempotency.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
+	}
 	if m.CallerSnapshot != nil {
 		size, _ := m.CallerSnapshot.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
@@ -178,12 +192,10 @@ func (m *AuditFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		i--
 		dAtA[i] = 0x12
 	}
-	if len(m.ErrorType) > 0 {
-		i -= len(m.ErrorType)
-		copy(dAtA[i:], m.ErrorType)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ErrorType)))
+	if m.Reason != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Reason))
 		i--
-		dAtA[i] = 0xa
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }

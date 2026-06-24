@@ -20,9 +20,7 @@ import (
 // archiveChapterFull closes, waits for seal, archives, and waits for ARCHIVED.
 func archiveChapterFull(ctx context.Context, client servicepb.BucketServiceClient) {
 	// Close the current chapter.
-	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(actions.CloseChapterAction()),
-	})
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CloseChapterAction()))
 	Expect(err).To(Succeed())
 
 	// Wait for a CLOSED chapter (sealed).
@@ -44,9 +42,7 @@ func archiveChapterFull(ctx context.Context, client servicepb.BucketServiceClien
 	}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 	// Archive the closed chapter.
-	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(actions.ArchiveChapterAction(closedChapterID)),
-	})
+	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.ArchiveChapterAction(closedChapterID)))
 	Expect(err).To(Succeed())
 
 	// Wait for ARCHIVED.
@@ -101,9 +97,7 @@ var _ = Describe("Audit entry purge after chapter archive", Ordered, func() {
 		const ledger = "audit-purge-test"
 
 		// Create ledger.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledger, nil)),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 		Expect(err).To(Succeed())
 
 		// Chapter 1: create transactions in batches to diverge counters.
@@ -117,7 +111,7 @@ var _ = Describe("Audit entry purge after chapter archive", Ordered, func() {
 					}, nil)
 			}
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(txns...)})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", txns...))
 			Expect(err).To(Succeed())
 		}
 
@@ -149,7 +143,7 @@ var _ = Describe("Audit entry purge after chapter archive", Ordered, func() {
 					}, nil)
 			}
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(txns...)})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", txns...))
 			Expect(err).To(Succeed())
 		}
 

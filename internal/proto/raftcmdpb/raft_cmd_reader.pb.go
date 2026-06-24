@@ -13,30 +13,12 @@ import (
 // OrderReader provides read-only access to Order.
 // Call Mutate() to obtain a mutable clone.
 type OrderReader interface {
-	GetIdempotency() commonpb.IdempotencyReader
-	GetSignature() signaturepb.SignedRequestReader
 	GetCoverageBits() []byte
 	GetType() isOrder_Type
 	Mutate() *Order
 }
 
 type orderReadonly struct{ v *Order }
-
-func (r *orderReadonly) GetIdempotency() commonpb.IdempotencyReader {
-	v := r.v.GetIdempotency()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *orderReadonly) GetSignature() signaturepb.SignedRequestReader {
-	v := r.v.GetSignature()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
 
 func (r *orderReadonly) GetCoverageBits() []byte {
 	return bytes.Clone(r.v.GetCoverageBits())
@@ -4083,6 +4065,8 @@ type ProposalReader interface {
 	GetExecutionPlan() ExecutionPlanReader
 	GetPredictedIndex() uint64
 	GetCallerSnapshot() commonpb.CallerSnapshotReader
+	GetIdempotency() commonpb.IdempotencyReader
+	GetSignature() signaturepb.SignedApplyBatchReader
 	GetTechnicalUpdates() TechnicalUpdateListReader
 	Mutate() *Proposal
 }
@@ -4119,6 +4103,22 @@ func (r *proposalReadonly) GetPredictedIndex() uint64 {
 
 func (r *proposalReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
 	v := r.v.GetCallerSnapshot()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *proposalReadonly) GetIdempotency() commonpb.IdempotencyReader {
+	v := r.v.GetIdempotency()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *proposalReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
+	v := r.v.GetSignature()
 	if v == nil {
 		return nil
 	}

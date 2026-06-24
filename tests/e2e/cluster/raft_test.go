@@ -10,12 +10,12 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/raft/v3/raftpb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 var _ = Describe("Simple cluster", func() {
@@ -42,9 +42,7 @@ var _ = Describe("Simple cluster", func() {
 		It("should start successfully", func() {})
 
 		It("should create a ledger and delete it", func() {
-			_, err := servers[0].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("ledger0", nil)),
-			})
+			_, err := servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("ledger0", nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -53,19 +51,13 @@ var _ = Describe("Simple cluster", func() {
 
 			Eventually(servers[0]).To(HaveALeader(nil), "Timed out waiting for leader election")
 
-			_, err := servers[0].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			for i := range countInstances {
-				_, err := servers[i].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("node-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
-						}, nil, nil),
-					),
-				})
+				_, err := servers[i].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", fmt.Sprintf("node-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
+				}, nil, nil)))
 				Expect(err).To(Succeed(), "Failed to create transaction through node %d", i+1)
 			}
 		})
@@ -77,8 +69,8 @@ var _ = Describe("Simple cluster", func() {
 			testutil.RestartNode(ctx, servers[followerID-1])
 
 			Eventually(servers[followerID-1]).
-				WithTimeout(30 * time.Second).
-				WithPolling(500 * time.Millisecond).
+				WithTimeout(30*time.Second).
+				WithPolling(500*time.Millisecond).
 				Should(BeFollower(), "Timed out waiting for node to become follower")
 			Consistently(servers[followerID-1]).Should(BeFollower())
 		})
@@ -125,19 +117,13 @@ var _ = Describe("Simple cluster", func() {
 			lid := *leaderID
 			Eventually(servers[lid-1]).To(HaveALeader(nil))
 
-			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("ledger1", nil)),
-			})
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("ledger1", nil)))
 			Expect(err).To(Succeed())
 
 			for i := 0; i < 5; i++ {
-				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(
-						actions.CreateTransactionAction("ledger1", []*commonpb.Posting{
-							actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
-						}, nil, nil),
-					),
-				})
+				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("ledger1", []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+				}, nil, nil)))
 				Expect(err).To(Succeed())
 			}
 		})
@@ -145,16 +131,14 @@ var _ = Describe("Simple cluster", func() {
 		It("should restore the state after follower comes back", func() {
 			lid := *leaderID
 
-			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			testutil.RestartNode(ctx, servers[followerID-1])
 
 			Eventually(servers[followerID-1]).
-				WithTimeout(30 * time.Second).
-				WithPolling(500 * time.Millisecond).
+				WithTimeout(30*time.Second).
+				WithPolling(500*time.Millisecond).
 				Should(BeFollower(), "Timed out waiting for node to become follower")
 			Eventually(func(g Gomega) bool {
 				ledgers, err := actions.ListLedgers(ctx, servers[followerID-1].Client)
@@ -177,13 +161,9 @@ var _ = Describe("Simple cluster", func() {
 			By("Creating transactions to trigger background maintenance")
 			lid := *leaderID
 			for i := 0; i < countTransactions; i++ {
-				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
-						}, nil, nil),
-					),
-				})
+				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+				}, nil, nil)))
 				Expect(err).To(Succeed())
 			}
 
@@ -226,9 +206,7 @@ var _ = Describe("Simple cluster", func() {
 
 			BeforeEach(func() {
 				ledgerName = "ledger2"
-				_, err := servers[*leaderID-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-				})
+				_, err := servers[*leaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 				Expect(err).To(Succeed())
 
 				Expect(servers[*leaderID-1]).To(HaveALeader(nil))
@@ -255,13 +233,9 @@ var _ = Describe("Simple cluster", func() {
 					BeforeEach(func() {
 						lid := *leaderID
 						for i := 0; i < countTransactions; i++ {
-							_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-								Envelopes: servicepb.UnsignedEnvelopes(
-									actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-										actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
-									}, nil, nil),
-								),
-							})
+							_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+								actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+							}, nil, nil)))
 							Expect(err).To(Succeed())
 						}
 					})
@@ -271,13 +245,9 @@ var _ = Describe("Simple cluster", func() {
 						gateway.RemoveInterceptor()
 						By("Creating a transaction to trigger the delay detection by the leader", func() {
 							for i := 0; i < countTransactions; i++ {
-								_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-									Envelopes: servicepb.UnsignedEnvelopes(
-										actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-											actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
-										}, nil, nil),
-									),
-								})
+								_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+									actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+								}, nil, nil)))
 								Expect(err).To(Succeed())
 							}
 						})

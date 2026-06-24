@@ -15,8 +15,7 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), &servicepb.Request{
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_PromoteLedger{
 			PromoteLedger: &servicepb.PromoteLedgerRequest{
 				Ledger: ledgerName,

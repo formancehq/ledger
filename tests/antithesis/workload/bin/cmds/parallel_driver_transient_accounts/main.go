@@ -26,20 +26,18 @@ func main() {
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
 		// 1. Add an account type with TRANSIENT persistence.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_AddAccountType{
-					AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
-						Ledger: ledger,
-						AccountType: &commonpb.AccountType{
-							Name:        typeName,
-							Pattern:     pattern,
-							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
-						},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_AddAccountType{
+				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+					Ledger: ledger,
+					AccountType: &commonpb.AccountType{
+						Name:        typeName,
+						Pattern:     pattern,
+						Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 					},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil {
 			if internal.IsTransient(err) || internal.IsAlreadyExists(err) {
 				return
@@ -58,46 +56,44 @@ func main() {
 
 		// 2. Balanced batch: fund clearing account, then drain it in the same Apply.
 		//    The transient account must end at zero — should succeed.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				&servicepb.Request{
-					Type: &servicepb.Request_Apply{
-						Apply: &servicepb.LedgerApplyRequest{
-							Ledger: ledger,
-							Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-								CreateTransaction: &servicepb.CreateTransactionPayload{
-									Postings: []*commonpb.Posting{{
-										Source:      "world",
-										Destination: clearingAddr,
-										Amount:      commonpb.NewUint256FromUint64(amount),
-										Asset:       "USD/2",
-									}},
-									Force: true,
-								},
-							}},
-						},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			&servicepb.Request{
+				Type: &servicepb.Request_Apply{
+					Apply: &servicepb.LedgerApplyRequest{
+						Ledger: ledger,
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: &servicepb.CreateTransactionPayload{
+								Postings: []*commonpb.Posting{{
+									Source:      "world",
+									Destination: clearingAddr,
+									Amount:      commonpb.NewUint256FromUint64(amount),
+									Asset:       "USD/2",
+								}},
+								Force: true,
+							},
+						}},
 					},
 				},
-				&servicepb.Request{
-					Type: &servicepb.Request_Apply{
-						Apply: &servicepb.LedgerApplyRequest{
-							Ledger: ledger,
-							Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-								CreateTransaction: &servicepb.CreateTransactionPayload{
-									Postings: []*commonpb.Posting{{
-										Source:      clearingAddr,
-										Destination: "world",
-										Amount:      commonpb.NewUint256FromUint64(amount),
-										Asset:       "USD/2",
-									}},
-									Force: true,
-								},
-							}},
-						},
+			},
+			&servicepb.Request{
+				Type: &servicepb.Request_Apply{
+					Apply: &servicepb.LedgerApplyRequest{
+						Ledger: ledger,
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: &servicepb.CreateTransactionPayload{
+								Postings: []*commonpb.Posting{{
+									Source:      clearingAddr,
+									Destination: "world",
+									Amount:      commonpb.NewUint256FromUint64(amount),
+									Asset:       "USD/2",
+								}},
+								Force: true,
+							},
+						}},
 					},
 				},
-			),
-		})
+			},
+		))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"balanced transient batch should succeed",
@@ -112,26 +108,24 @@ func main() {
 		clearingAddr2 := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000+1000)
 		details["clearingAddr2"] = clearingAddr2
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: clearingAddr2,
-									Amount:      commonpb.NewUint256FromUint64(amount),
-									Asset:       "USD/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: clearingAddr2,
+								Amount:      commonpb.NewUint256FromUint64(amount),
+								Asset:       "USD/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		if err == nil {
 			assert.Unreachable("unbalanced transient batch should fail", details)

@@ -19,7 +19,7 @@ func TestHandleRemoveAccountType_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{{}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -72,7 +72,7 @@ func TestHandleRemoveAccountType_NotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrAccountTypeNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -93,7 +93,7 @@ func TestHandleRemoveAccountType_HasAccounts(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, &domain.ErrAccountTypeHasAccounts{Name: "users"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

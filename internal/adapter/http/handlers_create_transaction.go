@@ -32,8 +32,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Call ledger service via Apply
-	logs, err := s.applyUnsigned(r.Context(), &servicepb.Request{
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,

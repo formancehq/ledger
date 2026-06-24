@@ -39,15 +39,13 @@ func runArchive(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_ArchiveChapter{
-				ArchiveChapter: &servicepb.ArchiveChapterRequest{
-					ChapterId: chapterID,
-				},
+	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_ArchiveChapter{
+			ArchiveChapter: &servicepb.ArchiveChapterRequest{
+				ChapterId: chapterID,
 			},
-		}),
-	})
+		},
+	}))
 	if err != nil {
 		return fmt.Errorf("archiving chapter: %w", err)
 	}

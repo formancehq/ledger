@@ -48,33 +48,21 @@ var _ = Describe("Maintenance Mode", func() {
 			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Create a ledger before enabling maintenance mode
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction(ledgerName, nil),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should allow all operations when maintenance mode is off", func() {
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
-					}, nil),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should enable maintenance mode", func() {
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					setMaintenanceModeAction(true),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setMaintenanceModeAction(true)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -86,11 +74,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject create ledger requests in maintenance mode", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("should-fail", nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("should-fail", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -98,13 +82,9 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject create transaction requests in maintenance mode", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bob", big.NewInt(50), "USD"),
-					}, nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "bob", big.NewInt(50), "USD"),
+			}, nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -112,11 +92,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject delete ledger requests in maintenance mode", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.DeleteLedgerAction(ledgerName),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.DeleteLedgerAction(ledgerName)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -124,11 +100,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject save metadata requests in maintenance mode", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"key": "value"}),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"key": "value"})))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -145,11 +117,7 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should allow disabling maintenance mode while in maintenance mode", func() {
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					setMaintenanceModeAction(false),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setMaintenanceModeAction(false)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -161,13 +129,9 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should allow write operations after maintenance mode is disabled", func() {
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "charlie", big.NewInt(200), "USD"),
-					}, nil),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "charlie", big.NewInt(200), "USD"),
+			}, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -189,31 +153,19 @@ var _ = Describe("Maintenance Mode", func() {
 			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Create a ledger
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction(ledgerName, nil),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Enable maintenance mode
-			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					setMaintenanceModeAction(true),
-				),
-			})
+			resp, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", setMaintenanceModeAction(true)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should reject bulk requests containing non-maintenance operations", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					setMaintenanceModeAction(false),
-					actions.CreateLedgerAction("should-fail-bulk", nil),
-				),
-			})
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setMaintenanceModeAction(false),
+				actions.CreateLedgerAction("should-fail-bulk", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -222,11 +174,7 @@ var _ = Describe("Maintenance Mode", func() {
 
 		It("should allow bulk requests containing only maintenance mode operations", func() {
 			// Disable then re-enable in a single batch
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					setMaintenanceModeAction(false),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setMaintenanceModeAction(false)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -255,32 +203,22 @@ var _ = Describe("Maintenance Mode", func() {
 			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Bootstrap signing key
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.RegisterSigningKeyAction(keyID, pubKey),
-				),
-			})
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID, pubKey)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Create a ledger
-			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction(ledgerName, nil),
-				),
-			})
+			resp, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
 
 		It("should accept signed maintenance mode request", func() {
 			req := setMaintenanceModeAction(true)
-			signedEnv, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: []*servicepb.Envelope{signedEnv},
-			})
+			resp, err := client.Apply(ctx, signedEnv)
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -289,12 +227,10 @@ var _ = Describe("Maintenance Mode", func() {
 			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "signed-user", big.NewInt(100), "USD"),
 			}, nil)
-			signedEnv1, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv1, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: []*servicepb.Envelope{signedEnv1},
-			})
+			_, err = client.Apply(ctx, signedEnv1)
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -303,12 +239,10 @@ var _ = Describe("Maintenance Mode", func() {
 
 		It("should allow signed disable maintenance mode request", func() {
 			req := setMaintenanceModeAction(false)
-			signedEnv2, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv2, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: []*servicepb.Envelope{signedEnv2},
-			})
+			resp, err := client.Apply(ctx, signedEnv2)
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})
@@ -317,12 +251,10 @@ var _ = Describe("Maintenance Mode", func() {
 			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "signed-user", big.NewInt(200), "USD"),
 			}, nil)
-			signedEnv3, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv3, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)
 			Expect(err).To(Succeed())
 
-			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Envelopes: []*servicepb.Envelope{signedEnv3},
-			})
+			resp, err := client.Apply(ctx, signedEnv3)
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 		})

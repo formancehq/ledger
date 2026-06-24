@@ -423,7 +423,7 @@ func (impl *ClusterServiceServerImpl) CreateQueryCheckpoint(ctx context.Context,
 	}
 
 	// Route through Raft so the checkpoint is replicated to all nodes.
-	logs, err := impl.admission.Admit(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
+	logs, err := impl.admission.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_CreateQueryCheckpoint{
 			CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
 		},
@@ -455,7 +455,7 @@ func (impl *ClusterServiceServerImpl) DeleteQueryCheckpoint(ctx context.Context,
 	}
 
 	// Route through Raft so the deletion is replicated to all nodes.
-	_, err := impl.admission.Admit(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
+	_, err := impl.admission.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_DeleteQueryCheckpoint{
 			DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{
 				CheckpointId: req.GetCheckpointId(),

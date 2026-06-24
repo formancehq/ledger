@@ -39,16 +39,14 @@ func main() {
 	details := internal.Details{"keyId": keyID}
 
 	// 1. Register the signing key.
-	_, err = bucketClient.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-			Type: &servicepb.Request_RegisterSigningKey{
-				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
-					KeyId:     keyID,
-					PublicKey: publicKey,
-				},
+	_, err = bucketClient.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_RegisterSigningKey{
+			RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+				KeyId:     keyID,
+				PublicKey: publicKey,
 			},
-		}),
-	})
+		},
+	}))
 
 	assert.Sometimes(err == nil || internal.IsTransient(err),
 		"should be able to register signing key", details.With(internal.Details{"error": err}))
@@ -84,15 +82,15 @@ func main() {
 		},
 	}
 
-	signedRevoke, err := signing.Sign(revokeReq, keyID, privateKey)
+	signedRevoke, err := signing.Sign(&servicepb.ApplyBatch{
+		Requests: []*servicepb.Request{revokeReq},
+	}, keyID, privateKey)
 	if err != nil {
 		log.Printf("failed to sign revoke request: %s", err)
 		return
 	}
 
-	_, err = bucketClient.Apply(ctx, &servicepb.ApplyRequest{
-		Envelopes: []*servicepb.Envelope{servicepb.SignedEnvelope(signedRevoke)},
-	})
+	_, err = bucketClient.Apply(ctx, servicepb.SignedApplyRequest(signedRevoke))
 
 	assert.Sometimes(err == nil || internal.IsTransient(err),
 		"should be able to revoke signing key", details.With(internal.Details{"error": err}))

@@ -20,21 +20,27 @@ func generateTestKeypair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	return pub, priv
 }
 
+func createLedgerBatch(idempotencyKey, ledgerName string) *servicepb.ApplyBatch {
+	return &servicepb.ApplyBatch{
+		IdempotencyKey: idempotencyKey,
+		Requests: []*servicepb.Request{
+			{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName},
+				},
+			},
+		},
+	}
+}
+
 func TestSignAndVerifyRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	pub, priv := generateTestKeypair(t)
 
-	req := &servicepb.Request{
-		IdempotencyKey: "test-key",
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{
-				Name: "my-ledger",
-			},
-		},
-	}
+	batch := createLedgerBatch("test-key", "my-ledger")
 
-	sr, err := Sign(req, "key-1", priv)
+	sr, err := Sign(batch, "key-1", priv)
 	require.NoError(t, err)
 	require.NotNil(t, sr)
 	require.Equal(t, "key-1", sr.GetKeyId())
@@ -45,11 +51,12 @@ func TestSignAndVerifyRoundTrip(t *testing.T) {
 	err = Verify(sr, pub)
 	require.NoError(t, err)
 
-	// Extract request
-	extracted, err := ExtractRequest(sr)
+	// Extract batch
+	extracted, err := ExtractBatch(sr)
 	require.NoError(t, err)
 	require.Equal(t, "test-key", extracted.GetIdempotencyKey())
-	require.Equal(t, "my-ledger", extracted.GetCreateLedger().GetName())
+	require.Len(t, extracted.GetRequests(), 1)
+	require.Equal(t, "my-ledger", extracted.GetRequests()[0].GetCreateLedger().GetName())
 }
 
 func TestVerifyWrongKey(t *testing.T) {
@@ -58,13 +65,9 @@ func TestVerifyWrongKey(t *testing.T) {
 	_, priv := generateTestKeypair(t)
 	otherPub, _ := generateTestKeypair(t)
 
-	req := &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger"},
-		},
-	}
+	batch := createLedgerBatch("", "ledger")
 
-	sr, err := Sign(req, "key-1", priv)
+	sr, err := Sign(batch, "key-1", priv)
 	require.NoError(t, err)
 
 	err = Verify(sr, otherPub)
@@ -76,13 +79,9 @@ func TestVerifyModifiedPayload(t *testing.T) {
 
 	pub, priv := generateTestKeypair(t)
 
-	req := &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger"},
-		},
-	}
+	batch := createLedgerBatch("", "ledger")
 
-	sr, err := Sign(req, "key-1", priv)
+	sr, err := Sign(batch, "key-1", priv)
 	require.NoError(t, err)
 
 	// Tamper with payload after signing
@@ -97,13 +96,9 @@ func TestVerifyModifiedSignature(t *testing.T) {
 
 	pub, priv := generateTestKeypair(t)
 
-	req := &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger"},
-		},
-	}
+	batch := createLedgerBatch("", "ledger")
 
-	sr, err := Sign(req, "key-1", priv)
+	sr, err := Sign(batch, "key-1", priv)
 	require.NoError(t, err)
 
 	// Tamper with signature
@@ -127,7 +122,7 @@ func TestVerifyEmptyPayload(t *testing.T) {
 
 	pub, _ := generateTestKeypair(t)
 
-	sr := &signaturepb.SignedRequest{
+	sr := &signaturepb.SignedApplyBatch{
 		KeyId:     "key-1",
 		Signature: make([]byte, ed25519.SignatureSize),
 		Payload:   nil,
@@ -137,25 +132,30 @@ func TestVerifyEmptyPayload(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
-func TestExtractRequestPreservesContent(t *testing.T) {
+func TestExtractBatchPreservesContent(t *testing.T) {
 	t.Parallel()
 
 	_, priv := generateTestKeypair(t)
 
-	original := &servicepb.Request{
+	original := &servicepb.ApplyBatch{
 		IdempotencyKey: "idem-123",
-		Type: &servicepb.Request_DeleteLedger{
-			DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "old-ledger"},
+		Requests: []*servicepb.Request{
+			{
+				Type: &servicepb.Request_DeleteLedger{
+					DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "old-ledger"},
+				},
+			},
 		},
 	}
 
 	sr, err := Sign(original, "key-1", priv)
 	require.NoError(t, err)
 
-	extracted, err := ExtractRequest(sr)
+	extracted, err := ExtractBatch(sr)
 	require.NoError(t, err)
 	require.Equal(t, "idem-123", extracted.GetIdempotencyKey())
-	require.Equal(t, "old-ledger", extracted.GetDeleteLedger().GetName())
+	require.Len(t, extracted.GetRequests(), 1)
+	require.Equal(t, "old-ledger", extracted.GetRequests()[0].GetDeleteLedger().GetName())
 }
 
 func TestVerifyInvalidSignatureLength(t *testing.T) {
@@ -163,7 +163,7 @@ func TestVerifyInvalidSignatureLength(t *testing.T) {
 
 	pub, _ := generateTestKeypair(t)
 
-	sr := &signaturepb.SignedRequest{
+	sr := &signaturepb.SignedApplyBatch{
 		KeyId:     "key-1",
 		Signature: []byte("too-short"),
 		Payload:   []byte("payload"),
@@ -173,34 +173,34 @@ func TestVerifyInvalidSignatureLength(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
-func TestExtractRequestNil(t *testing.T) {
+func TestExtractBatchNil(t *testing.T) {
 	t.Parallel()
 
-	_, err := ExtractRequest(nil)
+	_, err := ExtractBatch(nil)
 	require.ErrorIs(t, err, ErrMissingSignature)
 }
 
-func TestExtractRequestEmptyPayload(t *testing.T) {
+func TestExtractBatchEmptyPayload(t *testing.T) {
 	t.Parallel()
 
-	sr := &signaturepb.SignedRequest{
+	sr := &signaturepb.SignedApplyBatch{
 		KeyId:   "key-1",
 		Payload: nil,
 	}
 
-	_, err := ExtractRequest(sr)
+	_, err := ExtractBatch(sr)
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
-func TestExtractRequestInvalidPayload(t *testing.T) {
+func TestExtractBatchInvalidPayload(t *testing.T) {
 	t.Parallel()
 
-	sr := &signaturepb.SignedRequest{
+	sr := &signaturepb.SignedApplyBatch{
 		KeyId:   "key-1",
 		Payload: []byte("not-valid-proto"),
 	}
 
-	_, err := ExtractRequest(sr)
+	_, err := ExtractBatch(sr)
 	require.Error(t, err)
 }
 
@@ -209,17 +209,13 @@ func TestSignDoesNotMutateOriginal(t *testing.T) {
 
 	_, priv := generateTestKeypair(t)
 
-	req := &servicepb.Request{
-		IdempotencyKey: "key-abc",
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{Name: "test"},
-		},
-	}
+	batch := createLedgerBatch("key-abc", "test")
 
-	_, err := Sign(req, "key-1", priv)
+	_, err := Sign(batch, "key-1", priv)
 	require.NoError(t, err)
 
-	// Original request fields are unchanged
-	require.Equal(t, "key-abc", req.GetIdempotencyKey())
-	require.Equal(t, "test", req.GetCreateLedger().GetName())
+	// Original batch fields are unchanged
+	require.Equal(t, "key-abc", batch.GetIdempotencyKey())
+	require.Len(t, batch.GetRequests(), 1)
+	require.Equal(t, "test", batch.GetRequests()[0].GetCreateLedger().GetName())
 }

@@ -3,7 +3,7 @@
 
 package signaturepb
 
-func (m *SignedRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SignedApplyBatch) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

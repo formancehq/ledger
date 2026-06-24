@@ -981,13 +981,11 @@ func TestCheckerReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	drain := createTransactionOrder("ledger", true,
 		newPosting("orders:1", "world", "USD", 5),
 	)
-	drain.Idempotency = &commonpb.Idempotency{Key: "drain-orders-1"}
 	refund := createTransactionOrder("ledger", true,
 		newPosting("world", "orders:1", "USD", 3),
 	)
 
 	engine.processAndCommit(fund, drain, refund)
-	engine.processAndCommit(drain)
 
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
 	require.Empty(t, errors, "ephemeral purge must use the proposal boundary, not each transaction log")

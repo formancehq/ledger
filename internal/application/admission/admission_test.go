@@ -916,7 +916,6 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 
 		// Create revert request
 		request := &servicepb.Request{
-			IdempotencyKey: "revert-tx-42",
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,
@@ -932,11 +931,9 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		order, err := admission.requestToOrder(t.Context(), verifiedRequest{req: request}, newBulkOverlay())
+		order, err := admission.requestToOrder(t.Context(), request, nil, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
-		require.NotNil(t, order.GetIdempotency())
-		require.Equal(t, "revert-tx-42", order.GetIdempotency().GetKey())
 
 		ls := order.GetLedgerScoped()
 		require.NotNil(t, ls)
@@ -1275,93 +1272,31 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 	})
 }
 
-func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
+// TestValidateIdempotencyKey covers the batch-level idempotency key bounds.
+// The key now lives on the ApplyBatch and is validated once per proposal.
+func TestValidateIdempotencyKey(t *testing.T) {
 	t.Parallel()
 
 	t.Run("accepts idempotency key within max length", func(t *testing.T) {
 		t.Parallel()
-		store := createTestStore(t)
-		adm, _ := createTestAdmission(t, store)
-
-		req := &servicepb.Request{
-			IdempotencyKey: "valid-key-123",
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
-					Name: "test",
-				},
-			},
-		}
-
-		order, err := adm.requestToOrder(t.Context(), verifiedRequest{req: req}, newBulkOverlay())
-		require.NoError(t, err)
-		require.NotNil(t, order)
-		require.NotNil(t, order.GetIdempotency())
-		require.Equal(t, "valid-key-123", order.GetIdempotency().GetKey())
+		require.NoError(t, validateIdempotencyKey("valid-key-123"))
 	})
 
 	t.Run("accepts idempotency key at exactly max length", func(t *testing.T) {
 		t.Parallel()
-		store := createTestStore(t)
-		adm, _ := createTestAdmission(t, store)
-
-		// 256 characters exactly
-		key := strings.Repeat("a", 256)
-
-		req := &servicepb.Request{
-			IdempotencyKey: key,
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
-					Name: "test",
-				},
-			},
-		}
-
-		order, err := adm.requestToOrder(t.Context(), verifiedRequest{req: req}, newBulkOverlay())
-		require.NoError(t, err)
-		require.NotNil(t, order)
-		require.NotNil(t, order.GetIdempotency())
-		require.Equal(t, key, order.GetIdempotency().GetKey())
+		require.NoError(t, validateIdempotencyKey(strings.Repeat("a", 256)))
 	})
 
 	t.Run("rejects idempotency key exceeding max length", func(t *testing.T) {
 		t.Parallel()
-		store := createTestStore(t)
-		adm, _ := createTestAdmission(t, store)
-
-		// 257 characters - one over the limit
-		key := strings.Repeat("a", 257)
-
-		req := &servicepb.Request{
-			IdempotencyKey: key,
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
-					Name: "test",
-				},
-			},
-		}
-
-		_, err := adm.requestToOrder(t.Context(), verifiedRequest{req: req}, newBulkOverlay())
+		err := validateIdempotencyKey(strings.Repeat("a", 257))
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrIdempotencyKeyTooLong)
 	})
 
 	t.Run("no idempotency key is accepted", func(t *testing.T) {
 		t.Parallel()
-		store := createTestStore(t)
-		adm, _ := createTestAdmission(t, store)
-
-		req := &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
-					Name: "test",
-				},
-			},
-		}
-
-		order, err := adm.requestToOrder(t.Context(), verifiedRequest{req: req}, newBulkOverlay())
-		require.NoError(t, err)
-		require.NotNil(t, order)
-		require.Nil(t, order.GetIdempotency())
+		require.NoError(t, validateIdempotencyKey(""))
 	})
 }
 
@@ -1412,12 +1347,7 @@ func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
 			store := createTestStore(t)
 			adm, _ := createTestAdmission(t, store)
 
-			verified := make([]verifiedRequest, len(tc.reqs))
-			for i, r := range tc.reqs {
-				verified[i] = verifiedRequest{req: r}
-			}
-
-			_, _, err := adm.requestsToOrders(t.Context(), verified)
+			_, _, err := adm.requestsToOrders(t.Context(), tc.reqs, nil)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 			} else {
@@ -1437,16 +1367,18 @@ func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	return pubKey, privKey
 }
 
-func signedEnvelope(t *testing.T, req *servicepb.Request, keyID string, privKey ed25519.PrivateKey) *servicepb.Envelope {
+// signedBatchRequest signs a single-request ApplyBatch and wraps it into the
+// signed ApplyRequest the Admit RPC carries.
+func signedBatchRequest(t *testing.T, req *servicepb.Request, keyID string, privKey ed25519.PrivateKey) *servicepb.ApplyRequest {
 	t.Helper()
 
-	sr, err := signing.Sign(req, keyID, privKey)
+	sb, err := signing.Sign(&servicepb.ApplyBatch{Requests: []*servicepb.Request{req}}, keyID, privKey)
 	require.NoError(t, err)
 
-	return servicepb.SignedEnvelope(sr)
+	return servicepb.SignedApplyRequest(sb)
 }
 
-func TestVerifyAndResolveEnvelopes(t *testing.T) {
+func TestResolveBatch(t *testing.T) {
 	t.Parallel()
 
 	t.Run("bootstrap: unsigned RegisterSigningKey allowed when no keys exist", func(t *testing.T) {
@@ -1456,21 +1388,19 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 
 		pubKey, _ := generateTestKeyPair(t)
 
-		envelopes := []*servicepb.Envelope{
-			servicepb.UnsignedEnvelope(&servicepb.Request{
-				Type: &servicepb.Request_RegisterSigningKey{
-					RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
-						KeyId:     "first-key",
-						PublicKey: []byte(pubKey),
-					},
+		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_RegisterSigningKey{
+				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+					KeyId:     "first-key",
+					PublicKey: []byte(pubKey),
 				},
-			}),
-		}
+			},
+		})
 
-		result, err := adm.verifyAndResolveEnvelopes(envelopes)
+		result, err := adm.resolveBatch(req)
 		require.NoError(t, err)
-		require.Len(t, result, 1)
-		require.Nil(t, result[0].sig, "bootstrap request should have no signature")
+		require.Len(t, result.requests, 1)
+		require.Nil(t, result.sig, "bootstrap request should have no signature")
 	})
 
 	t.Run("unsigned RegisterSigningKey rejected when keys exist", func(t *testing.T) {
@@ -1483,18 +1413,16 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 
 		newPubKey, _ := generateTestKeyPair(t)
 
-		envelopes := []*servicepb.Envelope{
-			servicepb.UnsignedEnvelope(&servicepb.Request{
-				Type: &servicepb.Request_RegisterSigningKey{
-					RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
-						KeyId:     "new-key",
-						PublicKey: []byte(newPubKey),
-					},
+		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_RegisterSigningKey{
+				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+					KeyId:     "new-key",
+					PublicKey: []byte(newPubKey),
 				},
-			}),
-		}
+			},
+		})
 
-		_, err := adm.verifyAndResolveEnvelopes(envelopes)
+		_, err := adm.resolveBatch(req)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1506,17 +1434,15 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		envelopes := []*servicepb.Envelope{
-			servicepb.UnsignedEnvelope(&servicepb.Request{
-				Type: &servicepb.Request_RevokeSigningKey{
-					RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
-						KeyId: "my-key",
-					},
+		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_RevokeSigningKey{
+				RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
+					KeyId: "my-key",
 				},
-			}),
-		}
+			},
+		})
 
-		_, err := adm.verifyAndResolveEnvelopes(envelopes)
+		_, err := adm.resolveBatch(req)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1528,17 +1454,15 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		envelopes := []*servicepb.Envelope{
-			servicepb.UnsignedEnvelope(&servicepb.Request{
-				Type: &servicepb.Request_SetSigningConfig{
-					SetSigningConfig: &servicepb.SetSigningConfigRequest{
-						RequireSignatures: true,
-					},
+		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SetSigningConfig{
+				SetSigningConfig: &servicepb.SetSigningConfigRequest{
+					RequireSignatures: true,
 				},
-			}),
-		}
+			},
+		})
 
-		_, err := adm.verifyAndResolveEnvelopes(envelopes)
+		_, err := adm.resolveBatch(req)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1561,10 +1485,10 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 			},
 		}
 
-		result, err := adm.verifyAndResolveEnvelopes([]*servicepb.Envelope{signedEnvelope(t, req, "existing", existingPrivKey)})
+		result, err := adm.resolveBatch(signedBatchRequest(t, req, "existing", existingPrivKey))
 		require.NoError(t, err)
-		require.Len(t, result, 1)
-		require.NotNil(t, result[0].sig, "signature should be preserved for propagation")
+		require.Len(t, result.requests, 1)
+		require.NotNil(t, result.sig, "signature should be preserved for propagation")
 	})
 
 	t.Run("unsigned regular request allowed when requireSignatures is false", func(t *testing.T) {
@@ -1572,19 +1496,17 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 		store := createTestStore(t)
 		adm, _ := createTestAdmission(t, store)
 
-		envelopes := []*servicepb.Envelope{
-			servicepb.UnsignedEnvelope(&servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
-						Name: "test-ledger",
-					},
+		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: "test-ledger",
 				},
-			}),
-		}
+			},
+		})
 
-		result, err := adm.verifyAndResolveEnvelopes(envelopes)
+		result, err := adm.resolveBatch(req)
 		require.NoError(t, err)
-		require.Len(t, result, 1)
+		require.Len(t, result.requests, 1)
 	})
 
 	t.Run("unsigned regular request rejected when requireSignatures is true", func(t *testing.T) {
@@ -1594,17 +1516,15 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 
 		adm.sharedState.SetRequireSignatures(true)
 
-		envelopes := []*servicepb.Envelope{
-			servicepb.UnsignedEnvelope(&servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
-						Name: "test-ledger",
-					},
+		req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: "test-ledger",
 				},
-			}),
-		}
+			},
+		})
 
-		_, err := adm.verifyAndResolveEnvelopes(envelopes)
+		_, err := adm.resolveBatch(req)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1625,10 +1545,10 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 			},
 		}
 
-		result, err := adm.verifyAndResolveEnvelopes([]*servicepb.Envelope{signedEnvelope(t, req, "my-key", privKey)})
+		result, err := adm.resolveBatch(signedBatchRequest(t, req, "my-key", privKey))
 		require.NoError(t, err)
-		require.Len(t, result, 1)
-		require.NotNil(t, result[0].sig)
+		require.Len(t, result.requests, 1)
+		require.NotNil(t, result.sig)
 	})
 
 	t.Run("unknown key ID rejected", func(t *testing.T) {
@@ -1646,7 +1566,7 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 			},
 		}
 
-		_, err := adm.verifyAndResolveEnvelopes([]*servicepb.Envelope{signedEnvelope(t, req, "unknown-key", privKey)})
+		_, err := adm.resolveBatch(signedBatchRequest(t, req, "unknown-key", privKey))
 		require.ErrorIs(t, err, signing.ErrUnknownKeyID)
 	})
 
@@ -1669,7 +1589,7 @@ func TestVerifyAndResolveEnvelopes(t *testing.T) {
 		}
 
 		// Sign with a different private key
-		_, err := adm.verifyAndResolveEnvelopes([]*servicepb.Envelope{signedEnvelope(t, req, "my-key", otherPrivKey)})
+		_, err := adm.resolveBatch(signedBatchRequest(t, req, "my-key", otherPrivKey))
 		require.ErrorIs(t, err, signing.ErrInvalidSignature)
 	})
 }

@@ -102,29 +102,27 @@ func main() {
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
 		// Prepared query matching the probe account by address prefix.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_CreatePreparedQuery{
-					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
-						Ledger: ledger,
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledger,
 
-						Query: &commonpb.PreparedQuery{
-							Name:   queryName,
-							Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-							Filter: &commonpb.QueryFilter{
-								Filter: &commonpb.QueryFilter_Address{
-									Address: &commonpb.AddressMatch{
-										Match: &commonpb.AddressMatch_HardcodedPrefix{
-											HardcodedPrefix: "minseq-probe:",
-										},
+					Query: &commonpb.PreparedQuery{
+						Name:   queryName,
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &commonpb.QueryFilter{
+							Filter: &commonpb.QueryFilter_Address{
+								Address: &commonpb.AddressMatch{
+									Match: &commonpb.AddressMatch_HardcodedPrefix{
+										HardcodedPrefix: "minseq-probe:",
 									},
 								},
 							},
 						},
 					},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil {
 			// Ambiguous or transient: without a confirmed query, every later
 			// outcome is unattributable — inconclusive.
@@ -132,27 +130,25 @@ func main() {
 		}
 
 		// Write the probe transaction; its ack carries the log sequence S.
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: probeAccount,
-									Amount:      commonpb.NewUint256FromUint64(1),
-									Asset:       "USD/2",
-								}},
-								Reference: fmt.Sprintf("minseq-%d", run),
-								Force:     true,
-							},
-						}},
-					},
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: probeAccount,
+								Amount:      commonpb.NewUint256FromUint64(1),
+								Asset:       "USD/2",
+							}},
+							Reference: fmt.Sprintf("minseq-%d", run),
+							Force:     true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil {
 			return
 		}

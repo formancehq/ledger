@@ -90,11 +90,9 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		const ledger = "cold-s3-test"
 
 		// Create a ledger
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateLedgerAction(ledger, nil),
-			),
-		})
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			actions.CreateLedgerAction(ledger, nil),
+		))
 		Expect(err).To(Succeed())
 		Expect(resp.Logs).To(HaveLen(1))
 
@@ -102,27 +100,21 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		createLedgerSeq := resp.Logs[0].Sequence
 
 		// Create a transaction
-		resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateForceTransactionAction(ledger,
-					[]*commonpb.Posting{
-						actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
-					},
-					nil,
-				),
-			),
-		})
+		resp, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			actions.CreateForceTransactionAction(ledger,
+				[]*commonpb.Posting{
+					actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
+				}, nil),
+		))
 		Expect(err).To(Succeed())
 		Expect(resp.Logs).To(HaveLen(1))
 
 		txSeq := resp.Logs[0].Sequence
 
 		// Close the current chapter
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CloseChapterAction(),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			actions.CloseChapterAction(),
+		))
 		Expect(err).To(Succeed())
 
 		// Wait for the chapter to be sealed (CLOSED)
@@ -144,11 +136,9 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 		// Archive the closed chapter
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.ArchiveChapterAction(closedChapterID),
-			),
-		})
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			actions.ArchiveChapterAction(closedChapterID),
+		))
 		Expect(err).To(Succeed())
 
 		// Wait for the chapter to become ARCHIVED

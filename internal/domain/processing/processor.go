@@ -1,7 +1,6 @@
 package processing
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 
@@ -100,37 +99,6 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			return nil, invalid
 		}
 
-		// Compute idempotency hash once if needed (reused for check + store).
-		hasIdempotency := order.GetIdempotency() != nil && order.GetIdempotency().GetKey() != ""
-
-		var orderHash []byte
-		if hasIdempotency {
-			orderHash = p.computeOrderHash(order)
-
-			ikKey := domain.IdempotencyKey{Key: order.GetIdempotency().GetKey()}
-
-			storedValue, err := orderScope.GetIdempotencyKey(ikKey)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, &domain.ErrIdempotencyCheckFailed{Cause: err}
-			}
-
-			// Check if idempotency key exists
-			if storedValue != nil {
-				if !bytes.Equal(orderHash, storedValue.GetHash()) {
-					return nil, &domain.ErrIdempotencyKeyConflict{Key: order.GetIdempotency().GetKey()}
-				}
-
-				// Hash matches - return reference to existing log without processing
-				logs[i] = &raftcmdpb.CreatedLogOrReference{
-					Type: &raftcmdpb.CreatedLogOrReference_ReferenceSequence{
-						ReferenceSequence: storedValue.GetLogSequence(),
-					},
-				}
-
-				continue
-			}
-		}
-
 		// Tag subsequent volume touches with this order's index so the
 		// WriteSet can compute per-log purged volumes at Merge time
 		// (see Log.purged_volumes). Scopes that don't implement
@@ -141,73 +109,76 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			tagger.BeginOrder(i)
 		}
 
-		// No idempotency key or key not found - process normally
 		payload, err := p.ProcessOrder(order, orderScope)
 		if err != nil {
 			return nil, err
 		}
 
-		nextSequenceID := orderScope.IncrementNextSequenceID()
-		log := &commonpb.Log{
-			Sequence:    nextSequenceID,
-			Payload:     payload,
-			Idempotency: order.GetIdempotency().CloneVT(),
-			Signature:   order.GetSignature().CloneVT(),
-		}
-
 		logs[i] = &raftcmdpb.CreatedLogOrReference{
 			Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
-				CreatedLog: log,
+				CreatedLog: &commonpb.Log{
+					Sequence: orderScope.IncrementNextSequenceID(),
+					Payload:  payload,
+				},
 			},
-		}
-
-		// Store idempotency key (hash was computed before ProcessOrder)
-		if hasIdempotency {
-			orderScope.PutIdempotencyKey(
-				domain.IdempotencyKey{
-					Key: order.GetIdempotency().GetKey(),
-				},
-				&commonpb.IdempotencyKeyValue{
-					LogSequence: nextSequenceID,
-					Hash:        orderHash,
-				},
-			)
 		}
 	}
 
 	return logs, nil
 }
 
-// computeOrderHash computes a blake3 hash of the order content for
-// idempotency checking. Per-attempt fields that admission derives from
-// the proposal context (not from the user request) are excluded:
-//   - Idempotency: nonce changes per attempt by definition.
-//   - CoverageBits: admission rebuilds it from the proposal-wide
-//     ExecutionPlan, so the same logical request in a different batch
-//     produces a different bitset.
-//   - ProductionBits: same as CoverageBits — admission rebuilds it from
-//     ExecutionPlan.productions, which depends on which producer orders
-//     happen to share the batch.
-//
-// Two retries of the same logical request MUST hash identically even
-// when they land in different batches. Reuses p.hashBuf across calls
-// to avoid allocations; safe because ProcessOrders is single-threaded.
-func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
-	// Temporarily nil the per-attempt fields, marshal, then restore them.
-	// This avoids a full CloneVT of the order.
-	savedIdempotency := order.GetIdempotency()
+// HashProposal returns the idempotency hash of a proposal: a blake3 digest over
+// its orders' content hashes, in order. Because the orders' composition and
+// ordering are folded in, a retry of the SAME atomic batch hashes identically,
+// while a differently-composed batch (e.g. a lone re-submission of one order)
+// hashes differently. The FSM dedups and freezes a proposal under this hash.
+// Single-threaded apply only (reuses p.hashBuf via computeOrderHash).
+func (p *RequestProcessor) HashProposal(proposal *raftcmdpb.Proposal) []byte {
+	h := blake3.New()
+	for _, order := range proposal.GetOrders() {
+		var oh []byte
+		oh, p.hashBuf = hashOrder(order, p.hashBuf)
+		_, _ = h.Write(oh)
+	}
+
+	return h.Sum(nil)
+}
+
+// HashOrders is the allocation-per-call form of HashProposal, for callers that
+// do not have a reusable buffer — the integrity checker re-derives a frozen
+// proposal's hash from its persisted audit orders. It must stay byte-identical
+// to HashProposal so the recomputed hash matches what the FSM stored.
+func HashOrders(orders []*raftcmdpb.Order) []byte {
+	h := blake3.New()
+
+	var buf []byte
+
+	for _, order := range orders {
+		var oh []byte
+		oh, buf = hashOrder(order, buf)
+		_, _ = h.Write(oh)
+	}
+
+	return h.Sum(nil)
+}
+
+// hashOrder computes a blake3 hash of one order's content, returning the hash
+// and the (grown) marshal buffer to reuse. CoverageBits is excluded: admission
+// rebuilds it from the proposal-wide ExecutionPlan, so the same logical order
+// in a different batch would otherwise hash differently.
+func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
+	// Temporarily nil CoverageBits, marshal, then restore it. Avoids a full
+	// CloneVT of the order.
 	savedCoverage := order.GetCoverageBits()
-	order.Idempotency = nil
 	order.CoverageBits = nil
 
-	p.hashBuf = order.MarshalDeterministicVT(p.hashBuf[:0])
+	buf = order.MarshalDeterministicVT(buf[:0])
 
-	order.Idempotency = savedIdempotency
 	order.CoverageBits = savedCoverage
 
-	hash := blake3.Sum256(p.hashBuf)
+	sum := blake3.Sum256(buf)
 
-	return hash[:]
+	return sum[:], buf
 }
 
 // ProcessOrder processes an Order and returns the resulting LogPayload.

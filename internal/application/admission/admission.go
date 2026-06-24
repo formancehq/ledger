@@ -291,7 +291,7 @@ func NewAdmission(
 // 3. When not guaranteed, load base value from store at boundary B(nextIndex)
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
-func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 	if !a.healthChecker.IsHealthy() {
 		return nil, health.ErrUnhealthy
 	}
@@ -303,11 +303,13 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 		return nil, fmt.Errorf("waiting for leader readiness: %w", err)
 	}
 
-	// Verify signatures and unwrap envelopes into (request, signature) pairs.
-	// Signed envelopes are opaque: the signature is verified against the
-	// payload bytes and the trusted Request is unmarshaled from those bytes.
+	// Verify the batch signature (if any) and unwrap the trusted ApplyBatch.
+	// A signed batch is opaque: the signature is verified against the payload
+	// bytes and the trusted batch (ordered requests + idempotency key) is
+	// unmarshaled from those bytes — signing the batch authenticates its
+	// composition and ordering, not just individual request content.
 	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
-	verified, err := a.verifyAndResolveEnvelopes(envelopes)
+	batch, err := a.resolveBatch(req)
 
 	sigSpan.End()
 
@@ -316,13 +318,13 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 	}
 
 	// Check maintenance mode: block all requests except SetMaintenanceMode.
-	// Done after envelope verification so signed envelopes can be inspected.
-	if a.sharedState.MaintenanceMode() && !allRequestsAreMaintenanceMode(verified) {
+	if a.sharedState.MaintenanceMode() && !allRequestsAreMaintenanceMode(batch.requests) {
 		return nil, ErrMaintenanceMode
 	}
 
-	// Convert verified requests to orders
-	orders, overlay, err := a.requestsToOrders(ctx, verified)
+	// Convert requests to orders. Idempotency and signature are batch-level now
+	// (carried on the Proposal), so orders no longer hold either.
+	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
@@ -333,6 +335,15 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 		return nil, err
 	}
 
+	// The batch idempotency key is preloaded once for the whole proposal. It
+	// rides on the first order's needs — idempotency keys are not coverage-gated
+	// (machine.Preload installs them unconditionally), so any order carries it
+	// and the FSM's per-proposal dedup check finds it. Empty key = no idempotency.
+	if batch.key != "" && len(orders) > 0 {
+		needs.IdempotencyKeys[domain.IdempotencyKey{Key: batch.key}] = struct{}{}
+		perOrder[0].IdempotencyKeys[domain.IdempotencyKey{Key: batch.key}] = struct{}{}
+	}
+
 	// Step 2: Resolve script references and discover script dependencies.
 	// This enriches needs with volumes/metadata discovered from scripts.
 	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder); err != nil {
@@ -341,6 +352,10 @@ func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope)
 
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
+	if batch.key != "" {
+		cmd.Idempotency = &commonpb.Idempotency{Key: batch.key}
+	}
+	cmd.Signature = batch.sig
 
 	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
 		trace.WithAttributes(
@@ -565,72 +580,102 @@ func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal)
 	return proposalData, nil
 }
 
-// verifiedRequest pairs a trusted Request with its signing envelope (nil if unsigned).
-// The envelope is preserved for downstream propagation into Order → Log → AuditEntry.
-type verifiedRequest struct {
-	req *servicepb.Request
-	sig *signaturepb.SignedRequest // nil when the envelope carried an unsigned variant
+// verifiedBatch is the trusted content of an ApplyRequest after signature
+// verification: the ordered requests, the batch idempotency key, and the
+// signing envelope (nil if unsigned), propagated onto the Proposal for audit.
+type verifiedBatch struct {
+	requests []*servicepb.Request
+	key      string
+	sig      *signaturepb.SignedApplyBatch
 }
 
-// verifyAndResolveEnvelopes verifies signatures on incoming envelopes and unwraps
-// each one into a (Request, Signature) pair. Signed envelopes are opaque: the
-// signature is verified against payload bytes and the trusted Request is
-// unmarshaled from those bytes — the server never re-serializes anything.
-//
-// Bootstrap logic for unsigned envelopes:
+// resolveBatch verifies the batch signature (if any), unwraps the trusted
+// ApplyBatch, and validates the idempotency key. A signed batch is opaque: the
+// signature is verified against the payload bytes and the trusted batch is
+// unmarshaled from them — the server never re-serializes. An unsigned batch is
+// admitted only when signatures are not required (or for signing bootstrap).
+func (a *Admission) resolveBatch(req *servicepb.ApplyRequest) (verifiedBatch, error) {
+	switch v := req.GetVariant().(type) {
+	case *servicepb.ApplyRequest_Signed:
+		sb := v.Signed
+
+		pubKey := a.keyStore.GetPublicKey(sb.GetKeyId())
+		if pubKey == nil {
+			return verifiedBatch{}, fmt.Errorf("%w: %s", signing.ErrUnknownKeyID, sb.GetKeyId())
+		}
+
+		if err := signing.Verify(sb, pubKey); err != nil {
+			return verifiedBatch{}, err
+		}
+
+		batch, err := signing.ExtractBatch(sb)
+		if err != nil {
+			return verifiedBatch{}, fmt.Errorf("extracting signed batch: %w", err)
+		}
+
+		if err := validateIdempotencyKey(batch.GetIdempotencyKey()); err != nil {
+			return verifiedBatch{}, err
+		}
+
+		return verifiedBatch{requests: batch.GetRequests(), key: batch.GetIdempotencyKey(), sig: sb}, nil
+	case *servicepb.ApplyRequest_Unsigned:
+		batch := v.Unsigned
+		if batch == nil {
+			return verifiedBatch{}, fmt.Errorf("%w: empty unsigned batch", signing.ErrMissingSignature)
+		}
+
+		if err := a.authorizeUnsignedBatch(batch.GetRequests()); err != nil {
+			return verifiedBatch{}, err
+		}
+
+		if err := validateIdempotencyKey(batch.GetIdempotencyKey()); err != nil {
+			return verifiedBatch{}, err
+		}
+
+		return verifiedBatch{requests: batch.GetRequests(), key: batch.GetIdempotencyKey()}, nil
+	default:
+		return verifiedBatch{}, fmt.Errorf("%w: apply request has no variant", signing.ErrMissingSignature)
+	}
+}
+
+// authorizeUnsignedBatch enforces the unsigned-request policy across the whole
+// batch: every request must be admissible without a signature. Bootstrap logic:
 //   - RegisterSigningKey is allowed unsigned when no keys exist yet (bootstrap)
-//   - All other signing management requests require a signature when keys exist
-//   - Regular requests check the requireSignatures flag
-func (a *Admission) verifyAndResolveEnvelopes(envelopes []*servicepb.Envelope) ([]verifiedRequest, error) {
-	result := make([]verifiedRequest, len(envelopes))
-	for i, env := range envelopes {
-		switch v := env.GetVariant().(type) {
-		case *servicepb.Envelope_Signed:
-			sr := v.Signed
-
-			pubKey := a.keyStore.GetPublicKey(sr.GetKeyId())
-			if pubKey == nil {
-				return nil, fmt.Errorf("%w: %s", signing.ErrUnknownKeyID, sr.GetKeyId())
+//   - all other signing-management requests require a signature once keys exist
+//   - regular requests check the requireSignatures flag
+func (a *Admission) authorizeUnsignedBatch(reqs []*servicepb.Request) error {
+	for _, req := range reqs {
+		if isSigningManagementRequest(req) {
+			if isRegisterSigningKeyRequest(req) && !a.keyStore.HasKeys() {
+				continue
 			}
 
-			if err := signing.Verify(sr, pubKey); err != nil {
-				return nil, err
-			}
+			return signing.ErrMissingSignature
+		}
 
-			req, err := signing.ExtractRequest(sr)
-			if err != nil {
-				return nil, fmt.Errorf("extracting signed request: %w", err)
-			}
-
-			result[i] = verifiedRequest{req: req, sig: sr}
-		case *servicepb.Envelope_Unsigned:
-			req := v.Unsigned
-			if req == nil {
-				return nil, fmt.Errorf("%w: empty unsigned envelope", signing.ErrMissingSignature)
-			}
-
-			if isSigningManagementRequest(req) {
-				// Bootstrap: allow unsigned RegisterSigningKey when no keys exist
-				if isRegisterSigningKeyRequest(req) && !a.keyStore.HasKeys() {
-					result[i] = verifiedRequest{req: req}
-
-					continue
-				}
-				// Keys exist — signing management requires a signature
-				return nil, signing.ErrMissingSignature
-			}
-
-			if a.sharedState.RequireSignatures() {
-				return nil, signing.ErrMissingSignature
-			}
-
-			result[i] = verifiedRequest{req: req}
-		default:
-			return nil, fmt.Errorf("%w: envelope has no variant", signing.ErrMissingSignature)
+		if a.sharedState.RequireSignatures() {
+			return signing.ErrMissingSignature
 		}
 	}
 
-	return result, nil
+	return nil
+}
+
+// validateIdempotencyKey enforces the length and UTF-8 bounds on a batch key.
+func validateIdempotencyKey(key string) error {
+	if key == "" {
+		return nil
+	}
+
+	if len(key) > maxIdempotencyKeyLength {
+		return &domain.BusinessError{Err: ErrIdempotencyKeyTooLong}
+	}
+
+	if !utf8.ValidString(key) {
+		return &domain.BusinessError{Err: ErrIdempotencyKeyInvalidUTF8}
+	}
+
+	return nil
 }
 
 // isSigningManagementRequest returns true if the request is a signing key
@@ -662,7 +707,6 @@ type errIdempotencyKeyTooLong struct{}
 func (errIdempotencyKeyTooLong) Error() string {
 	return "idempotency key exceeds maximum length of 256 characters"
 }
-func (errIdempotencyKeyTooLong) Kind() domain.ErrorKind      { return domain.KindValidation }
 func (errIdempotencyKeyTooLong) Reason() string              { return domain.ErrReasonValidation }
 func (errIdempotencyKeyTooLong) Metadata() map[string]string { return nil }
 
@@ -672,7 +716,6 @@ var ErrIdempotencyKeyTooLong domain.Describable = errIdempotencyKeyTooLong{}
 type errIdempotencyKeyInvalidUTF8 struct{}
 
 func (errIdempotencyKeyInvalidUTF8) Error() string               { return "idempotency key contains invalid UTF-8" }
-func (errIdempotencyKeyInvalidUTF8) Kind() domain.ErrorKind      { return domain.KindValidation }
 func (errIdempotencyKeyInvalidUTF8) Reason() string              { return domain.ErrReasonValidation }
 func (errIdempotencyKeyInvalidUTF8) Metadata() map[string]string { return nil }
 
@@ -693,16 +736,15 @@ type errCheckpointOrderNotLast struct{}
 func (errCheckpointOrderNotLast) Error() string {
 	return "checkpoint trigger (CreateQueryCheckpoint or CloseChapter) must be the last order in a bulk request"
 }
-func (errCheckpointOrderNotLast) Kind() domain.ErrorKind      { return domain.KindValidation }
 func (errCheckpointOrderNotLast) Reason() string              { return domain.ErrReasonValidation }
 func (errCheckpointOrderNotLast) Metadata() map[string]string { return nil }
 
 var ErrCheckpointOrderNotLast domain.Describable = errCheckpointOrderNotLast{}
 
 // allRequestsAreMaintenanceMode returns true if every request in the batch is a SetMaintenanceMode request.
-func allRequestsAreMaintenanceMode(verified []verifiedRequest) bool {
-	for _, vr := range verified {
-		if _, ok := vr.req.GetType().(*servicepb.Request_SetMaintenanceMode); !ok {
+func allRequestsAreMaintenanceMode(reqs []*servicepb.Request) bool {
+	for _, req := range reqs {
+		if _, ok := req.GetType().(*servicepb.Request_SetMaintenanceMode); !ok {
 			return false
 		}
 	}
@@ -999,10 +1041,6 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 	for orderIdx, order := range orders {
 		p := plan.NewNeeds()
-		// Idempotency keys apply to all order types.
-		if order.GetIdempotency() != nil && order.GetIdempotency().GetKey() != "" {
-			p.IdempotencyKeys[domain.IdempotencyKey{Key: order.GetIdempotency().GetKey()}] = struct{}{}
-		}
 
 		switch orderType := order.GetType().(type) {
 		case *raftcmdpb.Order_LedgerScoped:
@@ -1130,10 +1168,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 	return nil
 }
 
-// requestToOrder converts a verifiedRequest into a raftcmdpb.Order. The
-// signing envelope (if any) is propagated onto the Order for audit/replay.
-func (a *Admission) requestToOrder(ctx context.Context, vr verifiedRequest, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
-	req := vr.req
+// requestToOrder converts a single Request into its ledger- or system-scoped
+// raftcmdpb.Order. batchSig is consulted only by the signing-key registration
+// path, to record the signing key as the new key's parent.
+func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, batchSig *signaturepb.SignedApplyBatch, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
 
 	switch reqType := req.GetType().(type) {
@@ -1171,8 +1209,8 @@ func (a *Admission) requestToOrder(ctx context.Context, vr verifiedRequest, over
 		})
 	case *servicepb.Request_RegisterSigningKey:
 		var parentKeyID string
-		if vr.sig != nil {
-			parentKeyID = vr.sig.GetKeyId()
+		if batchSig != nil {
+			parentKeyID = batchSig.GetKeyId()
 		}
 
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
@@ -1488,24 +1526,6 @@ func (a *Admission) requestToOrder(ctx context.Context, vr verifiedRequest, over
 		return nil, err
 	}
 
-	// Set idempotency key if provided (hash will be computed in processor from payload)
-	if req.GetIdempotencyKey() != "" {
-		if len(req.GetIdempotencyKey()) > maxIdempotencyKeyLength {
-			return nil, &domain.BusinessError{Err: ErrIdempotencyKeyTooLong}
-		}
-
-		if !utf8.ValidString(req.GetIdempotencyKey()) {
-			return nil, &domain.BusinessError{Err: ErrIdempotencyKeyInvalidUTF8}
-		}
-
-		order.Idempotency = &commonpb.Idempotency{
-			Key: req.GetIdempotencyKey(),
-		}
-	}
-
-	// Propagate signature envelope for audit trail
-	order.Signature = vr.sig
-
 	return order, nil
 }
 
@@ -1748,12 +1768,12 @@ func (a *Admission) resolveNumscriptFromOverlay(overlay *bulkOverlay, ledger, na
 	return bestContent, bestVersion.String(), true
 }
 
-func (a *Admission) requestsToOrders(ctx context.Context, verified []verifiedRequest) ([]*raftcmdpb.Order, *bulkOverlay, error) {
+func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Request, batchSig *signaturepb.SignedApplyBatch) ([]*raftcmdpb.Order, *bulkOverlay, error) {
 	overlay := newBulkOverlay()
-	orders := make([]*raftcmdpb.Order, len(verified))
+	orders := make([]*raftcmdpb.Order, len(reqs))
 
-	for i, vr := range verified {
-		order, err := a.requestToOrder(ctx, vr, overlay)
+	for i, req := range reqs {
+		order, err := a.requestToOrder(ctx, req, batchSig, overlay)
 		if err != nil {
 			return nil, nil, fmt.Errorf("converting request %d: %w", i, err)
 		}

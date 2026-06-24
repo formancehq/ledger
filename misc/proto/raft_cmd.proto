@@ -16,12 +16,20 @@ import "signature.proto";
 // log relies on to attribute entries to a ledger — extracting the targeted
 // ledger is a single accessor on the wrapper instead of a per-payload switch.
 message Order {
-  common.Idempotency idempotency = 1;
+  // Field 1 previously held a per-order `common.Idempotency idempotency`.
+  // Idempotency is now keyed per atomic proposal (Proposal.idempotency), the
+  // unit that is atomic + signed. Reserved so it cannot be reintroduced.
+  reserved 1;
+  reserved "idempotency";
   oneof type {
     LedgerScopedOrder ledger_scoped = 2;
     SystemScopedOrder system_scoped = 3;
   }
-  signature.SignedRequest signature = 4;
+  // Field 4 previously held a per-order `signature.SignedRequest signature`.
+  // The signature now covers the whole atomic batch (Proposal.signature), so
+  // composition and ordering are authenticated. Reserved.
+  reserved 4;
+  reserved "signature";
   // coverage_bits is a packed bitset over ExecutionPlan.attributes restricting
   // which entries this single order may read. Bit i (byteIdx = i/8,
   // bit-within-byte = i%8, LSB-first) is set iff attributes[i] covers a key
@@ -387,6 +395,14 @@ message Proposal {
   reserved 13;
   reserved "caller";
   common.CallerSnapshot caller_snapshot = 14;  // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
+  // idempotency is the batch's single idempotency identity (from
+  // ApplyBatch.idempotency_key). The whole proposal dedups/freezes under it —
+  // matching the atomic unit. Empty for system/technical proposals.
+  common.Idempotency idempotency = 16;
+  // signature is the client's signature over the whole ApplyBatch (composition
+  // + ordering). The FSM propagates it onto every Log this proposal commits, so
+  // each log records the batch-level authenticity/non-repudiation proof.
+  signature.SignedApplyBatch signature = 17;
   // technical_updates carries every FSM-level update that bypasses the
   // Order/Log channel. Each entry wraps a single payload (sink update,
   // mirror sync, metadata conversion, backup lifecycle, …) with its own
@@ -643,7 +659,7 @@ message MirrorSyncUpdate {
 // EventsSinkUpdate carries a per-sink cursor advance or error status change.
 message EventsSinkUpdate {
   string sink_name = 1;
-  fixed64 cursor = 2;              // New cursor position (0 = no change)
+  fixed64 cursor = 2;              // New log cursor position (0 = no change)
   common.SinkError error = 3;     // Set error (nil = no change unless clear_error)
   bool clear_error = 4;           // If true, clear any existing error
 }

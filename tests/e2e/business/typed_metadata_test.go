@@ -19,20 +19,14 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-lifecycle"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should declare a field type and verify via schema status", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SetMetadataFieldTypeAction(ledgerName,
-						commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age",
-						commonpb.MetadataType_METADATA_TYPE_INT64),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age",
+				commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
 
 			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
@@ -44,12 +38,8 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		})
 
 		It("Should remove a field type and verify it is absent", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.RemoveMetadataFieldTypeAction(ledgerName,
-						commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RemoveMetadataFieldTypeAction(ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")))
 			Expect(err).To(Succeed())
 
 			// Removal triggers a background conversion to STRING then deletes
@@ -68,22 +58,18 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-initial-schema"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "verified",
-							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-							Key:        "amount_cents",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "verified",
+					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+					Key:        "amount_cents",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
@@ -105,26 +91,18 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-account-enforce"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "age",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "age",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should convert string metadata to int64 on write", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"age": "42"}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"age": "42"})))
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -150,28 +128,20 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-tx-enforce"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-							Key:        "priority",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+					Key:        "priority",
+					Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should convert string metadata to uint64 on transaction creation", func() {
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
-					}, map[string]string{"priority": "100"}),
-				),
-			})
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
+			}, map[string]string{"priority": "100"})))
 			Expect(err).To(Succeed())
 
 			txID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
@@ -193,26 +163,18 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-bool-conv"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "active",
-							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "active",
+					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should convert 'true' string to bool_value true", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "acct1", map[string]string{"active": "true"}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "acct1", map[string]string{"active": "true"})))
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -228,11 +190,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		})
 
 		It("Should convert '0' string to bool_value false", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "acct2", map[string]string{"active": "0"}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "acct2", map[string]string{"active": "0"})))
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -252,26 +210,18 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-null-conv"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "age",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "age",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should produce null_value preserving the original string", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "bad-data", map[string]string{"age": "not-a-number"}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "bad-data", map[string]string{"age": "not-a-number"})))
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -301,29 +251,19 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-bg-convert"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should convert existing string data after schema declaration", func() {
 			// Save metadata before any schema exists (stored as string)
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "scored-user", map[string]string{"score": "99"}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "scored-user", map[string]string{"score": "99"})))
 			Expect(err).To(Succeed())
 
 			// Declare the type
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SetMetadataFieldTypeAction(ledgerName,
-						commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score",
-						commonpb.MetadataType_METADATA_TYPE_INT64),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score",
+				commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
 
 			// Wait for background conversion to complete
@@ -353,17 +293,13 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-numscript"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "account_type",
-							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "account_type",
+					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
@@ -375,11 +311,7 @@ send [USD/2 100] (
 )
 set_account_meta(@user, "account_type", "true")
 `
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceScriptTransactionAction(ledgerName, script, nil, nil),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -399,29 +331,21 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-mixed"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "age",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "age",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should convert typed fields and keep untyped as strings", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
-						"age":  "25",
-						"name": "Alice",
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
+				"age":  "25",
+				"name": "Alice",
+			})))
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -449,40 +373,32 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-multi-types"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "count",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "enabled",
-							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "label",
-							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "count",
+					Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "enabled",
+					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "label",
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should convert each field to the correct type", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "multi", map[string]string{
-						"count":   "42",
-						"enabled": "true",
-						"label":   "test",
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "multi", map[string]string{
+				"count":   "42",
+				"enabled": "true",
+				"label":   "test",
+			})))
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -516,58 +432,50 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-small-ints"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "field_int8",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT8,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "field_int16",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT16,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "field_int32",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT32,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "field_uint8",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT8,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "field_uint16",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT16,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "field_uint32",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT32,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "field_int8",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT8,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "field_int16",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT16,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "field_int32",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT32,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "field_uint8",
+					Type:       commonpb.MetadataType_METADATA_TYPE_UINT8,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "field_uint16",
+					Type:       commonpb.MetadataType_METADATA_TYPE_UINT16,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "field_uint32",
+					Type:       commonpb.MetadataType_METADATA_TYPE_UINT32,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should convert string values to correct proto types", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveAccountMetadataAction(ledgerName, "small-ints", map[string]string{
-						"field_int8":   "-42",
-						"field_int16":  "1000",
-						"field_int32":  "100000",
-						"field_uint8":  "200",
-						"field_uint16": "50000",
-						"field_uint32": "3000000000",
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "small-ints", map[string]string{
+				"field_int8":   "-42",
+				"field_int16":  "1000",
+				"field_int32":  "100000",
+				"field_uint8":  "200",
+				"field_uint16": "50000",
+				"field_uint32": "3000000000",
+			})))
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -630,62 +538,58 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-all-types"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_string",
-							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_bool",
-							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_int8",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT8,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_int16",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT16,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_int32",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT32,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_int64",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_uint8",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT8,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_uint16",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT16,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_uint32",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT32,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "f_uint64",
-							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_string",
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_bool",
+					Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_int8",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT8,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_int16",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT16,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_int32",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT32,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_int64",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_uint8",
+					Type:       commonpb.MetadataType_METADATA_TYPE_UINT8,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_uint16",
+					Type:       commonpb.MetadataType_METADATA_TYPE_UINT16,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_uint32",
+					Type:       commonpb.MetadataType_METADATA_TYPE_UINT32,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "f_uint64",
+					Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
@@ -721,20 +625,14 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-ledger-lifecycle"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should declare a ledger field type and verify via schema status", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SetMetadataFieldTypeAction(ledgerName,
-						commonpb.TargetType_TARGET_TYPE_LEDGER, "env",
-						commonpb.MetadataType_METADATA_TYPE_STRING),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+				commonpb.TargetType_TARGET_TYPE_LEDGER, "env",
+				commonpb.MetadataType_METADATA_TYPE_STRING)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -748,12 +646,8 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should remove a ledger field type and verify it is absent", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.RemoveMetadataFieldTypeAction(ledgerName,
-						commonpb.TargetType_TARGET_TYPE_LEDGER, "env"),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RemoveMetadataFieldTypeAction(ledgerName,
+				commonpb.TargetType_TARGET_TYPE_LEDGER, "env")))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -770,26 +664,18 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-ledger-enforce"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
-							Key:        "max_tx",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+					Key:        "max_tx",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should convert string ledger metadata to int64 on write", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "1000"}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "1000"})))
 			Expect(err).To(Succeed())
 
 			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
@@ -802,11 +688,7 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should return raw string for inconvertible ledger metadata", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "not-a-number"}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "not-a-number"})))
 			Expect(err).To(Succeed())
 
 			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
@@ -823,11 +705,7 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should keep untyped ledger metadata as strings", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"label": "production"}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"label": "production"})))
 			Expect(err).To(Succeed())
 
 			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
@@ -845,29 +723,19 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-ledger-bg"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should convert existing ledger metadata after schema declaration", func() {
 			// Save metadata before any schema exists (stored as string)
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"version": "42"}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"version": "42"})))
 			Expect(err).To(Succeed())
 
 			// Declare the type
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SetMetadataFieldTypeAction(ledgerName,
-						commonpb.TargetType_TARGET_TYPE_LEDGER, "version",
-						commonpb.MetadataType_METADATA_TYPE_INT64),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+				commonpb.TargetType_TARGET_TYPE_LEDGER, "version",
+				commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
 
 			// Wait for background conversion to complete
@@ -894,27 +762,23 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-initial-ledger"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "role",
-							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
-							Key:        "env",
-							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-						},
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
-							Key:        "version",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "role",
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+					Key:        "env",
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				},
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+					Key:        "version",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
@@ -938,17 +802,13 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-direct-proto"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "score",
-							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "score",
+					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
@@ -956,11 +816,7 @@ set_account_meta(@user, "account_type", "true")
 			typedMeta := map[string]*commonpb.MetadataValue{
 				"score": commonpb.NewIntValue(42),
 			}
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.SaveTypedAccountMetadataAction(ledgerName, "proto-user", typedMeta),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveTypedAccountMetadataAction(ledgerName, "proto-user", typedMeta)))
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{

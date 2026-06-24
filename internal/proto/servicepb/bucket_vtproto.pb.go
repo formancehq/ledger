@@ -222,14 +222,10 @@ func (m *ApplyRequest) CloneVT() *ApplyRequest {
 		return (*ApplyRequest)(nil)
 	}
 	r := new(ApplyRequest)
-	r.SkipResponse = m.SkipResponse
 	r.ForwardedCallerSnapshot = m.ForwardedCallerSnapshot.CloneVT()
-	if rhs := m.Envelopes; rhs != nil {
-		tmpContainer := make([]*Envelope, len(rhs))
-		for k, v := range rhs {
-			tmpContainer[k] = v.CloneVT()
-		}
-		r.Envelopes = tmpContainer
+	r.SkipResponse = m.SkipResponse
+	if m.Variant != nil {
+		r.Variant = m.Variant.(interface{ CloneVT() isApplyRequest_Variant }).CloneVT()
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -242,13 +238,36 @@ func (m *ApplyRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *Envelope) CloneVT() *Envelope {
+func (m *ApplyRequest_Unsigned) CloneVT() isApplyRequest_Variant {
 	if m == nil {
-		return (*Envelope)(nil)
+		return (*ApplyRequest_Unsigned)(nil)
 	}
-	r := new(Envelope)
-	if m.Variant != nil {
-		r.Variant = m.Variant.(interface{ CloneVT() isEnvelope_Variant }).CloneVT()
+	r := new(ApplyRequest_Unsigned)
+	r.Unsigned = m.Unsigned.CloneVT()
+	return r
+}
+
+func (m *ApplyRequest_Signed) CloneVT() isApplyRequest_Variant {
+	if m == nil {
+		return (*ApplyRequest_Signed)(nil)
+	}
+	r := new(ApplyRequest_Signed)
+	r.Signed = m.Signed.CloneVT()
+	return r
+}
+
+func (m *ApplyBatch) CloneVT() *ApplyBatch {
+	if m == nil {
+		return (*ApplyBatch)(nil)
+	}
+	r := new(ApplyBatch)
+	r.IdempotencyKey = m.IdempotencyKey
+	if rhs := m.Requests; rhs != nil {
+		tmpContainer := make([]*Request, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.Requests = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -257,26 +276,8 @@ func (m *Envelope) CloneVT() *Envelope {
 	return r
 }
 
-func (m *Envelope) CloneMessageVT() proto.Message {
+func (m *ApplyBatch) CloneMessageVT() proto.Message {
 	return m.CloneVT()
-}
-
-func (m *Envelope_Unsigned) CloneVT() isEnvelope_Variant {
-	if m == nil {
-		return (*Envelope_Unsigned)(nil)
-	}
-	r := new(Envelope_Unsigned)
-	r.Unsigned = m.Unsigned.CloneVT()
-	return r
-}
-
-func (m *Envelope_Signed) CloneVT() isEnvelope_Variant {
-	if m == nil {
-		return (*Envelope_Signed)(nil)
-	}
-	r := new(Envelope_Signed)
-	r.Signed = m.Signed.CloneVT()
-	return r
 }
 
 func (m *ApplyResponse) CloneVT() *ApplyResponse {
@@ -307,7 +308,6 @@ func (m *Request) CloneVT() *Request {
 		return (*Request)(nil)
 	}
 	r := new(Request)
-	r.IdempotencyKey = m.IdempotencyKey
 	if m.Type != nil {
 		r.Type = m.Type.(interface{ CloneVT() isRequest_Type }).CloneVT()
 	}
@@ -3347,27 +3347,22 @@ func (this *ApplyRequest) EqualVT(that *ApplyRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if len(this.Envelopes) != len(that.Envelopes) {
+	if this.Variant == nil && that.Variant != nil {
 		return false
-	}
-	for i, vx := range this.Envelopes {
-		vy := that.Envelopes[i]
-		if p, q := vx, vy; p != q {
-			if p == nil {
-				p = &Envelope{}
-			}
-			if q == nil {
-				q = &Envelope{}
-			}
-			if !p.EqualVT(q) {
-				return false
-			}
+	} else if this.Variant != nil {
+		if that.Variant == nil {
+			return false
+		}
+		if !this.Variant.(interface {
+			EqualVT(isApplyRequest_Variant) bool
+		}).EqualVT(that.Variant) {
+			return false
 		}
 	}
-	if this.SkipResponse != that.SkipResponse {
+	if !this.ForwardedCallerSnapshot.EqualVT(that.ForwardedCallerSnapshot) {
 		return false
 	}
-	if !this.ForwardedCallerSnapshot.EqualVT(that.ForwardedCallerSnapshot) {
+	if this.SkipResponse != that.SkipResponse {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -3380,34 +3375,8 @@ func (this *ApplyRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *Envelope) EqualVT(that *Envelope) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Variant == nil && that.Variant != nil {
-		return false
-	} else if this.Variant != nil {
-		if that.Variant == nil {
-			return false
-		}
-		if !this.Variant.(interface{ EqualVT(isEnvelope_Variant) bool }).EqualVT(that.Variant) {
-			return false
-		}
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *Envelope) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*Envelope)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *Envelope_Unsigned) EqualVT(thatIface isEnvelope_Variant) bool {
-	that, ok := thatIface.(*Envelope_Unsigned)
+func (this *ApplyRequest_Unsigned) EqualVT(thatIface isApplyRequest_Variant) bool {
+	that, ok := thatIface.(*ApplyRequest_Unsigned)
 	if !ok {
 		return false
 	}
@@ -3419,10 +3388,10 @@ func (this *Envelope_Unsigned) EqualVT(thatIface isEnvelope_Variant) bool {
 	}
 	if p, q := this.Unsigned, that.Unsigned; p != q {
 		if p == nil {
-			p = &Request{}
+			p = &ApplyBatch{}
 		}
 		if q == nil {
-			q = &Request{}
+			q = &ApplyBatch{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -3431,8 +3400,8 @@ func (this *Envelope_Unsigned) EqualVT(thatIface isEnvelope_Variant) bool {
 	return true
 }
 
-func (this *Envelope_Signed) EqualVT(thatIface isEnvelope_Variant) bool {
-	that, ok := thatIface.(*Envelope_Signed)
+func (this *ApplyRequest_Signed) EqualVT(thatIface isApplyRequest_Variant) bool {
+	that, ok := thatIface.(*ApplyRequest_Signed)
 	if !ok {
 		return false
 	}
@@ -3444,10 +3413,10 @@ func (this *Envelope_Signed) EqualVT(thatIface isEnvelope_Variant) bool {
 	}
 	if p, q := this.Signed, that.Signed; p != q {
 		if p == nil {
-			p = &signaturepb.SignedRequest{}
+			p = &signaturepb.SignedApplyBatch{}
 		}
 		if q == nil {
-			q = &signaturepb.SignedRequest{}
+			q = &signaturepb.SignedApplyBatch{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -3456,6 +3425,42 @@ func (this *Envelope_Signed) EqualVT(thatIface isEnvelope_Variant) bool {
 	return true
 }
 
+func (this *ApplyBatch) EqualVT(that *ApplyBatch) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if len(this.Requests) != len(that.Requests) {
+		return false
+	}
+	for i, vx := range this.Requests {
+		vy := that.Requests[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &Request{}
+			}
+			if q == nil {
+				q = &Request{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
+	if this.IdempotencyKey != that.IdempotencyKey {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *ApplyBatch) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ApplyBatch)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *ApplyResponse) EqualVT(that *ApplyResponse) bool {
 	if this == that {
 		return true
@@ -3504,9 +3509,6 @@ func (this *Request) EqualVT(that *Request) bool {
 		if !this.Type.(interface{ EqualVT(isRequest_Type) bool }).EqualVT(that.Type) {
 			return false
 		}
-	}
-	if this.IdempotencyKey != that.IdempotencyKey {
-		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -8500,71 +8502,6 @@ func (m *ApplyRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.ForwardedCallerSnapshot != nil {
-		size, err := m.ForwardedCallerSnapshot.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.SkipResponse {
-		i--
-		if m.SkipResponse {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x10
-	}
-	if len(m.Envelopes) > 0 {
-		for iNdEx := len(m.Envelopes) - 1; iNdEx >= 0; iNdEx-- {
-			size, err := m.Envelopes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0xa
-		}
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *Envelope) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *Envelope) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Envelope) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
 	if vtmsg, ok := m.Variant.(interface {
 		MarshalToSizedBufferVT([]byte) (int, error)
 	}); ok {
@@ -8574,15 +8511,35 @@ func (m *Envelope) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if m.SkipResponse {
+		i--
+		if m.SkipResponse {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.ForwardedCallerSnapshot != nil {
+		size, err := m.ForwardedCallerSnapshot.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
 	return len(dAtA) - i, nil
 }
 
-func (m *Envelope_Unsigned) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ApplyRequest_Unsigned) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Envelope_Unsigned) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ApplyRequest_Unsigned) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Unsigned != nil {
 		size, err := m.Unsigned.MarshalToSizedBufferVT(dAtA[:i])
@@ -8596,12 +8553,12 @@ func (m *Envelope_Unsigned) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Envelope_Signed) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ApplyRequest_Signed) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Envelope_Signed) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ApplyRequest_Signed) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Signed != nil {
 		size, err := m.Signed.MarshalToSizedBufferVT(dAtA[:i])
@@ -8615,6 +8572,58 @@ func (m *Envelope_Signed) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *ApplyBatch) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ApplyBatch) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ApplyBatch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.IdempotencyKey) > 0 {
+		i -= len(m.IdempotencyKey)
+		copy(dAtA[i:], m.IdempotencyKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.IdempotencyKey)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Requests) > 0 {
+		for iNdEx := len(m.Requests) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Requests[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *ApplyResponse) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -8698,13 +8707,6 @@ func (m *Request) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-	}
-	if len(m.IdempotencyKey) > 0 {
-		i -= len(m.IdempotencyKey)
-		copy(dAtA[i:], m.IdempotencyKey)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.IdempotencyKey)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -15941,37 +15943,21 @@ func (m *ApplyRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if len(m.Envelopes) > 0 {
-		for _, e := range m.Envelopes {
-			l = e.SizeVT()
-			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-		}
-	}
-	if m.SkipResponse {
-		n += 2
+	if vtmsg, ok := m.Variant.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
 	}
 	if m.ForwardedCallerSnapshot != nil {
 		l = m.ForwardedCallerSnapshot.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *Envelope) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if vtmsg, ok := m.Variant.(interface{ SizeVT() int }); ok {
-		n += vtmsg.SizeVT()
+	if m.SkipResponse {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *Envelope_Unsigned) SizeVT() (n int) {
+func (m *ApplyRequest_Unsigned) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -15983,7 +15969,7 @@ func (m *Envelope_Unsigned) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Envelope_Signed) SizeVT() (n int) {
+func (m *ApplyRequest_Signed) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -15995,6 +15981,26 @@ func (m *Envelope_Signed) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *ApplyBatch) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Requests) > 0 {
+		for _, e := range m.Requests {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	l = len(m.IdempotencyKey)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *ApplyResponse) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -16017,10 +16023,6 @@ func (m *Request) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.IdempotencyKey)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if vtmsg, ok := m.Type.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
 	}
@@ -20222,7 +20224,7 @@ func (m *ApplyRequest) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Envelopes", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Unsigned", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -20249,16 +20251,23 @@ func (m *ApplyRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Envelopes = append(m.Envelopes, &Envelope{})
-			if err := m.Envelopes[len(m.Envelopes)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
+			if oneof, ok := m.Variant.(*ApplyRequest_Unsigned); ok {
+				if err := oneof.Unsigned.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &ApplyBatch{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Variant = &ApplyRequest_Unsigned{Unsigned: v}
 			}
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SkipResponse", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Signed", wireType)
 			}
-			var v int
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -20268,13 +20277,34 @@ func (m *ApplyRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.SkipResponse = bool(v != 0)
-		case 4:
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Variant.(*ApplyRequest_Signed); ok {
+				if err := oneof.Signed.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &signaturepb.SignedApplyBatch{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Variant = &ApplyRequest_Signed{Signed: v}
+			}
+			iNdEx = postIndex
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ForwardedCallerSnapshot", wireType)
 			}
@@ -20310,6 +20340,26 @@ func (m *ApplyRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SkipResponse", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.SkipResponse = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -20332,7 +20382,7 @@ func (m *ApplyRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Envelope) UnmarshalVT(dAtA []byte) error {
+func (m *ApplyBatch) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -20355,15 +20405,15 @@ func (m *Envelope) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Envelope: wiretype end group for non-group")
+			return fmt.Errorf("proto: ApplyBatch: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Envelope: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ApplyBatch: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Unsigned", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Requests", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -20390,23 +20440,16 @@ func (m *Envelope) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Variant.(*Envelope_Unsigned); ok {
-				if err := oneof.Unsigned.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &Request{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Variant = &Envelope_Unsigned{Unsigned: v}
+			m.Requests = append(m.Requests, &Request{})
+			if err := m.Requests[len(m.Requests)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Signed", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field IdempotencyKey", wireType)
 			}
-			var msglen int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -20416,32 +20459,23 @@ func (m *Envelope) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return protohelpers.ErrInvalidLength
 			}
-			postIndex := iNdEx + msglen
+			postIndex := iNdEx + intStringLen
 			if postIndex < 0 {
 				return protohelpers.ErrInvalidLength
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Variant.(*Envelope_Signed); ok {
-				if err := oneof.Signed.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &signaturepb.SignedRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Variant = &Envelope_Signed{Signed: v}
-			}
+			m.IdempotencyKey = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -20579,38 +20613,6 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: Request: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IdempotencyKey", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.IdempotencyKey = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Apply", wireType)

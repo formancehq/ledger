@@ -107,13 +107,13 @@ func (b *RoutedController) IsHealthy() bool {
 
 // --- Write operations: forwarded to leader ---
 
-func (b *RoutedController) Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+func (b *RoutedController) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 	leaderCtrl, err := b.getLeaderCtrl()
 	if err != nil {
 		return nil, err
 	}
 
-	return leaderCtrl.Apply(ctx, envelopes...)
+	return leaderCtrl.Apply(ctx, req)
 }
 
 func (b *RoutedController) Barrier(ctx context.Context) (uint64, error) {

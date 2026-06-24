@@ -162,23 +162,18 @@ func (c *MockBackendAnalyzeTransactionsCall) DoAndReturn(f func(context.Context,
 }
 
 // Apply mocks base method.
-func (m *MockBackend) Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+func (m *MockBackend) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range envelopes {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Apply", varargs...)
+	ret := m.ctrl.Call(m, "Apply", ctx, req)
 	ret0, _ := ret[0].([]*commonpb.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Apply indicates an expected call of Apply.
-func (mr *MockBackendMockRecorder) Apply(ctx any, envelopes ...any) *MockBackendApplyCall {
+func (mr *MockBackendMockRecorder) Apply(ctx, req any) *MockBackendApplyCall {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, envelopes...)
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockBackend)(nil).Apply), varargs...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockBackend)(nil).Apply), ctx, req)
 	return &MockBackendApplyCall{Call: call}
 }
 
@@ -194,13 +189,13 @@ func (c *MockBackendApplyCall) Return(arg0 []*commonpb.Log, arg1 error) *MockBac
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBackendApplyCall) Do(f func(context.Context, ...*servicepb.Envelope) ([]*commonpb.Log, error)) *MockBackendApplyCall {
+func (c *MockBackendApplyCall) Do(f func(context.Context, *servicepb.ApplyRequest) ([]*commonpb.Log, error)) *MockBackendApplyCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBackendApplyCall) DoAndReturn(f func(context.Context, ...*servicepb.Envelope) ([]*commonpb.Log, error)) *MockBackendApplyCall {
+func (c *MockBackendApplyCall) DoAndReturn(f func(context.Context, *servicepb.ApplyRequest) ([]*commonpb.Log, error)) *MockBackendApplyCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -28,19 +28,17 @@ func main() {
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
 		// 1. Add an account type with a pattern.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_AddAccountType{
-					AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
-						Ledger: ledger,
-						AccountType: &commonpb.AccountType{
-							Name:    typeName,
-							Pattern: pattern,
-						},
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_AddAccountType{
+				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+					Ledger: ledger,
+					AccountType: &commonpb.AccountType{
+						Name:    typeName,
+						Pattern: pattern,
 					},
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil {
 			if internal.IsTransient(err) || status.Code(err) == codes.AlreadyExists {
 				return
@@ -53,42 +51,38 @@ func main() {
 		}
 
 		// 2. Set strict enforcement mode.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SetDefaultEnforcementMode{
-					SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
-						Ledger:          ledger,
-						EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+					Ledger:          ledger,
+					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil && !internal.IsTransient(err) {
 			return
 		}
 
 		// 3. Transaction with a valid address — should succeed.
 		validAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: validAddr,
-									Amount:      commonpb.NewUint256FromUint64(100),
-									Asset:       "USD/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: validAddr,
+								Amount:      commonpb.NewUint256FromUint64(100),
+								Asset:       "USD/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"transaction with valid typed address should succeed",
@@ -96,26 +90,24 @@ func main() {
 
 		// 4. Transaction with an invalid address — should fail with ACCOUNT_NOT_MATCHING_TYPE.
 		invalidAddr := fmt.Sprintf("invalid-prefix:%d", r.Uint64()%1000)
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: invalidAddr,
-									Amount:      commonpb.NewUint256FromUint64(50),
-									Asset:       "USD/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: invalidAddr,
+								Amount:      commonpb.NewUint256FromUint64(50),
+								Asset:       "USD/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		if err == nil {
 			// Strict mode may not reject addresses that don't match any type
@@ -138,40 +130,36 @@ func main() {
 		}
 
 		// 5. Switch to AUDIT mode — same invalid address should now succeed.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_SetDefaultEnforcementMode{
-					SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
-						Ledger:          ledger,
-						EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+					Ledger:          ledger,
+					EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 				},
-			}),
-		})
+			},
+		}))
 		if err != nil && !internal.IsTransient(err) {
 			return
 		}
 
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{{
-									Source:      "world",
-									Destination: invalidAddr,
-									Amount:      commonpb.NewUint256FromUint64(50),
-									Asset:       "USD/2",
-								}},
-								Force: true,
-							},
-						}},
-					},
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: invalidAddr,
+								Amount:      commonpb.NewUint256FromUint64(50),
+								Asset:       "USD/2",
+							}},
+							Force: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"invalid address should succeed in AUDIT mode",

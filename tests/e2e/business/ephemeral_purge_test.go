@@ -20,55 +20,45 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Add ephemeral account type for clearing accounts
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					&servicepb.Request{
-						Type: &servicepb.Request_AddAccountType{
-							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
-								Ledger: ledgerName,
-								AccountType: &commonpb.AccountType{
-									Name:        "clearing",
-									Pattern:     "clearing:{id}",
-									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
-								},
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_AddAccountType{
+					AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+						Ledger: ledgerName,
+						AccountType: &commonpb.AccountType{
+							Name:        "clearing",
+							Pattern:     "clearing:{id}",
+							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+						},
+					},
+				},
+			},
+				// Also add a non-ephemeral type for bank accounts
+				&servicepb.Request{
+					Type: &servicepb.Request_AddAccountType{
+						AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+							Ledger: ledgerName,
+							AccountType: &commonpb.AccountType{
+								Name:    "bank",
+								Pattern: "bank:{id}",
 							},
 						},
 					},
-					// Also add a non-ephemeral type for bank accounts
-					&servicepb.Request{
-						Type: &servicepb.Request_AddAccountType{
-							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
-								Ledger: ledgerName,
-								AccountType: &commonpb.AccountType{
-									Name:    "bank",
-									Pattern: "bank:{id}",
-								},
-							},
-						},
-					},
-				),
-			})
+				}))
 			Expect(err).To(Succeed())
 
 			// Transaction: world → clearing:tx1 100 USD (leg 1)
 			// Transaction: clearing:tx1 → bank:main 100 USD (leg 2)
 			// After both legs, clearing:tx1 has input=100, output=100 → zero balance
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "clearing:tx1", big.NewInt(100), "USD"),
-					}, nil),
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("clearing:tx1", "bank:main", big.NewInt(100), "USD"),
-					}, nil, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "clearing:tx1", big.NewInt(100), "USD"),
+			}, nil),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("clearing:tx1", "bank:main", big.NewInt(100), "USD"),
+				}, nil, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -107,13 +97,9 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 
 		It("Should allow reusing a purged ephemeral account", func() {
 			// Send money through clearing:tx1 again
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "clearing:tx1", big.NewInt(50), "USD"),
-					}, nil),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "clearing:tx1", big.NewInt(50), "USD"),
+			}, nil)))
 			Expect(err).To(Succeed())
 
 			// Now clearing:tx1 has non-zero balance (input=50, output=0), so it should be visible
@@ -135,23 +121,17 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 		const ledgerName = "ephemeral-purge-non"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// world → alice 100 USD, alice → bob 100 USD
 			// alice ends with input=100, output=100 (zero balance) but no ephemeral type
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
-					}, nil),
-					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("alice", "bob", big.NewInt(100), "USD"),
-					}, nil, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+			}, nil),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("alice", "bob", big.NewInt(100), "USD"),
+				}, nil, nil)))
 			Expect(err).To(Succeed())
 		})
 

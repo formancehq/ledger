@@ -97,13 +97,9 @@ func expectThreshold(ctx context.Context, servers []*testutil.ServiceWithClient,
 
 func createTxs(ctx context.Context, client servicepb.BucketServiceClient, ledger string, n int, amount int64) {
 	for i := 0; i < n; i++ {
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledger, []*commonpb.Posting{
-					actions.NewPosting("world", "bank", big.NewInt(amount), "USD"),
-				}, nil, nil),
-			),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+			actions.NewPosting("world", "bank", big.NewInt(amount), "USD"),
+		}, nil, nil)))
 		Expect(err).To(Succeed())
 	}
 }
@@ -124,8 +120,8 @@ func expectVolumeAllNodes(ctx context.Context, servers []*testutil.ServiceWithCl
 			g.Expect(err).To(Succeed())
 			g.Expect(account.Volumes["USD"].Input).To(Equal(expectedInput))
 		}).
-			WithTimeout(30 * time.Second).
-			WithPolling(500 * time.Millisecond).
+			WithTimeout(30*time.Second).
+			WithPolling(500*time.Millisecond).
 			Should(Succeed(), fmt.Sprintf("node %d should have bank=%s", i+1, expectedInput))
 	}
 }
@@ -156,9 +152,7 @@ var _ = Describe("Rolling cluster config update", Ordered, func() {
 	It("should decrease threshold, trigger rotations, and preserve volumes", func() {
 		client := servers[*leaderID-1].Client
 
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("test", nil)),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("test", nil)))
 		Expect(err).To(Succeed())
 
 		createTxs(ctx, client, "test", 5, 100)
@@ -214,9 +208,7 @@ var _ = Describe("Rolling cluster config update", Ordered, func() {
 
 	It("should handle new ledgers after multiple config changes", func() {
 		client := servers[*leaderID-1].Client
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("post-change", nil)),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("post-change", nil)))
 		Expect(err).To(Succeed())
 
 		createTxs(ctx, client, "post-change", 20, 50)

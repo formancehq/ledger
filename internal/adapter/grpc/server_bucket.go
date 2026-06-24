@@ -107,50 +107,60 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 
 	ctx = adoptForwardedSnapshotIfTrusted(ctx, req)
 
-	if len(req.GetEnvelopes()) == 0 {
-		return nil, errEnvelopesRequired
+	// Peek the batch (non-authoritative) for the empty check and the per-request
+	// scope checks. Admission re-verifies the signature and unmarshals the same
+	// bytes for processing.
+	//
+	// A signed payload is opaque until admission verifies the signature over its
+	// raw bytes, so a tampered payload that fails to parse here must NOT be
+	// rejected with InvalidArgument before the signature is checked — admission
+	// is authoritative and rejects a bad signature with PermissionDenied. Skip
+	// the peek-based checks when a signed batch won't parse; an unsigned batch
+	// that won't parse is simply malformed.
+	batch, peekErr := servicepb.PeekBatch(req)
+	if peekErr != nil && req.GetSigned() == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "%v", peekErr)
 	}
 
-	// Per-envelope scope check: each request in the batch may require a
-	// different granular scope. For signed envelopes we peek into the
-	// payload to determine the request type — peeking is non-authoritative,
-	// admission re-verifies the signature and unmarshals the same bytes for
-	// processing. Cluster-internal forwards (cluster-secret authenticated
-	// peers) get the full scope set so this loop is a no-op by design.
-	if impl.authCfg.Enabled {
-		effective := internalauth.ExpandedScopesFromContext(ctx)
-		authPresented := internalauth.AuthPresentedFromContext(ctx)
+	if peekErr == nil {
+		if len(batch.GetRequests()) == 0 {
+			return nil, errEnvelopesRequired
+		}
 
-		for i, env := range req.GetEnvelopes() {
-			peeked, err := servicepb.PeekRequest(env)
-			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument,
-					"envelope %d: %v", i, err)
-			}
+		// Per-request scope check: each request in the batch may require a
+		// different granular scope. Peeking is non-authoritative; admission
+		// re-verifies the batch signature and unmarshals the same bytes for
+		// processing. Cluster-internal forwards (cluster-secret authenticated
+		// peers) get the full scope set so this loop is a no-op by design.
+		if impl.authCfg.Enabled {
+			effective := internalauth.ExpandedScopesFromContext(ctx)
+			authPresented := internalauth.AuthPresentedFromContext(ctx)
 
-			required := internalauth.RequiredScopeForRequest(peeked)
-			if internalauth.HasScope(effective, required) {
-				continue
-			}
+			for i, peeked := range batch.GetRequests() {
+				required := internalauth.RequiredScopeForRequest(peeked)
+				if internalauth.HasScope(effective, required) {
+					continue
+				}
 
-			// 401 when no credentials were presented (the anonymous fallback
-			// covers reads only); 403 when a valid token was presented but
-			// lacks the required scope.
-			if !authPresented {
-				return nil, status.Errorf(codes.Unauthenticated,
+				// 401 when no credentials were presented (the anonymous fallback
+				// covers reads only); 403 when a valid token was presented but
+				// lacks the required scope.
+				if !authPresented {
+					return nil, status.Errorf(codes.Unauthenticated,
+						"request %d requires scope %s", i, required)
+				}
+
+				return nil, status.Errorf(codes.PermissionDenied,
 					"request %d requires scope %s", i, required)
 			}
-
-			return nil, status.Errorf(codes.PermissionDenied,
-				"request %d requires scope %s", i, required)
 		}
 	}
 
 	if impl.logger.Enabled(logging.TraceLevel) {
-		impl.logger.Tracef("Apply request received with %d envelopes", len(req.GetEnvelopes()))
+		impl.logger.Tracef("Apply request received with %d requests", len(batch.GetRequests()))
 	}
 
-	logs, err := impl.ctrl.Apply(ctx, req.GetEnvelopes()...)
+	logs, err := impl.ctrl.Apply(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -174,13 +184,11 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	}
 
 	impl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
-		metric.WithAttributes(attribute.Int("batch_size", len(req.GetEnvelopes()))))
+		metric.WithAttributes(attribute.Int("batch_size", len(batch.GetRequests()))))
 
 	if skipResponse {
 		for _, log := range logs {
 			log.Payload = nil
-			log.Idempotency = nil
-			log.Signature = nil
 			log.Receipt = ""
 			log.ResponseSignature = nil
 		}
@@ -1194,7 +1202,7 @@ func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, re
 		return nil, err
 	}
 
-	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
+	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_CreatePreparedQuery{
 			CreatePreparedQuery: req,
 		},
@@ -1211,7 +1219,7 @@ func (impl *BucketServiceServerImpl) UpdatePreparedQuery(ctx context.Context, re
 		return nil, err
 	}
 
-	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
+	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: req,
 		},
@@ -1228,7 +1236,7 @@ func (impl *BucketServiceServerImpl) DeletePreparedQuery(ctx context.Context, re
 		return nil, err
 	}
 
-	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
+	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_DeletePreparedQuery{
 			DeletePreparedQuery: req,
 		},

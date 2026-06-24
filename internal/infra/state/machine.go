@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -868,8 +869,12 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 	// signature orders with no attribute needs) must still restore the
 	// IdempotencyStore, otherwise at-most-once breaks on replay.
 	for _, ik := range executionPlan.GetIdempotencyKeys() {
-		if ik.GetValue() != nil && ik.GetValue().GetLogSequence() > 0 {
-			fsm.Registry.Idempotency.Put(ik.GetKey(), ik.GetValue())
+		// Install any value carrying an outcome — a committed log sequence or a
+		// frozen business failure. Both must restore so a duplicate replays its
+		// stored outcome instead of re-executing.
+		v := ik.GetValue()
+		if v != nil && (v.GetFirstLogSequence() > 0 || v.GetFailure() != nil) {
+			fsm.Registry.Idempotency.Put(ik.GetKey(), v)
 		}
 	}
 
@@ -1216,8 +1221,70 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		})
 	}
 
-	// Process the proposal — handlers see only the gated Scope facade.
-	logs, err := fsm.processor.ProcessOrders(orders, scopeFactory)
+	// Per-proposal idempotency: the whole atomic batch dedups under one key
+	// (proposal.Idempotency), computed over the ordered orders so a retry of the
+	// SAME batch replays while a differently-composed batch re-executes. A
+	// duplicate replays the first outcome — reference logs for a success, the
+	// original error for a frozen failure — instead of re-processing.
+	idempotencyKey := proposal.GetIdempotency().GetKey()
+
+	var (
+		proposalHash []byte
+		logs         []*raftcmdpb.CreatedLogOrReference
+		err          domain.Describable
+		replayed     bool
+	)
+
+	if idempotencyKey != "" {
+		proposalHash = fsm.processor.HashProposal(proposal)
+
+		if stored, ok := fsm.Registry.Idempotency.Get(idempotencyKey); ok &&
+			!fsm.Registry.Idempotency.IsExpired(stored, effectiveDate.GetData()) {
+			switch {
+			case !bytes.Equal(proposalHash, stored.GetHash()):
+				err = &domain.ErrIdempotencyKeyConflict{Key: idempotencyKey}
+			case stored.GetFailure() != nil:
+				replayed = true
+				fr := stored.GetFailure()
+				err = &domain.ReplayedFailure{
+					ErrReason: domain.ReasonString(fr.GetReason()),
+					Msg:       fr.GetMessage(),
+					Meta:      fr.GetMetadata(),
+				}
+			default:
+				replayed = true
+				logs = make([]*raftcmdpb.CreatedLogOrReference, stored.GetLogCount())
+				for i := range logs {
+					logs[i] = &raftcmdpb.CreatedLogOrReference{
+						Type: &raftcmdpb.CreatedLogOrReference_ReferenceSequence{
+							ReferenceSequence: stored.GetFirstLogSequence() + uint64(i),
+						},
+					}
+				}
+			}
+		}
+	}
+
+	// A replay of a recorded outcome returns it verbatim — no pipeline, no new
+	// log, no audit entry. The original apply already committed its logs and
+	// wrote its audit entry; re-recording would stretch the hash chain and
+	// duplicate the order bytes on every retry. A conflict (same key, different
+	// orders) is a fresh rejection, not a replay, so it still audits below.
+	if replayed {
+		if err != nil {
+			result.Error = &domain.BusinessError{Err: err}
+		} else {
+			result.Logs = logs
+		}
+
+		return result, nil
+	}
+
+	// Process the proposal unless the dedup gate rejected it as a conflict
+	// (err set). Handlers see only the gated Scope facade.
+	if err == nil {
+		logs, err = fsm.processor.ProcessOrders(orders, scopeFactory)
+	}
 
 	// Pre-marshal each order once. The same byte slices are (a) bound in
 	// the audit hash chain via buildPerItemPayload and (b) persisted to
@@ -1262,6 +1329,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		entry.Ledgers = extractLedgers(orders)
 		entry.HashVersion = uint32(fsm.State.HashGenerator.Algorithm())
 		entry.CallerSnapshot = proposal.GetCallerSnapshot()
+		// Batch identity, bound into the hash chain. Shared (not cloned) like
+		// CallerSnapshot: ResetVT only nils these pointers, never returns the
+		// proposal's sub-messages to a pool.
+		entry.Idempotency = proposal.GetIdempotency()
+		entry.Signature = proposal.GetSignature()
 
 		items := buildAuditItems(serializedOrders, logs)
 
@@ -1329,6 +1401,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, appendErr
 		}
 
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData()); recErr != nil {
+			return nil, recErr
+		}
+
 		result.Error = &domain.BusinessError{Err: err}
 
 		return result, nil
@@ -1379,6 +1455,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, appendErr
 		}
 
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData()); recErr != nil {
+			return nil, recErr
+		}
+
 		result.Error = &domain.BusinessError{Err: err}
 
 		return result, nil
@@ -1404,6 +1484,24 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			createdLogs = append(createdLogs, created)
 		}
+	}
+
+	// Freeze the proposal's success outcome under its idempotency key so a
+	// duplicate replays the same committed logs instead of re-executing.
+	// Sequences are contiguous, so (first, count) reconstructs every reference.
+	if idempotencyKey != "" && len(createdLogs) > 0 {
+		value := &commonpb.IdempotencyKeyValue{
+			FirstLogSequence: createdLogs[0].GetSequence(),
+			LogCount:         uint32(len(createdLogs)),
+			Hash:             proposalHash,
+			CreatedAt:        effectiveDate.GetData(),
+		}
+
+		if saveErr := saveIdempotencyKey(batch, idempotencyKey, value); saveErr != nil {
+			return nil, fmt.Errorf("storing idempotency outcome: %w", saveErr)
+		}
+
+		fsm.Registry.Idempotency.Put(idempotencyKey, value)
 	}
 
 	// Update bloom filters with newly written keys (before batch.Commit).
@@ -1545,6 +1643,61 @@ func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 	}
 
 	return false
+}
+
+// recordIdempotencyFailure freezes a definitive business rejection against the
+// proposal's idempotency key, so a duplicate (e.g. a retry across a leadership
+// change) replays the same error instead of re-executing in a changed context.
+// Written directly to the idempotency store + batch because the proposal's
+// WriteSet is rolled back on failure; the batch is still committed (it carries
+// the audit-failure entry). createdAt feeds the TTL time index so frozen
+// failures expire like successes. proposalHash is the batch dedup hash, so a
+// replay matches.
+//
+// No-op when there is no key, for non-business / retryable failures, for an
+// already-replayed failure (re-recording would reset its TTL), and over a live
+// (non-expired) prior outcome.
+func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string, proposalHash []byte, bizErr error, createdAt uint64) error {
+	if key == "" {
+		return nil
+	}
+
+	var replayed *domain.ReplayedFailure
+	if errors.As(bizErr, &replayed) {
+		return nil
+	}
+
+	var d domain.Describable
+	if !errors.As(bizErr, &d) || !domain.IsFreezableFailure(domain.Kind(d)) {
+		return nil
+	}
+
+	// Skip only when a live (non-expired) outcome already exists — never
+	// overwrite a real result (a conflict holds the real outcome). An expired
+	// entry not yet reclaimed by eviction counts as absent here, matching the
+	// dedup gate, so a post-expiration failure still freezes.
+	if existing, exists := fsm.Registry.Idempotency.Get(key); exists &&
+		!fsm.Registry.Idempotency.IsExpired(existing, createdAt) {
+		return nil
+	}
+
+	value := &commonpb.IdempotencyKeyValue{
+		Hash:      proposalHash,
+		CreatedAt: createdAt,
+		Failure: &commonpb.IdempotencyFailure{
+			Reason:   domain.ReasonCode(d.Reason()),
+			Message:  d.Error(),
+			Metadata: d.Metadata(),
+		},
+	}
+
+	if err := saveIdempotencyKey(batch, key, value); err != nil {
+		return err
+	}
+
+	fsm.Registry.Idempotency.Put(key, value)
+
+	return nil
 }
 
 // Close stops background work owned by the Machine (e.g. bloom populate).

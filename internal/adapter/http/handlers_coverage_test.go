@@ -313,8 +313,8 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			capturedRequest = requests[0].GetUnsigned()
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			capturedRequest = req.GetUnsigned().GetRequests()[0]
 
 			return []*commonpb.Log{
 				{
@@ -366,7 +366,7 @@ func TestHandleRevertTransaction_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, errors.New("internal error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -408,7 +408,7 @@ func TestHandleSaveAccountMetadata_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -468,7 +468,7 @@ func TestHandleSaveTransactionMetadata_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -674,7 +674,7 @@ func TestHandleSetMetadataType_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -718,7 +718,7 @@ func TestHandleRemoveMetadataType_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -843,10 +843,11 @@ func TestConvertBulkElementToRequest(t *testing.T) {
 		},
 	}
 
+	// convertBulkElementToRequest only builds the Request; the element's
+	// idempotency key is collected separately and applied at the batch level.
 	req := convertBulkElementToRequest("ledger1", elem)
 
 	require.NotNil(t, req)
-	require.Equal(t, "ik-123", req.GetIdempotencyKey())
 	applyType, ok := req.GetType().(*servicepb.Request_Apply)
 	require.True(t, ok)
 	applyReq := applyType.Apply
@@ -867,9 +868,10 @@ func TestRunBulk_Atomic(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			logs := make([]*commonpb.Log, len(requests))
-			for i := range requests {
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			reqs := req.GetUnsigned().GetRequests()
+			logs := make([]*commonpb.Log, len(reqs))
+			for i := range reqs {
 				logs[i] = &commonpb.Log{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_Apply{
@@ -904,7 +906,7 @@ func TestRunBulk_Sequential(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -1032,9 +1034,10 @@ func TestHandleBulk_WithAtomicFlag(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			logs := make([]*commonpb.Log, len(requests))
-			for i := range requests {
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			reqs := req.GetUnsigned().GetRequests()
+			logs := make([]*commonpb.Log, len(reqs))
+			for i := range reqs {
 				logs[i] = &commonpb.Log{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_Apply{
@@ -1076,7 +1079,7 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 	callCount := 0
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			callCount++
 			if callCount == 1 {
 				return nil, errors.New("first fails")
@@ -1164,7 +1167,7 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -1432,12 +1435,12 @@ func TestChiLogEntry_Panic_WithSpan(t *testing.T) {
 func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 	t.Parallel()
 
-	var capturedRequest *servicepb.Request
+	var capturedBatch *servicepb.ApplyBatch
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			capturedRequest = requests[0].GetUnsigned()
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			capturedBatch = req.GetUnsigned()
 
 			return []*commonpb.Log{
 				{
@@ -1462,8 +1465,8 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 	srv.handleCreateLedger(w, r)
 
 	require.Equal(t, http.StatusCreated, w.Code)
-	require.NotNil(t, capturedRequest)
-	require.Equal(t, "create-ledger-ik-123", capturedRequest.GetIdempotencyKey())
+	require.NotNil(t, capturedBatch)
+	require.Equal(t, "create-ledger-ik-123", capturedBatch.GetIdempotencyKey())
 }
 
 // --------------------------------------------------------------------------
@@ -1473,12 +1476,12 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 func TestHandleDeleteLedger_IdempotencyKeyPropagated(t *testing.T) {
 	t.Parallel()
 
-	var capturedRequest *servicepb.Request
+	var capturedBatch *servicepb.ApplyBatch
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, requests ...*servicepb.Envelope) ([]*commonpb.Log, error) {
-			capturedRequest = requests[0].GetUnsigned()
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			capturedBatch = req.GetUnsigned()
 
 			return []*commonpb.Log{
 				{
@@ -1499,6 +1502,6 @@ func TestHandleDeleteLedger_IdempotencyKeyPropagated(t *testing.T) {
 	srv.handleDeleteLedger(w, r)
 
 	require.Equal(t, http.StatusNoContent, w.Code)
-	require.NotNil(t, capturedRequest)
-	require.Equal(t, "delete-ledger-ik-456", capturedRequest.GetIdempotencyKey())
+	require.NotNil(t, capturedBatch)
+	require.Equal(t, "delete-ledger-ik-456", capturedBatch.GetIdempotencyKey())
 }

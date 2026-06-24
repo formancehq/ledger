@@ -109,7 +109,7 @@ func runConfigurationApply(cmd *cobra.Command, args []string) error {
 		requests[i] = a.Request
 	}
 
-	envelopes, err := cmdutil.BuildEnvelopes(cmd, requests)
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
 	if err != nil {
 		return cmdutil.Displayed(fmt.Errorf("failed to sign requests: %w", err))
 	}
@@ -125,7 +125,7 @@ func runConfigurationApply(cmd *cobra.Command, args []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Applying %d changes to %s...", len(actions), ledgerName))
 
-	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: envelopes})
+	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		spinner.Fail("Failed to apply configuration")
 

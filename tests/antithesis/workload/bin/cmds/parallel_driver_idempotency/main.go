@@ -14,23 +14,20 @@ func main() {
 		postings := internal.RandomPostings()
 		idemKey := fmt.Sprintf("idem-%d", internal.Rand().Uint64())
 
-		req := &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				IdempotencyKey: idemKey,
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings:      postings,
-								Force:         true,
-								ExpandVolumes: true,
-							},
-						}},
-					},
+		req := servicepb.UnsignedApplyRequest(idemKey, &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings:      postings,
+							Force:         true,
+							ExpandVolumes: true,
+						},
+					}},
 				},
-			}),
-		}
+			},
+		})
 
 		details := internal.Details{"ledger": ledger, "idempotencyKey": idemKey}
 

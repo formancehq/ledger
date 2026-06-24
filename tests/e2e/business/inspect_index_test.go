@@ -23,60 +23,48 @@ var _ = Describe("InspectIndex", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger with a string metadata field + index.
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "category",
-							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "category",
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				},
+			})))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateAccountMetadataIndexAction(ledgerName, "category"),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, "category")))
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")).To(Succeed())
 
 			// Create accounts with varied metadata values.
 			// 3 premium, 2 basic, 1 enterprise, 1 without metadata.
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
-					}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "user2", big.NewInt(100), "USD"),
-					}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "user3", big.NewInt(100), "USD"),
-					}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "user4", big.NewInt(100), "USD"),
-					}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "user5", big.NewInt(100), "USD"),
-					}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "user6", big.NewInt(100), "USD"),
-					}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "nocat", big.NewInt(100), "USD"),
-					}, nil),
-					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"category": "premium"}),
-					actions.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"category": "premium"}),
-					actions.SaveAccountMetadataAction(ledgerName, "user3", map[string]string{"category": "premium"}),
-					actions.SaveAccountMetadataAction(ledgerName, "user4", map[string]string{"category": "basic"}),
-					actions.SaveAccountMetadataAction(ledgerName, "user5", map[string]string{"category": "basic"}),
-					actions.SaveAccountMetadataAction(ledgerName, "user6", map[string]string{"category": "enterprise"}),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
+			}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "user2", big.NewInt(100), "USD"),
+				}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "user3", big.NewInt(100), "USD"),
+				}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "user4", big.NewInt(100), "USD"),
+				}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "user5", big.NewInt(100), "USD"),
+				}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "user6", big.NewInt(100), "USD"),
+				}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "nocat", big.NewInt(100), "USD"),
+				}, nil),
+				actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"category": "premium"}),
+				actions.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"category": "premium"}),
+				actions.SaveAccountMetadataAction(ledgerName, "user3", map[string]string{"category": "premium"}),
+				actions.SaveAccountMetadataAction(ledgerName, "user4", map[string]string{"category": "basic"}),
+				actions.SaveAccountMetadataAction(ledgerName, "user5", map[string]string{"category": "basic"}),
+				actions.SaveAccountMetadataAction(ledgerName, "user6", map[string]string{"category": "enterprise"})))
 			Expect(err).To(Succeed())
 
 			// Wait for index to catch up.
@@ -187,17 +175,13 @@ var _ = Describe("InspectIndex", Ordered, func() {
 		const ledgerName = "inspect-idx-errors"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "indexed",
-							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "indexed",
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 

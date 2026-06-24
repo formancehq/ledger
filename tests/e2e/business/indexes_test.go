@@ -25,17 +25,13 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		BeforeAll(func() {
 			// Create ledger with schema but no indexes
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
-						{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "category",
-							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-						},
-					}),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "category",
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				},
+			})))
 			Expect(err).To(Succeed())
 		})
 
@@ -70,22 +66,14 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should succeed after creating index and data", func() {
 			// Create the metadata index, then add data (index builder only indexes forward)
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateAccountMetadataIndexAction(ledgerName, "category"),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, "category")))
 			Expect(err).To(Succeed())
 
 			// Create data AFTER the index exists
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
-					}, nil),
-					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"category": "premium"}),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+			}, nil),
+				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"category": "premium"})))
 			Expect(err).To(Succeed())
 
 			// Wait for the index builder to catch up and query to succeed
@@ -114,11 +102,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should reject queries after dropping the index", func() {
 			// Drop the metadata index
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.DropAccountMetadataIndexAction(ledgerName, "category"),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DropAccountMetadataIndexAction(ledgerName, "category")))
 			Expect(err).To(Succeed())
 
 			// Query should fail again
@@ -143,32 +127,22 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		const ledgerName = "idx-address"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create transactions
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
-					}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
-					}, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+			}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
+				}, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should create and use address index", func() {
 			// Create address index (any role)
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)))
 			Expect(err).To(Succeed())
 
 			// Verify GetLedger shows the index
@@ -180,12 +154,8 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should create source and destination indexes", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_SOURCE),
-					actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_SOURCE),
+				actions.CreateAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -197,11 +167,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should drop address index", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.DropAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DropAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -222,9 +188,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		const ledgerName = "idx-builtin-ref"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -253,26 +217,18 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should create reference index and query transactions by reference", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
-					}, nil), "pay-001"),
-					actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
-					}, nil), "pay-002"),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
-					}, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+			}, nil), "pay-001"),
+				actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
+				}, nil), "pay-002"),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
+				}, nil)))
 			Expect(err).To(Succeed())
 
 			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)).To(Succeed())
@@ -297,11 +253,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should reject reference filter queries after dropping the index", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.DropBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DropBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -331,9 +283,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			ts2 = time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
 			ts3 = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -363,20 +313,12 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should create timestamp index and query transactions by time range", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a", big.NewInt(10), "USD")}, nil), ts1),
-					actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "b", big.NewInt(20), "USD")}, nil), ts2),
-					actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "c", big.NewInt(30), "USD")}, nil), ts3),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a", big.NewInt(10), "USD")}, nil), ts1),
+				actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "b", big.NewInt(20), "USD")}, nil), ts2),
+				actions.WithTimestamp(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "c", big.NewInt(30), "USD")}, nil), ts3)))
 			Expect(err).To(Succeed())
 
 			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).To(Succeed())
@@ -431,9 +373,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		const ledgerName = "idx-builtin-iat"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -467,21 +407,13 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			// Record time before creating transactions.
 			beforeCreate := time.Now()
 
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)))
 			Expect(err).To(Succeed())
 
 			// Create transactions — their inserted_at will be ~now (wall clock).
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a", big.NewInt(10), "USD")}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "b", big.NewInt(20), "USD")}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "c", big.NewInt(30), "USD")}, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a", big.NewInt(10), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "b", big.NewInt(20), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "c", big.NewInt(30), "USD")}, nil)))
 			Expect(err).To(Succeed())
 
 			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)).To(Succeed())
@@ -544,11 +476,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 
 		It("Should reject inserted_at filter queries after dropping the index", func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.DropBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
-				),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DropBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -572,21 +500,15 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		const ledgerName = "idx-id-filter"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create 5 transactions — IDs will be 1..5
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a1", big.NewInt(10), "USD")}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a2", big.NewInt(20), "USD")}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a3", big.NewInt(30), "USD")}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a4", big.NewInt(40), "USD")}, nil),
-					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a5", big.NewInt(50), "USD")}, nil),
-				),
-			})
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a1", big.NewInt(10), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a2", big.NewInt(20), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a3", big.NewInt(30), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a4", big.NewInt(40), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "a5", big.NewInt(50), "USD")}, nil)))
 			Expect(err).To(Succeed())
 		})
 

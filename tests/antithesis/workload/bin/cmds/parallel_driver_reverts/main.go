@@ -10,22 +10,20 @@ import (
 
 func main() {
 	internal.RunDriver("parallel_driver_reverts", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
-		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings:      internal.RandomPostings(),
-								Force:         true,
-								ExpandVolumes: true,
-							},
-						}},
-					},
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings:      internal.RandomPostings(),
+							Force:         true,
+							ExpandVolumes: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create a transaction for revert", internal.Details{"ledger": ledger, "error": err})
 		if err != nil {
@@ -40,22 +38,20 @@ func main() {
 		txID := createdTx.Transaction.Id
 		details := internal.Details{"ledger": ledger, "txId": txID}
 
-		revertResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
-							RevertTransaction: &servicepb.RevertTransactionPayload{
-								TransactionId: txID,
-								Force:         true,
-								ExpandVolumes: true,
-							},
-						}},
-					},
+		revertResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
+						RevertTransaction: &servicepb.RevertTransactionPayload{
+							TransactionId: txID,
+							Force:         true,
+							ExpandVolumes: true,
+						},
+					}},
 				},
-			}),
-		})
+			},
+		}))
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to revert a transaction", details.With(internal.Details{"error": err}))
 		if err != nil {

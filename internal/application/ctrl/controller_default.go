@@ -84,7 +84,7 @@ var (
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
 type Admission interface {
-	Admit(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error)
+	Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error)
 	Barrier(ctx context.Context) (uint64, error)
 }
 
@@ -1310,21 +1310,33 @@ func (ctrl *DefaultController) Barrier(ctx context.Context) (uint64, error) {
 // verifies signatures (for signed envelopes) and unwraps them into Requests.
 // The FSM is responsible for interpreting orders, validating, and applying changes.
 // Idempotency is handled in the FSM to ensure consistency.
-func (ctrl *DefaultController) Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+func (ctrl *DefaultController) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+	// Non-authoritative peek for metrics and the empty-batch guard. A signed
+	// payload is opaque until admission verifies its signature over the raw
+	// bytes, so a peek failure here (e.g. a tampered payload) must defer to
+	// admission — which rejects a bad signature with PermissionDenied — rather
+	// than reject early. Only guard an empty batch when the peek succeeded.
+	peeked, peekErr := servicepb.PeekBatch(req)
+
+	batchSize := 0
+	if peekErr == nil {
+		batchSize = len(peeked.GetRequests())
+	}
+
 	ctx, span := tracer.Start(ctx, "ctrl.apply",
-		trace.WithAttributes(attribute.Int("request_count", len(envelopes))))
+		trace.WithAttributes(attribute.Int("request_count", batchSize)))
 	defer span.End()
 
 	start := time.Now()
 
-	if len(envelopes) == 0 {
-		return nil, errors.New("at least one envelope is required")
+	if peekErr == nil && batchSize == 0 {
+		return nil, errors.New("at least one request is required")
 	}
 
-	logs, err := ctrl.admission.Admit(ctx, envelopes...)
+	logs, err := ctrl.admission.Admit(ctx, req)
 
 	ctrl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
-		metric.WithAttributes(attribute.Int("batch_size", len(envelopes))))
+		metric.WithAttributes(attribute.Int("batch_size", batchSize)))
 
 	if err != nil {
 		return nil, fmt.Errorf("applying raft requests: %w", err)

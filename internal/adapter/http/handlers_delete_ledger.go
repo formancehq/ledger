@@ -13,8 +13,7 @@ func (s *Server) handleDeleteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := s.applyUnsigned(r.Context(), &servicepb.Request{
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+	_, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_DeleteLedger{
 			DeleteLedger: &servicepb.DeleteLedgerRequest{
 				Name: ledgerName,

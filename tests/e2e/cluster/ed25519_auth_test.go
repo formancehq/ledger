@@ -218,11 +218,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("ed25519-auth-test-ledger", nil),
-				),
-			})
+			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("ed25519-auth-test-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -233,11 +229,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("ed25519-auth-test-ledger-2", nil),
-				),
-			})
+			_, err = client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("ed25519-auth-test-ledger-2", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -258,13 +250,9 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateTransactionAction("ed25519-auth-test-ledger", []*commonpb.Posting{
-						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
-					}, nil, nil),
-				),
-			})
+			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("ed25519-auth-test-ledger", []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+			}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -428,11 +416,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			_, err = client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("scope-test-ledger", nil),
-				),
-			})
+			_, err = client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("scope-test-ledger", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -631,11 +615,7 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Envelopes: servicepb.UnsignedEnvelopes(
-					actions.CreateLedgerAction("god-mode-test-ledger", nil),
-				),
-			})
+			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("god-mode-test-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
