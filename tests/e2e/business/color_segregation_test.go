@@ -21,24 +21,22 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 	const ledgerName = "color-segregation"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateLedgerAction(ledgerName, nil),
+		))
 		Expect(err).To(Succeed())
 
 		// Seed alice with three segregated buckets on USD/2:
 		//   uncolored ""  : 100
 		//   GRANTS         :  50
 		//   OPS            :  25
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", ""),
-					actions.NewColoredPosting("world", "alice", big.NewInt(50), "USD/2", "GRANTS"),
-					actions.NewColoredPosting("world", "alice", big.NewInt(25), "USD/2", "OPS"),
-				}, nil, nil),
-			),
-		})
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", ""),
+				actions.NewColoredPosting("world", "alice", big.NewInt(50), "USD/2", "GRANTS"),
+				actions.NewColoredPosting("world", "alice", big.NewInt(25), "USD/2", "OPS"),
+			}, nil, nil),
+		))
 		Expect(err).To(Succeed())
 	})
 
@@ -89,38 +87,32 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 
 	It("Should reject a draw from a color that has insufficient funds", func() {
 		// alice's OPS bucket has 25; ask for 100 OPS → MissingFunds.
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewColoredPosting("alice", "bob", big.NewInt(100), "USD/2", "OPS"),
-				}, nil, nil),
-			),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewColoredPosting("alice", "bob", big.NewInt(100), "USD/2", "OPS"),
+			}, nil, nil),
+		))
 		Expect(err).NotTo(BeNil(), "expected color isolation to refuse spending more than the bucket holds")
 	})
 
 	It("Should refuse drawing colored funds from the uncolored bucket", func() {
 		// alice's uncolored bucket has 100; drawing 100 from "" should succeed.
 		// But drawing 100 from "GRANTS" must NOT dip into the 100 uncolored.
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewColoredPosting("alice", "bob", big.NewInt(100), "USD/2", "GRANTS"),
-				}, nil, nil),
-			),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewColoredPosting("alice", "bob", big.NewInt(100), "USD/2", "GRANTS"),
+			}, nil, nil),
+		))
 		Expect(err).NotTo(BeNil(), "uncolored funds must not satisfy a GRANTS-colored draw")
 	})
 
 	It("Should drain a color independently of the others", func() {
 		// Spend exactly the GRANTS bucket (50) → success.
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Envelopes: servicepb.UnsignedEnvelopes(
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewColoredPosting("alice", "bob", big.NewInt(50), "USD/2", "GRANTS"),
-				}, nil, nil),
-			),
-		})
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewColoredPosting("alice", "bob", big.NewInt(50), "USD/2", "GRANTS"),
+			}, nil, nil),
+		))
 		Expect(err).To(Succeed())
 
 		Eventually(func(g Gomega) {
