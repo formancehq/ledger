@@ -246,6 +246,25 @@ func hardcodedAuditString(cond *commonpb.AuditCondition, field string) (string, 
 	return sc.GetHardcoded(), nil
 }
 
+// hardcodedAuditBool extracts the hardcoded value of cond's BoolCondition.
+// Like hardcodedAuditString, it rejects a missing condition and any
+// non-hardcoded value (a $param, or an unset oneof): audit filters are
+// evaluated at scan time with no parameter-resolution context, so a Param
+// would otherwise read as GetHardcoded() == false and silently match against
+// false instead of returning InvalidArgument.
+func hardcodedAuditBool(cond *commonpb.AuditCondition) (bool, error) {
+	bc := cond.GetBoolCond()
+	if bc == nil {
+		return false, domain.NewFilterCompilationError("audit field %v requires a bool condition", cond.GetField())
+	}
+	hc, ok := bc.GetValue().(*commonpb.BoolCondition_Hardcoded)
+	if !ok {
+		return false, domain.NewFilterCompilationError("audit field %v does not support parameterized conditions", cond.GetField())
+	}
+
+	return hc.Hardcoded, nil
+}
+
 // outcomePredicate matches a string condition whose value is "success" or
 // "failure".
 func outcomePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error) {
@@ -277,11 +296,10 @@ func stringFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.Audit
 }
 
 func boolFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEntry) bool) (AuditPredicate, error) {
-	bc := cond.GetBoolCond()
-	if bc == nil {
-		return nil, domain.NewFilterCompilationError("audit field %v requires a bool condition", cond.GetField())
+	want, err := hardcodedAuditBool(cond)
+	if err != nil {
+		return nil, err
 	}
-	want := bc.GetHardcoded()
 
 	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) (bool, error) {
 		return get(e) == want, nil

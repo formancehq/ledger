@@ -37,6 +37,10 @@ func strParam(p string) *commonpb.StringCondition {
 	return &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: p}}
 }
 
+func boolParam(p string) *commonpb.BoolCondition {
+	return &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Param{Param: p}}
+}
+
 // mustMatch runs pred and fails the test on a predicate error, returning the
 // match result. Predicates only error on per-entry data faults (e.g. a corrupt
 // audit order), which the dedicated tests assert explicitly.
@@ -165,6 +169,8 @@ func TestCompileAuditPredicate_Rejections(t *testing.T) {
 		{"parameterized string field", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, strParam("user"))},
 		{"parameterized outcome", auditFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, strParam("o"))},
 		{"parameterized order_type", auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, strParam("t"))},
+		{"parameterized caller.god", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_GOD, boolParam("g"))},
+		{"unset bool oneof caller.god", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_GOD, &commonpb.BoolCondition{})},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

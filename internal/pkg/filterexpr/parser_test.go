@@ -1137,3 +1137,33 @@ func TestParse_Audit(t *testing.T) {
 		}
 	})
 }
+
+// TestParse_AuditNotReservedAsBareValue guards against reserving "audit" as a
+// global keyword. The audit condition leader is matched as a grammar literal
+// (which participle matches against an Ident token), so "audit" must stay usable
+// as a bare value in metadata/address filters, e.g. metadata[type] == audit.
+func TestParse_AuditNotReservedAsBareValue(t *testing.T) {
+	t.Parallel()
+
+	t.Run("metadata bare audit value", func(t *testing.T) {
+		t.Parallel()
+		f, err := Parse(`metadata[type] == audit`)
+		require.NoError(t, err)
+		require.Equal(t, "audit", f.GetField().GetStringCond().GetHardcoded())
+	})
+
+	t.Run("address bare audit value", func(t *testing.T) {
+		t.Parallel()
+		f, err := Parse(`address == audit`)
+		require.NoError(t, err)
+		require.Equal(t, "audit", f.GetAddress().GetHardcodedExact())
+	})
+
+	t.Run("audit condition still parses", func(t *testing.T) {
+		t.Parallel()
+		f, err := Parse(`audit[seq] == 1`)
+		require.NoError(t, err)
+		require.Equal(t, commonpb.AuditField_AUDIT_FIELD_SEQUENCE, f.GetAudit().GetField())
+		require.Equal(t, uint64(1), f.GetAudit().GetUintCond().GetMin())
+	})
+}
