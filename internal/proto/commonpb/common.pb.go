@@ -8752,8 +8752,14 @@ func (x *AccountHasAssetCondition) GetPrecision() uint32 {
 }
 
 // AuditCondition filters audit entries by a single audit field. Mirrors
-// BuiltinUintCondition's (field-enum x condition) shape. Only valid under
-// QUERY_TARGET_AUDIT; rejected with InvalidArgument on any other target.
+// BuiltinUintCondition's (field-enum x condition) shape. Enforcement is
+// structural, not via QueryTarget: the audit predicate compiler
+// (query.CompileAuditPredicate) accepts only Audit/And/Or/Not nodes and
+// rejects every other condition with InvalidArgument, while the index
+// compiler (query.Compile, used for accounts/transactions/logs) never lists
+// QueryFilter_Audit in its switch and so rejects it there. QUERY_TARGET_AUDIT
+// exists for parity with the other targets (e.g. prepared-query metadata); the
+// scan-time audit path does not dispatch on it.
 type AuditCondition struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Field AuditField             `protobuf:"varint,1,opt,name=field,proto3,enum=common.AuditField" json:"field,omitempty"`

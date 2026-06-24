@@ -2221,6 +2221,8 @@ The `--filter` flag accepts a boolean expression using `audit[field]` conditions
 
 Multiple conditions can be combined with `and`. Unsupported conditions are rejected with gRPC `InvalidArgument`.
 
+> **`order_type` values vs. displayed labels:** `order_type` matches the proposal's *outer* order payload variant (`apply`, `create_ledger`, `delete_ledger`, `save_numscript`, `register_signing_key`, `seal_chapter`, …). This differs from the per-order label printed by `--expand`, which shows the *inner* operation (`CreateTransaction`, `RevertTransaction`, …). All ledger transaction operations are `apply` orders, so to match transactions use `audit[order_type] == apply` (not `== create_transaction`).
+
 **Examples:**
 
 ```bash

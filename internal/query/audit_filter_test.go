@@ -116,6 +116,25 @@ func TestCompileAuditPredicate_Composition(t *testing.T) {
 	predNot, _, err := CompileAuditPredicate(not)
 	require.NoError(t, err)
 	require.True(t, predNot(entry, nil))
+
+	// Or is the lowered form of `audit[ledger] in (other, main)`: matches when
+	// any branch matches.
+	or := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{
+		auditFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, strEq("other")),
+		auditFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, strEq("main")),
+	}}}}
+	predOr, _, err := CompileAuditPredicate(or)
+	require.NoError(t, err)
+	require.True(t, predOr(entry, nil))
+
+	// Or with no matching branch is false.
+	orMiss := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{
+		auditFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, strEq("other")),
+		auditFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, strEq("nope")),
+	}}}}
+	predOrMiss, _, err := CompileAuditPredicate(orMiss)
+	require.NoError(t, err)
+	require.False(t, predOrMiss(entry, nil))
 }
 
 func TestCompileAuditPredicate_Rejections(t *testing.T) {
