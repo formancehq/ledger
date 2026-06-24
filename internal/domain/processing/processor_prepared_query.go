@@ -42,6 +42,10 @@ func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQu
 		return nil, err
 	}
 
+	if err := domain.ValidatePreparedQueryTarget(q.GetTarget()); err != nil {
+		return nil, err
+	}
+
 	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}

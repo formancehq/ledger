@@ -36,24 +36,25 @@ const maxAccountAddressLength = 1024
 // Storage-safety validation sentinels. All are Describable so they flow
 // through BusinessError with Kind=KindValidation.
 var (
-	ErrLedgerNameContainsNullByte    = newValidationSentinel("ledger name must not contain null bytes")
-	ErrLedgerNameInvalidChar         = newValidationSentinel("ledger name must contain only printable ASCII (0x20–0x7E)")
-	ErrLedgerNameTooLong             = newValidationSentinel(fmt.Sprintf("ledger name exceeds maximum length of %d bytes", maxLedgerNameLength))
-	ErrNumscriptNameInvalidChar      = newValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
-	ErrNumscriptNameTooLong          = newValidationSentinel(fmt.Sprintf("numscript name exceeds maximum length of %d bytes", maxNumscriptNameLength))
-	ErrPreparedQueryNameRequired     = newValidationSentinel("prepared query name is required")
-	ErrPreparedQueryNameInvalidChar  = newValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
-	ErrPreparedQueryNameTooLong      = newValidationSentinel(fmt.Sprintf("prepared query name exceeds maximum length of %d bytes", maxPreparedQueryNameLength))
-	ErrPreparedQueryRequired         = newValidationSentinel("prepared query payload is required")
-	ErrSigningKeyIDRequired          = newValidationSentinel("signing key id is required")
-	ErrSigningKeyIDInvalidChar       = newValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
-	ErrSigningKeyIDTooLong           = newValidationSentinel(fmt.Sprintf("signing key id exceeds maximum length of %d bytes", maxSigningKeyIDLength))
-	ErrMetadataKeyContainsNullByte   = newValidationSentinel("metadata key must not contain null bytes")
-	ErrMetadataKeyEmpty              = newValidationSentinel("metadata key must not be empty")
-	ErrMetadataValueContainsNullByte = newValidationSentinel("metadata value must not contain null bytes")
-	ErrAccountAddressEmpty           = newValidationSentinel("account address must not be empty")
-	ErrAccountAddressInvalidChar     = newValidationSentinel("account address must contain only letters, digits, colons, underscores, and hyphens")
-	ErrAccountAddressTooLong         = newValidationSentinel(fmt.Sprintf("account address exceeds maximum length of %d bytes", maxAccountAddressLength))
+	ErrLedgerNameContainsNullByte          = newValidationSentinel("ledger name must not contain null bytes")
+	ErrLedgerNameInvalidChar               = newValidationSentinel("ledger name must contain only printable ASCII (0x20–0x7E)")
+	ErrLedgerNameTooLong                   = newValidationSentinel(fmt.Sprintf("ledger name exceeds maximum length of %d bytes", maxLedgerNameLength))
+	ErrNumscriptNameInvalidChar            = newValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
+	ErrNumscriptNameTooLong                = newValidationSentinel(fmt.Sprintf("numscript name exceeds maximum length of %d bytes", maxNumscriptNameLength))
+	ErrPreparedQueryNameRequired           = newValidationSentinel("prepared query name is required")
+	ErrPreparedQueryNameInvalidChar        = newValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
+	ErrPreparedQueryNameTooLong            = newValidationSentinel(fmt.Sprintf("prepared query name exceeds maximum length of %d bytes", maxPreparedQueryNameLength))
+	ErrPreparedQueryRequired               = newValidationSentinel("prepared query payload is required")
+	ErrPreparedQueryAuditTargetUnsupported = newValidationSentinel("prepared queries do not support the audit target; query the audit trail via ListAuditEntries")
+	ErrSigningKeyIDRequired                = newValidationSentinel("signing key id is required")
+	ErrSigningKeyIDInvalidChar             = newValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
+	ErrSigningKeyIDTooLong                 = newValidationSentinel(fmt.Sprintf("signing key id exceeds maximum length of %d bytes", maxSigningKeyIDLength))
+	ErrMetadataKeyContainsNullByte         = newValidationSentinel("metadata key must not contain null bytes")
+	ErrMetadataKeyEmpty                    = newValidationSentinel("metadata key must not be empty")
+	ErrMetadataValueContainsNullByte       = newValidationSentinel("metadata value must not contain null bytes")
+	ErrAccountAddressEmpty                 = newValidationSentinel("account address must not be empty")
+	ErrAccountAddressInvalidChar           = newValidationSentinel("account address must contain only letters, digits, colons, underscores, and hyphens")
+	ErrAccountAddressTooLong               = newValidationSentinel(fmt.Sprintf("account address exceeds maximum length of %d bytes", maxAccountAddressLength))
 
 	ErrAssetInvalid = newValidationSentinel("asset must match [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/[1-9][0-9]{0,2})? with precision in [1, 255]")
 )
@@ -139,6 +140,21 @@ func ValidatePreparedQueryName(name string) Describable {
 
 	if len(name) > maxPreparedQueryNameLength {
 		return ErrPreparedQueryNameTooLong
+	}
+
+	return nil
+}
+
+// ValidatePreparedQueryTarget rejects QUERY_TARGET_AUDIT. The audit trail is
+// served only through ListAuditEntries (which compiles QueryFilter_Audit via
+// query.CompileAuditPredicate); the prepared-query execution path does not
+// dispatch on the audit target, so an audit-targeted prepared query would
+// otherwise be admitted and silently return an empty cursor. The enum value
+// still exists for parity with the other targets (see misc/proto/common.proto),
+// so it is rejected at admission/FSM rather than removed from the wire.
+func ValidatePreparedQueryTarget(target commonpb.QueryTarget) Describable {
+	if target == commonpb.QueryTarget_QUERY_TARGET_AUDIT {
+		return ErrPreparedQueryAuditTargetUnsupported
 	}
 
 	return nil

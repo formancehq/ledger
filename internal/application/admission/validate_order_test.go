@@ -206,6 +206,39 @@ func TestValidateOrder_PreparedQueryPayload(t *testing.T) {
 				}},
 			},
 		},
+		{
+			name: "create rejects the audit target",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
+							Query: &commonpb.PreparedQuery{
+								Name:   "ok",
+								Target: commonpb.QueryTarget_QUERY_TARGET_AUDIT,
+							},
+						},
+					},
+				}},
+			},
+			wantErr: domain.ErrPreparedQueryAuditTargetUnsupported,
+		},
+		{
+			name: "create accepts a non-audit target",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
+							Query: &commonpb.PreparedQuery{
+								Name:   "ok",
+								Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+							},
+						},
+					},
+				}},
+			},
+		},
 	}
 
 	for _, tt := range tests {

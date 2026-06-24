@@ -214,8 +214,11 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 		if q == nil {
 			return domain.ErrPreparedQueryRequired
 		}
+		if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
+			return err
+		}
 
-		return domain.ValidatePreparedQueryName(q.GetName())
+		return domain.ValidatePreparedQueryTarget(q.GetTarget())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
 		return domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
