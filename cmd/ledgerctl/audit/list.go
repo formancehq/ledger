@@ -141,11 +141,21 @@ func buildAuditFilter(expr string, failuresOnly bool, ledger string) (*commonpb.
 		parts = append(parts, f)
 	}
 	if ledger != "" {
-		f, err := filterexpr.Parse(fmt.Sprintf("audit[ledger] == %q", ledger))
-		if err != nil {
-			return nil, err
-		}
-		parts = append(parts, f)
+		// Build the proto directly instead of round-tripping through the DSL
+		// string. The filterexpr String grammar has no escape handling, so a
+		// ledger name containing a quote or backslash (both valid per
+		// domain.ValidateLedgerName) cannot survive
+		// Parse(fmt.Sprintf("audit[ledger] == %q", ledger)).
+		parts = append(parts, &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+				Field: commonpb.AuditField_AUDIT_FIELD_LEDGER,
+				Condition: &commonpb.AuditCondition_StringCond{
+					StringCond: &commonpb.StringCondition{
+						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledger},
+					},
+				},
+			}},
+		})
 	}
 
 	switch len(parts) {
