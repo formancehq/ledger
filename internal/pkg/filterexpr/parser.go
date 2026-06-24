@@ -49,7 +49,7 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
 	{Name: "Comma", Pattern: `,`},
-	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|exists|true|false)\b`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|audit|exists|true|false)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
 })
@@ -182,6 +182,7 @@ func (p *Primary) toProto() (*commonpb.QueryFilter, error) {
 type Condition struct {
 	Asset    *AssetCond    `parser:"  @@"`
 	Metadata *MetadataCond `parser:"| @@"`
+	Audit    *AuditCond    `parser:"| @@"`
 	Address  *AddressCond  `parser:"| @@"`
 	Ledger   *LedgerCond   `parser:"| @@"`
 }
@@ -193,6 +194,10 @@ func (c *Condition) toProto() (*commonpb.QueryFilter, error) {
 
 	if c.Metadata != nil {
 		return c.Metadata.toProto()
+	}
+
+	if c.Audit != nil {
+		return c.Audit.toProto()
 	}
 
 	if c.Ledger != nil {
@@ -344,6 +349,171 @@ func (l *LedgerCond) toProto() (*commonpb.QueryFilter, error) {
 			Ledger: &commonpb.LedgerCondition{Cond: cond},
 		},
 	}, nil
+}
+
+// --- Audit conditions ---
+
+type AuditCond struct {
+	Field string      `parser:"'audit' '[' @(Ident | Keyword) ']'"`
+	Op    *MetadataOp `parser:"@@"`
+}
+
+type auditFieldKind int
+
+const (
+	auditKindUint auditFieldKind = iota
+	auditKindString
+	auditKindBool
+)
+
+type auditFieldSpec struct {
+	field commonpb.AuditField
+	kind  auditFieldKind
+}
+
+// auditFieldKeys maps the DSL field key to its enum + value kind.
+var auditFieldKeys = map[string]auditFieldSpec{
+	"seq":            {commonpb.AuditField_AUDIT_FIELD_SEQUENCE, auditKindUint},
+	"proposal_id":    {commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, auditKindUint},
+	"timestamp":      {commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindUint},
+	"log_seq":        {commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, auditKindUint},
+	"outcome":        {commonpb.AuditField_AUDIT_FIELD_OUTCOME, auditKindString},
+	"error_type":     {commonpb.AuditField_AUDIT_FIELD_ERROR_TYPE, auditKindString},
+	"caller.subject": {commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
+	"caller.scope":   {commonpb.AuditField_AUDIT_FIELD_CALLER_SCOPE, auditKindString},
+	"caller.god":     {commonpb.AuditField_AUDIT_FIELD_CALLER_GOD, auditKindBool},
+	"ledger":         {commonpb.AuditField_AUDIT_FIELD_LEDGER, auditKindString},
+	"order_type":     {commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, auditKindString},
+}
+
+func (a *AuditCond) toProto() (*commonpb.QueryFilter, error) {
+	spec, ok := auditFieldKeys[a.Field]
+	if !ok {
+		return nil, fmt.Errorf("unknown audit field %q", a.Field)
+	}
+	if a.Op == nil {
+		return nil, fmt.Errorf("audit field %q requires an operator", a.Field)
+	}
+	switch spec.kind {
+	case auditKindUint:
+		return a.uintToProto(spec.field)
+	case auditKindString:
+		return a.stringToProto(spec.field)
+	case auditKindBool:
+		return a.boolToProto(spec.field)
+	default:
+		return nil, fmt.Errorf("unhandled audit field kind for %q", a.Field)
+	}
+}
+
+func auditQF(field commonpb.AuditField, cond *commonpb.AuditCondition) *commonpb.QueryFilter {
+	cond.Field = field
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: cond}}
+}
+
+func auditNot(inner *commonpb.QueryFilter) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: inner}}}
+}
+
+func (a *AuditCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	op := a.Op
+	uc := &commonpb.UintCondition{}
+	parse := func(v *Value) (uint64, error) {
+		n, err := strconv.ParseUint(v.resolve(), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("audit field %q requires an unsigned integer, got %q", a.Field, v.resolve())
+		}
+		return n, nil
+	}
+	switch {
+	case op.Eq != nil:
+		n, err := parse(op.Eq)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min, uc.Max = &n, &n
+	case op.Ne != nil:
+		n, err := parse(op.Ne)
+		if err != nil {
+			return nil, err
+		}
+		min, max := n, n
+		eq := auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: &commonpb.UintCondition{Min: &min, Max: &max}}})
+		return auditNot(eq), nil
+	case op.Gt != nil:
+		n, err := parse(op.Gt)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min, uc.MinExclusive = &n, true
+	case op.Gte != nil:
+		n, err := parse(op.Gte)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min = &n
+	case op.Lt != nil:
+		n, err := parse(op.Lt)
+		if err != nil {
+			return nil, err
+		}
+		uc.Max, uc.MaxExclusive = &n, true
+	case op.Lte != nil:
+		n, err := parse(op.Lte)
+		if err != nil {
+			return nil, err
+		}
+		uc.Max = &n
+	case op.Between != nil:
+		lo, err := parse(op.Between.Low)
+		if err != nil {
+			return nil, err
+		}
+		hi, err := parse(op.Between.High)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min, uc.Max = &lo, &hi
+	default:
+		return nil, fmt.Errorf("audit field %q does not support this operator", a.Field)
+	}
+	return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: uc}}), nil
+}
+
+func (a *AuditCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	op := a.Op
+	mk := func(v *Value) *commonpb.QueryFilter {
+		return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_StringCond{
+			StringCond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: v.resolve()}},
+		}})
+	}
+	switch {
+	case op.Eq != nil:
+		return mk(op.Eq), nil
+	case op.Ne != nil:
+		return auditNot(mk(op.Ne)), nil
+	case len(op.In) > 0:
+		filters := make([]*commonpb.QueryFilter, len(op.In))
+		for i, v := range op.In {
+			filters[i] = mk(v)
+		}
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: filters}}}, nil
+	default:
+		return nil, fmt.Errorf("audit field %q only supports ==, != and in", a.Field)
+	}
+}
+
+func (a *AuditCond) boolToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	if a.Op.Eq == nil {
+		return nil, fmt.Errorf("audit field %q only supports ==", a.Field)
+	}
+	raw := a.Op.Eq.resolve()
+	if raw != "true" && raw != "false" {
+		return nil, fmt.Errorf("audit field %q requires true or false, got %q", a.Field, raw)
+	}
+	return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_BoolCond{
+		BoolCond: &commonpb.BoolCondition{Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: raw == "true"}},
+	}}), nil
 }
 
 // --- Address conditions ---

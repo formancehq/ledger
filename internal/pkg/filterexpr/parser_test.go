@@ -1055,3 +1055,71 @@ func TestParse_HasAssetKeywordsNotReserved(t *testing.T) {
 		assert.Equal(t, "has:wallet", f.GetAddress().GetHardcodedPrefix())
 	})
 }
+
+func TestParse_Audit(t *testing.T) {
+	t.Parallel()
+
+	t.Run("outcome string", func(t *testing.T) {
+		t.Parallel()
+		f, err := Parse(`audit[outcome] == failure`)
+		require.NoError(t, err)
+		ac := f.GetAudit()
+		require.NotNil(t, ac)
+		require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, ac.GetField())
+		require.Equal(t, "failure", ac.GetStringCond().GetHardcoded())
+	})
+
+	t.Run("uint range between", func(t *testing.T) {
+		t.Parallel()
+		f, err := Parse(`audit[proposal_id] between 100 and 200`)
+		require.NoError(t, err)
+		ac := f.GetAudit()
+		require.Equal(t, commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, ac.GetField())
+		require.Equal(t, uint64(100), ac.GetUintCond().GetMin())
+		require.Equal(t, uint64(200), ac.GetUintCond().GetMax())
+	})
+
+	t.Run("uint gte", func(t *testing.T) {
+		t.Parallel()
+		f, err := Parse(`audit[seq] >= 5000`)
+		require.NoError(t, err)
+		require.Equal(t, uint64(5000), f.GetAudit().GetUintCond().GetMin())
+		require.False(t, f.GetAudit().GetUintCond().GetMinExclusive())
+	})
+
+	t.Run("bool god", func(t *testing.T) {
+		t.Parallel()
+		f, err := Parse(`audit[caller.god] == true`)
+		require.NoError(t, err)
+		require.True(t, f.GetAudit().GetBoolCond().GetHardcoded())
+	})
+
+	t.Run("order_type in", func(t *testing.T) {
+		t.Parallel()
+		f, err := Parse(`audit[order_type] in (apply, save_numscript)`)
+		require.NoError(t, err)
+		require.NotNil(t, f.GetOr())
+		require.Len(t, f.GetOr().GetFilters(), 2)
+		require.Equal(t, "apply", f.GetOr().GetFilters()[0].GetAudit().GetStringCond().GetHardcoded())
+	})
+
+	t.Run("ne becomes not", func(t *testing.T) {
+		t.Parallel()
+		f, err := Parse(`audit[error_type] != "x"`)
+		require.NoError(t, err)
+		require.NotNil(t, f.GetNot())
+		require.Equal(t, "x", f.GetNot().GetFilter().GetAudit().GetStringCond().GetHardcoded())
+	})
+
+	t.Run("unknown field rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := Parse(`audit[bogus] == 1`)
+		require.Error(t, err)
+	})
+
+	t.Run("string range rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := Parse(`audit[outcome] >= 1`)
+		require.Error(t, err)
+	})
+}
