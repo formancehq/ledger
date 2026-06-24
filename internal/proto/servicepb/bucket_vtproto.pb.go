@@ -31,6 +31,7 @@ func (m *GetAccountRequest) CloneVT() *GetAccountRequest {
 	r.Ledger = m.Ledger
 	r.Address = m.Address
 	r.CheckpointId = m.CheckpointId
+	r.CollapseColors = m.CollapseColors
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2459,6 +2460,7 @@ func (m *NormalizedPosting) CloneVT() *NormalizedPosting {
 	r.SourcePattern = m.SourcePattern
 	r.DestinationPattern = m.DestinationPattern
 	r.Asset = m.Asset
+	r.Color = m.Color
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2858,6 +2860,7 @@ func (m *AggregateVolumesRequest) CloneVT() *AggregateVolumesRequest {
 	r.MinLogSequence = m.MinLogSequence
 	r.UseMaxPrecision = m.UseMaxPrecision
 	r.CheckpointId = m.CheckpointId
+	r.CollapseColors = m.CollapseColors
 	if rhs := m.GroupByPrefixes; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
@@ -3136,6 +3139,9 @@ func (this *GetAccountRequest) EqualVT(that *GetAccountRequest) bool {
 		return false
 	}
 	if this.CheckpointId != that.CheckpointId {
+		return false
+	}
+	if this.CollapseColors != that.CollapseColors {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7055,6 +7061,9 @@ func (this *NormalizedPosting) EqualVT(that *NormalizedPosting) bool {
 	if this.Asset != that.Asset {
 		return false
 	}
+	if this.Color != that.Color {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -7633,6 +7642,9 @@ func (this *AggregateVolumesRequest) EqualVT(that *AggregateVolumesRequest) bool
 	if this.CheckpointId != that.CheckpointId {
 		return false
 	}
+	if this.CollapseColors != that.CollapseColors {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -8078,6 +8090,16 @@ func (m *GetAccountRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.CollapseColors {
+		i--
+		if m.CollapseColors {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x20
 	}
 	if m.CheckpointId != 0 {
 		i -= 8
@@ -14210,6 +14232,13 @@ func (m *NormalizedPosting) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Color) > 0 {
+		i -= len(m.Color)
+		copy(dAtA[i:], m.Color)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Color)))
+		i--
+		dAtA[i] = 0x22
+	}
 	if len(m.Asset) > 0 {
 		i -= len(m.Asset)
 		copy(dAtA[i:], m.Asset)
@@ -15229,6 +15258,16 @@ func (m *AggregateVolumesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.CollapseColors {
+		i--
+		if m.CollapseColors {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x38
+	}
 	if m.CheckpointId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
@@ -15960,6 +15999,9 @@ func (m *GetAccountRequest) SizeVT() (n int) {
 	}
 	if m.CheckpointId != 0 {
 		n += 9
+	}
+	if m.CollapseColors {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -18503,6 +18545,10 @@ func (m *NormalizedPosting) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	l = len(m.Color)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -18914,6 +18960,9 @@ func (m *AggregateVolumesRequest) SizeVT() (n int) {
 	if m.CheckpointId != 0 {
 		n += 9
 	}
+	if m.CollapseColors {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -19298,6 +19347,26 @@ func (m *GetAccountRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CollapseColors", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.CollapseColors = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -33149,6 +33218,38 @@ func (m *NormalizedPosting) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Asset = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Color", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Color = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -35542,6 +35643,26 @@ func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CollapseColors", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.CollapseColors = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

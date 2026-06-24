@@ -38,6 +38,25 @@ func (errMetaNotSupported) Metadata() map[string]string { return nil }
 
 var ErrMetaNotSupported domain.Describable = errMetaNotSupported{}
 
+// ErrCatchAllAssetNotSupported is returned when a Numscript script triggers
+// the runtime's catch-all asset query (`BASE/*`) — used internally by the
+// numscript interpreter to enumerate every precision flavor of an asset
+// on an account when the script references the bare base. The ledger
+// adapter cannot today expand the catch-all because the in-memory store
+// exposes only point lookups, not iteration; until that capability lands
+// we fail explicitly rather than letting the script see a phantom
+// ErrBalanceNotPreloaded for `BASE/*`.
+type errCatchAllAssetNotSupported struct{}
+
+func (errCatchAllAssetNotSupported) Error() string {
+	return "asset catch-all queries (BASE/*) are not yet supported: use the explicit precision (e.g. `send [USD/2 N]` instead of `send [USD N]`)"
+}
+func (errCatchAllAssetNotSupported) Kind() domain.ErrorKind      { return domain.KindValidation }
+func (errCatchAllAssetNotSupported) Reason() string              { return domain.ErrReasonValidation }
+func (errCatchAllAssetNotSupported) Metadata() map[string]string { return nil }
+
+var ErrCatchAllAssetNotSupported domain.Describable = errCatchAllAssetNotSupported{}
+
 // convertNumscriptError translates known numscript library errors into domain
 // errors so that the gRPC error mapper can return proper status codes. Library
 // errors that have no specific mapping are wrapped as ErrNumscriptRuntime

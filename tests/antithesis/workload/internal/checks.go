@@ -19,9 +19,11 @@ func CheckVolume(input, output, balance *big.Int, details Details) {
 	}))
 }
 
-// CheckAccountVolumes verifies volume consistency for all assets of an account.
-func CheckAccountVolumes(volumes map[string]*commonpb.VolumesWithBalance, details Details) {
-	for asset, vol := range volumes {
+// CheckAccountVolumes verifies volume consistency for every (asset, color)
+// bucket on an account.
+func CheckAccountVolumes(volumes []*commonpb.AccountVolume, details Details) {
+	for _, entry := range volumes {
+		vol := entry.GetVolumes()
 		input, _ := new(big.Int).SetString(vol.GetInput(), 10)
 		output, _ := new(big.Int).SetString(vol.GetOutput(), 10)
 		balance, _ := new(big.Int).SetString(vol.GetBalance(), 10)
@@ -35,18 +37,21 @@ func CheckAccountVolumes(volumes map[string]*commonpb.VolumesWithBalance, detail
 			balance = big.NewInt(0)
 		}
 		CheckVolume(input, output, balance, details.With(Details{
-			"asset": asset,
+			"asset": entry.GetAsset(),
+			"color": entry.GetColor(),
 		}))
 	}
 }
 
 // CheckPostCommitVolumes verifies volume consistency for post-commit volumes from a transaction response.
+// Each (asset, color) bucket is verified independently.
 func CheckPostCommitVolumes(pcv *commonpb.PostCommitVolumes, details Details) {
 	if pcv == nil {
 		return
 	}
 	for account, volumesByAssets := range pcv.GetVolumesByAccount() {
-		for asset, vol := range volumesByAssets.GetVolumes() {
+		for _, entry := range volumesByAssets.GetVolumes() {
+			vol := entry.GetVolumes()
 			input, _ := new(big.Int).SetString(vol.GetInput(), 10)
 			output, _ := new(big.Int).SetString(vol.GetOutput(), 10)
 			if input == nil {
@@ -58,7 +63,8 @@ func CheckPostCommitVolumes(pcv *commonpb.PostCommitVolumes, details Details) {
 			balance := new(big.Int).Sub(input, output)
 			CheckVolume(input, output, balance, details.With(Details{
 				"account": account,
-				"asset":   asset,
+				"asset":   entry.GetAsset(),
+				"color":   entry.GetColor(),
 			}))
 		}
 	}

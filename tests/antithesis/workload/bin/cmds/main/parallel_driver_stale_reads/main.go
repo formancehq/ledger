@@ -142,7 +142,7 @@ func main() {
 				"acked":     acked,
 			}
 
-			vol := account.GetVolumes()[probeAsset]
+			vol := account.FindVolume(probeAsset, "")
 			if vol == nil {
 				// Valid prefix: account materialized, no write applied yet.
 				continue

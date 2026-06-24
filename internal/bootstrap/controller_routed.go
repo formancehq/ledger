@@ -230,7 +230,7 @@ func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (
 	return c.GetAuditEntry(ctx, sequence)
 }
 
-func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
+func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, address string, opts ctrl.GetAccountOptions) (*commonpb.Account, error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -248,7 +248,7 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 		}).Infof("read barrier for GetAccount")
 	}
 
-	return c.GetAccount(ctx, ledgerName, address)
+	return c.GetAccount(ctx, ledgerName, address, opts)
 }
 
 func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {

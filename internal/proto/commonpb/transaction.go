@@ -115,40 +115,6 @@ func (tx *Transaction) IsReverted() bool {
 	return tx.GetReverted() || tx.GetRevertedAt() != nil
 }
 
-// Reverse creates a reversed copy of the transaction with swapped source/destination in postings.
-func (tx *Transaction) Reverse() *Transaction {
-	if tx == nil {
-		return NewTransaction()
-	}
-
-	postings := Postings(tx.GetPostings()).Reverse()
-	ret := NewTransaction().WithPostings(postings...)
-
-	// Copy other fields - copy the metadata map reference
-	ret.Metadata = tx.GetMetadata()
-	if tx.GetTimestamp() != nil {
-		ret.Timestamp = tx.GetTimestamp()
-	}
-
-	ret.Reference = tx.GetReference()
-	ret.Id = tx.GetId()
-
-	ret.Reverted = tx.GetReverted()
-	if tx.GetInsertedAt() != nil {
-		ret.InsertedAt = tx.GetInsertedAt()
-	}
-
-	if tx.GetUpdatedAt() != nil {
-		ret.UpdatedAt = tx.GetUpdatedAt()
-	}
-
-	if tx.GetRevertedAt() != nil {
-		ret.RevertedAt = tx.GetRevertedAt()
-	}
-
-	return ret
-}
-
 // InvolvedDestinations returns a map of destination accounts to their assets.
 func (tx *Transaction) InvolvedDestinations() map[string][]string {
 	ret := make(map[string][]string)

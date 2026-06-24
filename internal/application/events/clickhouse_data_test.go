@@ -639,6 +639,66 @@ func TestSinkConvertTransaction_Nil(t *testing.T) {
 	require.Nil(t, result)
 }
 
+// TestSinkConvertTransaction_PreservesColor pins that the color dimension
+// reaches every analytical sink (ClickHouse/Databricks/Kafka/NATS share this
+// converter). Without this guarantee, downstream warehouses cannot reconstruct
+// the segregated balance history from emitted events.
+func TestSinkConvertTransaction_PreservesColor(t *testing.T) {
+	t.Parallel()
+
+	tx := &commonpb.Transaction{
+		Id: 1,
+		Postings: []*commonpb.Posting{
+			{
+				Source:      "world",
+				Destination: "alice",
+				Asset:       "USD/2",
+				Color:       "GRANTS",
+				Amount:      commonpb.NewUint256FromUint64(100),
+			},
+		},
+		Timestamp:  &commonpb.Timestamp{Data: 1700000000},
+		InsertedAt: &commonpb.Timestamp{Data: 1700000000},
+	}
+
+	result := sinkConvertTransaction(tx)
+	require.NotNil(t, result)
+	require.Len(t, result.Postings, 1)
+	require.Equal(t, "GRANTS", result.Postings[0].Color,
+		"color must flow through to the analytical-sink payload")
+}
+
+// TestSinkPosting_AlwaysEmitsColor pins the analytical-sink JSON contract:
+// the uncolored bucket must serialize as `color:""` (not be omitted), so
+// downstream warehouses can distinguish a NULL color from a pre-color schema
+// row. Mirrors the contract enforced by commonpb.Posting.MarshalJSON.
+func TestSinkPosting_AlwaysEmitsColor(t *testing.T) {
+	t.Parallel()
+
+	tx := &commonpb.Transaction{
+		Id: 1,
+		Postings: []*commonpb.Posting{
+			{
+				Source:      "world",
+				Destination: "alice",
+				Asset:       "USD/2",
+				Amount:      commonpb.NewUint256FromUint64(100),
+				// Color intentionally left empty — uncolored bucket.
+			},
+		},
+		Timestamp:  &commonpb.Timestamp{Data: 1700000000},
+		InsertedAt: &commonpb.Timestamp{Data: 1700000000},
+	}
+
+	sink := sinkConvertTransaction(tx)
+	require.NotNil(t, sink)
+
+	data, err := json.Marshal(sink.Postings[0])
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"color":""`,
+		"uncolored postings must surface color:\"\" in sink JSON, not be omitted")
+}
+
 func TestClickHouseCreateTableDDL(t *testing.T) {
 	t.Parallel()
 

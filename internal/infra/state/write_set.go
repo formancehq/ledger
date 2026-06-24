@@ -1677,25 +1677,27 @@ func (b *WriteSet) PurgedVolumeKeys() []domain.VolumeKey {
 	return b.purgedVolumeKeys
 }
 
-// TransientVolumes returns the unique transient (account, asset) volumes
-// per ledger, collected during Merge from the transient volume partition.
+// TransientVolumes returns the unique transient (account, asset, color)
+// volumes per ledger, collected during Merge from the transient volume
+// partition.
 func (b *WriteSet) TransientVolumes() map[string][]*commonpb.TouchedVolume {
 	return b.transientVolumes
 }
 
-// collectUniqueVolumes extracts unique (account, asset) tuples per ledger
-// from volume updates and emits them as deterministically-ordered
-// commonpb.TouchedVolume slices.
+// collectUniqueVolumes extracts unique (account, asset, color) tuples per
+// ledger from volume updates and emits them as deterministically-ordered
+// commonpb.TouchedVolume slices. Color is part of the identity so two color
+// buckets of the same (account, asset) stay distinct in the audit log.
 func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[string][]*commonpb.TouchedVolume {
-	type accAsset struct{ Account, Asset string }
-	seen := make(map[string]map[accAsset]struct{})
+	type accAssetColor struct{ Account, Asset, Color string }
+	seen := make(map[string]map[accAssetColor]struct{})
 
 	for _, update := range updates {
 		ledgerName := update.Key.LedgerName
-		k := accAsset{Account: update.Key.Account, Asset: update.Key.Asset}
+		k := accAssetColor{Account: update.Key.Account, Asset: update.Key.Asset, Color: update.Key.Color}
 
 		if seen[ledgerName] == nil {
-			seen[ledgerName] = make(map[accAsset]struct{})
+			seen[ledgerName] = make(map[accAssetColor]struct{})
 		}
 
 		seen[ledgerName][k] = struct{}{}
@@ -1703,7 +1705,7 @@ func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmd
 
 	result := make(map[string][]*commonpb.TouchedVolume, len(seen))
 	for ledgerName, vols := range seen {
-		list := make([]accAsset, 0, len(vols))
+		list := make([]accAssetColor, 0, len(vols))
 		for k := range vols {
 			list = append(list, k)
 		}
@@ -1712,13 +1714,16 @@ func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmd
 			if list[a].Account != list[b].Account {
 				return list[a].Account < list[b].Account
 			}
+			if list[a].Asset != list[b].Asset {
+				return list[a].Asset < list[b].Asset
+			}
 
-			return list[a].Asset < list[b].Asset
+			return list[a].Color < list[b].Color
 		})
 
 		out := make([]*commonpb.TouchedVolume, len(list))
 		for i, k := range list {
-			out[i] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset}
+			out[i] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset, Color: k.Color}
 		}
 
 		result[ledgerName] = out

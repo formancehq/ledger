@@ -468,7 +468,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	return cursor.NewClosingCursor(cursor.NewSliceCursor(accounts), handle), nil
 }
 
-func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
+func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string, address string, opts GetAccountOptions) (*commonpb.Account, error) {
 	_, span := tracer.Start(ctx, "ctrl.get_account",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -494,7 +494,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 		return nil, err
 	}
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ctrl.logger)
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, opts.CollapseColors, ctrl.logger)
 }
 
 // GetLedgerStats returns aggregate statistics for a ledger.
@@ -1275,7 +1275,11 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 	return &query.EntityEnricher{
 		EnrichAccount: func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error) {
-			return scanAccount(reader, ctrl.attrs, ledgerName, address, ctrl.logger)
+			// List-style enrichment paths do not surface a per-call collapse
+			// flag; entries are returned color-segregated and the caller can
+			// collapse client-side if needed. Per-account GetAccount honors
+			// the flag through the GetAccountOptions path.
+			return scanAccount(reader, ctrl.attrs, ledgerName, address, false, ctrl.logger)
 		},
 		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Transaction, error) {
 			return ctrl.buildTransaction(ctx, reader, ledgerName, txID)

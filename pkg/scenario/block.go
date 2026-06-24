@@ -60,9 +60,16 @@ func BlockScenario(name string) string {
 
 // Helper functions for blocks to read ledger state.
 
-// GetAccountBalance reads the balance of an account for a given asset.
-// Returns (balance, true) if available, or (zero, false) otherwise.
+// GetAccountBalance reads the uncolored balance of an account for a given asset.
+// Returns (balance, true) if available, or (zero, false) otherwise. For a
+// colored balance, see GetColoredAccountBalance.
 func GetAccountBalance(ctx context.Context, client servicepb.BucketServiceClient, ledger, address, asset string) (*big.Int, bool) {
+	return GetColoredAccountBalance(ctx, client, ledger, address, asset, "")
+}
+
+// GetColoredAccountBalance reads the balance of an account for a given
+// (asset, color) bucket. Color "" is the uncolored bucket.
+func GetColoredAccountBalance(ctx context.Context, client servicepb.BucketServiceClient, ledger, address, asset, color string) (*big.Int, bool) {
 	acct, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 		Ledger:  ledger,
 		Address: address,
@@ -70,16 +77,19 @@ func GetAccountBalance(ctx context.Context, client servicepb.BucketServiceClient
 	if err != nil {
 		return big.NewInt(0), false
 	}
-	vol, ok := acct.GetVolumes()[asset]
-	if !ok {
-		return big.NewInt(0), false
-	}
-	balance, ok := new(big.Int).SetString(vol.GetBalance(), 10)
-	if !ok {
-		return big.NewInt(0), false
+	for _, entry := range acct.GetVolumes() {
+		if entry.GetAsset() != asset || entry.GetColor() != color {
+			continue
+		}
+		balance, ok := new(big.Int).SetString(entry.GetVolumes().GetBalance(), 10)
+		if !ok {
+			return big.NewInt(0), false
+		}
+
+		return balance, true
 	}
 
-	return balance, true
+	return big.NewInt(0), false
 }
 
 // GetNonRevertedTransaction finds a random non-reverted transaction in a ledger.

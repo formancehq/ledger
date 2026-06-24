@@ -39,6 +39,12 @@ func (e *errValidation) Unwrap() error             { return e.err }
 func (*errValidation) Reason() string              { return ErrReasonValidation }
 func (*errValidation) Metadata() map[string]string { return nil }
 
+// maxColorLength caps the optional Color tag on a Posting. Color is a small
+// dimension label (e.g. "GRANTS", "OPS") not a free-form string; 32 bytes is
+// large enough for any sensible tag and short enough to stay cheap to repeat
+// inside every volume key.
+const maxColorLength = 32
+
 // Storage-safety validation sentinels. All are Describable so they flow
 // through BusinessError. Each one wraps the matching primitive sentinel from
 // github.com/formancehq/invariants; the wrapping preserves
@@ -240,6 +246,32 @@ func ValidateMetadataValue(value *commonpb.MetadataValue) Describable {
 // to the local Describable counterpart.
 func ValidateAsset(asset string) Describable {
 	return wrapValidationErr(invariants.ValidateAsset(asset))
+}
+
+// ValidateColor checks that a posting Color tag is safe for use in the
+// canonical volume key encoding. The Color value is embedded raw between
+// two 0x00 separators in `[ledgerID][account]\x00[color]\x00[asset_base][precision]`
+// so any byte that aliases the separator or shifts the parser is a key-collision
+// vector: two distinct (account, asset, color) tuples could fuse onto a single
+// Pebble row and silently merge balances — the same class of bug as
+// metadata keys (#322) and asset names (#303).
+//
+// The rule is ^[A-Z]*$: uppercase letters only. Empty is allowed (the
+// "uncolored" bucket) but anything else must be uppercase ASCII. Length is
+// capped to keep the key short.
+func ValidateColor(color string) Describable {
+	if len(color) > maxColorLength {
+		return ErrColorTooLong
+	}
+
+	for i := range len(color) {
+		c := color[i]
+		if c < 'A' || c > 'Z' {
+			return ErrColorInvalid
+		}
+	}
+
+	return nil
 }
 
 // ParseAssetPrecision re-exports invariants.ParseAssetPrecision so existing callers

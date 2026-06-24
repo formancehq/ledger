@@ -19,8 +19,9 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	sourceKey := domain.NewVolumeKey("test", "world", "USD")
-	destKey := domain.NewVolumeKey("test", "users:001", "USD")
+
+	sourceKey := domain.NewVolumeKey("test", "world", "USD", "")
+	destKey := domain.NewVolumeKey("test", "users:001", "USD", "")
 
 	zeroVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
@@ -51,7 +52,8 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
+
+	sourceKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	// Source has input=100, output=50, balance=50, but posting is 200
 	sourceVol := &raftcmdpb.VolumePair{
@@ -84,7 +86,8 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
+
+	sourceKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	// Source has zero input balance, Output=0
 	sourceVol := &raftcmdpb.VolumePair{
@@ -118,8 +121,9 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
-	destKey := domain.NewVolumeKey("test", "users:001", "USD")
+
+	sourceKey := domain.NewVolumeKey("test", "bank", "USD", "")
+	destKey := domain.NewVolumeKey("test", "users:001", "USD", "")
 
 	// Source has insufficient balance, but force=true skips the check
 	sourceVol := &raftcmdpb.VolumePair{
@@ -154,7 +158,8 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
+
+	sourceKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	expectGetVolume(mockStore, sourceKey, nil, nil) //nolint:nilnil // test: nil volume
 
@@ -264,8 +269,9 @@ func TestApplyPosting_DestinationInputOverflow_Rejects(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	sourceKey := domain.NewVolumeKey("test", "world", "USD")
-	destKey := domain.NewVolumeKey("test", "users:001", "USD")
+
+	sourceKey := domain.NewVolumeKey("test", "world", "USD", "")
+	destKey := domain.NewVolumeKey("test", "users:001", "USD", "")
 
 	// world output is 0 — safe to add anything on the source side.
 	worldVol := &raftcmdpb.VolumePair{
@@ -315,7 +321,8 @@ func TestApplyPosting_SourceOutputOverflow_Rejects(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	sourceKey := domain.NewVolumeKey("test", "world", "USD")
+
+	sourceKey := domain.NewVolumeKey("test", "world", "USD", "")
 
 	worldVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),

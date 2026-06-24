@@ -141,17 +141,19 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 }
 
 // MarshalJSON implements json.Marshaler for PostCommitVolumes. The wire shape
-// is a flat `{address: {asset: Volumes}}` map — protojson would emit the raw
-// proto wrappers (`volumesByAccount.{addr}.volumes.{asset}`), leaking two
-// nesting levels that don't belong on the public API and don't match the
-// OpenAPI schema (see PostCommitVolumes in openapi.yml).
+// is a flat `{"addr": [{asset, color, input, output}]}` map — one array of
+// (asset, color) tuples per account. protojson would otherwise emit the raw
+// proto wrappers (`{"volumesByAccount": {"addr": {"volumes": [...]}}}`) two
+// levels deep. This replaces the pre-color EN-1465 `{"addr": {"asset": Volumes}}`
+// map shape, which can no longer key a bucket uniquely once a color dimension
+// exists, while keeping the flatten intent (no protojson wrappers).
 func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 	byAccount := x.GetVolumesByAccount()
 	if len(byAccount) == 0 {
 		return []byte("{}"), nil
 	}
 
-	flat := make(map[string]map[string]*Volumes, len(byAccount))
+	flat := make(map[string][]*VolumeEntry, len(byAccount))
 	for addr, va := range byAccount {
 		flat[addr] = va.GetVolumes()
 	}
@@ -163,19 +165,61 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 // the server emits it, no request payload ever carries it, so there is no
 // production caller for reverse conversion. Client-side consumers wanting to
 // parse the flat shape can decode straight into a
-// `map[string]map[string]Volumes` — the same structure MarshalJSON emits.
+// `map[string][]VolumeEntry` — the same structure MarshalJSON emits, where each
+// VolumeEntry is `{asset, color, input, output}`.
+
+// MarshalJSON implements json.Marshaler for VolumeEntry. Color is always
+// emitted (even when empty) so clients can distinguish the uncolored bucket
+// from an older response shape — same contract as accountVolumeJSON and
+// aggregatedVolumeJSON in the REST handler layer. Input/output are flattened
+// onto the tuple (not nested under a `volumes` key) so a post-commit-volume
+// entry reads as one flat `{asset, color, input, output}` row.
+func (x *VolumeEntry) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Asset  string `json:"asset"`
+		Color  string `json:"color"`
+		Input  string `json:"input"`
+		Output string `json:"output"`
+	}{
+		Asset:  x.GetAsset(),
+		Color:  x.GetColor(),
+		Input:  x.GetVolumes().GetInput(),
+		Output: x.GetVolumes().GetOutput(),
+	})
+}
+
+// accountVolumeJSON is the JSON shape for AccountVolume. Color is always
+// emitted (even empty) because the API treats the empty bucket as a
+// first-class entry and clients cannot otherwise tell "uncolored bucket"
+// from "field absent in an older response shape".
+type accountVolumeJSON struct {
+	Asset   string              `json:"asset"`
+	Color   string              `json:"color"`
+	Volumes *VolumesWithBalance `json:"volumes,omitempty"`
+}
 
 // MarshalJSON implements json.Marshaler for Account.
 func (x *Account) MarshalJSON() ([]byte, error) {
+	volumes := make([]*accountVolumeJSON, 0, len(x.GetVolumes()))
+	for _, v := range x.GetVolumes() {
+		volumes = append(volumes, &accountVolumeJSON{
+			Asset:   v.GetAsset(),
+			Color:   v.GetColor(),
+			Volumes: v.GetVolumes(),
+		})
+	}
+
 	return json.Marshal(&struct {
-		Address       string         `json:"address,omitempty"`
-		Metadata      map[string]any `json:"metadata,omitempty"`
-		FirstUsage    *Timestamp     `json:"firstUsage,omitempty"`
-		InsertionDate *Timestamp     `json:"insertionDate,omitempty"`
-		UpdatedAt     *Timestamp     `json:"updatedAt,omitempty"`
+		Address       string               `json:"address,omitempty"`
+		Metadata      map[string]any       `json:"metadata,omitempty"`
+		Volumes       []*accountVolumeJSON `json:"volumes"`
+		FirstUsage    *Timestamp           `json:"firstUsage,omitempty"`
+		InsertionDate *Timestamp           `json:"insertionDate,omitempty"`
+		UpdatedAt     *Timestamp           `json:"updatedAt,omitempty"`
 	}{
 		Address:       x.GetAddress(),
 		Metadata:      MetadataToAnyMap(x.GetMetadata()),
+		Volumes:       volumes,
 		FirstUsage:    x.GetFirstUsage(),
 		InsertionDate: x.GetInsertionDate(),
 		UpdatedAt:     x.GetUpdatedAt(),

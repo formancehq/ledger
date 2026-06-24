@@ -134,18 +134,18 @@ func (mr *MockControllerMockRecorder) ExecutePreparedQuery(ctx, req any) *gomock
 }
 
 // GetAccount mocks base method.
-func (m *MockController) GetAccount(ctx context.Context, ledgerName, address string) (*commonpb.Account, error) {
+func (m *MockController) GetAccount(ctx context.Context, ledgerName, address string, opts GetAccountOptions) (*commonpb.Account, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAccount", ctx, ledgerName, address)
+	ret := m.ctrl.Call(m, "GetAccount", ctx, ledgerName, address, opts)
 	ret0, _ := ret[0].(*commonpb.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAccount indicates an expected call of GetAccount.
-func (mr *MockControllerMockRecorder) GetAccount(ctx, ledgerName, address any) *gomock.Call {
+func (mr *MockControllerMockRecorder) GetAccount(ctx, ledgerName, address, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccount", reflect.TypeOf((*MockController)(nil).GetAccount), ctx, ledgerName, address)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccount", reflect.TypeOf((*MockController)(nil).GetAccount), ctx, ledgerName, address, opts)
 }
 
 // GetAuditEntry mocks base method.

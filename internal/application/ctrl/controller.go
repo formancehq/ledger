@@ -10,6 +10,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
+// GetAccountOptions configures a GetAccount read.
+type GetAccountOptions struct {
+	// CollapseColors sums every colored bucket of the same asset into a
+	// single entry with Color = "" in the returned Account.volumes list.
+	// When false (default), each (asset, color) tuple gets its own entry.
+	CollapseColors bool
+}
+
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ctrl . Controller
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination ctrlmock/controller_generated.go -package ctrlmock . Controller
 type Controller interface {
@@ -26,15 +34,17 @@ type Controller interface {
 	// recomputed against a possibly-stale local snapshot.
 	GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error)
 	ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error)
-	GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error)
+	GetAccount(ctx context.Context, ledgerName string, address string, opts GetAccountOptions) (*commonpb.Account, error)
 	ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error)
 
 	// Stats operations
 	GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error)
 
 	// Log operations
-	// ListLogs returns logs for a specific ledger, ordered by ledger-local log ID.
-	// Use a LogIdCondition in the filter for pagination.
+	// ListLogs returns logs for a specific ledger, ordered by ledger-local log
+	// ID. afterSequence is the ledger-local log ID to start after; the filter
+	// may add further conditions (e.g. date ranges). Use a LogIdCondition in
+	// the filter for pagination.
 	ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)
 	GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 
