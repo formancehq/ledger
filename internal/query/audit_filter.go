@@ -1,9 +1,9 @@
 package query
 
 import (
+	"fmt"
 	"slices"
 
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -15,7 +15,9 @@ import (
 // AuditPredicate decides whether an audit entry matches a compiled filter.
 // items is non-nil only when the filter references AUDIT_FIELD_ORDER_TYPE
 // (see CompileAuditPredicate's needsItems return); other fields ignore it.
-type AuditPredicate func(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) bool
+// The error return surfaces per-entry data faults (e.g. an audit order that
+// fails to unmarshal) instead of silently dropping the entry.
+type AuditPredicate func(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) (bool, error)
 
 // CompileAuditPredicate turns a QueryFilter into a scan-time predicate over
 // audit entries. needsItems is true iff the filter references ORDER_TYPE, so the
@@ -24,7 +26,7 @@ type AuditPredicate func(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) 
 // FilterCompilationError (mapped to gRPC InvalidArgument).
 func CompileAuditPredicate(filter *commonpb.QueryFilter) (AuditPredicate, bool, error) {
 	if filter == nil {
-		return func(*auditpb.AuditEntry, []*auditpb.AuditItem) bool { return true }, false, nil
+		return func(*auditpb.AuditEntry, []*auditpb.AuditItem) (bool, error) { return true, nil }, false, nil
 	}
 
 	c := &auditCompiler{}
@@ -58,7 +60,14 @@ func (c *auditCompiler) compile(filter *commonpb.QueryFilter, depth int) (AuditP
 			return nil, err
 		}
 
-		return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) bool { return !inner(e, items) }, nil
+		return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) (bool, error) {
+			ok, err := inner(e, items)
+			if err != nil {
+				return false, err
+			}
+
+			return !ok, nil
+		}, nil
 	default:
 		return nil, domain.NewFilterCompilationError("unsupported condition for audit target: %T", filter.GetFilter())
 	}
@@ -74,14 +83,18 @@ func (c *auditCompiler) compileAnd(and *commonpb.AndFilter, depth int) (AuditPre
 		preds = append(preds, p)
 	}
 
-	return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) bool {
+	return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) (bool, error) {
 		for _, p := range preds {
-			if !p(e, items) {
-				return false
+			ok, err := p(e, items)
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				return false, nil
 			}
 		}
 
-		return true
+		return true, nil
 	}, nil
 }
 
@@ -95,14 +108,18 @@ func (c *auditCompiler) compileOr(or *commonpb.OrFilter, depth int) (AuditPredic
 		preds = append(preds, p)
 	}
 
-	return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) bool {
+	return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) (bool, error) {
 		for _, p := range preds {
-			if p(e, items) {
-				return true
+			ok, err := p(e, items)
+			if err != nil {
+				return false, err
+			}
+			if ok {
+				return true, nil
 			}
 		}
 
-		return false
+		return false, nil
 	}, nil
 }
 
@@ -159,8 +176,8 @@ func uintFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEn
 		return nil, err
 	}
 
-	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool {
-		return matchUintBounds(bounds, get(e))
+	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) (bool, error) {
+		return matchUintBounds(bounds, get(e)), nil
 	}, nil
 }
 
@@ -191,40 +208,56 @@ func logSequencePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error)
 		return nil, err
 	}
 
-	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool {
+	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) (bool, error) {
 		s := e.GetSuccess()
 		if s == nil {
-			return false
+			return false, nil
 		}
 		if bounds.empty {
-			return false
+			return false, nil
 		}
 		lo, hi := s.GetMinLogSequence(), s.GetMaxLogSequence()
 		// Overlap of [lo,hi] with half-open [min,max).
 		if bounds.hasMin && hi < bounds.min {
-			return false
+			return false, nil
 		}
 		if bounds.hasMax && lo >= bounds.max {
-			return false
+			return false, nil
 		}
 
-		return true
+		return true, nil
 	}, nil
+}
+
+// hardcodedAuditString extracts the hardcoded value of cond's StringCondition.
+// It rejects a missing condition and a parameterized ($param) value: audit
+// filters are evaluated at scan time and have no parameter-resolution context,
+// so a Param would otherwise read as GetHardcoded() == "" and silently match
+// the empty string.
+func hardcodedAuditString(cond *commonpb.AuditCondition, field string) (string, error) {
+	sc := cond.GetStringCond()
+	if sc == nil {
+		return "", domain.NewFilterCompilationError("audit field %s requires a string condition", field)
+	}
+	if _, ok := sc.GetValue().(*commonpb.StringCondition_Param); ok {
+		return "", domain.NewFilterCompilationError("audit field %s does not support parameterized conditions", field)
+	}
+
+	return sc.GetHardcoded(), nil
 }
 
 // outcomePredicate matches a string condition whose value is "success" or
 // "failure".
 func outcomePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error) {
-	sc := cond.GetStringCond()
-	if sc == nil {
-		return nil, domain.NewFilterCompilationError("audit field outcome requires a string condition")
+	want, err := hardcodedAuditString(cond, "outcome")
+	if err != nil {
+		return nil, err
 	}
-	want := sc.GetHardcoded()
 	switch want {
 	case "success":
-		return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool { return e.GetSuccess() != nil }, nil
+		return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) (bool, error) { return e.GetSuccess() != nil, nil }, nil
 	case "failure":
-		return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool { return e.GetFailure() != nil }, nil
+		return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) (bool, error) { return e.GetFailure() != nil, nil }, nil
 	default:
 		return nil, domain.NewFilterCompilationError("audit field outcome must be \"success\" or \"failure\", got %q", want)
 	}
@@ -233,14 +266,13 @@ func outcomePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error) {
 // stringFieldPredicate matches a hardcoded StringCondition against one or more
 // string values from the entry (match-any: success against ANY value).
 func stringFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEntry) []string) (AuditPredicate, error) {
-	sc := cond.GetStringCond()
-	if sc == nil {
-		return nil, domain.NewFilterCompilationError("audit field %v requires a string condition", cond.GetField())
+	want, err := hardcodedAuditString(cond, cond.GetField().String())
+	if err != nil {
+		return nil, err
 	}
-	want := sc.GetHardcoded()
 
-	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool {
-		return slices.Contains(get(e), want)
+	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) (bool, error) {
+		return slices.Contains(get(e), want), nil
 	}, nil
 }
 
@@ -251,8 +283,8 @@ func boolFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEn
 	}
 	want := bc.GetHardcoded()
 
-	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) bool {
-		return get(e) == want
+	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) (bool, error) {
+		return get(e) == want, nil
 	}, nil
 }
 
@@ -261,24 +293,27 @@ func boolFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEn
 // is not on the audit header, so the caller must supply the entry's AuditItems
 // (see CompileAuditPredicate's needsItems return).
 func orderTypePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error) {
-	sc := cond.GetStringCond()
-	if sc == nil {
-		return nil, domain.NewFilterCompilationError("audit field order_type requires a string condition")
+	want, err := hardcodedAuditString(cond, "order_type")
+	if err != nil {
+		return nil, err
 	}
-	want := sc.GetHardcoded()
 
-	return func(_ *auditpb.AuditEntry, items []*auditpb.AuditItem) bool {
+	return func(_ *auditpb.AuditEntry, items []*auditpb.AuditItem) (bool, error) {
 		for _, it := range items {
 			order := &raftcmdpb.Order{}
-			if err := proto.Unmarshal(it.GetSerializedOrder(), order); err != nil {
-				continue // unreadable order bytes cannot match a positive filter
+			if err := order.UnmarshalVT(it.GetSerializedOrder()); err != nil {
+				// The audit zone is the cryptographic source of truth; order
+				// bytes that fail to unmarshal indicate corruption/tampering,
+				// not an expected runtime condition. Surface it loudly through
+				// the error-capable cursor rather than silently dropping it.
+				return false, fmt.Errorf("unmarshalling audit order (index %d): %w", it.GetOrderIndex(), err)
 			}
 			if orderTypeName(order) == want {
-				return true
+				return true, nil
 			}
 		}
 
-		return false
+		return false, nil
 	}, nil
 }
 

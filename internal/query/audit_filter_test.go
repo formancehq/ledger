@@ -33,6 +33,21 @@ func strEq(v string) *commonpb.StringCondition {
 	return &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: v}}
 }
 
+func strParam(p string) *commonpb.StringCondition {
+	return &commonpb.StringCondition{Value: &commonpb.StringCondition_Param{Param: p}}
+}
+
+// mustMatch runs pred and fails the test on a predicate error, returning the
+// match result. Predicates only error on per-entry data faults (e.g. a corrupt
+// audit order), which the dedicated tests assert explicitly.
+func mustMatch(t *testing.T, pred AuditPredicate, entry *auditpb.AuditEntry, items []*auditpb.AuditItem) bool {
+	t.Helper()
+	ok, err := pred(entry, items)
+	require.NoError(t, err)
+
+	return ok
+}
+
 func TestCompileAuditPredicate_HeaderFields(t *testing.T) {
 	t.Parallel()
 
@@ -83,7 +98,7 @@ func TestCompileAuditPredicate_HeaderFields(t *testing.T) {
 			pred, needsItems, err := CompileAuditPredicate(tc.filter)
 			require.NoError(t, err)
 			require.False(t, needsItems)
-			require.Equal(t, tc.want, pred(tc.entry, nil))
+			require.Equal(t, tc.want, mustMatch(t, pred, tc.entry, nil))
 		})
 	}
 }
@@ -93,7 +108,7 @@ func TestCompileAuditPredicate_NilMatchesAll(t *testing.T) {
 	pred, needsItems, err := CompileAuditPredicate(nil)
 	require.NoError(t, err)
 	require.False(t, needsItems)
-	require.True(t, pred(&auditpb.AuditEntry{}, nil))
+	require.True(t, mustMatch(t, pred, &auditpb.AuditEntry{}, nil))
 }
 
 func TestCompileAuditPredicate_Composition(t *testing.T) {
@@ -108,14 +123,14 @@ func TestCompileAuditPredicate_Composition(t *testing.T) {
 	}}}}
 	pred, _, err := CompileAuditPredicate(and)
 	require.NoError(t, err)
-	require.True(t, pred(entry, nil))
+	require.True(t, mustMatch(t, pred, entry, nil))
 
 	not := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{
 		Filter: auditFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, strEq("success")),
 	}}}
 	predNot, _, err := CompileAuditPredicate(not)
 	require.NoError(t, err)
-	require.True(t, predNot(entry, nil))
+	require.True(t, mustMatch(t, predNot, entry, nil))
 
 	// Or is the lowered form of `audit[ledger] in (other, main)`: matches when
 	// any branch matches.
@@ -125,7 +140,7 @@ func TestCompileAuditPredicate_Composition(t *testing.T) {
 	}}}}
 	predOr, _, err := CompileAuditPredicate(or)
 	require.NoError(t, err)
-	require.True(t, predOr(entry, nil))
+	require.True(t, mustMatch(t, predOr, entry, nil))
 
 	// Or with no matching branch is false.
 	orMiss := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{
@@ -134,7 +149,7 @@ func TestCompileAuditPredicate_Composition(t *testing.T) {
 	}}}}
 	predOrMiss, _, err := CompileAuditPredicate(orMiss)
 	require.NoError(t, err)
-	require.False(t, predOrMiss(entry, nil))
+	require.False(t, mustMatch(t, predOrMiss, entry, nil))
 }
 
 func TestCompileAuditPredicate_Rejections(t *testing.T) {
@@ -147,6 +162,9 @@ func TestCompileAuditPredicate_Rejections(t *testing.T) {
 		{"field/type mismatch", auditFilter(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, strEq("x"))},
 		{"unspecified field", auditFilter(commonpb.AuditField_AUDIT_FIELD_UNSPECIFIED, uintEq(1))},
 		{"bad outcome value", auditFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, strEq("maybe"))},
+		{"parameterized string field", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, strParam("user"))},
+		{"parameterized outcome", auditFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, strParam("o"))},
+		{"parameterized order_type", auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, strParam("t"))},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -188,11 +206,27 @@ func TestCompileAuditPredicate_OrderType(t *testing.T) {
 		auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, strEq("apply")))
 	require.NoError(t, err)
 	require.True(t, needsItems)
-	require.True(t, pred(entry, items))      // match-any: apply present
-	require.False(t, pred(entry, items[1:])) // only numscript -> no match
+	require.True(t, mustMatch(t, pred, entry, items))      // match-any: apply present
+	require.False(t, mustMatch(t, pred, entry, items[1:])) // only numscript -> no match
 
 	predMiss, _, err := CompileAuditPredicate(
 		auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, strEq("create_ledger")))
 	require.NoError(t, err)
-	require.False(t, predMiss(entry, items))
+	require.False(t, mustMatch(t, predMiss, entry, items))
+}
+
+// A corrupt SerializedOrder in the audit zone (the cryptographic source of
+// truth) must surface as an error from the predicate, not be silently dropped.
+func TestCompileAuditPredicate_OrderTypeCorruptBytesSurfacesError(t *testing.T) {
+	t.Parallel()
+
+	pred, needsItems, err := CompileAuditPredicate(
+		auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, strEq("apply")))
+	require.NoError(t, err)
+	require.True(t, needsItems)
+
+	// Tag 0 (field number 0) is illegal in protobuf, so UnmarshalVT fails.
+	corrupt := []*auditpb.AuditItem{{SerializedOrder: []byte{0x00}}}
+	_, perr := pred(&auditpb.AuditEntry{Sequence: 1}, corrupt)
+	require.Error(t, perr)
 }

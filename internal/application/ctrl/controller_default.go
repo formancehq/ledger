@@ -1136,7 +1136,7 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequen
 			items = its
 		}
 
-		return pred(entry, items), nil
+		return pred(entry, items)
 	})
 
 	// Always cap audit-entry materialization (pagination via AfterSequence).

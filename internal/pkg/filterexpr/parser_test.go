@@ -1122,4 +1122,18 @@ func TestParse_Audit(t *testing.T) {
 		_, err := Parse(`audit[outcome] >= 1`)
 		require.Error(t, err)
 	})
+
+	t.Run("parameterized string field rejected", func(t *testing.T) {
+		t.Parallel()
+		// Audit filters are evaluated at scan time with no parameter context,
+		// so a $param must be rejected rather than degrade to an empty match.
+		for _, expr := range []string{
+			`audit[caller.subject] == $user`,
+			`audit[ledger] != $l`,
+			`audit[order_type] in (apply, $other)`,
+		} {
+			_, err := Parse(expr)
+			require.Error(t, err, "expr: %s", expr)
+		}
+	})
 }

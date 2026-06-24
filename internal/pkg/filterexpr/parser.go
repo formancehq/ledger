@@ -485,20 +485,36 @@ func (a *AuditCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilte
 
 func (a *AuditCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
 	op := a.Op
-	mk := func(v *Value) *commonpb.QueryFilter {
+	// Audit filters are evaluated at scan time with no parameter-resolution
+	// context, so a $param value cannot be honored — reject it rather than
+	// letting it degrade to a match against the empty string.
+	mk := func(v *Value) (*commonpb.QueryFilter, error) {
+		if v.Param != "" {
+			return nil, fmt.Errorf("audit field %q does not support parameters", a.Field)
+		}
+
 		return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_StringCond{
 			StringCond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: v.resolve()}},
-		}})
+		}}), nil
 	}
 	switch {
 	case op.Eq != nil:
-		return mk(op.Eq), nil
+		return mk(op.Eq)
 	case op.Ne != nil:
-		return auditNot(mk(op.Ne)), nil
+		inner, err := mk(op.Ne)
+		if err != nil {
+			return nil, err
+		}
+
+		return auditNot(inner), nil
 	case len(op.In) > 0:
 		filters := make([]*commonpb.QueryFilter, len(op.In))
 		for i, v := range op.In {
-			filters[i] = mk(v)
+			f, err := mk(v)
+			if err != nil {
+				return nil, err
+			}
+			filters[i] = f
 		}
 
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: filters}}}, nil
