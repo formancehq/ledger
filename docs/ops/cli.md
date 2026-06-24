@@ -416,7 +416,7 @@ ledgerctl ledgers delete-metadata
 
 #### ledgers set-metadata-type
 
-Declare a typed metadata field on a ledger. Once set, all new metadata values for this key must conform to the declared type. Existing untyped values will be converted in the background.
+Declare a typed metadata field on a ledger. The declared type is an **index hint**: it tells the indexer which canonical encoding to use for range queries on this field. It is **not** an API contract — reads return the literal bytes the client wrote, regardless of the declared type. Clients that want a coerced view can convert locally; the server-side `commonpb.CoerceToDeclaredType` helper applies the same conversion matrix.
 
 **Aliases:** `set-type`, `smt`
 
@@ -438,7 +438,11 @@ ledgerctl ledgers set-metadata-type [flags]
 - If `--ledger` is not provided and only one ledger exists, it will be used automatically
 - If multiple ledgers exist, you will be prompted to select one
 - Missing flags will be prompted interactively
-- While a previous conversion of the same field is still running (status `CONVERTING` in `get-schema`), changing its type is rejected with a transient error — wait for `COMPLETE` and retry
+- Always O(1): stored metadata values and log payloads are immutable. The
+  declared type only affects the forward-index encoding. Type changes —
+  including back-to-back retypes — apply immediately. Range-query indexes
+  are rebuilt asynchronously; query the index's `BuildStatus` to know when
+  the new encoding is fully indexed.
 
 **Example:**
 
@@ -478,7 +482,9 @@ ledgerctl ledgers remove-metadata-type [flags]
 - If multiple ledgers exist, you will be prompted to select one
 - Prompts for confirmation before removing (use `-y` to skip)
 - Missing flags will be prompted interactively
-- While the field's conversion is still running (status `CONVERTING` in `get-schema`), removal is rejected with a transient error — wait for `COMPLETE` and retry
+- Always O(1): the declared type is removed from the schema atomically;
+  stored values are left as-is and subsequent reads return them in their
+  original type.
 
 **Example:**
 
@@ -495,7 +501,7 @@ ledgerctl ledgers remove-metadata-type
 
 #### ledgers get-schema
 
-Display the metadata schema for a ledger including conversion status. Shows two tables (Account Fields, Transaction Fields) with KEY, TYPE, and STATUS columns.
+Display the metadata schema for a ledger. Shows tables (Account Fields, Transaction Fields, Ledger Fields) with KEY and TYPE columns.
 
 **Aliases:** `schema`, `gs`
 
@@ -511,7 +517,7 @@ ledgerctl ledgers get-schema <name> [flags]
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- Shows account and transaction field types with their conversion status (COMPLETE or CONVERTING)
+- Shows account, transaction, and ledger field declared types
 - If no schema is defined, displays "(no schema defined)"
 
 **Example:**

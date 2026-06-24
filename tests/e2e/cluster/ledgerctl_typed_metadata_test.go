@@ -323,8 +323,6 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 			Expect(resp.AccountFields).To(HaveKey("verified"))
 			Expect(resp.AccountFields["verified"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_BOOL))
-			Expect(resp.AccountFields["verified"].Status).To(Equal(
-				commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 
 			Expect(resp.TransactionFields).To(HaveKey("amount_cents"))
 			Expect(resp.TransactionFields["amount_cents"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
@@ -380,7 +378,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			Expect(resp.AccountFields).To(HaveKey("score"))
 		})
 
-		It("Should enforce typed metadata on account writes", func() {
+		It("Should accept typed metadata writes and surface raw client values", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{
@@ -398,26 +396,14 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			// age → int_value
-			ageVal := actions.FindMetadataValue(account.Metadata, "age")
-			Expect(ageVal).NotTo(BeNil())
-			intVal, ok := ageVal.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value for age, got %T", ageVal.Type)
-			Expect(intVal.IntValue).To(Equal(int64(25)))
-
-			// active → bool_value
-			activeVal := actions.FindMetadataValue(account.Metadata, "active")
-			Expect(activeVal).NotTo(BeNil())
-			boolVal, ok := activeVal.Type.(*commonpb.MetadataValue_BoolValue)
-			Expect(ok).To(BeTrue(), "expected bool_value for active, got %T", activeVal.Type)
-			Expect(boolVal.BoolValue).To(BeTrue())
-
-			// score → uint_value
-			scoreVal := actions.FindMetadataValue(account.Metadata, "score")
-			Expect(scoreVal).NotTo(BeNil())
-			uintVal, ok := scoreVal.Type.(*commonpb.MetadataValue_UintValue)
-			Expect(ok).To(BeTrue(), "expected uint_value for score, got %T", scoreVal.Type)
-			Expect(uintVal.UintValue).To(Equal(uint64(100)))
+			// declared_type is an index hint, not an API contract — the API
+			// surfaces what the client wrote (STRING in all three cases).
+			for _, key := range []string{"age", "active", "score"} {
+				v := actions.FindMetadataValue(account.Metadata, key)
+				Expect(v).NotTo(BeNil(), "missing %s", key)
+				_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+				Expect(ok).To(BeTrue(), "expected string_value for %s, got %T", key, v.Type)
+			}
 		})
 
 		It("Should remove a field type via remove-metadata-type", func() {
@@ -597,8 +583,6 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 				err := runCLIJSON(grpcPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.AccountFields).To(HaveKey("score"))
-				g.Expect(resp.AccountFields["score"].Status).To(Equal(
-					commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -612,8 +596,8 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 				v := actions.FindMetadataValue(account.Metadata, "score")
 				Expect(v).NotTo(BeNil())
-				_, ok := v.Type.(*commonpb.MetadataValue_IntValue)
-				Expect(ok).To(BeTrue(), "expected int_value for %s score, got %T", addr, v.Type)
+				_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+				Expect(ok).To(BeTrue(), "expected string_value for %s score, got %T", addr, v.Type)
 			}
 		})
 	})

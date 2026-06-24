@@ -2,6 +2,7 @@ package processing
 
 import (
 	"errors"
+	"maps"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -155,11 +156,9 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 		)
 	}
 
-	// Store account metadata
-	var (
-		accountMetadata         map[string]*commonpb.MetadataMap
-		previousAccountMetadata map[string]*commonpb.MetadataMap
-	)
+	// Store account metadata. Previous values are no longer captured: the
+	// indexer resolves prior encoded values via the reverse map on apply.
+	var accountMetadata map[string]*commonpb.MetadataMap
 
 	if len(ct.GetAccountMetadata()) > 0 {
 		accountMetadata = ct.GetAccountMetadata()
@@ -168,26 +167,6 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 				metaKey := domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 					Key:        key,
-				}
-
-				// Capture old value before overwriting (for log replay in indexbuilder).
-				oldVal, err := s.GetAccountMetadata(metaKey)
-				if err != nil && !errors.Is(err, domain.ErrNotFound) {
-					return nil, &domain.ErrStorageOperation{Operation: "reading previous account metadata", Cause: err}
-				}
-
-				if err == nil {
-					if previousAccountMetadata == nil {
-						previousAccountMetadata = make(map[string]*commonpb.MetadataMap)
-					}
-
-					prevMap := previousAccountMetadata[account]
-					if prevMap == nil {
-						prevMap = &commonpb.MetadataMap{Values: make(map[string]*commonpb.MetadataValue)}
-						previousAccountMetadata[account] = prevMap
-					}
-
-					prevMap.Values[key] = oldVal
 				}
 
 				s.PutAccountMetadata(metaKey, value)
@@ -212,18 +191,18 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 					InsertedAt: s.GetDate(),
 					UpdatedAt:  s.GetDate(),
 				},
-				AccountMetadata:         accountMetadata,
-				ChapterId:               chapterID,
-				PreviousAccountMetadata: previousAccountMetadata,
+				AccountMetadata: accountMetadata,
+				ChapterId:       chapterID,
 			},
 		},
 	}, nil
 }
 
 // processMirrorSavedMetadata applies metadata from a v2 SET_METADATA log.
+//
+// Previous values are no longer captured into the log: the indexer
+// resolves prior encoded values via the reverse map on apply.
 func (p *RequestProcessor) processMirrorSavedMetadata(ledgerName string, sm *raftcmdpb.MirrorSavedMetadata, s Scope) (*commonpb.LedgerLogPayload, domain.Describable) {
-	var previousValues map[string]*commonpb.MetadataValue
-
 	if sm.GetTarget() != nil {
 		switch target := sm.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
@@ -232,21 +211,6 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledgerName string, sm *raf
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 					Key:        key,
 				}
-
-				// Capture old value before overwriting.
-				oldVal, err := s.GetAccountMetadata(metaKey)
-				if err != nil && !errors.Is(err, domain.ErrNotFound) {
-					return nil, &domain.ErrStorageOperation{Operation: "reading previous account metadata", Cause: err}
-				}
-
-				if err == nil {
-					if previousValues == nil {
-						previousValues = make(map[string]*commonpb.MetadataValue)
-					}
-
-					previousValues[key] = oldVal
-				}
-
 				s.PutAccountMetadata(metaKey, value)
 			}
 		case *commonpb.Target_TransactionId:
@@ -265,18 +229,7 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledgerName string, sm *raf
 						state.Metadata = make(map[string]*commonpb.MetadataValue)
 					}
 
-					for key, value := range sm.GetMetadata() {
-						// Capture old value before overwriting.
-						if existing, ok := state.GetMetadata()[key]; ok {
-							if previousValues == nil {
-								previousValues = make(map[string]*commonpb.MetadataValue)
-							}
-
-							previousValues[key] = existing
-						}
-
-						state.Metadata[key] = value
-					}
+					maps.Copy(state.GetMetadata(), sm.GetMetadata())
 
 					s.PutTransactionState(txKey, state)
 				}
@@ -287,18 +240,18 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledgerName string, sm *raf
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 			SavedMetadata: &commonpb.SavedMetadata{
-				Target:         sm.GetTarget(),
-				Metadata:       sm.GetMetadata(),
-				PreviousValues: previousValues,
+				Target:   sm.GetTarget(),
+				Metadata: sm.GetMetadata(),
 			},
 		},
 	}, nil
 }
 
 // processMirrorDeletedMetadata applies metadata deletion from a v2 DELETE_METADATA log.
+//
+// Previous values are no longer captured into the log: the indexer
+// resolves prior encoded values via the reverse map on apply.
 func (p *RequestProcessor) processMirrorDeletedMetadata(ledgerName string, dm *raftcmdpb.MirrorDeletedMetadata, s Scope) (*commonpb.LedgerLogPayload, domain.Describable) {
-	var previousValue *commonpb.MetadataValue
-
 	if dm.GetTarget() != nil {
 		switch target := dm.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
@@ -306,16 +259,6 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledgerName string, dm *r
 				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 				Key:        dm.GetKey(),
 			}
-
-			oldVal, err := s.GetAccountMetadata(metaKey)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, &domain.ErrStorageOperation{Operation: "reading previous account metadata", Cause: err}
-			}
-
-			if err == nil {
-				previousValue = oldVal
-			}
-
 			s.DeleteAccountMetadata(metaKey)
 		case *commonpb.Target_TransactionId:
 			txKey := domain.TransactionKey{LedgerName: ledgerName, ID: target.TransactionId}
@@ -328,10 +271,7 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledgerName string, dm *r
 			if state != nil && state.GetMetadata() != nil {
 				state = state.CloneVT()
 
-				if val, ok := state.GetMetadata()[dm.GetKey()]; ok {
-					previousValue = val
-					delete(state.GetMetadata(), dm.GetKey())
-				}
+				delete(state.GetMetadata(), dm.GetKey())
 
 				s.PutTransactionState(txKey, state)
 			}
@@ -341,9 +281,8 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledgerName string, dm *r
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 			DeletedMetadata: &commonpb.DeletedMetadata{
-				Target:        dm.GetTarget(),
-				Key:           dm.GetKey(),
-				PreviousValue: previousValue,
+				Target: dm.GetTarget(),
+				Key:    dm.GetKey(),
 			},
 		},
 	}, nil

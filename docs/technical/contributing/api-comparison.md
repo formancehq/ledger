@@ -159,7 +159,7 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - `DELETE /{ledgerName}/accounts/{address}/metadata/{key}` - Delete account metadata
 - `POST /{ledgerName}/transactions/{transactionId}/metadata` - Save transaction metadata
 - `DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}` - Delete transaction metadata
-- `GET /{ledgerName}/metadata-schema` - Get metadata schema status (per-field declared type and `COMPLETE`/`CONVERTING` status)
+- `GET /{ledgerName}/metadata-schema` - Get metadata schema (per-field declared type)
 - `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` - Set/change metadata field type
 - `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` - Remove metadata field type declaration
 
@@ -629,7 +629,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `CheckStore` | Verify store integrity (hash chain + derived data) | ✅ |
 | `GetEventsSinks` | Get per-sink configurations and statuses | ✅ |
 | `GetChapterSchedule` | Get current chapter rotation schedule | ✅ |
-| `GetMetadataSchemaStatus` | Get metadata field conversion status | ✅ |
+| `GetMetadataSchemaStatus` | Get the declared metadata schema for a ledger | ✅ |
 | `AnalyzeTransactions` | Discover transaction flow patterns | ✅ |
 | `CreatePreparedQuery` | Create a named prepared query | ✅ |
 | `UpdatePreparedQuery` | Update an existing prepared query | ✅ |
@@ -733,7 +733,6 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Chapter not archiving | `FAILED_PRECONDITION` | `CHAPTER_NOT_ARCHIVING` | `chapterId` |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
 | Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
-| Metadata conversion in progress | `UNAVAILABLE` | `METADATA_CONVERSION_IN_PROGRESS` | `target`, `key` |
 | Invalid receipt | `INVALID_ARGUMENT` | `INVALID_RECEIPT` | `reason` |
 | Invalid cron expression | `INVALID_ARGUMENT` | `INVALID_CRON_EXPRESSION` | `expression`, `details` |
 | Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `ledger`, `name` |

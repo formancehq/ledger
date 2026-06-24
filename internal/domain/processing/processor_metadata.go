@@ -2,6 +2,7 @@ package processing
 
 import (
 	"errors"
+	"maps"
 	"strconv"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -39,17 +40,11 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 		}
 	}
 
-	// Enforce schema: convert metadata values to declared types.
-	if len(order.GetMetadata()) > 0 && info != nil && info.GetMetadataSchema() != nil {
-		targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-		if _, isTx := order.GetTarget().GetTarget().(*commonpb.Target_TransactionId); isTx {
-			targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
-		}
-
-		enforceSchemaMap(info.GetMetadataSchema(), targetType, order.GetMetadata())
-	}
-
-	var previousValues map[string]*commonpb.MetadataValue
+	// Stored values are immutable to background processes; the FSM stores what
+	// the client sent verbatim and reads return those bytes as-is — the
+	// declared type is an index hint, not an API contract. The indexer
+	// resolves the old encoded value via the reverse map on overwrite, so
+	// the FSM no longer captures previous values for it.
 
 	switch target := order.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
@@ -60,20 +55,6 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 					Account:    target.Account.GetAddr(),
 				},
 				Key: key,
-			}
-
-			// Capture old value before overwriting (for log replay in indexbuilder).
-			oldVal, err := s.GetAccountMetadata(metaKey)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, &domain.ErrStorageOperation{Operation: "reading previous account metadata", Cause: err}
-			}
-
-			if err == nil {
-				if previousValues == nil {
-					previousValues = make(map[string]*commonpb.MetadataValue)
-				}
-
-				previousValues[key] = oldVal
 			}
 
 			s.PutAccountMetadata(metaKey, value)
@@ -106,18 +87,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 			state.Metadata = make(map[string]*commonpb.MetadataValue)
 		}
 
-		for key, value := range order.GetMetadata() {
-			// Capture old value before overwriting.
-			if existing, ok := state.GetMetadata()[key]; ok {
-				if previousValues == nil {
-					previousValues = make(map[string]*commonpb.MetadataValue)
-				}
-
-				previousValues[key] = existing
-			}
-
-			state.Metadata[key] = value
-		}
+		maps.Copy(state.GetMetadata(), order.GetMetadata())
 
 		s.PutTransactionState(txKey, state)
 	}
@@ -125,15 +95,14 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 			SavedMetadata: &commonpb.SavedMetadata{
-				Target:         loggedTarget,
-				Metadata:       order.GetMetadata(),
-				PreviousValues: previousValues,
+				Target:   loggedTarget,
+				Metadata: order.GetMetadata(),
 			},
 		},
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s Scope, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
+func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s Scope) (*commonpb.LedgerLogPayload, domain.Describable) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
@@ -141,8 +110,6 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 	if order.GetKey() == "" {
 		return nil, domain.ErrMetadataKeyRequired
 	}
-
-	var previousValue *commonpb.MetadataValue
 
 	loggedTarget := order.GetTarget()
 
@@ -156,8 +123,10 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 			Key: order.GetKey(),
 		}
 
-		oldVal, err := s.GetAccountMetadata(metaKey)
-		if err != nil {
+		// Existence check (METADATA_NOT_FOUND on miss) — the stored value
+		// itself is no longer captured into the log; the indexer resolves
+		// the old encoded value via the reverse map on apply.
+		if _, err := s.GetAccountMetadata(metaKey); err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrMetadataNotFound{
 					Target: target.Account.GetAddr(),
@@ -166,10 +135,6 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 			}
 
 			return nil, &domain.ErrStorageOperation{Operation: "checking account metadata", Cause: err}
-		}
-
-		if oldVal != nil {
-			previousValue = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_ACCOUNT, order.GetKey(), oldVal)
 		}
 
 		s.DeleteAccountMetadata(metaKey)
@@ -198,15 +163,13 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 		// Reject a missing key with METADATA_NOT_FOUND (master #492):
 		// callers that delete a key they never set get an explicit
 		// rejection instead of a silent skip.
-		val, ok := state.GetMetadata()[order.GetKey()]
-		if !ok {
+		if _, ok := state.GetMetadata()[order.GetKey()]; !ok {
 			return nil, &domain.ErrMetadataNotFound{
 				Target: strconv.FormatUint(txID, 10),
 				Key:    order.GetKey(),
 			}
 		}
 
-		previousValue = coerceToDeclaredType(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_TRANSACTION, order.GetKey(), val)
 		delete(state.GetMetadata(), order.GetKey())
 		s.PutTransactionState(txKey, state)
 	}
@@ -214,9 +177,8 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 			DeletedMetadata: &commonpb.DeletedMetadata{
-				Target:        loggedTarget,
-				Key:           order.GetKey(),
-				PreviousValue: previousValue,
+				Target: loggedTarget,
+				Key:    order.GetKey(),
 			},
 		},
 	}, nil

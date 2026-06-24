@@ -78,7 +78,7 @@ func validateIndexTarget(info *commonpb.LedgerInfo, id *commonpb.IndexID) domain
 		return nil
 	}
 
-	_, field := SchemaFieldForTarget(info.GetMetadataSchema(), meta.Metadata.GetTarget(), meta.Metadata.GetKey())
+	_, field := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), meta.Metadata.GetTarget(), meta.Metadata.GetKey())
 	if field == nil {
 		return &domain.ErrMetadataFieldNotInSchema{
 			Target: meta.Metadata.GetTarget().String(),

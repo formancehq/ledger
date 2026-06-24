@@ -436,3 +436,127 @@ func TestConvertIdentity(t *testing.T) {
 	result = ConvertMetadataValue(vu8, MetadataType_METADATA_TYPE_UINT8)
 	assert.Same(t, vu8, result)
 }
+
+func TestSchemaFieldForTarget(t *testing.T) {
+	t.Parallel()
+
+	schema := &MetadataSchema{
+		AccountFields: map[string]*MetadataFieldSchema{
+			"age": {Type: MetadataType_METADATA_TYPE_INT64},
+		},
+		TransactionFields: map[string]*MetadataFieldSchema{
+			"category": {Type: MetadataType_METADATA_TYPE_STRING},
+		},
+		LedgerFields: map[string]*MetadataFieldSchema{
+			"env": {Type: MetadataType_METADATA_TYPE_STRING},
+		},
+	}
+
+	t.Run("nil schema", func(t *testing.T) {
+		t.Parallel()
+		fields, fs := SchemaFieldForTarget(nil, TargetType_TARGET_TYPE_ACCOUNT, "age")
+		assert.Nil(t, fields)
+		assert.Nil(t, fs)
+	})
+
+	t.Run("account hit", func(t *testing.T) {
+		t.Parallel()
+		fields, fs := SchemaFieldForTarget(schema, TargetType_TARGET_TYPE_ACCOUNT, "age")
+		require.NotNil(t, fields)
+		require.NotNil(t, fs)
+		assert.Equal(t, MetadataType_METADATA_TYPE_INT64, fs.GetType())
+	})
+
+	t.Run("transaction hit", func(t *testing.T) {
+		t.Parallel()
+		fields, fs := SchemaFieldForTarget(schema, TargetType_TARGET_TYPE_TRANSACTION, "category")
+		require.NotNil(t, fields)
+		require.NotNil(t, fs)
+		assert.Equal(t, MetadataType_METADATA_TYPE_STRING, fs.GetType())
+	})
+
+	t.Run("ledger hit", func(t *testing.T) {
+		t.Parallel()
+		fields, fs := SchemaFieldForTarget(schema, TargetType_TARGET_TYPE_LEDGER, "env")
+		require.NotNil(t, fields)
+		require.NotNil(t, fs)
+		assert.Equal(t, MetadataType_METADATA_TYPE_STRING, fs.GetType())
+	})
+
+	t.Run("missing key returns field map and nil schema", func(t *testing.T) {
+		t.Parallel()
+		fields, fs := SchemaFieldForTarget(schema, TargetType_TARGET_TYPE_ACCOUNT, "missing")
+		require.NotNil(t, fields)
+		assert.Nil(t, fs)
+	})
+
+	t.Run("empty field map returns nil, nil", func(t *testing.T) {
+		t.Parallel()
+		fields, fs := SchemaFieldForTarget(&MetadataSchema{}, TargetType_TARGET_TYPE_ACCOUNT, "age")
+		assert.Nil(t, fields)
+		assert.Nil(t, fs)
+	})
+}
+
+func TestCoerceToDeclaredType(t *testing.T) {
+	t.Parallel()
+
+	schema := &MetadataSchema{
+		AccountFields: map[string]*MetadataFieldSchema{
+			"age": {Type: MetadataType_METADATA_TYPE_UINT64},
+		},
+	}
+
+	t.Run("nil value passes through", func(t *testing.T) {
+		t.Parallel()
+		got := CoerceToDeclaredType(schema, TargetType_TARGET_TYPE_ACCOUNT, "age", nil)
+		assert.Nil(t, got)
+	})
+
+	t.Run("no schema passes through", func(t *testing.T) {
+		t.Parallel()
+		v := NewStringValue("hello")
+		got := CoerceToDeclaredType(nil, TargetType_TARGET_TYPE_ACCOUNT, "age", v)
+		assert.Same(t, v, got)
+	})
+
+	t.Run("no declared field passes through", func(t *testing.T) {
+		t.Parallel()
+		v := NewStringValue("hello")
+		got := CoerceToDeclaredType(schema, TargetType_TARGET_TYPE_ACCOUNT, "unknown", v)
+		assert.Same(t, v, got)
+	})
+
+	t.Run("already matching type passes through (identity)", func(t *testing.T) {
+		t.Parallel()
+		v := NewUintValue(42)
+		got := CoerceToDeclaredType(schema, TargetType_TARGET_TYPE_ACCOUNT, "age", v)
+		assert.Same(t, v, got)
+	})
+
+	t.Run("string coerced to uint64 keeps numeric value", func(t *testing.T) {
+		t.Parallel()
+		v := NewStringValue("030")
+		got := CoerceToDeclaredType(schema, TargetType_TARGET_TYPE_ACCOUNT, "age", v)
+		require.NotNil(t, got)
+		assert.Equal(t, uint64(30), got.GetUintValue())
+	})
+
+	t.Run("uncoercible string returns Null sentinel preserving original", func(t *testing.T) {
+		t.Parallel()
+		v := NewStringValue("abc")
+		got := CoerceToDeclaredType(schema, TargetType_TARGET_TYPE_ACCOUNT, "age", v)
+		require.NotNil(t, got)
+		nv, ok := got.GetType().(*MetadataValue_NullValue)
+		require.True(t, ok, "expected Null sentinel, got %T", got.GetType())
+		assert.Equal(t, "abc", nv.NullValue.GetOriginal())
+	})
+
+	t.Run("pure function: same input yields equal output across calls", func(t *testing.T) {
+		t.Parallel()
+		v := NewStringValue("42")
+		a := CoerceToDeclaredType(schema, TargetType_TARGET_TYPE_ACCOUNT, "age", v)
+		b := CoerceToDeclaredType(schema, TargetType_TARGET_TYPE_ACCOUNT, "age", v)
+		assert.Equal(t, a.GetUintValue(), b.GetUintValue())
+	})
+}

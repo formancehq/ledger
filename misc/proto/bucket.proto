@@ -791,7 +791,6 @@ message MetadataFieldStatus {
   reserved 3, 4;
   reserved "total_keys", "converted_keys";
   common.MetadataType declared_type = 1;
-  common.MetadataConversionStatus status = 2;
 }
 
 // ============================================================================

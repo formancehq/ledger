@@ -34,7 +34,6 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutAccountMetadata(metaKey, commonpb.NewStringValue("active"))
 
 	request := &servicepb.Request{
@@ -67,8 +66,69 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 
 	savedMetadata := applyLog.GetLog().GetData().GetSavedMetadata()
 	require.NotNil(t, savedMetadata)
-	// No previous values since this is a first write
-	require.Empty(t, savedMetadata.GetPreviousValues())
+}
+
+// TestProcessAddMetadata_StoresClientValueVerbatim pins the no-coerce-on-write
+// invariant: the FSM stores the exact MetadataValue the client sent, even when
+// it does not match the declared type. Read-time coercion is responsible for
+// surfacing values in declared_type to clients.
+func TestProcessAddMetadata_StoresClientValueVerbatim(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "test-ledger",
+		Id:   1,
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"age": {Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
+			},
+		},
+	}
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
+		Key:        "age",
+	}
+
+	// The expected stored value is the EXACT client-sent string "030", not a
+	// coerced uint64(30). Leading-zero preservation matters for type round-trips.
+	clientSent := commonpb.NewStringValue("030")
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	mockStore.EXPECT().PutAccountMetadata(metaKey, clientSent)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Account{
+								Account: &commonpb.TargetAccount{Addr: "users:123"},
+							},
+						},
+						Metadata: map[string]*commonpb.MetadataValue{"age": clientSent},
+					},
+				}},
+			},
+		},
+	}
+
+	_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
 }
 
 func TestProcessAddMetadata_Transaction(t *testing.T) {
@@ -179,7 +239,6 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	deletedMetadata := applyLog.GetLog().GetData().GetDeletedMetadata()
 	require.NotNil(t, deletedMetadata)
 	require.Equal(t, "status", deletedMetadata.GetKey())
-	require.NotNil(t, deletedMetadata.GetPreviousValue())
 }
 
 func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {

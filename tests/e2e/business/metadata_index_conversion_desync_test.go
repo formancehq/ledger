@@ -17,11 +17,14 @@ import (
 // happen when an indexed metadata field's values are overwritten during the
 // BUILDING window of a type change.
 //
-// The index schema-rewrite (BUILDING) and the metadata-value converter
-// (CONVERTING) are independent background jobs. An incremental write deletes the
-// old index entry by the previous value's encoding taken from the log; if that
-// encoding differs from the index's mid-rewrite entry, the delete misses and a
-// stale entry survives — returning the account for a value it no longer holds.
+// Under the current design only the indexer's schema-rewrite (BUILDING) runs
+// in the background — the FSM-side value converter (CONVERTING) is gone, so
+// stored values stay verbatim. The hazard the test still pins is the
+// incremental-write path: a delete of an old indexed entry must locate it
+// by the encoding currently in the forward index (looked up via the reverse
+// map), not by the encoding implied by the prior declared type. Any miss
+// would leave a stale entry surfacing the account for a value it no longer
+// holds.
 //
 // Detection: after the type change every score is >= 1_000_000, so an index
 // query for the old range [0, n) must return nothing. Any hit is a stale entry.

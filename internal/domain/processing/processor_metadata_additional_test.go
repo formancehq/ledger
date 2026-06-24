@@ -67,17 +67,13 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"age": {
-					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
-					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
-				},
+				"age": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
-	mockStore.EXPECT().GetAccountMetadata(gomock.Any()).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutAccountMetadata(gomock.Any(), gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())

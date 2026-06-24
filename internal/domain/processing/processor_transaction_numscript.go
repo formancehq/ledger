@@ -20,7 +20,6 @@ import (
 type numscriptPostingProducer struct {
 	cache      *numscript.NumscriptCache
 	ledgerName string
-	schema     *commonpb.MetadataSchema
 	assetCache map[string]cachedAssetPrecision
 }
 
@@ -45,7 +44,6 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		store:      s,
 		ledgerName: ledgerName,
 		force:      order.GetForce(),
-		schema:     p.schema,
 	}
 
 	// Execute the script (experimental features are declared directly in scripts)
@@ -226,7 +224,6 @@ type numscriptStoreAdapter struct {
 	store      Scope
 	ledgerName string
 	force      bool // When true, return unlimited balances to bypass balance checks
-	schema     *commonpb.MetadataSchema
 }
 
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
@@ -298,18 +295,12 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 			}
 
 			if valueReader != nil {
-				value := valueReader.Mutate()
-				// Opportunistically convert to declared schema type and write back.
-				if s.schema != nil {
-					if fields := s.schema.GetAccountFields(); fields != nil {
-						if fieldSchema, schemaOK := fields[key]; schemaOK && !commonpb.TypeMatches(value, fieldSchema.GetType()) {
-							value = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
-							s.store.PutAccountMetadata(metaKey, value)
-						}
-					}
-				}
-
-				str := commonpb.MetadataValueToString(value)
+				// Numscript sees the verbatim client write — declared_type is
+				// an index hint only and MUST NOT influence script behaviour.
+				// A previous version coerced "030" under a UINT64 declaration
+				// to "30" here, which broke the lossless contract and let a
+				// retype silently change transaction outcomes.
+				str := commonpb.MetadataValueToString(valueReader.Mutate())
 				if str != "" {
 					accountMeta[key] = str
 				}

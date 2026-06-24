@@ -108,7 +108,6 @@ func resetCreatedTransaction(ct *commonpb.CreatedTransaction) {
 	ct.ChapterId = 0
 	ct.PostCommitVolumes = nil
 	clear(ct.GetAccountMetadata())
-	clear(ct.GetPreviousAccountMetadata())
 
 	resetTransaction(ct.GetTransaction())
 }
@@ -146,7 +145,6 @@ func resetSavedMetadata(sm *commonpb.SavedMetadata) {
 	}
 
 	sm.Target = nil
-	clear(sm.GetPreviousValues())
 	clear(sm.GetMetadata())
 }
 
@@ -157,5 +155,4 @@ func resetDeletedMetadata(dm *commonpb.DeletedMetadata) {
 
 	dm.Target = nil
 	dm.Key = ""
-	dm.PreviousValue = nil
 }

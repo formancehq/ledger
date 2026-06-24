@@ -175,17 +175,15 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for CreatedTransaction.
 func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Transaction             *Transaction              `json:"transaction,omitempty"`
-		AccountMetadata         map[string]map[string]any `json:"accountMetadata,omitempty"`
-		ChapterID               uint64                    `json:"chapterId,omitempty"`
-		PostCommitVolumes       *PostCommitVolumes        `json:"postCommitVolumes,omitempty"`
-		PreviousAccountMetadata map[string]map[string]any `json:"previousAccountMetadata,omitempty"`
+		Transaction       *Transaction              `json:"transaction,omitempty"`
+		AccountMetadata   map[string]map[string]any `json:"accountMetadata,omitempty"`
+		ChapterID         uint64                    `json:"chapterId,omitempty"`
+		PostCommitVolumes *PostCommitVolumes        `json:"postCommitVolumes,omitempty"`
 	}{
-		Transaction:             x.GetTransaction(),
-		AccountMetadata:         AccountMetadataToAnyMap(x.GetAccountMetadata()),
-		ChapterID:               x.GetChapterId(),
-		PostCommitVolumes:       x.GetPostCommitVolumes(),
-		PreviousAccountMetadata: AccountMetadataToAnyMap(x.GetPreviousAccountMetadata()),
+		Transaction:       x.GetTransaction(),
+		AccountMetadata:   AccountMetadataToAnyMap(x.GetAccountMetadata()),
+		ChapterID:         x.GetChapterId(),
+		PostCommitVolumes: x.GetPostCommitVolumes(),
 	})
 }
 

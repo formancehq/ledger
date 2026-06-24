@@ -9,8 +9,10 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -25,6 +27,8 @@ const DefaultBatchSize = 1000
 // payload) and blocks until the FSM applies. Implemented in bootstrap
 // via a closure that routes the proposal through plan.RunWithPreload
 // with empty Needs.
+//
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source builder.go -destination proposer_generated_test.go -typed -package indexbuilder . Proposer
 type Proposer interface {
 	Propose(ctx context.Context, cmd *raftcmdpb.Proposal) error
 }
@@ -38,6 +42,7 @@ type Proposer interface {
 type Builder struct {
 	pebbleStore   *dal.Store
 	readStore     *readstore.Store
+	attrs         *attributes.Attributes
 	logger        logging.Logger
 	meter         metric.Meter
 	notifications *signal.Notifications
@@ -75,6 +80,32 @@ type Builder struct {
 	kb       *dal.KeyBuilder
 	wb       *readstore.WriteBatch
 	accounts map[string]struct{}
+
+	// batchSchema is the per-batch memoization layer over FSM Pebble
+	// LedgerInfo lookups. Set at the top of each indexer batch
+	// (processLogs / processBackfill), reset to nil at the end via defer.
+	// Accessed via b.coerceForLedger from the per-write hot path; no
+	// concurrent access — the indexer loop is single-threaded.
+	batchSchema *schemaResolver
+}
+
+// coerceForLedger looks up the declared type for (ledger, target, key) via
+// the current batch's schema resolver and returns v coerced to that type.
+// Returns an error on schema lookup failure (Pebble I/O error, unmarshal
+// failure): the caller MUST propagate it to abort the batch — silently
+// encoding the entry under the raw client type tag would commit miscoded
+// data to the forward index that no downstream path repairs.
+//
+// When b.batchSchema is nil (caller forgot to seed it), this is a
+// programming error rather than a runtime condition; we panic to surface
+// the missing setup loudly per CLAUDE.md invariant #7. Tests that exercise
+// indexer write helpers directly must seed b.batchSchema explicitly.
+func (b *Builder) coerceForLedger(ledger string, target commonpb.TargetType, key string, v *commonpb.MetadataValue) (*commonpb.MetadataValue, error) {
+	if b.batchSchema == nil {
+		panic("indexbuilder: coerceForLedger called outside an active batch (batchSchema not seeded)")
+	}
+
+	return b.batchSchema.coerceFor(ledger, target, key, v)
 }
 
 // NewBuilder creates a new index builder.
@@ -83,6 +114,7 @@ type Builder struct {
 func NewBuilder(
 	pebbleStore *dal.Store,
 	readStore *readstore.Store,
+	attrs *attributes.Attributes,
 	logger logging.Logger,
 	meter metric.Meter,
 	batchSize int,
@@ -94,6 +126,7 @@ func NewBuilder(
 	return &Builder{
 		pebbleStore:    pebbleStore,
 		readStore:      readStore,
+		attrs:          attrs,
 		logger:         logger.WithFields(map[string]any{"cmp": "index-builder"}),
 		meter:          meter,
 		batchSize:      batchSize,

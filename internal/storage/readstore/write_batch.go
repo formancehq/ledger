@@ -148,8 +148,10 @@ func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledgerName string, 
 	return wb.del(key)
 }
 
-// ReplaceMetadataIndex replaces a metadata index entry using an explicit old value
-// from the log, avoiding a reverse map read.
+// ReplaceMetadataIndex replaces a metadata index entry using the
+// previous encoded value supplied by the caller (typically looked up
+// via reverseMapValue on the indexer hot path; nil means "no prior
+// entry to delete").
 func (wb *WriteBatch) ReplaceMetadataIndex(
 	kb *dal.KeyBuilder,
 	reverseKey []byte,
@@ -183,8 +185,10 @@ func (wb *WriteBatch) ReplaceMetadataIndex(
 	return nil
 }
 
-// DeleteMetadataEntryWithPrevious removes both the forward index and reverse map entries
-// for a metadata key on a specific entity, using an explicit old value from the log.
+// DeleteMetadataEntryWithPrevious removes both the forward index and
+// reverse map entries for a metadata key on a specific entity, using
+// the previous encoded value supplied by the caller (typically looked
+// up via reverseMapValue on the indexer hot path).
 func (wb *WriteBatch) DeleteMetadataEntryWithPrevious(
 	kb *dal.KeyBuilder,
 	reverseKey []byte,

@@ -1126,16 +1126,10 @@ func TestToSchemaStatusJSON_WithTransactionFields(t *testing.T) {
 
 	resp := &servicepb.GetMetadataSchemaStatusResponse{
 		AccountFields: map[string]*servicepb.MetadataFieldStatus{
-			"role": {
-				DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING,
-				Status:       commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
-			},
+			"role": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
 		},
 		TransactionFields: map[string]*servicepb.MetadataFieldStatus{
-			"category": {
-				DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING,
-				Status:       commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
-			},
+			"category": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
 		},
 	}
 
@@ -1144,9 +1138,7 @@ func TestToSchemaStatusJSON_WithTransactionFields(t *testing.T) {
 	require.Len(t, result.AccountFields, 1)
 	require.Len(t, result.TransactionFields, 1)
 	require.Equal(t, "string", result.AccountFields["role"].DeclaredType)
-	require.Equal(t, "COMPLETE", result.AccountFields["role"].Status)
 	require.Equal(t, "string", result.TransactionFields["category"].DeclaredType)
-	require.Equal(t, "CONVERTING", result.TransactionFields["category"].Status)
 }
 
 // --------------------------------------------------------------------------

@@ -12,6 +12,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -84,7 +85,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	// Rebuild.
 	spinner, _ = pterm.DefaultSpinner.Start("Rebuilding indexes from system logs...")
 
-	builder := indexbuilder.NewBuilder(pebbleStore, rs, logger, noop.Meter{}, batchSize)
+	builder := indexbuilder.NewBuilder(pebbleStore, rs, attributes.New(), logger, noop.Meter{}, batchSize)
 
 	lastSeq, err := builder.RebuildAll()
 	if err != nil {

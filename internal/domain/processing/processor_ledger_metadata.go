@@ -18,27 +18,16 @@ func (p *RequestProcessor) processAddLedgerMetadata(ledger string, order *raftcm
 		return nil, loadErr
 	}
 
-	enforceSchemaMap(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_LEDGER, order.GetMetadata())
-
-	var previousValues map[string]*commonpb.MetadataValue
+	// Stored values are immutable and reads return them verbatim;
+	// declared_type only governs forward-index encoding on the indexer
+	// side. The indexer no longer needs the FSM-captured previous
+	// values either — it resolves prior encoded values via the reverse
+	// map at apply time.
 
 	for key, value := range order.GetMetadata() {
 		metaKey := domain.LedgerMetadataKey{
 			LedgerName: info.GetName(),
 			Key:        key,
-		}
-
-		oldVal, err := s.GetLedgerMetadata(metaKey)
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return nil, &domain.ErrStorageOperation{Operation: "reading previous ledger metadata", Cause: err}
-		}
-
-		if err == nil {
-			if previousValues == nil {
-				previousValues = make(map[string]*commonpb.MetadataValue)
-			}
-
-			previousValues[key] = oldVal
 		}
 
 		s.PutLedgerMetadata(metaKey, value)
@@ -47,9 +36,8 @@ func (p *RequestProcessor) processAddLedgerMetadata(ledger string, order *raftcm
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SavedLedgerMetadata{
 			SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{
-				Ledger:         ledger,
-				Metadata:       order.GetMetadata(),
-				PreviousValues: previousValues,
+				Ledger:   ledger,
+				Metadata: order.GetMetadata(),
 			},
 		},
 	}, nil
@@ -74,8 +62,10 @@ func (p *RequestProcessor) processDeleteLedgerMetadata(ledger string, order *raf
 		Key:        order.GetKey(),
 	}
 
-	oldVal, err := s.GetLedgerMetadata(metaKey)
-	if err != nil {
+	// Existence check (METADATA_NOT_FOUND on miss). The stored value itself
+	// is no longer captured into the log; the indexer resolves the old
+	// encoded value via the reverse map at apply time.
+	if _, err := s.GetLedgerMetadata(metaKey); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.ErrMetadataNotFound{
 				Target: ledger,
@@ -91,9 +81,8 @@ func (p *RequestProcessor) processDeleteLedgerMetadata(ledger string, order *raf
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedLedgerMetadata{
 			DeletedLedgerMetadata: &commonpb.DeletedLedgerMetadataLog{
-				Ledger:        ledger,
-				Key:           order.GetKey(),
-				PreviousValue: oldVal,
+				Ledger: ledger,
+				Key:    order.GetKey(),
 			},
 		},
 	}, nil

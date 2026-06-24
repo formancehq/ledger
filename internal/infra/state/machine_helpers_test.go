@@ -177,9 +177,6 @@ func TestMachineSealRequestAndArchiveRequestChannels(t *testing.T) {
 	archiveCh := machine.ArchiveRequestCh()
 	require.NotNil(t, archiveCh)
 
-	convertCh := machine.MetadataConvertRequestCh()
-	require.NotNil(t, convertCh)
-
 	coldCh := machine.ColdCompactionCh()
 	require.NotNil(t, coldCh)
 }

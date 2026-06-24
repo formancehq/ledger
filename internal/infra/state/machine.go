@@ -93,11 +93,6 @@ type Machine struct {
 	// The Archiver reads from this channel to perform background archival to cold storage.
 	archiveRequestCh *worker.Channel[ArchiveRequest]
 
-	// metadataConvertRequestCh receives conversion requests when a SetMetadataFieldType
-	// log is applied. The MetadataConverter reads from this channel to perform
-	// background conversion of existing account metadata values.
-	metadataConvertRequestCh *worker.Channel[MetadataConvertRequest]
-
 	// coldCompactionCh signals the SmartCompactor that a chapter purge has been applied,
 	// meaning the cold zone [0x01, 0xF1) contains fresh tombstones that benefit from compaction.
 	coldCompactionCh chan struct{}
@@ -250,7 +245,6 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		queryCheckpointScheduleChanged: signal.New(),
 		sealRequestCh:                  worker.NewChannel[SealRequest](logger, "seal request", 10),
 		archiveRequestCh:               worker.NewChannel[ArchiveRequest](logger, "archive request", 1),
-		metadataConvertRequestCh:       worker.NewChannel[MetadataConvertRequest](logger, "metadata conversion request", 16),
 		coldCompactionCh:               make(chan struct{}, 1),
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
@@ -456,8 +450,6 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 	needsArchiveDispatch := false
 	needsColdCompaction := false
 
-	var pendingConvertRequests []MetadataConvertRequest
-
 	for i, entry := range entries {
 		if entry.Index <= fsm.State.LastAppliedIndex {
 			ret.Results = append(ret.Results, ApplyResult{})
@@ -607,7 +599,6 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		}
 
 		ret.Results = append(ret.Results, *result)
-		pendingConvertRequests = append(pendingConvertRequests, result.MetadataConvertRequests...)
 
 		// Checkpoint-trigger detection. The applier is responsible for pre-
 		// splitting the entries slice so any trigger entry is the last one in
@@ -682,7 +673,6 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		needsColdCompaction:  needsColdCompaction,
 		eventsConfigChanged:  eventsConfigChanged,
 		mirrorConfigChanged:  mirrorConfigChanged,
-		convertRequests:      pendingConvertRequests,
 		entryCount:           len(entries),
 	}
 
@@ -820,10 +810,6 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		default:
 			// Coalescent signal — safe to drop, next purge will re-signal.
 		}
-	}
-
-	for _, req := range pb.convertRequests {
-		fsm.metadataConvertRequestCh.TrySend(req, fmt.Sprintf("%s/%s", req.LedgerName, req.Key))
 	}
 
 	fsm.notifier.NotifyLogsCommitted(pb.lastSequenceID)
@@ -1035,12 +1021,11 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 //
 // Phase ordering matters: checkStaleProposal and Preload run BEFORE
 // applyTechnicalUpdates so that technical updates that need to consult
-// the cache (notably applyMetadataConversionBatch's compare-and-set
-// against ExpectedValue) see the values the leader captured in the
-// preload. Previously these two ran only on orders-bearing proposals,
-// so technical-only proposals (the converter, cluster config,
-// idempotency eviction, index-ready) silently ignored any PredictedIndex
-// or Preload they carried.
+// the cache see the values the leader captured in the preload.
+// Previously these two ran only on orders-bearing proposals, so
+// technical-only proposals (cluster config, idempotency eviction,
+// index-ready) silently ignored any PredictedIndex or Preload they
+// carried.
 // planInvariantDescribable extracts the Describable wrapped in err when
 // it is a coverage / execution-plan invariant violation. Returns nil
 // when err is some other kind of error (Pebble write failure, etc.) so
@@ -1526,19 +1511,18 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	return &ApplyResult{
-		ProposalID:              proposal.GetId(),
-		Logs:                    logs,
-		ConfigChanged:           configChanged,
-		MirrorConfigChanged:     mirrorConfigChanged,
-		HasArchiveRequests:      hasArchiveRequests,
-		HasPurges:               hasPurges,
-		QueryCheckpointCreated:  queryCheckpointCreated,
-		QueryCheckpointDeleted:  queryCheckpointDeleted,
-		MetadataConvertRequests: buffer.MetadataConvertRequests(),
-		volumeUpdates:           buffer.KeptVolumeUpdates(),
-		purgedVolumeKeys:        buffer.PurgedVolumeKeys(),
-		createdLogs:             createdLogs,
-		ledgerNames:             ledgerNames,
+		ProposalID:             proposal.GetId(),
+		Logs:                   logs,
+		ConfigChanged:          configChanged,
+		MirrorConfigChanged:    mirrorConfigChanged,
+		HasArchiveRequests:     hasArchiveRequests,
+		HasPurges:              hasPurges,
+		QueryCheckpointCreated: queryCheckpointCreated,
+		QueryCheckpointDeleted: queryCheckpointDeleted,
+		volumeUpdates:          buffer.KeptVolumeUpdates(),
+		purgedVolumeKeys:       buffer.PurgedVolumeKeys(),
+		createdLogs:            createdLogs,
+		ledgerNames:            ledgerNames,
 	}, nil
 }
 
@@ -1587,13 +1571,12 @@ func (fsm *Machine) StopBackgroundTasks() {
 // checkpoint is installed: messages enqueued by the FSM hot path pre-sync
 // reference chapter IDs, sequence ranges and checkpoint paths that may no
 // longer line up with the post-sync FSMState. Fresh requests are re-pushed
-// from durable state by Recovery.DispatchArchiveRequests /
-// DispatchMetadataConversionRequests when leadership is (re)acquired, and by
-// the per-worker reconciliation tickers in the meantime.
+// from durable state by Recovery.DispatchArchiveRequests when leadership
+// is (re)acquired, and by the per-worker reconciliation tickers in the
+// meantime.
 func (fsm *Machine) DrainBackgroundChannels() {
 	fsm.sealRequestCh.Drain()
 	fsm.archiveRequestCh.Drain()
-	fsm.metadataConvertRequestCh.Drain()
 	drainSignalChan(fsm.coldCompactionCh)
 	drainSignalChan(fsm.bloomRebuildCh)
 }
@@ -1612,12 +1595,6 @@ func drainSignalChan[T any](ch chan T) {
 // ArchiveRequestCh returns the channel used to dispatch archive requests to the Archiver.
 func (fsm *Machine) ArchiveRequestCh() *worker.Channel[ArchiveRequest] {
 	return fsm.archiveRequestCh
-}
-
-// MetadataConvertRequestCh returns the channel used to dispatch metadata
-// conversion requests to the MetadataConverter.
-func (fsm *Machine) MetadataConvertRequestCh() *worker.Channel[MetadataConvertRequest] {
-	return fsm.metadataConvertRequestCh
 }
 
 // ColdCompactionCh returns the channel that signals the SmartCompactor when
@@ -1657,26 +1634,6 @@ func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
 				}
 			} else {
 				fsm.archiveRequestCh.TrySend(req, fmt.Sprintf("chapter %d", req.ChapterID))
-			}
-		}
-	}
-}
-
-// dispatchMetadataConversionRequests iterates all ledgers and dispatches
-// conversion requests for metadata fields still in CONVERTING status. Called
-// from recovery paths; the reader is supplied by Recovery so the Machine
-// itself does not hold a Pebble read capability.
-
-func (fsm *Machine) dispatchConvertingFields(stop <-chan struct{}, info *commonpb.LedgerInfo, targetType commonpb.TargetType, fields map[string]*commonpb.MetadataFieldSchema) {
-	for key, field := range fields {
-		if field.GetStatus() == commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING {
-			if !fsm.metadataConvertRequestCh.Send(MetadataConvertRequest{
-				LedgerName: info.GetName(),
-				TargetType: targetType,
-				Key:        key,
-				Type:       field.GetType(),
-			}, stop) {
-				return
 			}
 		}
 	}
@@ -1836,7 +1793,6 @@ type PreparedBatch struct {
 	needsColdCompaction  bool
 	eventsConfigChanged  bool
 	mirrorConfigChanged  bool
-	convertRequests      []MetadataConvertRequest
 	checkpointDeletes    []uint64
 
 	// Sentinel data (captured during prepare, validated after commit).
@@ -1862,16 +1818,15 @@ func (pb *PreparedBatch) Close() {
 }
 
 type ApplyResult struct {
-	ProposalID              uint64
-	AppliedIndex            uint64 // Raft index at which this entry was applied
-	Logs                    []*raftcmdpb.CreatedLogOrReference
-	Error                   error
-	CheckpointPath          string // Set by Node after checkpoint creation (CloseChapter proposals)
-	ConfigChanged           bool   // True when sink configuration changed
-	MirrorConfigChanged     bool   // True when mirror ledger configuration changed
-	HasArchiveRequests      bool   // True when there are pending archive requests
-	HasPurges               bool   // True when cold zone data was purged (triggers cold compaction)
-	MetadataConvertRequests []MetadataConvertRequest
+	ProposalID          uint64
+	AppliedIndex        uint64 // Raft index at which this entry was applied
+	Logs                []*raftcmdpb.CreatedLogOrReference
+	Error               error
+	CheckpointPath      string // Set by Node after checkpoint creation (CloseChapter proposals)
+	ConfigChanged       bool   // True when sink configuration changed
+	MirrorConfigChanged bool   // True when mirror ledger configuration changed
+	HasArchiveRequests  bool   // True when there are pending archive requests
+	HasPurges           bool   // True when cold zone data was purged (triggers cold compaction)
 
 	// QueryCheckpointCreated holds the checkpoint ID when a CreateQueryCheckpoint
 	// order was processed. Signals ApplyEntries to split the batch and create

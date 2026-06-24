@@ -929,13 +929,11 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	}
 
 	// After #186: PutAccountMetadata is only called once per key, by the
-	// caller (processCreateTransaction), so the previous value capture sees
-	// the real prior state. The numscript adapter no longer pre-writes.
+	// caller (processCreateTransaction). The numscript adapter no longer
+	// pre-writes. The FSM does not read previous values: the indexer
+	// resolves the prior encoded value via the reverse map.
 	mockStore.EXPECT().PutAccountMetadata(acctTypeKey, commonpb.NewStringValue("savings"))
 	mockStore.EXPECT().PutAccountMetadata(createdByKey, commonpb.NewStringValue("numscript"))
-	// New account → no prior metadata; GetAccountMetadata returns ErrNotFound.
-	mockStore.EXPECT().GetAccountMetadata(acctTypeKey).Return(nil, domain.ErrNotFound)
-	mockStore.EXPECT().GetAccountMetadata(createdByKey).Return(nil, domain.ErrNotFound)
 
 	// Test set_account_meta
 	request := &servicepb.Request{
@@ -979,26 +977,15 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	metaMap := commonpb.MetadataMapToGoMap(aliceMeta)
 	require.Equal(t, "savings", metaMap["account_type"])
 	require.Equal(t, "numscript", metaMap["created_by"])
-
-	// New account → log's PreviousAccountMetadata must be empty for these
-	// keys, not equal to the new values (the #186 regression).
-	prev := createdTx.GetPreviousAccountMetadata()["users:alice"]
-	if prev != nil {
-		require.NotContains(t, prev.GetValues(), "account_type",
-			"PreviousAccountMetadata must not contain the newly-written key for a fresh account")
-		require.NotContains(t, prev.GetValues(), "created_by",
-			"PreviousAccountMetadata must not contain the newly-written key for a fresh account")
-	}
 }
 
-// TestProcessCreateTransaction_Numscript_SetAccountMeta_OverwriteCapturesOldValue
-// is the #186 regression. Before the fix, the Numscript adapter pre-wrote
-// new metadata into the overlay, so by the time
-// processCreateTransaction called GetAccountMetadata to capture the prior
-// value, it observed the just-written new value. The log's
-// PreviousAccountMetadata then matched the current metadata and the
-// indexbuilder failed to remove stale index entries for value A.
-func TestProcessCreateTransaction_Numscript_SetAccountMeta_OverwriteCapturesOldValue(t *testing.T) {
+// TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce pins the
+// #186-adjacent invariant for the new no-previous-value model: even when the
+// numscript adapter and the FSM both reason about the same account-metadata
+// key, only one PutAccountMetadata call lands in the order (no pre-write by
+// the adapter). PreviousAccountMetadata no longer exists in the log; the
+// indexer resolves the prior encoded value via the reverse map.
+func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -1025,10 +1012,8 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_OverwriteCapturesOldV
 		Key:        "role",
 	}
 
-	// Existing value "admin" must be observed at capture time.
-	mockStore.EXPECT().GetAccountMetadata(roleKey).Return(commonpb.NewStringValue("admin"), nil)
-	// Only one write — by processCreateTransaction itself, not by the
-	// numscript adapter pre-writing.
+	// Exactly one write lands — the FSM no longer reads GetAccountMetadata
+	// to capture a previous value (it stores the client value verbatim).
 	mockStore.EXPECT().PutAccountMetadata(roleKey, commonpb.NewStringValue("viewer"))
 
 	request := &servicepb.Request{
@@ -1061,16 +1046,6 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_OverwriteCapturesOldV
 	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
 	require.NotNil(t, aliceMeta)
 	require.Equal(t, "viewer", commonpb.MetadataMapToGoMap(aliceMeta)["role"])
-
-	// The fix's specific claim: PreviousAccountMetadata holds "admin", not
-	// "viewer". The indexbuilder reads this to remove the stale index entry
-	// for "admin".
-	prev := createdTx.GetPreviousAccountMetadata()["users:alice"]
-	require.NotNil(t, prev, "PreviousAccountMetadata must capture the value before the script ran")
-	prevValue := prev.GetValues()["role"]
-	require.NotNil(t, prevValue)
-	require.Equal(t, "admin", prevValue.GetStringValue(),
-		"previous value must be the pre-script value, not the newly-written one")
 }
 
 func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
@@ -1520,7 +1495,12 @@ func TestProcessCreateTransaction_ChapterIdZeroWhenNoChapter(t *testing.T) {
 	require.Equal(t, uint64(0), createdTx.GetChapterId(), "ChapterId should be 0 when no open chapter exists")
 }
 
-func TestProcessCreateTransaction_CoercesPreviousAccountMetadata(t *testing.T) {
+// TestProcessCreateTransaction_StoresAccountMetadataVerbatim pins the
+// no-coerce-on-write invariant for the create-transaction path: even when
+// a declared type (INT64) differs from the client-sent type (STRING), the
+// FSM stores the value as-sent. Read-time coercion is responsible for
+// exposing values in declared_type to clients.
+func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -1533,8 +1513,6 @@ func TestProcessCreateTransaction_CoercesPreviousAccountMetadata(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	// "age" is declared INT64 and still converting; the account's stored value is
-	// the raw string written before the type was declared.
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
 		Id:   1,
@@ -1554,6 +1532,8 @@ func TestProcessCreateTransaction_CoercesPreviousAccountMetadata(t *testing.T) {
 		Key:        "age",
 	}
 
+	clientSent := commonpb.NewStringValue("040")
+
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
@@ -1565,9 +1545,8 @@ func TestProcessCreateTransaction_CoercesPreviousAccountMetadata(t *testing.T) {
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, gomock.Any())
-	// Stored value is still the raw string (conversion has not rewritten it yet).
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("30"), nil)
-	mockStore.EXPECT().PutAccountMetadata(metaKey, gomock.Any())
+	// Exact verbatim write: no GetAccountMetadata pre-read, no coercion.
+	mockStore.EXPECT().PutAccountMetadata(metaKey, clientSent)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1579,7 +1558,7 @@ func TestProcessCreateTransaction_CoercesPreviousAccountMetadata(t *testing.T) {
 							{Source: "world", Destination: "users:123", Amount: commonpb.NewUint256FromUint64(1000), Asset: "USD"},
 						},
 						AccountMetadata: map[string]*commonpb.MetadataMap{
-							"users:123": {Values: map[string]*commonpb.MetadataValue{"age": commonpb.NewStringValue("40")}},
+							"users:123": {Values: map[string]*commonpb.MetadataValue{"age": clientSent}},
 						},
 					},
 				}},
@@ -1587,14 +1566,6 @@ func TestProcessCreateTransaction_CoercesPreviousAccountMetadata(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	created := result.GetApply().GetLog().GetData().GetCreatedTransaction()
-	require.NotNil(t, created)
-	prev := created.GetPreviousAccountMetadata()["users:123"].GetValues()["age"]
-	require.NotNil(t, prev)
-	require.Equal(t, int64(30), prev.GetIntValue(),
-		"previous account metadata must be coerced to the declared INT64 type, not left as raw string")
 }

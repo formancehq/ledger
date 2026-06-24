@@ -28,11 +28,6 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 		}
 	}
 
-	var schema *commonpb.MetadataSchema
-	if info != nil {
-		schema = info.GetMetadataSchema()
-	}
-
 	// Resolve script reference: load content from preloaded cache.
 	var script *commonpb.Script
 	if ref := order.GetNumscriptReference(); ref != nil {
@@ -60,7 +55,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	var producer postingProducer
 	isNumscript := script != nil && script.GetPlain() != ""
 	if isNumscript {
-		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledgerName: ledgerName, schema: schema, assetCache: p.assetCache}
+		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledgerName: ledgerName, assetCache: p.assetCache}
 	} else {
 		producer = &stdPostingProducer{assetCache: p.assetCache}
 	}
@@ -132,7 +127,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	}
 
 	if len(finalMetadata) > 0 {
-		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, finalMetadata)
+		// Stored values are immutable. Coercion to declared_type happens at read.
 		txState.Metadata = finalMetadata
 	}
 
@@ -162,44 +157,18 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 		}
 	}
 
-	// Enforce schema, capture previous values, and write to buffer.
-	var previousAccountMetadata map[string]*commonpb.MetadataMap
-
+	// Stored values are immutable; the FSM does not coerce on write and no
+	// longer captures previous values into the log. The indexer resolves
+	// the old encoded value via the reverse map on overwrite.
 	for account, mm := range accountMetadata {
 		if err := domain.ValidateAccountAddress(account); err != nil {
 			return nil, err
 		}
 
-		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, mm.GetValues())
-
 		for key, value := range mm.GetValues() {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 				Key:        key,
-			}
-
-			// Capture old value before overwriting (for log replay in indexbuilder).
-			oldVal, err := s.GetAccountMetadata(metaKey)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, &domain.ErrStorageOperation{Operation: "reading previous account metadata", Cause: err}
-			}
-
-			if err == nil {
-				if previousAccountMetadata == nil {
-					previousAccountMetadata = make(map[string]*commonpb.MetadataMap)
-				}
-
-				prevMap := previousAccountMetadata[account]
-				if prevMap == nil {
-					prevMap = &commonpb.MetadataMap{Values: make(map[string]*commonpb.MetadataValue)}
-					previousAccountMetadata[account] = prevMap
-				}
-
-				// Coerce captured previous value to the declared
-				// schema type — even when the stored value is still
-				// the raw string written before the type was
-				// declared (master #481).
-				prevMap.Values[key] = coerceToDeclaredType(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, oldVal)
 			}
 
 			s.PutAccountMetadata(metaKey, value)
@@ -238,10 +207,9 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 					InsertedAt: s.GetDate(),
 					UpdatedAt:  s.GetDate(),
 				},
-				AccountMetadata:         accountMetadata,
-				ChapterId:               chapterID,
-				PostCommitVolumes:       postCommitVolumes,
-				PreviousAccountMetadata: previousAccountMetadata,
+				AccountMetadata:   accountMetadata,
+				ChapterId:         chapterID,
+				PostCommitVolumes: postCommitVolumes,
 			},
 		},
 	}, nil

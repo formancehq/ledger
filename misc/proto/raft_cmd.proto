@@ -293,47 +293,11 @@ message UpdateDefaultEnforcementModeOrder {
   common.ChartEnforcementMode enforcement_mode = 1;
 }
 
-// MetadataConversionBatch carries a batch of metadata value conversions.
-// Applied directly as a Proposal field (no log entry produced).
-// Convergence is driven by the converter: it keeps proposing batches as
-// long as a Pebble scan turns up entries with a mismatched type, and
-// proposes MetadataConversionCompletion once a full pass finds zero such
-// entries. The FSM no longer tracks progress counters or auto-completes.
-message MetadataConversionBatch {
-  reserved 6, 7;
-  reserved "total_keys", "converted_keys_so_far";
-  string ledger = 1;
-  common.TargetType target_type = 2;
-  string key = 3;
-  common.MetadataType expected_type = 4;
-  repeated ConvertMetadataEntry entries = 5;
-}
-
-message ConvertMetadataEntry {
-  bytes canonical_key = 1;
-  common.MetadataValue converted_value = 2;
-  // Snapshot of the original value the converter scanned. The FSM apply path
-  // compares this to the current cache value; mismatch means a normal
-  // metadata command mutated or deleted the key between scan and apply, and
-  // the conversion is silently skipped to avoid resurrecting a deleted value
-  // or clobbering a newer write (see #313/#359). Stored as raw VT bytes so
-  // the comparison is purely byte-equality on a canonical encoding.
-  bytes expected_value = 3;
-}
-
-// MetadataConversionCompletion signals that a metadata conversion is done.
-// Applied directly as a Proposal field (no log entry produced).
-// Freshness is delegated to the standard preload path: the proposer adds
-// the ledger key to `needs.Ledgers` and the FSM reads the preloaded value
-// from the cache at apply time.
-message MetadataConversionCompletion {
-  reserved 5;
-  reserved "ledger_info_snapshot";
-  string ledger = 1;
-  common.TargetType target_type = 2;
-  string key = 3;
-  common.MetadataType expected_type = 4;
-}
+// MetadataConversionBatch, ConvertMetadataEntry, and
+// MetadataConversionCompletion were the FSM-applied vehicles for the
+// removed background value converter. Stored metadata values are now
+// immutable; the FSM never rewrites them. Reserved here to prevent
+// accidental reuse of the message names by future schema work.
 
 message SetMetadataFieldTypeOrder {
   common.TargetType target_type = 1;
@@ -455,8 +419,6 @@ message TechnicalUpdate {
     EventsSinkUpdate events_sink = 3;
     IdempotencyEviction idempotency_eviction = 4;
     common.ClusterConfig cluster_config = 5;
-    MetadataConversionBatch metadata_batch = 6;
-    MetadataConversionCompletion metadata_completion = 7;
     IndexReadyUpdate index_ready = 8;
     BackupOrder backup_order = 9;                          // Full-backup lifecycle
     IncrementalBackupOrder incremental_backup_order = 10;  // Incremental-backup lifecycle

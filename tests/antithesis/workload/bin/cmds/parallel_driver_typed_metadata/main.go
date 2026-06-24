@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -223,9 +222,11 @@ func main() {
 			assert.AlwaysOrUnreachable(found, "metadata key should survive type changes", details)
 		}
 
-		// 10. Test invalid type conversion: save a non-numeric string value,
-		// then try to declare the key as INT64. The server should reject
-		// the conversion or handle it gracefully — never crash.
+		// 10. Declare an uncoercible value as INT64. The stored bytes are
+		// the literal client write and the FSM never mutates them, so the
+		// API still returns the original string verbatim. The forward
+		// index skips the entry on the next rebuild (out of scope here —
+		// this driver only asserts no crash).
 		badKey := fmt.Sprintf("bad-convert-%d", r.Uint64())
 
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -249,11 +250,7 @@ func main() {
 				},
 			}),
 		})
-		if err != nil {
-			// If save fails, skip the conversion test.
-		} else {
-			// Try to declare this key as INT64 — existing value "not-a-number"
-			// cannot be converted. The server should return an error, not crash.
+		if err == nil {
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_SetMetadataFieldType{
@@ -266,55 +263,15 @@ func main() {
 					},
 				}),
 			})
-			// The server accepts the declaration — conversion runs in background.
-			// "not-a-number" → INT64 produces a NullValue (original string preserved).
 			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
-				"invalid type conversion should be accepted", internal.Details{
+				"declaring an int64 type over an uncoercible value should not crash",
+				internal.Details{
 					"key":    badKey,
 					"value":  "not-a-number",
 					"toType": "INT64",
 					"error":  err,
 				})
-			if err != nil {
-				// Declaration failed (e.g. maintenance mode) — skip verification.
-			} else {
-				// Retry until the background conversion has completed and the
-				// read path returns a NullValue for the unconvertible string.
-				for attempt := 0; attempt < 10; attempt++ {
-					acctAfterBad, readErr := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-						Ledger:  ledger,
-						Address: address,
-					})
-					if readErr != nil {
-						if internal.IsTransient(readErr) {
-							break
-						}
 
-						assert.Unreachable("GetAccount failed after invalid type declaration", internal.Details{
-							"key":   badKey,
-							"error": readErr,
-						})
-
-						break
-					}
-
-					converted := false
-
-					if v, ok := acctAfterBad.GetMetadata()[badKey]; ok {
-						if _, isNull := v.GetType().(*commonpb.MetadataValue_NullValue); isNull {
-							converted = true
-						}
-					}
-
-					if converted {
-						break
-					}
-
-					time.Sleep(200 * time.Millisecond)
-				}
-			}
-
-			// Same with BOOL conversion on the numeric key (42 → bool = true).
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_SetMetadataFieldType{
@@ -328,7 +285,8 @@ func main() {
 				}),
 			})
 			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
-				"numeric to bool conversion should be accepted", internal.Details{
+				"declaring a bool type over a numeric value should not crash",
+				internal.Details{
 					"key":    metaKey,
 					"value":  metaValue,
 					"toType": "BOOL",

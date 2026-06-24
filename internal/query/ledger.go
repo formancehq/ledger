@@ -85,18 +85,8 @@ func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes,
 		metadata[key.Key] = entry.Value
 	}
 
-	// Read-time enforcement: convert values to declared types.
-	for k, v := range metadata {
-		fieldSchema, ok := info.GetMetadataSchema().GetLedgerFields()[k]
-		if !ok || v == nil {
-			continue
-		}
-
-		if !commonpb.TypeMatches(v, fieldSchema.GetType()) {
-			metadata[k] = commonpb.ConvertMetadataValue(v, fieldSchema.GetType())
-		}
-	}
-
+	// Metadata is returned verbatim. declared_type is an index hint, not an
+	// API contract — read paths surface what the client wrote.
 	info.Metadata = metadata
 
 	return nil

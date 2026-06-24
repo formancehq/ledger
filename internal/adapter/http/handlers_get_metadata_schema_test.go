@@ -21,17 +21,11 @@ func TestHandleGetMetadataSchema_Success(t *testing.T) {
 		func(_ context.Context, _ string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
 			return &servicepb.GetMetadataSchemaStatusResponse{
 				AccountFields: map[string]*servicepb.MetadataFieldStatus{
-					"role": {
-						DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING,
-						Status:       commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
-					},
+					"role": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
 				},
 				TransactionFields: map[string]*servicepb.MetadataFieldStatus{},
 				LedgerFields: map[string]*servicepb.MetadataFieldStatus{
-					"env": {
-						DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING,
-						Status:       commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
-					},
+					"env": {DeclaredType: commonpb.MetadataType_METADATA_TYPE_STRING},
 				},
 			}, nil
 		}).AnyTimes()

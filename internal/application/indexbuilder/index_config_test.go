@@ -7,11 +7,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -271,12 +275,32 @@ func TestRemoveBackfillTask(t *testing.T) {
 	b.addBackfillTaskForTxMetadata("ledger1", "category")
 	require.Len(t, b.backfillTasks, 3)
 
-	b.removeBackfillTask(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP))
+	b.removeBackfillTask("ledger1", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP))
 	assert.Len(t, b.backfillTasks, 2)
 
 	// Removing one that doesn't exist is a no-op.
-	b.removeBackfillTask(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT))
+	b.removeBackfillTask("ledger1", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT))
 	assert.Len(t, b.backfillTasks, 2)
+}
+
+// TestRemoveBackfillTask_ScopedByLedger guards against the cross-ledger
+// hazard: when two ledgers have a backfill running on the same IndexID
+// (same metadata key indexed on both), removing the task on one ledger
+// must not touch the other's task.
+func TestRemoveBackfillTask_ScopedByLedger(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	b.addBackfillTaskForAcctMetadata("ledger1", "score")
+	b.addBackfillTaskForAcctMetadata("ledger2", "score")
+	require.Len(t, b.backfillTasks, 2)
+
+	b.removeBackfillTask("ledger1", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score"))
+
+	require.Len(t, b.backfillTasks, 1, "the other ledger's task must survive")
+	assert.Equal(t, "ledger2", b.backfillTasks[0].ledger,
+		"removeBackfillTask must filter by ledger, not just IndexID")
 }
 
 func TestAddSchemaRewriteTask_NotIndexed(t *testing.T) {
@@ -348,6 +372,47 @@ func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 	assert.Equal(t, uint64(0), b.schemaRewriteTasks[0].processedCount)
 }
 
+// TestAddSchemaRewriteTask_DuplicateClearsDoneProposed pins that a retype
+// landing on a task whose previous rewrite already finished (done) or was
+// proposed for IndexReady (proposed) restarts the lifecycle. Without the
+// reset, tryProposeSchemaRewriteIndexReady would mark the index ready while
+// rmap entries still encode the prior type.
+func TestAddSchemaRewriteTask_DuplicateClearsDoneProposed(t *testing.T) {
+	t.Parallel()
+
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	cfg := newLedgerIndexConfig()
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	b.addSchemaRewriteTask(cfg, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
+		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		Key:        "status",
+		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+	})
+
+	require.Len(t, b.schemaRewriteTasks, 1)
+	b.schemaRewriteTasks[0].done = true
+	b.schemaRewriteTasks[0].proposed = true
+	b.schemaRewriteTasks[0].processedCount = 1234
+	b.schemaRewriteTasks[0].requiredIndexedSeq = 42
+
+	b.addSchemaRewriteTask(cfg, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
+		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		Key:        "status",
+		Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+	})
+
+	require.Len(t, b.schemaRewriteTasks, 1)
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, b.schemaRewriteTasks[0].toType)
+	assert.False(t, b.schemaRewriteTasks[0].done, "done must clear so the rewrite re-runs")
+	assert.False(t, b.schemaRewriteTasks[0].proposed, "proposed must clear so IndexReady waits for the new rewrite")
+	assert.Nil(t, b.schemaRewriteTasks[0].rmapCursor)
+	assert.Equal(t, uint64(0), b.schemaRewriteTasks[0].processedCount)
+	assert.Equal(t, uint64(0), b.schemaRewriteTasks[0].requiredIndexedSeq,
+		"requiredIndexedSeq must clear so the new rewrite captures its own high-water mark")
+}
+
 func TestAddSchemaRewriteTask_Transaction(t *testing.T) {
 	t.Parallel()
 
@@ -404,110 +469,324 @@ func TestRemoveSchemaRewriteTask(t *testing.T) {
 	assert.Empty(t, b.schemaRewriteTasks)
 }
 
-// newTestBuilderWithStore creates a Builder backed by a temporary Pebble read store.
-func newTestBuilderWithStore(t *testing.T) *Builder {
-	t.Helper()
+// TestAddSchemaRewriteTask_ResetsInFlightBackfill pins the race window
+// where SetMetadataFieldType arrives while an initial backfill is still
+// running for the same metadata index. Scheduling a separate
+// schemaRewriteTask would scan only the partial rmap and could propose
+// IndexReady before the backfill replays the historical rows. The
+// expected fix: reset the existing backfill's cursor to 0 (so it replays
+// under the new declared_type), and do NOT enqueue a separate schema
+// rewrite task.
+func TestAddSchemaRewriteTask_ResetsInFlightBackfill(t *testing.T) {
+	t.Parallel()
 
 	dir := t.TempDir()
 
 	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		indexConfig: make(map[string]*ledgerIndexConfig),
+		readStore:   store,
+	}
+
+	cfg := newLedgerIndexConfig()
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	// Backfill already in flight: persisted cursor at seq 50, proposed=false.
+	bbKey := backfillBBKey("ledger1", id)
+	require.NoError(t, store.WriteBackfillProgress(store.NewBatch(), bbKey, 50))
+
+	b.backfillTasks = []*backfillTask{
+		{
+			ledger:             "ledger1",
+			index:              id,
+			cursor:             50,
+			appliedProposalSeq: 7,
+			bbKey:              bbKey,
+			proposed:           false,
+		},
+	}
+
+	b.addSchemaRewriteTask(cfg, "ledger1", &commonpb.SetMetadataFieldTypeLog{
+		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		Key:        "score",
+		Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+	})
+
+	assert.Empty(t, b.schemaRewriteTasks,
+		"must NOT enqueue a schema rewrite while the initial backfill is still active")
+	require.Len(t, b.backfillTasks, 1)
+	assert.Equal(t, uint64(0), b.backfillTasks[0].cursor,
+		"existing backfill must restart from 0 so it replays under the new declared_type")
+	assert.Equal(t, uint64(0), b.backfillTasks[0].appliedProposalSeq, "audit cursor must reset too")
+	assert.False(t, b.backfillTasks[0].proposed)
+}
+
+// TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped pins the
+// crash-recovery scenario: the FSM applied SetMetadataFieldType, the node
+// crashed before processLogs saw the retype, and on restart initIndexConfig
+// reloaded the persisted backfill cursor. During the catch-up,
+// stripBuildingIndexes temporarily removes the BUILDING index from cfg.
+// When processLogs eventually reaches the retype log, addSchemaRewriteTask
+// must still reset the backfill (regardless of cfg.isMetadataIndexed) so
+// the replay restarts from 0 and emits forward entries under the new
+// declared_type — otherwise the resumed backfill produces a mix of
+// old/new typed entries and the index is marked READY incoherent.
+func TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		indexConfig: make(map[string]*ledgerIndexConfig),
+		readStore:   store,
+	}
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+
+	// cfg is empty — simulates the state right after stripBuildingIndexes.
+	cfg := newLedgerIndexConfig()
+	b.indexConfig["ledger1"] = cfg
+
+	bbKey := backfillBBKey("ledger1", id)
+	require.NoError(t, store.WriteBackfillProgress(store.NewBatch(), bbKey, 250))
+
+	b.backfillTasks = []*backfillTask{
+		{
+			ledger:             "ledger1",
+			index:              id,
+			cursor:             250,
+			appliedProposalSeq: 9,
+			bbKey:              bbKey,
+		},
+	}
+
+	b.addSchemaRewriteTask(cfg, "ledger1", &commonpb.SetMetadataFieldTypeLog{
+		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		Key:        "score",
+		Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+	})
+
+	require.Len(t, b.backfillTasks, 1)
+	assert.Equal(t, uint64(0), b.backfillTasks[0].cursor,
+		"stripped index must not block the retype reset — backfill must restart from 0")
+	assert.Equal(t, uint64(0), b.backfillTasks[0].appliedProposalSeq)
+	assert.Empty(t, b.schemaRewriteTasks, "no separate schema rewrite needed; backfill replay covers it")
+}
+
+// TestAddSchemaRewriteTask_DoesNotResetOtherLedgersBackfill guards against
+// matching a backfillTask by (target, key) alone: a different ledger that
+// happens to have the same indexed metadata key must NOT see its backfill
+// reset, and the retyped ledger must still get its schemaRewriteTask
+// enqueued.
+func TestAddSchemaRewriteTask_DoesNotResetOtherLedgersBackfill(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		indexConfig: make(map[string]*ledgerIndexConfig),
+		readStore:   store,
+	}
+
+	cfg := newLedgerIndexConfig()
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	otherBBKey := backfillBBKey("other-ledger", id)
+	b.backfillTasks = []*backfillTask{
+		{
+			ledger:             "other-ledger",
+			index:              id,
+			cursor:             42,
+			appliedProposalSeq: 3,
+			bbKey:              otherBBKey,
+		},
+	}
+
+	b.addSchemaRewriteTask(cfg, "retyped-ledger", &commonpb.SetMetadataFieldTypeLog{
+		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		Key:        "score",
+		Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+	})
+
+	require.Len(t, b.backfillTasks, 1)
+	assert.Equal(t, uint64(42), b.backfillTasks[0].cursor,
+		"the other ledger's backfill cursor must NOT be touched")
+	assert.Equal(t, uint64(3), b.backfillTasks[0].appliedProposalSeq)
+
+	require.Len(t, b.schemaRewriteTasks, 1, "the retyped ledger must still get its schema rewrite")
+	assert.Equal(t, "retyped-ledger", b.schemaRewriteTasks[0].ledger)
+}
+
+// TestRemoveSchemaRewriteTaskByField pins that the helper cancels the right
+// (ledger, target, key) task and leaves siblings intact. handleRemovedMetadataFieldType
+// relies on this to avoid leaking a rewrite task once its underlying index
+// is dropped — otherwise the builder would retry IndexReady proposals
+// forever against a now-missing index.
+func TestRemoveSchemaRewriteTaskByField(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		indexConfig: make(map[string]*ledgerIndexConfig),
+		readStore:   store,
+	}
+
+	bbA := schemaRewriteBBKey("ledger1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+	bbB := schemaRewriteBBKey("ledger1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+	bbC := schemaRewriteBBKey("ledger1", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "score")
+	bbD := schemaRewriteBBKey("ledger2", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+
+	b.schemaRewriteTasks = []*schemaRewriteTask{
+		{ledger: "ledger1", targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, key: "score", bbKey: bbA},
+		{ledger: "ledger1", targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, key: "tier", bbKey: bbB},
+		{ledger: "ledger1", targetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, key: "score", bbKey: bbC},
+		{ledger: "ledger2", targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, key: "score", bbKey: bbD},
+	}
+
+	b.removeSchemaRewriteTaskByField("ledger1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+
+	require.Len(t, b.schemaRewriteTasks, 3)
+
+	got := map[string]bool{}
+	for _, task := range b.schemaRewriteTasks {
+		got[task.ledger+"/"+task.targetType.String()+"/"+task.key] = true
+	}
+
+	assert.False(t, got["ledger1/TARGET_TYPE_ACCOUNT/score"], "matching task must be cancelled")
+	assert.True(t, got["ledger1/TARGET_TYPE_ACCOUNT/tier"], "different key on same ledger/target must survive")
+	assert.True(t, got["ledger1/TARGET_TYPE_TRANSACTION/score"], "different target must survive")
+	assert.True(t, got["ledger2/TARGET_TYPE_ACCOUNT/score"], "different ledger must survive")
+
+	// No-op when no task matches — must not panic.
+	b.removeSchemaRewriteTaskByField("ledger1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+	require.Len(t, b.schemaRewriteTasks, 3)
+}
+
+// newTestBuilderWithStore creates a Builder backed by a temporary Pebble read store
+// and a separate FSM Pebble store + attributes registry. The FSM side is needed
+// because schema rewrites source canonical stored values from the FSM zone.
+func newTestBuilderWithStore(t *testing.T) *Builder {
+	t.Helper()
+
+	rsDir := t.TempDir()
+	store, err := readstore.New(rsDir, noopLogger{}, readstore.DefaultConfig())
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = store.Close() })
 
+	fsmDir := t.TempDir()
+	fsm, err := dal.NewStore(fsmDir, noopLogger{}, metricnoop.Meter{}, dal.DefaultConfig())
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = fsm.Close() })
+
 	return &Builder{
 		indexConfig: make(map[string]*ledgerIndexConfig),
 		readStore:   store,
+		pebbleStore: fsm,
+		attrs:       attributes.New(),
 	}
 }
 
-// TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID is the
-// regression for PR #277. A persisted schema rewrite task only stores
-// the ledgerID; on restart the recovery loop MUST resolve that ID back
-// to the ledger name so proposeSchemaRewriteIndexReady can address
-// LedgerInfo by name. If the name were left empty, the FSM check
-// query.GetLedgerByName("") would never return the ledger and the
-// index would stay BUILDING forever.
-func TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID(t *testing.T) {
-	t.Parallel()
+// seedBatchSchema primes b.batchSchema with a resolver backed by the
+// Builder's FSM pebble store. Tests that invoke indexer write helpers
+// (indexSavedMetadata, indexCreatedTransaction, indexRevertedTransaction)
+// directly without going through processLogs / processBackfill must call
+// this — b.coerceForLedger panics otherwise.
+func (b *Builder) seedBatchSchema(t *testing.T) {
+	t.Helper()
 
-	dir := t.TempDir()
-
-	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
+	handle, err := b.pebbleStore.NewDirectReadHandle()
 	require.NoError(t, err)
 
-	defer func() { _ = store.Close() }()
+	t.Cleanup(func() { _ = handle.Close() })
 
-	// Persist a schema rewrite progress entry for ledger "customer",
-	// account-metadata key "role", target type STRING, with a non-empty
-	// resume cursor. Value format mirrors backfill.go: [toType_byte][cursor].
+	b.batchSchema = newSchemaResolver(handle, b.attrs)
+}
+
+// TestPersistedSchemaRewriteCursorTriggersBackfillRecovery pins the
+// post-crash boot contract: a persisted schema-rewrite cursor means the
+// previous shutdown left a rewrite unfinished. Since cluster-wide
+// IndexReady is unilaterally proposed by the first node to finish (not a
+// consensus signal), LedgerInfo may already say READY by reboot — the
+// BUILDING flag alone misses the case. initIndexConfig must therefore
+// scan persisted schema-rewrite cursors and schedule a full backfill
+// (cursor 0) for each, regardless of LedgerInfo's BuildStatus. The
+// stale schema-rewrite cursor itself is dropped because the backfill
+// uses its own bbKey.
+func TestPersistedSchemaRewriteCursorTriggersBackfillRecovery(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.logger = noopLogger{}
+
 	const (
-		ledgerName = "customer"
-		metaKey    = "role"
-		targetType = commonpb.TargetType_TARGET_TYPE_ACCOUNT
-		toType     = commonpb.MetadataType_METADATA_TYPE_STRING
+		ledger = "customer"
+		key    = "role"
 	)
 
-	cursor := []byte("rmap-cursor-bytes")
-	bbKey := schemaRewriteBBKey(ledgerName, targetType, metaKey)
-	val := append([]byte{byte(toType)}, cursor...)
+	// Persist the unfinished schema-rewrite cursor.
+	rewriteBBKey := schemaRewriteBBKey(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	val := append([]byte{byte(commonpb.MetadataType_METADATA_TYPE_STRING)}, []byte("mid-rewrite-cursor")...)
 
-	batch := store.NewBatch()
-	require.NoError(t, store.WriteBackfillCursor(batch, bbKey, val))
+	batch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteBackfillCursor(batch, rewriteBBKey, val))
 	require.NoError(t, batch.Commit())
 
-	b := &Builder{
-		indexConfig: make(map[string]*ledgerIndexConfig),
-		readStore:   store,
-		logger:      noopLogger{},
-	}
-
-	b.recoverSchemaRewriteTasks()
-
-	require.Len(t, b.schemaRewriteTasks, 1)
-	task := b.schemaRewriteTasks[0]
-	assert.Equal(t, ledgerName, task.ledger,
-		"ledger name MUST round-trip from the persisted progress key (#277)")
-	assert.Equal(t, targetType, task.targetType)
-	assert.Equal(t, metaKey, task.key)
-	assert.Equal(t, toType, task.toType)
-	assert.Equal(t, cursor, task.rmapCursor)
-	assert.Equal(t, bbKey, task.bbKey)
-}
-
-// TestRecoverSchemaRewriteTasks_DropsOrphanedEntries verifies that a
-// persisted task whose ledger no longer exists (deleted between persist
-// and restart) is recovered as-is — the canonical key now carries the
-// ledger name directly, so there's no "orphan" concept any more. The
-// follow-up IndexReady proposal will fail validation against the missing
-// LedgerInfo and the task will be dropped at that point.
-func TestRecoverSchemaRewriteTasks_RecoversTaskFromPersistedKey(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-
-	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
+	// Seed a LedgerInfo with the index already marked READY — exactly the
+	// state we'd see if another node had finished and proposed
+	// IndexReady before this node crashed.
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	canonicalKey := domain.LedgerKey{Name: ledger}.Bytes()
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	_, err := b.attrs.Ledger.Set(fsmBatch, canonicalKey, &commonpb.LedgerInfo{
+		Name: ledger,
+		Indexes: []*commonpb.Index{{
+			Id:          id,
+			BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
+		}},
+	})
 	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
 
-	defer func() { _ = store.Close() }()
+	b.initIndexConfig(context.Background())
 
-	bbKey := schemaRewriteBBKey("orphan", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
-	val := []byte{byte(commonpb.MetadataType_METADATA_TYPE_STRING)}
+	// Recovery scheduled a backfill for the index even though it's READY.
+	require.Len(t, b.backfillTasks, 1, "the persisted schema-rewrite cursor must trigger a backfill")
+	assert.Equal(t, ledger, b.backfillTasks[0].ledger)
+	assert.True(t, indexes.Equal(b.backfillTasks[0].index, id))
+	assert.Equal(t, uint64(0), b.backfillTasks[0].cursor, "backfill must restart from 0")
+	assert.False(t, b.backfillTasks[0].proposed)
 
-	batch := store.NewBatch()
-	require.NoError(t, store.WriteBackfillCursor(batch, bbKey, val))
-	require.NoError(t, batch.Commit())
+	// Schema-rewrite tasks list is NOT populated — the recovery routes
+	// through backfill, not through the schema-rewrite task lifecycle.
+	assert.Empty(t, b.schemaRewriteTasks)
 
-	b := &Builder{
-		indexConfig: make(map[string]*ledgerIndexConfig),
-		readStore:   store,
-		logger:      noopLogger{},
-	}
-
-	b.recoverSchemaRewriteTasks()
-
-	require.Len(t, b.schemaRewriteTasks, 1)
-	assert.Equal(t, "orphan", b.schemaRewriteTasks[0].ledger)
+	// The stale schema-rewrite cursor has been cleaned up.
+	_, ok := b.readStore.ReadBackfillCursor(rewriteBBKey)
+	assert.False(t, ok, "stale schema-rewrite cursor must be deleted after recovery")
 }
 
 // noopLogger implements the logging.Logger interface for tests without output.

@@ -14,12 +14,10 @@ import (
 )
 
 // assembleAccount builds a commonpb.Account from flushed volume and metadata accumulator entries.
-// If schema is non-nil, stored values are lazily converted to match declared types.
 func assembleAccount(
 	address string,
 	volEntries []attributes.ComputedEntry[*raftcmdpb.VolumePair],
 	metaEntries []attributes.ComputedEntry[*commonpb.MetadataValue],
-	schema *commonpb.MetadataSchema,
 ) *commonpb.Account {
 	account := &commonpb.Account{
 		Address:  address,
@@ -72,32 +70,10 @@ func assembleAccount(
 
 		if len(mdMap) > 0 {
 			account.Metadata = mdMap
-			// Lazy read-path conversion: enforce schema types on stored values.
-			if schema != nil {
-				enforceAccountSchema(schema, mdMap)
-			}
 		}
 	}
 
 	return account
-}
-
-// enforceAccountSchema converts metadata values to match declared account field types.
-func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata map[string]*commonpb.MetadataValue) {
-	if len(schema.GetAccountFields()) == 0 {
-		return
-	}
-
-	for key, value := range metadata {
-		fieldSchema, ok := schema.GetAccountFields()[key]
-		if !ok || value == nil {
-			continue
-		}
-
-		if !commonpb.TypeMatches(value, fieldSchema.GetType()) {
-			metadata[key] = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
-		}
-	}
 }
 
 // scanAccount performs two forward scans — one for Volume and one for Metadata —
@@ -111,7 +87,6 @@ func scanAccount(
 	attrs *attributes.Attributes,
 	ledgerName string,
 	address string,
-	schema *commonpb.MetadataSchema,
 	diagLogger ...logging.Logger,
 ) (*commonpb.Account, error) {
 	var logger logging.Logger
@@ -151,5 +126,5 @@ func scanAccount(
 		}).Infof("scanAccount complete")
 	}
 
-	return assembleAccount(address, volEntries, metaEntries, schema), nil
+	return assembleAccount(address, volEntries, metaEntries), nil
 }

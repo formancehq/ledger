@@ -1442,7 +1442,6 @@ func NewTargetListReader(s []*Target) TargetListReader { return targetListReadon
 // Call Mutate() to obtain a mutable clone.
 type MetadataFieldSchemaReader interface {
 	GetType() MetadataType
-	GetStatus() MetadataConversionStatus
 	Mutate() *MetadataFieldSchema
 }
 
@@ -1450,10 +1449,6 @@ type metadataFieldSchemaReadonly struct{ v *MetadataFieldSchema }
 
 func (r *metadataFieldSchemaReadonly) GetType() MetadataType {
 	return r.v.GetType()
-}
-
-func (r *metadataFieldSchemaReadonly) GetStatus() MetadataConversionStatus {
-	return r.v.GetStatus()
 }
 
 func (r *metadataFieldSchemaReadonly) Mutate() *MetadataFieldSchema {
@@ -3546,7 +3541,6 @@ func NewDeletedPreparedQueryLogListReader(s []*DeletedPreparedQueryLog) DeletedP
 type SavedLedgerMetadataLogReader interface {
 	GetLedger() string
 	GetMetadata() SavedLedgerMetadataLog_MetadataMapReader
-	GetPreviousValues() SavedLedgerMetadataLog_PreviousValuesMapReader
 	Mutate() *SavedLedgerMetadataLog
 }
 
@@ -3558,10 +3552,6 @@ func (r *savedLedgerMetadataLogReadonly) GetLedger() string {
 
 func (r *savedLedgerMetadataLogReadonly) GetMetadata() SavedLedgerMetadataLog_MetadataMapReader {
 	return savedLedgerMetadataLog_metadataMapReadonly(r.v.GetMetadata())
-}
-
-func (r *savedLedgerMetadataLogReadonly) GetPreviousValues() SavedLedgerMetadataLog_PreviousValuesMapReader {
-	return savedLedgerMetadataLog_previousValuesMapReadonly(r.v.GetPreviousValues())
 }
 
 func (r *savedLedgerMetadataLogReadonly) Mutate() *SavedLedgerMetadataLog {
@@ -3649,43 +3639,11 @@ func (m savedLedgerMetadataLog_metadataMapReadonly) Range(yield func(string, Met
 	}
 }
 
-// SavedLedgerMetadataLog_PreviousValuesMapReader provides read-only access to SavedLedgerMetadataLog.PreviousValues.
-type SavedLedgerMetadataLog_PreviousValuesMapReader interface {
-	Len() int
-	Get(k string) (MetadataValueReader, bool)
-	Range(yield func(string, MetadataValueReader) bool)
-}
-
-type savedLedgerMetadataLog_previousValuesMapReadonly map[string]*MetadataValue
-
-func (m savedLedgerMetadataLog_previousValuesMapReadonly) Len() int { return len(m) }
-
-func (m savedLedgerMetadataLog_previousValuesMapReadonly) Get(k string) (MetadataValueReader, bool) {
-	v, ok := m[k]
-	if !ok || v == nil {
-		return nil, ok
-	}
-	return v.AsReader(), true
-}
-
-func (m savedLedgerMetadataLog_previousValuesMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
-	for k, v := range m {
-		var r MetadataValueReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(k, r) {
-			return
-		}
-	}
-}
-
 // DeletedLedgerMetadataLogReader provides read-only access to DeletedLedgerMetadataLog.
 // Call Mutate() to obtain a mutable clone.
 type DeletedLedgerMetadataLogReader interface {
 	GetLedger() string
 	GetKey() string
-	GetPreviousValue() MetadataValueReader
 	Mutate() *DeletedLedgerMetadataLog
 }
 
@@ -3697,14 +3655,6 @@ func (r *deletedLedgerMetadataLogReadonly) GetLedger() string {
 
 func (r *deletedLedgerMetadataLogReadonly) GetKey() string {
 	return r.v.GetKey()
-}
-
-func (r *deletedLedgerMetadataLogReadonly) GetPreviousValue() MetadataValueReader {
-	v := r.v.GetPreviousValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
 }
 
 func (r *deletedLedgerMetadataLogReadonly) Mutate() *DeletedLedgerMetadataLog {
@@ -5727,7 +5677,6 @@ type CreatedTransactionReader interface {
 	GetAccountMetadata() CreatedTransaction_AccountMetadataMapReader
 	GetChapterId() uint64
 	GetPostCommitVolumes() PostCommitVolumesReader
-	GetPreviousAccountMetadata() CreatedTransaction_PreviousAccountMetadataMapReader
 	Mutate() *CreatedTransaction
 }
 
@@ -5755,10 +5704,6 @@ func (r *createdTransactionReadonly) GetPostCommitVolumes() PostCommitVolumesRea
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *createdTransactionReadonly) GetPreviousAccountMetadata() CreatedTransaction_PreviousAccountMetadataMapReader {
-	return createdTransaction_previousAccountMetadataMapReadonly(r.v.GetPreviousAccountMetadata())
 }
 
 func (r *createdTransactionReadonly) Mutate() *CreatedTransaction {
@@ -5835,37 +5780,6 @@ func (m createdTransaction_accountMetadataMapReadonly) Get(k string) (MetadataMa
 }
 
 func (m createdTransaction_accountMetadataMapReadonly) Range(yield func(string, MetadataMapReader) bool) {
-	for k, v := range m {
-		var r MetadataMapReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(k, r) {
-			return
-		}
-	}
-}
-
-// CreatedTransaction_PreviousAccountMetadataMapReader provides read-only access to CreatedTransaction.PreviousAccountMetadata.
-type CreatedTransaction_PreviousAccountMetadataMapReader interface {
-	Len() int
-	Get(k string) (MetadataMapReader, bool)
-	Range(yield func(string, MetadataMapReader) bool)
-}
-
-type createdTransaction_previousAccountMetadataMapReadonly map[string]*MetadataMap
-
-func (m createdTransaction_previousAccountMetadataMapReadonly) Len() int { return len(m) }
-
-func (m createdTransaction_previousAccountMetadataMapReadonly) Get(k string) (MetadataMapReader, bool) {
-	v, ok := m[k]
-	if !ok || v == nil {
-		return nil, ok
-	}
-	return v.AsReader(), true
-}
-
-func (m createdTransaction_previousAccountMetadataMapReadonly) Range(yield func(string, MetadataMapReader) bool) {
 	for k, v := range m {
 		var r MetadataMapReader
 		if v != nil {
@@ -5967,7 +5881,6 @@ func NewRevertedTransactionListReader(s []*RevertedTransaction) RevertedTransact
 type SavedMetadataReader interface {
 	GetTarget() TargetReader
 	GetMetadata() SavedMetadata_MetadataMapReader
-	GetPreviousValues() SavedMetadata_PreviousValuesMapReader
 	Mutate() *SavedMetadata
 }
 
@@ -5983,10 +5896,6 @@ func (r *savedMetadataReadonly) GetTarget() TargetReader {
 
 func (r *savedMetadataReadonly) GetMetadata() SavedMetadata_MetadataMapReader {
 	return savedMetadata_metadataMapReadonly(r.v.GetMetadata())
-}
-
-func (r *savedMetadataReadonly) GetPreviousValues() SavedMetadata_PreviousValuesMapReader {
-	return savedMetadata_previousValuesMapReadonly(r.v.GetPreviousValues())
 }
 
 func (r *savedMetadataReadonly) Mutate() *SavedMetadata {
@@ -6074,43 +5983,11 @@ func (m savedMetadata_metadataMapReadonly) Range(yield func(string, MetadataValu
 	}
 }
 
-// SavedMetadata_PreviousValuesMapReader provides read-only access to SavedMetadata.PreviousValues.
-type SavedMetadata_PreviousValuesMapReader interface {
-	Len() int
-	Get(k string) (MetadataValueReader, bool)
-	Range(yield func(string, MetadataValueReader) bool)
-}
-
-type savedMetadata_previousValuesMapReadonly map[string]*MetadataValue
-
-func (m savedMetadata_previousValuesMapReadonly) Len() int { return len(m) }
-
-func (m savedMetadata_previousValuesMapReadonly) Get(k string) (MetadataValueReader, bool) {
-	v, ok := m[k]
-	if !ok || v == nil {
-		return nil, ok
-	}
-	return v.AsReader(), true
-}
-
-func (m savedMetadata_previousValuesMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
-	for k, v := range m {
-		var r MetadataValueReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(k, r) {
-			return
-		}
-	}
-}
-
 // DeletedMetadataReader provides read-only access to DeletedMetadata.
 // Call Mutate() to obtain a mutable clone.
 type DeletedMetadataReader interface {
 	GetTarget() TargetReader
 	GetKey() string
-	GetPreviousValue() MetadataValueReader
 	Mutate() *DeletedMetadata
 }
 
@@ -6126,14 +6003,6 @@ func (r *deletedMetadataReadonly) GetTarget() TargetReader {
 
 func (r *deletedMetadataReadonly) GetKey() string {
 	return r.v.GetKey()
-}
-
-func (r *deletedMetadataReadonly) GetPreviousValue() MetadataValueReader {
-	v := r.v.GetPreviousValue()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
 }
 
 func (r *deletedMetadataReadonly) Mutate() *DeletedMetadata {

@@ -69,7 +69,6 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 	assert.Equal(t, uint64(0), createdTx.GetChapterId())
 	assert.Nil(t, createdTx.GetPostCommitVolumes())
 	assert.Empty(t, createdTx.GetAccountMetadata())
-	assert.Empty(t, createdTx.GetPreviousAccountMetadata())
 
 	txn := createdTx.GetTransaction()
 	assert.Equal(t, uint64(0), txn.GetId())
@@ -277,9 +276,6 @@ func buildTestLog() *commonpb.Log {
 										RevertedAt: &commonpb.Timestamp{},
 									},
 									AccountMetadata: map[string]*commonpb.MetadataMap{
-										"users:001": {Values: map[string]*commonpb.MetadataValue{"type": {}}},
-									},
-									PreviousAccountMetadata: map[string]*commonpb.MetadataMap{
 										"users:001": {Values: map[string]*commonpb.MetadataValue{"type": {}}},
 									},
 								},

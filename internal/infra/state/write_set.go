@@ -98,11 +98,10 @@ type WriteSet struct {
 	// them in-place, so the clone must happen before any read to avoid corrupting
 	// the FSM's state. CreateTransaction never touches chapters, so the clone is
 	// avoided on the hot path.
-	chapters                       *ChapterTracker
-	changedChapters                []*commonpb.Chapter
-	purgeRanges                    []purgeRange
-	pendingArchives                []ArchiveRequest
-	pendingMetadataConvertRequests []MetadataConvertRequest
+	chapters        *ChapterTracker
+	changedChapters []*commonpb.Chapter
+	purgeRanges     []purgeRange
+	pendingArchives []ArchiveRequest
 
 	// pendingMirrorSyncs queues mirror cursor / source-head / status
 	// writes produced by applyMirrorSyncUpdate. They are drained into
@@ -692,7 +691,6 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.changedChapters = b.changedChapters[:0]
 	b.purgeRanges = b.purgeRanges[:0]
 	b.pendingArchives = b.pendingArchives[:0]
-	b.pendingMetadataConvertRequests = b.pendingMetadataConvertRequests[:0]
 	b.pendingMirrorSyncs = b.pendingMirrorSyncs[:0]
 	b.pendingLedgerDeletions = b.pendingLedgerDeletions[:0]
 	b.allVolumeUpdates = b.allVolumeUpdates[:0]
@@ -1349,20 +1347,6 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 	}
 
 	return nil
-}
-
-func (b *WriteSet) AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType) {
-	b.pendingMetadataConvertRequests = append(b.pendingMetadataConvertRequests, MetadataConvertRequest{
-		LedgerName: ledgerName,
-		TargetType: targetType,
-		Key:        key,
-		Type:       metadataType,
-	})
-}
-
-// MetadataConvertRequests returns the accumulated metadata conversion requests.
-func (b *WriteSet) MetadataConvertRequests() []MetadataConvertRequest {
-	return b.pendingMetadataConvertRequests
 }
 
 // HasPurges returns true if the buffer contains any pending purge ranges.

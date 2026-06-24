@@ -594,9 +594,6 @@ func (s *scopeImpl) SetPurgeRange(_, _, _, _, _ uint64) {}
 
 func (s *scopeImpl) SetPendingArchive(_, _, _, _, _ uint64) {}
 
-func (s *scopeImpl) AddMetadataConvertRequest(_ string, _ commonpb.TargetType, _ string, _ commonpb.MetadataType) {
-}
-
 func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (*commonpb.PreparedQuery, error) {
 	return nil, nil
 }

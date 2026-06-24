@@ -440,21 +440,6 @@ func TestWriteSetSetPendingArchive(t *testing.T) {
 	require.Equal(t, uint64(25), buf.pendingArchives[0].CloseAuditSequence)
 }
 
-func TestWriteSetAddMetadataConvertRequest(t *testing.T) {
-	t.Parallel()
-	buf, _, _ := newTestBuffer(t)
-
-	require.Empty(t, buf.MetadataConvertRequests())
-
-	buf.AddMetadataConvertRequest("ledger-1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "email", commonpb.MetadataType_METADATA_TYPE_STRING)
-	reqs := buf.MetadataConvertRequests()
-	require.Len(t, reqs, 1)
-	require.Equal(t, "ledger-1", reqs[0].LedgerName)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, reqs[0].TargetType)
-	require.Equal(t, "email", reqs[0].Key)
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, reqs[0].Type)
-}
-
 // TestWriteSetResetIsolation verifies that data written during proposal N is
 // not visible after Reset() prepares the WriteSet for proposal N+1.
 func TestWriteSetResetIsolation(t *testing.T) {
@@ -486,7 +471,6 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.SetChapterSchedule("*/5 * * * *")
 	buf.SetPurgeRange(1, 10, 50, 5, 25)
 	buf.SetPendingArchive(1, 10, 50, 5, 25)
-	buf.AddMetadataConvertRequest("ledger-1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "email", commonpb.MetadataType_METADATA_TYPE_STRING)
 	buf.QueueMirrorSync(MirrorSyncWrite{LedgerName: "leaked", Cursor: 42, ClearError: true})
 
 	// Verify data is present before Reset
@@ -527,7 +511,6 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	require.Nil(t, buf.pendingChapterScheduleUpdate, "chapter schedule update must be nil after Reset")
 	require.False(t, buf.HasPurges(), "purges must be cleared after Reset")
 	require.Empty(t, buf.pendingArchives, "archives must be cleared after Reset")
-	require.Empty(t, buf.MetadataConvertRequests(), "metadata convert requests must be cleared after Reset")
 	require.Empty(t, buf.pendingMirrorSyncs, "mirror syncs must be cleared after Reset")
 
 	// Scalar state must be refreshed

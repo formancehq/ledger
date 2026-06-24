@@ -2138,7 +2138,6 @@ func (m *MetadataFieldStatus) CloneVT() *MetadataFieldStatus {
 	}
 	r := new(MetadataFieldStatus)
 	r.DeclaredType = m.DeclaredType
-	r.Status = m.Status
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6492,9 +6491,6 @@ func (this *MetadataFieldStatus) EqualVT(that *MetadataFieldStatus) bool {
 		return false
 	}
 	if this.DeclaredType != that.DeclaredType {
-		return false
-	}
-	if this.Status != that.Status {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -13369,11 +13365,6 @@ func (m *MetadataFieldStatus) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Status != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Status))
-		i--
-		dAtA[i] = 0x10
-	}
 	if m.DeclaredType != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DeclaredType))
 		i--
@@ -17980,9 +17971,6 @@ func (m *MetadataFieldStatus) SizeVT() (n int) {
 	_ = l
 	if m.DeclaredType != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.DeclaredType))
-	}
-	if m.Status != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Status))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -31159,25 +31147,6 @@ func (m *MetadataFieldStatus) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.DeclaredType |= commonpb.MetadataType(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
-			}
-			m.Status = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Status |= commonpb.MetadataConversionStatus(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

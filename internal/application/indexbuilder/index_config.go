@@ -81,36 +81,70 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 		}
 	}
 
-	b.recoverSchemaRewriteTasks()
-
-	if len(b.schemaRewriteTasks) > 0 {
-		b.logger.WithFields(map[string]any{
-			"count": len(b.schemaRewriteTasks),
-		}).Infof("Recovered schema rewrite tasks")
-	}
-}
-
-// recoverSchemaRewriteTasks rebuilds in-flight schema rewrite tasks from
-// the persisted progress entries. The persisted entry already carries the
-// ledger name (the canonical key uses LedgerName padded fixed-width), so no
-// id → name resolution is needed any more.
-func (b *Builder) recoverSchemaRewriteTasks() {
-	entries, err := b.readStore.ReadAllSchemaRewriteProgress()
+	// Recover unfinished schema rewrites left over from a previous boot.
+	//
+	// IndexReady is proposed by the first node whose local rewrite
+	// completes — it is NOT a cluster-wide "all nodes done" signal. So a
+	// node can crash mid-rewrite, another node can finish and apply
+	// IndexReady, and this node reboots with LedgerInfo.READY but a
+	// forward index that still mixes pre/post-retype encodings. Relying
+	// on the BUILDING flag alone (via scheduleBackfillForIndex above)
+	// misses that case because BUILDING is already gone.
+	//
+	// Mitigation: any persisted schema-rewrite cursor signals an
+	// unfinished local rewrite at the previous shutdown. Schedule a
+	// full backfill from cursor 0 for the corresponding metadata index
+	// — even if LedgerInfo says READY. The replay re-encodes the
+	// forward under the current declared_type via the per-batch
+	// schemaResolver; cluster-wide IndexReady has already been
+	// proposed, so no new proposal will fire from this node when the
+	// backfill finishes. Once scheduled, delete the persisted cursor —
+	// the backfill keeps its own cursor under a different bbKey.
+	//
+	// Cluster-wide "consensus IndexReady" is the long-term fix
+	// tracked in LED-XXX; this recovery is the stopgap.
+	rewriteEntries, err := b.readStore.ReadAllSchemaRewriteProgress()
 	if err != nil {
-		b.logger.Errorf("Failed to read schema rewrite progress: %v", err)
+		b.logger.Errorf("Failed to read schema-rewrite progress: %v", err)
 
 		return
 	}
 
-	for _, e := range entries {
-		b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
-			ledger:     e.LedgerName,
-			targetType: commonpb.TargetType(e.TargetType),
-			key:        e.Key,
-			toType:     commonpb.MetadataType(e.ToType),
-			rmapCursor: e.Cursor,
-			bbKey:      e.BBKey,
-		})
+	for _, entry := range rewriteEntries {
+		target := commonpb.TargetType(entry.TargetType)
+		if target != commonpb.TargetType_TARGET_TYPE_ACCOUNT &&
+			target != commonpb.TargetType_TARGET_TYPE_TRANSACTION {
+			// Unknown target — drop the cursor and move on.
+			_ = b.readStore.DeleteBackfillProgress(entry.BBKey)
+
+			continue
+		}
+
+		id := indexes.MetadataID(target, entry.Key)
+		b.scheduleBackfillForIndex(entry.LedgerName, id)
+
+		// Force the backfill to restart from 0: the schemaResolver
+		// re-encodes every replayed log under the new declared_type.
+		for _, bt := range b.backfillTasks {
+			if bt.ledger == entry.LedgerName && indexes.Equal(bt.index, id) {
+				bt.cursor = 0
+				bt.appliedProposalSeq = 0
+				bt.proposed = false
+				bt.lastProgressSeq = 0
+				_ = b.readStore.DeleteBackfillProgress(bt.bbKey)
+
+				break
+			}
+		}
+
+		// The schema-rewrite cursor itself is no longer used.
+		_ = b.readStore.DeleteBackfillProgress(entry.BBKey)
+
+		b.logger.WithFields(map[string]any{
+			"ledger": entry.LedgerName,
+			"target": target.String(),
+			"key":    entry.Key,
+		}).Infof("Recovered unfinished schema rewrite — scheduled full backfill")
 	}
 }
 
@@ -282,7 +316,10 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 }
 
 // handleDroppedIndexLog updates the index config cache when a DropIndex log is processed.
-// It also removes any active backfill task for the dropped index.
+// It also removes any active backfill / schema-rewrite task tied to the
+// dropped index — without that, a rewrite finishing post-drop would wait
+// forever for an IndexReady that applyIndexReady silently ignores once
+// the index has been removed.
 func (b *Builder) handleDroppedIndexLog(ledger string, log *commonpb.DroppedIndexLog) {
 	id := log.GetId()
 	if id == nil {
@@ -291,5 +328,9 @@ func (b *Builder) handleDroppedIndexLog(ledger string, log *commonpb.DroppedInde
 
 	cfg := b.getOrCreateLedgerConfig(ledger)
 	delete(cfg.byCanonical, indexes.Canonical(id))
-	b.removeBackfillTask(id)
+	b.removeBackfillTask(ledger, id)
+
+	if meta, ok := id.GetKind().(*commonpb.IndexID_Metadata); ok && meta.Metadata != nil {
+		b.removeSchemaRewriteTaskByField(ledger, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
+	}
 }

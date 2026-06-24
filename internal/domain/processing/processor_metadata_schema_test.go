@@ -7,6 +7,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -34,10 +35,8 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 			field := info.GetMetadataSchema().GetAccountFields()["amount"]
 			require.NotNil(t, field)
 			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
-			require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING, field.GetStatus())
 		},
 	)
-	mockStore.EXPECT().AddMetadataConvertRequest("test-ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "amount", commonpb.MetadataType_METADATA_TYPE_INT64)
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
@@ -97,7 +96,6 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
 		},
 	)
-	mockStore.EXPECT().AddMetadataConvertRequest("test-ledger", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority", commonpb.MetadataType_METADATA_TYPE_INT64)
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
@@ -147,10 +145,8 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 			field := info.GetMetadataSchema().GetLedgerFields()["env"]
 			require.NotNil(t, field)
 			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
-			require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING, field.GetStatus())
 		},
 	)
-	mockStore.EXPECT().AddMetadataConvertRequest("test-ledger", commonpb.TargetType_TARGET_TYPE_LEDGER, "env", commonpb.MetadataType_METADATA_TYPE_STRING)
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
@@ -399,7 +395,11 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	require.Equal(t, "env", removeLog.GetKey())
 }
 
-func TestProcessSetMetadataFieldType_RejectedWhileConverting(t *testing.T) {
+// TestProcessSetMetadataFieldType_AcceptedDuringRebuild pins the O(1) retype
+// contract: a second SetMetadataFieldType for a key whose index is still
+// BUILDING is accepted immediately and re-flips the index status to BUILDING
+// for the new declared_type. No transient error, no waiting.
+func TestProcessSetMetadataFieldType_AcceptedDuringRebuild(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -410,22 +410,26 @@ func TestProcessSetMetadataFieldType_RejectedWhileConverting(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "amount")
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
 		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {
-					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
-					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
-				},
+				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
+		Indexes: []*commonpb.Index{{
+			Id:          id,
+			BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+		}},
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
-	// No PutLedger / AddMetadataConvertRequest / PutBoundaries: the order is rejected.
+	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
+	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890})
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -446,147 +450,8 @@ func TestProcessSetMetadataFieldType_RejectedWhileConverting(t *testing.T) {
 	}
 
 	result, err := processor.ProcessOrder(order, mockStore)
-	require.Error(t, err)
-	require.Nil(t, result)
-
-	var inProgress *domain.ErrMetadataConversionInProgress
-	require.ErrorAs(t, err, &inProgress)
-	require.Equal(t, "account", inProgress.Target)
-	require.Equal(t, "amount", inProgress.Key)
-}
-
-func TestProcessRemoveMetadataFieldType_RejectedWhileConverting(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
-
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{
-		Name: "test-ledger",
-		Id:   1,
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {
-					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
-					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
-				},
-			},
-		},
-	}
-
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
-	// No PutLedger / PutBoundaries: the order is rejected.
-
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "test-ledger",
-				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
-						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-							Key:        "amount",
-						},
-					},
-					},
-				},
-			},
-		},
-	}
-
-	result, err := processor.ProcessOrder(order, mockStore)
-	require.Error(t, err)
-	require.Nil(t, result)
-
-	var inProgress *domain.ErrMetadataConversionInProgress
-	require.ErrorAs(t, err, &inProgress)
-}
-
-func TestEnforceSchema(t *testing.T) {
-	t.Parallel()
-
-	t.Run("NilSchema", func(t *testing.T) {
-		t.Parallel()
-
-		metadata := map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")}
-		enforceSchemaMap(nil, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
-		// Should not panic
-		require.Equal(t, "v", commonpb.MetadataValueToString(metadata["k"]))
-	})
-
-	t.Run("EmptyMetadata", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
-			},
-		}
-		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, nil)
-		// Should not panic
-	})
-
-	t.Run("NoFieldsForTarget", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{
-			// Only account fields, no transaction fields
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
-			},
-		}
-		metadata := map[string]*commonpb.MetadataValue{"amount": commonpb.NewStringValue("42")}
-		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, metadata)
-		// Should not modify since no transaction fields
-		require.Equal(t, "42", commonpb.MetadataValueToString(metadata["amount"]))
-	})
-
-	t.Run("UndeclaredKey", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
-			},
-		}
-		metadata := map[string]*commonpb.MetadataValue{"status": commonpb.NewStringValue("active")}
-		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
-		// "status" is not declared, should stay as string
-		require.Equal(t, "active", commonpb.MetadataValueToString(metadata["status"]))
-	})
-
-	t.Run("LedgerField", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{
-			LedgerFields: map[string]*commonpb.MetadataFieldSchema{
-				"count": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
-			},
-		}
-		metadata := map[string]*commonpb.MetadataValue{"count": commonpb.NewStringValue("42")}
-		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_LEDGER, metadata)
-		require.Equal(t, int64(42), metadata["count"].GetIntValue())
-	})
-
-	t.Run("NilValue", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
-			},
-		}
-		metadata := map[string]*commonpb.MetadataValue{"amount": nil}
-		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
-		// Nil value should be left as nil
-		require.Nil(t, metadata["amount"])
-	})
+	require.NoError(t, err, "retype must succeed even when the index is mid-rebuild")
+	require.NotNil(t, result)
 }
 
 func TestPopulateInitialSchema(t *testing.T) {
@@ -622,7 +487,6 @@ func TestPopulateInitialSchema(t *testing.T) {
 		field := result.GetAccountFields()["amount"]
 		require.NotNil(t, field)
 		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
-		require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE, field.GetStatus())
 	})
 
 	t.Run("TransactionFields", func(t *testing.T) {
@@ -641,7 +505,6 @@ func TestPopulateInitialSchema(t *testing.T) {
 		field := result.GetTransactionFields()["priority"]
 		require.NotNil(t, field)
 		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
-		require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE, field.GetStatus())
 	})
 
 	t.Run("LedgerFields", func(t *testing.T) {
@@ -660,7 +523,6 @@ func TestPopulateInitialSchema(t *testing.T) {
 		field := result.GetLedgerFields()["env"]
 		require.NotNil(t, field)
 		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
-		require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE, field.GetStatus())
 	})
 
 	t.Run("MixedFields", func(t *testing.T) {
@@ -688,80 +550,5 @@ func TestPopulateInitialSchema(t *testing.T) {
 		require.Len(t, result.GetAccountFields(), 1)
 		require.Len(t, result.GetTransactionFields(), 1)
 		require.Len(t, result.GetLedgerFields(), 1)
-	})
-}
-
-func TestSchemaFieldForTarget(t *testing.T) {
-	t.Parallel()
-
-	t.Run("NilSchema", func(t *testing.T) {
-		t.Parallel()
-
-		fields, field := SchemaFieldForTarget(nil, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
-		require.Nil(t, fields)
-		require.Nil(t, field)
-	})
-
-	t.Run("NilFieldMap", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{} // No AccountFields or TransactionFields
-		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
-		require.Nil(t, fields)
-		require.Nil(t, field)
-	})
-
-	t.Run("KeyNotFound", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
-			},
-		}
-		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "nonexistent")
-		require.NotNil(t, fields)
-		require.Nil(t, field)
-	})
-
-	t.Run("KeyFound", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
-			},
-		}
-		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "amount")
-		require.NotNil(t, fields)
-		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
-	})
-
-	t.Run("TransactionField", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{
-			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
-				"priority": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
-			},
-		}
-		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")
-		require.NotNil(t, fields)
-		require.NotNil(t, field)
-	})
-
-	t.Run("LedgerField", func(t *testing.T) {
-		t.Parallel()
-
-		schema := &commonpb.MetadataSchema{
-			LedgerFields: map[string]*commonpb.MetadataFieldSchema{
-				"env": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
-			},
-		}
-		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_LEDGER, "env")
-		require.NotNil(t, fields)
-		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
 	})
 }

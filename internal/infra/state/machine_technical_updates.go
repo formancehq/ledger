@@ -1,41 +1,17 @@
 package state
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
-	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
-
-// saveLedgerWithCache is a test-only helper that performs the three-way
-// "update ledger" write (in-memory cache + 0xF1 + ZoneGlobal) immediately,
-// without going through a WriteSet overlay. Production code (technical-
-// update handlers, order handlers) routes ledger updates through
-// WriteSet.PutLedger so they ride the same Merge pipeline as orders —
-// atomic with the rest of the proposal's batch, gated by the same
-// coverage checks. Tests that need to seed initial state still use this
-// helper to skip the WriteSet scaffolding.
-func (fsm *Machine) saveLedgerWithCache(batch *dal.WriteSession, ledgerKey domain.LedgerKey, info *commonpb.LedgerInfo) error {
-	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
-
-	if _, _, err := fsm.Registry.Ledgers.PutWithCache(batch, genByte, ledgerKey.Bytes(), info); err != nil {
-		return fmt.Errorf("updating ledger with cache: %w", err)
-	}
-
-	if err := SaveLedger(batch, info); err != nil {
-		return fmt.Errorf("persisting ledger info: %w", err)
-	}
-
-	return nil
-}
 
 // applyTechnicalUpdates applies Proposal-level technical updates that
 // bypass the Order/Log system. Each TechnicalUpdate carries its own
@@ -79,14 +55,6 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 		case *raftcmdpb.TechnicalUpdate_IdempotencyEviction:
 			if err := fsm.applyIdempotencyEviction(batch, kind.IdempotencyEviction); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] idempotency eviction: %w", i, err)
-			}
-		case *raftcmdpb.TechnicalUpdate_MetadataBatch:
-			if err := fsm.applyMetadataConversionBatch(scope, batch, kind.MetadataBatch); err != nil {
-				return fmt.Errorf("applying technical_updates[%d] metadata conversion batch: %w", i, err)
-			}
-		case *raftcmdpb.TechnicalUpdate_MetadataCompletion:
-			if err := fsm.applyMetadataConversionCompletion(scope, kind.MetadataCompletion); err != nil {
-				return fmt.Errorf("applying technical_updates[%d] metadata conversion completion: %w", i, err)
 			}
 		case *raftcmdpb.TechnicalUpdate_IndexReady:
 			if err := fsm.applyIndexReady(scope, kind.IndexReady, proposal.GetDate()); err != nil {
@@ -270,109 +238,6 @@ func (fsm *Machine) applyIdempotencyEviction(batch *dal.WriteSession, eviction *
 	return nil
 }
 
-// applyMetadataConversionBatch applies a background metadata conversion batch.
-// No log entry is produced. This path NEVER writes the LedgerInfo back: the
-// previous design persisted progress counters (TotalKeys/ConvertedKeys) on
-// the schema field, but those are gone and the batch apply now only mutates
-// the metadata values via the per-entry compare-and-set. Skipping the
-// LedgerInfo save also closes the "stale schema preload overwrites a newer
-// LedgerInfo" race surfaced in PR #359 review: a preloaded LedgerInfo can
-// be older than the in-cache copy when an earlier schema change rotated the
-// new version out of the cache before this batch applies; saving the stale
-// clone would silently roll back the newer schema. With no save, the batch
-// is read-only on LedgerInfo and the race is structurally impossible.
-func (fsm *Machine) applyMetadataConversionBatch(scope processing.Scope, batch *dal.WriteSession, b *raftcmdpb.MetadataConversionBatch) error {
-	info, err := scope.GetLedger(b.GetLedger())
-	if errors.Is(err, domain.ErrNotFound) {
-		return nil // ledger no longer in cache — stale conversion batch, skip
-	}
-
-	if err != nil {
-		return fmt.Errorf("loading ledger for metadata conversion batch: %w", err)
-	}
-
-	if info.GetDeletedAt() != nil {
-		return nil // ledger was deleted — stale conversion, skip
-	}
-
-	// Staleness check: the field must still be CONVERTING with the expected
-	// type. Read-only on the cached LedgerInfo — no clone, no save.
-	_, fieldSchema := processing.SchemaFieldForTarget(info.GetMetadataSchema(), b.GetTargetType(), b.GetKey())
-	if fieldSchema == nil ||
-		fieldSchema.GetStatus() != commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING ||
-		fieldSchema.GetType() != b.GetExpectedType() {
-		return nil // stale batch
-	}
-
-	// Each entry carries the value the converter scanned (ExpectedValue,
-	// raw VT bytes). The proposal's Preload guarantees every canonical
-	// key is in the cache before this loop runs (#359). The FSM then
-	// compares against the cache state so we neither resurrect a deleted
-	// key nor clobber a fresh write that landed in Raft order between
-	// scan and apply (#313):
-	//
-	//   * Cache tombstone (entry.Deleted): a user delete passed through
-	//     the FSM after the scan. Skip — preserve the deletion.
-	//   * Cache hit, current value bytes == ExpectedValue: same value the
-	//     converter saw. Safe to write converted_value.
-	//   * Cache hit, current value bytes != ExpectedValue: a user mutation
-	//     replaced the scanned value. Skip — preserve the new write; the
-	//     next scan pass will skip this key (TypeMatches).
-	//   * Cache miss (no entry at all): a scan-vs-apply race — the
-	//     converter scanned the key from a Pebble snapshot but a user
-	//     delete plus enough rotations evicted both the value and the
-	//     tombstone before this apply, so the proposer's preload had
-	//     nothing to ship. Skip — same outcome as the tombstone branch.
-	//
-	// Convergence is the converter's responsibility: it keeps scanning
-	// until a full pass turns up zero entries needing conversion, then
-	// proposes MetadataConversionCompletion. The FSM never auto-COMPLETES
-	// here — counting writes across passes would race with concurrent
-	// user mutations and could flip Status while keys still mismatched.
-	for _, entry := range b.GetEntries() {
-		if err := fsm.applyConvertEntry(scope, b.GetTargetType(), entry); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// applyMetadataConversionCompletion applies a metadata conversion completion.
-// No log entry is produced. Reads `LedgerInfo` from the cache, which the
-// preload path (see `metadataBatchProposer.Propose` adding the ledger key
-// to `needs.Ledgers`) guarantees is populated with the fresh value at
-// propose time.
-func (fsm *Machine) applyMetadataConversionCompletion(scope processing.Scope, complete *raftcmdpb.MetadataConversionCompletion) error {
-	info, err := scope.GetLedger(complete.GetLedger())
-	if errors.Is(err, domain.ErrNotFound) {
-		return nil // ledger no longer in cache — stale conversion completion, skip
-	}
-
-	if err != nil {
-		return fmt.Errorf("loading ledger for metadata conversion completion: %w", err)
-	}
-
-	if info.GetDeletedAt() != nil {
-		return nil // ledger was deleted — stale conversion, skip
-	}
-
-	info = info.CloneVT()
-
-	_, fieldSchema := processing.SchemaFieldForTarget(info.GetMetadataSchema(), complete.GetTargetType(), complete.GetKey())
-	if fieldSchema == nil ||
-		fieldSchema.GetStatus() != commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING ||
-		fieldSchema.GetType() != complete.GetExpectedType() {
-		return nil // stale
-	}
-
-	fieldSchema.Status = commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE
-
-	scope.PutLedger(complete.GetLedger(), info)
-
-	return nil
-}
-
 // applyIndexReady applies an index-ready notification. No log entry is produced.
 // The index builder detects the status change by reading LedgerInfo on its next tick.
 func (fsm *Machine) applyIndexReady(scope processing.Scope, ready *raftcmdpb.IndexReadyUpdate, proposalDate *commonpb.Timestamp) error {
@@ -401,115 +266,6 @@ func (fsm *Machine) applyIndexReady(scope processing.Scope, ready *raftcmdpb.Ind
 	idx.LastError = ""
 
 	scope.PutLedger(ready.GetLedger(), info)
-
-	return nil
-}
-
-// applyConvertEntry decides whether to write the converted_value for a
-// single entry. See applyMetadataConversionBatch for the freshness
-// invariants. Returns nil for both write and silent skip cases — the
-// caller no longer cares which since convergence is driven by the
-// converter, not by counting writes here.
-func (fsm *Machine) applyConvertEntry(scope processing.Scope, targetType commonpb.TargetType, entry *raftcmdpb.ConvertMetadataEntry) error {
-	cacheEntry, present, err := fsm.getMetadataCacheEntry(scope, targetType, entry.GetCanonicalKey())
-	if err != nil {
-		return err
-	}
-
-	if !present {
-		// Genuine "key absent everywhere" path — NOT an invariant
-		// violation. The converter scans a Pebble snapshot and enqueues
-		// the canonical key; between scan and apply a user delete can
-		// commit (Pebble delete + cache tombstone). After enough
-		// intervening proposals the cache tombstone rotates out, and
-		// the proposer's preload finds nothing in cache OR Pebble for
-		// this key, so it emits no preload payload. The apply then sees
-		// `present=false` here and the safe outcome is the same as the
-		// `cacheEntry.Deleted` branch below: skip, the conversion is
-		// stale and the next scan pass will not re-enqueue this key
-		// (it's gone from Pebble too). Returning an error here would
-		// turn a normal scan-vs-apply race into an apply failure
-		// (flemzord review on #359).
-		//
-		// Case (b) — proposer forgets to declare the key — is handled
-		// by the gatedScope wrapper before we reach this branch:
-		// scope.GetXxxEntry runs CheckCoverage and returns (Entry{},
-		// false) on miss, so we get the same soft-skip behaviour as
-		// case (a). The miss is recorded on the OTel counter +
-		// structured log so the declaration gap stays observable.
-		return nil
-	}
-
-	if cacheEntry.Deleted {
-		// Deletion landed after the scan.
-		return nil
-	}
-
-	currentBytes, err := cacheEntry.Data.MarshalVT()
-	if err != nil {
-		return fmt.Errorf("marshaling current metadata value: %w", err)
-	}
-
-	if !bytes.Equal(currentBytes, entry.GetExpectedValue()) {
-		// Mutation landed after the scan; preserve the newer value.
-		return nil
-	}
-
-	return fsm.putConvertBatchValue(scope, targetType, entry.GetCanonicalKey(), entry.GetConvertedValue())
-}
-
-// getMetadataCacheEntry returns the underlying cache entry (with its
-// Deleted tombstone flag) for a metadata canonical key. present=false
-// means the key has no map entry at all (never cached, rotated out, or
-// undeclared by the proposer — the latter logs a coverage-miss event
-// and propagates as an error here so applyConvertEntry abandons the
-// conversion rather than silently skipping the work).
-func (fsm *Machine) getMetadataCacheEntry(scope processing.Scope, targetType commonpb.TargetType, canonicalKey []byte) (attributes.Entry[*commonpb.MetadataValue], bool, error) {
-	var (
-		entry attributes.Entry[*commonpb.MetadataValue]
-		err   error
-	)
-
-	switch targetType {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		entry, err = scope.GetAccountMetadataEntry(canonicalKey)
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		entry, err = scope.GetLedgerMetadataEntry(canonicalKey)
-	default:
-		return attributes.Entry[*commonpb.MetadataValue]{}, false, fmt.Errorf("unsupported target type for conversion: %v", targetType)
-	}
-
-	if errors.Is(err, domain.ErrNotFound) {
-		return attributes.Entry[*commonpb.MetadataValue]{}, false, nil
-	}
-
-	if err != nil {
-		return attributes.Entry[*commonpb.MetadataValue]{}, false, err
-	}
-
-	return entry, true, nil
-}
-
-// putConvertBatchValue queues a converted metadata value through the
-// Scope's overlay so it reaches the cache + Pebble at WriteSet.Merge,
-// atomically with the rest of the proposal's batch.
-func (fsm *Machine) putConvertBatchValue(scope processing.Scope, targetType commonpb.TargetType, canonicalKey []byte, value *commonpb.MetadataValue) error {
-	switch targetType {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		var key domain.MetadataKey
-		if err := key.Unmarshal(canonicalKey); err != nil {
-			return fmt.Errorf("decoding account metadata canonical key: %w", err)
-		}
-
-		scope.PutAccountMetadata(key, value)
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		var key domain.LedgerMetadataKey
-		if err := key.Unmarshal(canonicalKey); err != nil {
-			return fmt.Errorf("decoding ledger metadata canonical key: %w", err)
-		}
-
-		scope.PutLedgerMetadata(key, value)
-	}
 
 	return nil
 }

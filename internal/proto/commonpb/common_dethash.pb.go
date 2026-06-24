@@ -1165,25 +1165,6 @@ func (m *SavedLedgerMetadataLog) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.PreviousValues) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.PreviousValues)) {
-			v := m.PreviousValues[k]
-			baseI := i
-			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x12
-			i -= len(k)
-			copy(dAtA[i:], k)
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
-			i--
-			dAtA[i] = 0xa
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
-			i--
-			dAtA[i] = 0x1a
-		}
-	}
 	if len(m.Metadata) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
 			v := m.Metadata[k]
@@ -1765,25 +1746,6 @@ func (m *CreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.PreviousAccountMetadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.PreviousAccountMetadata)) {
-			v := m.PreviousAccountMetadata[k]
-			baseI := i
-			size, _ := v.MarshalToSizedBufferDeterministicVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x12
-			i -= len(k)
-			copy(dAtA[i:], k)
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
-			i--
-			dAtA[i] = 0xa
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
-			i--
-			dAtA[i] = 0x2a
-		}
-	}
 	if m.PostCommitVolumes != nil {
 		size, _ := m.PostCommitVolumes.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 		i -= size
@@ -1886,25 +1848,6 @@ func (m *SavedMetadata) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, e
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.PreviousValues) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.PreviousValues)) {
-			v := m.PreviousValues[k]
-			baseI := i
-			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x12
-			i -= len(k)
-			copy(dAtA[i:], k)
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
-			i--
-			dAtA[i] = 0xa
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
-			i--
-			dAtA[i] = 0x1a
-		}
 	}
 	if len(m.Metadata) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {

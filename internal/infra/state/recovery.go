@@ -16,10 +16,10 @@ import (
 // dal.RecoveryReader, so the hot-path Machine receiver has no field or method
 // through which it can read Pebble.
 //
-// The bodies of RecoverState / RestoreCacheFromStore / DispatchMetadataConversionRequests
-// live here rather than as private methods on Machine: the code is colocated
-// with the capability it uses, and a future contributor reading machine.go
-// won't find any read primitive to pull from.
+// The bodies of RecoverState / RestoreCacheFromStore live here rather than
+// as private methods on Machine: the code is colocated with the capability
+// it uses, and a future contributor reading machine.go won't find any read
+// primitive to pull from.
 type Recovery struct {
 	apply  *Machine
 	reader dal.RecoveryReader
@@ -207,12 +207,11 @@ func (r *Recovery) RestoreCacheFromStore() error {
 }
 
 // OnLeadershipAcquired is called when this node becomes the Raft leader. It
-// re-dispatches archive and metadata-conversion requests from durable state,
-// allowing the new leader to retry work that may have been in flight when the
-// previous leader crashed.
+// re-dispatches archive requests from durable state, allowing the new leader
+// to retry work that may have been in flight when the previous leader
+// crashed.
 func (r *Recovery) OnLeadershipAcquired(stop <-chan struct{}) {
 	go r.apply.DispatchArchiveRequests(stop)
-	go r.DispatchMetadataConversionRequests(stop)
 }
 
 // DispatchBloomRebuilds consumes the Machine's bloom-rebuild signal channel
@@ -236,44 +235,5 @@ func (r *Recovery) DispatchBloomRebuilds(stop <-chan struct{}) {
 
 			r.apply.cacheSnapshotter.StartAsyncBloomPopulate(r.reader, reason)
 		}
-	}
-}
-
-// DispatchMetadataConversionRequests iterates all ledgers and dispatches
-// conversion requests for metadata fields still in CONVERTING status. Held
-// on Recovery (not Machine) because it needs a Pebble read handle to scan
-// ledger metadata.
-func (r *Recovery) DispatchMetadataConversionRequests(stop <-chan struct{}) {
-	handle, err := r.reader.NewReadHandle()
-	if err != nil {
-		r.apply.logger.Errorf("Failed to create read handle for metadata conversion recovery: %v", err)
-
-		return
-	}
-
-	defer func() { _ = handle.Close() }()
-
-	cursor, err := query.ReadLedgers(context.Background(), handle)
-	if err != nil {
-		r.apply.logger.Errorf("Failed to read ledgers for metadata conversion recovery: %v", err)
-
-		return
-	}
-
-	defer func() { _ = cursor.Close() }()
-
-	for {
-		info, err := cursor.Next()
-		if err != nil {
-			break
-		}
-
-		if info.GetMetadataSchema() == nil || info.GetDeletedAt() != nil {
-			continue
-		}
-
-		r.apply.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.GetMetadataSchema().GetAccountFields())
-		r.apply.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.GetMetadataSchema().GetTransactionFields())
-		r.apply.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_LEDGER, info.GetMetadataSchema().GetLedgerFields())
 	}
 }

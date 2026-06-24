@@ -43,11 +43,6 @@ var (
 		MetadataType_METADATA_TYPE_UINT16: "uint16",
 		MetadataType_METADATA_TYPE_UINT32: "uint32",
 	}
-
-	conversionStatusNames = map[MetadataConversionStatus]string{
-		MetadataConversionStatus_METADATA_CONVERSION_COMPLETE:   "COMPLETE",
-		MetadataConversionStatus_METADATA_CONVERSION_CONVERTING: "CONVERTING",
-	}
 )
 
 // ParseTargetType converts "account"/"transaction"/"ledger" to TargetType.
@@ -86,15 +81,6 @@ func TargetTypeToString(t TargetType) string {
 	}
 
 	return t.String()
-}
-
-// ConversionStatusToString returns user-friendly name for a MetadataConversionStatus.
-func ConversionStatusToString(s MetadataConversionStatus) string {
-	if name, ok := conversionStatusNames[s]; ok {
-		return name
-	}
-
-	return s.String()
 }
 
 // MetadataTypeOptions returns valid type names.

@@ -601,8 +601,8 @@ func Module() fx.Option {
 				return readstore.New(dir, logger, cfg.ReadIndexConfig.PebbleConfig)
 			},
 			// Index builder — tails the Raft log to populate the read index
-			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {
-				return indexbuilder.NewBuilder(store, rs, logger, meterProvider.Meter("index.builder"), cfg.ReadIndexConfig.BatchSize)
+			func(store *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {
+				return indexbuilder.NewBuilder(store, rs, attrs, logger, meterProvider.Meter("index.builder"), cfg.ReadIndexConfig.BatchSize)
 			},
 			httpcompat.NewServer,
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig) http.Handler {
@@ -716,27 +716,6 @@ func Module() fx.Option {
 						return err
 					},
 					machine.QueryCheckpointScheduleChanged(),
-				)
-			},
-			func(
-				logger logging.Logger,
-				store *dal.Store,
-				attrs *attributes.Attributes,
-				machine *state.Machine,
-				recovery *state.Recovery,
-				raftNode *node.Node,
-				builder *plan.Builder,
-			) *state.MetadataConverter {
-				return state.NewMetadataConverter(
-					logger,
-					store,
-					attrs,
-					machine.MetadataConvertRequestCh(),
-					newMetadataBatchProposer(builder, raftNode),
-					raftNode.IsLeader,
-					100, // batchSize
-					4,   // poolSize — max concurrent field conversions
-					recovery.DispatchMetadataConversionRequests,
 				)
 			},
 			fx.Annotate(func(
@@ -1305,9 +1284,6 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, scheduler *state.QueryCheckpointScheduler) {
 				lc.Append(worker.FxHook(scheduler))
-			},
-			func(lc fx.Lifecycle, converter *state.MetadataConverter) {
-				lc.Append(worker.FxHook(converter))
 			},
 			func(lc fx.Lifecycle, machine *state.Machine) {
 				lc.Append(fx.Hook{

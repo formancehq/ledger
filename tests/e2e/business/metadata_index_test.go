@@ -636,8 +636,6 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.AccountFields).To(HaveKey("score"))
-				g.Expect(resp.AccountFields["score"].Status).To(Equal(
-					commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// The #275 claim: after the reverse-map rewrite completes,
@@ -649,8 +647,8 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")).To(Succeed())
 
-			// Sanity that the conversion machinery still produced the
-			// expected forward-storage value via read-time enforcement.
+			// Sanity: the API surfaces the raw value the client wrote
+			// (declared_type is an index hint, not an API contract).
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "alice",
@@ -658,9 +656,9 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			Expect(err).To(Succeed())
 			v := actions.FindMetadataValue(account.Metadata, "score")
 			Expect(v).NotTo(BeNil())
-			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value after conversion, got %T", v.Type)
-			Expect(intVal.IntValue).To(Equal(int64(42)))
+			strVal, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value (raw client write), got %T", v.Type)
+			Expect(strVal.StringValue).To(Equal("42"))
 
 			// NOTE: a follow-up test asserting that the typed range filter
 			// finds the account is intentionally NOT added here. With the

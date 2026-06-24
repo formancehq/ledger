@@ -118,9 +118,6 @@ type Scope interface {
 	SetPurgeRange(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
 	SetPendingArchive(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
 
-	// Metadata conversion requests
-	AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType)
-
 	// Prepared query operations
 	GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error)
 	PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery)

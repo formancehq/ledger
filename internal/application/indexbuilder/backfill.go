@@ -2,6 +2,7 @@ package indexbuilder
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -153,19 +155,23 @@ func (b *Builder) addBackfillTaskForLogBuiltin(ledgerName string, index commonpb
 	b.addBackfillTask(ledgerName, indexes.LogBuiltinID(index))
 }
 
-// removeBackfillTask removes a backfill task by index ID and deletes its
-// persisted progress.
-func (b *Builder) removeBackfillTask(id *commonpb.IndexID) {
+// removeBackfillTask removes a backfill task matching (ledger, index ID)
+// and deletes its persisted progress. Matching by IndexID alone would
+// drop an unrelated ledger's backfill when two ledgers index the same
+// metadata key — that ledger's index would then stay BUILDING forever.
+func (b *Builder) removeBackfillTask(ledgerName string, id *commonpb.IndexID) {
 	for i, t := range b.backfillTasks {
-		if indexes.Equal(t.index, id) {
-			// Delete persisted progress.
-			_ = b.readStore.DeleteBackfillProgress(t.bbKey)
-			// Remove from slice (order doesn't matter).
-			b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
-			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
-
-			return
+		if t.ledger != ledgerName || !indexes.Equal(t.index, id) {
+			continue
 		}
+
+		// Delete persisted progress.
+		_ = b.readStore.DeleteBackfillProgress(t.bbKey)
+		// Remove from slice (order doesn't matter).
+		b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
+		b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
+
+		return
 	}
 }
 
@@ -183,6 +189,21 @@ type schemaRewriteTask struct {
 
 	lastProgressLog time.Time
 	processedCount  uint64
+
+	// requiredIndexedSeq is the highest log sequence sampled in the FSM
+	// snapshot at the start of any batch this task has run (via
+	// query.ReadLastSequence). Because the rewrite sources raw values
+	// from the FSM Pebble store (Option B in PR #503's plan), which is
+	// always at least as fresh as the indexer cursor, the forward entries
+	// it writes may reflect a log seq newer than what processLogs has
+	// ingested. We must therefore hold IndexReady until
+	// readStore.LastIndexedSequence() >= requiredIndexedSeq, so that an
+	// index marked READY actually represents a contiguous log prefix.
+	// Tracked in the *log sequence* space to match LastIndexedSequence —
+	// the Raft applied-index counts technical / config / no-op entries
+	// too and would leave the gate stuck whenever Raft is ahead of log
+	// seq.
+	requiredIndexedSeq uint64
 
 	// done flips when the reverse-map scan is exhausted. We keep the task in
 	// the slice afterwards so the loop can propose IndexReady and confirm the
@@ -211,7 +232,44 @@ func schemaRewriteBBKey(ledgerName string, targetType commonpb.TargetType, key s
 // follow-up IndexReady proposal can address the right LedgerInfo (the FSM
 // keys by name).
 func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string, smft *commonpb.SetMetadataFieldTypeLog) {
-	// Only rewrite if this metadata key is indexed.
+	// If a backfill is in flight for the same (ledger, metadata index),
+	// reset its cursor to 0 instead of enqueueing a separate
+	// schemaRewriteTask. The backfill replays the logs via the
+	// per-batch schemaResolver, which reads the current declared_type
+	// and writes the forward index under the new type directly — no
+	// separate rewrite is needed. This branch runs first because
+	// stripBuildingIndexes can temporarily hide the BUILDING index from
+	// cfg during initial catch-up: relying solely on cfg.isMetadataIndexed
+	// would let a stale backfill resume after a crash-recovered retype.
+	indexID := indexes.MetadataID(smft.GetTargetType(), smft.GetKey())
+	for _, bt := range b.backfillTasks {
+		if bt.ledger != ledgerName || !indexes.Equal(bt.index, indexID) {
+			continue
+		}
+
+		bt.cursor = 0
+		bt.appliedProposalSeq = 0
+		bt.proposed = false
+		bt.lastProgressSeq = 0
+		// If DeleteBackfillProgress fails, a crash before the first
+		// post-reset Commit would resume from the stale persisted cursor
+		// under the new declared_type — inconsistent encoding. Log it
+		// loudly so operators notice; the in-memory cursor=0 still wins
+		// for the current process.
+		if err := b.readStore.DeleteBackfillProgress(bt.bbKey); err != nil {
+			b.logger.WithFields(map[string]any{
+				"ledger": bt.ledger,
+				"index":  backfillIndexName(bt.index),
+				"error":  err,
+			}).Errorf("Deleting persisted backfill cursor on retype reset")
+		}
+
+		return
+	}
+
+	// No in-flight backfill: only enqueue a rewrite if the index is
+	// actually registered (READY). isMetadataIndexed is nil-safe so an
+	// unknown ledger (cfg == nil) short-circuits here.
 	if !cfg.isMetadataIndexed(smft.GetTargetType(), smft.GetKey()) {
 		return
 	}
@@ -219,11 +277,20 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 	bbKey := schemaRewriteBBKey(ledgerName, smft.GetTargetType(), smft.GetKey())
 	for _, t := range b.schemaRewriteTasks {
 		if string(t.bbKey) == string(bbKey) {
-			// Type changed again while a rewrite is in flight — restart
-			// from scratch since already-processed entries used the old type.
+			// Type changed again while a rewrite is in flight or pending
+			// cleanup — restart from scratch since already-processed entries
+			// used the old type. `done` and `proposed` must also clear: with
+			// either still set, tryProposeSchemaRewriteIndexReady would mark
+			// the index ready with entries still encoded under the prior type.
+			// requiredIndexedSeq is reset as well — the high-water mark from
+			// the previous declared type no longer reflects what this new
+			// rewrite will actually observe.
 			t.toType = smft.GetType()
 			t.rmapCursor = nil
 			t.processedCount = 0
+			t.done = false
+			t.proposed = false
+			t.requiredIndexedSeq = 0
 
 			return
 		}
@@ -248,6 +315,20 @@ func (b *Builder) removeSchemaRewriteTask(idx int) {
 	b.schemaRewriteTasks = b.schemaRewriteTasks[:len(b.schemaRewriteTasks)-1]
 }
 
+// removeSchemaRewriteTaskByField cancels any in-flight rewrite task matching
+// (ledger, target, key). Called when the schema field is removed: the index
+// it would mark READY no longer exists, so the task must be discarded
+// instead of looping on isSchemaRewriteIndexReady forever.
+func (b *Builder) removeSchemaRewriteTaskByField(ledgerName string, target commonpb.TargetType, key string) {
+	for i, t := range b.schemaRewriteTasks {
+		if t.ledger == ledgerName && t.targetType == target && t.key == key {
+			b.removeSchemaRewriteTask(i)
+
+			return
+		}
+	}
+}
+
 // processSchemaRewrite processes a batch of reverse map entries for a schema rewrite task.
 // Returns true when the rewrite is complete (no more entries to process).
 func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, stop <-chan struct{}, deadline time.Time) (bool, error) {
@@ -269,9 +350,50 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	rmapPrefix := readstore.ReverseMapPrefix(kb, task.ledger, ns)
 	upper := readstore.IncrementBytes(rmapPrefix)
 
-	// Use a snapshot for the scan so it sees a consistent committed state.
+	// Pair two Pebble snapshots: one on the read store (rmap, forward
+	// index) and one on the FSM Pebble store (canonical stored values).
+	// Both are taken inside processBackgroundTasks, which only runs after
+	// processLogs has drained — there are no concurrent FSM writers, so the
+	// FSM snapshot is at least as fresh as the rmap snapshot. Sourcing the
+	// re-encoded value from the raw stored value (not from the rmap, which
+	// may already hold a lossy projection from a previous retype) makes the
+	// rewrite a pure function of stored state. Cancel-and-restart on a new
+	// SetMetadataFieldType is therefore safe: re-running with a new toType
+	// always produces the same result for the same stored value.
 	snap := b.readStore.NewSnapshot()
 	defer func() { _ = snap.Close() }()
+
+	// Use a point-in-time snapshot of the FSM Pebble store so both the
+	// log-seq high-water mark and the per-entity fetchStoredMetadataValue
+	// lookups observe the same state. A direct handle would let the FSM
+	// commit new logs in between, which means the rewrite could encode a
+	// value tied to a log seq strictly higher than the bound we
+	// captured — leaving requiredIndexedSeq lower than what the forward
+	// actually reflects, and reopening the prefix-violation window the
+	// gate is meant to close.
+	fsmHandle, err := b.pebbleStore.NewReadHandle()
+	if err != nil {
+		return false, fmt.Errorf("opening FSM snapshot for schema rewrite: %w", err)
+	}
+
+	defer func() { _ = fsmHandle.Close() }()
+
+	// Capture the highest *log sequence* in the FSM snapshot — NOT the
+	// Raft applied-index. The indexer's LastIndexedSequence advances by
+	// applicative log seq, while Raft applied-index counts technical /
+	// config / no-op entries too. Comparing the two would leave the gate
+	// stuck whenever Raft is ahead of log seq, even though the indexer
+	// has fully caught up to the log prefix we read. A slightly inflated
+	// bound is safe (only delays IndexReady) but the dimensions must
+	// match.
+	fsmLogSeq, err := query.ReadLastSequence(fsmHandle)
+	if err != nil {
+		return false, fmt.Errorf("reading FSM last log sequence for schema rewrite: %w", err)
+	}
+
+	if fsmLogSeq > task.requiredIndexedSeq {
+		task.requiredIndexedSeq = fsmLogSeq
+	}
 
 	var lowerBound []byte
 	if len(task.rmapCursor) > 0 {
@@ -350,20 +472,42 @@ scan:
 			return false, verr
 		}
 
-		// The reverse map stores values in the sortable EncodeMetadataValue
-		// format, not protobuf — decode with the matching decoder. A failure
-		// here is fatal so the backfill task is retried; silently advancing
-		// `processed` for a corrupt entry would mark progress that never
-		// rewrote that index entry.
-		oldMV, _, err := readstore.DecodeValue(v)
-		if err != nil {
-			return false, fmt.Errorf("decoding reverse map value at key %x: %w", k, err)
-		}
-
+		// The rmap value is the encoded form currently in the forward
+		// index — used to delete the existing entry. The new encoded form
+		// is derived from the immutable raw stored value in the FSM, NOT
+		// from the rmap (which may be a lossy projection from a prior
+		// retype).
 		oldEncoded := v
 
-		// Convert to new type.
-		newMV := commonpb.ConvertMetadataValue(oldMV, task.toType)
+		rawValue, lookupErr := b.fetchStoredMetadataValue(fsmHandle, task.ledger, task.targetType, task.key, entityID)
+		if lookupErr != nil {
+			return false, fmt.Errorf("reading stored metadata from FSM at key %x: %w", k, lookupErr)
+		}
+
+		// If the FSM has nothing for this entity (deleted between writes
+		// and rewrite), drop both forward and rmap entries.
+		if rawValue == nil {
+			oldFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, oldEncoded, entityID)
+			if derr := batch.DeleteKey(oldFwdKey); derr != nil {
+				return false, fmt.Errorf("deleting forward entry for missing FSM value: %w", derr)
+			}
+
+			oldIsNull := len(oldEncoded) > 0 && oldEncoded[0] == readstore.TypeTagNull
+			oldEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, oldIsNull, entityID)
+			if derr := batch.DeleteKey(oldEidxKey); derr != nil {
+				return false, fmt.Errorf("deleting eidx for missing FSM value: %w", derr)
+			}
+
+			if derr := batch.DeleteKey(cloneBytes(k)); derr != nil {
+				return false, fmt.Errorf("deleting rmap entry for missing FSM value: %w", derr)
+			}
+
+			rewritten++
+
+			continue
+		}
+
+		newMV := commonpb.ConvertMetadataValue(rawValue, task.toType)
 		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
 
 		// Delete old forward index entry.
@@ -532,6 +676,28 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 func (b *Builder) tryProposeSchemaRewriteIndexReady(ctx context.Context, task *schemaRewriteTask) {
 	if task.proposed && (b.isLeader == nil || !b.isLeader()) {
 		task.proposed = false
+	}
+
+	// Hold IndexReady until the indexer has ingested every log up to the
+	// highest FSM applied-index this rewrite has observed. Without this
+	// the index could be marked READY while the forward already reflects
+	// logs not yet in the read store, violating the prefix invariant
+	// clients rely on through min_log_sequence.
+	if task.requiredIndexedSeq > 0 {
+		lastSeq, err := b.readStore.LastIndexedSequence()
+		if err != nil {
+			b.logger.WithFields(map[string]any{
+				"ledger": task.ledger,
+				"key":    task.key,
+				"error":  err,
+			}).Errorf("Reading indexer progress before proposing schema-rewrite IndexReady")
+
+			return
+		}
+
+		if lastSeq < task.requiredIndexedSeq {
+			return
+		}
 	}
 
 	if task.proposed {
@@ -710,6 +876,13 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 	}
 
 	defer func() { _ = handle.Close() }()
+
+	// Per-batch schema resolver shared with the replay below. Without it,
+	// historical SavedMetadata/CreatedTransaction logs replayed during a
+	// metadata-index backfill would skip the declared-type coercion and
+	// the forward index would key entries under the raw client type.
+	b.batchSchema = newSchemaResolver(handle, b.attrs)
+	defer func() { b.batchSchema = nil }()
 
 	logsCursor, err := query.ReadLogsSince(ctx, handle, task.cursor, dal.WithReuse(), dal.WithResetFunc(resetLogForReuse))
 	if err != nil {
@@ -979,4 +1152,69 @@ func (b *Builder) isIndexAlreadyReady(ctx context.Context, task *backfillTask) b
 	}
 
 	return indexes.IsReady(info, task.index)
+}
+
+// fetchStoredMetadataValue reads the raw stored metadata value from the FSM
+// Pebble zone for a given (ledger, target, key, entityID). Returns nil when
+// the value is not present (entity deleted, key never set, transaction state
+// gone). The schema rewrite uses this as its canonical source so re-encoding
+// is a pure function of stored state — independent of what the rmap currently
+// holds (which may be a lossy projection from a prior retype).
+func (b *Builder) fetchStoredMetadataValue(
+	reader dal.PebbleReader,
+	ledgerName string,
+	targetType commonpb.TargetType,
+	key string,
+	entityID []byte,
+) (*commonpb.MetadataValue, error) {
+	switch targetType {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		canonicalKey := domain.MetadataKey{
+			AccountKey: domain.AccountKey{
+				LedgerName: ledgerName,
+				Account:    string(entityID),
+			},
+			Key: key,
+		}.Bytes()
+
+		v, err := b.attrs.Metadata.Get(reader, canonicalKey)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, nil
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		return v, nil
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		if len(entityID) != 8 {
+			return nil, fmt.Errorf("invalid transaction entityID length %d (want 8)", len(entityID))
+		}
+
+		txID := binary.BigEndian.Uint64(entityID)
+
+		canonicalKey := domain.TransactionKey{
+			LedgerName: ledgerName,
+			ID:         txID,
+		}.Bytes()
+
+		state, err := b.attrs.Transaction.Get(reader, canonicalKey)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, nil
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		v, ok := state.GetMetadata()[key]
+		if !ok || v == nil {
+			return nil, nil
+		}
+
+		return v, nil
+	default:
+		return nil, fmt.Errorf("unsupported target type %v", targetType)
+	}
 }

@@ -7,6 +7,17 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// processSetMetadataFieldType updates the declared type of a metadata field.
+//
+// Stored values are immutable: reads return the verbatim client bytes
+// regardless of declared_type. The declared type is an index hint — it
+// governs how the indexer encodes forward-index entries. Declaring a type
+// is therefore O(1) and never blocks on a background converter; type
+// changes can be issued back-to-back without waiting.
+//
+// If an index covers this field, its BuildStatus is flipped to BUILDING so
+// the indexer schedules a rewrite to re-encode forward entries under the
+// new declared_type.
 func (p *RequestProcessor) processSetMetadataFieldType(
 	ledgerName string,
 	order *raftcmdpb.SetMetadataFieldTypeOrder,
@@ -19,21 +30,11 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 
 	info = info.CloneVT()
 
-	if metadataFieldConverting(info, order.GetTargetType(), order.GetKey()) {
-		return nil, &domain.ErrMetadataConversionInProgress{
-			Target: commonpb.TargetTypeToString(order.GetTargetType()),
-			Key:    order.GetKey(),
-		}
-	}
-
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
 
-	field := &commonpb.MetadataFieldSchema{
-		Type:   order.GetType(),
-		Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
-	}
+	field := &commonpb.MetadataFieldSchema{Type: order.GetType()}
 
 	switch order.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
@@ -56,20 +57,15 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 		info.MetadataSchema.LedgerFields[order.GetKey()] = field
 	}
 
-	// If an index covers this field, flip it back to BUILDING for the
-	// duration of the conversion: stored entries mix old and new encodings
-	// until the background scan completes.
+	// If an index covers this field, flip it back to BUILDING: the existing
+	// forward entries were encoded under the previous declared_type and must
+	// be rewritten under the new one.
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
 	if existing := indexes.Find(info, id); existing != nil {
 		existing.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
 	}
 
 	s.PutLedger(ledgerName, info)
-
-	// Both account and transaction metadata need the conversion lifecycle.
-	// Account metadata triggers background scan+convert; transaction metadata
-	// completes immediately (read-time enforcement handles existing data).
-	s.AddMetadataConvertRequest(ledgerName, order.GetTargetType(), order.GetKey(), order.GetType())
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
@@ -82,6 +78,10 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 	}, nil
 }
 
+// processRemoveMetadataFieldType drops the declared type for a metadata field.
+// O(1) on the apply path: the field is removed from the schema and any index
+// attached to it is dropped. Existing stored values are untouched (they remain
+// in their original type; reads no longer coerce them).
 func (p *RequestProcessor) processRemoveMetadataFieldType(
 	ledgerName string,
 	order *raftcmdpb.RemoveMetadataFieldTypeOrder,
@@ -94,20 +94,10 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 
 	info = info.CloneVT()
 
-	if metadataFieldConverting(info, order.GetTargetType(), order.GetKey()) {
-		return nil, &domain.ErrMetadataConversionInProgress{
-			Target: commonpb.TargetTypeToString(order.GetTargetType()),
-			Key:    order.GetKey(),
-		}
-	}
-
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
 
-	// Delete the field from the schema immediately. Existing stored typed
-	// values (e.g., int_value) remain in Pebble; without a schema declaration,
-	// reads return them as-is (no conversion enforced).
 	switch order.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		delete(info.GetMetadataSchema().GetAccountFields(), order.GetKey())
@@ -140,40 +130,9 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 	}, nil
 }
 
-// enforceSchemaMap converts metadata values in-place according to the ledger's
-// declared metadata schema. Values for keys with a declared type are converted
-// using the conversion matrix; keys without a declared type are left as-is.
-func enforceSchemaMap(schema *commonpb.MetadataSchema, targetType commonpb.TargetType, metadata map[string]*commonpb.MetadataValue) {
-	if schema == nil || len(metadata) == 0 {
-		return
-	}
-
-	for key, value := range metadata {
-		metadata[key] = coerceToDeclaredType(schema, targetType, key, value)
-	}
-}
-
-// coerceToDeclaredType returns v coerced to the metadata field's declared type
-// for (targetType, key) — the same value a read of that key returns. v is
-// returned unchanged when it is nil or the key has no declared type. Captured
-// previous values pass through this so they stay independent of whether the
-// background conversion has already rewritten the stored value.
-func coerceToDeclaredType(schema *commonpb.MetadataSchema, targetType commonpb.TargetType, key string, v *commonpb.MetadataValue) *commonpb.MetadataValue {
-	if v == nil {
-		return v
-	}
-
-	_, fs := SchemaFieldForTarget(schema, targetType, key)
-	if fs == nil || commonpb.TypeMatches(v, fs.GetType()) {
-		return v
-	}
-
-	return commonpb.ConvertMetadataValue(v, fs.GetType())
-}
-
 // populateInitialSchema builds a MetadataSchema from initial_schema commands
-// and sets all fields to COMPLETE status (no background conversion needed for
-// a brand-new ledger).
+// at ledger creation time. No conversion lifecycle is needed: a brand-new
+// ledger has no stored values to convert.
 func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *commonpb.MetadataSchema {
 	if len(commands) == 0 {
 		return nil
@@ -182,10 +141,7 @@ func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *co
 	schema := &commonpb.MetadataSchema{}
 
 	for _, cmd := range commands {
-		field := &commonpb.MetadataFieldSchema{
-			Type:   cmd.GetType(),
-			Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
-		}
+		field := &commonpb.MetadataFieldSchema{Type: cmd.GetType()}
 		switch cmd.GetTargetType() {
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 			if schema.AccountFields == nil {
@@ -209,44 +165,4 @@ func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *co
 	}
 
 	return schema
-}
-
-// metadataFieldConverting reports whether the (target, key) field is declared
-// in the ledger schema and its background conversion is still running. A field
-// that is absent or COMPLETE (the zero status) returns false.
-func metadataFieldConverting(info *commonpb.LedgerInfo, targetType commonpb.TargetType, key string) bool {
-	_, fs := SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
-
-	return fs.GetStatus() == commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING
-}
-
-// SchemaFieldForTarget returns the field map and field schema for the given
-// target type and key. Returns nil field if the schema, field map, or key
-// does not exist.
-func SchemaFieldForTarget(schema *commonpb.MetadataSchema, targetType commonpb.TargetType, key string) (map[string]*commonpb.MetadataFieldSchema, *commonpb.MetadataFieldSchema) {
-	if schema == nil {
-		return nil, nil
-	}
-
-	var fields map[string]*commonpb.MetadataFieldSchema
-
-	switch targetType {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		fields = schema.GetAccountFields()
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		fields = schema.GetTransactionFields()
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		fields = schema.GetLedgerFields()
-	}
-
-	if fields == nil {
-		return nil, nil
-	}
-
-	fs, ok := fields[key]
-	if !ok {
-		return fields, nil
-	}
-
-	return fields, fs
 }

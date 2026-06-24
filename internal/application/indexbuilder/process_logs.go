@@ -40,6 +40,12 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 	defer func() { _ = handle.Close() }()
 
+	// Per-batch schema resolver: memoizes LedgerInfo lookups for the
+	// duration of this processLogs call. Hot-path encode sites read from
+	// it via b.coerceForLedger.
+	b.batchSchema = newSchemaResolver(handle, b.attrs)
+	defer func() { b.batchSchema = nil }()
+
 	logsCursor, err := query.ReadLogsSince(ctx, handle, cursor, dal.WithReuse(), dal.WithResetFunc(resetLogForReuse))
 	if err != nil {
 		return cursor, err
@@ -491,7 +497,11 @@ func (b *Builder) indexCreatedTransaction(
 				}
 
 				reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, key)
-				newEncoded := readstore.EncodeMetadataValue(nil, value)
+				coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
+				if err != nil {
+					return err
+				}
+				newEncoded := readstore.EncodeMetadataValue(nil, coerced)
 
 				oldEncoded, err := b.reverseMapValue(reverseKey)
 				if err != nil {
@@ -509,7 +519,11 @@ func (b *Builder) indexCreatedTransaction(
 		}
 	}
 
-	// Transaction metadata (first write for new tx — no previous values)
+	// Transaction metadata. On live processLogs the rmap is empty for a
+	// freshly-created tx, but a backfill replay (e.g. cursor reset on
+	// retype) can land on a tx whose forward entries already exist under
+	// the prior declared_type. Look up the existing encoded value so we
+	// delete the stale forward key on the way in.
 	if len(txn.GetMetadata()) > 0 {
 		txIDBytes := make([]byte, 0, 8)
 
@@ -520,12 +534,21 @@ func (b *Builder) indexCreatedTransaction(
 			}
 
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txn.GetId(), key)
-			newEncoded := readstore.EncodeMetadataValue(nil, value)
+			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
+			if err != nil {
+				return err
+			}
+			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
+
+			oldEncoded, err := b.reverseMapValue(reverseKey)
+			if err != nil {
+				return err
+			}
 
 			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
 				ledger, readstore.NamespaceTransaction, key,
-				newEncoded, nil, txIDBytes,
+				newEncoded, oldEncoded, txIDBytes,
 			); err != nil {
 				return err
 			}
@@ -591,7 +614,11 @@ func (b *Builder) indexRevertedTransaction(
 		}
 	}
 
-	// Transaction metadata for the revert transaction (first write — no previous values)
+	// Transaction metadata for the revert transaction. Same rationale as
+	// indexCreatedTransaction: a backfill replay (cursor reset on retype)
+	// can land on a tx whose forward entries already exist under the
+	// prior declared_type, so look up the existing encoded value to
+	// delete the stale forward key on the way in.
 	if len(revertTxn.GetMetadata()) > 0 {
 		txIDBytes := make([]byte, 0, 8)
 
@@ -602,12 +629,21 @@ func (b *Builder) indexRevertedTransaction(
 			}
 
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, revertTxn.GetId(), key)
-			newEncoded := readstore.EncodeMetadataValue(nil, value)
+			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
+			if err != nil {
+				return err
+			}
+			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
+
+			oldEncoded, err := b.reverseMapValue(reverseKey)
+			if err != nil {
+				return err
+			}
 
 			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
 				ledger, readstore.NamespaceTransaction, key,
-				newEncoded, nil, txIDBytes,
+				newEncoded, oldEncoded, txIDBytes,
 			); err != nil {
 				return err
 			}
@@ -726,7 +762,11 @@ func (b *Builder) indexSavedMetadata(
 			}
 
 			reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, key)
-			newEncoded := readstore.EncodeMetadataValue(nil, value)
+			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
+			if err != nil {
+				return err
+			}
+			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
 
 			oldEncoded, err := b.reverseMapValue(reverseKey)
 			if err != nil {
@@ -752,7 +792,11 @@ func (b *Builder) indexSavedMetadata(
 			}
 
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, key)
-			newEncoded := readstore.EncodeMetadataValue(nil, value)
+			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
+			if err != nil {
+				return err
+			}
+			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
 
 			oldEncoded, err := b.reverseMapValue(reverseKey)
 			if err != nil {

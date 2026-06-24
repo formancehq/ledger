@@ -206,11 +206,11 @@ func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *da
 
 	defer func() { _ = handle.Close() }()
 
-	return ctrl.buildTransaction(ctx, handle, ledgerInfo.GetName(), transactionID, ledgerInfo.GetMetadataSchema())
+	return ctrl.buildTransaction(ctx, handle, ledgerInfo.GetName(), transactionID)
 }
 
 // buildTransaction builds a transaction from its stored state and creation log.
-func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.PebbleReader, ledgerName string, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.PebbleReader, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	state, err := query.ReadTransactionState(ctx, reader, ctrl.attrs.Transaction, ledgerName, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("reading transaction state for %d: %w", transactionID, err)
@@ -220,31 +220,13 @@ func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	return assembleTransactionFromState(ctx, reader, transactionID, state, schema)
-}
-
-// enforceTransactionSchema converts transaction metadata values in-place
-// according to the ledger's declared metadata schema. Mirrors enforceAccountSchema.
-func enforceTransactionSchema(schema *commonpb.MetadataSchema, metadata map[string]*commonpb.MetadataValue) {
-	if schema == nil || len(schema.GetTransactionFields()) == 0 {
-		return
-	}
-
-	for key, value := range metadata {
-		fieldSchema, ok := schema.GetTransactionFields()[key]
-		if !ok || value == nil {
-			continue
-		}
-
-		if !commonpb.TypeMatches(value, fieldSchema.GetType()) {
-			metadata[key] = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
-		}
-	}
+	return assembleTransactionFromState(ctx, reader, transactionID, state)
 }
 
 // assembleTransactionFromState builds a transaction from its TransactionState and the creation log.
-// If schema is non-nil, read-time type enforcement is applied to the final metadata.
-func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *commonpb.TransactionState, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+// Metadata values are returned verbatim — declared_type is an index hint, not
+// an API contract, so reads do not coerce.
+func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *commonpb.TransactionState) (*commonpb.Transaction, error) {
 	log, err := query.ReadLogBySequence(ctx, reader, state.GetCreatedByLog())
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", state.GetCreatedByLog(), err)
@@ -285,11 +267,6 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 	// Override metadata from the state (which is the current truth)
 	if len(state.GetMetadata()) > 0 {
 		tx.Metadata = state.GetMetadata()
-	}
-
-	// Apply read-time schema enforcement for transaction metadata.
-	if len(tx.GetMetadata()) > 0 {
-		enforceTransactionSchema(schema, tx.GetMetadata())
 	}
 
 	return tx, nil
@@ -374,7 +351,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 	// Enrich each transaction ID from Pebble
 	enrichStart := time.Now()
 
-	txns, err := query.EnrichTransactions(ctx, result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName(), ledgerInfo.GetMetadataSchema())
+	txns, err := query.EnrichTransactions(ctx, result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName())
 	if err != nil {
 		_ = handle.Close()
 
@@ -458,7 +435,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	// Enrich each account from Pebble
 	enrichStart := time.Now()
 
-	accounts, err := query.EnrichAccounts(result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName(), ledgerInfo.GetMetadataSchema())
+	accounts, err := query.EnrichAccounts(result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName())
 	if err != nil {
 		_ = handle.Close()
 
@@ -500,7 +477,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 
 	defer func() { _ = handle.Close() }()
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema(), ctrl.logger)
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ctrl.logger)
 }
 
 // GetLedgerStats returns aggregate statistics for a ledger.
@@ -609,24 +586,15 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 
 	if ledgerInfo.GetMetadataSchema() != nil {
 		for key, field := range ledgerInfo.GetMetadataSchema().GetAccountFields() {
-			resp.AccountFields[key] = &servicepb.MetadataFieldStatus{
-				DeclaredType: field.GetType(),
-				Status:       field.GetStatus(),
-			}
+			resp.AccountFields[key] = &servicepb.MetadataFieldStatus{DeclaredType: field.GetType()}
 		}
 
 		for key, field := range ledgerInfo.GetMetadataSchema().GetTransactionFields() {
-			resp.TransactionFields[key] = &servicepb.MetadataFieldStatus{
-				DeclaredType: field.GetType(),
-				Status:       field.GetStatus(),
-			}
+			resp.TransactionFields[key] = &servicepb.MetadataFieldStatus{DeclaredType: field.GetType()}
 		}
 
 		for key, field := range ledgerInfo.GetMetadataSchema().GetLedgerFields() {
-			resp.LedgerFields[key] = &servicepb.MetadataFieldStatus{
-				DeclaredType: field.GetType(),
-				Status:       field.GetStatus(),
-			}
+			resp.LedgerFields[key] = &servicepb.MetadataFieldStatus{DeclaredType: field.GetType()}
 		}
 	}
 
@@ -1249,11 +1217,11 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 // and transaction assembly logic to hydrate raw entity IDs into full objects.
 func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 	return &query.EntityEnricher{
-		EnrichAccount: func(reader dal.PebbleReader, ledgerName string, address string, schema *commonpb.MetadataSchema) (*commonpb.Account, error) {
-			return scanAccount(reader, ctrl.attrs, ledgerName, address, schema, ctrl.logger)
+		EnrichAccount: func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error) {
+			return scanAccount(reader, ctrl.attrs, ledgerName, address, ctrl.logger)
 		},
-		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
-			return ctrl.buildTransaction(ctx, reader, ledgerName, txID, schema)
+		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Transaction, error) {
+			return ctrl.buildTransaction(ctx, reader, ledgerName, txID)
 		},
 	}
 }

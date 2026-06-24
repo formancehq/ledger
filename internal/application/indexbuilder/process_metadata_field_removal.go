@@ -77,6 +77,20 @@ func (b *Builder) handleRemovedMetadataFieldType(
 	// LedgerInfo reload.
 	delete(cfg.byCanonical, indexes.Canonical(dropped))
 
+	// Drop any in-flight schema-rewrite task for this (ledger, target, key).
+	// Without this, a rewrite started by a prior SetMetadataFieldType would
+	// outlive the index it was rewriting, and the builder would retry
+	// IndexReady proposals forever against an index that no longer exists.
+	b.removeSchemaRewriteTaskByField(ledgerName, meta.Metadata.GetTarget(), key)
+
+	// Same hazard on the backfill side: an initial CreateIndex backfill
+	// for this metadata index could still be running. processBackfill
+	// uses a one-index cfg, so it would repopulate the entries we just
+	// purged and then loop forever waiting for IndexReady on an index
+	// the FSM already removed. removeBackfillTask drops the task and
+	// deletes its persisted progress.
+	b.removeBackfillTask(ledgerName, dropped)
+
 	return nil
 }
 

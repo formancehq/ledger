@@ -6803,7 +6803,6 @@ func (m getMetadataSchemaStatusResponse_ledgerFieldsMapReadonly) Range(yield fun
 // Call Mutate() to obtain a mutable clone.
 type MetadataFieldStatusReader interface {
 	GetDeclaredType() commonpb.MetadataType
-	GetStatus() commonpb.MetadataConversionStatus
 	Mutate() *MetadataFieldStatus
 }
 
@@ -6811,10 +6810,6 @@ type metadataFieldStatusReadonly struct{ v *MetadataFieldStatus }
 
 func (r *metadataFieldStatusReadonly) GetDeclaredType() commonpb.MetadataType {
 	return r.v.GetDeclaredType()
-}
-
-func (r *metadataFieldStatusReadonly) GetStatus() commonpb.MetadataConversionStatus {
-	return r.v.GetStatus()
 }
 
 func (r *metadataFieldStatusReadonly) Mutate() *MetadataFieldStatus {

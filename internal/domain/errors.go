@@ -163,7 +163,6 @@ const (
 	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
 	ErrReasonIndexInconsistent             = "INDEX_INCONSISTENT"
 	ErrReasonMetadataFieldNotInSchema      = "METADATA_FIELD_NOT_IN_SCHEMA"
-	ErrReasonMetadataConversionInProgress  = "METADATA_CONVERSION_IN_PROGRESS"
 	ErrReasonNumscriptNotFound             = "NUMSCRIPT_NOT_FOUND"
 	ErrReasonNumscriptVersionAlreadyExists = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
 	ErrReasonNumscriptInvalidVersion       = "NUMSCRIPT_INVALID_VERSION"
@@ -740,25 +739,6 @@ func (e *ErrIndexBuilding) Error() string               { return "index is still
 func (*ErrIndexBuilding) Kind() ErrorKind               { return KindPrecondition }
 func (*ErrIndexBuilding) Reason() string                { return ErrReasonIndexBuilding }
 func (e *ErrIndexBuilding) Metadata() map[string]string { return map[string]string{"index": e.Index} }
-
-// ErrMetadataConversionInProgress — a metadata field type change (set or
-// remove) was attempted while a prior conversion of the same field is still
-// running. Retyping or removing mid-conversion would freeze a timing-dependent
-// mix of converted and unconverted stored values, so the change is rejected
-// until the conversion completes. Transient: the caller should retry.
-type ErrMetadataConversionInProgress struct {
-	Target string
-	Key    string
-}
-
-func (e *ErrMetadataConversionInProgress) Error() string {
-	return fmt.Sprintf("metadata conversion still in progress for %s field %q", e.Target, e.Key)
-}
-func (*ErrMetadataConversionInProgress) Kind() ErrorKind { return KindUnavailable }
-func (*ErrMetadataConversionInProgress) Reason() string  { return ErrReasonMetadataConversionInProgress }
-func (e *ErrMetadataConversionInProgress) Metadata() map[string]string {
-	return map[string]string{"target": e.Target, "key": e.Key}
-}
 
 // ErrIndexInconsistent — read path detects a structural inconsistency between
 // the filter index and the per-ledger log index (e.g. logID present in the

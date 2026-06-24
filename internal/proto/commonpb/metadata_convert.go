@@ -139,6 +139,57 @@ func TypeMatches(v *MetadataValue, target MetadataType) bool {
 	return false
 }
 
+// SchemaFieldForTarget returns the field map and field schema for the given
+// target type and key. Returns nil field if the schema, field map, or key does
+// not exist.
+func SchemaFieldForTarget(schema *MetadataSchema, targetType TargetType, key string) (map[string]*MetadataFieldSchema, *MetadataFieldSchema) {
+	if schema == nil {
+		return nil, nil
+	}
+
+	var fields map[string]*MetadataFieldSchema
+
+	switch targetType {
+	case TargetType_TARGET_TYPE_ACCOUNT:
+		fields = schema.GetAccountFields()
+	case TargetType_TARGET_TYPE_TRANSACTION:
+		fields = schema.GetTransactionFields()
+	case TargetType_TARGET_TYPE_LEDGER:
+		fields = schema.GetLedgerFields()
+	}
+
+	if fields == nil {
+		return nil, nil
+	}
+
+	fs, ok := fields[key]
+	if !ok {
+		return fields, nil
+	}
+
+	return fields, fs
+}
+
+// CoerceToDeclaredType returns v coerced to the metadata field's declared type
+// for (targetType, key). The indexer uses it to encode forward-index entries
+// under the current declared type; reads return stored bytes verbatim, so
+// API responses are NOT routed through this helper. v is returned unchanged
+// when it is nil or the key has no declared type. Coercion is a pure
+// function of (stored value, declared type), so it is deterministic across
+// replicas and across time.
+func CoerceToDeclaredType(schema *MetadataSchema, targetType TargetType, key string, v *MetadataValue) *MetadataValue {
+	if v == nil {
+		return v
+	}
+
+	_, fs := SchemaFieldForTarget(schema, targetType, key)
+	if fs == nil || TypeMatches(v, fs.GetType()) {
+		return v
+	}
+
+	return ConvertMetadataValue(v, fs.GetType())
+}
+
 // ConvertMetadataValue converts a MetadataValue to the target type using the
 // conversion matrix defined in the RFC. If the conversion is not possible,
 // returns a NullValue preserving the original string representation.

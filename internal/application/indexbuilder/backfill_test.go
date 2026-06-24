@@ -1,6 +1,7 @@
 package indexbuilder
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -524,6 +526,7 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 	b := newTestBuilderWithStore(t)
 	b.kb = dal.NewKeyBuilder()
 	b.wb = readstore.NewWriteBatch()
+	b.seedBatchSchema(t)
 
 	kb := b.kb
 	const (
@@ -554,16 +557,15 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 	}
 
-	// Incremental write age="40". The FSM coerces both the new value and the
-	// captured previous value to the declared INT64 type.
+	// Incremental write age=40. previous_values is no longer in the log;
+	// the indexer resolves the old encoded value via the reverse map.
 	sm := &commonpb.SavedMetadata{
 		Target: &commonpb.Target{
 			Target: &commonpb.Target_Account{
 				Account: &commonpb.TargetAccount{Addr: account},
 			},
 		},
-		Metadata:       map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(40)},
-		PreviousValues: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(30)},
+		Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(40)},
 	}
 
 	batch := b.readStore.NewBatch()
@@ -596,6 +598,7 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 	b.kb = dal.NewKeyBuilder()
 	b.wb = readstore.NewWriteBatch()
 	b.accounts = make(map[string]struct{})
+	b.seedBatchSchema(t)
 
 	kb := b.kb
 	const (
@@ -647,6 +650,80 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 	assertReadStoreMissing(t, b, v1Key)
 }
 
+// TestIndexCreatedTransaction_ReplayDeletesStaleForwardEntry pins the
+// backfill-replay path: after a retype-driven cursor reset, the backfill
+// replays a CreatedTransaction log into a read store that already holds
+// a forward entry encoded under the prior declared_type. The handler must
+// look the rmap up so that ReplaceMetadataIndex deletes the stale entry
+// instead of leaving it behind (NumaryBot finding on process_logs.go:528).
+func TestIndexCreatedTransaction_ReplayDeletesStaleForwardEntry(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.kb = dal.NewKeyBuilder()
+	b.wb = readstore.NewWriteBatch()
+	b.accounts = make(map[string]struct{})
+	b.seedBatchSchema(t)
+
+	kb := b.kb
+	const (
+		ledger = "test"
+		txID   = uint64(11)
+		key    = "score"
+	)
+	txIDBytes := readstore.EncodeTxID(make([]byte, 0, 8), txID)
+
+	cfg := newLedgerIndexConfig()
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	// Seed the read store as if a previous pass under STRING-typed
+	// `score` had already indexed this transaction with value "030".
+	oldValue := commonpb.NewStringValue("030")
+	oldEncoded := readstore.EncodeMetadataValue(nil, oldValue)
+	oldFwdKey := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceTransaction, key, oldEncoded, txIDBytes))
+	reverseKey := cloneBytes(readstore.TransactionReverseMapKey(kb, ledger, txID, key))
+
+	seed := b.readStore.NewBatch()
+	require.NoError(t, seed.SetBytes(oldFwdKey, nil))
+	require.NoError(t, seed.SetBytes(reverseKey, oldEncoded))
+	require.NoError(t, seed.Commit())
+
+	// Now replay the CreatedTransaction log after the field has been
+	// retyped to UINT64. The handler coerces "030" → uint64(30), so the
+	// new forward key sits under the UINT64 encoding.
+	retypedSchema := &commonpb.MetadataSchema{
+		TransactionFields: map[string]*commonpb.MetadataFieldSchema{
+			key: {Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
+		},
+	}
+	canonicalLedgerKey := domain.LedgerKey{Name: ledger}.Bytes()
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	_, err := b.attrs.Ledger.Set(fsmBatch, canonicalLedgerKey, &commonpb.LedgerInfo{Name: ledger, MetadataSchema: retypedSchema})
+	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
+	b.seedBatchSchema(t) // re-resolve schema after seeding LedgerInfo
+
+	batch := b.readStore.NewBatch()
+	b.wb.Init(batch)
+
+	ct := &commonpb.CreatedTransaction{
+		Transaction: &commonpb.Transaction{
+			Id:       txID,
+			Metadata: map[string]*commonpb.MetadataValue{key: oldValue},
+		},
+	}
+	require.NoError(t, b.indexCreatedTransaction(kb, cfg, ledger, ct, nil))
+	require.NoError(t, b.wb.Flush())
+
+	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewUintValue(30))
+	newFwdKey := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceTransaction, key, newEncoded, txIDBytes))
+
+	assertReadStoreValue(t, b, newFwdKey, nil)
+	assertReadStoreValue(t, b, reverseKey, newEncoded)
+	assertReadStoreMissing(t, b, oldFwdKey)
+}
+
 func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *testing.T) {
 	t.Parallel()
 
@@ -672,6 +749,18 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	require.NoError(t, batch.SetBytes(matchingKey, oldEncoded))
 	require.NoError(t, batch.SetBytes(oldForwardKey, nil))
 	require.NoError(t, batch.Commit())
+
+	// Seed the FSM-side canonical stored value for acct-003.status. The schema
+	// rewrite reads from here, not from the rmap, so re-encoding is a pure
+	// function of immutable stored state.
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	canonicalKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "acct-003"},
+		Key:        "status",
+	}.Bytes()
+	_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, commonpb.NewStringValue("42"))
+	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
 
 	task := &schemaRewriteTask{
 		ledger:     ledgerName,
@@ -971,4 +1060,189 @@ func TestIsPostingIndex(t *testing.T) {
 			assert.Equal(t, tc.expected, isPostingIndex(tc.id))
 		})
 	}
+}
+
+// TestProcessSchemaRewrite_LosslessRoundTrip pins the headline property of
+// the FSM-sourced rewrite: even when re-encoding takes a value through a
+// type that loses information (STRING "030" → UINT64 30), running the
+// rewrite a second time targeting STRING returns to the original "030"
+// because the canonical stored value in the FSM was never mutated.
+func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	kb := dal.NewKeyBuilder()
+	stop := make(chan struct{})
+
+	const (
+		ledgerName = "test"
+		account    = "users:001"
+		key        = "score"
+	)
+
+	// Seed FSM canonical stored value: STRING "030" (immutable through the
+	// whole test — only the indexer's encoding view changes).
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	canonicalKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+		Key:        key,
+	}.Bytes()
+	_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, commonpb.NewStringValue("030"))
+	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
+
+	// Seed rmap + forward index in the STRING encoding (state before any
+	// retype). This is what the indexer would have written when the field
+	// was STRING-typed.
+	stringEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("030"))
+	entityID := []byte(account)
+	reverseKey := cloneBytes(readstore.AccountReverseMapKey(kb, ledgerName, account, key))
+	stringForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, stringEncoded, entityID))
+
+	seed := b.readStore.NewBatch()
+	require.NoError(t, seed.SetBytes(reverseKey, stringEncoded))
+	require.NoError(t, seed.SetBytes(stringForwardKey, nil))
+	require.NoError(t, seed.Commit())
+
+	// First rewrite: STRING → UINT64. Forward index now holds uint64(30).
+	task := &schemaRewriteTask{
+		ledger:     ledgerName,
+		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		key:        key,
+		toType:     commonpb.MetadataType_METADATA_TYPE_UINT64,
+		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key),
+	}
+	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	require.True(t, done)
+
+	uint64Encoded := readstore.EncodeMetadataValue(nil, commonpb.NewUintValue(30))
+	uint64ForwardKey := readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, uint64Encoded, entityID)
+	assertReadStoreMissing(t, b, stringForwardKey)
+	assertReadStoreValue(t, b, uint64ForwardKey, nil)
+	assertReadStoreValue(t, b, reverseKey, uint64Encoded)
+
+	// Second rewrite: UINT64 → STRING. The new encoding sources from the
+	// raw stored STRING "030", NOT from the uint64(30) currently in the
+	// rmap — so the leading zero is preserved.
+	task2 := &schemaRewriteTask{
+		ledger:     ledgerName,
+		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		key:        key,
+		toType:     commonpb.MetadataType_METADATA_TYPE_STRING,
+		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key),
+	}
+	done, err = b.processSchemaRewrite(task2, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	require.True(t, done)
+
+	roundTripForwardKey := readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, stringEncoded, entityID)
+	assertReadStoreMissing(t, b, uint64ForwardKey)
+	assertReadStoreValue(t, b, roundTripForwardKey, nil)
+	assertReadStoreValue(t, b, reverseKey, stringEncoded)
+}
+
+// TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel pins behavior for
+// raw stored values that cannot be coerced to the new declared type: the
+// forward index entry is keyed by the Null sentinel encoding (which
+// preserves the original string), letting range queries cleanly skip the
+// entity while still surfacing it on direct reads.
+func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	kb := dal.NewKeyBuilder()
+	stop := make(chan struct{})
+
+	const (
+		ledgerName = "test"
+		account    = "users:002"
+		key        = "score"
+	)
+
+	// FSM holds a STRING that cannot be parsed as uint64.
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	canonicalKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+		Key:        key,
+	}.Bytes()
+	_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, commonpb.NewStringValue("abc"))
+	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
+
+	stringEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("abc"))
+	entityID := []byte(account)
+	reverseKey := cloneBytes(readstore.AccountReverseMapKey(kb, ledgerName, account, key))
+	stringForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, stringEncoded, entityID))
+
+	seed := b.readStore.NewBatch()
+	require.NoError(t, seed.SetBytes(reverseKey, stringEncoded))
+	require.NoError(t, seed.SetBytes(stringForwardKey, nil))
+	require.NoError(t, seed.Commit())
+
+	task := &schemaRewriteTask{
+		ledger:     ledgerName,
+		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		key:        key,
+		toType:     commonpb.MetadataType_METADATA_TYPE_UINT64,
+		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key),
+	}
+	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	require.True(t, done)
+
+	// Forward is now keyed by the Null sentinel for "abc"; old STRING
+	// forward entry is gone.
+	nullEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewNullValue("abc"))
+	nullForwardKey := readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, nullEncoded, entityID)
+	assertReadStoreMissing(t, b, stringForwardKey)
+	assertReadStoreValue(t, b, nullForwardKey, nil)
+	assertReadStoreValue(t, b, reverseKey, nullEncoded)
+}
+
+// TestTryProposeSchemaRewriteIndexReady_BlocksUntilIndexerCatchesUp pins the
+// gate that holds IndexReady until the read store's lastIndexedSequence has
+// reached the FSM applied-index sampled during the rewrite. Without it, the
+// forward index could be marked READY while it reflects logs the indexer
+// has not yet ingested — a prefix-invariant violation observable via
+// min_log_sequence queries.
+func TestTryProposeSchemaRewriteIndexReady_BlocksUntilIndexerCatchesUp(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.logger = noopLogger{}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockProposer := NewMockProposer(ctrl)
+	b.proposer = mockProposer
+	b.isLeader = func() bool { return true }
+
+	task := &schemaRewriteTask{
+		ledger:             "test-ledger",
+		targetType:         commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		key:                "score",
+		toType:             commonpb.MetadataType_METADATA_TYPE_UINT64,
+		done:               true,
+		requiredIndexedSeq: 10,
+	}
+
+	// Indexer at seq 5: gate must hold, no proposal sent (mock has no EXPECT).
+	progress := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteProgress(progress, 5))
+	require.NoError(t, progress.Commit())
+
+	b.tryProposeSchemaRewriteIndexReady(context.Background(), task)
+	assert.False(t, task.proposed, "gate must hold while lastIndexedSequence < requiredIndexedSeq")
+
+	// Indexer catches up to seq 10: proposal fires exactly once.
+	mockProposer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+
+	progress = b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteProgress(progress, 10))
+	require.NoError(t, progress.Commit())
+
+	b.tryProposeSchemaRewriteIndexReady(context.Background(), task)
+	assert.True(t, task.proposed, "gate must release once lastIndexedSequence catches up")
 }

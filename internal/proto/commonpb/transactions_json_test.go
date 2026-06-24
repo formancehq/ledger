@@ -24,11 +24,6 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 		},
 		ChapterId:         7,
 		PostCommitVolumes: &PostCommitVolumes{},
-		PreviousAccountMetadata: map[string]*MetadataMap{
-			"users:alice": {Values: map[string]*MetadataValue{
-				"vip": NewStringValue("no"),
-			}},
-		},
 	}
 
 	data, err := ct.MarshalJSON()
@@ -39,7 +34,7 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 	require.Contains(t, out, `"accountMetadata":`)
 	require.Contains(t, out, `"chapterId":7`)
 	require.Contains(t, out, `"postCommitVolumes":`)
-	require.Contains(t, out, `"previousAccountMetadata":`)
+	require.False(t, strings.Contains(out, "previousAccountMetadata"), "previous_account_metadata is no longer emitted")
 	require.False(t, strings.Contains(out, "chapter_id"), "must use camelCase")
 }
 

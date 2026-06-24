@@ -160,10 +160,12 @@ enum MetadataType {
   METADATA_TYPE_UINT32 = 9;
 }
 
-enum MetadataConversionStatus {
-  METADATA_CONVERSION_COMPLETE = 0;
-  METADATA_CONVERSION_CONVERTING = 1;
-}
+// MetadataConversionStatus and the `status` field on MetadataFieldSchema
+// were removed when the FSM-side value converter was deleted. Stored
+// values are now immutable and API reads return them verbatim:
+// declared_type is an index hint only — it governs how the indexer
+// encodes forward entries, never the bytes returned to clients. There
+// is no transition state observable at the field level.
 
 enum IndexBuildStatus {
   INDEX_BUILD_STATUS_UNSPECIFIED = 0;
@@ -175,7 +177,6 @@ message MetadataFieldSchema {
   reserved 3, 4, 5, 6;
   reserved "total_keys", "converted_keys", "indexed", "index_build_status";
   MetadataType type = 1;
-  MetadataConversionStatus status = 2;
 }
 
 message MetadataSchema {
@@ -425,14 +426,12 @@ message DeletedPreparedQueryLog {
 message SavedLedgerMetadataLog {
   string ledger = 1;
   map<string, MetadataValue> metadata = 2;
-  map<string, MetadataValue> previous_values = 3;
 }
 
 // DeletedLedgerMetadataLog records a metadata key being removed from a ledger.
 message DeletedLedgerMetadataLog {
   string ledger = 1;
   string key = 2;
-  MetadataValue previous_value = 3;
 }
 
 // ============================================================================
@@ -659,7 +658,6 @@ message CreatedTransaction {
   map<string, MetadataMap> account_metadata = 2;
   fixed64 chapter_id = 3;  // Chapter that was OPEN when this transaction was created
   PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
-  map<string, MetadataMap> previous_account_metadata = 5;  // previous account metadata values (for index replay)
 }
 
 message RevertedTransaction {
@@ -671,13 +669,11 @@ message RevertedTransaction {
 message SavedMetadata {
   Target target = 1;
   map<string, MetadataValue> metadata = 2;
-  map<string, MetadataValue> previous_values = 3;  // previous values keyed by metadata key (for index replay)
 }
 
 message DeletedMetadata {
   Target target = 1;
   string key = 2;                           // Metadata key to delete
-  MetadataValue previous_value = 3;         // previous value before deletion (populated in logs only)
 }
 
 // SetMetadataFieldTypeLog records a metadata field type declaration.

@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -17,11 +16,12 @@ func NewGetSchemaCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "get-schema <name>",
 		Aliases: []string{"schema", "gs"},
-		Short:   "Get metadata schema status for a ledger",
-		Long: `Display the metadata schema for a ledger including conversion status.
+		Short:   "Get metadata schema for a ledger",
+		Long: `Display the declared metadata schema for a ledger.
 
-Shows tables (Account Fields, Transaction Fields, Ledger Fields) with columns: KEY, TYPE, STATUS.
-The status shows COMPLETE or CONVERTING.
+Shows tables (Account Fields, Transaction Fields, Ledger Fields) with columns: KEY, TYPE.
+The type is the declared type the indexer encodes forward entries under;
+reads return stored metadata verbatim regardless of the declaration.
 
 Examples:
   ledgerctl ledgers get-schema my-ledger
@@ -105,7 +105,7 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 
 func renderSchemaStatusTable(fields map[string]*servicepb.MetadataFieldStatus) {
 	table := pterm.TableData{
-		{"KEY", "TYPE", "STATUS"},
+		{"KEY", "TYPE"},
 	}
 
 	keys := make([]string, 0, len(fields))
@@ -120,21 +120,9 @@ func renderSchemaStatusTable(fields map[string]*servicepb.MetadataFieldStatus) {
 		table = append(table, []string{
 			key,
 			cmdutil.MetadataTypeString(field.GetDeclaredType()),
-			conversionStatusString(field.GetStatus()),
 		})
 	}
 
 	// Ignore render error — best effort display
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
-}
-
-func conversionStatusString(s commonpb.MetadataConversionStatus) string {
-	switch s {
-	case commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE:
-		return pterm.Green("COMPLETE")
-	case commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING:
-		return pterm.Yellow("CONVERTING")
-	default:
-		return s.String()
-	}
 }

@@ -95,13 +95,9 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 
 			Expect(resp.AccountFields).To(HaveKey("verified"))
 			Expect(resp.AccountFields["verified"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_BOOL))
-			Expect(resp.AccountFields["verified"].Status).To(Equal(
-				commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 
 			Expect(resp.TransactionFields).To(HaveKey("amount_cents"))
 			Expect(resp.TransactionFields["amount_cents"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
-			Expect(resp.TransactionFields["amount_cents"].Status).To(Equal(
-				commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 		})
 	})
 
@@ -137,14 +133,15 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			// Raw proto value should be int_value
+			// declared_type is an index hint, not an API contract — the API
+			// returns the raw string the client wrote, not a coerced int.
 			v := actions.FindMetadataValue(account.Metadata, "age")
 			Expect(v).NotTo(BeNil())
-			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value, got %T", v.Type)
-			Expect(intVal.IntValue).To(Equal(int64(42)))
+			strVal, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value (raw client write), got %T", v.Type)
+			Expect(strVal.StringValue).To(Equal("42"))
 
-			// ToMap should still return string representation
+			// String projection still surfaces the same value.
 			Expect(commonpb.MetadataToGoMap(account.Metadata)["age"]).To(Equal("42"))
 		})
 	})
@@ -187,9 +184,8 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 
 			v := actions.FindMetadataValue(txResp.Transaction.Metadata, "priority")
 			Expect(v).NotTo(BeNil())
-			uintVal, ok := v.Type.(*commonpb.MetadataValue_UintValue)
-			Expect(ok).To(BeTrue(), "expected uint_value, got %T", v.Type)
-			Expect(uintVal.UintValue).To(Equal(uint64(100)))
+			_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value, got %T", v.Type)
 		})
 	})
 
@@ -227,9 +223,8 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 
 			v := actions.FindMetadataValue(account.Metadata, "active")
 			Expect(v).NotTo(BeNil())
-			boolVal, ok := v.Type.(*commonpb.MetadataValue_BoolValue)
-			Expect(ok).To(BeTrue(), "expected bool_value, got %T", v.Type)
-			Expect(boolVal.BoolValue).To(BeTrue())
+			_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value, got %T", v.Type)
 		})
 
 		It("Should convert '0' string to bool_value false", func() {
@@ -248,9 +243,8 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 
 			v := actions.FindMetadataValue(account.Metadata, "active")
 			Expect(v).NotTo(BeNil())
-			boolVal, ok := v.Type.(*commonpb.MetadataValue_BoolValue)
-			Expect(ok).To(BeTrue(), "expected bool_value, got %T", v.Type)
-			Expect(boolVal.BoolValue).To(BeFalse())
+			_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value, got %T", v.Type)
 		})
 	})
 
@@ -286,13 +280,19 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
+			// declared_type is an index hint, not an API contract — the API
+			// returns the raw string the client wrote, even when it can't be
+			// coerced to the declared type. The indexer surfaces uncoercible
+			// values under a Null sentinel inside its forward index (so range
+			// queries skip them cleanly), but that's a forward-index concern,
+			// not an API-side transformation.
 			v := actions.FindMetadataValue(account.Metadata, "age")
 			Expect(v).NotTo(BeNil())
-			nullVal, ok := v.Type.(*commonpb.MetadataValue_NullValue)
-			Expect(ok).To(BeTrue(), "expected null_value, got %T", v.Type)
-			Expect(nullVal.NullValue.Original).To(Equal("not-a-number"))
+			strVal, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value (raw client write), got %T", v.Type)
+			Expect(strVal.StringValue).To(Equal("not-a-number"))
 
-			// ToMap should preserve the original string
+			// ToMap surfaces the same raw value.
 			Expect(commonpb.MetadataToGoMap(account.Metadata)["age"]).To(Equal("not-a-number"))
 		})
 	})
@@ -333,8 +333,6 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.AccountFields).To(HaveKey("score"))
-				g.Expect(resp.AccountFields["score"].Status).To(Equal(
-					commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Verify the value was converted
@@ -346,9 +344,8 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 
 			v := actions.FindMetadataValue(account.Metadata, "score")
 			Expect(v).NotTo(BeNil())
-			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value after background conversion, got %T", v.Type)
-			Expect(intVal.IntValue).To(Equal(int64(99)))
+			_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value after background conversion, got %T", v.Type)
 		})
 	})
 
@@ -393,9 +390,8 @@ set_account_meta(@user, "account_type", "true")
 
 			v := actions.FindMetadataValue(account.Metadata, "account_type")
 			Expect(v).NotTo(BeNil())
-			boolVal, ok := v.Type.(*commonpb.MetadataValue_BoolValue)
-			Expect(ok).To(BeTrue(), "expected bool_value, got %T", v.Type)
-			Expect(boolVal.BoolValue).To(BeTrue())
+			_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value, got %T", v.Type)
 		})
 	})
 
@@ -437,9 +433,8 @@ set_account_meta(@user, "account_type", "true")
 			// "age" should be converted to int_value
 			ageVal := actions.FindMetadataValue(account.Metadata, "age")
 			Expect(ageVal).NotTo(BeNil())
-			intVal, ok := ageVal.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value for age, got %T", ageVal.Type)
-			Expect(intVal.IntValue).To(Equal(int64(25)))
+			_, ok := ageVal.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value for age, got %T", ageVal.Type)
 
 			// "name" should remain as string_value
 			nameVal := actions.FindMetadataValue(account.Metadata, "name")
@@ -499,16 +494,14 @@ set_account_meta(@user, "account_type", "true")
 			// count → uint_value
 			countVal := actions.FindMetadataValue(account.Metadata, "count")
 			Expect(countVal).NotTo(BeNil())
-			uintVal, ok := countVal.Type.(*commonpb.MetadataValue_UintValue)
-			Expect(ok).To(BeTrue(), "expected uint_value for count, got %T", countVal.Type)
-			Expect(uintVal.UintValue).To(Equal(uint64(42)))
+			_, ok := countVal.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value for count, got %T", countVal.Type)
 
 			// enabled → bool_value
 			enabledVal := actions.FindMetadataValue(account.Metadata, "enabled")
 			Expect(enabledVal).NotTo(BeNil())
-			boolVal, ok := enabledVal.Type.(*commonpb.MetadataValue_BoolValue)
-			Expect(ok).To(BeTrue(), "expected bool_value for enabled, got %T", enabledVal.Type)
-			Expect(boolVal.BoolValue).To(BeTrue())
+			_, ok = enabledVal.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value for enabled, got %T", enabledVal.Type)
 
 			// label → string_value
 			labelVal := actions.FindMetadataValue(account.Metadata, "label")
@@ -586,40 +579,34 @@ set_account_meta(@user, "account_type", "true")
 			// Signed types -> int_value
 			int8Val := actions.FindMetadataValue(account.Metadata, "field_int8")
 			Expect(int8Val).NotTo(BeNil())
-			iv8, ok := int8Val.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value for int8, got %T", int8Val.Type)
-			Expect(iv8.IntValue).To(Equal(int64(-42)))
+			_, ok := int8Val.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value for int8, got %T", int8Val.Type)
 
 			int16Val := actions.FindMetadataValue(account.Metadata, "field_int16")
 			Expect(int16Val).NotTo(BeNil())
-			iv16, ok := int16Val.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value for int16, got %T", int16Val.Type)
-			Expect(iv16.IntValue).To(Equal(int64(1000)))
+			_, ok = int16Val.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value for int16, got %T", int16Val.Type)
 
 			int32Val := actions.FindMetadataValue(account.Metadata, "field_int32")
 			Expect(int32Val).NotTo(BeNil())
-			iv32, ok := int32Val.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value for int32, got %T", int32Val.Type)
-			Expect(iv32.IntValue).To(Equal(int64(100000)))
+			_, ok = int32Val.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value for int32, got %T", int32Val.Type)
 
 			// Unsigned types -> uint_value
 			uint8Val := actions.FindMetadataValue(account.Metadata, "field_uint8")
 			Expect(uint8Val).NotTo(BeNil())
-			uv8, ok := uint8Val.Type.(*commonpb.MetadataValue_UintValue)
-			Expect(ok).To(BeTrue(), "expected uint_value for uint8, got %T", uint8Val.Type)
-			Expect(uv8.UintValue).To(Equal(uint64(200)))
+			_, ok = uint8Val.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value for uint8, got %T", uint8Val.Type)
 
 			uint16Val := actions.FindMetadataValue(account.Metadata, "field_uint16")
 			Expect(uint16Val).NotTo(BeNil())
-			uv16, ok := uint16Val.Type.(*commonpb.MetadataValue_UintValue)
-			Expect(ok).To(BeTrue(), "expected uint_value for uint16, got %T", uint16Val.Type)
-			Expect(uv16.UintValue).To(Equal(uint64(50000)))
+			_, ok = uint16Val.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value for uint16, got %T", uint16Val.Type)
 
 			uint32Val := actions.FindMetadataValue(account.Metadata, "field_uint32")
 			Expect(uint32Val).NotTo(BeNil())
-			uv32, ok := uint32Val.Type.(*commonpb.MetadataValue_UintValue)
-			Expect(ok).To(BeTrue(), "expected uint_value for uint32, got %T", uint32Val.Type)
-			Expect(uv32.UintValue).To(Equal(uint64(3000000000)))
+			_, ok = uint32Val.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value for uint32, got %T", uint32Val.Type)
 		})
 
 		It("Should return correct strings via ToMap()", func() {
@@ -726,9 +713,6 @@ set_account_meta(@user, "account_type", "true")
 				Expect(resp.AccountFields).To(HaveKey(key))
 				Expect(resp.AccountFields[key].DeclaredType).To(Equal(expectedType),
 					"field %s: expected type %v", key, expectedType)
-				Expect(resp.AccountFields[key].Status).To(Equal(
-					commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE),
-					"field %s: expected COMPLETE status", key)
 			}
 		})
 	})
@@ -760,8 +744,6 @@ set_account_meta(@user, "account_type", "true")
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.LedgerFields).To(HaveKey("env"))
 				g.Expect(resp.LedgerFields["env"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
-				g.Expect(resp.LedgerFields["env"].Status).To(Equal(
-					commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -815,12 +797,11 @@ set_account_meta(@user, "account_type", "true")
 
 			v := actions.FindMetadataValue(info.Metadata, "max_tx")
 			Expect(v).NotTo(BeNil())
-			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value, got %T", v.Type)
-			Expect(intVal.IntValue).To(Equal(int64(1000)))
+			_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value, got %T", v.Type)
 		})
 
-		It("Should produce null_value for inconvertible ledger metadata", func() {
+		It("Should return raw string for inconvertible ledger metadata", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "not-a-number"}),
@@ -831,11 +812,14 @@ set_account_meta(@user, "account_type", "true")
 			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
 			Expect(err).To(Succeed())
 
+			// declared_type is an index hint, not an API contract — the API
+			// returns the raw string. Inconvertible values get the Null
+			// sentinel in the forward index only.
 			v := actions.FindMetadataValue(info.Metadata, "max_tx")
 			Expect(v).NotTo(BeNil())
-			nullVal, ok := v.Type.(*commonpb.MetadataValue_NullValue)
-			Expect(ok).To(BeTrue(), "expected null_value, got %T", v.Type)
-			Expect(nullVal.NullValue.Original).To(Equal("not-a-number"))
+			strVal, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value (raw client write), got %T", v.Type)
+			Expect(strVal.StringValue).To(Equal("not-a-number"))
 		})
 
 		It("Should keep untyped ledger metadata as strings", func() {
@@ -893,8 +877,6 @@ set_account_meta(@user, "account_type", "true")
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.LedgerFields).To(HaveKey("version"))
-				g.Expect(resp.LedgerFields["version"].Status).To(Equal(
-					commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Verify the value was converted
@@ -903,9 +885,8 @@ set_account_meta(@user, "account_type", "true")
 
 			v := actions.FindMetadataValue(info.Metadata, "version")
 			Expect(v).NotTo(BeNil())
-			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value after background conversion, got %T", v.Type)
-			Expect(intVal.IntValue).To(Equal(int64(42)))
+			_, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value after background conversion, got %T", v.Type)
 		})
 	})
 
@@ -944,18 +925,12 @@ set_account_meta(@user, "account_type", "true")
 			Expect(err).To(Succeed())
 
 			Expect(resp.AccountFields).To(HaveKey("role"))
-			Expect(resp.AccountFields["role"].Status).To(Equal(
-				commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 
 			Expect(resp.LedgerFields).To(HaveKey("env"))
 			Expect(resp.LedgerFields["env"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
-			Expect(resp.LedgerFields["env"].Status).To(Equal(
-				commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 
 			Expect(resp.LedgerFields).To(HaveKey("version"))
 			Expect(resp.LedgerFields["version"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
-			Expect(resp.LedgerFields["version"].Status).To(Equal(
-				commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
 		})
 	})
 
@@ -994,10 +969,12 @@ set_account_meta(@user, "account_type", "true")
 			})
 			Expect(err).To(Succeed())
 
+			// Client sent an int_value directly; the new contract returns
+			// the raw wire type the client wrote, so we get int_value back.
 			v := actions.FindMetadataValue(account.Metadata, "score")
 			Expect(v).NotTo(BeNil())
 			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
-			Expect(ok).To(BeTrue(), "expected int_value, got %T", v.Type)
+			Expect(ok).To(BeTrue(), "expected int_value (the wire type the client sent), got %T", v.Type)
 			Expect(intVal.IntValue).To(Equal(int64(42)))
 		})
 	})

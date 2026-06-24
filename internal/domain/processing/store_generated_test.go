@@ -137,42 +137,6 @@ func (c *MockScopeAddClosingChapterCall) DoAndReturn(f func(*commonpb.Chapter)) 
 	return c
 }
 
-// AddMetadataConvertRequest mocks base method.
-func (m *MockScope) AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AddMetadataConvertRequest", ledgerName, targetType, key, metadataType)
-}
-
-// AddMetadataConvertRequest indicates an expected call of AddMetadataConvertRequest.
-func (mr *MockScopeMockRecorder) AddMetadataConvertRequest(ledgerName, targetType, key, metadataType any) *MockScopeAddMetadataConvertRequestCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMetadataConvertRequest", reflect.TypeOf((*MockScope)(nil).AddMetadataConvertRequest), ledgerName, targetType, key, metadataType)
-	return &MockScopeAddMetadataConvertRequestCall{Call: call}
-}
-
-// MockScopeAddMetadataConvertRequestCall wrap *gomock.Call
-type MockScopeAddMetadataConvertRequestCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeAddMetadataConvertRequestCall) Return() *MockScopeAddMetadataConvertRequestCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeAddMetadataConvertRequestCall) Do(f func(string, commonpb.TargetType, string, commonpb.MetadataType)) *MockScopeAddMetadataConvertRequestCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeAddMetadataConvertRequestCall) DoAndReturn(f func(string, commonpb.TargetType, string, commonpb.MetadataType)) *MockScopeAddMetadataConvertRequestCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // AddSigningKey mocks base method.
 func (m *MockScope) AddSigningKey(keyID string, publicKey []byte, parentKeyID string) {
 	m.ctrl.T.Helper()

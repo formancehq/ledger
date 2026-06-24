@@ -191,7 +191,12 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 	require.Empty(t, result["users:001"])
 }
 
-func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
+// TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType pins that
+// Numscript sees the raw client bytes regardless of the field's declared
+// type. Coercing the value for the script (e.g. STRING "030" under a
+// UINT64 declaration → "30") would let a retype silently change
+// transaction outcomes, breaking the lossless contract.
+func TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -202,14 +207,6 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 		store:      mockStore,
 		ledgerName: "test",
 		force:      false,
-		schema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"age": {
-					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
-					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
-				},
-			},
-		},
 	}
 
 	metaKey := domain.MetadataKey{
@@ -217,10 +214,10 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 		Key:        "age",
 	}
 
-	// Return a string value that should be converted to int64 per schema
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("25"), nil)
-	// Schema conversion writes back the converted value
-	mockStore.EXPECT().PutAccountMetadata(metaKey, gomock.Any())
+	// "030" stored verbatim; even if a declared UINT64 type existed on
+	// this field, the adapter must not project it through commonpb's
+	// converter — Numscript must observe "030".
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("030"), nil)
 
 	query := numscriptlib.MetadataQuery{
 		"users:001": {"age"},
@@ -229,7 +226,8 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 	result, err := adapter.GetAccountsMetadata(context.Background(), query)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.NotEmpty(t, result["users:001"]["age"])
+	require.Equal(t, "030", result["users:001"]["age"],
+		"declared_type must not influence the value Numscript sees")
 }
 
 func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
