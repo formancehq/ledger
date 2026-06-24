@@ -16,7 +16,7 @@ func (r *LedgerServiceReconciler) reconcileHeadlessService(ctx context.Context, 
 	if enabled != nil && !*enabled {
 		return r.deleteIfExists(ctx, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      headlessServiceName(ledger),
+				Name:      headlessServiceName(ledger.Name),
 				Namespace: ledger.Namespace,
 			},
 		})
@@ -24,7 +24,7 @@ func (r *LedgerServiceReconciler) reconcileHeadlessService(ctx context.Context, 
 
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      headlessServiceName(ledger),
+			Name:      headlessServiceName(ledger.Name),
 			Namespace: ledger.Namespace,
 		},
 	}
@@ -62,10 +62,6 @@ func (r *LedgerServiceReconciler) reconcileHeadlessService(ctx context.Context, 
 	})
 
 	return err
-}
-
-func headlessServiceName(ledger *ledgerv1alpha1.LedgerService) string {
-	return ledger.Name + "-headless"
 }
 
 func serviceRaftPort(ledger *ledgerv1alpha1.LedgerService) int32 {

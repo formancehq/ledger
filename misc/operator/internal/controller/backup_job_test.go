@@ -26,7 +26,7 @@ func TestBackupServerAddr(t *testing.T) {
 			ls: &ledgerv1alpha1.LedgerService{
 				ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-v3"},
 			},
-			want: "ledger.ledger-v3.svc.cluster.local:8888",
+			want: "ledger-ledger.ledger-v3.svc.cluster.local:8888",
 		},
 		{
 			name: "custom port",
@@ -34,7 +34,7 @@ func TestBackupServerAddr(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "lgr", Namespace: "ns"},
 				Spec:       ledgerv1alpha1.LedgerServiceSpec{GrpcPort: 9999},
 			},
-			want: "lgr.ns.svc.cluster.local:9999",
+			want: "ledger-lgr.ns.svc.cluster.local:9999",
 		},
 	}
 	for _, tt := range tests {
@@ -73,7 +73,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	job, err := buildBackupJob(run, backup, ls, tlsModeRequired)
 	require.NoError(t, err)
 
-	require.Equal(t, "blockchains-manual-abc", job.Name)
+	require.Equal(t, "ledger-blockchains-manual-abc", job.Name)
 	require.Equal(t, "ledger-v3", job.Namespace)
 	require.Equal(t, "blockchains", job.Labels[ledgerv1alpha1.LabelLedgerBackup])
 	require.Equal(t, "blockchains-manual-abc", job.Labels[backupJobLabelRun])
@@ -91,7 +91,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.Equal(t, "-c", c.Command[1])
 	shell := c.Command[2]
 	require.Contains(t, shell, "./ledgerctl store backup")
-	require.Contains(t, shell, `--server "ledger.ledger-v3.svc.cluster.local:8888"`)
+	require.Contains(t, shell, `--server "ledger-ledger.ledger-v3.svc.cluster.local:8888"`)
 	require.Contains(t, shell, `--tls-ca-cert "$TLS_CA_CERT_FILE"`)
 	require.Contains(t, shell, `--auth-token "$CLUSTER_SECRET"`)
 	require.Contains(t, shell, "--driver s3")
@@ -133,7 +133,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.True(t, ok, "CLUSTER_SECRET must be injected when TLS is active")
 	require.NotNil(t, clusterSecret.ValueFrom)
 	require.NotNil(t, clusterSecret.ValueFrom.SecretKeyRef)
-	require.Equal(t, "ledger-cluster-secret", clusterSecret.ValueFrom.SecretKeyRef.Name)
+	require.Equal(t, "ledger-ledger-cluster-secret", clusterSecret.ValueFrom.SecretKeyRef.Name)
 }
 
 func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {

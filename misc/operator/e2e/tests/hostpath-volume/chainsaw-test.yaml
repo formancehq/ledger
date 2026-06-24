@@ -15,7 +15,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: hp-test
+                name: ledger-hp-test
 
     - name: Verify StatefulSet has only 2 VolumeClaimTemplates (wal, cold-cache)
       try:
@@ -24,7 +24,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: hp-test
+                name: ledger-hp-test
               spec:
                 volumeClaimTemplates:
                   - metadata:

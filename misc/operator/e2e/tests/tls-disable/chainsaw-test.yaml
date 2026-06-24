@@ -20,7 +20,7 @@ spec:
               [req]
               distinguished_name=req
               [SAN]
-              subjectAltName=DNS:localhost,DNS:tls-dis-headless,DNS:*.tls-dis-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
+              subjectAltName=DNS:localhost,DNS:ledger-tls-dis-headless,DNS:*.ledger-tls-dis-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
               EOF
               openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
                 -nodes -keyout tls.key -out tls.csr -subj "/CN=tls-dis"
@@ -54,7 +54,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec tls-dis-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-tls-dis-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
@@ -74,7 +74,7 @@ spec:
             content: |
               SAW_OPTIONAL=0
               for i in $(seq 1 60); do
-                MODE=$(kubectl get statefulset tls-dis -n $NAMESPACE \
+                MODE=$(kubectl get statefulset ledger-tls-dis -n $NAMESPACE \
                   -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TLS_MODE")].value}' 2>/dev/null)
                 PHASE=$(kubectl get ledgerservice tls-dis -n $NAMESPACE \
                   -o jsonpath='{.status.tlsMigrationPhase}' 2>/dev/null)
@@ -107,7 +107,7 @@ spec:
       try:
         - script:
             content: |
-              if kubectl get secret tls-dis-cluster-secret -n $NAMESPACE >/dev/null 2>&1; then
+              if kubectl get secret ledger-tls-dis-cluster-secret -n $NAMESPACE >/dev/null 2>&1; then
                 echo "FAIL: cluster-secret should be removed when TLS is disabled"
                 exit 1
               fi
@@ -118,6 +118,6 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec tls-dis-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-tls-dis-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure'
             timeout: 30s

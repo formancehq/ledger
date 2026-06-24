@@ -223,7 +223,7 @@ func (r *LedgerServiceReconciler) updateStatus(ctx context.Context, ledger *ledg
 	// Get the StatefulSet to read ready replicas
 	sts := &appsv1.StatefulSet{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      ledger.Name,
+		Name:      resourceName(ledger.Name),
 		Namespace: ledger.Namespace,
 	}, sts)
 	if err != nil {
@@ -299,12 +299,12 @@ func resolveEndpoints(ledger *ledgerv1alpha1.LedgerService) *ledgerv1alpha1.Endp
 
 	external := grpcHost != "" || httpHost != ""
 
-	grpcEndpoint := fmt.Sprintf("%s.%s.svc.cluster.local:8888", ledger.Name, ledger.Namespace)
+	grpcEndpoint := fmt.Sprintf("%s.%s.svc.cluster.local:8888", resourceName(ledger.Name), ledger.Namespace)
 	if grpcHost != "" {
 		grpcEndpoint = grpcHost + ":443"
 	}
 
-	httpEndpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:9000", ledger.Name, ledger.Namespace)
+	httpEndpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:9000", resourceName(ledger.Name), ledger.Namespace)
 	if httpHost != "" {
 		scheme := "http"
 		if httpTLS {
@@ -410,6 +410,17 @@ func applyDefaults(ledger *ledgerv1alpha1.LedgerService) {
 // cause reconciliation to fail. Errors are surfaced via status conditions
 // rather than silently failing in operator logs.
 func validateSpec(ledger *ledgerv1alpha1.LedgerService) error {
+	// The headless Service name is the tightest DNS-1035 label the operator
+	// derives from the CR name (resourcePrefix + name + "-headless"), capped at
+	// 63 chars. Reject over-long names at admission with a clear message instead
+	// of letting reconciliation fail later on an invalid Service name (EN-1319).
+	if derived := headlessServiceName(ledger.Name); len(derived) > dns1035LabelMaxLength {
+		return fmt.Errorf(
+			"name %q is too long: derived Service name %q is %d chars, exceeds the %d-char DNS-1035 limit",
+			ledger.Name, derived, len(derived), dns1035LabelMaxLength,
+		)
+	}
+
 	if ledger.Spec.Replicas != nil && *ledger.Spec.Replicas%2 == 0 {
 		return fmt.Errorf("replicas must be odd for Raft consensus, got %d", *ledger.Spec.Replicas)
 	}

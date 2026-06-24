@@ -13,7 +13,7 @@ import (
 )
 
 func (r *LedgerServiceReconciler) reconcileGrpcService(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
-	name := ledger.Name + "-grpc"
+	name := grpcServiceName(ledger.Name)
 
 	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled {
 		return r.deleteIfExists(ctx, &corev1.Service{

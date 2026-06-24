@@ -25,7 +25,7 @@ func TestReconcile_NetworkPolicyEnabled(t *testing.T) {
 
 	np := &networkingv1.NetworkPolicy{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "np-basic", Namespace: ns}, np) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-np-basic", Namespace: ns}, np) == nil
 	}, "NetworkPolicy should be created")
 
 	// Verify common labels.
@@ -90,7 +90,7 @@ func TestReconcile_NetworkPolicyCustomCIDR(t *testing.T) {
 
 	np := &networkingv1.NetworkPolicy{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "np-cidr", Namespace: ns}, np) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-np-cidr", Namespace: ns}, np) == nil
 	}, "NetworkPolicy should be created")
 
 	require.Len(t, np.Spec.Egress, 3)
@@ -110,7 +110,7 @@ func TestReconcile_NetworkPolicyDisabledCleansUp(t *testing.T) {
 	// Wait for NetworkPolicy creation.
 	np := &networkingv1.NetworkPolicy{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "np-cleanup", Namespace: ns}, np) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-np-cleanup", Namespace: ns}, np) == nil
 	}, "NetworkPolicy should be created")
 
 	// Disable NetworkPolicy.
@@ -121,7 +121,7 @@ func TestReconcile_NetworkPolicyDisabledCleansUp(t *testing.T) {
 
 	// Wait for NetworkPolicy deletion.
 	requireEventually(t, func() bool {
-		err := k8sClient.Get(ctx, types.NamespacedName{Name: "np-cleanup", Namespace: ns}, np)
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-np-cleanup", Namespace: ns}, np)
 		return apierrors.IsNotFound(err)
 	}, "NetworkPolicy should be deleted after disabling")
 }
@@ -133,12 +133,12 @@ func TestReconcile_NetworkPolicyNotCreatedByDefault(t *testing.T) {
 
 	// Wait for the main service to appear (proves reconciliation ran).
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "np-absent", Namespace: ns}, &corev1.Service{}) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-np-absent", Namespace: ns}, &corev1.Service{}) == nil
 	}, "Service should be created")
 
 	// NetworkPolicy should NOT exist.
 	np := &networkingv1.NetworkPolicy{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: "np-absent", Namespace: ns}, np)
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-np-absent", Namespace: ns}, np)
 	assert.True(t, apierrors.IsNotFound(err), "NetworkPolicy should not be created when spec.networkPolicy is nil")
 }
 
@@ -155,7 +155,7 @@ func TestReconcile_NetworkPolicyCustomPorts(t *testing.T) {
 
 	np := &networkingv1.NetworkPolicy{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "np-ports", Namespace: ns}, np) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-np-ports", Namespace: ns}, np) == nil
 	}, "NetworkPolicy should be created")
 
 	require.Len(t, np.Spec.Egress, 3)
@@ -176,7 +176,7 @@ func TestReconcile_NetworkPolicyUpdate(t *testing.T) {
 
 	np := &networkingv1.NetworkPolicy{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "np-update", Namespace: ns}, np) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-np-update", Namespace: ns}, np) == nil
 	}, "NetworkPolicy should be created")
 
 	// Verify default CIDR except.
@@ -191,7 +191,7 @@ func TestReconcile_NetworkPolicyUpdate(t *testing.T) {
 
 	// Wait for CIDR to be updated.
 	requireEventually(t, func() bool {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "np-update", Namespace: ns}, np); err != nil {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-np-update", Namespace: ns}, np); err != nil {
 			return false
 		}
 		return len(np.Spec.Egress[2].To[0].IPBlock.Except) == 1

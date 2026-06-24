@@ -1,13 +1,37 @@
 package controller
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
+
+func TestValidateSpec_NameLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	// The headless Service name is the tightest derived label:
+	// len("ledger-" + name + "-headless") = 16 + len(name) must stay <= 63,
+	// so a CR name of 47 chars is the longest accepted (47+16 = 63).
+	name47 := strings.Repeat("a", 47)
+	name48 := strings.Repeat("a", 48)
+
+	require.Len(t, headlessServiceName(name47), dns1035LabelMaxLength)
+
+	require.NoError(t, validateSpec(&ledgerv1alpha1.LedgerService{
+		ObjectMeta: metav1.ObjectMeta{Name: name47},
+	}), "a 47-char name yields a 63-char headless Service name and must be accepted")
+
+	err := validateSpec(&ledgerv1alpha1.LedgerService{
+		ObjectMeta: metav1.ObjectMeta{Name: name48},
+	})
+	require.Error(t, err, "a 48-char name overflows the 63-char DNS-1035 limit and must be rejected")
+	assert.Contains(t, err.Error(), headlessServiceName(name48))
+}
 
 func TestValidateClusterConfig_AcceptsNilAndEmpty(t *testing.T) {
 	t.Parallel()

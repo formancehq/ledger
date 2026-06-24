@@ -36,7 +36,7 @@ func TestReconcile_EvenReplicas(t *testing.T) {
 
 	// StatefulSet should NOT be created
 	sts := &appsv1.StatefulSet{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: "even", Namespace: ns}, sts)
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-even", Namespace: ns}, sts)
 	assert.Error(t, err, "StatefulSet should not be created with even replicas")
 }
 
@@ -118,6 +118,6 @@ func TestReconcile_ValidationFixed(t *testing.T) {
 
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "fix-val", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-fix-val", Namespace: ns}, sts) == nil
 	}, "StatefulSet should appear after validation fix")
 }

@@ -33,7 +33,7 @@ func TestReconcile_IngressHTTP(t *testing.T) {
 
 	ing := &networkingv1.Ingress{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ing-http", Namespace: ns}, ing) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-ing-http", Namespace: ns}, ing) == nil
 	}, "HTTP Ingress should be created")
 
 	require.NotNil(t, ing.Spec.IngressClassName)
@@ -46,7 +46,7 @@ func TestReconcile_IngressHTTP(t *testing.T) {
 	assert.Equal(t, "/api", paths[0].Path)
 	assert.Equal(t, networkingv1.PathTypePrefix, *paths[0].PathType)
 
-	assert.Equal(t, "ing-http", paths[0].Backend.Service.Name)
+	assert.Equal(t, "ledger-ing-http", paths[0].Backend.Service.Name)
 	assert.Equal(t, int32(9000), paths[0].Backend.Service.Port.Number)
 
 	requireOwnerRef(t, ing.OwnerReferences, "ing-http")
@@ -66,13 +66,13 @@ func TestReconcile_IngressGrpc(t *testing.T) {
 
 	ing := &networkingv1.Ingress{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ing-grpc-grpc", Namespace: ns}, ing) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-ing-grpc-grpc", Namespace: ns}, ing) == nil
 	}, "gRPC Ingress should be created")
 
 	require.Len(t, ing.Spec.Rules, 1)
 	paths := ing.Spec.Rules[0].HTTP.Paths
 	require.Len(t, paths, 1)
-	assert.Equal(t, "ing-grpc-grpc", paths[0].Backend.Service.Name)
+	assert.Equal(t, "ledger-ing-grpc-grpc", paths[0].Backend.Service.Name)
 	assert.Equal(t, int32(8888), paths[0].Backend.Service.Port.Number)
 }
 
@@ -90,7 +90,7 @@ func TestReconcile_IngressDisabledCleansUp(t *testing.T) {
 
 	ing := &networkingv1.Ingress{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ing-cleanup", Namespace: ns}, ing) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-ing-cleanup", Namespace: ns}, ing) == nil
 	}, "Ingress should be created")
 
 	updated := &ledgerv1alpha1.LedgerService{}
@@ -99,7 +99,7 @@ func TestReconcile_IngressDisabledCleansUp(t *testing.T) {
 	require.NoError(t, k8sClient.Update(ctx, updated))
 
 	requireEventually(t, func() bool {
-		err := k8sClient.Get(ctx, types.NamespacedName{Name: "ing-cleanup", Namespace: ns}, ing)
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-ing-cleanup", Namespace: ns}, ing)
 		return apierrors.IsNotFound(err)
 	}, "Ingress should be deleted after disabling")
 }
@@ -117,7 +117,7 @@ func TestReconcile_IngressDefaultPaths(t *testing.T) {
 
 	ing := &networkingv1.Ingress{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ing-defpath", Namespace: ns}, ing) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-ing-defpath", Namespace: ns}, ing) == nil
 	}, "Ingress should be created")
 
 	require.Len(t, ing.Spec.Rules, 1)

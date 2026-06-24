@@ -21,18 +21,18 @@ func TestReconcile_MinimalLedgerService(t *testing.T) {
 	// Wait for StatefulSet to appear (proves reconciliation ran)
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "basic", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-basic", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
 	// ServiceAccount
 	sa := &corev1.ServiceAccount{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "basic", Namespace: ns}, sa))
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-basic", Namespace: ns}, sa))
 	assert.Equal(t, "ledger-operator", sa.Labels[labelManagedBy])
 	requireOwnerRef(t, sa.OwnerReferences, "basic")
 
 	// Headless Service
 	hlsSvc := &corev1.Service{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "basic-headless", Namespace: ns}, hlsSvc))
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-basic-headless", Namespace: ns}, hlsSvc))
 	assert.Equal(t, corev1.ClusterIPNone, hlsSvc.Spec.ClusterIP)
 	assert.True(t, hlsSvc.Spec.PublishNotReadyAddresses)
 	requireOwnerRef(t, hlsSvc.OwnerReferences, "basic")
@@ -44,7 +44,7 @@ func TestReconcile_MinimalLedgerService(t *testing.T) {
 
 	// ClusterIP Service
 	svc := &corev1.Service{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "basic", Namespace: ns}, svc))
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-basic", Namespace: ns}, svc))
 	assert.Equal(t, corev1.ServiceTypeClusterIP, svc.Spec.Type)
 	requireOwnerRef(t, svc.OwnerReferences, "basic")
 	requirePort(t, svc.Spec.Ports, "http", 9000)
@@ -53,7 +53,7 @@ func TestReconcile_MinimalLedgerService(t *testing.T) {
 	// StatefulSet details
 	assert.Equal(t, int32(3), *sts.Spec.Replicas)
 	assert.Equal(t, appsv1.OrderedReadyPodManagement, sts.Spec.PodManagementPolicy)
-	assert.Equal(t, "basic-headless", sts.Spec.ServiceName)
+	assert.Equal(t, "ledger-basic-headless", sts.Spec.ServiceName)
 	requireOwnerRef(t, sts.OwnerReferences, "basic")
 
 	// Container image defaults
@@ -95,12 +95,12 @@ func TestReconcile_GrpcServiceNotCreatedByDefault(t *testing.T) {
 
 	// Wait for main service to appear
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "no-grpc", Namespace: ns}, &corev1.Service{}) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-no-grpc", Namespace: ns}, &corev1.Service{}) == nil
 	}, "Service should be created")
 
 	// gRPC service should NOT exist
 	grpcSvc := &corev1.Service{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: "no-grpc-grpc", Namespace: ns}, grpcSvc)
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-no-grpc-grpc", Namespace: ns}, grpcSvc)
 	assert.Error(t, err, "gRPC service should not be created when ingressGrpc is nil")
 }
 
@@ -113,12 +113,12 @@ func TestReconcile_StatefulSetSpec(t *testing.T) {
 
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "sts-spec", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-sts-spec", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
 	assert.Equal(t, int32(5), *sts.Spec.Replicas)
 	assert.Equal(t, appsv1.OrderedReadyPodManagement, sts.Spec.PodManagementPolicy)
-	assert.Equal(t, "sts-spec-headless", sts.Spec.ServiceName)
+	assert.Equal(t, "ledger-sts-spec-headless", sts.Spec.ServiceName)
 
 	// Retention policy defaults to Retain
 	require.NotNil(t, sts.Spec.PersistentVolumeClaimRetentionPolicy)

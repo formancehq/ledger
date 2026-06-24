@@ -16,7 +16,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: tls-en
+                name: ledger-tls-en
               status:
                 readyReplicas: 3
 
@@ -25,7 +25,7 @@ spec:
       try:
         - script:
             content: |
-              if kubectl get secret tls-en-cluster-secret -n $NAMESPACE >/dev/null 2>&1; then
+              if kubectl get secret ledger-tls-en-cluster-secret -n $NAMESPACE >/dev/null 2>&1; then
                 echo "FAIL: cluster-secret should not exist when TLS is disabled"
                 exit 1
               fi
@@ -37,7 +37,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec tls-en-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-tls-en-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure'
             timeout: 120s
 
@@ -57,7 +57,7 @@ spec:
               [req]
               distinguished_name=req
               [SAN]
-              subjectAltName=DNS:localhost,DNS:tls-en-headless,DNS:*.tls-en-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
+              subjectAltName=DNS:localhost,DNS:ledger-tls-en-headless,DNS:*.ledger-tls-en-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
               EOF
 
               openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
@@ -89,7 +89,7 @@ spec:
             content: |
               SAW_OPTIONAL=0
               for i in $(seq 1 60); do
-                MODE=$(kubectl get statefulset tls-en -n $NAMESPACE \
+                MODE=$(kubectl get statefulset ledger-tls-en -n $NAMESPACE \
                   -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TLS_MODE")].value}' 2>/dev/null)
                 PHASE=$(kubectl get ledgerservice tls-en -n $NAMESPACE \
                   -o jsonpath='{.status.tlsMigrationPhase}' 2>/dev/null)
@@ -122,7 +122,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl get secret tls-en-cluster-secret -n $NAMESPACE >/dev/null
+              kubectl get secret ledger-tls-en-cluster-secret -n $NAMESPACE >/dev/null
               echo "OK: cluster-secret created during TLS migration"
             timeout: 15s
 
@@ -131,6 +131,6 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec tls-en-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-tls-en-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 30s

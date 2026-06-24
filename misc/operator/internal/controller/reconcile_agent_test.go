@@ -27,7 +27,7 @@ func TestReconcile_AgentDistributesToAdditionalNamespace(t *testing.T) {
 	secret := &corev1.Secret{}
 	secretKey := types.NamespacedName{
 		Namespace: ns,
-		Name:      "creates-secret-agent-keys",
+		Name:      "ledger-creates-secret-agent-keys",
 	}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, secretKey, secret) == nil
@@ -62,8 +62,8 @@ func TestReconcile_AgentDistributesToMatchedServiceNamespaces(t *testing.T) {
 
 	secretA := &corev1.Secret{}
 	secretB := &corev1.Secret{}
-	keyA := types.NamespacedName{Namespace: nsA, Name: "multi-distrib-agent-keys"}
-	keyB := types.NamespacedName{Namespace: nsB, Name: "multi-distrib-agent-keys"}
+	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-multi-distrib-agent-keys"}
+	keyB := types.NamespacedName{Namespace: nsB, Name: "ledger-multi-distrib-agent-keys"}
 
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, keyA, secretA) == nil && k8sClient.Get(ctx, keyB, secretB) == nil
@@ -86,7 +86,7 @@ func TestReconcile_AgentSecretIdempotent(t *testing.T) {
 	secret := &corev1.Secret{}
 	secretKey := types.NamespacedName{
 		Namespace: ns,
-		Name:      "idempotent-agent-keys",
+		Name:      "ledger-idempotent-agent-keys",
 	}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, secretKey, secret) == nil
@@ -134,7 +134,7 @@ func TestReconcile_AgentStatus(t *testing.T) {
 	assert.NotEmpty(t, agent.Status.KeyID, "keyID must be set")
 	require.Len(t, agent.Status.DistributedSecretRefs, 1)
 	assert.Equal(t, ns, agent.Status.DistributedSecretRefs[0].Namespace)
-	assert.Equal(t, "status-check-agent-keys", agent.Status.DistributedSecretRefs[0].Name)
+	assert.Equal(t, "ledger-status-check-agent-keys", agent.Status.DistributedSecretRefs[0].Name)
 }
 
 func TestReconcile_AgentNoTargets(t *testing.T) {
@@ -203,8 +203,8 @@ func TestReconcile_AgentOrphanCleanup(t *testing.T) {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
 	})
 
-	keyA := types.NamespacedName{Namespace: nsA, Name: "orphan-cleanup-agent-keys"}
-	keyB := types.NamespacedName{Namespace: nsB, Name: "orphan-cleanup-agent-keys"}
+	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-orphan-cleanup-agent-keys"}
+	keyB := types.NamespacedName{Namespace: nsB, Name: "ledger-orphan-cleanup-agent-keys"}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, keyA, &corev1.Secret{}) == nil && k8sClient.Get(ctx, keyB, &corev1.Secret{}) == nil
 	}, "both replicas should be created initially")
@@ -232,8 +232,8 @@ func TestReconcile_AgentDeletion(t *testing.T) {
 	agent := newLedgerClusterAgentWithAdditional("to-delete", []string{"read"}, map[string]string{"app": "ledger"}, nsA, nsB)
 	require.NoError(t, k8sClient.Create(ctx, agent))
 
-	keyA := types.NamespacedName{Namespace: nsA, Name: "to-delete-agent-keys"}
-	keyB := types.NamespacedName{Namespace: nsB, Name: "to-delete-agent-keys"}
+	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-to-delete-agent-keys"}
+	keyB := types.NamespacedName{Namespace: nsB, Name: "ledger-to-delete-agent-keys"}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, keyA, &corev1.Secret{}) == nil && k8sClient.Get(ctx, keyB, &corev1.Secret{}) == nil
 	}, "replicas should be created in both additional namespaces")

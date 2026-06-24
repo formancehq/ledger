@@ -18,11 +18,6 @@ import (
 
 const clusterSecretKey = "cluster-secret"
 
-// clusterSecretName returns the Secret name for the cluster inter-node auth secret.
-func clusterSecretName(ledger *ledgerv1alpha1.LedgerService) string {
-	return ledger.Name + "-cluster-secret"
-}
-
 // reconcileClusterSecret ensures a Secret exists with a random cluster
 // secret for inter-node authentication. The caller is expected to invoke
 // this only when TLS is at least partially active (the secret is a static
@@ -36,7 +31,7 @@ func clusterSecretName(ledger *ledgerv1alpha1.LedgerService) string {
 func (r *LedgerServiceReconciler) reconcileClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterSecretName(ledger),
+			Name:      clusterSecretName(ledger.Name),
 			Namespace: ledger.Namespace,
 		},
 	}
@@ -69,7 +64,7 @@ func (r *LedgerServiceReconciler) reconcileClusterSecret(ctx context.Context, le
 func (r *LedgerServiceReconciler) deleteClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	secret := &corev1.Secret{}
 
-	err := r.Get(ctx, types.NamespacedName{Name: clusterSecretName(ledger), Namespace: ledger.Namespace}, secret)
+	err := r.Get(ctx, types.NamespacedName{Name: clusterSecretName(ledger.Name), Namespace: ledger.Namespace}, secret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil

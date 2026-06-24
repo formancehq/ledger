@@ -18,6 +18,13 @@ const (
 	LabelName     = "app.kubernetes.io/name"
 	LabelInstance = "app.kubernetes.io/instance"
 	LabelValue    = "ledger"
+
+	// resourcePrefix mirrors internal/controller.resourcePrefix (names.go), the
+	// source of truth. The operator prefixes every object it creates with it, so
+	// a LedgerService's StatefulSet is named "ledger-<cr>", not "<cr>" (EN-1319).
+	// Duplicated here because that const is unexported and importing the
+	// controller package would pull controller-runtime into this CLI.
+	resourcePrefix = "ledger-"
 )
 
 // LabelSelector returns a comma-separated label selector for the given LedgerService name.
@@ -63,9 +70,17 @@ func LedgerServicePVCs(ctx context.Context, cs kubernetes.Interface, namespace, 
 	})
 }
 
-// LedgerServiceStatefulSet fetches the StatefulSet for a LedgerService (same name as CR).
+// LedgerServiceStatefulSet fetches the StatefulSet for a LedgerService. The
+// operator names it "ledger-<cr>" (resourcePrefix), not the bare CR name.
 func LedgerServiceStatefulSet(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*appsv1.StatefulSet, error) {
-	return cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	return cs.AppsV1().StatefulSets(namespace).Get(ctx, resourcePrefix+name, metav1.GetOptions{})
+}
+
+// LedgerServicePodName returns the name of the ordinal-th StatefulSet pod for a
+// LedgerService. The operator names pods "ledger-<cr>-<ordinal>" (resourcePrefix),
+// not "<cr>-<ordinal>".
+func LedgerServicePodName(name string, ordinal int) string {
+	return fmt.Sprintf("%s%s-%d", resourcePrefix, name, ordinal)
 }
 
 // LedgerServices lists services matching the selector labels for a LedgerService.

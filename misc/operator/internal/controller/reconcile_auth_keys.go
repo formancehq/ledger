@@ -44,11 +44,6 @@ type authKeyEntry struct {
 	God           bool     `json:"god,omitempty"`
 }
 
-// authKeysConfigMapName returns the ConfigMap name for auth keys of a LedgerService.
-func authKeysConfigMapName(ledger *ledgerv1alpha1.LedgerService) string {
-	return ledger.Name + "-auth-keys"
-}
-
 // reconcileAuthKeys resolves all LedgerClusterAgents matching the given LedgerService,
 // creates/updates (or deletes) a ConfigMap with aggregated auth keys, and returns the
 // list of agent key info for use by the StatefulSet reconciler.
@@ -71,7 +66,7 @@ func (r *LedgerServiceReconciler) reconcileAuthKeys(ctx context.Context, ledger 
 		return ki < kj
 	})
 
-	cmName := authKeysConfigMapName(ledger)
+	cmName := authKeysConfigMapName(ledger.Name)
 
 	if len(agents) == 0 {
 		// No agents match: delete the ConfigMap if it exists.

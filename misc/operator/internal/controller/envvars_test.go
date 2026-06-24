@@ -1283,7 +1283,7 @@ func TestBuildEnvVars_AdvertiseAddr_UsesRaftPort(t *testing.T) {
 		ls := newMinimalLedgerService()
 		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "ADVERTISE_ADDR",
-			"$(POD_NAME).test-headless.$(POD_NAMESPACE).svc.cluster.local:7777")
+			"$(POD_NAME).ledger-test-headless.$(POD_NAMESPACE).svc.cluster.local:7777")
 	})
 
 	t.Run("custom Raft port is honoured", func(t *testing.T) {
@@ -1292,7 +1292,7 @@ func TestBuildEnvVars_AdvertiseAddr_UsesRaftPort(t *testing.T) {
 		ls.Spec.BindAddr = "0.0.0.0:9001"
 		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "ADVERTISE_ADDR",
-			"$(POD_NAME).test-headless.$(POD_NAMESPACE).svc.cluster.local:9001")
+			"$(POD_NAME).ledger-test-headless.$(POD_NAMESPACE).svc.cluster.local:9001")
 	})
 
 	t.Run("must not use GrpcPort even when BindAddr is empty", func(t *testing.T) {

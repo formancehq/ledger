@@ -90,12 +90,12 @@ func backupServerAddr(ls *ledgerv1alpha1.LedgerService) string {
 		port = 8888
 	}
 
-	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", ls.Name, ls.Namespace, port)
+	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", resourceName(ls.Name), ls.Namespace, port)
 }
 
 // backupJobName returns the Job name for a given LedgerBackupRun.
 func backupJobName(run *ledgerv1alpha1.LedgerBackupRun) string {
-	return run.Name
+	return prefixedName(run.Name)
 }
 
 // buildBackupJob renders the desired batchv1.Job for a LedgerBackupRun. The
@@ -157,7 +157,7 @@ func buildBackupJob(
 			Name: "CLUSTER_SECRET",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: clusterSecretName(ls)},
+					LocalObjectReference: corev1.LocalObjectReference{Name: clusterSecretName(ls.Name)},
 					Key:                  clusterSecretKey,
 				},
 			},

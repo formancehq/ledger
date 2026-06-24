@@ -15,7 +15,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: check-svc
+                name: ledger-check-svc
               status:
                 readyReplicas: 1
 
@@ -23,7 +23,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec check-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-check-svc-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
@@ -31,7 +31,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec check-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-check-svc-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl provision run lending-lifecycle --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
@@ -39,6 +39,6 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec check-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-check-svc-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl store check --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s

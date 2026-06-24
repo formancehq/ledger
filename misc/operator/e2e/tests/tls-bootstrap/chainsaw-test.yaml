@@ -25,7 +25,7 @@ spec:
               [req]
               distinguished_name=req
               [SAN]
-              subjectAltName=DNS:localhost,DNS:tls-bs-headless,DNS:*.tls-bs-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
+              subjectAltName=DNS:localhost,DNS:ledger-tls-bs-headless,DNS:*.ledger-tls-bs-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
               EOF
 
               openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
@@ -55,7 +55,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: tls-bs
+                name: ledger-tls-bs
               status:
                 readyReplicas: 3
 
@@ -76,11 +76,11 @@ spec:
       try:
         - script:
             content: |
-              MODE=$(kubectl get statefulset tls-bs -n $NAMESPACE \
+              MODE=$(kubectl get statefulset ledger-tls-bs -n $NAMESPACE \
                 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TLS_MODE")].value}')
               [ "$MODE" = "required" ] || { echo "FAIL: TLS_MODE=$MODE want required"; exit 1; }
 
-              CERT=$(kubectl get statefulset tls-bs -n $NAMESPACE \
+              CERT=$(kubectl get statefulset ledger-tls-bs -n $NAMESPACE \
                 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TLS_CERT_FILE")].value}')
               [ -n "$CERT" ] || { echo "FAIL: TLS_CERT_FILE not set"; exit 1; }
             timeout: 30s
@@ -90,6 +90,6 @@ spec:
       try:
         - script:
             content: |
-              kubectl get secret tls-bs-cluster-secret -n $NAMESPACE >/dev/null
+              kubectl get secret ledger-tls-bs-cluster-secret -n $NAMESPACE >/dev/null
               echo "OK: cluster-secret present"
             timeout: 15s

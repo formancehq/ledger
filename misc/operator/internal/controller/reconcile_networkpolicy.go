@@ -23,7 +23,7 @@ var defaultExternalCIDRExcept = []string{
 }
 
 func (r *LedgerServiceReconciler) reconcileNetworkPolicy(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
-	name := ledger.Name
+	name := resourceName(ledger.Name)
 
 	if ledger.Spec.NetworkPolicy == nil || !ledger.Spec.NetworkPolicy.Enabled {
 		return r.deleteIfExists(ctx, &networkingv1.NetworkPolicy{

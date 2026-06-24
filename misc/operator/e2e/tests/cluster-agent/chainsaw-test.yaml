@@ -16,7 +16,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: agent-svc
+                name: ledger-agent-svc
               status:
                 readyReplicas: 1
 
@@ -25,7 +25,7 @@ spec:
       try:
         - script:
             content: |
-              if kubectl get configmap agent-svc-auth-keys -n $NAMESPACE 2>/dev/null; then
+              if kubectl get configmap ledger-agent-svc-auth-keys -n $NAMESPACE 2>/dev/null; then
                 echo "FAIL: auth-keys ConfigMap should not exist yet"
                 exit 1
               fi
@@ -72,11 +72,11 @@ spec:
         - script:
             content: |
               for i in $(seq 1 30); do
-                if kubectl get configmap agent-svc-auth-keys -n $NAMESPACE 2>/dev/null; then
+                if kubectl get configmap ledger-agent-svc-auth-keys -n $NAMESPACE 2>/dev/null; then
                   echo "OK: auth-keys ConfigMap found"
 
                   # Verify auth-keys.json content.
-                  AUTH_JSON=$(kubectl get configmap agent-svc-auth-keys -n $NAMESPACE -o jsonpath='{.data.auth-keys\.json}')
+                  AUTH_JSON=$(kubectl get configmap ledger-agent-svc-auth-keys -n $NAMESPACE -o jsonpath='{.data.auth-keys\.json}')
                   echo "$AUTH_JSON"
 
                   KEY_COUNT=$(echo "$AUTH_JSON" | grep -c '"keyId"')
@@ -87,7 +87,7 @@ spec:
                   echo "$AUTH_JSON" | grep -q 'ledger:write' || { echo "FAIL: missing ledger:write scope"; exit 1; }
 
                   # Verify public key file exists in ConfigMap.
-                  PUBKEY_FILE=$(kubectl get configmap agent-svc-auth-keys -n $NAMESPACE -o jsonpath='{.data.agent-e2e-agent-pubkey\.hex}')
+                  PUBKEY_FILE=$(kubectl get configmap ledger-agent-svc-auth-keys -n $NAMESPACE -o jsonpath='{.data.agent-e2e-agent-pubkey\.hex}')
                   [ -n "$PUBKEY_FILE" ] || { echo "FAIL: pubkey file missing from ConfigMap"; exit 1; }
                   echo "OK: auth-keys ConfigMap is valid"
                   exit 0
@@ -105,12 +105,12 @@ spec:
         - script:
             content: |
               # Check the StatefulSet has the auth-keys volume.
-              VOLUMES=$(kubectl get statefulset agent-svc -n $NAMESPACE -o jsonpath='{.spec.template.spec.volumes[*].name}')
+              VOLUMES=$(kubectl get statefulset ledger-agent-svc -n $NAMESPACE -o jsonpath='{.spec.template.spec.volumes[*].name}')
               echo "Volumes: $VOLUMES"
               echo "$VOLUMES" | grep -q 'auth-keys' || { echo "FAIL: auth-keys volume not found"; exit 1; }
 
               # Check auth-keys-hash annotation is set on pod template.
-              HASH=$(kubectl get statefulset agent-svc -n $NAMESPACE -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/auth-keys-hash}')
+              HASH=$(kubectl get statefulset ledger-agent-svc -n $NAMESPACE -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/auth-keys-hash}')
               echo "Auth keys hash: $HASH"
               [ -n "$HASH" ] || { echo "FAIL: auth-keys-hash annotation not set"; exit 1; }
 

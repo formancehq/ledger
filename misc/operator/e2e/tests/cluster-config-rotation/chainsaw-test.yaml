@@ -16,7 +16,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ccr-svc
+                name: ledger-ccr-svc
               status:
                 readyReplicas: 1
 
@@ -25,7 +25,7 @@ spec:
       try:
         - script:
             content: |
-              OUT=$(kubectl exec ccr-svc-0 -n $NAMESPACE -c ledger -- \
+              OUT=$(kubectl exec ledger-ccr-svc-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl cluster status --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET" --json')
               echo "$OUT"
               ROT=$(echo "$OUT" | sed -n 's/.*"rotationThreshold":[^0-9]*\([0-9]*\).*/\1/p' | head -1)
@@ -38,9 +38,9 @@ spec:
       try:
         - script:
             content: |
-              HASH=$(kubectl get statefulset ccr-svc -n $NAMESPACE \
+              HASH=$(kubectl get statefulset ledger-ccr-svc -n $NAMESPACE \
                 -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
-              POD_UID=$(kubectl get pod ccr-svc-0 -n $NAMESPACE -o jsonpath='{.metadata.uid}')
+              POD_UID=$(kubectl get pod ledger-ccr-svc-0 -n $NAMESPACE -o jsonpath='{.metadata.uid}')
               [ -n "$HASH" ] || { echo "FAIL: spec-hash annotation not set"; exit 1; }
               kubectl annotate namespace $NAMESPACE \
                 e2e-initial-hash="$HASH" \
@@ -58,7 +58,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ccr-svc
+                name: ledger-ccr-svc
               status:
                 readyReplicas: 1
 
@@ -70,14 +70,14 @@ spec:
               INITIAL_HASH=$(kubectl get namespace $NAMESPACE -o jsonpath='{.metadata.annotations.e2e-initial-hash}')
               INITIAL_UID=$(kubectl get namespace $NAMESPACE -o jsonpath='{.metadata.annotations.e2e-initial-pod-uid}')
 
-              NEW_HASH=$(kubectl get statefulset ccr-svc -n $NAMESPACE \
+              NEW_HASH=$(kubectl get statefulset ledger-ccr-svc -n $NAMESPACE \
                 -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
               [ "$INITIAL_HASH" != "$NEW_HASH" ] || { echo "FAIL: spec-hash did not change"; exit 1; }
               echo "OK: spec-hash changed ($INITIAL_HASH -> $NEW_HASH)"
 
               for i in $(seq 1 60); do
-                NEW_UID=$(kubectl get pod ccr-svc-0 -n $NAMESPACE -o jsonpath='{.metadata.uid}' 2>/dev/null)
-                READY=$(kubectl get pod ccr-svc-0 -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
+                NEW_UID=$(kubectl get pod ledger-ccr-svc-0 -n $NAMESPACE -o jsonpath='{.metadata.uid}' 2>/dev/null)
+                READY=$(kubectl get pod ledger-ccr-svc-0 -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
                 if [ "$NEW_UID" != "$INITIAL_UID" ] && [ "$READY" = "True" ]; then
                   echo "OK: pod was replaced (old=$INITIAL_UID new=$NEW_UID)"
                   exit 0
@@ -94,7 +94,7 @@ spec:
         - script:
             content: |
               GET_ENV() {
-                kubectl get statefulset ccr-svc -n $NAMESPACE \
+                kubectl get statefulset ledger-ccr-svc -n $NAMESPACE \
                   -o jsonpath="{.spec.template.spec.containers[0].env[?(@.name=='$1')].value}"
               }
               ROT=$(GET_ENV CACHE_ROTATION_THRESHOLD)
@@ -113,7 +113,7 @@ spec:
         - script:
             content: |
               for i in $(seq 1 60); do
-                OUT=$(kubectl exec ccr-svc-0 -n $NAMESPACE -c ledger -- \
+                OUT=$(kubectl exec ledger-ccr-svc-0 -n $NAMESPACE -c ledger -- \
                   /bin/sh -c './ledgerctl cluster status --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET" --json' 2>/dev/null)
                 ROT=$(echo "$OUT" | sed -n 's/.*"rotationThreshold":[^0-9]*\([0-9]*\).*/\1/p' | head -1)
                 if [ "$ROT" = "2000" ]; then

@@ -88,7 +88,7 @@ func TestBuildCommand_BootstrapVsJoin(t *testing.T) {
 	assert.Contains(t, script, `if [ -f "/data/raft/CLUSTER_JOINED" ]`)
 	assert.Contains(t, script, `elif [ "$POD_INDEX" = "0" ]; then`)
 	assert.Contains(t, script, `CLUSTER_FLAG="--bootstrap"`)
-	assert.Contains(t, script, `CLUSTER_FLAG="--join test-svc-0.`)
+	assert.Contains(t, script, `CLUSTER_FLAG="--join ledger-test-svc-0.ledger-test-svc-headless.`)
 	assert.Contains(t, script, `:7777"`)
 	assert.NotContains(t, script, `:${GRPC_PORT}"`)
 
@@ -171,7 +171,7 @@ func TestBuildEnvVars_AdvertiseAddr(t *testing.T) {
 	// $(POD_NAME) / $(POD_NAMESPACE) are resolved by the kubelet — the
 	// operator just emits the template. The port is the Raft port (BindAddr),
 	// NOT the service gRPC port — see TestBuildEnvVars_AdvertiseAddr_UsesRaftPort.
-	assertEnv(t, envs, "ADVERTISE_ADDR", "$(POD_NAME).test-headless.$(POD_NAMESPACE).svc.cluster.local:7777")
+	assertEnv(t, envs, "ADVERTISE_ADDR", "$(POD_NAME).ledger-test-headless.$(POD_NAMESPACE).svc.cluster.local:7777")
 }
 
 func TestBuildEnvVars_OtelResourceAttributes(t *testing.T) {

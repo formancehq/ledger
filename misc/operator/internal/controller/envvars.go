@@ -95,7 +95,7 @@ func appendIfQuantity(envs []corev1.EnvVar, name string, value *resource.Quantit
 // disabled.
 func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, agents []agentKeyInfo) []corev1.EnvVar {
 	spec := &ledger.Spec
-	hlsSvcName := headlessServiceName(ledger)
+	hlsSvcName := headlessServiceName(ledger.Name)
 
 	// ADVERTISE_ADDR is the host:port a Raft peer dials to reach this node's
 	// Raft transport — it must point at the BindAddr port (Raft port, e.g.

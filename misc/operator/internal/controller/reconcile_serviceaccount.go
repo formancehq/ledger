@@ -33,11 +33,3 @@ func (r *LedgerServiceReconciler) reconcileServiceAccount(ctx context.Context, l
 
 	return err
 }
-
-func serviceAccountName(ledger *ledgerv1alpha1.LedgerService) string {
-	if ledger.Spec.ServiceAccount.Name != "" {
-		return ledger.Spec.ServiceAccount.Name
-	}
-
-	return ledger.Name
-}

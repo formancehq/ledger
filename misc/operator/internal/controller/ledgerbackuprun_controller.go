@@ -180,7 +180,7 @@ func (r *LedgerBackupRunReconciler) ensureBackupJob(
 		return nil, fmt.Errorf("looking up Job: %w", err)
 	}
 
-	tlsMode, err := fetchTLSMode(ctx, r.Client, ls.Namespace, ls.Name)
+	tlsMode, err := fetchTLSMode(ctx, r.Client, ls.Namespace, resourceName(ls.Name))
 	if err != nil {
 		return nil, fmt.Errorf("resolving TLS mode for LedgerService %q: %w", ls.Name, err)
 	}

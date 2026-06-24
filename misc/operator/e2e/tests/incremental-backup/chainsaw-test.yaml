@@ -25,7 +25,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: bk-incr-svc
+                name: ledger-bk-incr-svc
               status:
                 readyReplicas: 1
 
@@ -33,7 +33,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec bk-incr-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-bk-incr-svc-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl provision run gaming-wallet --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
@@ -49,7 +49,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec bk-incr-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-bk-incr-svc-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl provision run subscription --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 

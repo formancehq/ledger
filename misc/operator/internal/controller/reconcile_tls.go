@@ -163,7 +163,7 @@ func tlsMigrationPhase(desired, target string) string {
 func (r *LedgerServiceReconciler) fetchExistingStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) (*appsv1.StatefulSet, error) {
 	sts := &appsv1.StatefulSet{}
 
-	err := r.Get(ctx, types.NamespacedName{Name: ledger.Name, Namespace: ledger.Namespace}, sts)
+	err := r.Get(ctx, types.NamespacedName{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}, sts)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil

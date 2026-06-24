@@ -109,7 +109,7 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}
 
 	// Create ledger via ledgerctl exec.
-	pod0 := ledger.Spec.ServiceRef + "-0"
+	pod0 := podName(ledger.Spec.ServiceRef, 0)
 	args, err := r.buildCreateArgs(ctx, &ledger)
 	if err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -206,7 +206,7 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
 	}
 
-	pod0 := ledger.Spec.ServiceRef + "-0"
+	pod0 := podName(ledger.Spec.ServiceRef, 0)
 
 	execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
 	defer cancel()
@@ -253,7 +253,7 @@ func (r *LedgerReconciler) reconcileDelete(ctx context.Context, ledger *ledgerv1
 	if err != nil {
 		log.Error(err, "failed to resolve gRPC endpoint for deletion, continuing cleanup")
 	} else {
-		pod0 := ledger.Spec.ServiceRef + "-0"
+		pod0 := podName(ledger.Spec.ServiceRef, 0)
 
 		execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
 		defer cancel()
@@ -409,12 +409,12 @@ func (r *LedgerReconciler) readSecretKey(ctx context.Context, namespace, name, k
 // The server address dialed is the pod's own headless DNS so the SNI matches
 // the server certificate's SANs.
 func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, namespace, serviceName, pod string, grpcPort int32, args ...string) error {
-	tlsMode, err := fetchTLSMode(ctx, r.Client, namespace, serviceName)
+	tlsMode, err := fetchTLSMode(ctx, r.Client, namespace, resourceName(serviceName))
 	if err != nil {
 		return fmt.Errorf("resolving TLS mode for LedgerService %q: %w", serviceName, err)
 	}
 
-	serverAddr := podSelfServerAddr(serviceName+"-headless", grpcPort)
+	serverAddr := podSelfServerAddr(headlessServiceName(serviceName), grpcPort)
 	cmd := ledgerctlCommand(serverAddr, tlsMode, args...)
 
 	if _, err := podExec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd); err != nil {

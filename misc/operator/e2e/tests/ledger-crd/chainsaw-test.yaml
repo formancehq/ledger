@@ -15,7 +15,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: crd-svc
+                name: ledger-crd-svc
               status:
                 readyReplicas: 1
 
@@ -36,7 +36,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec crd-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-crd-svc-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
                 | grep my-ledger
             timeout: 30s
@@ -52,7 +52,7 @@ spec:
       try:
         - script:
             content: |
-              OUTPUT=$(kubectl exec crd-svc-0 -n $NAMESPACE -c ledger -- \
+              OUTPUT=$(kubectl exec ledger-crd-svc-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
               if echo "$OUTPUT" | grep -q my-ledger; then
                 echo "FAIL: ledger my-ledger still exists after deletion"

@@ -81,7 +81,7 @@ func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, args []str
 	}
 
 	ordinal := max(f.pod, 0)
-	podName := fmt.Sprintf("%s-%d", name, ordinal)
+	podName := cmdutil.LedgerServicePodName(name, ordinal)
 	pterm.Info.Printfln("Streaming logs from %s", pterm.Cyan(podName))
 
 	return streamPodLogs(ctx, cs, ns, podName, "", logOpts)

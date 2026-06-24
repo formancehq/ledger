@@ -12,7 +12,7 @@ import (
 )
 
 func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
-	name := ledger.Name
+	name := resourceName(ledger.Name)
 
 	if ledger.Spec.Ingress == nil || !ledger.Spec.Ingress.Enabled {
 		return r.deleteIfExists(ctx, &networkingv1.Ingress{
@@ -79,7 +79,7 @@ func buildHTTPIngressRules(ledger *ledgerv1alpha1.LedgerService, hosts []ledgerv
 				PathType: &pathType,
 				Backend: networkingv1.IngressBackend{
 					Service: &networkingv1.IngressServiceBackend{
-						Name: ledger.Name,
+						Name: resourceName(ledger.Name),
 						Port: networkingv1.ServiceBackendPort{Number: httpPort},
 					},
 				},

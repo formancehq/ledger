@@ -79,9 +79,9 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 ) error {
 	logger := log.FromContext(ctx)
 	grpcPort := ledger.Spec.GrpcPort
-	pod0 := ledger.Name + "-0"
+	pod0 := podName(ledger.Name, 0)
 	container := "ledger"
-	serverAddr := podSelfServerAddr(headlessServiceName(ledger), grpcPort)
+	serverAddr := podSelfServerAddr(headlessServiceName(ledger.Name), grpcPort)
 
 	// Transfer leadership to node 1 (pod-0) so the leader is never among the removed nodes.
 	logger.Info("transferring Raft leadership to node 1 before scale-down")
@@ -113,9 +113,9 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 	)
 	for ordinal := currentReplicas - 1; ordinal >= desiredReplicas; ordinal-- {
 		nodeID := ordinal + 1
-		podName := podForOrdinal(ledger.Name, ordinal)
+		pod := podName(ledger.Name, int(ordinal))
 
-		if neverJoined := isPodNeverReady(ctx, clientset, ledger.Namespace, podName); neverJoined {
+		if neverJoined := isPodNeverReady(ctx, clientset, ledger.Namespace, pod); neverJoined {
 			logger.Info("pod was never ready, skipping Raft removal (node never joined cluster)",
 				"nodeID", nodeID,
 				"podOrdinal", ordinal,
@@ -124,7 +124,7 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 			continue
 		}
 
-		crashed := isPodCrashed(ctx, clientset, ledger.Namespace, podName)
+		crashed := isPodCrashed(ctx, clientset, ledger.Namespace, pod)
 		n := nodeToRemove{ordinal: ordinal, nodeID: nodeID, crashed: crashed}
 		if crashed {
 			crashedNodes = append(crashedNodes, n)
@@ -239,11 +239,6 @@ func ledgerctlTLSFlag(tlsMode string) string {
 	}
 
 	return "--insecure"
-}
-
-// podForOrdinal returns the pod name for a given StatefulSet ordinal.
-func podForOrdinal(stsName string, ordinal int32) string {
-	return fmt.Sprintf("%s-%d", stsName, ordinal)
 }
 
 // isPodNeverReady returns true if the pod has never been ready: not found,

@@ -22,7 +22,7 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 	if ledger.Spec.DNSEndpoint == nil || !ledger.Spec.DNSEndpoint.Enabled {
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(gvk)
-		obj.SetName(ledger.Name)
+		obj.SetName(resourceName(ledger.Name))
 		obj.SetNamespace(ledger.Namespace)
 
 		return r.deleteUnstructuredIfExists(ctx, obj)
@@ -39,7 +39,7 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 	if len(endpoints) == 0 {
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(gvk)
-		obj.SetName(ledger.Name)
+		obj.SetName(resourceName(ledger.Name))
 		obj.SetNamespace(ledger.Namespace)
 
 		return r.deleteUnstructuredIfExists(ctx, obj)
@@ -47,11 +47,11 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
-	obj.SetName(ledger.Name)
+	obj.SetName(resourceName(ledger.Name))
 	obj.SetNamespace(ledger.Namespace)
 
 	// Fetch existing to merge.
-	_ = r.Get(ctx, types.NamespacedName{Name: ledger.Name, Namespace: ledger.Namespace}, obj)
+	_ = r.Get(ctx, types.NamespacedName{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}, obj)
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		obj.SetLabels(commonLabels(ledger))

@@ -315,7 +315,7 @@ func computeDesiredNamespaces(matched []ledgerv1alpha1.MatchedService, additiona
 
 // agentSecretName returns the name of the Secret managed by the agent.
 func agentSecretName(agent *ledgerv1alpha1.LedgerClusterAgent) string {
-	return agent.Name + "-agent-keys"
+	return prefixedName(agent.Name) + "-agent-keys"
 }
 
 // SetupWithManager sets up the controller with the Manager.

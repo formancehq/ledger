@@ -28,7 +28,7 @@ func TestReconcile_HostPathDataVolume(t *testing.T) {
 
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "hp-data", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-hp-data", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
 	// Only wal and cold-cache should be VolumeClaimTemplates (data is hostPath)
@@ -93,7 +93,7 @@ func TestReconcile_HostPathAllVolumes(t *testing.T) {
 
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "hp-all", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-hp-all", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
 	// No VolumeClaimTemplates when all volumes are hostPath
@@ -155,7 +155,7 @@ func TestReconcile_HostPathValidation_MutualExclusion(t *testing.T) {
 
 	// StatefulSet should NOT be created
 	sts := &appsv1.StatefulSet{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: "hp-invalid", Namespace: ns}, sts)
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-hp-invalid", Namespace: ns}, sts)
 	assert.Error(t, err, "StatefulSet should not be created with invalid config")
 }
 
@@ -219,7 +219,7 @@ func TestReconcile_HostPathNoWarningWithNodeSelector(t *testing.T) {
 	// Wait for StatefulSet
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "hp-nowarn", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-hp-nowarn", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
 	updated := &ledgerv1alpha1.LedgerService{}

@@ -14,7 +14,7 @@ import (
 func (r *LedgerServiceReconciler) reconcileService(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      ledger.Name,
+			Name:      resourceName(ledger.Name),
 			Namespace: ledger.Namespace,
 		},
 	}
