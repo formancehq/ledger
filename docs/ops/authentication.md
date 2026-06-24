@@ -171,7 +171,7 @@ TOKEN=$(ledgerctl auth generate-token \
 ```bash
 ledgerctl --auth-token "$TOKEN" ledgers list
 # Or via environment variable:
-AUTH_TOKEN="$TOKEN" ledgerctl ledgers list
+LEDGERCTL_AUTH_TOKEN="$TOKEN" ledgerctl ledgers list
 # Or read from a file:
 ledgerctl --auth-token @token.txt ledgers list
 ```
@@ -243,7 +243,7 @@ For OIDC tokens, the god claim is trusted if present in the JWT issued by the co
 
 When making API calls, `ledgerctl` resolves the bearer token in this order:
 
-1. `--auth-token` flag (or `AUTH_TOKEN` env var)
+1. `--auth-token` flag (or `LEDGERCTL_AUTH_TOKEN` env var)
 2. OS keychain (keyed by `--server` address)
 3. No authentication
 

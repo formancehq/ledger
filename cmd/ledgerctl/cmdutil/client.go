@@ -34,14 +34,14 @@ const (
 // Setting --insecure together with --tls-ca-cert is rejected: those flags
 // encode conflicting intent (no TLS vs. verify with this CA), and silently
 // preferring one of them — as the older code did — masks env-var leakage like
-// a stray INSECURE=true in a container image (the original cause of the
-// "error reading server preface: EOF" production incident).
+// a stray LEDGERCTL_INSECURE=true in a container image (the original cause of
+// the "error reading server preface: EOF" production incident).
 func GetClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCredentials, error) {
 	insecureMode, _ := cmd.Flags().GetBool("insecure")
 	caCertPath, _ := cmd.Flags().GetString("tls-ca-cert")
 
 	if insecureMode && caCertPath != "" {
-		return nil, errors.New("--insecure and --tls-ca-cert are mutually exclusive (--insecure may also come from the INSECURE env var; unset it to use TLS)")
+		return nil, errors.New("--insecure and --tls-ca-cert are mutually exclusive (--insecure may also come from the LEDGERCTL_INSECURE env var; unset it to use TLS)")
 	}
 
 	if insecureMode {
@@ -174,8 +174,8 @@ func ResolveTokenSource(cmd *cobra.Command) (source string, token string) {
 			return "file (" + t[1:] + ")", strings.TrimSpace(string(data))
 		}
 
-		if _, ok := os.LookupEnv("AUTH_TOKEN"); ok && !cmd.Flags().Changed("auth-token") {
-			return "environment (AUTH_TOKEN)", t
+		if _, ok := os.LookupEnv("LEDGERCTL_AUTH_TOKEN"); ok && !cmd.Flags().Changed("auth-token") {
+			return "environment (LEDGERCTL_AUTH_TOKEN)", t
 		}
 
 		return "flag (--auth-token)", t

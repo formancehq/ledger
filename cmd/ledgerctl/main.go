@@ -9,8 +9,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/pterm/pterm/putils"
 	"github.com/spf13/cobra"
-
-	"github.com/formancehq/go-libs/v5/pkg/service"
+	"github.com/spf13/pflag"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounts"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
@@ -41,7 +40,8 @@ var version = "dev"
 func main() {
 	rootCmd := newRootCommand()
 	rootCmd.SilenceErrors = true
-	service.BindEnvToCommand(rootCmd)
+
+	bindSubcommandEnv(rootCmd)
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -100,14 +100,15 @@ func newRootCommand() *cobra.Command {
 			}
 
 			// Resolve flags: explicit CLI flag > env var > profile value > cobra default.
-			resolveFlag(cmd, "server", "SERVER", cmdutil.ProfileFlagValue(p, "server"))
-			resolveFlag(cmd, "insecure", "INSECURE", cmdutil.ProfileFlagValue(p, "insecure"))
-			resolveFlag(cmd, "tls-ca-cert", "TLS_CA_CERT", cmdutil.ProfileFlagValue(p, "tls-ca-cert"))
-			resolveFlag(cmd, "consistency", "CONSISTENCY", "")
-			resolveFlag(cmd, "auth-token", "AUTH_TOKEN", "")
-			resolveFlag(cmd, "signing-key", "SIGNING_KEY", cmdutil.ProfileFlagValue(p, "signing-key"))
-			resolveFlag(cmd, "signing-key-id", "SIGNING_KEY_ID", cmdutil.ProfileFlagValue(p, "signing-key-id"))
-			resolveFlag(cmd, "response-verify-key", "RESPONSE_VERIFY_KEY", cmdutil.ProfileFlagValue(p, "response-verify-key"))
+			resolveFlag(cmd, "server", "LEDGERCTL_SERVER", cmdutil.ProfileFlagValue(p, "server"))
+			resolveFlag(cmd, "insecure", "LEDGERCTL_INSECURE", cmdutil.ProfileFlagValue(p, "insecure"))
+			resolveFlag(cmd, "tls-ca-cert", "LEDGERCTL_TLS_CA_CERT", cmdutil.ProfileFlagValue(p, "tls-ca-cert"))
+			resolveFlag(cmd, "consistency", "LEDGERCTL_CONSISTENCY", "")
+			resolveFlag(cmd, "auth-token", "LEDGERCTL_AUTH_TOKEN", "")
+			resolveFlag(cmd, "signing-key", "LEDGERCTL_SIGNING_KEY", cmdutil.ProfileFlagValue(p, "signing-key"))
+			resolveFlag(cmd, "signing-key-id", "LEDGERCTL_SIGNING_KEY_ID", cmdutil.ProfileFlagValue(p, "signing-key-id"))
+			resolveFlag(cmd, "response-verify-key", "LEDGERCTL_RESPONSE_VERIFY_KEY", cmdutil.ProfileFlagValue(p, "response-verify-key"))
+			resolveFlag(cmd, "result-file", "LEDGERCTL_RESULT_FILE", "")
 
 			return nil
 		},
@@ -117,28 +118,28 @@ func newRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().String("profile", "", "Connection profile name (env: LEDGERCTL_PROFILE)")
 
 	// Add persistent flags for server connection.
-	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address (env: SERVER)")
-	rootCmd.PersistentFlags().Bool("insecure", false, "Use insecure connection (no TLS) (env: INSECURE)")
-	rootCmd.PersistentFlags().String("tls-ca-cert", "", "Path to CA certificate file (PEM) for server verification (env: TLS_CA_CERT)")
+	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address (env: LEDGERCTL_SERVER)")
+	rootCmd.PersistentFlags().Bool("insecure", false, "Use insecure connection (no TLS) (env: LEDGERCTL_INSECURE)")
+	rootCmd.PersistentFlags().String("tls-ca-cert", "", "Path to CA certificate file (PEM) for server verification (env: LEDGERCTL_TLS_CA_CERT)")
 
 	// Add persistent flags for request signing.
-	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) (env: SIGNING_KEY)")
-	rootCmd.PersistentFlags().String("signing-key-id", "", "Key ID for request signatures (default: \"default\") (env: SIGNING_KEY_ID)")
+	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) (env: LEDGERCTL_SIGNING_KEY)")
+	rootCmd.PersistentFlags().String("signing-key-id", "", "Key ID for request signatures (default: \"default\") (env: LEDGERCTL_SIGNING_KEY_ID)")
 
 	// Add persistent flag for response signature verification.
-	rootCmd.PersistentFlags().String("response-verify-key", "", "Path to Ed25519 seed file for verifying server response signatures (env: RESPONSE_VERIFY_KEY)")
+	rootCmd.PersistentFlags().String("response-verify-key", "", "Path to Ed25519 seed file for verifying server response signatures (env: LEDGERCTL_RESPONSE_VERIFY_KEY)")
 
 	// Add persistent flag for read consistency level.
-	rootCmd.PersistentFlags().String("consistency", "", "Read consistency level: stale, leader, or linearizable (default) (env: CONSISTENCY)")
+	rootCmd.PersistentFlags().String("consistency", "", "Read consistency level: stale, leader, or linearizable (default) (env: LEDGERCTL_CONSISTENCY)")
 
 	// Add persistent flag for bearer token authentication.
-	rootCmd.PersistentFlags().String("auth-token", "", "Bearer token for authentication (JWT string or @path-to-file) (env: AUTH_TOKEN)")
+	rootCmd.PersistentFlags().String("auth-token", "", "Bearer token for authentication (JWT string or @path-to-file) (env: LEDGERCTL_AUTH_TOKEN)")
 
 	// Add persistent flag for an out-of-band sink of the --json result.
 	// Generic on purpose: a CI wrapper, automation script, or the
 	// ledger-operator (which points it at /dev/termination-log so the
 	// kubelet captures the result on pod.status) can all opt in.
-	rootCmd.PersistentFlags().String("result-file", "", "Also write the --json result to this file path (env: RESULT_FILE)")
+	rootCmd.PersistentFlags().String("result-file", "", "Also write the --json result to this file path (env: LEDGERCTL_RESULT_FILE)")
 
 	// Add subcommands.
 	rootCmd.AddCommand(ledgers.NewCommand())
@@ -219,6 +220,82 @@ func resolveFlag(cmd *cobra.Command, flagName, envVar, profileValue string) {
 	if profileValue != "" {
 		_ = cmd.Flags().Set(flagName, profileValue)
 	}
+}
+
+// ledgerctlOwnedFlagNames are the profile/connection/security flags ledgerctl
+// resolves exclusively through the LEDGERCTL_ prefix (root PersistentPreRunE for
+// inherited flags, ResolveTokenSource for the token). They must never be bound to
+// bare go-libs env names anywhere in the tree — including the subcommands that
+// redeclare them locally (profile create, auth generate-token) — or a stray
+// PROFILE/SERVER/SIGNING_KEY/INSECURE/… silently overrides the prefixed lookup.
+//
+// profile is included even though cobra's lazy persistent-flag merge means a
+// subcommand flag set never exposes the inherited --profile at bind time (so
+// bare PROFILE is not reachable today): membership makes the documented
+// "only LEDGERCTL_PROFILE" contract true by construction rather than by an
+// accident of merge ordering, and it stays correct if a subcommand ever declares
+// a local --profile. EN-1295.
+var ledgerctlOwnedFlagNames = map[string]struct{}{
+	"profile":             {},
+	"server":              {},
+	"insecure":            {},
+	"tls-ca-cert":         {},
+	"consistency":         {},
+	"auth-token":          {},
+	"signing-key":         {},
+	"signing-key-id":      {},
+	"response-verify-key": {},
+	"result-file":         {},
+}
+
+// bindSubcommandEnv binds bare-name environment variables (the go-libs
+// convention, e.g. KEY_ID -> --key-id) to every subcommand flag EXCEPT the
+// ledgerctl-owned connection/security flags. The root command itself is never
+// bound: its persistent flags are owned and resolved with the LEDGERCTL_ prefix
+// in PersistentPreRunE. main() and TestServerFlagEnvResolution share this
+// helper so the test exercises the production wiring rather than re-implementing it.
+func bindSubcommandEnv(rootCmd *cobra.Command) {
+	for _, sub := range rootCmd.Commands() {
+		bindEnvSkippingOwned(sub)
+	}
+}
+
+// bindEnvSkippingOwned mirrors service.BindEnvToCommand's recursion but skips
+// the ledgerctl-owned flag names so their bare env aliases are never honored.
+func bindEnvSkippingOwned(cmd *cobra.Command) {
+	bindFlagSetSkippingOwned(cmd.Flags())
+	bindFlagSetSkippingOwned(cmd.PersistentFlags())
+
+	for _, sub := range cmd.Commands() {
+		bindEnvSkippingOwned(sub)
+	}
+}
+
+// bindFlagSetSkippingOwned binds each non-owned flag in set to its bare
+// uppercased env name (matching service.BindEnvToFlagSet, including the
+// stringSlice space-to-comma handling used by flags such as --scopes).
+func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
+	set.VisitAll(func(flag *pflag.Flag) {
+		if _, owned := ledgerctlOwnedFlagNames[flag.Name]; owned {
+			return
+		}
+
+		envVar := strings.ReplaceAll(strings.ToUpper(flag.Name), "-", "_")
+
+		value := os.Getenv(envVar)
+		if value == "" {
+			return
+		}
+
+		value = strings.TrimSpace(value)
+		if flag.Value.Type() == "stringSlice" && strings.Contains(value, " ") {
+			value = strings.ReplaceAll(value, " ", ",")
+		}
+
+		// Ignore the error: an invalid env value leaves the cobra default in
+		// place, matching resolveFlag's best-effort env handling.
+		_ = set.Set(flag.Name, value)
+	})
 }
 
 // isProfileBootstrapCommand returns true for commands that should work even

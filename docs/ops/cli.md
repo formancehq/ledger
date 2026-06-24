@@ -4446,15 +4446,20 @@ Global flags can be set via environment variables:
 | Environment Variable | Flag |
 |---------------------|------|
 | `LEDGERCTL_PROFILE` | `--profile` |
-| `SERVER` | `--server` |
-| `INSECURE` | `--insecure` |
-| `TLS_CA_CERT` | `--tls-ca-cert` |
-| `CONSISTENCY` | `--consistency` |
+| `LEDGERCTL_SERVER` | `--server` |
+| `LEDGERCTL_INSECURE` | `--insecure` |
+| `LEDGERCTL_TLS_CA_CERT` | `--tls-ca-cert` |
+| `LEDGERCTL_CONSISTENCY` | `--consistency` |
+| `LEDGERCTL_AUTH_TOKEN` | `--auth-token` |
+| `LEDGERCTL_SIGNING_KEY` | `--signing-key` |
+| `LEDGERCTL_SIGNING_KEY_ID` | `--signing-key-id` |
+| `LEDGERCTL_RESPONSE_VERIFY_KEY` | `--response-verify-key` |
+| `LEDGERCTL_RESULT_FILE` | `--result-file` |
 
 ```bash
-export SERVER=ledger.example.com:443
-export INSECURE=false
-export TLS_CA_CERT=/path/to/ca.pem
+export LEDGERCTL_SERVER=ledger.example.com:443
+export LEDGERCTL_INSECURE=false
+export LEDGERCTL_TLS_CA_CERT=/path/to/ca.pem
 ledgerctl ledgers list
 ```
 

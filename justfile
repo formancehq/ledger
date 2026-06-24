@@ -441,7 +441,7 @@ _generate-demo tapes:
     fi
     for tape in {{tapes}}; do
         echo "==> Generating $tape..."
-        PATH="{{justfile_directory()}}/build:$PATH" SERVER="127.0.0.1:8888" INSECURE="true" vhs "misc/demo/${tape}.tape"
+        PATH="{{justfile_directory()}}/build:$PATH" LEDGERCTL_SERVER="127.0.0.1:8888" LEDGERCTL_INSECURE="true" vhs "misc/demo/${tape}.tape"
         echo "==> Done: misc/demo/${tape}.gif"
     done
     echo "All demos generated."
