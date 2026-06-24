@@ -3,9 +3,13 @@ package query
 import (
 	"slices"
 
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // AuditPredicate decides whether an audit entry matches a compiled filter.
@@ -239,7 +243,53 @@ func boolFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEn
 	}, nil
 }
 
-// orderTypePredicate is a temporary stub replaced in Task 3.
+// orderTypePredicate matches (match-any) when any order in the proposal has the
+// requested payload variant name (e.g. "apply", "save_numscript"). Order type
+// is not on the audit header, so the caller must supply the entry's AuditItems
+// (see CompileAuditPredicate's needsItems return).
 func orderTypePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error) {
-	return nil, domain.NewFilterCompilationError("order_type filtering not yet implemented")
+	sc := cond.GetStringCond()
+	if sc == nil {
+		return nil, domain.NewFilterCompilationError("audit field order_type requires a string condition")
+	}
+	want := sc.GetHardcoded()
+	return func(_ *auditpb.AuditEntry, items []*auditpb.AuditItem) bool {
+		for _, it := range items {
+			order := &raftcmdpb.Order{}
+			if err := proto.Unmarshal(it.GetSerializedOrder(), order); err != nil {
+				continue // unreadable order bytes cannot match a positive filter
+			}
+			if orderTypeName(order) == want {
+				return true
+			}
+		}
+		return false
+	}, nil
+}
+
+// orderTypeName returns the proto field name of the active order payload oneof
+// (e.g. "apply", "create_ledger", "register_signing_key"), or "" if unset.
+// Derived via protoreflect so the full variant set is sourced from the proto,
+// not a hand-maintained switch.
+func orderTypeName(order *raftcmdpb.Order) string {
+	switch t := order.GetType().(type) {
+	case *raftcmdpb.Order_LedgerScoped:
+		return activeOneofName(t.LedgerScoped.ProtoReflect(), "payload")
+	case *raftcmdpb.Order_SystemScoped:
+		return activeOneofName(t.SystemScoped.ProtoReflect(), "payload")
+	default:
+		return ""
+	}
+}
+
+func activeOneofName(m protoreflect.Message, oneof protoreflect.Name) string {
+	od := m.Descriptor().Oneofs().ByName(oneof)
+	if od == nil {
+		return ""
+	}
+	fd := m.WhichOneof(od)
+	if fd == nil {
+		return ""
+	}
+	return string(fd.Name())
 }

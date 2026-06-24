@@ -4,9 +4,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 func uintEq(v uint64) *commonpb.UintCondition {
@@ -135,4 +137,43 @@ func TestCompileAuditPredicate_Rejections(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+func itemWithOrder(t *testing.T, order *raftcmdpb.Order) *auditpb.AuditItem {
+	t.Helper()
+	b, err := proto.Marshal(order)
+	require.NoError(t, err)
+	return &auditpb.AuditItem{SerializedOrder: b}
+}
+
+func TestCompileAuditPredicate_OrderType(t *testing.T) {
+	t.Parallel()
+
+	applyOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+		LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger:  "main",
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{}},
+		},
+	}}
+	numscriptOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+		LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger:  "main",
+			Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{SaveNumscript: &raftcmdpb.SaveNumscriptOrder{}},
+		},
+	}}
+
+	entry := &auditpb.AuditEntry{Sequence: 1}
+	items := []*auditpb.AuditItem{itemWithOrder(t, applyOrder), itemWithOrder(t, numscriptOrder)}
+
+	pred, needsItems, err := CompileAuditPredicate(
+		auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, strEq("apply")))
+	require.NoError(t, err)
+	require.True(t, needsItems)
+	require.True(t, pred(entry, items))      // match-any: apply present
+	require.False(t, pred(entry, items[1:])) // only numscript -> no match
+
+	predMiss, _, err := CompileAuditPredicate(
+		auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, strEq("create_ledger")))
+	require.NoError(t, err)
+	require.False(t, predMiss(entry, items))
 }
