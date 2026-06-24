@@ -495,7 +495,15 @@ func (s *Store) DataDir() string {
 
 // Flush forces a flush of Pebble's memtables to SSTs on disk.
 func (s *Store) Flush() error {
-	return s.getDB().Flush()
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return ErrStoreClosed
+	}
+
+	return db.Flush()
 }
 
 // SyncWAL forces an fsync of Pebble's WAL. After this call returns, every
@@ -668,6 +676,11 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
 
+	db := s.getDB()
+	if db == nil {
+		return 0, ErrStoreClosed
+	}
+
 	snapshotStart := time.Now()
 
 	s.logger.Infof("Creating snapshot")
@@ -681,7 +694,7 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 
 	removeOldDone := time.Now()
 
-	if err := s.getDB().Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
@@ -774,8 +787,15 @@ func (s *Store) CreateTemporaryCheckpoint(name string) (string, error) {
 		return "", fmt.Errorf("removing existing temporary checkpoint: %w", err)
 	}
 
-	err = s.getDB().Checkpoint(path, pebble.WithFlushedWAL())
-	if err != nil {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return "", ErrStoreClosed
+	}
+
+	if err := db.Checkpoint(path, pebble.WithFlushedWAL()); err != nil {
 		return "", fmt.Errorf("creating temporary checkpoint %q: %w", name, err)
 	}
 
@@ -817,7 +837,15 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 		return "", fmt.Errorf("creating query checkpoint directory: %w", err)
 	}
 
-	if err := s.getDB().Checkpoint(dir, pebble.WithFlushedWAL()); err != nil {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return "", ErrStoreClosed
+	}
+
+	if err := db.Checkpoint(dir, pebble.WithFlushedWAL()); err != nil {
 		return "", fmt.Errorf("creating query checkpoint: %w", err)
 	}
 
@@ -1725,5 +1753,13 @@ func fsyncDir(dir string) error {
 // This is a thin wrapper around pebble.DB.Checkpoint used for testing
 // and backup operations that need a standalone copy of the database.
 func (s *Store) Checkpoint(destDir string) error {
-	return s.getDB().Checkpoint(destDir, pebble.WithFlushedWAL())
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return ErrStoreClosed
+	}
+
+	return db.Checkpoint(destDir, pebble.WithFlushedWAL())
 }

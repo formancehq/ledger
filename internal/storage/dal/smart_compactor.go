@@ -2,10 +2,13 @@ package dal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -92,15 +95,43 @@ func (c *SmartCompactor) Stop() {
 	c.compactWg.Wait()
 }
 
+// compactRange compacts the single key range [start, end) under dbMu.RLock,
+// returning ErrStoreClosed if the DB has been closed or swapped by a restore.
+// Holding the lock for one Compact call bounds a concurrent Close/RestoreCheckpoint
+// wait to a single prefix compaction, matching SmartCompactor.Stop's documented bound.
+func (s *Store) compactRange(start, end byte) error {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return ErrStoreClosed
+	}
+
+	return db.Compact(context.Background(), []byte{start}, []byte{end}, false)
+}
+
+// metricsIfOpen returns Pebble metrics under dbMu.RLock, or (nil, false) if the
+// DB has been closed. Used for best-effort compaction logging.
+func (s *Store) metricsIfOpen() (*pebble.Metrics, bool) {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return nil, false
+	}
+
+	return db.Metrics(), true
+}
+
 // CompactAll runs a synchronous prefix-by-prefix compaction of the entire
 // Pebble keyspace. It reuses the same prefix list as the background
 // SmartCompactor but blocks until all prefixes are compacted.
-// Returns the first error encountered.
+// Returns the first error encountered (including ErrStoreClosed if the store closes).
 func (s *Store) CompactAll() error {
-	db := s.getDB()
 	for _, p := range allCompactPrefixes {
-		err := db.Compact(context.Background(), []byte{p.start}, []byte{p.end}, false)
-		if err != nil {
+		if err := s.compactRange(p.start, p.end); err != nil {
 			return fmt.Errorf("compacting prefix %s: %w", p.name, err)
 		}
 	}
@@ -119,8 +150,15 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 		return
 	}
 
-	db := c.store.getDB()
-	m := db.Metrics()
+	m, ok := c.store.metricsIfOpen()
+	if !ok {
+		c.compacting.Store(false)
+		c.logger.WithFields(map[string]any{
+			"reason": reason,
+		}).Infof("Skipping compaction (store closed)")
+
+		return
+	}
 
 	c.logger.WithFields(map[string]any{
 		"reason":      reason,
@@ -130,49 +168,65 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 	}).Infof("Starting prefix-by-prefix compaction")
 
 	c.compactWg.Go(func() {
-		defer c.compacting.Store(false)
+		c.runCompaction(reason, prefixes)
+	})
+}
 
-		overallStart := time.Now()
+// runCompaction compacts each prefix sequentially through the guarded
+// compactRange helper. It is the body of the background compaction goroutine,
+// extracted so it can be exercised synchronously in tests. The caller must have
+// set the compacting flag; runCompaction resets it on return.
+func (c *SmartCompactor) runCompaction(reason string, prefixes []compactPrefix) {
+	defer c.compacting.Store(false)
 
-		for _, p := range prefixes {
-			// Check for shutdown between prefix iterations so we abort early
-			// rather than starting another potentially long db.Compact call.
-			select {
-			case <-c.stopCh:
+	overallStart := time.Now()
+
+	for _, p := range prefixes {
+		// Check for shutdown between prefix iterations so we abort early
+		// rather than starting another potentially long db.Compact call.
+		select {
+		case <-c.stopCh:
+			c.logger.WithFields(map[string]any{
+				"reason": reason,
+			}).Infof("Compaction aborted due to shutdown")
+
+			return
+		default:
+		}
+
+		prefixStart := time.Now()
+
+		if err := c.store.compactRange(p.start, p.end); err != nil {
+			if errors.Is(err, ErrStoreClosed) {
 				c.logger.WithFields(map[string]any{
 					"reason": reason,
-				}).Infof("Compaction aborted due to shutdown")
+				}).Infof("Compaction aborted (store closed)")
 
 				return
-			default:
-			}
-
-			prefixStart := time.Now()
-
-			err := db.Compact(context.Background(), []byte{p.start}, []byte{p.end}, false)
-			if err != nil {
-				c.logger.WithFields(map[string]any{
-					"reason": reason,
-					"prefix": p.name,
-					"error":  err,
-				}).Infof("Prefix compaction failed (non-fatal)")
-
-				continue
 			}
 
 			c.logger.WithFields(map[string]any{
-				"reason":   reason,
-				"prefix":   p.name,
-				"duration": time.Since(prefixStart).String(),
-			}).Infof("Prefix compaction complete")
+				"reason": reason,
+				"prefix": p.name,
+				"error":  err,
+			}).Infof("Prefix compaction failed (non-fatal)")
+
+			continue
 		}
 
-		m2 := db.Metrics()
+		c.logger.WithFields(map[string]any{
+			"reason":   reason,
+			"prefix":   p.name,
+			"duration": time.Since(prefixStart).String(),
+		}).Infof("Prefix compaction complete")
+	}
+
+	if m2, ok := c.store.metricsIfOpen(); ok {
 		c.logger.WithFields(map[string]any{
 			"reason":      reason,
 			"duration":    time.Since(overallStart).String(),
 			"l0FileCount": m2.Levels[0].TablesCount,
 			"l0Size":      m2.Levels[0].TablesSize,
 		}).Infof("All prefix compactions complete")
-	})
+	}
 }

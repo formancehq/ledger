@@ -7,7 +7,15 @@ import (
 // GetMetrics returns the current metrics from the Pebble database as proto message.
 // Implements store.MetricsProvider interface.
 func (s *Store) GetMetrics() any {
-	m := s.getDB().Metrics()
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return nil
+	}
+
+	m := db.Metrics()
 
 	result := &servicepb.PebbleMetrics{
 		BlockCache: &servicepb.BlockCacheMetrics{
