@@ -1,6 +1,7 @@
 package cursor
 
 import (
+	"errors"
 	"io"
 	"testing"
 
@@ -171,4 +172,37 @@ func TestLimitedCursor_Close(t *testing.T) {
 	inner := NewSliceCursor([]int{1, 2, 3})
 	cursor := NewLimitedCursor(inner, 2)
 	require.NoError(t, cursor.Close())
+}
+
+func TestNewFilteredCursorE_PropagatesError(t *testing.T) {
+	t.Parallel()
+	sentinel := errors.New("boom")
+	inner := NewSliceCursor([]int{1, 2, 3})
+	c := NewFilteredCursorE(inner, func(v int) (bool, error) {
+		if v == 2 {
+			return false, sentinel
+		}
+		return true, nil
+	})
+	got, err := c.Next()
+	require.NoError(t, err)
+	require.Equal(t, 1, got)
+
+	_, err = c.Next()
+	require.ErrorIs(t, err, sentinel)
+}
+
+func TestNewFilteredCursorE_Filters(t *testing.T) {
+	t.Parallel()
+	c := NewFilteredCursorE(NewSliceCursor([]int{1, 2, 3, 4}), func(v int) (bool, error) {
+		return v%2 == 0, nil
+	})
+	got, err := c.Next()
+	require.NoError(t, err)
+	require.Equal(t, 2, got)
+	got, err = c.Next()
+	require.NoError(t, err)
+	require.Equal(t, 4, got)
+	_, err = c.Next()
+	require.ErrorIs(t, err, io.EOF)
 }

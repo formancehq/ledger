@@ -77,6 +77,41 @@ func NewFilteredCursor[T any](inner Cursor[T], predicate func(T) bool) Cursor[T]
 	return &FilteredCursor[T]{inner: inner, predicate: predicate}
 }
 
+// FilteredCursorE wraps a cursor and filters items based on a predicate that may
+// return an error. A predicate error aborts iteration and is returned from Next.
+type FilteredCursorE[T any] struct {
+	inner     Cursor[T]
+	predicate func(T) (bool, error)
+}
+
+func (c *FilteredCursorE[T]) Next() (T, error) {
+	for {
+		item, err := c.inner.Next()
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		ok, perr := c.predicate(item)
+		if perr != nil {
+			var zero T
+			return zero, perr
+		}
+		if ok {
+			return item, nil
+		}
+	}
+}
+
+func (c *FilteredCursorE[T]) Close() error { return c.inner.Close() }
+
+var _ Cursor[any] = (*FilteredCursorE[any])(nil)
+
+// NewFilteredCursorE creates a filtering cursor whose predicate may fail; the
+// failure is surfaced from Next rather than silently dropping the item.
+func NewFilteredCursorE[T any](inner Cursor[T], predicate func(T) (bool, error)) Cursor[T] {
+	return &FilteredCursorE[T]{inner: inner, predicate: predicate}
+}
+
 // LimitedCursor wraps a cursor and limits the number of items returned.
 type LimitedCursor[T any] struct {
 	inner    Cursor[T]
