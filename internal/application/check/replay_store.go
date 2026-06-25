@@ -22,6 +22,7 @@ const (
 	replayPrefixVolume      = 'V'
 	replayPrefixMetadata    = 'M'
 	replayPrefixTransaction = 'T'
+	replayPrefixAccount     = 'A'
 )
 
 // Metadata value encoding in the replay store:
@@ -203,6 +204,15 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)
 
 	return s.db.Set(key, []byte{metaFlagDeleted}, pebble.NoSync)
+}
+
+// RecordAccount marks that an account marker is expected for canonicalKey
+// (EN-1276). Presence is the signal — the value is unused — so repeated calls
+// are naturally idempotent.
+func (s *replayStore) RecordAccount(canonicalKey []byte) error {
+	key := replayKey(replayPrefixAccount, canonicalKey)
+
+	return s.db.Set(key, []byte{1}, pebble.NoSync)
 }
 
 // CreateTransaction records a transaction creation op via merge (no read).

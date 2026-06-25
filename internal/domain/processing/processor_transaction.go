@@ -6,6 +6,7 @@ import (
 	"maps"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -107,8 +108,12 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		return nil, err
 	}
 
+	// Compile account types once: reused for posting validation and for
+	// default-metadata application on newly-created accounts below.
+	compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info)
+
 	// Validate postings against account types.
-	if compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info); len(compiled) > 0 {
+	if len(compiled) > 0 {
 		if typeErr := validatePostingsAgainstAccountTypes(result.Postings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 			return nil, typeErr
 		}
@@ -159,6 +164,15 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			// Order keys take precedence: merge order entries into existing.
 			maps.Copy(existing.GetValues(), mm.GetValues())
 		}
+	}
+
+	// Apply account-type default metadata to accounts created for the first
+	// time by this transaction (EN-1276). Runs after the explicit
+	// script/order metadata is merged so explicit keys win; merges into
+	// accountMetadata so defaults ride the same PutAccountMetadata + log path.
+	accountMetadata, err = applyDefaultMetadataToNewAccounts(s, ledger, info, result.Postings, compiled, accountMetadata)
+	if err != nil {
+		return nil, err
 	}
 
 	// Stored values are immutable; the FSM does not coerce on write and no
@@ -217,6 +231,128 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			},
 		},
 	}, nil
+}
+
+// ledgerHasAccountTypeDefaults reports whether any account type on the ledger
+// declares default_metadata. Derived from the audit-built LedgerInfo, so it is
+// deterministic across nodes and replay with no stored state — the apply-path
+// gate for EN-1276 default-metadata application.
+func ledgerHasAccountTypeDefaults(info *commonpb.LedgerInfo) bool {
+	for _, at := range info.GetAccountTypes() {
+		if len(at.GetDefaultMetadata()) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// applyDefaultMetadataToNewAccounts records an existence marker for each
+// non-system account this transaction touches for the FIRST TIME EVER (any
+// asset) and merges its matching account type's default_metadata into
+// accountMetadata for keys not already set explicitly. It is a no-op unless the
+// ledger has activated the feature (AccountDefaultsStatus == READY), so ledgers
+// that declare no default_metadata — and ledgers still seeding — pay nothing.
+//
+// Newness is authoritative here at apply: GetAccount returns ErrNotFound only
+// when the account has never been seen. The PutAccount marker is written to the
+// WriteSet so a later order in the same batch (and the next transaction) sees
+// the account as existing — an account first seen in this batch is created
+// once. A non-ErrNotFound error (e.g. a coverage miss from a stale plan that
+// failed to declare the key) is surfaced loudly rather than silently skipped.
+//
+// Determinism: the set of accounts and the set of default keys written are
+// independent of map iteration order, so replay is identical across nodes.
+func applyDefaultMetadataToNewAccounts(
+	s Scope,
+	ledgerName string,
+	info *commonpb.LedgerInfo,
+	postings []*commonpb.Posting,
+	compiled []accounttype.CompiledType,
+	accountMetadata map[string]*commonpb.MetadataMap,
+) (map[string]*commonpb.MetadataMap, domain.Describable) {
+	// Apply-path gate (behaviour-first): derived deterministically from the
+	// audit-built LedgerInfo, so it survives replay/recovery without any stored
+	// status. Correct for newly-created ledgers (every account they ever see is
+	// genuinely new). The stored AccountDefaultsStatus + one-time seeding — which
+	// also lets default_metadata be added to a ledger that already has accounts
+	// without backfilling them — replaces this derived gate in a later phase.
+	if !ledgerHasAccountTypeDefaults(info) {
+		return accountMetadata, nil
+	}
+
+	createdByLog := s.GetNextSequenceID()
+	seen := make(map[string]struct{}, len(postings)*2)
+
+	for _, posting := range postings {
+		for _, account := range [2]string{posting.GetSource(), posting.GetDestination()} {
+			// System accounts (world) are never assigned default metadata.
+			if account == "world" {
+				continue
+			}
+
+			if _, dup := seen[account]; dup {
+				continue
+			}
+
+			seen[account] = struct{}{}
+
+			key := domain.AccountKey{LedgerName: ledgerName, Account: account}
+
+			existing, err := s.GetAccount(key)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return accountMetadata, &domain.ErrStorageOperation{Operation: "loading account state", Cause: err}
+			}
+
+			if existing != nil {
+				// Account already created before this transaction — not new.
+				continue
+			}
+
+			// First time this account is ever touched: record the marker so it
+			// is recognised as existing from now on.
+			s.PutAccount(key, &commonpb.AccountState{CreatedByLog: createdByLog})
+
+			matched := accounttype.FindMatchingType(account, compiled)
+			if matched == nil {
+				continue
+			}
+
+			defaults := matched.GetDefaultMetadata()
+			if len(defaults) == 0 {
+				continue
+			}
+
+			mm := accountMetadata[account]
+
+			for defKey, defValue := range defaults {
+				// Explicit script/order metadata for the same key always wins.
+				if mm != nil {
+					if _, set := mm.GetValues()[defKey]; set {
+						continue
+					}
+				}
+
+				if mm == nil {
+					mm = &commonpb.MetadataMap{Values: make(map[string]*commonpb.MetadataValue)}
+
+					if accountMetadata == nil {
+						accountMetadata = make(map[string]*commonpb.MetadataMap)
+					}
+
+					accountMetadata[account] = mm
+				}
+
+				if mm.Values == nil {
+					mm.Values = make(map[string]*commonpb.MetadataValue)
+				}
+
+				mm.Values[defKey] = defValue
+			}
+		}
+	}
+
+	return accountMetadata, nil
 }
 
 // validatePostings checks that all account addresses and assets in the postings

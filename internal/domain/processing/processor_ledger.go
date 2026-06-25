@@ -29,6 +29,11 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
 			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 		}
+
+		if err := validateDefaultMetadata(at); err != nil {
+			return nil, err
+		}
+
 		at.Name = name
 	}
 

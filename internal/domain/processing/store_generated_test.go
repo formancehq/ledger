@@ -358,6 +358,45 @@ func (c *MockScopeDeleteQueryCheckpointCall) DoAndReturn(f func(uint64)) *MockSc
 	return c
 }
 
+// GetAccount mocks base method.
+func (m *MockScope) GetAccount(key domain.AccountKey) (*commonpb.AccountState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAccount", key)
+	ret0, _ := ret[0].(*commonpb.AccountState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAccount indicates an expected call of GetAccount.
+func (mr *MockScopeMockRecorder) GetAccount(key any) *MockScopeGetAccountCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccount", reflect.TypeOf((*MockScope)(nil).GetAccount), key)
+	return &MockScopeGetAccountCall{Call: call}
+}
+
+// MockScopeGetAccountCall wrap *gomock.Call
+type MockScopeGetAccountCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeGetAccountCall) Return(arg0 *commonpb.AccountState, arg1 error) *MockScopeGetAccountCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeGetAccountCall) Do(f func(domain.AccountKey) (*commonpb.AccountState, error)) *MockScopeGetAccountCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeGetAccountCall) DoAndReturn(f func(domain.AccountKey) (*commonpb.AccountState, error)) *MockScopeGetAccountCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetChapterByID mocks base method.
 func (m *MockScope) GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
 	m.ctrl.T.Helper()
@@ -1235,6 +1274,42 @@ func (c *MockScopePreparedQueriesCall) Do(f func() Accessor[domain.PreparedQuery
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopePreparedQueriesCall) DoAndReturn(f func() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]) *MockScopePreparedQueriesCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// PutAccount mocks base method.
+func (m *MockScope) PutAccount(key domain.AccountKey, value *commonpb.AccountState) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PutAccount", key, value)
+}
+
+// PutAccount indicates an expected call of PutAccount.
+func (mr *MockScopeMockRecorder) PutAccount(key, value any) *MockScopePutAccountCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutAccount", reflect.TypeOf((*MockScope)(nil).PutAccount), key, value)
+	return &MockScopePutAccountCall{Call: call}
+}
+
+// MockScopePutAccountCall wrap *gomock.Call
+type MockScopePutAccountCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopePutAccountCall) Return() *MockScopePutAccountCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopePutAccountCall) Do(f func(domain.AccountKey, *commonpb.AccountState)) *MockScopePutAccountCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopePutAccountCall) DoAndReturn(f func(domain.AccountKey, *commonpb.AccountState)) *MockScopePutAccountCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

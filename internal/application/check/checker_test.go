@@ -56,6 +56,7 @@ type testEngine struct {
 	metadata               map[string]*commonpb.MetadataValue
 	idempotency            map[string]*commonpb.IdempotencyKeyValue
 	references             map[string]*commonpb.TransactionReferenceValue
+	accounts               map[string]*commonpb.AccountState
 	transactionStates      map[string]*commonpb.TransactionState
 	currentOpenChapter     *commonpb.Chapter
 	closingChapters        []*commonpb.Chapter
@@ -95,6 +96,7 @@ func newTestEngine(t *testing.T) *testEngine {
 		metadata:            make(map[string]*commonpb.MetadataValue),
 		idempotency:         make(map[string]*commonpb.IdempotencyKeyValue),
 		references:          make(map[string]*commonpb.TransactionReferenceValue),
+		accounts:            make(map[string]*commonpb.AccountState),
 		transactionStates:   make(map[string]*commonpb.TransactionState),
 		nextChapterID:       1,
 		nextAuditSequenceID: 1,
@@ -524,6 +526,19 @@ func (s *scopeImpl) GetReverted(key domain.TransactionKey) (bool, error) {
 
 func (s *scopeImpl) PutReverted(key domain.TransactionKey, reverted bool) {
 	s.reverted[string(key.Bytes())] = reverted
+}
+
+func (s *scopeImpl) GetAccount(key domain.AccountKey) (*commonpb.AccountState, error) {
+	v, ok := s.engine.accounts[string(key.Bytes())]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	return v, nil
+}
+
+func (s *scopeImpl) PutAccount(key domain.AccountKey, value *commonpb.AccountState) {
+	s.engine.accounts[string(key.Bytes())] = value
 }
 
 func (s *scopeImpl) AddSigningKey(_ string, _ []byte, _ string)                {}

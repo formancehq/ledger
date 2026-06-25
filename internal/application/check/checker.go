@@ -537,6 +537,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	c.compareVolumes(ctx, snap, baselineDB, replay, excluded, callback)
 	c.compareMetadata(ctx, snap, baselineDB, replay, excluded, callback)
 	c.compareTransactions(ctx, snap, baselineDB, replay, callback)
+	c.compareAccounts(snap, baselineDB, replay, callback)
 	pendingCleanups, err := query.ReadPendingLedgerCleanups(snap)
 	if err != nil {
 		return fmt.Errorf("reading pending ledger cleanups for index registry verification: %w", err)
@@ -1245,6 +1246,123 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 			errorCount++
 		}
+	}
+
+	return errorCount
+}
+
+// compareAccounts verifies the per-account existence-marker projection
+// (SubAttrAccount, EN-1276). Markers are presence-only and never deleted, so
+// the check is one-directional: every live marker MUST correspond to an account
+// genuinely referenced by the audit. A marker with no referenced account is a
+// tampering / corruption signal (a forged marker would make the FSM treat an
+// existing account as new and re-apply default metadata), emitted as
+// CHECK_STORE_ERROR_TYPE_ACCOUNT_MISMATCH.
+//
+// The referenced-account set is the union of: replay-recorded touches (which
+// include ephemeral/transient accounts whose volume was later purged), live
+// volume accounts, and baseline (archived-chapter) volume accounts. The reverse
+// direction (every eligible account HAS a marker) is intentionally not checked:
+// the default-metadata values themselves are verified by compareMetadata, and a
+// missing marker can legitimately arise from activation timing.
+func (c *Checker) compareAccounts(reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+	emit := func(format string, args ...any) {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_MISMATCH,
+			fmt.Sprintf(format, args...), 0, "", "", ""))
+	}
+
+	referenced := make(map[string]struct{})
+
+	// Replay-recorded touches (prefix 'A').
+	replayIter, err := replay.newPrefixIter(replayPrefixAccount)
+	if err != nil {
+		emit("failed to create replay account iterator: %v", err)
+
+		return 1
+	}
+
+	for replayIter.First(); replayIter.Valid(); replayIter.Next() {
+		referenced[string(replayIter.Key()[1:])] = struct{}{} // strip prefix byte
+	}
+
+	if err := replayIter.Close(); err != nil {
+		emit("closing replay account iterator: %v", err)
+
+		return 1
+	}
+
+	// Accounts derived from live and baseline (archived) volume keys.
+	addVolumeAccounts := func(src dal.PebbleReader, label string) int {
+		iter, err := c.attrs.Volume.NewStreamingIter(src, nil)
+		if err != nil {
+			emit("failed to create %s volume iterator for accounts: %v", label, err)
+
+			return 1
+		}
+
+		for iter.Next() {
+			var vk domain.VolumeKey
+			if err := vk.Unmarshal(iter.Entry().CanonicalKey); err != nil {
+				continue
+			}
+
+			referenced[string(domain.AccountKey{LedgerName: vk.LedgerName, Account: vk.Account}.Bytes())] = struct{}{}
+		}
+
+		if err := iter.Close(); err != nil {
+			emit("closing %s volume iterator for accounts: %v", label, err)
+
+			return 1
+		}
+
+		return 0
+	}
+
+	if n := addVolumeAccounts(reader, "live"); n > 0 {
+		return n
+	}
+
+	if baselineDB != nil {
+		if n := addVolumeAccounts(baselineDB, "baseline"); n > 0 {
+			return n
+		}
+	}
+
+	// Every live marker must correspond to a referenced account.
+	errorCount := 0
+
+	liveIter, err := c.attrs.Account.NewStreamingIter(reader, nil)
+	if err != nil {
+		emit("failed to create live account iterator: %v", err)
+
+		return 1
+	}
+
+	for liveIter.Next() {
+		canonicalKey := liveIter.Entry().CanonicalKey
+
+		if _, ok := referenced[string(canonicalKey)]; ok {
+			continue
+		}
+
+		var ak domain.AccountKey
+		_ = ak.Unmarshal(canonicalKey)
+
+		emit("account marker for ledger=%q account=%q has no referenced account in the audit", ak.LedgerName, ak.Account)
+
+		errorCount++
+	}
+
+	if err := liveIter.Close(); err != nil {
+		emit("closing live account iterator: %v", err)
+
+		return errorCount + 1
+	}
+
+	if err := liveIter.Err(); err != nil {
+		emit("live account iterator error: %v", err)
+
+		return errorCount + 1
 	}
 
 	return errorCount

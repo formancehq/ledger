@@ -50,6 +50,38 @@ type AccountKey struct {
 	Account    string
 }
 
+// AppendBytes appends the canonical byte representation to dst.
+// Format: [ledgerName padded 64B][account]. The account is the only
+// variable-length field after the fixed-size ledger name, so no separator is
+// needed. This is the canonical key for the per-account existence-marker
+// attribute (SubAttrAccount).
+func (ak AccountKey) AppendBytes(dst []byte) []byte {
+	dst = appendLedgerName(dst, ak.LedgerName)
+	dst = append(dst, ak.Account...)
+
+	return dst
+}
+
+// Bytes returns a canonical byte representation of the account key.
+func (ak AccountKey) Bytes() []byte {
+	return ak.AppendBytes(nil)
+}
+
+// Unmarshal parses canonical bytes into the AccountKey.
+func (ak *AccountKey) Unmarshal(d []byte) error {
+	name, rest, err := readLedgerName(d)
+	if err != nil {
+		return fmt.Errorf("invalid account key bytes: %w", err)
+	}
+
+	ak.LedgerName = name
+	ak.Account = string(rest)
+
+	return nil
+}
+
+var _ CanonicalBytes = (*AccountKey)(nil)
+
 // AccountAssetKey identifies a single Pebble volume cell within a ledger by
 // its (account, asset) coordinates. It is the ledger-local subset of
 // VolumeKey (no LedgerName), used as map key in code that already scopes

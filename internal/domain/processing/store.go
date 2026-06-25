@@ -58,6 +58,15 @@ type Scope interface {
 	PreparedQueries() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
 	Indexes() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 
+	// Account existence-marker operations. GetAccount returns
+	// (nil, domain.ErrNotFound) when the account has never been seen before —
+	// that miss is the per-account "is this account new (first time ever, any
+	// asset)?" signal the default-metadata feature gates on. PutAccount records
+	// the marker so subsequent touches (and later orders in the same batch, via
+	// the WriteSet) see the account as existing.
+	GetAccount(key domain.AccountKey) (*commonpb.AccountState, error)
+	PutAccount(key domain.AccountKey, value *commonpb.AccountState)
+
 	// Transaction reversion status — bool-valued, no Reader, kept discrete.
 	GetReverted(key domain.TransactionKey) (bool, error)
 	PutReverted(key domain.TransactionKey, reverted bool)

@@ -789,6 +789,25 @@ func addVolumeNeed(p *plan.Needs, ledgerName string, account, asset string) {
 	}] = struct{}{}
 }
 
+// addAccountNeed declares the per-account existence marker (SubAttrAccount) so
+// the FSM apply path can read it to decide whether the account is new (EN-1276).
+// world is the only system account and never carries default metadata, so it is
+// skipped — declaring it would only add a cache read the apply path never makes.
+//
+// The marker is declared for every CreateTransaction account; the apply path
+// only consults it when the ledger has activated the feature (status READY), so
+// declaring on an inactive ledger is correct but not free. The propose-time gate
+// that skips this declaration for inactive ledgers rides with the activation-
+// status work (it needs the ledger's status, resolved from a.store at propose
+// time).
+func addAccountNeed(p *plan.Needs, ledgerName, account string) {
+	if account == "world" {
+		return
+	}
+
+	p.Accounts[domain.AccountKey{LedgerName: ledgerName, Account: account}] = struct{}{}
+}
+
 // addTransactionTargetNeeds preloads the TransactionState entry for a
 // TargetTransaction so the FSM can read it from cache.
 func addTransactionTargetNeeds(p *plan.Needs, ledgerName string, txID uint64) {
@@ -948,6 +967,8 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 				for _, posting := range applyData.CreateTransaction.GetPostings() {
 					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
 					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+					addAccountNeed(p, ledgerName, posting.GetSource())
+					addAccountNeed(p, ledgerName, posting.GetDestination())
 				}
 			}
 
@@ -1179,11 +1200,15 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			for key := range discovered.SourceVolumes {
 				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset)
 				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset)
+				addAccountNeed(p, key.LedgerName, key.Account)
+				addAccountNeed(orderNeeds, key.LedgerName, key.Account)
 			}
 
 			for key := range discovered.DestinationVolumes {
 				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset)
 				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset)
+				addAccountNeed(p, key.LedgerName, key.Account)
+				addAccountNeed(orderNeeds, key.LedgerName, key.Account)
 			}
 
 			for key := range discovered.WrittenMetadata {

@@ -440,6 +440,7 @@ type BloomUpdates struct {
 	PreparedQueries   []attributes.U128
 	LedgerMetadata    []attributes.U128
 	Indexes           []attributes.U128
+	Accounts          []attributes.U128
 }
 
 // Reset clears all slices while preserving their backing arrays.
@@ -456,6 +457,7 @@ func (u *BloomUpdates) Reset() {
 	u.PreparedQueries = u.PreparedQueries[:0]
 	u.LedgerMetadata = u.LedgerMetadata[:0]
 	u.Indexes = u.Indexes[:0]
+	u.Accounts = u.Accounts[:0]
 }
 
 // AddCanonicalKeys inserts pre-hashed U128 IDs into the corresponding bloom filters.

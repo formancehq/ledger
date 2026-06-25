@@ -22,4 +22,12 @@ type Writer interface {
 	SetRevertedBy(canonicalKey []byte, revertTxID uint64) error
 	SaveTxMetadata(canonicalKey []byte, metadata map[string]*commonpb.MetadataValue) error
 	DeleteTxMetadata(canonicalKey []byte, key string) error
+
+	// RecordAccount marks an account's per-account existence marker
+	// (SubAttrAccount, EN-1276). Called during replay for every non-system
+	// account a transaction touches while its ledger has default-bearing
+	// account types — mirroring the FSM apply path so the checker can verify
+	// the marker projection and the backup-rebuild can reconstruct it.
+	// Idempotent: repeated calls for the same key are a no-op past the first.
+	RecordAccount(canonicalKey []byte) error
 }

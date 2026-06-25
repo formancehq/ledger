@@ -39,12 +39,14 @@ func RebuildDelta(
 	batch := store.OpenWriteSession()
 
 	writer := &attributeReplayWriter{
-		store:          store,
-		batch:          batch,
-		volume:         attrs.Volume,
-		metadata:       attrs.Metadata,
-		tx:             attrs.Transaction,
-		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
+		store:           store,
+		batch:           batch,
+		volume:          attrs.Volume,
+		metadata:        attrs.Metadata,
+		tx:              attrs.Transaction,
+		account:         attrs.Account,
+		pendingVolumes:  make(map[string]*raftcmdpb.VolumePair),
+		pendingAccounts: make(map[string]struct{}),
 	}
 
 	sinkConfig := attrs.SinkConfig
@@ -439,12 +441,39 @@ func seedLedgerContext(
 // attributeReplayWriter implements replay.Writer by writing directly to
 // Pebble attributes via Attribute[V].Set/Get/Delete.
 type attributeReplayWriter struct {
-	store          *dal.Store
-	batch          *dal.WriteSession
-	volume         *attributes.Attribute[*raftcmdpb.VolumePair]
-	metadata       *attributes.Attribute[*commonpb.MetadataValue]
-	tx             *attributes.Attribute[*commonpb.TransactionState]
-	pendingVolumes map[string]*raftcmdpb.VolumePair
+	store           *dal.Store
+	batch           *dal.WriteSession
+	volume          *attributes.Attribute[*raftcmdpb.VolumePair]
+	metadata        *attributes.Attribute[*commonpb.MetadataValue]
+	tx              *attributes.Attribute[*commonpb.TransactionState]
+	account         *attributes.Attribute[*commonpb.AccountState]
+	pendingVolumes  map[string]*raftcmdpb.VolumePair
+	pendingAccounts map[string]struct{}
+}
+
+// RecordAccount writes the per-account existence marker (EN-1276) on first
+// occurrence, reconstructing the projection the FSM apply path persists. The
+// pendingAccounts set makes repeated touches within the rebuild idempotent;
+// markers already present from a prior batch are left untouched.
+func (w *attributeReplayWriter) RecordAccount(canonicalKey []byte) error {
+	if _, seen := w.pendingAccounts[string(canonicalKey)]; seen {
+		return nil
+	}
+
+	w.pendingAccounts[string(canonicalKey)] = struct{}{}
+
+	existing, err := w.account.Get(w.store, canonicalKey)
+	if err != nil {
+		return err
+	}
+
+	if existing != nil {
+		return nil
+	}
+
+	_, err = w.account.Set(w.batch, canonicalKey, &commonpb.AccountState{})
+
+	return err
 }
 
 func (w *attributeReplayWriter) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {

@@ -56,6 +56,16 @@ func ReplayLedgerLog(
 			return err
 		}
 
+		// EN-1276: record per-account existence markers for accounts this
+		// transaction touched, when the ledger has default-bearing account
+		// types — mirroring the FSM apply-path gate so the checker/rebuild
+		// reconstruct exactly the markers apply wrote.
+		if compiledTypesHaveDefaults(ledgerAccountTypes[ledger]) {
+			if err := recordTouchedAccounts(ledger, tx.GetPostings(), w); err != nil {
+				return err
+			}
+		}
+
 		if err := replayEphemeralPurge(ledger, tx.GetPostings(), w, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 			return err
 		}
@@ -304,6 +314,39 @@ func (t *ProposalBoundaryTracker) Accept(maxLogSequence uint64) (uint64, bool) {
 }
 
 // ApplyPostings applies postings to the writer as volume deltas.
+// compiledTypesHaveDefaults reports whether any compiled account type declares
+// default_metadata — the replay-side mirror of processing.ledgerHasAccountTypeDefaults.
+func compiledTypesHaveDefaults(types []accounttype.CompiledType) bool {
+	for i := range types {
+		if len(types[i].Original.GetDefaultMetadata()) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// recordTouchedAccounts records an existence marker for every non-system
+// account referenced by the postings. world is excluded (it never carries
+// default metadata, mirroring the apply path). RecordAccount is idempotent so
+// an account touched by several postings is recorded once.
+func recordTouchedAccounts(ledger string, postings []*commonpb.Posting, w Writer) error {
+	for _, posting := range postings {
+		for _, account := range [2]string{posting.GetSource(), posting.GetDestination()} {
+			if account == "world" {
+				continue
+			}
+
+			key := domain.AccountKey{LedgerName: ledger, Account: account}
+			if err := w.RecordAccount(key.Bytes()); err != nil {
+				return fmt.Errorf("recording account marker: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func ApplyPostings(
 	ledger string,
 	postings []*commonpb.Posting,

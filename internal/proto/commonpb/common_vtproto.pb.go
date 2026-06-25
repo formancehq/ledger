@@ -2377,6 +2377,7 @@ func (m *LedgerInfo) CloneVT() *LedgerInfo {
 	r.MirrorSyncProgress = m.MirrorSyncProgress.CloneVT()
 	r.DefaultEnforcementMode = m.DefaultEnforcementMode
 	r.Id = m.Id
+	r.AccountDefaultsStatus = m.AccountDefaultsStatus
 	if rhs := m.AccountTypes; rhs != nil {
 		tmpContainer := make(map[string]*AccountType, len(rhs))
 		for k, v := range rhs {
@@ -2538,6 +2539,23 @@ func (m *TransactionReferenceValue) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *AccountState) CloneVT() *AccountState {
+	if m == nil {
+		return (*AccountState)(nil)
+	}
+	r := new(AccountState)
+	r.CreatedByLog = m.CreatedByLog
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AccountState) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *NumscriptVersionValue) CloneVT() *NumscriptVersionValue {
 	if m == nil {
 		return (*NumscriptVersionValue)(nil)
@@ -2674,6 +2692,13 @@ func (m *AccountType) CloneVT() *AccountType {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.SegmentTypes = tmpContainer
+	}
+	if rhs := m.DefaultMetadata; rhs != nil {
+		tmpContainer := make(map[string]*MetadataValue, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.DefaultMetadata = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -7633,6 +7658,9 @@ func (this *LedgerInfo) EqualVT(that *LedgerInfo) bool {
 	if this.Id != that.Id {
 		return false
 	}
+	if this.AccountDefaultsStatus != that.AccountDefaultsStatus {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -7831,6 +7859,25 @@ func (this *TransactionReferenceValue) EqualVT(that *TransactionReferenceValue) 
 
 func (this *TransactionReferenceValue) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*TransactionReferenceValue)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AccountState) EqualVT(that *AccountState) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.CreatedByLog != that.CreatedByLog {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *AccountState) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountState)
 	if !ok {
 		return false
 	}
@@ -8052,6 +8099,26 @@ func (this *AccountType) EqualVT(that *AccountType) bool {
 			}
 			if q == nil {
 				q = &SegmentType{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
+	if len(this.DefaultMetadata) != len(that.DefaultMetadata) {
+		return false
+	}
+	for i, vx := range this.DefaultMetadata {
+		vy, ok := that.DefaultMetadata[i]
+		if !ok {
+			return false
+		}
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &MetadataValue{}
+			}
+			if q == nil {
+				q = &MetadataValue{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -15660,6 +15727,11 @@ func (m *LedgerInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.AccountDefaultsStatus != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AccountDefaultsStatus))
+		i--
+		dAtA[i] = 0x70
+	}
 	if m.Id != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
 		i--
@@ -16146,6 +16218,45 @@ func (m *TransactionReferenceValue) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	return len(dAtA) - i, nil
 }
 
+func (m *AccountState) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountState) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.CreatedByLog != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CreatedByLog))
+		i--
+		dAtA[i] = 0x9
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *NumscriptVersionValue) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -16427,6 +16538,28 @@ func (m *AccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.DefaultMetadata) > 0 {
+		for k := range m.DefaultMetadata {
+			v := m.DefaultMetadata[k]
+			baseI := i
+			size, err := v.MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x2a
+		}
 	}
 	if len(m.SegmentTypes) > 0 {
 		for k := range m.SegmentTypes {
@@ -21433,6 +21566,9 @@ func (m *LedgerInfo) SizeVT() (n int) {
 	if m.Id != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Id))
 	}
+	if m.AccountDefaultsStatus != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.AccountDefaultsStatus))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -21583,6 +21719,19 @@ func (m *TransactionReferenceValue) SizeVT() (n int) {
 	return n
 }
 
+func (m *AccountState) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.CreatedByLog != 0 {
+		n += 9
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *NumscriptVersionValue) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -21705,6 +21854,19 @@ func (m *AccountType) SizeVT() (n int) {
 	}
 	if len(m.SegmentTypes) > 0 {
 		for k, v := range m.SegmentTypes {
+			_ = k
+			_ = v
+			l = 0
+			if v != nil {
+				l = v.SizeVT()
+			}
+			l += 1 + protohelpers.SizeOfVarint(uint64(l))
+			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + l
+			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
+		}
+	}
+	if len(m.DefaultMetadata) > 0 {
+		for k, v := range m.DefaultMetadata {
 			_ = k
 			_ = v
 			l = 0
@@ -37683,6 +37845,25 @@ func (m *LedgerInfo) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 14:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountDefaultsStatus", wireType)
+			}
+			m.AccountDefaultsStatus = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.AccountDefaultsStatus |= AccountDefaultsStatus(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -38745,6 +38926,67 @@ func (m *TransactionReferenceValue) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *AccountState) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountState: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountState: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreatedByLog", wireType)
+			}
+			m.CreatedByLog = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CreatedByLog = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *NumscriptVersionValue) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -39427,6 +39669,135 @@ func (m *AccountType) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.SegmentTypes[mapkey] = mapvalue
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DefaultMetadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.DefaultMetadata == nil {
+				m.DefaultMetadata = make(map[string]*MetadataValue)
+			}
+			var mapkey string
+			var mapvalue *MetadataValue
+			for iNdEx < postIndex {
+				entryPreIndex := iNdEx
+				var wire uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					wire |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				fieldNum := int32(wire >> 3)
+				if fieldNum == 1 {
+					var stringLenmapkey uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return protohelpers.ErrIntOverflow
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						stringLenmapkey |= uint64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					intStringLenmapkey := int(stringLenmapkey)
+					if intStringLenmapkey < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					postStringIndexmapkey := iNdEx + intStringLenmapkey
+					if postStringIndexmapkey < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					if postStringIndexmapkey > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapkey = string(dAtA[iNdEx:postStringIndexmapkey])
+					iNdEx = postStringIndexmapkey
+				} else if fieldNum == 2 {
+					var mapmsglen int
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return protohelpers.ErrIntOverflow
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						mapmsglen |= int(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					if mapmsglen < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					postmsgIndex := iNdEx + mapmsglen
+					if postmsgIndex < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					if postmsgIndex > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapvalue = &MetadataValue{}
+					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
+						return err
+					}
+					iNdEx = postmsgIndex
+				} else {
+					iNdEx = entryPreIndex
+					skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+					if err != nil {
+						return err
+					}
+					if (skippy < 0) || (iNdEx+skippy) < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					if (iNdEx + skippy) > postIndex {
+						return io.ErrUnexpectedEOF
+					}
+					iNdEx += skippy
+				}
+			}
+			m.DefaultMetadata[mapkey] = mapvalue
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

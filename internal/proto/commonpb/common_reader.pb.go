@@ -7126,6 +7126,7 @@ type LedgerInfoReader interface {
 	GetDefaultEnforcementMode() ChartEnforcementMode
 	GetMetadata() LedgerInfo_MetadataMapReader
 	GetId() uint32
+	GetAccountDefaultsStatus() AccountDefaultsStatus
 	Mutate() *LedgerInfo
 }
 
@@ -7193,6 +7194,10 @@ func (r *ledgerInfoReadonly) GetMetadata() LedgerInfo_MetadataMapReader {
 
 func (r *ledgerInfoReadonly) GetId() uint32 {
 	return r.v.GetId()
+}
+
+func (r *ledgerInfoReadonly) GetAccountDefaultsStatus() AccountDefaultsStatus {
+	return r.v.GetAccountDefaultsStatus()
 }
 
 func (r *ledgerInfoReadonly) Mutate() *LedgerInfo {
@@ -7873,6 +7878,73 @@ func NewTransactionReferenceValueListReader(s []*TransactionReferenceValue) Tran
 	return transactionReferenceValueListReadonly(s)
 }
 
+// AccountStateReader provides read-only access to AccountState.
+// Call Mutate() to obtain a mutable clone.
+type AccountStateReader interface {
+	GetCreatedByLog() uint64
+	Mutate() *AccountState
+}
+
+type accountStateReadonly struct{ v *AccountState }
+
+func (r *accountStateReadonly) GetCreatedByLog() uint64 {
+	return r.v.GetCreatedByLog()
+}
+
+func (r *accountStateReadonly) Mutate() *AccountState {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountState.
+func (m *AccountState) AsReader() AccountStateReader {
+	if m == nil {
+		return nil
+	}
+	return &accountStateReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this AccountState.
+func (m *AccountState) Mutate() *AccountState {
+	return m.CloneVT()
+}
+
+// AccountStateListReader provides read-only iteration over []*AccountState.
+type AccountStateListReader interface {
+	Len() int
+	Get(i int) AccountStateReader
+	Range(yield func(int, AccountStateReader) bool)
+}
+
+type accountStateListReadonly []*AccountState
+
+func (l accountStateListReadonly) Len() int { return len(l) }
+
+func (l accountStateListReadonly) Get(i int) AccountStateReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountStateListReadonly) Range(yield func(int, AccountStateReader) bool) {
+	for i, v := range l {
+		var r AccountStateReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountStateListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountStateListReader(s []*AccountState) AccountStateListReader {
+	return accountStateListReadonly(s)
+}
+
 // NumscriptVersionValueReader provides read-only access to NumscriptVersionValue.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptVersionValueReader interface {
@@ -8200,6 +8272,7 @@ type AccountTypeReader interface {
 	GetPattern() string
 	GetPersistence() AccountTypePersistence
 	GetSegmentTypes() AccountType_SegmentTypesMapReader
+	GetDefaultMetadata() AccountType_DefaultMetadataMapReader
 	Mutate() *AccountType
 }
 
@@ -8219,6 +8292,10 @@ func (r *accountTypeReadonly) GetPersistence() AccountTypePersistence {
 
 func (r *accountTypeReadonly) GetSegmentTypes() AccountType_SegmentTypesMapReader {
 	return accountType_segmentTypesMapReadonly(r.v.GetSegmentTypes())
+}
+
+func (r *accountTypeReadonly) GetDefaultMetadata() AccountType_DefaultMetadataMapReader {
+	return accountType_defaultMetadataMapReadonly(r.v.GetDefaultMetadata())
 }
 
 func (r *accountTypeReadonly) Mutate() *AccountType {
@@ -8297,6 +8374,37 @@ func (m accountType_segmentTypesMapReadonly) Get(k string) (SegmentTypeReader, b
 func (m accountType_segmentTypesMapReadonly) Range(yield func(string, SegmentTypeReader) bool) {
 	for k, v := range m {
 		var r SegmentTypeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// AccountType_DefaultMetadataMapReader provides read-only access to AccountType.DefaultMetadata.
+type AccountType_DefaultMetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type accountType_defaultMetadataMapReadonly map[string]*MetadataValue
+
+func (m accountType_defaultMetadataMapReadonly) Len() int { return len(m) }
+
+func (m accountType_defaultMetadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m accountType_defaultMetadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
 		if v != nil {
 			r = v.AsReader()
 		}

@@ -171,6 +171,7 @@ type Loaders struct {
 	PreparedQueries   *AttributeLoader[*commonpb.PreparedQuery]
 	LedgerMetadata    *AttributeLoader[*commonpb.MetadataValue]
 	Indexes           *AttributeLoader[*commonpb.Index]
+	Accounts          *AttributeLoader[*commonpb.AccountState]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
@@ -188,6 +189,7 @@ func NewLoaders() *Loaders {
 		PreparedQueries:   NewAttributeLoader[*commonpb.PreparedQuery](),
 		LedgerMetadata:    NewAttributeLoader[*commonpb.MetadataValue](),
 		Indexes:           NewAttributeLoader[*commonpb.Index](),
+		Accounts:          NewAttributeLoader[*commonpb.AccountState](),
 	}
 }
 

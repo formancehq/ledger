@@ -403,6 +403,8 @@ func kindLabel(kind byte) string {
 		return "ledger_metadata"
 	case dal.SubAttrIndex:
 		return "indexes"
+	case dal.SubAttrAccount:
+		return "accounts"
 	default:
 		return fmt.Sprintf("unknown(0x%02x)", kind)
 	}
@@ -425,6 +427,7 @@ var cacheAttrKinds = [...]byte{
 	dal.SubAttrPreparedQuery,
 	dal.SubAttrLedgerMetadata,
 	dal.SubAttrIndex,
+	dal.SubAttrAccount,
 }
 
 // coverageSlots holds one slice of declared U128 ids per gated
@@ -496,6 +499,14 @@ func (g *gatedScope) LedgerMetadata() processing.Accessor[domain.LedgerMetadataK
 
 func (g *gatedScope) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
 	return g.gatedTransactionReferences
+}
+
+func (g *gatedScope) GetAccount(key domain.AccountKey) (*commonpb.AccountState, error) {
+	if err := g.CheckCoverage(dal.SubAttrAccount, key.Bytes()); err != nil {
+		return nil, err
+	}
+
+	return g.WriteSet.GetAccount(key)
 }
 
 func (g *gatedScope) TransactionStates() processing.Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {

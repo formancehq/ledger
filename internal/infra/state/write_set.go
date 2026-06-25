@@ -298,6 +298,11 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		return fmt.Errorf("failed to merge indexes: %w", err)
 	}
 
+	accountUpdates, accountDeletions, err := b.Derived.Accounts.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge accounts: %w", err)
+	}
+
 	// === Phase 2: cross-zone in-memory side effects (no Pebble writes) ========
 
 	// Trace volume partitions for sentinel diagnostics.
@@ -531,6 +536,11 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// SubAttrIndex (0x0C) — bucket-scoped index registry (per-ledger or bucket).
 	if err := flushAttributeAndCache(b.attrs.Index, batch, genByte, dal.SubAttrIndex, indexUpdates, indexDeletions, &b.bloomUpdates.Indexes, "indexes"); err != nil {
+		return err
+	}
+
+	// SubAttrAccount (0x0D) — per-account existence markers (EN-1276).
+	if err := flushAttributeAndCache(b.attrs.Account, batch, genByte, dal.SubAttrAccount, accountUpdates, accountDeletions, &b.bloomUpdates.Accounts, "accounts"); err != nil {
 		return err
 	}
 
@@ -1181,6 +1191,14 @@ func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.Idempo
 func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	value.CreatedAt = b.Date.GetData() // HLC timestamp
 	b.Derived.Idempotency.Put(key.Key, value)
+}
+
+func (b *WriteSet) GetAccount(key domain.AccountKey) (*commonpb.AccountState, error) {
+	return b.Derived.Accounts.Get(key)
+}
+
+func (b *WriteSet) PutAccount(key domain.AccountKey, value *commonpb.AccountState) {
+	b.Derived.Accounts.Put(key, value)
 }
 
 func (b *WriteSet) AddSigningKey(keyID string, publicKey []byte, parentKeyID string) {

@@ -30,6 +30,10 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 		return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 	}
 
+	if err := validateDefaultMetadata(at); err != nil {
+		return nil, err
+	}
+
 	if info.AccountTypes == nil {
 		info.AccountTypes = make(map[string]*commonpb.AccountType)
 	}
@@ -65,6 +69,25 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 			},
 		},
 	}, nil
+}
+
+// validateDefaultMetadata checks an account type's default_metadata is
+// structurally sound: non-empty keys and non-nil values. Values are stored raw
+// and coerced to the declared type at read (immutable-values model, #503), so
+// there is no write-time schema coercion to mirror here — this rejects only the
+// malformed entries that could never resolve to a usable value.
+func validateDefaultMetadata(at *commonpb.AccountType) domain.Describable {
+	for key, value := range at.GetDefaultMetadata() {
+		if key == "" {
+			return &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: "default_metadata has an empty key"}
+		}
+
+		if value == nil {
+			return &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: "default_metadata key " + key + " has a nil value"}
+		}
+	}
+
+	return nil
 }
 
 // processRemoveAccountType removes an account type from a ledger.

@@ -349,9 +349,10 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 
 	// Each goroutine writes to a distinct results[slot]. Bump this constant
 	// whenever a new launch() call is added: with the Indexes attribute
-	// (PR #453) the count went from 12 to 13, and `results[12]` would
-	// otherwise panic with an out-of-range index when every category fires.
-	const maxTypes = 13
+	// (PR #453) the count went from 12 to 13, and the Account existence
+	// attribute (EN-1276) took it to 14. `results[13]` would otherwise panic
+	// with an out-of-range index when every category fires.
+	const maxTypes = 14
 	results := make([]buildResult, maxTypes)
 
 	var wg sync.WaitGroup
@@ -459,6 +460,27 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 			)
 			results[i].resolve = r
 			results[i].loader = p.loaders.References
+		})
+	}
+
+	if len(needs.Accounts) > 0 {
+		launch(func(i int) {
+			var r *resolveResult
+			// A bloom-confirmed-absent (or Pebble-miss) account key is declared
+			// (so the FSM read is covered) but no zero value is injected — the
+			// universal resolveAttributePreload behaviour — so Scope.GetAccount
+			// returns ErrNotFound for a genuinely-new account; that miss IS the
+			// newness signal.
+			r, results[i].err = resolveAttributePreload(
+				needs.Accounts, nextIndex, boundary, snap.Epoch,
+				p.cache.Accounts, p.loaders.Accounts,
+				p.attrs.Account.Get, p.store,
+				dal.SubAttrAccount, nil,
+				p.bloomFilter(dal.SubAttrAccount),
+				p.logger, "accounts",
+			)
+			results[i].resolve = r
+			results[i].loader = p.loaders.Accounts
 		})
 	}
 

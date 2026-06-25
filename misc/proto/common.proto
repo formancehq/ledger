@@ -833,6 +833,7 @@ message LedgerInfo {
   ChartEnforcementMode default_enforcement_mode = 11; // Default enforcement for unmatched accounts
   map<string, MetadataValue> metadata = 12; // Populated at read time from separate attribute store
   uint32 id = 13;                           // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
+  AccountDefaultsStatus account_defaults_status = 14; // Activation state of account-type default metadata (see AccountDefaultsStatus)
 }
 
 // ============================================================================
@@ -967,6 +968,16 @@ message TransactionReferenceValue {
   fixed64 transaction_id = 1;
 }
 
+// AccountState records that an account has been seen at least once. Its mere
+// presence is the per-account existence marker the FSM uses to answer "is this
+// account new (first time ever, any asset)?" — a cache miss on this key means
+// the account has never been created before. created_by_log is informational
+// (the log sequence of the first transaction to touch the account) and lets the
+// checker tie the marker back to the audit chain.
+message AccountState {
+  fixed64 created_by_log = 1;
+}
+
 // NumscriptVersionValue stores the latest version pointer for a named numscript.
 message NumscriptVersionValue {
   string version = 1;
@@ -987,6 +998,16 @@ enum AccountTypePersistence {
   ACCOUNT_TYPE_NORMAL = 0;     // Default: fully persisted
   ACCOUNT_TYPE_EPHEMERAL = 1;  // Persisted, purged when zero balance after commit
   ACCOUNT_TYPE_TRANSIENT = 2;  // Never persisted, must be zero at end of batch
+}
+
+// AccountDefaultsStatus tracks per-ledger activation of account-type default
+// metadata. It gates the existence-marker machinery so ledgers that declare no
+// default_metadata pay zero hot-path cost, and it sequences the one-time
+// seeding of markers for pre-existing accounts so they are never backfilled.
+enum AccountDefaultsStatus {
+  ACCOUNT_DEFAULTS_NONE = 0;     // No account type declares default_metadata; feature off (zero cost)
+  ACCOUNT_DEFAULTS_SEEDING = 1;  // Seeding existence markers for pre-existing accounts; not yet enforcing
+  ACCOUNT_DEFAULTS_READY = 2;    // Enforcing defaults on first-touch of new accounts
 }
 
 // SegmentType defines the constraint for a variable segment in an account type pattern.
@@ -1010,6 +1031,7 @@ message AccountType {
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
   AccountTypePersistence persistence = 3;    // How volumes are stored (replaces bool ephemeral)
   map<string, SegmentType> segment_types = 4;  // variable_name -> type constraint
+  map<string, MetadataValue> default_metadata = 5;  // Applied to matching accounts the first time they are ever created
 }
 
 // AddedAccountTypeLog records the addition of an account type.
