@@ -1195,8 +1195,13 @@ func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.
 	b.Derived.Idempotency.Put(key.Key, value)
 }
 
-func (b *WriteSet) GetAccount(key domain.AccountKey) (*commonpb.AccountState, error) {
-	return b.Derived.Accounts.Get(key)
+func (b *WriteSet) GetAccount(key domain.AccountKey) (commonpb.AccountStateReader, error) {
+	v, err := b.Derived.Accounts.Get(key)
+	if err != nil || v == nil {
+		return nil, err
+	}
+
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutAccount(key domain.AccountKey, value *commonpb.AccountState) {

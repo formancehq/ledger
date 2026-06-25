@@ -64,7 +64,7 @@ type Scope interface {
 	// asset)?" signal the default-metadata feature gates on. PutAccount records
 	// the marker so subsequent touches (and later orders in the same batch, via
 	// the WriteSet) see the account as existing.
-	GetAccount(key domain.AccountKey) (*commonpb.AccountState, error)
+	GetAccount(key domain.AccountKey) (commonpb.AccountStateReader, error)
 	PutAccount(key domain.AccountKey, value *commonpb.AccountState)
 
 	// Transaction reversion status — bool-valued, no Reader, kept discrete.

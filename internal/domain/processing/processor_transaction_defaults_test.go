@@ -93,7 +93,7 @@ func commonTxMocks(mockStore *MockScope, info *commonpb.LedgerInfo) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(info, nil).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return(info.AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -268,7 +268,7 @@ func TestProcessCreateTransaction_ExistingAccountNotDefaulted(t *testing.T) {
 
 	// Account already exists: marker present. No PutAccount, no default metadata
 	// write must happen (gomock fails the test if either is called).
-	mockStore.EXPECT().GetAccount(acctKey).Return(&commonpb.AccountState{}, nil)
+	mockStore.EXPECT().GetAccount(acctKey).Return((&commonpb.AccountState{}).AsReader(), nil)
 
 	result, err := processor.ProcessOrder(requestToOrder(worldToAccountRequest("users:alice", nil)), mockStore)
 	require.NoError(t, err)
@@ -314,7 +314,7 @@ func TestProcessCreateTransaction_SameDestTwice_DedupSeen(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerWithDefaults(), nil).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerWithDefaults().AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -367,7 +367,7 @@ func TestProcessCreateTransaction_NonWorldSource_MarkerWritten(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerWithDefaults(), nil).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerWithDefaults().AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())

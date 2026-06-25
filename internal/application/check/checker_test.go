@@ -528,13 +528,13 @@ func (s *scopeImpl) PutReverted(key domain.TransactionKey, reverted bool) {
 	s.reverted[string(key.Bytes())] = reverted
 }
 
-func (s *scopeImpl) GetAccount(key domain.AccountKey) (*commonpb.AccountState, error) {
+func (s *scopeImpl) GetAccount(key domain.AccountKey) (commonpb.AccountStateReader, error) {
 	v, ok := s.engine.accounts[string(key.Bytes())]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v, nil
+	return v.AsReader(), nil
 }
 
 func (s *scopeImpl) PutAccount(key domain.AccountKey, value *commonpb.AccountState) {

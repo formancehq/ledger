@@ -501,7 +501,7 @@ func (g *gatedScope) TransactionReferences() processing.Accessor[domain.Transact
 	return g.gatedTransactionReferences
 }
 
-func (g *gatedScope) GetAccount(key domain.AccountKey) (*commonpb.AccountState, error) {
+func (g *gatedScope) GetAccount(key domain.AccountKey) (commonpb.AccountStateReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrAccount, key.Bytes()); err != nil {
 		return nil, err
 	}
