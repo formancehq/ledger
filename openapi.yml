@@ -2506,9 +2506,15 @@ components:
           type: string
           description: Error description (present only on error)
         data:
-          description: Operation result data (transaction object for CREATE_TRANSACTION, null for others)
+          description: |
+            Operation result data. Shape depends on the originating action:
+              - `CREATE_TRANSACTION` success: the created Transaction object.
+              - `CREATE_TRANSACTION` skip (when the item opted into
+                `skippableReasons` and the FSM matched one): an
+                `OrderSkippedResponse`-shaped object with `skipped: true`,
+                `reason`, and reason-specific `context`.
+              - Other actions: `null`.
           nullable: true
-          description: Log ID of the operation
 
     CreateTransactionResponse:
       type: object
