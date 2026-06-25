@@ -140,4 +140,8 @@ func setIDInBitset(bits []byte, indexByPlan map[planLookupKey]uint32, needs *Nee
 	for k := range needs.Indexes {
 		mark(k.Bytes(), dal.SubAttrIndex)
 	}
+
+	for k := range needs.Accounts {
+		mark(k.Bytes(), dal.SubAttrAccount)
+	}
 }

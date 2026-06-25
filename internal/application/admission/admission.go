@@ -791,19 +791,14 @@ func addVolumeNeed(p *plan.Needs, ledgerName string, account, asset string) {
 
 // addAccountNeed declares the per-account existence marker (SubAttrAccount) so
 // the FSM apply path can read it to decide whether the account is new (EN-1276).
-// world is the only system account and never carries default metadata, so it is
-// skipped — declaring it would only add a cache read the apply path never makes.
-//
-// The marker is declared for every CreateTransaction account. The apply path
-// consults it only when the ledger declares at least one account type with
-// default_metadata (the derived ledgerHasAccountTypeDefaults gate), so declaring
-// on a ledger without defaults is correct but not free. A propose-time gate that
-// skips this declaration for ledgers without defaults is possible but unwired.
+// The need is declared uniformly for every account — including world — without
+// baking in a default-metadata-specific assumption about what apply reads today:
+// the marker is a general account-existence signal whose consumers are not
+// limited to default-metadata, so the declaration layer must not special-case
+// world. Each consumer decides per-feature what to do with it (the default-metadata
+// apply path, for one, never writes a world marker). Declaring a key the apply
+// path may not read is correct but not free — one extra preload Get per account.
 func addAccountNeed(p *plan.Needs, ledgerName, account string) {
-	if account == "world" {
-		return
-	}
-
 	p.Accounts[domain.AccountKey{LedgerName: ledgerName, Account: account}] = struct{}{}
 }
 
