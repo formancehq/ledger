@@ -22,25 +22,27 @@ func (x *GetTransactionResponse) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for CreateTransactionPayload.
 func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
-		Metadata        map[string]any            `json:"metadata,omitempty"`
-		Timestamp       *commonpb.Timestamp       `json:"timestamp,omitempty"`
-		Reference       string                    `json:"reference,omitempty"`
-		Postings        []*commonpb.Posting       `json:"postings,omitempty"`
-		Script          *commonpb.Script          `json:"script,omitempty"`
-		ScriptReference *ScriptReference          `json:"scriptReference,omitempty"`
-		Force           bool                      `json:"force,omitempty"`
-		ExpandVolumes   bool                      `json:"expandVolumes,omitempty"`
+		AccountMetadata  map[string]map[string]any `json:"accountMetadata,omitempty"`
+		Metadata         map[string]any            `json:"metadata,omitempty"`
+		Timestamp        *commonpb.Timestamp       `json:"timestamp,omitempty"`
+		Reference        string                    `json:"reference,omitempty"`
+		Postings         []*commonpb.Posting       `json:"postings,omitempty"`
+		Script           *commonpb.Script          `json:"script,omitempty"`
+		ScriptReference  *ScriptReference          `json:"scriptReference,omitempty"`
+		SkippableReasons []string                  `json:"skippableReasons,omitempty"`
+		Force            bool                      `json:"force,omitempty"`
+		ExpandVolumes    bool                      `json:"expandVolumes,omitempty"`
 	}{
-		AccountMetadata: commonpb.AccountMetadataToAnyMap(x.GetAccountMetadata()),
-		Metadata:        commonpb.MetadataToAnyMap(x.GetMetadata()),
-		Timestamp:       x.GetTimestamp(),
-		Reference:       x.GetReference(),
-		Postings:        x.GetPostings(),
-		Script:          x.GetScript(),
-		ScriptReference: x.GetScriptReference(),
-		Force:           x.GetForce(),
-		ExpandVolumes:   x.GetExpandVolumes(),
+		AccountMetadata:  commonpb.AccountMetadataToAnyMap(x.GetAccountMetadata()),
+		Metadata:         commonpb.MetadataToAnyMap(x.GetMetadata()),
+		Timestamp:        x.GetTimestamp(),
+		Reference:        x.GetReference(),
+		Postings:         x.GetPostings(),
+		Script:           x.GetScript(),
+		ScriptReference:  x.GetScriptReference(),
+		SkippableReasons: errorReasonsToStrings(x.GetSkippableReasons()),
+		Force:            x.GetForce(),
+		ExpandVolumes:    x.GetExpandVolumes(),
 	})
 }
 
@@ -55,15 +57,16 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 // decoder.
 func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 	var aux struct {
-		AccountMetadata map[string]map[string]any `json:"accountMetadata"`
-		Metadata        map[string]any            `json:"metadata"`
-		Timestamp       *commonpb.Timestamp       `json:"timestamp"`
-		Reference       string                    `json:"reference"`
-		Postings        []*commonpb.Posting       `json:"postings"`
-		Script          *commonpb.Script          `json:"script"`
-		ScriptReference *ScriptReference          `json:"scriptReference"`
-		Force           bool                      `json:"force"`
-		ExpandVolumes   bool                      `json:"expandVolumes"`
+		AccountMetadata  map[string]map[string]any `json:"accountMetadata"`
+		Metadata         map[string]any            `json:"metadata"`
+		Timestamp        *commonpb.Timestamp       `json:"timestamp"`
+		Reference        string                    `json:"reference"`
+		Postings         []*commonpb.Posting       `json:"postings"`
+		Script           *commonpb.Script          `json:"script"`
+		ScriptReference  *ScriptReference          `json:"scriptReference"`
+		SkippableReasons []string                  `json:"skippableReasons"`
+		Force            bool                      `json:"force"`
+		ExpandVolumes    bool                      `json:"expandVolumes"`
 	}
 
 	if err := json.Unmarshal(data, &aux); err != nil {
@@ -89,6 +92,11 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 		}
 	}
 
+	skippable, err := errorReasonsFromStrings(aux.SkippableReasons)
+	if err != nil {
+		return fmt.Errorf("invalid skippableReasons: %w", err)
+	}
+
 	x.Postings = aux.Postings
 	x.Script = aux.Script
 	x.Timestamp = aux.Timestamp
@@ -98,8 +106,49 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 	x.Force = aux.Force
 	x.ExpandVolumes = aux.ExpandVolumes
 	x.ScriptReference = aux.ScriptReference
+	x.SkippableReasons = skippable
 
 	return nil
+}
+
+// errorReasonsToStrings serialises an ErrorReason slice as its public enum
+// names ("ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT") so the JSON shape
+// matches the OpenAPI contract advertised at openapi.yml#components.schemas.
+// Returns nil on an empty slice so `omitempty` drops the field on the wire.
+func errorReasonsToStrings(reasons []commonpb.ErrorReason) []string {
+	if len(reasons) == 0 {
+		return nil
+	}
+
+	out := make([]string, len(reasons))
+	for i, r := range reasons {
+		out[i] = r.String()
+	}
+
+	return out
+}
+
+// errorReasonsFromStrings is the inverse of errorReasonsToStrings: parses the
+// enum-name list a REST caller submits. Unknown names fail loudly so a
+// typo in `skippableReasons` is rejected at admission with a clear 400
+// rather than silently dropped.
+func errorReasonsFromStrings(in []string) ([]commonpb.ErrorReason, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+
+	out := make([]commonpb.ErrorReason, len(in))
+
+	for i, name := range in {
+		code, ok := commonpb.ErrorReason_value[name]
+		if !ok {
+			return nil, fmt.Errorf("unknown ErrorReason %q at index %d", name, i)
+		}
+
+		out[i] = commonpb.ErrorReason(code)
+	}
+
+	return out, nil
 }
 
 // MarshalJSON implements json.Marshaler for RevertTransactionPayload.
