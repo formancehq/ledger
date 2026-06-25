@@ -5,14 +5,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// TestVerifySkippedOrder_AllowedReasonEmitsNothing exercises the happy path:
-// an OrderSkippedLog whose reason is in the originating order's
-// skippable_reasons whitelist and whose reason-specific correlator replays
-// successfully passes silently.
+// TestVerifySkippedOrder_AllowedReasonEmitsNothing exercises the happy path.
 func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 	t.Parallel()
 
@@ -28,13 +27,11 @@ func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, expected, refs)
+	events := captureEvents(t, "L", 7, payload, expected, refs, false)
 	require.Empty(t, events, "an authorised skip with a satisfied correlator must emit nothing")
 }
 
-// TestVerifySkippedOrder_RejectsKindInternal pins the defense-in-depth gate:
-// a structural KindInternal reason is never a legitimate skip even when the
-// audit-bound order somehow listed it.
+// TestVerifySkippedOrder_RejectsKindInternal pins the defense-in-depth gate.
 func TestVerifySkippedOrder_RejectsKindInternal(t *testing.T) {
 	t.Parallel()
 
@@ -43,12 +40,11 @@ func TestVerifySkippedOrder_RejectsKindInternal(t *testing.T) {
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN)
-	events := captureEvents(t, "L", 7, payload, expected, nil)
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
-// TestVerifySkippedOrder_RejectsUnspecified covers the boundary case where
-// the projection records UNSPECIFIED.
+// TestVerifySkippedOrder_RejectsUnspecified covers UNSPECIFIED tampering.
 func TestVerifySkippedOrder_RejectsUnspecified(t *testing.T) {
 	t.Parallel()
 
@@ -57,13 +53,11 @@ func TestVerifySkippedOrder_RejectsUnspecified(t *testing.T) {
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
-	events := captureEvents(t, "L", 7, payload, expected, nil)
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
-// TestVerifySkippedOrder_RejectsReasonOutsideWhitelist is the core tampering
-// scenario: the OrderSkippedLog records a reason the chain-bound order did
-// not authorise.
+// TestVerifySkippedOrder_RejectsReasonOutsideWhitelist.
 func TestVerifySkippedOrder_RejectsReasonOutsideWhitelist(t *testing.T) {
 	t.Parallel()
 
@@ -72,23 +66,20 @@ func TestVerifySkippedOrder_RejectsReasonOutsideWhitelist(t *testing.T) {
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
-	events := captureEvents(t, "L", 7, payload, expected, nil)
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
-// TestVerifySkippedOrder_RejectsMissingExpectedEntry covers fabrication: a
-// skip log is recorded for a sequence whose originating order never
-// authorised any skip at all.
+// TestVerifySkippedOrder_RejectsMissingExpectedEntry covers fabrication.
 func TestVerifySkippedOrder_RejectsMissingExpectedEntry(t *testing.T) {
 	t.Parallel()
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, nil, nil)
+	events := captureEvents(t, "L", 7, payload, nil, nil, false)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
-// TestVerifySkippedOrder_IgnoresNonSkipPayloads ensures the helper is
-// strictly scoped to OrderSkipped projections.
+// TestVerifySkippedOrder_IgnoresNonSkipPayloads.
 func TestVerifySkippedOrder_IgnoresNonSkipPayloads(t *testing.T) {
 	t.Parallel()
 
@@ -97,15 +88,15 @@ func TestVerifySkippedOrder_IgnoresNonSkipPayloads(t *testing.T) {
 			CreatedTransaction: &commonpb.CreatedTransaction{},
 		},
 	}
-	events := captureEvents(t, "L", 7, payload, nil, nil)
+	events := captureEvents(t, "L", 7, payload, nil, nil, false)
 	require.Empty(t, events)
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsUnclaimedReference covers
 // the central tampering scenario the checker pass was hardened against: a
 // store that flipped a successful CreatedTransaction → OrderSkipped on a
-// fresh reference. Without the reference replay, the whitelist check alone
-// would let it pass.
+// fresh reference. Without the audit-derived replay, the whitelist check
+// alone would let it pass.
 func TestVerifySkippedOrder_ReferenceConflictRejectsUnclaimedReference(t *testing.T) {
 	t.Parallel()
 
@@ -118,13 +109,13 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsUnclaimedReference(t *testin
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, expected, nil)
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
-// TestVerifySkippedOrder_ReferenceConflictRejectsLaterClaim guards against a
-// tampered store that staged the reference at or after the skip's sequence —
-// only earlier claims can plausibly explain a conflict at sequence S.
+// TestVerifySkippedOrder_ReferenceConflictRejectsLaterClaim guards against
+// references staged at or after the skip's sequence — only earlier claims
+// can plausibly explain a conflict at sequence S.
 func TestVerifySkippedOrder_ReferenceConflictRejectsLaterClaim(t *testing.T) {
 	t.Parallel()
 
@@ -140,13 +131,13 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLaterClaim(t *testing.T) {
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, expected, refs)
+	events := captureEvents(t, "L", 7, payload, expected, refs, false)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsEmptyReference catches the
-// pathological case where the audited order claims a reference conflict but
-// had no reference set — structurally impossible.
+// pathological case where the audited order claims a reference conflict
+// but had no reference set.
 func TestVerifySkippedOrder_ReferenceConflictRejectsEmptyReference(t *testing.T) {
 	t.Parallel()
 
@@ -158,7 +149,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsEmptyReference(t *testing.T)
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, expected, nil)
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -180,36 +171,91 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLedgerMismatch(t *testing.T)
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L-projection", 7, payload, expected, refs)
+	events := captureEvents(t, "L-projection", 7, payload, expected, refs, false)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
-// TestRecordReferenceClaim_FirstSequenceWins pins the
-// first-claim-wins semantic: a later CreatedTransaction reusing the same
-// reference (which the FSM would have already rejected) must not displace
-// the original sequence, otherwise the verifier's `firstSeenSeq < seq`
-// check would let some skips dodge detection.
-func TestRecordReferenceClaim_FirstSequenceWins(t *testing.T) {
+// TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived pins the
+// archive boundary escape hatch: with archived chapters present, a missing
+// claim cannot be distinguished from one that lived in a purged chapter,
+// so the verifier downgrades the missing-reference branch to a silent
+// pass to avoid false positives on legitimate skips against archived
+// references.
+func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived(t *testing.T) {
 	t.Parallel()
 
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-archived",
+		},
+	}
+
+	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+
+	// hasArchivedChapters=false → fails loud (no archive escape)
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+
+	// hasArchivedChapters=true → permissive (can't tell if claim was purged)
+	events = captureEvents(t, "L", 7, payload, expected, nil, true)
+	require.Empty(t, events, "missing-claim skips must pass when archived chapters exist")
+}
+
+// TestCollectExpectedSkippable_RecordsReferencesFromChain pins the
+// audit-derived reference tracking: every chain-bound CreateTransactionOrder
+// reference is recorded regardless of whether the order opted into skip,
+// and the FIRST audit log sequence wins (re-claims later on the same
+// reference do not move the claim — otherwise the verifier's
+// `firstSeenSeq < seq` check would let some skips dodge detection).
+func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
+	t.Parallel()
+
+	order := func(ref string, skipReasons ...commonpb.ErrorReason) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "L",
+					Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+						Apply: &raftcmdpb.LedgerApplyOrder{
+							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: ref},
+							},
+						},
+					},
+				},
+			},
+			SkippableReasons: skipReasons,
+		}
+	}
+
+	item := func(o *raftcmdpb.Order) *auditpb.AuditItem {
+		b, err := o.MarshalVT()
+		require.NoError(t, err)
+
+		return &auditpb.AuditItem{SerializedOrder: b}
+	}
+
+	items := []*auditpb.AuditItem{
+		item(order("ref-A")), // strict CreateTransaction at log 100
+		item(order("ref-B", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)), // skip-tolerant at log 101
+		item(order("ref-A")), // duplicate ref-A at log 102 → must NOT shift the first claim
+		item(order("", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)), // empty reference → not tracked
+	}
+
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	recordReferenceClaim(refs, "L", 3, &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{
-				Transaction: &commonpb.Transaction{Reference: "ref"},
-			},
-		},
-	})
-	recordReferenceClaim(refs, "L", 9, &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{
-				Transaction: &commonpb.Transaction{Reference: "ref"},
-			},
-		},
-	})
+	collectExpectedSkippable(&auditpb.AuditSuccess{MinLogSequence: 100}, items, expectedSkip, refs)
 
-	require.Equal(t, uint64(3), refs["L"]["ref"])
+	require.Equal(t, uint64(100), refs["L"]["ref-A"], "first claim must win for re-claimed reference")
+	require.Equal(t, uint64(101), refs["L"]["ref-B"])
+
+	// Only items with skippable_reasons are in expectedSkip.
+	require.Len(t, expectedSkip, 2)
+	require.Equal(t, "ref-B", expectedSkip[101].reference)
+	require.Equal(t, "L", expectedSkip[101].ledger)
 }
 
 func skippedPayload(reason commonpb.ErrorReason) *commonpb.LedgerLogPayload {
@@ -227,12 +273,13 @@ func captureEvents(
 	payload *commonpb.LedgerLogPayload,
 	expected map[uint64]*expectedSkippableOrder,
 	refs map[string]map[string]uint64,
+	hasArchivedChapters bool,
 ) []*servicepb.CheckStoreEvent {
 	t.Helper()
 
 	events := []*servicepb.CheckStoreEvent{}
 
-	verifySkippedOrder(ledger, seq, payload, expected, refs, func(e *servicepb.CheckStoreEvent) {
+	verifySkippedOrder(ledger, seq, payload, expected, refs, hasArchivedChapters, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
