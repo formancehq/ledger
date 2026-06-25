@@ -90,18 +90,23 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 }
 
 // validateDefaultMetadata checks an account type's default_metadata is
-// structurally sound: non-empty keys and non-nil values. Values are stored raw
-// and coerced to the declared type at read (immutable-values model, #503), so
-// there is no write-time schema coercion to mirror here — this rejects only the
-// malformed entries that could never resolve to a usable value.
+// structurally sound, reusing the same key/value validators every other
+// metadata map flows through (domain.ValidateMetadataKey / ValidateMetadataValue):
+// non-empty keys with no null byte, and string/null values with no null byte —
+// null bytes would corrupt the null-terminated Pebble canonical-key layout.
+// Admission does not validate AddAccountType default_metadata, so this is the
+// only gate. Values are stored raw and coerced to the declared type at read
+// (immutable-values model, #503), so there is no write-time schema coercion to
+// mirror here — this rejects only entries that could never resolve to a usable,
+// key-encoding-safe value.
 func validateDefaultMetadata(at *commonpb.AccountType) domain.Describable {
 	for key, value := range at.GetDefaultMetadata() {
-		if key == "" {
-			return &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: "default_metadata has an empty key"}
+		if err := domain.ValidateMetadataKey(key); err != nil {
+			return err
 		}
 
-		if value == nil {
-			return &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: "default_metadata key " + key + " has a nil value"}
+		if err := domain.ValidateMetadataValue(value); err != nil {
+			return &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
 		}
 	}
 

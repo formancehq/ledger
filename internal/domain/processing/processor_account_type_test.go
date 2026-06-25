@@ -63,7 +63,7 @@ func TestAddAccountType_WithDefaultMetadata_PopulatedLedger(t *testing.T) {
 
 	// processApply outer mocks: GetLedger (AnyTimes covers inner loadLedger
 	// call too, but processApply returns early on error before PutBoundaries).
-	mockStore.EXPECT().GetLedger(ledger).Return(info, nil).AnyTimes()
+	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 
@@ -110,7 +110,7 @@ func TestAddAccountType_WithDefaultMetadata_FreshLedger(t *testing.T) {
 	info := ledgerInfoWithID(ledger, 1)
 
 	// processApply outer mocks.
-	mockStore.EXPECT().GetLedger(ledger).Return(info, nil).AnyTimes()
+	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 	mockStore.EXPECT().PutBoundaries(ledger, gomock.Any())
@@ -138,6 +138,76 @@ func TestAddAccountType_WithDefaultMetadata_FreshLedger(t *testing.T) {
 	require.Equal(t, commonpb.NewStringValue("standard"), added.GetAccountType().GetDefaultMetadata()["tier"])
 }
 
+// TestAddAccountType_DefaultMetadata_NullByteKeyRejected verifies that a
+// default_metadata key containing a null byte is rejected by validateDefaultMetadata
+// (which now delegates to domain.ValidateMetadataKey) before any boundaries read.
+// Null bytes would corrupt the null-terminated Pebble canonical-key layout, and
+// admission does not validate AddAccountType default_metadata, so this is the only gate.
+func TestAddAccountType_DefaultMetadata_NullByteKeyRejected(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	const ledger = "test-ledger"
+	info := ledgerInfoWithID(ledger, 1)
+
+	// validateDefaultMetadata fails before the inner loadBoundaries, so only the
+	// outer processApply GetBoundaries call fires and no Put* happens.
+	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil).Times(1)
+	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
+
+	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", map[string]*commonpb.MetadataValue{
+		"ti\x00er": commonpb.NewStringValue("standard"),
+	})
+
+	result, descErr := processor.ProcessOrder(order, mockStore)
+	require.Nil(t, result)
+	require.NotNil(t, descErr)
+	require.True(t, errors.Is(descErr.(error), domain.ErrMetadataKeyContainsNullByte),
+		"expected ErrMetadataKeyContainsNullByte, got %T: %v", descErr, descErr)
+}
+
+// TestAddAccountType_DefaultMetadata_NullByteValueRejected verifies that a
+// default_metadata string value containing a null byte is rejected, wrapped in
+// ErrMetadataKeyValidation so the offending key reaches operator logs.
+func TestAddAccountType_DefaultMetadata_NullByteValueRejected(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	const ledger = "test-ledger"
+	info := ledgerInfoWithID(ledger, 1)
+
+	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil).Times(1)
+	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
+
+	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", map[string]*commonpb.MetadataValue{
+		"tier": commonpb.NewStringValue("stand\x00ard"),
+	})
+
+	result, descErr := processor.ProcessOrder(order, mockStore)
+	require.Nil(t, result)
+	require.NotNil(t, descErr)
+
+	var target *domain.ErrMetadataKeyValidation
+	require.True(t, errors.As(descErr.(error), &target),
+		"expected ErrMetadataKeyValidation, got %T: %v", descErr, descErr)
+	require.Equal(t, "tier", target.Key)
+	require.True(t, errors.Is(target.Cause.(error), domain.ErrMetadataValueContainsNullByte))
+}
+
 // TestAddAccountType_WithoutDefaultMetadata_PopulatedLedger verifies that the
 // guard is NOT triggered when the account type has no default_metadata, even
 // when the ledger is populated. The inner GetBoundaries call inside
@@ -157,7 +227,7 @@ func TestAddAccountType_WithoutDefaultMetadata_PopulatedLedger(t *testing.T) {
 
 	// processApply outer mocks — exactly one GetBoundaries call (from processApply).
 	// If processAddAccountType calls GetBoundaries a second time the strict mock fails.
-	mockStore.EXPECT().GetLedger(ledger).Return(info, nil).AnyTimes()
+	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil).Times(1)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 	mockStore.EXPECT().PutBoundaries(ledger, gomock.Any())
