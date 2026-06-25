@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -64,9 +65,12 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		// `skippable_reasons` opted in for a reason that fired: no state
 		// mutation happened. Reply 200 (not 201) and surface the skip
 		// reason + context so clients can correlate without an extra GET.
+		// Reason uses the SHORT identifier (matching gRPC ErrorInfo.reason
+		// and the REST error responses' `errorCode`) so the JSON contract
+		// is consistent across success/skip/error paths.
 		writeOK(w, OrderSkippedResponse{
 			Skipped: true,
-			Reason:  payload.OrderSkipped.GetReason().String(),
+			Reason:  domain.ReasonString(payload.OrderSkipped.GetReason()),
 			Context: payload.OrderSkipped.GetContext(),
 		})
 	default:
