@@ -466,6 +466,53 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 	require.Equal(t, "L", expectedSkip[101].ledger)
 }
 
+// TestCollectExpectedSkippable_TracksMirrorIngestedReferences pins that the
+// verifier accepts a skip whose conflicting reference was claimed by a
+// mirror ingestion rather than a regular CreateTransaction. Mirror
+// promotion replays the source ledger's reference writes through
+// MirrorIngestOrder.Entry.CreatedTransaction; processMirrorCreatedTransaction
+// calls the same PutTransactionReference as the regular path, so the
+// verifier must derive the claim from both order shapes — otherwise
+// Check() false-positives INVALID_SKIP on legitimate mirror stores.
+func TestCollectExpectedSkippable_TracksMirrorIngestedReferences(t *testing.T) {
+	t.Parallel()
+
+	mirrorIngestOrder := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Entry: &raftcmdpb.MirrorLogEntry{
+							Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+								CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+									TransactionId: 7,
+									Reference:     "mirror-ref",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	body, err := mirrorIngestOrder.MarshalVT()
+	require.NoError(t, err)
+
+	items := []*auditpb.AuditItem{
+		{SerializedOrder: body, LogSequence: 50},
+	}
+
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+	refs := make(map[string]map[string]uint64)
+
+	collectExpectedSkippable(items, expectedSkip, refs)
+
+	require.Equal(t, uint64(50), refs["L"]["mirror-ref"],
+		"mirror-ingested reference must be recorded at its log sequence so later skip verifiers see the prior claim")
+}
+
 // TestCollectExpectedSkippable_HonoursItemLogSequence pins the fix to the
 // MinLogSequence+i indexing bug: when audit items contain interleaved
 // idempotency-replay ReferenceSequence entries, the verifier must read

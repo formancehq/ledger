@@ -1843,22 +1843,25 @@ func collectExpectedSkippable(
 		apply := ls.GetApply()
 		ct := apply.GetCreateTransaction()
 
-		// Track every chain-bound CreateTransactionOrder reference, not just
-		// the ones with skippable_reasons. Any chain-bound order that
-		// intends to claim a reference is sufficient evidence the reference
-		// was the subject of a write at this sequence — that is exactly what
-		// the verifier needs to plausibly explain a later
-		// TRANSACTION_REFERENCE_CONFLICT skip on the same reference.
-		if ct != nil {
-			if ref := ct.GetReference(); ref != "" && ledger != "" {
-				perLedger := chainBoundReferences[ledger]
-				if perLedger == nil {
-					perLedger = make(map[string]uint64)
-					chainBoundReferences[ledger] = perLedger
-				}
+		// Track every chain-bound reference claim on this ledger, not just
+		// the ones from orders that opted into skip. Two order shapes can
+		// originate a reference write:
+		//   - LedgerApplyOrder_CreateTransaction (regular path)
+		//   - LedgerScopedOrder_MirrorIngest carrying a
+		//     MirrorCreatedTransaction (mirror ingestion after a mirror
+		//     promotion replays the source ledger's reference claims)
+		// processMirrorCreatedTransaction calls PutTransactionReference
+		// the same way processCreateTransaction does, so the verifier
+		// would otherwise false-positive on a legitimate skip that
+		// conflicts with a mirror-ingested reference.
+		if ref := ct.GetReference(); ref != "" {
+			rememberReferenceClaim(chainBoundReferences, ledger, ref, logSeq)
+		}
 
-				if _, claimed := perLedger[ref]; !claimed {
-					perLedger[ref] = logSeq
+		if mi := ls.GetMirrorIngest(); mi != nil {
+			if mct := mi.GetEntry().GetCreatedTransaction(); mct != nil {
+				if ref := mct.GetReference(); ref != "" {
+					rememberReferenceClaim(chainBoundReferences, ledger, ref, logSeq)
 				}
 			}
 		}
@@ -1879,6 +1882,33 @@ func collectExpectedSkippable(
 
 		expectedSkippable[logSeq] = exp
 	}
+}
+
+// rememberReferenceClaim records the first chain-bound claim of a
+// (ledger, reference) pair. Used by collectExpectedSkippable across the
+// two order shapes that produce references (CreateTransactionOrder and
+// MirrorIngestOrder.MirrorCreatedTransaction) to keep the
+// first-claim-wins semantic the verifier relies on (`firstSeenSeq < seq`).
+func rememberReferenceClaim(
+	chainBoundReferences map[string]map[string]uint64,
+	ledger, reference string,
+	logSeq uint64,
+) {
+	if ledger == "" || reference == "" {
+		return
+	}
+
+	perLedger := chainBoundReferences[ledger]
+	if perLedger == nil {
+		perLedger = make(map[string]uint64)
+		chainBoundReferences[ledger] = perLedger
+	}
+
+	if _, claimed := perLedger[reference]; claimed {
+		return
+	}
+
+	perLedger[reference] = logSeq
 }
 
 // foldBaselineReferences merges the TransactionReference attribute from
