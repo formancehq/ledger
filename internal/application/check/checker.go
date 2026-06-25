@@ -1593,7 +1593,11 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			return nil, nil, nil
+			// Return the partially populated maps (not nil) so
+			// foldBaselineReferences does not panic on a nil-map write.
+			// Check() keeps running after a chain break to surface
+			// other projection errors.
+			return expectedSkippable, chainBoundReferences, nil
 		}
 
 		// Read the audit items for this entry, then rebuild the canonical
@@ -1619,7 +1623,11 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			return nil, nil, nil
+			// Return the partially populated maps (not nil) so
+			// foldBaselineReferences does not panic on a nil-map write.
+			// Check() keeps running after a chain break to surface
+			// other projection errors.
+			return expectedSkippable, chainBoundReferences, nil
 		}
 
 		hashSlices := make([][]byte, 0, 1+len(items))
@@ -1650,7 +1658,11 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			return nil, nil, nil // Stop on first mismatch — chain is broken from here.
+			// Return the partially populated maps (not nil) so
+			// foldBaselineReferences does not panic on a nil-map write.
+			// Check() keeps running after a chain break to surface
+			// other projection errors.
+			return expectedSkippable, chainBoundReferences, nil // Stop on first mismatch — chain is broken from here.
 		}
 
 		lastHash = entry.GetHash()

@@ -389,6 +389,25 @@ func TestVerifySkippedOrder_ReferenceConflictBaselineSeededReference(t *testing.
 	require.Empty(t, events)
 }
 
+// TestVerifySkippedOrder_HandlesNilExpectedMaps guards against the panic
+// path NumaryBot flagged on b6e8fd064: a corrupted store with a readable
+// baseline triggers a hash mismatch in verifyAuditHashChain, which used
+// to return nil maps; foldBaselineReferences then assigned into a nil
+// chainBoundReferences and crashed. The fix returns the partially
+// populated maps from verifyAuditHashChain — this test pins that
+// verifySkippedOrder itself stays panic-safe when the expected* maps
+// are empty/nil, since Check() keeps running after a chain break and
+// may still encounter skip logs.
+func TestVerifySkippedOrder_HandlesNilExpectedMaps(t *testing.T) {
+	t.Parallel()
+
+	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+
+	require.NotPanics(t, func() {
+		captureEvents(t, "L", 7, payload, nil, nil, false)
+	})
+}
+
 // TestCollectExpectedSkippable_RecordsReferencesFromChain pins the
 // audit-derived reference tracking: every chain-bound CreateTransactionOrder
 // reference is recorded regardless of whether the order opted into skip,
