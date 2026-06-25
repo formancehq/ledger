@@ -60,7 +60,7 @@ func (p *RequestProcessor) processSaveNumscript(ledger string, order *raftcmdpb.
 		Name:      order.GetName(),
 		Content:   order.GetContent(),
 		Version:   resolvedVersion,
-		CreatedAt: s.GetDate(),
+		CreatedAt: s.GetDate().Mutate(),
 		Ledger:    ledger,
 	}
 

@@ -725,7 +725,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	for _, ledgerName := range b.pendingLedgerDeletions {
 		seq := deleteSequences[ledgerName]
 
-		if _, err := b.GetLedger(ledgerName); err != nil {
+		if _, err := b.getLedgerData(ledgerName); err != nil {
 			// The ledger name comes from a DeleteLedger order the
 			// processor already validated against b.GetLedger — a
 			// miss here means the WriteSet's view of ledgers became
@@ -830,7 +830,22 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 // deliberately absent here — it lives on gatedScope, which embeds
 // *WriteSet and overrides the cache-attribute Get* to insert the gate.
 
-func (b *WriteSet) GetLedger(name string) (*commonpb.LedgerInfo, error) {
+func (b *WriteSet) GetLedger(name string) (commonpb.LedgerInfoReader, error) {
+	info, err := b.getLedgerData(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return info.AsReader(), nil
+}
+
+// getLedgerData is the internal accessor that returns the underlying
+// *LedgerInfo pointer. It exists so paths inside the state package
+// (Merge, ephemeral purge) can avoid the AsReader/Mutate clone round-trip
+// the Scope-facing GetLedger would otherwise impose. External callers
+// MUST go through GetLedger — only state-package code is trusted not to
+// mutate the cache pointer in place.
+func (b *WriteSet) getLedgerData(name string) (*commonpb.LedgerInfo, error) {
 	info, err := b.Derived.Ledgers.Get(domain.LedgerKey{Name: name})
 	if err != nil {
 		return nil, err
@@ -868,8 +883,13 @@ func (b *WriteSet) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReade
 	return boundaries.AsReader(), nil
 }
 
-func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (*commonpb.NumscriptInfo, error) {
-	return b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
+func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error) {
+	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
+	if err != nil || info == nil {
+		return nil, err
+	}
+
+	return info.AsReader(), nil
 }
 
 func (b *WriteSet) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
@@ -941,7 +961,7 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 				return &domain.ErrStorageOperation{Operation: "loading ledger for transient volume validation", Cause: err}
 			}
 
-			compiled = accounttype.CompileTypes(info.GetAccountTypes())
+			compiled = accounttype.CompileTypes(info.Mutate().GetAccountTypes())
 			ledgerTypes[key.LedgerName] = compiled
 		}
 
@@ -979,22 +999,13 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 	return nil
 }
 
-func (b *WriteSet) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
-	return b.Derived.AccountMetadata.Get(key)
-}
-
-// GetAccountMetadataEntry returns the raw cache Entry (tombstone flag
-// exposed) for an account metadata canonical key. The metadata-conversion
-// path inspects entry.Deleted to skip stale conversions for keys deleted
-// after the converter scan. Coverage is enforced by the gatedScope
-// wrapper above the engine, not here.
-func (b *WriteSet) GetAccountMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
-	entry, ok := b.fsm.Registry.AccountMetadata.KeyStore().GetEntry(canonical)
-	if !ok {
-		return attributes.Entry[*commonpb.MetadataValue]{}, domain.ErrNotFound
+func (b *WriteSet) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
+	v, err := b.Derived.AccountMetadata.Get(key)
+	if err != nil || v == nil {
+		return nil, err
 	}
 
-	return entry, nil
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
@@ -1005,21 +1016,13 @@ func (b *WriteSet) DeleteAccountMetadata(key domain.MetadataKey) {
 	b.Derived.AccountMetadata.Delete(key)
 }
 
-func (b *WriteSet) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
-	return b.Derived.LedgerMetadata.Get(key)
-}
-
-// GetLedgerMetadataEntry returns the raw cache Entry for a ledger
-// metadata canonical key. Mirrors GetAccountMetadataEntry for the
-// per-ledger metadata zone. Coverage is enforced by the gatedScope
-// wrapper above the engine, not here.
-func (b *WriteSet) GetLedgerMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
-	entry, ok := b.fsm.Registry.LedgerMetadata.KeyStore().GetEntry(canonical)
-	if !ok {
-		return attributes.Entry[*commonpb.MetadataValue]{}, domain.ErrNotFound
+func (b *WriteSet) GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
+	v, err := b.Derived.LedgerMetadata.Get(key)
+	if err != nil || v == nil {
+		return nil, err
 	}
 
-	return entry, nil
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
@@ -1040,7 +1043,7 @@ func (b *WriteSet) PutReverted(key domain.TransactionKey, reverted bool) {
 	}
 }
 
-func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
 	value, err := b.Derived.Idempotency.Get(key.Key)
 	if err != nil || value == nil {
 		return nil, err
@@ -1051,7 +1054,7 @@ func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.Idemp
 		return nil, nil
 	}
 
-	return value, nil
+	return value.AsReader(), nil
 }
 
 func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
@@ -1059,16 +1062,26 @@ func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.
 	b.Derived.Idempotency.Put(key.Key, value)
 }
 
-func (b *WriteSet) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
-	return b.Derived.References.Get(key)
+func (b *WriteSet) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
+	v, err := b.Derived.References.Get(key)
+	if err != nil || v == nil {
+		return nil, err
+	}
+
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	b.Derived.References.Put(key, value)
 }
 
-func (b *WriteSet) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
-	return b.Derived.Transactions.Get(key)
+func (b *WriteSet) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
+	v, err := b.Derived.Transactions.Get(key)
+	if err != nil || v == nil {
+		return nil, err
+	}
+
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
@@ -1155,13 +1168,13 @@ func (b *WriteSet) DeleteQueryCheckpointSchedule() {
 	b.pendingQueryCheckpointScheduleUpdate = &empty
 }
 
-func (b *WriteSet) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
+func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
 	cfg, err := b.Derived.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
-	if err != nil {
+	if err != nil || cfg == nil {
 		return nil, nil
 	}
 
-	return cfg, nil
+	return cfg.AsReader(), nil
 }
 
 func (b *WriteSet) AddSinkConfig(config *commonpb.SinkConfig) {
@@ -1247,8 +1260,12 @@ func (b *WriteSet) IncrementNextLedgerID() uint32 {
 	return id
 }
 
-func (b *WriteSet) GetDate() *commonpb.Timestamp {
-	return b.Date
+func (b *WriteSet) GetDate() commonpb.TimestampReader {
+	if b.Date == nil {
+		return nil
+	}
+
+	return b.Date.AsReader()
 }
 
 // SetDate updates the proposal date late in the apply cycle. The technical-
@@ -1324,27 +1341,42 @@ func (b *WriteSet) ensureChapters() {
 	}
 }
 
-func (b *WriteSet) GetCurrentOpenChapter() (*commonpb.Chapter, bool) {
+func (b *WriteSet) GetCurrentOpenChapter() (commonpb.ChapterReader, bool) {
 	b.ensureChapters()
 
 	p := b.chapters.CurrentOpenChapter()
 	if p != nil {
-		return p, true
+		return p.AsReader(), true
 	}
 
 	return nil, false
 }
 
-func (b *WriteSet) GetClosingChapters() []*commonpb.Chapter {
+func (b *WriteSet) GetClosingChapters() []commonpb.ChapterReader {
 	b.ensureChapters()
 
-	return b.chapters.ClosingChapters()
+	closing := b.chapters.ClosingChapters()
+	if closing == nil {
+		return nil
+	}
+
+	out := make([]commonpb.ChapterReader, len(closing))
+	for i, c := range closing {
+		out[i] = c.AsReader()
+	}
+
+	return out
 }
 
-func (b *WriteSet) GetClosingChapterByID(chapterID uint64) (*commonpb.Chapter, bool) {
+func (b *WriteSet) GetClosingChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
 	b.ensureChapters()
 
-	return b.chapters.ClosingChapterByID(chapterID)
+	c, ok := b.chapters.ClosingChapterByID(chapterID)
+	if !ok {
+		return nil, false
+	}
+
+	return c.AsReader(), true
 }
 
 func (b *WriteSet) SetCurrentOpenChapter(chapter *commonpb.Chapter) {
@@ -1387,21 +1419,32 @@ func (b *WriteSet) IncrementNextChapterID() uint64 {
 
 // GetChapterByID looks up a chapter by ID from in-memory state only.
 // It checks changedChapters first (most recent modifications), then the chapters tracker.
-func (b *WriteSet) GetChapterByID(chapterID uint64) (*commonpb.Chapter, bool) {
+func (b *WriteSet) GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
 	// Check changedChapters (most recently changed first)
 	for i := len(b.changedChapters) - 1; i >= 0; i-- {
 		if b.changedChapters[i].GetId() == chapterID {
-			return b.changedChapters[i], true
+			return b.changedChapters[i].AsReader(), true
 		}
 	}
 
 	b.ensureChapters()
 
-	return b.chapters.GetChapterByID(chapterID)
+	c, ok := b.chapters.GetChapterByID(chapterID)
+	if !ok {
+		return nil, false
+	}
+
+	return c.AsReader(), true
 }
 
-// UpdateChapter records a chapter modification to be persisted in Merge().
+// UpdateChapter records a chapter modification to be persisted in Merge()
+// and rebinds the buffer's in-memory tracker to the caller's pointer. Handlers
+// that mutate a chapter via Reader.Mutate() pass the resulting clone here so
+// subsequent reads in the same proposal (and the Merge that follows) observe
+// the mutation instead of the original cached pointer.
 func (b *WriteSet) UpdateChapter(chapter *commonpb.Chapter) {
+	b.ensureChapters()
+	b.chapters.UpdateChapter(chapter)
 	b.changedChapters = append(b.changedChapters, chapter)
 }
 
@@ -1500,7 +1543,7 @@ func (b *WriteSet) HasPurges() bool {
 	return len(b.purgeRanges) > 0
 }
 
-func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error) {
+func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error) {
 	pq, err := b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{LedgerName: ledgerName, Name: name})
 	// Treat a cache miss as "doesn't exist". A delete in an earlier entry of
 	// the same batch will have cleared the cache
@@ -1508,7 +1551,11 @@ func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (*commonpb.P
 		return nil, nil
 	}
 
-	return pq, err
+	if err != nil || pq == nil {
+		return nil, err
+	}
+
+	return pq.AsReader(), nil
 }
 
 func (b *WriteSet) PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery) {

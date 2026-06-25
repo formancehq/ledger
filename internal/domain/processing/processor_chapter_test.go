@@ -28,10 +28,10 @@ func TestProcessCloseChapter_Success(t *testing.T) {
 		Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 	}
 
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(openChapter, true)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(openChapter.AsReader(), true)
 	// GetNextSequenceID is called twice: once for CloseSequence, once for StartSequence
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42)).Times(2)
-	mockStore.EXPECT().GetDate().Return(now).Times(2)
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(2)
 	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(10)).Times(2)
 	mockStore.EXPECT().IncrementNextChapterID().Return(uint64(2))
 	mockStore.EXPECT().AddClosingChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
@@ -93,9 +93,9 @@ func TestProcessCloseChapter_SucceedsWhileAnotherChapterIsClosing(t *testing.T) 
 	}
 
 	// Another chapter is already closing — this should NOT prevent the new close
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(openChapter, true)
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(openChapter.AsReader(), true)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100)).Times(2)
-	mockStore.EXPECT().GetDate().Return(now).Times(2)
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(2)
 	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(20)).Times(2)
 	mockStore.EXPECT().IncrementNextChapterID().Return(uint64(3))
 	mockStore.EXPECT().AddClosingChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
@@ -134,7 +134,8 @@ func TestProcessSealChapter_SealsOneWhileOthersRemain(t *testing.T) {
 		CloseSequence: 42,
 	}
 
-	mockStore.EXPECT().GetClosingChapterByID(uint64(1)).Return(targetChapter, true)
+	mockStore.EXPECT().GetClosingChapterByID(uint64(1)).Return(targetChapter.AsReader(), true)
+	mockStore.EXPECT().UpdateChapter(gomock.Any())
 	mockStore.EXPECT().RemoveClosingChapter(uint64(1))
 
 	order := &raftcmdpb.SealChapterOrder{
@@ -169,7 +170,8 @@ func TestProcessSealChapter_Success(t *testing.T) {
 		CloseSequence: 42,
 	}
 
-	mockStore.EXPECT().GetClosingChapterByID(uint64(1)).Return(closingChapter, true)
+	mockStore.EXPECT().GetClosingChapterByID(uint64(1)).Return(closingChapter.AsReader(), true)
+	mockStore.EXPECT().UpdateChapter(gomock.Any())
 	mockStore.EXPECT().RemoveClosingChapter(uint64(1))
 
 	order := &raftcmdpb.SealChapterOrder{
@@ -262,7 +264,7 @@ func TestProcessArchiveChapter_Success(t *testing.T) {
 		SealingHash:        []byte("seal-hash"),
 	}
 
-	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(closedChapter, true)
+	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(closedChapter.AsReader(), true)
 	mockStore.EXPECT().UpdateChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVING, chapter.GetStatus())
 	})
@@ -314,7 +316,7 @@ func TestProcessArchiveChapter_NotClosed(t *testing.T) {
 		Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 	}
 
-	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(openChapter, true)
+	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(openChapter.AsReader(), true)
 
 	payload, err := processor.processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: 1}, mockStore)
 	require.Error(t, err)
@@ -343,7 +345,7 @@ func TestProcessConfirmArchiveChapter_Success(t *testing.T) {
 		SealingHash:   []byte("seal-hash"),
 	}
 
-	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(archivingChapter, true)
+	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(archivingChapter.AsReader(), true)
 	mockStore.EXPECT().UpdateChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVED, chapter.GetStatus())
 	})
@@ -395,7 +397,7 @@ func TestProcessConfirmArchiveChapter_NotArchiving(t *testing.T) {
 		Status: commonpb.ChapterStatus_CHAPTER_ARCHIVED,
 	}
 
-	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(archivedChapter, true)
+	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(archivedChapter.AsReader(), true)
 
 	payload, err := processor.processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 1}, mockStore)
 	require.Error(t, err)

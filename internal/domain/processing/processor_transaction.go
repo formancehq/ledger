@@ -89,7 +89,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	// honor at_effective_date without re-reading the original log from Pebble.
 	timestamp := order.GetTimestamp()
 	if timestamp == nil {
-		timestamp = s.GetDate()
+		timestamp = s.GetDate().Mutate()
 	}
 
 	txKey := domain.TransactionKey{LedgerName: ledgerName, ID: nextTransactionID}
@@ -204,8 +204,8 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 					Timestamp:  timestamp,
 					Reference:  order.GetReference(),
 					Id:         nextTransactionID,
-					InsertedAt: s.GetDate(),
-					UpdatedAt:  s.GetDate(),
+					InsertedAt: s.GetDate().Mutate(),
+					UpdatedAt:  s.GetDate().Mutate(),
 				},
 				AccountMetadata:   accountMetadata,
 				ChapterId:         chapterID,

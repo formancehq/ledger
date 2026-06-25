@@ -13,6 +13,10 @@ import (
 // becomes ErrLedgerNotFound; any other error (notably *ErrCoverageMiss)
 // is wrapped in ErrStorageOperation so the FSM emits a failure audit
 // entry rather than misreporting the cause.
+//
+// Returns a Mutate()-clone so handlers can freely modify the result and
+// write it back through s.PutLedger without mutating the cached pointer
+// in place. The clone cost is bounded (one CloneVT per handler invocation).
 func loadLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.Describable) {
 	info, err := s.GetLedger(name)
 	if errors.Is(err, domain.ErrNotFound) {
@@ -23,7 +27,7 @@ func loadLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.Describable)
 		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: err}
 	}
 
-	return info, nil
+	return info.Mutate(), nil
 }
 
 // loadBoundaries mirrors loadLedger for the LedgerBoundaries channel.

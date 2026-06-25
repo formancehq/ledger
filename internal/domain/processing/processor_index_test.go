@@ -31,9 +31,9 @@ func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	now := &commonpb.Timestamp{Data: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil)
 	mockStore.EXPECT().GetIndex(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}).Return(nil, domain.ErrNotFound)
-	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
 
 	var seenKey domain.IndexKey
 	var seenIdx *commonpb.Index
@@ -71,7 +71,7 @@ func TestProcessCreateIndex_ShortCircuitOnReady(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
 	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil)
 	mockStore.EXPECT().GetIndex(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}).Return(
 		(&commonpb.Index{Id: indexID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY}).AsReader(),
 		nil,
@@ -98,7 +98,7 @@ func TestProcessDropIndex_DeletesByRegistryKey(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 3}
 	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color")
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil)
 	mockStore.EXPECT().DeleteIndex(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)})
 
 	payload, derr := processor.processDropIndex("test-ledger", &raftcmdpb.DropIndexOrder{Id: indexID}, mockStore)
@@ -123,7 +123,7 @@ func TestProcessDeleteLedger_DoesNotTouchIndexRegistry(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 4}, nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 4}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1})
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().MarkLedgerForCleanup("test-ledger")

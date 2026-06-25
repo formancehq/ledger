@@ -13,13 +13,13 @@ func (p *RequestProcessor) processApply(ledger string, apply *raftcmdpb.LedgerAp
 	// Check deletion status before boundaries: MarkLedgerForCleanup removes
 	// boundaries on delete, so loadBoundaries would surface ErrLedgerNotFound
 	// even though the ledger is just deleted.
-	ledgerInfo, infoErr := s.GetLedger(ledger)
+	ledgerInfoReader, infoErr := s.GetLedger(ledger)
 	if infoErr != nil && !errors.Is(infoErr, domain.ErrNotFound) {
 		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: infoErr}
 	}
 
 	infoOk := infoErr == nil
-	if infoOk && ledgerInfo.GetDeletedAt() != nil {
+	if infoOk && ledgerInfoReader.GetDeletedAt() != nil {
 		return nil, &domain.ErrLedgerDeleted{Name: ledger}
 	}
 
@@ -31,8 +31,15 @@ func (p *RequestProcessor) processApply(ledger string, apply *raftcmdpb.LedgerAp
 	boundaries := boundariesReader.Mutate()
 
 	// Block writes on mirror-mode ledgers.
-	if infoOk && ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
+	if infoOk && ledgerInfoReader.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
 		return nil, &domain.ErrLedgerInMirrorMode{Name: ledger}
+	}
+
+	// Mutate() once at the boundary so sub-processors keep receiving
+	// *LedgerInfo. The clone cost is bounded (one CloneVT per apply).
+	var ledgerInfo *commonpb.LedgerInfo
+	if infoOk {
+		ledgerInfo = ledgerInfoReader.Mutate()
 	}
 
 	var (
@@ -82,7 +89,7 @@ func (p *RequestProcessor) processApply(ledger string, apply *raftcmdpb.LedgerAp
 				LedgerName: ledger,
 				Log: &commonpb.LedgerLog{
 					Data: logPayload,
-					Date: s.GetDate(),
+					Date: s.GetDate().Mutate(),
 					Id:   nextLogID,
 				},
 			},

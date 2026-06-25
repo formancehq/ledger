@@ -3,7 +3,6 @@ package processing
 import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -38,15 +37,19 @@ type OrderTagger interface {
 //     is immutable for the lifetime of the scope.
 //   - *state.WriteSet (recovery/tests): bare engine, no coverage gate —
 //     CheckCoverage and ResolveProductions are no-ops.
+//
+// Cache-backed Get* methods return a Reader view over the cache entry so
+// handlers cannot accidentally mutate cached state in place. Use
+// Reader.Mutate() to obtain a writeable clone before modifying, then write
+// the result back through the matching Put* method.
 type Scope interface {
 	// Ledger operations
 	//
-	// Get* methods that read cache-attribute keys return (zero,
-	// domain.ErrNotFound) when the key is absent, (zero, *ErrCoverageMiss)
+	// Get* methods that read cache-attribute keys return (nil,
+	// domain.ErrNotFound) when the key is absent, (nil, *ErrCoverageMiss)
 	// when the proposer did not declare the key in this scope's
-	// coverage_bits / production_bits (gatedScope only), or (value, nil)
-	// on a hit.
-	GetLedger(name string) (*commonpb.LedgerInfo, error)
+	// coverage_bits (gatedScope only), or (reader, nil) on a hit.
+	GetLedger(name string) (commonpb.LedgerInfoReader, error)
 	PutLedger(name string, info *commonpb.LedgerInfo)
 
 	// Boundaries operations
@@ -58,14 +61,12 @@ type Scope interface {
 	PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair)
 
 	// Account metadata operations
-	GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error)
-	GetAccountMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error)
+	GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error)
 	PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue)
 	DeleteAccountMetadata(key domain.MetadataKey)
 
 	// Ledger metadata operations
-	GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error)
-	GetLedgerMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error)
+	GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error)
 	PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue)
 	DeleteLedgerMetadata(key domain.LedgerMetadataKey)
 
@@ -74,15 +75,15 @@ type Scope interface {
 	PutReverted(key domain.TransactionKey, reverted bool)
 
 	// Idempotency key operations
-	GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)
+	GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error)
 	PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue)
 
 	// Transaction reference operations
-	GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)
+	GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error)
 	PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
 
 	// Transaction state operations
-	GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error)
+	GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error)
 	PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState)
 
 	// Signing key operations
@@ -99,7 +100,7 @@ type Scope interface {
 	DeleteChapterSchedule()
 
 	// Events sink operations
-	GetSinkConfig(name string) (*commonpb.SinkConfig, error)
+	GetSinkConfig(name string) (commonpb.SinkConfigReader, error)
 	AddSinkConfig(config *commonpb.SinkConfig)
 	RemoveSinkConfig(name string)
 
@@ -109,12 +110,12 @@ type Scope interface {
 	GetNextAuditSequenceID() uint64
 	GetNextLedgerID() uint32
 	IncrementNextLedgerID() uint32
-	GetDate() *commonpb.Timestamp
+	GetDate() commonpb.TimestampReader
 
 	// Chapter operations
-	GetCurrentOpenChapter() (*commonpb.Chapter, bool)
-	GetClosingChapters() []*commonpb.Chapter
-	GetClosingChapterByID(chapterID uint64) (*commonpb.Chapter, bool)
+	GetCurrentOpenChapter() (commonpb.ChapterReader, bool)
+	GetClosingChapters() []commonpb.ChapterReader
+	GetClosingChapterByID(chapterID uint64) (commonpb.ChapterReader, bool)
 	SetCurrentOpenChapter(chapter *commonpb.Chapter)
 	AddClosingChapter(chapter *commonpb.Chapter)
 	RemoveClosingChapter(chapterID uint64)
@@ -122,13 +123,13 @@ type Scope interface {
 	IncrementNextChapterID() uint64
 
 	// Archive chapter operations
-	GetChapterByID(chapterID uint64) (*commonpb.Chapter, bool)
+	GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool)
 	UpdateChapter(chapter *commonpb.Chapter)
 	SetPurgeRange(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
 	SetPendingArchive(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
 
 	// Prepared query operations
-	GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error)
+	GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error)
 	PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery)
 	DeletePreparedQuery(ledgerName string, name string)
 
@@ -165,7 +166,7 @@ type Scope interface {
 	DeleteIndex(key domain.IndexKey)
 
 	// Numscript content resolution
-	ResolveNumscriptContent(ledgerName string, name, version string) (*commonpb.NumscriptInfo, error)
+	ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error)
 
 	// CheckCoverage exposes the gate for paths that read state directly
 	// (bypassing the engine overlay) and still want the coverage

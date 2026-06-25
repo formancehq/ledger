@@ -91,7 +91,7 @@ func (p *RequestProcessor) processMirrorIngest(ledger string, order *raftcmdpb.M
 				LedgerName: ledger,
 				Log: &commonpb.LedgerLog{
 					Data: logPayload,
-					Date: s.GetDate(),
+					Date: s.GetDate().Mutate(),
 					Id:   nextLogID,
 				},
 			},
@@ -138,7 +138,7 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 
 	timestamp := ct.GetTimestamp()
 	if timestamp == nil {
-		timestamp = s.GetDate()
+		timestamp = s.GetDate().Mutate()
 	}
 
 	// Record transaction state (include metadata from the mirrored transaction)
@@ -188,8 +188,8 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 					Timestamp:  timestamp,
 					Reference:  ct.GetReference(),
 					Id:         txID,
-					InsertedAt: s.GetDate(),
-					UpdatedAt:  s.GetDate(),
+					InsertedAt: s.GetDate().Mutate(),
+					UpdatedAt:  s.GetDate().Mutate(),
 				},
 				AccountMetadata: accountMetadata,
 				ChapterId:       chapterID,
@@ -217,13 +217,13 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledgerName string, sm *raf
 			if len(sm.GetMetadata()) > 0 {
 				txKey := domain.TransactionKey{LedgerName: ledgerName, ID: target.TransactionId}
 
-				state, err := s.GetTransactionState(txKey)
+				stateReader, err := s.GetTransactionState(txKey)
 				if err != nil && !errors.Is(err, domain.ErrNotFound) {
 					return nil, &domain.ErrStorageOperation{Operation: "reading transaction state", Cause: err}
 				}
 
-				if state != nil {
-					state = state.CloneVT()
+				if stateReader != nil {
+					state := stateReader.Mutate()
 
 					if state.GetMetadata() == nil {
 						state.Metadata = make(map[string]*commonpb.MetadataValue)
@@ -263,13 +263,13 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledgerName string, dm *r
 		case *commonpb.Target_TransactionId:
 			txKey := domain.TransactionKey{LedgerName: ledgerName, ID: target.TransactionId}
 
-			state, err := s.GetTransactionState(txKey)
+			stateReader, err := s.GetTransactionState(txKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrStorageOperation{Operation: "reading transaction state", Cause: err}
 			}
 
-			if state != nil && state.GetMetadata() != nil {
-				state = state.CloneVT()
+			if stateReader != nil && stateReader.GetMetadata() != nil {
+				state := stateReader.Mutate()
 
 				delete(state.GetMetadata(), dm.GetKey())
 
@@ -312,20 +312,20 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledgerName string, b
 	// Update the original transaction's state to record the reversion
 	origKey := domain.TransactionKey{LedgerName: ledgerName, ID: rt.GetRevertedTransactionId()}
 
-	origState, err := s.GetTransactionState(origKey)
+	origReader, err := s.GetTransactionState(origKey)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return nil, &domain.ErrStorageOperation{Operation: "reading original transaction state", Cause: err}
 	}
 
-	if origState != nil {
-		origState = origState.CloneVT()
+	if origReader != nil {
+		origState := origReader.Mutate()
 		origState.RevertedByTransaction = revertTxID
 		s.PutTransactionState(origKey, origState)
 	}
 
 	timestamp := rt.GetTimestamp()
 	if timestamp == nil {
-		timestamp = s.GetDate()
+		timestamp = s.GetDate().Mutate()
 	}
 
 	// Store the revert transaction's state (include metadata from the mirror revert)
@@ -344,8 +344,8 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledgerName string, b
 					Metadata:   rt.GetMetadata(),
 					Timestamp:  timestamp,
 					Id:         revertTxID,
-					InsertedAt: s.GetDate(),
-					UpdatedAt:  s.GetDate(),
+					InsertedAt: s.GetDate().Mutate(),
+					UpdatedAt:  s.GetDate().Mutate(),
 				},
 			},
 		},
@@ -363,7 +363,6 @@ func (p *RequestProcessor) processPromoteLedger(ledger string, s Scope) (*common
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
 
-	info = info.CloneVT()
 	info.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
 	info.MirrorSource = nil
 	s.PutLedger(ledger, info)

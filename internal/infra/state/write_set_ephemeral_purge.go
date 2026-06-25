@@ -60,7 +60,7 @@ func (b *WriteSet) partitionVolumes(
 	for _, update := range updates {
 		compiled, ok := ledgerTypes[update.Key.LedgerName]
 		if !ok {
-			info, err := b.GetLedger(update.Key.LedgerName)
+			info, err := b.getLedgerData(update.Key.LedgerName)
 			if err != nil {
 				result.kept = append(result.kept, update)
 

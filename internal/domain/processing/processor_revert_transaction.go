@@ -83,7 +83,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 	// formancehq/ledger). Otherwise it stamps with the current FSM date.
 	// origState.Timestamp is populated at create time on every code path; missing
 	// it on an at_effective_date revert means we observed an inconsistent state.
-	revertTimestamp := s.GetDate()
+	revertTimestamp := s.GetDate().Mutate()
 	if order.GetAtEffectiveDate() {
 		if origState.GetTimestamp() == nil {
 			return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert at_effective_date"}
@@ -114,8 +114,8 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 					Metadata:   order.GetMetadata(),
 					Timestamp:  revertTimestamp,
 					Id:         revertTxID,
-					InsertedAt: s.GetDate(),
-					UpdatedAt:  s.GetDate(),
+					InsertedAt: s.GetDate().Mutate(),
+					UpdatedAt:  s.GetDate().Mutate(),
 				},
 				PostCommitVolumes: postCommitVolumes,
 			},

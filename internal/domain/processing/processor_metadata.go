@@ -67,20 +67,18 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 
 		txKey := domain.TransactionKey{LedgerName: ledgerName, ID: txID}
 
-		state, err := s.GetTransactionState(txKey)
+		stateReader, err := s.GetTransactionState(txKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state", Cause: err}
 		}
 
-		if state == nil {
+		if stateReader == nil {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
 
-		// Clone before mutating — GetTransactionState may return the
-		// cached proto pointer when the key falls through to the parent
-		// KeyStore. Mutating its Metadata map in place would write
-		// through the cache before the proposal reached Merge.
-		state = state.CloneVT()
+		// Mutate() yields a fresh clone — handlers may freely modify the
+		// returned proto without writing through the cache before Merge.
+		state := stateReader.Mutate()
 
 		// Add metadata entries to the transaction state
 		if state.GetMetadata() == nil {
@@ -146,19 +144,16 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 
 		txKey := domain.TransactionKey{LedgerName: ledgerName, ID: txID}
 
-		state, err := s.GetTransactionState(txKey)
+		stateReader, err := s.GetTransactionState(txKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state for delete", Cause: err}
 		}
 
-		if state == nil {
+		if stateReader == nil {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
 
-		// Clone before mutating — GetTransactionState may return the
-		// cached proto pointer when the key falls through to the parent
-		// KeyStore. See the matching note in processSaveMetadata.
-		state = state.CloneVT()
+		state := stateReader.Mutate()
 
 		// Reject a missing key with METADATA_NOT_FOUND (master #492):
 		// callers that delete a key they never set get an explicit

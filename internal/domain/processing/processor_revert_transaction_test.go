@@ -37,9 +37,9 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
-	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 
 	// Reversed posting: destination becomes source, source becomes destination
 	// Original: bank -> users:123 for 100 USD
@@ -52,9 +52,9 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	mockStore.EXPECT().PutReverted(txKey, true)
 
 	// Processor reads original transaction state, then updates it with RevertedByTransaction
-	mockStore.EXPECT().GetTransactionState(txKey).Return(&commonpb.TransactionState{
+	mockStore.EXPECT().GetTransactionState(txKey).Return((&commonpb.TransactionState{
 		CreatedByLog: 42,
-	}, nil)
+	}).AsReader(), nil)
 	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any())
 
 	// Processor stores the new revert transaction state
@@ -128,9 +128,9 @@ func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
 	destVol := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100), Output: commonpb.NewUint256FromUint64(0)}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
-	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 
 	mockStore.EXPECT().GetVolume(domain.NewVolumeKey("test-ledger", "users:123", "USD")).Return(sourceVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(domain.NewVolumeKey("test-ledger", "users:123", "USD"), gomock.Any())
@@ -140,10 +140,10 @@ func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
 	mockStore.EXPECT().PutReverted(txKey, true)
 
 	// Original transaction state carries the effective timestamp populated at create time.
-	mockStore.EXPECT().GetTransactionState(txKey).Return(&commonpb.TransactionState{
+	mockStore.EXPECT().GetTransactionState(txKey).Return((&commonpb.TransactionState{
 		CreatedByLog: 42,
 		Timestamp:    originalTimestamp,
-	}, nil)
+	}).AsReader(), nil)
 	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any())
 
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
@@ -206,9 +206,9 @@ func TestProcessRevertTransaction_AtEffectiveDate_MissingOriginalTimestamp(t *te
 	destVol := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100), Output: commonpb.NewUint256FromUint64(0)}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
-	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 
 	mockStore.EXPECT().GetVolume(domain.NewVolumeKey("test-ledger", "users:123", "USD")).Return(sourceVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(domain.NewVolumeKey("test-ledger", "users:123", "USD"), gomock.Any())
@@ -220,9 +220,9 @@ func TestProcessRevertTransaction_AtEffectiveDate_MissingOriginalTimestamp(t *te
 	// Simulate a TransactionState written before the Timestamp field existed (or
 	// otherwise inconsistent state). With at_effective_date=true this must surface
 	// loudly rather than silently falling back to s.GetDate().
-	mockStore.EXPECT().GetTransactionState(txKey).Return(&commonpb.TransactionState{
+	mockStore.EXPECT().GetTransactionState(txKey).Return((&commonpb.TransactionState{
 		CreatedByLog: 42,
-	}, nil)
+	}).AsReader(), nil)
 	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any())
 
 	order := &raftcmdpb.Order{
@@ -274,7 +274,7 @@ func TestProcessRevertTransaction_NotFound(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 10}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -315,7 +315,7 @@ func TestProcessRevertTransaction_AlreadyReverted(t *testing.T) {
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, nil).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetReverted(txKey).Return(true, nil)
 
 	order := &raftcmdpb.Order{

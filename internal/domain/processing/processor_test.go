@@ -107,7 +107,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	// Process the order normally
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
-	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
@@ -143,7 +143,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	// Order 1: CreateLedger("myled")
 	mockStore.EXPECT().GetLedger("myled").Return(nil, domain.ErrNotFound) // does not exist yet
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
-	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().PutLedger("myled", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			storedLedgerInfo = info
@@ -153,12 +153,12 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 
 	// Order 2: CreateTransaction on "myled"
 	// After order 1 runs, GetLedger should return the stored info.
-	mockStore.EXPECT().GetLedger("myled").DoAndReturn(func(_ string) (*commonpb.LedgerInfo, error) {
+	mockStore.EXPECT().GetLedger("myled").DoAndReturn(func(_ string) (commonpb.LedgerInfoReader, error) {
 		if storedLedgerInfo == nil {
 			return nil, domain.ErrNotFound
 		}
 
-		return storedLedgerInfo, nil
+		return storedLedgerInfo.AsReader(), nil
 	}).AnyTimes()
 	mockStore.EXPECT().GetBoundaries("myled").Return((&raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,

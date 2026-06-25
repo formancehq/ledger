@@ -27,7 +27,7 @@ func TestProcessCreateLedger(t *testing.T) {
 	// Setup expectations
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
-	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(name string, info *commonpb.LedgerInfo) {
 			require.Equal(t, "test-ledger", info.GetName())
@@ -71,7 +71,7 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
-	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger, nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger.AsReader(), nil)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
@@ -100,8 +100,8 @@ func TestProcessDeleteLedger(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger, nil)
-	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger.AsReader(), nil)
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().MarkLedgerForCleanup("test-ledger")
 	// processDeleteLedger does not touch the Index registry: the deferred

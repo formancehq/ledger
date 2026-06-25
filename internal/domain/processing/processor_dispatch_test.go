@@ -145,7 +145,7 @@ func TestProcessOrder_DispatchEveryLedgerScopedVariant(t *testing.T) {
 			// "slot free" and proceeds. Returning an existing LedgerInfo
 			// makes it fail with ErrLedgerAlreadyExists.
 			if tc.name == "create_ledger" {
-				mockStore.EXPECT().GetLedger(ledger).Return(&commonpb.LedgerInfo{Name: ledger}, nil).AnyTimes()
+				mockStore.EXPECT().GetLedger(ledger).Return((&commonpb.LedgerInfo{Name: ledger}).AsReader(), nil).AnyTimes()
 			} else {
 				mockStore.EXPECT().GetLedger(ledger).Return(nil, domain.ErrNotFound).AnyTimes()
 			}

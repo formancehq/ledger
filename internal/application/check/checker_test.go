@@ -354,13 +354,13 @@ func (f constantCheckScopeFactory) NewProposalScope() (processing.Scope, error) 
 	return f.scope, nil
 }
 
-func (s *scopeImpl) GetLedger(name string) (*commonpb.LedgerInfo, error) {
+func (s *scopeImpl) GetLedger(name string) (commonpb.LedgerInfoReader, error) {
 	info, ok := s.engine.ledgers[name]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return info, nil
+	return info.AsReader(), nil
 }
 
 // ForOrder is a no-op for the test scopeImpl: the checker runs without
@@ -408,21 +408,13 @@ func (s *scopeImpl) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair)
 	s.modifiedVolumes[k] = struct{}{}
 }
 
-func (s *scopeImpl) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
+func (s *scopeImpl) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
 	v, ok := s.engine.metadata[string(key.Bytes())]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v, nil
-}
-
-func (s *scopeImpl) GetAccountMetadataEntry(_ []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
-	return attributes.Entry[*commonpb.MetadataValue]{}, domain.ErrNotFound
-}
-
-func (s *scopeImpl) GetLedgerMetadataEntry(_ []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
-	return attributes.Entry[*commonpb.MetadataValue]{}, domain.ErrNotFound
+	return v.AsReader(), nil
 }
 
 func (s *scopeImpl) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
@@ -437,7 +429,7 @@ func (s *scopeImpl) DeleteAccountMetadata(key domain.MetadataKey) {
 	s.modifiedMetadata[k] = struct{}{}
 }
 
-func (s *scopeImpl) GetLedgerMetadata(_ domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
+func (s *scopeImpl) GetLedgerMetadata(_ domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
 	return nil, domain.ErrNotFound
 }
 func (s *scopeImpl) PutLedgerMetadata(_ domain.LedgerMetadataKey, _ *commonpb.MetadataValue) {}
@@ -451,34 +443,39 @@ func (s *scopeImpl) PutReverted(key domain.TransactionKey, reverted bool) {
 	s.reverted[string(key.Bytes())] = reverted
 }
 
-func (s *scopeImpl) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (s *scopeImpl) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
 	v, ok := s.engine.idempotency[key.Key]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v, nil
+	return v.AsReader(), nil
 }
 
 func (s *scopeImpl) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	s.engine.idempotency[key.Key] = value
 }
 
-func (s *scopeImpl) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+func (s *scopeImpl) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
 	v, ok := s.engine.references[string(key.Bytes())]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
 
-	return v, nil
+	return v.AsReader(), nil
 }
 
 func (s *scopeImpl) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	s.engine.references[string(key.Bytes())] = value
 }
 
-func (s *scopeImpl) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
-	return s.engine.transactionStates[string(key.Bytes())], nil
+func (s *scopeImpl) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
+	st := s.engine.transactionStates[string(key.Bytes())]
+	if st == nil {
+		return nil, nil
+	}
+
+	return st.AsReader(), nil
 }
 
 func (s *scopeImpl) PutTransactionState(key domain.TransactionKey, txState *commonpb.TransactionState) {
@@ -487,16 +484,16 @@ func (s *scopeImpl) PutTransactionState(key domain.TransactionKey, txState *comm
 	s.modifiedTxStates[k] = struct{}{}
 }
 
-func (s *scopeImpl) AddSigningKey(_ string, _ []byte, _ string)           {}
-func (s *scopeImpl) RemoveSigningKey(_ string)                            {}
-func (s *scopeImpl) GetSigningKeyChildren(_ string) []string              { return nil }
-func (s *scopeImpl) SetRequireSignatures(_ bool)                          {}
-func (s *scopeImpl) SetMaintenanceMode(_ bool)                            {}
-func (s *scopeImpl) SetChapterSchedule(_ string)                          {}
-func (s *scopeImpl) DeleteChapterSchedule()                               {}
-func (s *scopeImpl) GetSinkConfig(_ string) (*commonpb.SinkConfig, error) { return nil, nil }
-func (s *scopeImpl) AddSinkConfig(_ *commonpb.SinkConfig)                 {}
-func (s *scopeImpl) RemoveSinkConfig(_ string)                            {}
+func (s *scopeImpl) AddSigningKey(_ string, _ []byte, _ string)                {}
+func (s *scopeImpl) RemoveSigningKey(_ string)                                 {}
+func (s *scopeImpl) GetSigningKeyChildren(_ string) []string                   { return nil }
+func (s *scopeImpl) SetRequireSignatures(_ bool)                               {}
+func (s *scopeImpl) SetMaintenanceMode(_ bool)                                 {}
+func (s *scopeImpl) SetChapterSchedule(_ string)                               {}
+func (s *scopeImpl) DeleteChapterSchedule()                                    {}
+func (s *scopeImpl) GetSinkConfig(_ string) (commonpb.SinkConfigReader, error) { return nil, nil }
+func (s *scopeImpl) AddSinkConfig(_ *commonpb.SinkConfig)                      {}
+func (s *scopeImpl) RemoveSinkConfig(_ string)                                 {}
 
 func (s *scopeImpl) GetLastLogHash() []byte {
 	return s.engine.lastLogHash
@@ -528,26 +525,39 @@ func (s *scopeImpl) IncrementNextLedgerID() uint32 {
 	return id
 }
 
-func (s *scopeImpl) GetDate() *commonpb.Timestamp {
-	return s.date
+func (s *scopeImpl) GetDate() commonpb.TimestampReader {
+	if s.date == nil {
+		return nil
+	}
+
+	return s.date.AsReader()
 }
 
-func (s *scopeImpl) GetCurrentOpenChapter() (*commonpb.Chapter, bool) {
+func (s *scopeImpl) GetCurrentOpenChapter() (commonpb.ChapterReader, bool) {
 	if s.engine.currentOpenChapter != nil {
-		return s.engine.currentOpenChapter, true
+		return s.engine.currentOpenChapter.AsReader(), true
 	}
 
 	return nil, false
 }
 
-func (s *scopeImpl) GetClosingChapters() []*commonpb.Chapter {
-	return s.engine.closingChapters
+func (s *scopeImpl) GetClosingChapters() []commonpb.ChapterReader {
+	if s.engine.closingChapters == nil {
+		return nil
+	}
+
+	out := make([]commonpb.ChapterReader, len(s.engine.closingChapters))
+	for i, c := range s.engine.closingChapters {
+		out[i] = c.AsReader()
+	}
+
+	return out
 }
 
-func (s *scopeImpl) GetClosingChapterByID(chapterID uint64) (*commonpb.Chapter, bool) {
+func (s *scopeImpl) GetClosingChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
 	for _, p := range s.engine.closingChapters {
 		if p.GetId() == chapterID {
-			return p, true
+			return p.AsReader(), true
 		}
 	}
 
@@ -583,7 +593,7 @@ func (s *scopeImpl) IncrementNextChapterID() uint64 {
 	return id
 }
 
-func (s *scopeImpl) GetChapterByID(_ uint64) (*commonpb.Chapter, bool) {
+func (s *scopeImpl) GetChapterByID(_ uint64) (commonpb.ChapterReader, bool) {
 	return nil, false
 }
 
@@ -595,7 +605,7 @@ func (s *scopeImpl) SetPurgeRange(_, _, _, _, _ uint64) {}
 
 func (s *scopeImpl) SetPendingArchive(_, _, _, _, _ uint64) {}
 
-func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (*commonpb.PreparedQuery, error) {
+func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (commonpb.PreparedQueryReader, error) {
 	return nil, nil
 }
 func (s *scopeImpl) PutPreparedQuery(_ string, _ *commonpb.PreparedQuery)         {}
@@ -615,7 +625,7 @@ func (s *scopeImpl) DeleteQueryCheckpointSchedule()                        {}
 func (s *scopeImpl) MarkLedgerForCleanup(ledger string) {
 	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
 }
-func (s *scopeImpl) ResolveNumscriptContent(_ string, _, _ string) (*commonpb.NumscriptInfo, error) {
+func (s *scopeImpl) ResolveNumscriptContent(_ string, _, _ string) (commonpb.NumscriptInfoReader, error) {
 	return nil, nil
 }
 

@@ -439,7 +439,7 @@ func lsbIndex(b byte) int {
 
 // --- Gated reads on the 13 cache-attribute kinds ---
 
-func (g *gatedScope) GetLedger(name string) (*commonpb.LedgerInfo, error) {
+func (g *gatedScope) GetLedger(name string) (commonpb.LedgerInfoReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrLedger, domain.LedgerKey{Name: name}.Bytes()); err != nil {
 		return nil, err
 	}
@@ -463,7 +463,7 @@ func (g *gatedScope) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader
 	return g.WriteSet.GetVolume(key)
 }
 
-func (g *gatedScope) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
+func (g *gatedScope) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrMetadata, key.Bytes()); err != nil {
 		return nil, err
 	}
@@ -471,15 +471,7 @@ func (g *gatedScope) GetAccountMetadata(key domain.MetadataKey) (*commonpb.Metad
 	return g.WriteSet.GetAccountMetadata(key)
 }
 
-func (g *gatedScope) GetAccountMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
-	if err := g.CheckCoverage(dal.SubAttrMetadata, canonical); err != nil {
-		return attributes.Entry[*commonpb.MetadataValue]{}, err
-	}
-
-	return g.WriteSet.GetAccountMetadataEntry(canonical)
-}
-
-func (g *gatedScope) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
+func (g *gatedScope) GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrLedgerMetadata, key.Bytes()); err != nil {
 		return nil, err
 	}
@@ -487,15 +479,7 @@ func (g *gatedScope) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.
 	return g.WriteSet.GetLedgerMetadata(key)
 }
 
-func (g *gatedScope) GetLedgerMetadataEntry(canonical []byte) (attributes.Entry[*commonpb.MetadataValue], error) {
-	if err := g.CheckCoverage(dal.SubAttrLedgerMetadata, canonical); err != nil {
-		return attributes.Entry[*commonpb.MetadataValue]{}, err
-	}
-
-	return g.WriteSet.GetLedgerMetadataEntry(canonical)
-}
-
-func (g *gatedScope) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+func (g *gatedScope) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrReference, key.Bytes()); err != nil {
 		return nil, err
 	}
@@ -503,7 +487,7 @@ func (g *gatedScope) GetTransactionReference(key domain.TransactionReferenceKey)
 	return g.WriteSet.GetTransactionReference(key)
 }
 
-func (g *gatedScope) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
+func (g *gatedScope) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrTransaction, key.Bytes()); err != nil {
 		return nil, err
 	}
@@ -511,7 +495,7 @@ func (g *gatedScope) GetTransactionState(key domain.TransactionKey) (*commonpb.T
 	return g.WriteSet.GetTransactionState(key)
 }
 
-func (g *gatedScope) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
+func (g *gatedScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: name}.Bytes()); err != nil {
 		return nil, err
 	}
@@ -519,7 +503,7 @@ func (g *gatedScope) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
 	return g.WriteSet.GetSinkConfig(name)
 }
 
-func (g *gatedScope) GetPreparedQuery(ledgerName string, name string) (*commonpb.PreparedQuery, error) {
+func (g *gatedScope) GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: name}.Bytes()); err != nil {
 		return nil, err
 	}
@@ -535,7 +519,7 @@ func (g *gatedScope) GetNumscriptLatestVersion(ledgerName string, name string) (
 	return g.WriteSet.GetNumscriptLatestVersion(ledgerName, name)
 }
 
-func (g *gatedScope) ResolveNumscriptContent(ledgerName string, name string, version string) (*commonpb.NumscriptInfo, error) {
+func (g *gatedScope) ResolveNumscriptContent(ledgerName string, name string, version string) (commonpb.NumscriptInfoReader, error) {
 	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}.Bytes()); err != nil {
 		return nil, err
 	}

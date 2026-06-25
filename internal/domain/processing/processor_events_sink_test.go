@@ -139,7 +139,7 @@ func TestProcessAddEventsSink_AlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 
 	existingConfig := &commonpb.SinkConfig{Name: "my-nats-sink"}
-	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig, nil)
+	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig.AsReader(), nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{
@@ -175,7 +175,7 @@ func TestProcessRemoveEventsSink_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	existingConfig := &commonpb.SinkConfig{Name: "my-nats-sink"}
-	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig, nil)
+	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig.AsReader(), nil)
 	mockStore.EXPECT().RemoveSinkConfig("my-nats-sink")
 
 	order := &raftcmdpb.Order{

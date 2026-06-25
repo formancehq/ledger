@@ -41,7 +41,7 @@ func (p *RequestProcessor) processCreateIndex(
 	indexes.Put(s, info.GetName(), &commonpb.Index{
 		Id:          id,
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-		CreatedAt:   s.GetDate(),
+		CreatedAt:   s.GetDate().Mutate(),
 		Ledger:      ledgerName,
 		// First version each replica will build into when the initial
 		// backfill runs (cf. EN-1323 per-replica versioning).

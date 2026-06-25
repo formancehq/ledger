@@ -31,7 +31,7 @@ func (p *RequestProcessor) processCreateLedger(ledger string, order *raftcmdpb.C
 		at.Name = name
 	}
 
-	createdAt := s.GetDate()
+	createdAt := s.GetDate().Mutate()
 	ledgerID := s.IncrementNextLedgerID()
 
 	info := &commonpb.LedgerInfo{
@@ -84,9 +84,7 @@ func (p *RequestProcessor) processDeleteLedger(ledger string, s Scope) (*commonp
 		return nil, loadErr
 	}
 
-	l = l.CloneVT()
-
-	l.DeletedAt = s.GetDate()
+	l.DeletedAt = s.GetDate().Mutate()
 
 	s.PutLedger(ledger, l)
 	s.MarkLedgerForCleanup(ledger)

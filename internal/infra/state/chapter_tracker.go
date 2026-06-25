@@ -161,6 +161,32 @@ func (pt *ChapterTracker) PutChapter(p *commonpb.Chapter) {
 	pt.allChapters[p.GetId()] = p
 }
 
+// UpdateChapter replaces every reference to the chapter at p.GetId() with p:
+// the allChapters map, the currentOpenChapter field if its ID matches, and
+// the closingChapters slot if one carries that ID. Used by handlers that
+// obtained a chapter via Reader.Mutate() — the clone they hold is a different
+// pointer than the one already tracked, so they must rebind every reference
+// before subsequent reads or Merge would observe the stale pre-mutation copy.
+func (pt *ChapterTracker) UpdateChapter(p *commonpb.Chapter) {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
+	id := p.GetId()
+	pt.allChapters[id] = p
+
+	if pt.currentOpenChapter != nil && pt.currentOpenChapter.GetId() == id {
+		pt.currentOpenChapter = p
+	}
+
+	for i, c := range pt.closingChapters {
+		if c.GetId() == id {
+			pt.closingChapters[i] = p
+
+			return
+		}
+	}
+}
+
 // DeleteChapter removes a chapter from the map.
 func (pt *ChapterTracker) DeleteChapter(id uint64) {
 	pt.mu.Lock()
