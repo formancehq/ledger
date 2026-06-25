@@ -137,8 +137,12 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(firstResp.Logs).To(HaveLen(1))
 
-			firstTxID := firstResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
+			firstLog := firstResp.Logs[0].GetPayload().GetApply().GetLog()
+			firstTxID := firstLog.GetData().GetCreatedTransaction().GetTransaction().GetId()
+			firstLogID := firstLog.GetId()
+
 			Expect(firstTxID).NotTo(BeZero())
+			Expect(firstLogID).NotTo(BeZero())
 
 			// Same reference, this time the caller authorises the skip.
 			skipResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithSkippableReasons(
@@ -153,11 +157,20 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(skipResp.Logs).To(HaveLen(1))
 
-			skipped := skipResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
+			skipLog := skipResp.Logs[0].GetPayload().GetApply().GetLog()
+			skipped := skipLog.GetData().GetOrderSkipped()
 			Expect(skipped).NotTo(BeNil())
 			Expect(skipped.GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
 			Expect(skipped.GetContext()["reference"]).To(Equal("skip-dup-ref"))
 			Expect(skipped.GetContext()["existingTransactionId"]).To(Equal(strconv.FormatUint(firstTxID, 10)))
+
+			// The OrderSkipped log MUST have a real per-ledger Id (consecutive
+			// to the preceding one) and a Date — the read-side index keys
+			// per-ledger logs by Id, so a skip persisted with Id=0 would
+			// overwrite every prior skip on the same ledger.
+			Expect(skipLog.GetId()).To(BeNumerically(">", firstLogID))
+			Expect(skipLog.GetDate()).NotTo(BeNil())
+			Expect(skipLog.GetDate().GetData()).NotTo(BeZero())
 		})
 
 		It("Should still fail loudly when skippable_reasons is empty (default behaviour preserved)", func() {
@@ -175,13 +188,19 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		})
 
 		It("Should keep an atomic batch's other orders intact when one order skips", func() {
+			// Use a dedicated destination account so the test asserts only
+			// against postings produced in this scenario — other tests in
+			// the suite write to "account-batch" and would skew the running
+			// totals if shared.
+			const account = "account-batch-mixed"
+
 			// Pre-create the colliding reference so the skip-tolerant order
 			// in the batch hits TRANSACTION_REFERENCE_CONFLICT.
 			seedResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithReference(
 				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
-					actions.NewPosting("world", "account-batch", big.NewInt(50), "USD"),
+					actions.NewPosting("world", account, big.NewInt(50), "USD"),
 				}, nil, nil),
-				"batch-dup-ref",
+				"mixed-batch-dup-ref",
 			)))
 			Expect(err).To(Succeed())
 			Expect(seedResp.Logs).To(HaveLen(1))
@@ -191,15 +210,17 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			batchResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
 				// Order 0 — strict, must succeed.
 				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
-					actions.NewPosting("world", "account-batch", big.NewInt(10), "USD"),
+					actions.NewPosting("world", account, big.NewInt(10), "USD"),
 				}, nil, nil),
-				// Order 1 — skip-tolerant, must convert the conflict.
+				// Order 1 — skip-tolerant, must convert the conflict and
+				// NOT leak its 11-unit posting into the destination
+				// account's volume.
 				actions.WithSkippableReasons(
 					actions.WithReference(
 						actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
-							actions.NewPosting("world", "account-batch", big.NewInt(11), "USD"),
+							actions.NewPosting("world", account, big.NewInt(11), "USD"),
 						}, nil, nil),
-						"batch-dup-ref",
+						"mixed-batch-dup-ref",
 					),
 					commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 				),
@@ -207,7 +228,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				// the previous order produced a skip log (atomic batch
 				// continues on whitelisted business failures).
 				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
-					actions.NewPosting("world", "account-batch", big.NewInt(12), "USD"),
+					actions.NewPosting("world", account, big.NewInt(12), "USD"),
 				}, nil, nil),
 			))
 			Expect(err).To(Succeed())
@@ -220,7 +241,24 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			Expect(skipped.GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
 			Expect(skipped.GetContext()["existingTransactionId"]).To(Equal(strconv.FormatUint(seedTxID, 10)))
 
+			// The skip log carries a real per-ledger id and date even
+			// though no transaction was created — every ledger log needs
+			// one for the read-side index to work.
+			skipLog := batchResp.Logs[1].GetPayload().GetApply().GetLog()
+			Expect(skipLog.GetId()).NotTo(BeZero())
+			Expect(skipLog.GetDate()).NotTo(BeNil())
+
 			Expect(batchResp.Logs[2].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()).NotTo(BeNil())
+
+			// Volume invariant: the skipped order's 11 units must NOT have
+			// landed. Expected total received = 50 (seed) + 10 (order 0)
+			// + 12 (order 2) = 72.
+			accountResp, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				Ledger:  skipLedger,
+				Address: account,
+			})
+			Expect(err).To(Succeed())
+			Expect(accountResp.GetVolumes()["USD"].GetInput()).To(Equal("72"))
 		})
 
 		It("Should reject a skippable_reasons entry that is not in the operation's whitelist", func() {

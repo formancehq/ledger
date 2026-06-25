@@ -228,6 +228,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// replay activity is recorded (e.g. CreateIndex was archived, so
 		// neither expectedIndexes nor replayActivity ever held the key).
 		deletedInReplay = make(map[string]struct{})
+		// Per-ledger references already claimed by CreatedTransaction logs
+		// (reference → first log sequence that claimed it). Consumed by
+		// verifySkippedOrder to confirm TRANSACTION_REFERENCE_CONFLICT skips
+		// would have actually conflicted at the skip's log sequence — a
+		// tampered store that flipped CreatedTransaction → OrderSkipped on
+		// a fresh reference is caught here since the reference is absent.
+		referencesSeen = make(map[string]map[string]uint64)
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -474,7 +481,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
 
-						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, callback)
+						// verifySkippedOrder must run BEFORE recordReferenceClaim
+						// so the reference a skip claims is judged against the
+						// state at the skip's sequence, not the state that would
+						// include the skip's own reference (which never landed
+						// because the order was rolled back).
+						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, referencesSeen, callback)
+						recordReferenceClaim(referencesSeen, ledgerName, seq, payload.Apply.GetLog().GetData())
 
 						// Accumulate the LedgerLog.PurgedVolumes side of the
 						// stored projection while we have the log in hand;
@@ -1500,11 +1513,15 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 // chapters have been archived.
 //
 // Returns expectedSkippable: a map from log sequence to the chain-bound
-// Order.skippable_reasons whitelist that produced that log. The caller
+// Order.skippable_reasons whitelist (plus the reason-specific correlator
+// the verifier needs to confirm the projection is legitimate). The caller
 // uses it during log iteration to verify every OrderSkippedLog payload's
-// reason is one the corresponding order authorized — the LedgerLog
-// projection is not hash-chain bound, so a tampered skip log would
-// otherwise let a fabricated outcome slip past Check().
+// reason is one the corresponding order authorized AND that the underlying
+// condition was plausible at that sequence (e.g. for
+// TRANSACTION_REFERENCE_CONFLICT the audited reference must have been
+// claimed by an earlier CreatedTransaction on the same ledger). The
+// LedgerLog projection is not hash-chain bound, so without this check a
+// tampered skip log could let a fabricated outcome slip past Check().
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
 	reader dal.PebbleReader,
@@ -1512,7 +1529,7 @@ func (c *Checker) verifyAuditHashChain(
 	archiveLastAuditHash []byte,
 	idempotencyTTLMicros *uint64,
 	callback func(*servicepb.CheckStoreEvent),
-) (map[uint64][]commonpb.ErrorReason, error) {
+) (map[uint64]*expectedSkippableOrder, error) {
 	// Find the last archived audit sequence to start iteration after it.
 	//
 	// CloseAuditSequence is the last audit entry written BEFORE the CloseChapter
@@ -1547,11 +1564,11 @@ func (c *Checker) verifyAuditHashChain(
 		// Frozen idempotency outcomes the projection should hold, re-derived
 		// from each verified audit entry and compared to SubIdempKeys below.
 		expectedIdem = make(map[idemExpectedKey]expectedIdempotency)
-		// Per-log-sequence skippable_reasons whitelist re-derived from the
-		// chain-bound Order. Consumed by verifySkippedOrder during the
-		// log iteration loop to flag any OrderSkippedLog whose reason is
-		// not allowed by the originating order.
-		expectedSkippable = make(map[uint64][]commonpb.ErrorReason)
+		// Per-log-sequence skippable_reasons whitelist plus reason-specific
+		// correlator (e.g. reference for TRANSACTION_REFERENCE_CONFLICT),
+		// re-derived from the chain-bound Order. Consumed by
+		// verifySkippedOrder during the log iteration loop.
+		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
 		// hasVerifiedRange records whether any entry was verified; a dedicated
 		// bool rather than a 0-sentinel, since HLC timestamp 0 is a legitimate
 		// value (mirrors the *uint64 idemReportFloor tri-state below).
@@ -1731,6 +1748,18 @@ func (c *Checker) verifyAuditHashChain(
 	return expectedSkippable, nil
 }
 
+// expectedSkippableOrder captures the chain-verified fields the checker
+// needs to confirm a LedgerLogPayload.OrderSkipped projection is legitimate:
+// the audit-bound reasons whitelist (any skip must use one of these) and
+// the reason-specific correlator the verifier replays against the projection
+// stream. Today only TRANSACTION_REFERENCE_CONFLICT carries a correlator
+// (Reference + LedgerName); other reasons leave both empty.
+type expectedSkippableOrder struct {
+	reasons   []commonpb.ErrorReason
+	ledger    string
+	reference string
+}
+
 // collectExpectedSkippable populates expectedSkippable with the per-log
 // skippable_reasons whitelists re-derived from the chain-verified items of a
 // successful audit entry. Each item maps 1:1 to the log at
@@ -1739,7 +1768,7 @@ func (c *Checker) verifyAuditHashChain(
 func collectExpectedSkippable(
 	success *auditpb.AuditSuccess,
 	items []*auditpb.AuditItem,
-	expectedSkippable map[uint64][]commonpb.ErrorReason,
+	expectedSkippable map[uint64]*expectedSkippableOrder,
 ) {
 	minSeq := success.GetMinLogSequence()
 	if minSeq == 0 {
@@ -1760,21 +1789,77 @@ func collectExpectedSkippable(
 			continue
 		}
 
-		expectedSkippable[minSeq+uint64(i)] = reasons
+		exp := &expectedSkippableOrder{reasons: reasons}
+
+		if ls := order.GetLedgerScoped(); ls != nil {
+			exp.ledger = ls.GetLedger()
+
+			if apply := ls.GetApply(); apply != nil {
+				if ct := apply.GetCreateTransaction(); ct != nil {
+					exp.reference = ct.GetReference()
+				}
+			}
+		}
+
+		expectedSkippable[minSeq+uint64(i)] = exp
 	}
+}
+
+// recordReferenceClaim records the reference (when present) carried by a
+// CreatedTransaction log into referencesSeen — the first sequence wins, so a
+// later transaction reusing the same reference (which the FSM would have
+// rejected with TRANSACTION_REFERENCE_CONFLICT) does not move the claim.
+// Called by Check() after verifySkippedOrder so a skip log's own sequence
+// is never used as the "earlier claim" the skip purports to conflict with.
+func recordReferenceClaim(
+	referencesSeen map[string]map[string]uint64,
+	ledger string,
+	seq uint64,
+	payload *commonpb.LedgerLogPayload,
+) {
+	created, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
+	if !ok || created.CreatedTransaction == nil {
+		return
+	}
+
+	ref := created.CreatedTransaction.GetTransaction().GetReference()
+	if ref == "" {
+		return
+	}
+
+	set := referencesSeen[ledger]
+	if set == nil {
+		set = make(map[string]uint64)
+		referencesSeen[ledger] = set
+	}
+
+	if _, claimed := set[ref]; claimed {
+		return
+	}
+
+	set[ref] = seq
 }
 
 // verifySkippedOrder flags an OrderSkippedLog projection whose reason was
 // not authorised by the chain-bound Order.skippable_reasons whitelist (or
 // is a structural KindInternal reason — defense in depth mirroring the
-// gate in matchOrderSkip). The OrderSkippedLog sits in the per-log
-// projection which is not hash-chain bound, so without this check a
-// tampered skip log could let a fabricated outcome through Check().
+// gate in matchOrderSkip). It then replays the reason-specific condition
+// against the projection stream (e.g. for TRANSACTION_REFERENCE_CONFLICT:
+// the audited reference must have been claimed by an earlier
+// CreatedTransaction on the same ledger). The LedgerLog projection is not
+// hash-chain bound, so without these checks a tampered skip log could let
+// a fabricated outcome through Check().
+//
+// referencesSeen is the per-ledger set of references the prior
+// CreatedTransaction logs (and earlier OrderSkipped logs on a successful
+// audit) have claimed. verifySkippedOrder reads it but never mutates;
+// the caller in Check() updates it as it iterates logs.
 func verifySkippedOrder(
 	ledger string,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
-	expectedSkippable map[uint64][]commonpb.ErrorReason,
+	expectedSkippable map[uint64]*expectedSkippableOrder,
+	referencesSeen map[string]map[string]uint64,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	skipped, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped)
@@ -1804,7 +1889,7 @@ func verifySkippedOrder(
 		return
 	}
 
-	allowed, ok := expectedSkippable[seq]
+	expected, ok := expectedSkippable[seq]
 	if !ok {
 		callback(errorEvent(
 			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
@@ -1815,15 +1900,57 @@ func verifySkippedOrder(
 		return
 	}
 
-	if slices.Contains(allowed, reason) {
+	if !slices.Contains(expected.reasons, reason) {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records an OrderSkipped projection with reason %s that is not in the originating order's skippable_reasons whitelist", seq, reason),
+			seq, ledger, "", "",
+		))
+
 		return
 	}
 
-	callback(errorEvent(
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
-		fmt.Sprintf("log %d records an OrderSkipped projection with reason %s that is not in the originating order's skippable_reasons whitelist", seq, reason),
-		seq, ledger, "", "",
-	))
+	// Reason-specific replay: confirm the underlying condition was
+	// plausible at this sequence given the chain-bound order.
+	if reason == commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT {
+		// Empty reference means the original order had no reference set —
+		// TRANSACTION_REFERENCE_CONFLICT is structurally impossible.
+		if expected.reference == "" {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but the audited order on ledger %q has no reference set", seq, ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		// expected.ledger comes from the chain-bound order; cross-check it
+		// against the log's ledger to catch a tampered ApplyLedgerLog
+		// envelope that points the skip at a different ledger.
+		if expected.ledger != ledger {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records OrderSkipped on ledger %q but the chain-bound order targets ledger %q", seq, ledger, expected.ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		// The reference must have been claimed by an earlier
+		// CreatedTransaction on the same ledger; otherwise the original
+		// order would have succeeded, not conflicted.
+		if firstSeenSeq, claimed := referencesSeen[ledger][expected.reference]; !claimed || firstSeenSeq >= seq {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but reference %q was not claimed on ledger %q before this sequence", seq, expected.reference, ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+	}
 }
 
 // resolveIdempotencyTTLMicros picks the TTL (in microseconds) that bounds the

@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"errors"
+	"fmt"
 	"maps"
 	"slices"
 
@@ -64,7 +66,10 @@ func matchOrderSkip(order *raftcmdpb.Order, err domain.Describable) (*commonpb.L
 // wrapSkippedPayloadForOrder builds the LogPayload envelope that
 // ProcessOrders returns for a skipped order, mirroring the wrapping each
 // sub-dispatch (LedgerScoped Apply, etc.) produces on the success path so
-// downstream consumers see a uniform Log shape.
+// downstream consumers see a uniform Log shape. Id and Date stay zero
+// here — assignSkipLogIDAndDate fills them once ProcessOrders has the
+// parent Scope in hand (the inner LedgerLog must carry a per-ledger id
+// because the read-side index keys per-ledger logs by it).
 func wrapSkippedPayloadForOrder(order *raftcmdpb.Order, skipped *commonpb.OrderSkippedLog) *commonpb.LogPayload {
 	ledgerName := ""
 
@@ -86,4 +91,60 @@ func wrapSkippedPayloadForOrder(order *raftcmdpb.Order, skipped *commonpb.OrderS
 			},
 		},
 	}
+}
+
+// assignSkipLogIDAndDate allocates the ledger-local Log id and date for a
+// skipped order's log on the PARENT scope (never on the overlay — the
+// overlay is dropped to roll back the failed sub-handler's writes, so any
+// boundary update inside it would be lost).
+//
+// This mirrors the post-success epilogue in processApply: bump
+// boundaries.NextLogId, write the boundaries back, record the date. Without
+// it every skipped log lands at LedgerLog.Id=0 and the read-side index
+// (which keys per-ledger logs by (ledger, log_id) — see
+// internal/application/indexbuilder/process_logs.go) silently overwrites
+// every prior skip on the same ledger.
+//
+// Only LedgerScoped Apply orders are currently allowed to opt into
+// skippable_reasons (admission's per-operation whitelist), so the helper
+// expects a LedgerScoped order with a non-empty ledger name. Anything else
+// is a structural invariant violation: surface it loudly instead of
+// silently shipping a log with Id=0.
+func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *commonpb.LogPayload) domain.Describable {
+	lso, ok := order.GetType().(*raftcmdpb.Order_LedgerScoped)
+	if !ok || lso.LedgerScoped == nil || lso.LedgerScoped.GetLedger() == "" {
+		return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("skip allocated for non-LedgerScoped order %T", order.GetType())}
+	}
+
+	ledger := lso.LedgerScoped.GetLedger()
+
+	apply := payload.GetApply()
+	if apply == nil || apply.GetLog() == nil {
+		return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("skip payload for ledger %q has no inner Apply/Log envelope", ledger)}
+	}
+
+	boundariesReader, err := parent.GetBoundaries(ledger)
+	if err != nil {
+		// ErrNotFound means the apply order references a ledger that does
+		// not exist — that should have surfaced as the sub-handler's
+		// failure, never as a skip. Either way, refusing to forge a log
+		// for a non-existent ledger is safer than silently emitting one
+		// with arbitrary boundaries.
+		if errors.Is(err, domain.ErrNotFound) {
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("skip allocated for unknown ledger %q", ledger)}
+		}
+
+		return &domain.ErrStorageOperation{Operation: fmt.Sprintf("loading boundaries for skip log on ledger %q", ledger), Cause: err}
+	}
+
+	boundaries := boundariesReader.Mutate()
+	nextLogID := boundaries.GetNextLogId()
+	boundaries.NextLogId = nextLogID + 1
+
+	parent.PutBoundaries(ledger, boundaries)
+
+	apply.Log.Id = nextLogID
+	apply.Log.Date = parent.GetDate()
+
+	return nil
 }
