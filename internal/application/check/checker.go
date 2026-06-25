@@ -1648,11 +1648,12 @@ func (c *Checker) verifyAuditHashChain(
 		}
 
 		// Per-order skippable_reasons whitelist + chain-bound references
-		// re-derived from each chain-verified order. Orders pair 1:1 with
-		// logs within [MinLogSequence, MaxLogSequence], so the i-th item
-		// produced the log at MinLogSequence + i.
-		if success := entry.GetSuccess(); success != nil {
-			collectExpectedSkippable(success, items, expectedSkippable, chainBoundReferences)
+		// re-derived from each chain-verified order. Each item carries its
+		// own LogSequence (set by buildAuditItems from the fresh
+		// CreatedLog or the idempotency replay's ReferenceSequence).
+		// Failure-side entries get LogSequence=0 and contribute nothing.
+		if entry.GetSuccess() != nil {
+			collectExpectedSkippable(items, expectedSkippable, chainBoundReferences)
 		}
 	}
 
@@ -1683,9 +1684,12 @@ type expectedSkippableOrder struct {
 // items of a successful audit entry:
 //
 //   - expectedSkippable: per-log skippable_reasons whitelist + correlator for
-//     orders that opted into skip. Each item maps 1:1 to the log at
-//     MinLogSequence + i. Absent entry → "skip never authorised" per
-//     verifySkippedOrder.
+//     orders that opted into skip. Each item maps to the log at
+//     item.LogSequence (which buildAuditItems sets from either the fresh
+//     CreatedLog or the idempotency-replay ReferenceSequence). MinLogSequence
+//
+//   - i is the wrong formula when an item is a ReferenceSequence —
+//     succeeding indexes do not line up with seq + i.
 //
 //   - chainBoundReferences: per-ledger map of every CreateTransactionOrder
 //     reference seen in the audit chain, with the first sequence that
@@ -1694,17 +1698,11 @@ type expectedSkippableOrder struct {
 //     forge a "prior claim" for a fake skip — see
 //     verifySkippedOrder's TRANSACTION_REFERENCE_CONFLICT branch.
 func collectExpectedSkippable(
-	success *auditpb.AuditSuccess,
 	items []*auditpb.AuditItem,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBoundReferences map[string]map[string]uint64,
 ) {
-	minSeq := success.GetMinLogSequence()
-	if minSeq == 0 {
-		return
-	}
-
-	for i, item := range items {
+	for _, item := range items {
 		order := &raftcmdpb.Order{}
 		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
 			// An item that fails to unmarshal cannot tell us what its order
@@ -1713,7 +1711,12 @@ func collectExpectedSkippable(
 			continue
 		}
 
-		logSeq := minSeq + uint64(i)
+		logSeq := item.GetLogSequence()
+		if logSeq == 0 {
+			// Failure-side audit items get LogSequence=0 (no log was
+			// produced); they do not feed either output map.
+			continue
+		}
 
 		ls := order.GetLedgerScoped()
 		if ls == nil {

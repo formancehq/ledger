@@ -230,32 +230,81 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 		}
 	}
 
-	item := func(o *raftcmdpb.Order) *auditpb.AuditItem {
+	item := func(o *raftcmdpb.Order, logSeq uint64) *auditpb.AuditItem {
 		b, err := o.MarshalVT()
 		require.NoError(t, err)
 
-		return &auditpb.AuditItem{SerializedOrder: b}
+		return &auditpb.AuditItem{SerializedOrder: b, LogSequence: logSeq}
 	}
 
 	items := []*auditpb.AuditItem{
-		item(order("ref-A")), // strict CreateTransaction at log 100
-		item(order("ref-B", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)), // skip-tolerant at log 101
-		item(order("ref-A")), // duplicate ref-A at log 102 → must NOT shift the first claim
-		item(order("", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)), // empty reference → not tracked
+		item(order("ref-A"), 100), // strict CreateTransaction at log 100
+		item(order("ref-B", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), 101), // skip-tolerant at log 101
+		item(order("ref-A"), 102), // duplicate ref-A at log 102 → must NOT shift the first claim
+		item(order("", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), 103),    // empty reference → not tracked
+		item(order("ref-C", commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT), 0), // failure-side (LogSequence=0) → ignored
 	}
 
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(&auditpb.AuditSuccess{MinLogSequence: 100}, items, expectedSkip, refs)
+	collectExpectedSkippable(items, expectedSkip, refs)
 
 	require.Equal(t, uint64(100), refs["L"]["ref-A"], "first claim must win for re-claimed reference")
 	require.Equal(t, uint64(101), refs["L"]["ref-B"])
+	_, hasC := refs["L"]["ref-C"]
+	require.False(t, hasC, "items with LogSequence=0 (failure-side) must not contribute references")
 
-	// Only items with skippable_reasons are in expectedSkip.
+	// Only items with skippable_reasons AND a non-zero LogSequence are in expectedSkip.
 	require.Len(t, expectedSkip, 2)
 	require.Equal(t, "ref-B", expectedSkip[101].reference)
 	require.Equal(t, "L", expectedSkip[101].ledger)
+}
+
+// TestCollectExpectedSkippable_HonoursItemLogSequence pins the fix to the
+// MinLogSequence+i indexing bug: when audit items contain interleaved
+// idempotency-replay ReferenceSequence entries, the verifier must read
+// each item's own LogSequence (set by buildAuditItems) rather than
+// extrapolating linearly from MinLogSequence.
+func TestCollectExpectedSkippable_HonoursItemLogSequence(t *testing.T) {
+	t.Parallel()
+
+	body := func() []byte {
+		b, err := (&raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "L",
+					Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+						Apply: &raftcmdpb.LedgerApplyOrder{
+							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: "r"},
+							},
+						},
+					},
+				},
+			},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}).MarshalVT()
+		require.NoError(t, err)
+
+		return b
+	}()
+
+	// Item 0 is an idempotency replay pointing back to log 80, item 1 is a
+	// fresh CreatedLog at 200. The MinLogSequence+i formula would record
+	// item 1's whitelist under log 201, missing the actual skip log at 200.
+	items := []*auditpb.AuditItem{
+		{SerializedOrder: body, LogSequence: 80},  // ReferenceSequence replay
+		{SerializedOrder: body, LogSequence: 200}, // CreatedLog
+	}
+
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+	refs := make(map[string]map[string]uint64)
+
+	collectExpectedSkippable(items, expectedSkip, refs)
+
+	require.Contains(t, expectedSkip, uint64(80))
+	require.Contains(t, expectedSkip, uint64(200))
 }
 
 func skippedPayload(reason commonpb.ErrorReason) *commonpb.LedgerLogPayload {

@@ -3,10 +3,18 @@ package servicepb
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+// errorReasonPrefix mirrors domain.errorReasonPrefix without taking on a
+// domain import (this proto package sits below domain). Kept in lockstep
+// with internal/domain/reason.go: every commonpb.ErrorReason enum constant
+// is errorReasonPrefix + the short, client-facing Reason() string the
+// gRPC/HTTP error surface uses.
+const errorReasonPrefix = "ERROR_REASON_"
 
 // MarshalJSON implements json.Marshaler for GetTransactionResponse.
 func (x *GetTransactionResponse) MarshalJSON() ([]byte, error) {
@@ -111,10 +119,14 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// errorReasonsToStrings serialises an ErrorReason slice as its public enum
-// names ("ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT") so the JSON shape
-// matches the OpenAPI contract advertised at openapi.yml#components.schemas.
-// Returns nil on an empty slice so `omitempty` drops the field on the wire.
+// errorReasonsToStrings serialises an ErrorReason slice as the SHORT,
+// client-facing reason identifier (e.g. "TRANSACTION_REFERENCE_CONFLICT")
+// — the same string commonpb.ErrorReason.String() produces with the
+// "ERROR_REASON_" prefix stripped, and the same identifier the gRPC
+// ErrorInfo.reason field carries. The OpenAPI spec documents this short
+// form; round-tripping it on the JSON wire keeps the REST contract in
+// lockstep with gRPC/error metadata. Returns nil on an empty slice so
+// `omitempty` drops the field on the wire.
 func errorReasonsToStrings(reasons []commonpb.ErrorReason) []string {
 	if len(reasons) == 0 {
 		return nil
@@ -122,16 +134,17 @@ func errorReasonsToStrings(reasons []commonpb.ErrorReason) []string {
 
 	out := make([]string, len(reasons))
 	for i, r := range reasons {
-		out[i] = r.String()
+		out[i] = strings.TrimPrefix(r.String(), errorReasonPrefix)
 	}
 
 	return out
 }
 
-// errorReasonsFromStrings is the inverse of errorReasonsToStrings: parses the
-// enum-name list a REST caller submits. Unknown names fail loudly so a
-// typo in `skippableReasons` is rejected at admission with a clear 400
-// rather than silently dropped.
+// errorReasonsFromStrings is the inverse of errorReasonsToStrings: parses
+// the short-form list a REST caller submits. Re-prepends the
+// "ERROR_REASON_" prefix to match the generated enum constant before
+// looking it up. Unknown names fail loudly so a typo in `skippableReasons`
+// is rejected at admission with a clear 400 rather than silently dropped.
 func errorReasonsFromStrings(in []string) ([]commonpb.ErrorReason, error) {
 	if len(in) == 0 {
 		return nil, nil
@@ -140,7 +153,7 @@ func errorReasonsFromStrings(in []string) ([]commonpb.ErrorReason, error) {
 	out := make([]commonpb.ErrorReason, len(in))
 
 	for i, name := range in {
-		code, ok := commonpb.ErrorReason_value[name]
+		code, ok := commonpb.ErrorReason_value[errorReasonPrefix+name]
 		if !ok {
 			return nil, fmt.Errorf("unknown ErrorReason %q at index %d", name, i)
 		}

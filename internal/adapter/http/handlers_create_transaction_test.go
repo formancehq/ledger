@@ -167,7 +167,7 @@ func TestHandleCreateTransaction_OrderSkipped(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	body := strings.NewReader(`{"reference":"dup","skippableReasons":["ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT"]}`)
+	body := strings.NewReader(`{"reference":"dup","skippableReasons":["TRANSACTION_REFERENCE_CONFLICT"]}`)
 	r := newRequest(t, http.MethodPost, "/ledger1/transactions", body, map[string]string{
 		"ledgerName": "ledger1",
 	})
@@ -185,7 +185,7 @@ func TestHandleCreateTransaction_OrderSkipped(t *testing.T) {
 	// Response side: skip outcome surfaced to the client.
 	wrapper := decodeResponse[BaseResponse[OrderSkippedResponse]](t, w)
 	require.True(t, wrapper.Data.Skipped)
-	require.Equal(t, "ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT", wrapper.Data.Reason)
+	require.Equal(t, "TRANSACTION_REFERENCE_CONFLICT", wrapper.Data.Reason)
 	require.Equal(t, "dup", wrapper.Data.Context["reference"])
 	require.Equal(t, "42", wrapper.Data.Context["existingTransactionId"])
 }

@@ -2564,7 +2564,7 @@ components:
               description: Always true on this shape.
             reason:
               type: string
-              description: Typed reason that matched the skip (e.g. `ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT`).
+              description: Typed reason that matched the skip (e.g. `TRANSACTION_REFERENCE_CONFLICT`). Same identifier the gRPC ErrorInfo.reason and the REST error responses use.
             context:
               type: object
               additionalProperties:
