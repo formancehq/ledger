@@ -3706,6 +3706,7 @@ type CreateTransactionPayloadReader interface {
 	GetForce() bool
 	GetExpandVolumes() bool
 	GetScriptReference() ScriptReferenceReader
+	GetSkippableReasons() []commonpb.ErrorReason
 	Mutate() *CreateTransactionPayload
 }
 
@@ -3757,6 +3758,10 @@ func (r *createTransactionPayloadReadonly) GetScriptReference() ScriptReferenceR
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *createTransactionPayloadReadonly) GetSkippableReasons() []commonpb.ErrorReason {
+	return slices.Clone(r.v.GetSkippableReasons())
 }
 
 func (r *createTransactionPayloadReadonly) Mutate() *CreateTransactionPayload {

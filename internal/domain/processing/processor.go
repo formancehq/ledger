@@ -185,9 +185,64 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			tagger.BeginOrder(i)
 		}
 
-		payload, err := p.processOrder(order, orderScope, ctx)
+		// Per-order rollback for orders that opt in via skippable_reasons:
+		// every Scope mutation made by the sub-processor goes through an
+		// orderOverlayScope that buffers writes locally. If ProcessOrders
+		// later converts the failure into an OrderSkippedLog, the overlay
+		// is dropped without Commit() and the parent state stays untouched
+		// — the order is effectively rolled back. Orders without
+		// skippable_reasons retain the historical zero-overhead path.
+		processScope := orderScope
+
+		var overlay *orderOverlayScope
+		if len(order.GetSkippableReasons()) > 0 {
+			overlay = newOrderOverlayScope(orderScope)
+			processScope = overlay
+		}
+
+		payload, err := p.processOrder(order, processScope, ctx)
 		if err != nil {
+			if skippedPayload, matched := matchOrderSkip(order, err); matched {
+				// Drop the overlay (no Commit) → all writes the sub-
+				// processor staged are rolled back atomically. The
+				// boundary slot (NextLogId / Date) IS consumed on the
+				// PARENT scope so the skip log gets a per-ledger id
+				// and date like every other ledger log — the read-side
+				// index keys per-ledger logs by (ledger, log_id) and
+				// silently overwrites if every skip lands at id 0.
+				if err := assignSkipLogIDAndDate(orderScope, order, skippedPayload); err != nil {
+					return nil, err
+				}
+
+				nextSequenceID := orderScope.IncrementNextSequenceID()
+				skipLog := &commonpb.Log{
+					Sequence: nextSequenceID,
+					Payload:  skippedPayload,
+				}
+				logs[i] = &raftcmdpb.CreatedLogOrReference{
+					Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
+						CreatedLog: skipLog,
+					},
+				}
+
+				sink.Absorb(order, skipLog)
+
+				result.CreatedLogs = append(result.CreatedLogs, skipLog)
+				if result.MinLogSequence == 0 || nextSequenceID < result.MinLogSequence {
+					result.MinLogSequence = nextSequenceID
+				}
+				if nextSequenceID > result.MaxLogSequence {
+					result.MaxLogSequence = nextSequenceID
+				}
+
+				continue
+			}
+
 			return nil, err
+		}
+
+		if overlay != nil {
+			overlay.Commit()
 		}
 
 		nextSequenceID := orderScope.IncrementNextSequenceID()

@@ -36,6 +36,11 @@ func (m *Order) CloneVT() *Order {
 		copy(tmpBytes, rhs)
 		r.CoverageBits = tmpBytes
 	}
+	if rhs := m.SkippableReasons; rhs != nil {
+		tmpContainer := make([]commonpb.ErrorReason, len(rhs))
+		copy(tmpContainer, rhs)
+		r.SkippableReasons = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2457,6 +2462,15 @@ func (this *Order) EqualVT(that *Order) bool {
 	}
 	if string(this.CoverageBits) != string(that.CoverageBits) {
 		return false
+	}
+	if len(this.SkippableReasons) != len(that.SkippableReasons) {
+		return false
+	}
+	for i, vx := range this.SkippableReasons {
+		vy := that.SkippableReasons[i]
+		if vx != vy {
+			return false
+		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -6609,6 +6623,27 @@ func (m *Order) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
+	}
+	if len(m.SkippableReasons) > 0 {
+		var pksize2 int
+		for _, num := range m.SkippableReasons {
+			pksize2 += protohelpers.SizeOfVarint(uint64(num))
+		}
+		i -= pksize2
+		j1 := i
+		for _, num1 := range m.SkippableReasons {
+			num := uint64(num1)
+			for num >= 1<<7 {
+				dAtA[j1] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j1++
+			}
+			dAtA[j1] = uint8(num)
+			j1++
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(pksize2))
+		i--
+		dAtA[i] = 0x32
 	}
 	if len(m.CoverageBits) > 0 {
 		i -= len(m.CoverageBits)
@@ -12444,8 +12479,10 @@ var vtprotoPool_Order = sync.Pool{
 func (m *Order) ResetVT() {
 	if m != nil {
 		f0 := m.CoverageBits[:0]
+		f1 := m.SkippableReasons[:0]
 		m.Reset()
 		m.CoverageBits = f0
+		m.SkippableReasons = f1
 	}
 }
 func (m *Order) ReturnToVTPool() {
@@ -12650,6 +12687,13 @@ func (m *Order) SizeVT() (n int) {
 	l = len(m.CoverageBits)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.SkippableReasons) > 0 {
+		l = 0
+		for _, e := range m.SkippableReasons {
+			l += protohelpers.SizeOfVarint(uint64(e))
+		}
+		n += 1 + protohelpers.SizeOfVarint(uint64(l)) + l
 	}
 	n += len(m.unknownFields)
 	return n
@@ -15287,6 +15331,75 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 				m.CoverageBits = []byte{}
 			}
 			iNdEx = postIndex
+		case 6:
+			if wireType == 0 {
+				var v commonpb.ErrorReason
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= commonpb.ErrorReason(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.SkippableReasons = append(m.SkippableReasons, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				if elementCount != 0 && len(m.SkippableReasons) == 0 && cap(m.SkippableReasons) < elementCount {
+					m.SkippableReasons = make([]commonpb.ErrorReason, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v commonpb.ErrorReason
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return protohelpers.ErrIntOverflow
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= commonpb.ErrorReason(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.SkippableReasons = append(m.SkippableReasons, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field SkippableReasons", wireType)
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

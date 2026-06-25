@@ -679,6 +679,20 @@ func WithReference(req *servicepb.Request, reference string) *servicepb.Request 
 	return req
 }
 
+// WithSkippableReasons sets the per-order skippable_reasons whitelist on a
+// CreateTransaction request. Each reason is a business-level error the caller
+// accepts to see converted into an OrderSkippedLog (HTTP 200 / gRPC
+// equivalent) instead of failing the proposal.
+func WithSkippableReasons(req *servicepb.Request, reasons ...commonpb.ErrorReason) *servicepb.Request {
+	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
+		if d, ok := reqType.Apply.GetAction().GetData().(*servicepb.LedgerAction_CreateTransaction); ok {
+			d.CreateTransaction.SkippableReasons = reasons
+		}
+	}
+
+	return req
+}
+
 // WithIdempotencyKey wraps requests into an unsigned ApplyRequest under the
 // given idempotency key — idempotency is keyed per atomic batch.
 func WithIdempotencyKey(key string, reqs ...*servicepb.Request) *servicepb.ApplyRequest {

@@ -15,7 +15,12 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	s := ctx.Scope
 	info := ctx.LedgerInfo
 
-	// Check transaction reference uniqueness if reference is provided
+	// Check transaction reference uniqueness if reference is provided.
+	// This block is the strict prologue of the processor — no Scope.Put*
+	// runs before it. That dry prologue is what makes it safe for
+	// ProcessOrders to convert ErrTransactionReferenceConflict into an
+	// OrderSkippedLog when the caller opted in via Order.skippable_reasons
+	// (see processor_skippable.go for the per-reason audit log).
 	if order.GetReference() != "" {
 		refKey := domain.TransactionReferenceKey{LedgerName: ledger, Reference: order.GetReference()}
 
@@ -26,8 +31,9 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 
 		if existingRef != nil {
 			return nil, &domain.ErrTransactionReferenceConflict{
-				Ledger:    ledger,
-				Reference: order.GetReference(),
+				Ledger:                ledger,
+				Reference:             order.GetReference(),
+				ExistingTransactionID: existingRef.GetTransactionId(),
 			}
 		}
 	}
