@@ -125,6 +125,21 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  Tests-Model:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run in-memory model checker (3-node cluster, rolling restarts)
+        run: >
+          nix develop --command just test-model-cluster 180
+
   Coverage:
     if: always()
     needs: [Tests, Tests-E2E, Tests-Scenarios]
@@ -222,6 +237,7 @@ jobs:
         Tests,
         Tests-E2E,
         Tests-Scenarios,
+        Tests-Model,
         Tests-Schemathesis,
         Build,
       ]

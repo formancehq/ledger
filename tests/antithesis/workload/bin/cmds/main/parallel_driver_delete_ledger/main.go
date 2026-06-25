@@ -49,7 +49,7 @@ func main() {
 			},
 		},
 	}))
-	assert.Sometimes(err == nil || internal.IsTransient(err),
+	assert.Sometimes(err == nil || internal.IsTransient(err) || internal.IsLedgerDeleted(err),
 		"should be able to seed ephemeral ledger before delete", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return

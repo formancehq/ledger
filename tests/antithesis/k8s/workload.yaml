@@ -60,9 +60,9 @@ spec:
         command: ["/init"]
         env:
         - name: LEDGER_GRPC_ADDR
-          value: "ledger:8888"
+          value: "ledger-ledger:8888"
         - name: LEDGER_PER_NODE_GRPC_ADDR
-          value: "ledger-0.ledger-headless.default.svc.cluster.local:8888,ledger-1.ledger-headless.default.svc.cluster.local:8888,ledger-2.ledger-headless.default.svc.cluster.local:8888,ledger-3.ledger-headless.default.svc.cluster.local:8888,ledger-4.ledger-headless.default.svc.cluster.local:8888,ledger-5.ledger-headless.default.svc.cluster.local:8888,ledger-6.ledger-headless.default.svc.cluster.local:8888"
+          value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8888"
         - name: EXPECTED_VOTERS
           value: "3"
         - name: EXIT_AFTER_SETUP
@@ -73,8 +73,8 @@ spec:
             memory: 32Mi
           limits:
             memory: 64Mi
-      # Main container: Test Composer discovers and runs drivers
-      # from /opt/antithesis/test/v1/main/.
+      # Main container: Test Composer discovers and runs drivers from the test
+      # templates under /opt/antithesis/test/v1/ (main, model).
       containers:
       - name: workload
         image: __REGISTRY__/workload-ledger-v3:__TAG__
@@ -82,16 +82,16 @@ spec:
         args: ["infinity"]
         env:
         - name: LEDGER_GRPC_ADDR
-          value: "ledger:8888"
+          value: "ledger-ledger:8888"
         - name: LEDGER_PER_NODE_GRPC_ADDR
-          value: "ledger-0.ledger-headless.default.svc.cluster.local:8888,ledger-1.ledger-headless.default.svc.cluster.local:8888,ledger-2.ledger-headless.default.svc.cluster.local:8888,ledger-3.ledger-headless.default.svc.cluster.local:8888,ledger-4.ledger-headless.default.svc.cluster.local:8888,ledger-5.ledger-headless.default.svc.cluster.local:8888,ledger-6.ledger-headless.default.svc.cluster.local:8888"
+          value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8888"
         - name: EXPECTED_VOTERS
           value: "3"
         # Readiness probe ensures Antithesis waits for the ledger cluster
         # to be reachable before starting the Test Composer.
         readinessProbe:
           exec:
-            command: ["grpc_health_probe", "-addr=ledger:8888"]
+            command: ["grpc_health_probe", "-addr=ledger-ledger:8888"]
           initialDelaySeconds: 5
           periodSeconds: 5
         resources:

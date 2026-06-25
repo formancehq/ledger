@@ -1,0 +1,554 @@
+package main
+
+import (
+	"fmt"
+
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/holiman/uint256"
+)
+
+// The model-conformance checks: every observed server outcome — a committed
+// bulk, a failed bulk, or a read — is checked against the model (model.go) over
+// the candidate states candidateBases enumerates (search.go). Each check asserts
+// at its own callsite with a literal message; Antithesis catalogues assertions by
+// callsite and literal, so these must not be factored behind a shared assert.
+
+// validateBulkSuccess records a committed bulk and cross-checks it against the
+// forward model. Caller holds c.mu.
+func (c *Checker) validateBulkSuccess(bulk Bulk, resp *servicepb.ApplyResponse) {
+	dbg("BULK OK: ledgers=%s reqKinds=%s logSeqs=%s meta=%s", bulkLedgers(bulk), requestKinds(bulk), logSeqs(resp.GetLogs()), bulkMeta(bulk))
+
+	c.crossCheckCommit(bulk, resp)
+}
+
+// crossCheckCommit validates a committed bulk against the forward model
+// (model.go). Bulks drain in log-sequence order, so c.modelState is this
+// bulk's exact predecessor and the prediction is deterministic: the server
+// committed the bulk, so the model must predict commit AND the identical
+// post-commit volumes. A disagreement is a finding — the server accepted
+// something the model rejects, or the volumes diverged. modelState advances
+// only on agreement. Caller holds c.mu.
+func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
+	res := c.modelState.Apply(bulk)
+
+	if !res.OK {
+		dbg("MODEL FINDING: ledgers=%s server committed but model rejects (%s): kinds=%s meta=%s",
+			bulkLedgers(bulk), res.Reason, requestKinds(bulk), bulkMeta(bulk))
+		assert.Unreachable("singleton_driver_model: model rejects a server-committed bulk", internal.Details{
+			"ledgers": bulkLedgers(bulk),
+			"reason":  res.Reason,
+			"kinds":   requestKinds(bulk),
+			"meta":    bulkMeta(bulk),
+		})
+
+		return
+	}
+
+	logs := resp.GetLogs()
+	for i, order := range res.Orders {
+		if order.PCV == nil || i >= len(logs) {
+			continue
+		}
+
+		// PCV rides on CreatedTransaction for a create and RevertedTransaction
+		// for a revert.
+		data := logs[i].GetPayload().GetApply().GetLog().GetData()
+		var serverPCV *commonpb.PostCommitVolumes
+		switch {
+		case data.GetCreatedTransaction() != nil:
+			serverPCV = data.GetCreatedTransaction().GetPostCommitVolumes()
+		case data.GetRevertedTransaction() != nil:
+			serverPCV = data.GetRevertedTransaction().GetPostCommitVolumes()
+		default:
+			continue
+		}
+
+		for key, vp := range order.PCV {
+			gotIn, gotOut, ok := postCommitVolume(serverPCV, key)
+			if !ok || vp.Input.Cmp(&gotIn) != 0 || vp.Output.Cmp(&gotOut) != 0 {
+				dbg("MODEL PCV MISMATCH: %s/%s model=(%s,%s) serverPresent=%v",
+					key.Address, key.Asset, vp.Input.Dec(), vp.Output.Dec(), ok)
+				assert.Unreachable("singleton_driver_model: model post-commit volume mismatch", internal.Details{
+					"cell":     key.Address + "/" + key.Asset,
+					"modelIn":  vp.Input.Dec(),
+					"modelOut": vp.Output.Dec(),
+				})
+
+				return
+			}
+		}
+	}
+
+	// Check committed metadata writes against the server's response log: the
+	// as-written values the server stored must match the model. Stored values are
+	// verbatim — the declared type is applied only on read.
+	for i, order := range res.Orders {
+		if order.Meta == nil || i >= len(logs) {
+			continue
+		}
+
+		gotSaved := responseMetaEffect(bulk.Requests[i], logs[i])
+
+		if !metaMapEqual(order.Meta.saved, gotSaved) {
+			dbg("MODEL META SAVED MISMATCH: model=%s server=%s", renderMetaMap(order.Meta.saved), renderMetaMap(gotSaved))
+			assert.Unreachable("singleton_driver_model: response metadata value mismatch", internal.Details{
+				"ledger":      ledgerOf(bulk.Requests[i]),
+				"kinds":       requestKinds(bulk),
+				"meta":        bulkMeta(bulk),
+				"modelSaved":  renderMetaMap(order.Meta.saved),
+				"serverSaved": renderMetaMap(gotSaved),
+			})
+
+			return
+		}
+	}
+
+	// Check the remaining write ops against their response logs: the assigned
+	// transaction id and echoed reference/postings, and the schema / account-type
+	// mutations. These are all LedgerApplyOrders, so their logs sit under the
+	// apply payload alongside CreateTransaction. Each mismatch asserts at its own
+	// callsite (Antithesis catalogues by callsite + literal).
+	for i := range res.Orders {
+		if i >= len(logs) {
+			continue
+		}
+
+		req := bulk.Requests[i]
+		data := logs[i].GetPayload().GetApply().GetLog().GetData()
+
+		order := res.Orders[i]
+
+		if order.Revert != nil {
+			rt := data.GetRevertedTransaction()
+			revTx := rt.GetRevertTransaction()
+
+			if revTx.GetId() != order.TxID {
+				assert.Unreachable("singleton_driver_model: revert transaction id mismatch", internal.Details{
+					"ledger":   ledgerOf(req),
+					"modelId":  fmt.Sprintf("%d", order.TxID),
+					"serverId": fmt.Sprintf("%d", revTx.GetId()),
+				})
+
+				return
+			}
+
+			if rt.GetRevertedTransactionId() != order.Revert.revertedID {
+				assert.Unreachable("singleton_driver_model: reverted transaction id mismatch", internal.Details{
+					"ledger":   ledgerOf(req),
+					"modelId":  fmt.Sprintf("%d", order.Revert.revertedID),
+					"serverId": fmt.Sprintf("%d", rt.GetRevertedTransactionId()),
+				})
+
+				return
+			}
+
+			if !postingsEqual(order.Revert.postings, revTx.GetPostings()) {
+				assert.Unreachable("singleton_driver_model: revert postings mismatch", internal.Details{
+					"ledger":   ledgerOf(req),
+					"model":    renderPostings(order.Revert.postings),
+					"returned": renderPostings(revTx.GetPostings()),
+				})
+
+				return
+			}
+		} else if order.TxID != 0 {
+			tx := data.GetCreatedTransaction().GetTransaction()
+			ct := req.GetApply().GetAction().GetCreateTransaction()
+
+			if tx.GetId() != order.TxID {
+				assert.Unreachable("singleton_driver_model: transaction id mismatch", internal.Details{
+					"ledger":   ledgerOf(req),
+					"modelId":  fmt.Sprintf("%d", order.TxID),
+					"serverId": fmt.Sprintf("%d", tx.GetId()),
+				})
+
+				return
+			}
+
+			if tx.GetReference() != ct.GetReference() {
+				assert.Unreachable("singleton_driver_model: transaction reference mismatch", internal.Details{
+					"ledger":    ledgerOf(req),
+					"requested": ct.GetReference(),
+					"returned":  tx.GetReference(),
+				})
+
+				return
+			}
+
+			if !postingsEqual(ct.GetPostings(), tx.GetPostings()) {
+				assert.Unreachable("singleton_driver_model: transaction postings mismatch", internal.Details{
+					"ledger":    ledgerOf(req),
+					"requested": renderPostings(ct.GetPostings()),
+					"returned":  renderPostings(tx.GetPostings()),
+				})
+
+				return
+			}
+		}
+
+		switch r := req.GetType().(type) {
+		case *servicepb.Request_SetMetadataFieldType:
+			lg, rq := data.GetSetMetadataFieldType(), r.SetMetadataFieldType
+			if lg.GetTargetType() != rq.GetTargetType() || lg.GetKey() != rq.GetKey() || lg.GetType() != rq.GetType() {
+				assert.Unreachable("singleton_driver_model: set-field-type response mismatch", internal.Details{
+					"ledger":    ledgerOf(req),
+					"requested": fmt.Sprintf("tgt%d/%s=%v", rq.GetTargetType(), rq.GetKey(), rq.GetType()),
+					"returned":  fmt.Sprintf("tgt%d/%s=%v", lg.GetTargetType(), lg.GetKey(), lg.GetType()),
+				})
+
+				return
+			}
+
+		case *servicepb.Request_RemoveMetadataFieldType:
+			lg, rq := data.GetRemovedMetadataFieldType(), r.RemoveMetadataFieldType
+			if lg.GetTargetType() != rq.GetTargetType() || lg.GetKey() != rq.GetKey() {
+				assert.Unreachable("singleton_driver_model: remove-field-type response mismatch", internal.Details{
+					"ledger":    ledgerOf(req),
+					"requested": fmt.Sprintf("tgt%d/%s", rq.GetTargetType(), rq.GetKey()),
+					"returned":  fmt.Sprintf("tgt%d/%s", lg.GetTargetType(), lg.GetKey()),
+				})
+
+				return
+			}
+
+			// The workload never creates indexes, so removing a field type must
+			// never report dropping one.
+			if lg.GetDroppedIndex() != nil {
+				assert.Unreachable("singleton_driver_model: remove-field-type unexpectedly dropped an index", internal.Details{
+					"ledger": ledgerOf(req),
+					"key":    rq.GetKey(),
+				})
+
+				return
+			}
+
+		case *servicepb.Request_AddAccountType:
+			lg, rq := data.GetAddedAccountType().GetAccountType(), r.AddAccountType.GetAccountType()
+			if lg.GetName() != rq.GetName() || lg.GetPattern() != rq.GetPattern() || lg.GetPersistence() != rq.GetPersistence() {
+				assert.Unreachable("singleton_driver_model: add-account-type response mismatch", internal.Details{
+					"ledger":    ledgerOf(req),
+					"requested": fmt.Sprintf("%s=%s/p%d", rq.GetName(), rq.GetPattern(), rq.GetPersistence()),
+					"returned":  fmt.Sprintf("%s=%s/p%d", lg.GetName(), lg.GetPattern(), lg.GetPersistence()),
+				})
+
+				return
+			}
+
+		case *servicepb.Request_RemoveAccountType:
+			lg := data.GetRemovedAccountType()
+			if lg.GetName() != r.RemoveAccountType.GetName() {
+				assert.Unreachable("singleton_driver_model: remove-account-type response mismatch", internal.Details{
+					"ledger":    ledgerOf(req),
+					"requested": r.RemoveAccountType.GetName(),
+					"returned":  lg.GetName(),
+				})
+
+				return
+			}
+		}
+	}
+
+	c.modelState = res.State
+}
+
+// validateFailure accepts the observed failure of failedBulk iff some
+// candidate base reproduces the observed error reason when failedBulk is applied
+// to it — i.e. there is a serialization of the in-flight bulks under which the
+// server would reject failedBulk exactly this way. Because failedBulk is applied
+// fresh on each base, its own requests can never "explain" its own rejection.
+// Caller holds c.mu.
+func (c *Checker) validateFailure(maxTicket uint64, failedBulk Bulk, reqErr error) {
+	var reason string
+
+	matched := false
+	c.candidateBases(maxTicket, func(base GlobalState) bool {
+		res := base.Apply(failedBulk)
+		if !res.OK && internal.HasErrorReason(reqErr, res.Reason) {
+			reason = res.Reason
+			matched = true
+
+			return true
+		}
+
+		return false
+	})
+
+	if matched {
+		dbg("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)
+
+		return
+	}
+
+	dbg("MODEL FAIL FINDING: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(failedBulk), requestKinds(failedBulk), bulkMeta(failedBulk), reqErr)
+	assert.Unreachable("singleton_driver_model: bulk failure not explained by any serialization", internal.Details{
+		"ledgers": bulkLedgers(failedBulk),
+		"error":   reqErr.Error(),
+		"kinds":   requestKinds(failedBulk),
+		"meta":    bulkMeta(failedBulk),
+	})
+}
+
+// validateEmptyCommit handles a successful Apply that returned no committed log
+// (no sequenced entry). This is always a finding: the server assigns a log
+// sequence to every committed order — transaction or chart op (ProcessOrders) —
+// and the model never accepts a bulk that commits nothing (a transaction always
+// moves world's volume; add-existing and remove-missing both fail). So a success
+// with no log means the server committed, or reported committing, without
+// returning the log reference the checker needs to linearize the bulk. Caller
+// holds c.mu.
+func (c *Checker) validateEmptyCommit(bulk Bulk) {
+	dbg("BULK OK (empty): ledgers=%s kinds=%s", bulkLedgers(bulk), requestKinds(bulk))
+
+	assert.Unreachable("singleton_driver_model: successful bulk returned no committed log", internal.Details{
+		"ledgers": bulkLedgers(bulk),
+		"kinds":   requestKinds(bulk),
+	})
+}
+
+// matchesModel reports whether some candidate base satisfies matcher; label names
+// the read kind for debug logging. The read is registered outstanding for its
+// whole window (registerRead/finishRead), so modelState stays at or behind the
+// prefix the read saw (see tryDrain); candidateBases then folds only the bulks
+// dispatched no later than maxTicket — the ticket high-water when the read
+// returned — to enumerate what the server could have returned. The caller asserts
+// on a false result — each assert needs its own callsite with a literal message
+// for Antithesis cataloguing, so this helper never asserts. Acquires c.mu.
+func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(GlobalState) bool) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	matched := false
+	c.candidateBases(maxTicket, func(base GlobalState) bool {
+		matched = matcher(base)
+		return matched
+	})
+
+	if matched {
+		dbg("%s OK", label)
+	} else {
+		dbg("%s FINDING", label)
+	}
+
+	return matched
+}
+
+// validateAccountRead checks one GetAccount snapshot against the model: the read
+// is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
+// volume cell and exactly the server's metadata for the address. Both must hold
+// on the SAME base — the read is one atomic snapshot.
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, gotIn, gotOut uint256.Int, found bool, serverMeta map[string]*commonpb.MetadataValue) {
+	key := VolumeKey{Address: addr, Asset: asset}
+
+	if c.matchesModel(maxTicket, "READ", func(base GlobalState) bool {
+		ls := base.ledger(ledger)
+		return volumeCellMatches(ls, key, gotIn, gotOut, found) && metadataMatches(ls, addr, serverMeta)
+	}) {
+		return
+	}
+
+	assert.Unreachable("singleton_driver_model: account read outside model", internal.Details{
+		"ledger":         ledger,
+		"address":        addr,
+		"asset":          asset,
+		"serverIn":       gotIn.Dec(),
+		"serverOut":      gotOut.Dec(),
+		"serverHadAsset": found,
+		"serverMeta":     renderMetaMap(serverMeta),
+		"modelMeta":      c.modelAccountMetaDump(ledger, addr),
+	})
+}
+
+// volumeCellMatches reports whether ls holds exactly the (gotIn, gotOut, found)
+// reading for cell key: present with matching volumes, or absent when the server
+// returned no row (the base's purge sweep already removed zero-balance
+// EPHEMERAL/TRANSIENT cells). An empty asset — a metadata-only pick — is never a
+// present cell, so it imposes no volume constraint.
+func volumeCellMatches(ls LedgerState, key VolumeKey, gotIn, gotOut uint256.Int, found bool) bool {
+	vp, present := ls.volumes[key]
+	switch {
+	case found && present && vp.Input.Cmp(&gotIn) == 0 && vp.Output.Cmp(&gotOut) == 0:
+		return true
+	case !found && !present:
+		return true
+	}
+
+	return false
+}
+
+// metadataMatches reports whether ls holds exactly serverMeta for addr — same
+// keys, same verbatim values. Reads surface the stored value as-written; the
+// declared type is an index hint, not applied on read.
+func metadataMatches(ls LedgerState, addr string, serverMeta map[string]*commonpb.MetadataValue) bool {
+	modelMeta := ls.accountMetadata(addr)
+	if len(modelMeta) != len(serverMeta) {
+		return false
+	}
+
+	for k, v := range modelMeta {
+		sv, ok := serverMeta[k]
+		if !ok || metaValueString(sv) != metaValueString(v) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// validateLedgerRead checks one GetLedger snapshot against the model: legal iff
+// some candidate base holds both the server's chart (account types) and exactly
+// the server's ledger metadata. Both must hold on the SAME base — the read is one
+// atomic snapshot.
+func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue) {
+	if c.matchesModel(maxTicket, "LEDGER", func(base GlobalState) bool {
+		ls := base.ledger(ledger)
+		return chartMatches(ls, serverTypes) && ledgerMetaMatches(ls, serverMeta)
+	}) {
+		return
+	}
+
+	assert.Unreachable("singleton_driver_model: ledger read outside model", internal.Details{
+		"ledger":      ledger,
+		"serverTypes": len(serverTypes),
+		"serverMeta":  renderMetaMap(serverMeta),
+		"modelMeta":   c.modelLedgerMetaDump(ledger),
+	})
+}
+
+// chartMatches reports whether ls's chart equals the server's account types
+// exactly — same names, patterns, and persistence.
+func chartMatches(ls LedgerState, serverTypes map[string]*commonpb.AccountType) bool {
+	if len(ls.types) != len(serverTypes) {
+		return false
+	}
+
+	for name, t := range ls.types {
+		st, ok := serverTypes[name]
+		if !ok || st.GetPattern() != t.Pattern || st.GetPersistence() != t.Persistence {
+			return false
+		}
+	}
+
+	return true
+}
+
+// ledgerMetaMatches reports whether ls's ledger metadata equals serverMeta
+// exactly — same keys, same verbatim values. Reads surface the stored value
+// as-written; the declared type is an index hint, not applied on read.
+func ledgerMetaMatches(ls LedgerState, serverMeta map[string]*commonpb.MetadataValue) bool {
+	if len(ls.ledgerMeta) != len(serverMeta) {
+		return false
+	}
+
+	for k, v := range ls.ledgerMeta {
+		sv, ok := serverMeta[k]
+		if !ok || metaValueString(sv) != metaValueString(v) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// responseMetaEffect extracts the server's stored (as-written) values for a
+// committed metadata write from its response log, dispatching on the request
+// type. Returns nil for non-metadata requests and for deletes, whose log carries
+// only the target and key (validated through subsequent reads).
+func responseMetaEffect(req *servicepb.Request, log *commonpb.Log) (saved map[string]*commonpb.MetadataValue) {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_Apply:
+		data := log.GetPayload().GetApply().GetLog().GetData()
+		switch r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_CreateTransaction:
+			return data.GetCreatedTransaction().GetTransaction().GetMetadata()
+		case *servicepb.LedgerAction_AddMetadata:
+			return data.GetSavedMetadata().GetMetadata()
+		}
+	case *servicepb.Request_SaveLedgerMetadata:
+		return log.GetPayload().GetSavedLedgerMetadata().GetMetadata()
+	}
+
+	return nil
+}
+
+// postingsEqual reports whether two posting lists match field-for-field
+// (source, destination, asset, amount).
+func postingsEqual(a, b []*commonpb.Posting) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		var x, y uint256.Int
+		a[i].GetAmount().IntoUint256(&x)
+		b[i].GetAmount().IntoUint256(&y)
+
+		if a[i].GetSource() != b[i].GetSource() ||
+			a[i].GetDestination() != b[i].GetDestination() ||
+			a[i].GetAsset() != b[i].GetAsset() ||
+			!x.Eq(&y) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// renderPostings formats a posting list for assertion details.
+func renderPostings(ps []*commonpb.Posting) string {
+	out := ""
+	for _, p := range ps {
+		var amt uint256.Int
+		p.GetAmount().IntoUint256(&amt)
+		if out != "" {
+			out += ","
+		}
+		out += p.GetSource() + "->" + p.GetDestination() + ":" + amt.Dec() + p.GetAsset()
+	}
+
+	return "[" + out + "]"
+}
+
+// metaMapEqual reports whether two metadata maps hold the same keys and the same
+// type-tagged values.
+func metaMapEqual(a, b map[string]*commonpb.MetadataValue) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for k, v := range a {
+		bv, ok := b[k]
+		if !ok || metaValueString(v) != metaValueString(bv) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// postCommitVolume extracts (input, output) for one cell from a server response,
+// parsing the decimal-string volumes into uint256 — the ledger's native volume
+// type. ok is false when the cell is absent or the values don't parse.
+func postCommitVolume(pcv *commonpb.PostCommitVolumes, key VolumeKey) (in, out uint256.Int, ok bool) {
+	byAsset, found := pcv.GetVolumesByAccount()[key.Address]
+	if !found {
+		return in, out, false
+	}
+
+	vol, found := byAsset.GetVolumes()[key.Asset]
+	if !found {
+		return in, out, false
+	}
+
+	if err := in.SetFromDecimal(vol.GetInput()); err != nil {
+		return in, out, false
+	}
+
+	if err := out.SetFromDecimal(vol.GetOutput()); err != nil {
+		return in, out, false
+	}
+
+	return in, out, true
+}

@@ -31,9 +31,13 @@ RUN mkdir -p /cmds
 # compile the unique main.go (~117 LOC each).
 RUN go build -race ./internal/...
 
-# Build all workload binaries in parallel. The shared dependency cache is
-# warm from the previous step, so each parallel build only compiles main.go.
-RUN ls ./bin/cmds/ | xargs -P$(nproc) -I{} go build -race -o /cmds/{} ./bin/cmds/{}
+# Build all workload binaries in parallel, preserving the
+# bin/cmds/<template>/<command> layout so each command lands in its own test
+# template directory. The shared dependency cache is warm from the previous step,
+# so each build only compiles main.go.
+RUN find ./bin/cmds -mindepth 2 -maxdepth 2 -type d \
+        | sed 's|^\./bin/cmds/||' \
+        | xargs -P"$(nproc)" -I{} sh -c 'mkdir -p "/cmds/$(dirname "$1")" && go build -race -o "/cmds/$1" "./bin/cmds/$1"' _ {}
 
 # Runner
 FROM debian:trixie
@@ -45,5 +49,11 @@ COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.44 /ko-app/grpc-health
 COPY --from=compiler /init /init
 ENTRYPOINT ["/init"]
 
-COPY --from=compiler /cmds/* /opt/antithesis/test/v1/main/
+# Antithesis selects exactly one test template per execution history, so commands
+# in different templates never run together. The source mirrors this: each
+# bin/cmds/<template>/ directory becomes a test template under test/v1/. The
+# model checker drives the system itself and must own the whole timeline (no
+# concurrent driver, no eventually_* command pre-empting it), so it lives in its
+# own template (model), separate from the rest of the suite (main).
+COPY --from=compiler /cmds/ /opt/antithesis/test/v1/
 COPY --from=compiler /instrumented/symbols/ /symbols

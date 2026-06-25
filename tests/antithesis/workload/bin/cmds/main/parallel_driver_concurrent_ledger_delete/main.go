@@ -69,7 +69,7 @@ func main() {
 						return
 					}
 
-					if internal.IsTransient(err) {
+					if internal.IsTransient(err) || internal.IsLedgerDeleted(err) {
 						writeErr = err
 
 						return
@@ -97,7 +97,7 @@ func main() {
 				return
 			}
 
-			if !internal.IsTransient(err) {
+			if !(internal.IsTransient(err) || internal.IsLedgerDeleted(err)) {
 				assert.Unreachable("delete ledger should not fail unexpectedly",
 					details.With(internal.Details{"error": err}))
 			}
@@ -143,7 +143,7 @@ func main() {
 			return
 		}
 
-		if internal.IsTransient(err) {
+		if internal.IsTransient(err) || internal.IsLedgerDeleted(err) {
 			assert.Reachable("concurrent ledger delete: post-delete write inconclusive (transient)", details)
 
 			return

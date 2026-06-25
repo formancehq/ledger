@@ -71,5 +71,6 @@ misc/devenv/devenv
 .hypothesis/
 misc/devenv/operator/operator
 tests/antithesis/workload/parallel_driver_*
+tests/antithesis/workload/singleton_driver_*
 tests/antithesis/k8s/manifests/
 misc/operator/helm/operator/charts/

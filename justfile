@@ -89,6 +89,18 @@ test-e2e-full:
 test-scenarios:
     go test -race -tags scenario ./tests/scenarios/... -timeout 300s
 
+# Run the in-memory model checker (singleton_driver_model) against a local
+# single node for DURATION seconds. Validates FSM determinism / cache-Pebble
+# consistency on every committed bulk. Exits non-zero on any finding.
+test-model duration="60":
+    tests/antithesis/run_model_test.sh {{duration}}
+
+# Run the model checker against a 3-node cluster with rolling restarts —
+# exercises leadership change, snapshot install and follower restore. This is
+# the CI gate (the Tests-Model job runs it for 3 minutes); timing-sensitive.
+test-model-cluster duration="180":
+    tests/antithesis/run_model_test.sh --cluster {{duration}}
+
 # Run all fuzz tests (seed corpus replay, no active fuzzing — fast CI check)
 fuzz-check:
     #!/usr/bin/env bash

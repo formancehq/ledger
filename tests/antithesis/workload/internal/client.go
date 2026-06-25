@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -26,26 +27,73 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		target = "localhost:15100"
 	}
 
-	serviceConfig := `{
-		"loadBalancingConfig": [{"round_robin": {}}],
+	// LEDGER_NO_RETRY disables the automatic UNAVAILABLE retry entirely (both the
+	// service-config policy and the interceptors). Useful for isolating whether a
+	// divergence is caused by retried (and thus possibly double-applied, when the
+	// request is non-idempotent) Apply calls.
+	retryDisabled := os.Getenv("LEDGER_NO_RETRY") != ""
+
+	// LEDGER_RETRY_FOREVER raises the retry budget to ~infinite (off by default —
+	// master keeps MaxAttempts 50, which grpc-go silently caps to 5 because no
+	// WithMaxCallAttempts is set). The model-based driver sets it so the
+	// "ambiguous commit" class of errors becomes eventually-definitive: combined
+	// with the idempotency key on every Request, a retry that lands after the
+	// cluster recovers hits the server's idempotency cache and returns the cached
+	// log reference, so the validator never has to model "may have committed".
+	// MaxBackoff caps each interval at 2s, so 1M attempts is ~23 days of budget.
+	retryForever := os.Getenv("LEDGER_RETRY_FOREVER") != ""
+
+	maxAttempts := 50
+	if retryForever {
+		maxAttempts = 1000000
+	}
+
+	// The retry interceptors retry the transient set (IsTransient) to a definitive
+	// outcome; their loop budget is the bounded default unless retry-forever lifts
+	// it.
+	interceptorAttempts := retryMaxAttempts
+	if retryForever {
+		interceptorAttempts = maxAttempts
+	}
+
+	// Service-config retry covers only the raw UNAVAILABLE code; the interceptors
+	// add ReadIndexNotCaughtUp, which is reason-specific and so cannot be matched
+	// here (it would over-retry permanent FailedPrecondition business errors).
+	methodConfig := ""
+	if !retryDisabled {
+		methodConfig = fmt.Sprintf(`,
 		"methodConfig": [{
 			"name": [{}],
 			"retryPolicy": {
-				"MaxAttempts": 50,
+				"MaxAttempts": %d,
 				"InitialBackoff": "0.2s",
 				"MaxBackoff": "2s",
 				"BackoffMultiplier": 1.5,
 				"RetryableStatusCodes": ["UNAVAILABLE"]
 			}
-		}]
-	}`
+		}]`, maxAttempts)
+	}
+	// Round-robin load balancing always applies; only the retry policy is toggled.
+	serviceConfig := `{"loadBalancingConfig": [{"round_robin": {}}]` + methodConfig + `}`
 
 	addrs := strings.Split(target, ",")
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(serviceConfig),
-		grpc.WithUnaryInterceptor(retryUnaryInterceptor),
-		grpc.WithStreamInterceptor(retryStreamInterceptor),
+	}
+
+	if !retryDisabled {
+		opts = append(opts,
+			grpc.WithUnaryInterceptor(retryUnaryInterceptor(interceptorAttempts)),
+			grpc.WithStreamInterceptor(retryStreamInterceptor(interceptorAttempts)),
+		)
+
+		if retryForever {
+			// grpc-go's WithMaxCallAttempts default is 5 — the service-config
+			// MaxAttempts is silently capped to that otherwise. Only lifted in
+			// retry-forever mode so the default path matches master exactly.
+			opts = append(opts, grpc.WithMaxCallAttempts(maxAttempts))
+		}
 	}
 
 	// When multiple addresses are provided, use a manual resolver so gRPC
@@ -85,56 +133,68 @@ func retryDelay(attempt int) time.Duration {
 	return d
 }
 
-// retryUnaryInterceptor retries unary RPCs on UNAVAILABLE errors (including
-// DNS resolution failures) that the gRPC service-config retry policy misses.
-func retryUnaryInterceptor(
-	ctx context.Context,
-	method string,
-	req, reply any,
-	cc *grpc.ClientConn,
-	invoker grpc.UnaryInvoker,
-	opts ...grpc.CallOption,
-) error {
-	var err error
-	for attempt := range retryMaxAttempts {
-		err = invoker(ctx, method, req, reply, cc, opts...)
-		if !IsUnavailable(err) {
-			return err
+// retryUnaryInterceptor retries unary RPCs on the transient set (IsTransient) to
+// a definitive outcome — each code either clears (no leader → elected, lagging
+// read → caught up) or is an ambiguous commit (Unavailable / DeadlineExceeded /
+// Aborted / ExternalServiceError can follow a commit) that a retry resolves via
+// the idempotency cache. None is a permanent business answer, so retrying is safe
+// and cannot loop forever. The retried set and the set the processor drops are
+// the same predicate, so they cannot drift. maxAttempts bounds the loop
+// (~infinite in retry-forever mode); ctx cancellation (shutdown /
+// MODEL_MAX_SECONDS) ends it regardless.
+func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply any,
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		var err error
+		for attempt := range maxAttempts {
+			err = invoker(ctx, method, req, reply, cc, opts...)
+			if !IsTransient(err) {
+				return err
+			}
+			select {
+			case <-ctx.Done():
+				return err
+			case <-time.After(retryDelay(attempt)):
+			}
 		}
-		select {
-		case <-ctx.Done():
-			return err
-		case <-time.After(retryDelay(attempt)):
-		}
+		return err
 	}
-	return err
 }
 
-// retryStreamInterceptor retries stream creation on UNAVAILABLE errors.
-func retryStreamInterceptor(
-	ctx context.Context,
-	desc *grpc.StreamDesc,
-	cc *grpc.ClientConn,
-	method string,
-	streamer grpc.Streamer,
-	opts ...grpc.CallOption,
-) (grpc.ClientStream, error) {
-	var (
-		stream grpc.ClientStream
-		err    error
-	)
-	for attempt := range retryMaxAttempts {
-		stream, err = streamer(ctx, desc, cc, method, opts...)
-		if !IsUnavailable(err) {
-			return stream, err
+// retryStreamInterceptor retries stream creation on the same transient set as
+// retryUnaryInterceptor (IsTransient).
+func retryStreamInterceptor(maxAttempts int) grpc.StreamClientInterceptor {
+	return func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		streamer grpc.Streamer,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		var (
+			stream grpc.ClientStream
+			err    error
+		)
+		for attempt := range maxAttempts {
+			stream, err = streamer(ctx, desc, cc, method, opts...)
+			if !IsTransient(err) {
+				return stream, err
+			}
+			select {
+			case <-ctx.Done():
+				return nil, err
+			case <-time.After(retryDelay(attempt)):
+			}
 		}
-		select {
-		case <-ctx.Done():
-			return nil, err
-		case <-time.After(retryDelay(attempt)):
-		}
+		return stream, err
 	}
-	return stream, err
 }
 
 // IsUnavailable returns true if the error is a gRPC Unavailable status
@@ -230,10 +290,12 @@ func IsAlreadyExists(err error) bool {
 	return ok && st.Code() == codes.AlreadyExists
 }
 
-// IsNotFound returns true if the error is a gRPC NotFound status. In the
-// workload's fault-injection environment any NotFound is treated as a
-// transient resource-gone signal (ledger soft-deleted by a sibling
-// driver, query checkpoint pruned, etc.).
+// IsNotFound returns true if the error is a gRPC NotFound status. Every NotFound
+// the server returns is a permanent business answer — the requested entity does
+// not exist (ACCOUNT_TYPE_NOT_FOUND, METADATA_NOT_FOUND, TRANSACTION_NOT_FOUND,
+// …) — so it is deliberately NOT part of IsTransient. Callers that want to
+// tolerate a specific not-found (e.g. a concurrently-deleted ledger) check it
+// explicitly.
 func IsNotFound(err error) bool {
 	if err == nil {
 		return false
@@ -249,23 +311,31 @@ func IsNotFound(err error) bool {
 // only so existing callers keep compiling.
 func IsLedgerNotFound(err error) bool { return IsNotFound(err) }
 
-// IsTransient returns true if the error is transient and should NOT
-// trigger failure assertions in Antithesis tests. Covers:
+// IsTransient returns true for a genuinely transient infrastructure error — not a
+// definitive business answer. Retrying it reaches a definitive outcome: the
+// condition clears (no leader → elected, lagging read → caught up), or — since
+// Unavailable / DeadlineExceeded / Aborted / ExternalServiceError can follow a
+// commit — an ambiguous commit a retry resolves via the idempotency cache. The
+// retry interceptors retry exactly this set, and the model processor drops
+// exactly this set as "did not happen" (sound because retry resolves it first, so
+// the processor only sees one on shutdown); keeping them one predicate is why
+// they cannot drift. Covers:
 //   - Unavailable (cluster unhealthy / no leader / Raft transients)
 //   - DeadlineExceeded (server unreachable, fault window)
-//   - Aborted (conflict-style retryable; matches the codebase's own
-//     snapshot_fetcher retry classifier)
-//   - FailedPrecondition + READ_INDEX_NOT_CAUGHT_UP
-//   - NotFound (ledger or query checkpoint deleted/pruned concurrently)
-//   - LedgerDeleted (soft-deleted ledger ErrorInfo)
+//   - Aborted (no domain error maps to it; only Raft / transport transients)
+//   - FailedPrecondition + READ_INDEX_NOT_CAUGHT_UP (read store catching up)
 //   - ExternalServiceError (S3 down etc.)
+//
+// Business outcomes are deliberately excluded — definitive, never-clearing, and
+// validated rather than retried or dropped: NotFound and LedgerDeleted.
+// Deletable-ledger prefixes are restricted from the shared pool (see
+// restrictedPrefixes), so only the drivers that delete their own ledgers ever
+// legitimately see LedgerDeleted; for anything drawn from the pool it's a finding.
 func IsTransient(err error) bool {
 	return IsUnavailable(err) ||
 		IsDeadlineExceeded(err) ||
 		IsAborted(err) ||
 		IsReadIndexNotCaughtUp(err) ||
-		IsNotFound(err) ||
-		IsLedgerDeleted(err) ||
 		IsExternalServiceError(err)
 }
 

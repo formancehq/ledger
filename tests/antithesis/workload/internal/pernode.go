@@ -111,8 +111,8 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(serviceConfig),
-		grpc.WithUnaryInterceptor(retryUnaryInterceptor),
-		grpc.WithStreamInterceptor(retryStreamInterceptor),
+		grpc.WithUnaryInterceptor(retryUnaryInterceptor(retryMaxAttempts)),
+		grpc.WithStreamInterceptor(retryStreamInterceptor(retryMaxAttempts)),
 	}
 
 	var conns PerNodeConns

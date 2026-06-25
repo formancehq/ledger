@@ -156,7 +156,7 @@ func main() {
 			Type: &servicepb.Request_DeleteLedger{
 				DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
 			},
-		})); err != nil && !internal.IsTransient(err) {
+		})); err != nil && !(internal.IsTransient(err) || internal.IsLedgerDeleted(err)) {
 			// Ambiguous deletes are resolved by step 3 (recreate succeeds only
 			// if the delete committed); definitive failures are inconclusive
 			// for this property.
@@ -206,7 +206,7 @@ func main() {
 
 		reuseDetails := details.With(internal.Details{"reference": reuseRef, "error": fmt.Sprintf("%v", err)})
 
-		if err != nil && internal.IsTransient(err) {
+		if err != nil && (internal.IsTransient(err) || internal.IsLedgerDeleted(err)) {
 			return
 		}
 

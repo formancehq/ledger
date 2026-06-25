@@ -56,6 +56,13 @@ func main() {
 			PageSize:  10,
 		})
 
+		// Names come from a small shared pool, so another worker can delete this
+		// query between our create and execute — an expected NotFound race (the
+		// delete path below tolerates the mirror case), not a failure.
+		if internal.IsNotFound(err) {
+			return
+		}
+
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to execute prepared query", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return

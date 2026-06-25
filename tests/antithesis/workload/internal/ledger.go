@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 
@@ -19,6 +20,11 @@ import (
 // these would weaken the survival assertion to Reachable.
 var restrictedPrefixes = []string{
 	"transient-", "insuf-", "deltest-", "sentinel-",
+	// parallel_driver_delete_ledger creates then deletes these; a generic driver
+	// that picked one would race the deletion, and a read on a deleted ledger
+	// returns plain NotFound (not LedgerDeleted), which generic drivers don't
+	// tolerate — a false finding.
+	"ephemeral-",
 	// Wave-1 property drivers: each owns its ledgers and asserts balance/
 	// completeness/ordering invariants that a foreign write would break.
 	"refrace-",  // parallel_driver_reference_race
@@ -29,13 +35,21 @@ var restrictedPrefixes = []string{
 	"tsorder-",  // parallel_driver_timestamp_order
 	"minseq-",   // parallel_driver_minlogseq
 	"stale-",    // parallel_driver_stale_reads
+	// singleton_driver_model assumes it is the only writer on its ledgers; a
+	// foreign write would surface as a model divergence, not a ledger bug.
+	"model-",
 }
 
 // CreateLedger creates a ledger via the Apply RPC and verifies it can be read back.
 func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, name string) error {
 	details := Details{"ledger": name}
 
-	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+	// A fresh idempotency key, reused across the client's internal retries: a
+	// create whose commit response was lost (e.g. UNAVAILABLE) replays through the
+	// server's idempotency cache and returns the committed success, rather than
+	// re-running and surfacing a spurious AlreadyExists.
+	key := fmt.Sprintf("create-ledger-%016x%016x", Rand().Uint64(), Rand().Uint64())
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(key, &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: &servicepb.CreateLedgerRequest{Name: name},
 		},
