@@ -75,6 +75,70 @@ func TestHandleBulk_SizeLimitExceeded(t *testing.T) {
 	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
 }
 
+// TestHandleBulk_OrderSkippedSurfacesInResponse pins the contract for the
+// shared CreateTransactionPayload: a bulk CREATE_TRANSACTION item that
+// opts into `skippableReasons` and triggers a whitelisted business
+// failure must surface as a structured OrderSkippedResponse in the bulk
+// result's `data` field (not the legacy null that dropped the skip
+// reason/context).
+func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			return []*commonpb.Log{
+				{
+					Payload: &commonpb.LogPayload{
+						Type: &commonpb.LogPayload_Apply{
+							Apply: &commonpb.ApplyLedgerLog{
+								Log: &commonpb.LedgerLog{
+									Id: 17,
+									Data: &commonpb.LedgerLogPayload{
+										Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+											OrderSkipped: &commonpb.OrderSkippedLog{
+												Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+												Context: map[string]string{
+													"reference":             "dup",
+													"existingTransactionId": "42",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	body := strings.NewReader(`[
+		{"action":"CREATE_TRANSACTION","data":{"reference":"dup","skippableReasons":["TRANSACTION_REFERENCE_CONFLICT"]}}
+	]`)
+	r := newRequest(t, http.MethodPost, "/ledger1/bulk", body, map[string]string{
+		"ledgerName": "ledger1",
+	})
+	w := httptest.NewRecorder()
+
+	srv.handleBulk(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	resp := decodeResponse[bulkResponse](t, w)
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "CREATE_TRANSACTION", resp.Data[0].ResponseType)
+	require.Equal(t, uint64(17), resp.Data[0].LogID)
+	require.NotNil(t, resp.Data[0].Data)
+
+	// Data is unmarshalled as a map[string]any (interface{} round-trip).
+	skip, ok := resp.Data[0].Data.(map[string]any)
+	require.True(t, ok, "Data must be the structured OrderSkippedResponse shape (got %T)", resp.Data[0].Data)
+	require.Equal(t, true, skip["skipped"])
+	require.Equal(t, "TRANSACTION_REFERENCE_CONFLICT", skip["reason"])
+}
+
 func TestHandleBulk_EmptyArray(t *testing.T) {
 	t.Parallel()
 

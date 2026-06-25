@@ -245,12 +245,25 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 			continue
 		}
 
-		// Extract data from log
+		// Extract data from log. CreateTransaction items that opted into
+		// `skippableReasons` may surface as an OrderSkipped payload here
+		// when the FSM matched a whitelisted business failure; that case
+		// fills Data with the same OrderSkippedResponse shape the single
+		// endpoint returns so clients can branch on `data.skipped`
+		// without an extra log fetch (and without misreading the null
+		// Data that this writer used to emit on skip).
 		if log := result.log; log != nil {
 			apiResults[i].LogID = log.GetId()
-			if log.GetData() != nil {
-				if ct := log.GetData().GetCreatedTransaction(); ct != nil {
-					data = ct.GetTransaction()
+			if payload := log.GetData(); payload != nil {
+				switch p := payload.GetPayload().(type) {
+				case *commonpb.LedgerLogPayload_CreatedTransaction:
+					data = p.CreatedTransaction.GetTransaction()
+				case *commonpb.LedgerLogPayload_OrderSkipped:
+					data = OrderSkippedResponse{
+						Skipped: true,
+						Reason:  domain.ReasonString(p.OrderSkipped.GetReason()),
+						Context: p.OrderSkipped.GetContext(),
+					}
 				}
 			}
 		}
