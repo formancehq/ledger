@@ -706,6 +706,10 @@ func TestClickHouseCreateTableDDL(t *testing.T) {
 	require.Contains(t, ddl, "CREATE TABLE IF NOT EXISTS test_events")
 	require.Contains(t, ddl, "log_sequence UInt64")
 	require.Contains(t, ddl, "ReplacingMergeTree()")
+	// color is part of the posting sub-schema so warehouse queries can
+	// reconstruct the segregated buckets — see sinkPosting.MarshalJSON.
+	require.Contains(t, ddl, "color String",
+		"ClickHouse posting columns must include color to match the sink JSON shape")
 }
 
 func TestSinkTime_MarshalJSON(t *testing.T) {
