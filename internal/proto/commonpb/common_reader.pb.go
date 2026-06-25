@@ -7881,15 +7881,10 @@ func NewTransactionReferenceValueListReader(s []*TransactionReferenceValue) Tran
 // AccountStateReader provides read-only access to AccountState.
 // Call Mutate() to obtain a mutable clone.
 type AccountStateReader interface {
-	GetCreatedByLog() uint64
 	Mutate() *AccountState
 }
 
 type accountStateReadonly struct{ v *AccountState }
-
-func (r *accountStateReadonly) GetCreatedByLog() uint64 {
-	return r.v.GetCreatedByLog()
-}
 
 func (r *accountStateReadonly) Mutate() *AccountState {
 	return r.v.CloneVT()

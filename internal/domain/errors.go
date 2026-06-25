@@ -891,6 +891,27 @@ func (e *ErrInvalidPattern) Metadata() map[string]string {
 	return map[string]string{"pattern": e.Pattern, "details": e.Details}
 }
 
+// ErrDefaultMetadataOnPopulatedLedger — adding an account type that carries
+// default_metadata to a ledger that has already processed transactions. EN-1276
+// default metadata is create-only: defaults are applied to accounts the first
+// time they are touched, and pre-existing accounts carry no existence marker,
+// so attaching defaults to a populated ledger would backfill them on next
+// touch. Until the explicit one-time seeding pass lands, default_metadata may
+// only be declared on a ledger that has no transactions yet.
+type ErrDefaultMetadataOnPopulatedLedger struct {
+	Ledger   string
+	TypeName string
+}
+
+func (e *ErrDefaultMetadataOnPopulatedLedger) Error() string {
+	return fmt.Sprintf("cannot add account type %q with default_metadata to ledger %q: the ledger already has transactions (default_metadata is only allowed while the ledger has no accounts yet)",
+		e.TypeName, e.Ledger)
+}
+func (*ErrDefaultMetadataOnPopulatedLedger) Reason() string { return ErrReasonValidation }
+func (e *ErrDefaultMetadataOnPopulatedLedger) Metadata() map[string]string {
+	return map[string]string{"ledger": e.Ledger, "name": e.TypeName}
+}
+
 // ErrAccountTypeHasAccounts — removing an account type that still has matching accounts.
 type ErrAccountTypeHasAccounts struct {
 	Name string

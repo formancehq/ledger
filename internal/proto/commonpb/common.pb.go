@@ -7724,12 +7724,11 @@ func (x *TransactionReferenceValue) GetTransactionId() uint64 {
 // AccountState records that an account has been seen at least once. Its mere
 // presence is the per-account existence marker the FSM uses to answer "is this
 // account new (first time ever, any asset)?" — a cache miss on this key means
-// the account has never been created before. created_by_log is informational
-// (the log sequence of the first transaction to touch the account) and lets the
-// checker tie the marker back to the audit chain.
+// the account has never been created before. The marker is presence-only: it
+// carries no fields, so the bytes the FSM apply path writes and the bytes the
+// backup/rebuild path reconstructs are identical for the same applied index.
 type AccountState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CreatedByLog  uint64                 `protobuf:"fixed64,1,opt,name=created_by_log,json=createdByLog,proto3" json:"created_by_log,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7762,13 +7761,6 @@ func (x *AccountState) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AccountState.ProtoReflect.Descriptor instead.
 func (*AccountState) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{93}
-}
-
-func (x *AccountState) GetCreatedByLog() uint64 {
-	if x != nil {
-		return x.CreatedByLog
-	}
-	return 0
 }
 
 // NumscriptVersionValue stores the latest version pointer for a named numscript.
@@ -11180,9 +11172,8 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\"4\n" +
-	"\fAccountState\x12$\n" +
-	"\x0ecreated_by_log\x18\x01 \x01(\x06R\fcreatedByLog\"1\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\"\x0e\n" +
+	"\fAccountState\"1\n" +
 	"\x15NumscriptVersionValue\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\"\xc6\x01\n" +
 	"\vSegmentType\x12\x16\n" +

@@ -2544,7 +2544,6 @@ func (m *AccountState) CloneVT() *AccountState {
 		return (*AccountState)(nil)
 	}
 	r := new(AccountState)
-	r.CreatedByLog = m.CreatedByLog
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7868,9 +7867,6 @@ func (this *AccountState) EqualVT(that *AccountState) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.CreatedByLog != that.CreatedByLog {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -16248,12 +16244,6 @@ func (m *AccountState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.CreatedByLog != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CreatedByLog))
-		i--
-		dAtA[i] = 0x9
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -21725,9 +21715,6 @@ func (m *AccountState) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.CreatedByLog != 0 {
-		n += 9
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -38955,16 +38942,6 @@ func (m *AccountState) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: AccountState: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CreatedByLog", wireType)
-			}
-			m.CreatedByLog = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.CreatedByLog = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

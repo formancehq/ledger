@@ -794,12 +794,11 @@ func addVolumeNeed(p *plan.Needs, ledgerName string, account, asset string) {
 // world is the only system account and never carries default metadata, so it is
 // skipped — declaring it would only add a cache read the apply path never makes.
 //
-// The marker is declared for every CreateTransaction account; the apply path
-// only consults it when the ledger has activated the feature (status READY), so
-// declaring on an inactive ledger is correct but not free. The propose-time gate
-// that skips this declaration for inactive ledgers rides with the activation-
-// status work (it needs the ledger's status, resolved from a.store at propose
-// time).
+// The marker is declared for every CreateTransaction account. The apply path
+// consults it only when the ledger declares at least one account type with
+// default_metadata (the derived ledgerHasAccountTypeDefaults gate), so declaring
+// on a ledger without defaults is correct but not free. A propose-time gate that
+// skips this declaration for ledgers without defaults is possible but unwired.
 func addAccountNeed(p *plan.Needs, ledgerName, account string) {
 	if account == "world" {
 		return

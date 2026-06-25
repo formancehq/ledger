@@ -34,6 +34,24 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 		return nil, err
 	}
 
+	// EN-1276 is create-only: default_metadata may only be attached to an account
+	// type while the ledger has no accounts yet. A populated ledger's pre-existing
+	// accounts carry no existence marker, so attaching defaults now would backfill
+	// them on next touch (the deferred one-time seeding pass lifts this). A ledger
+	// with NextTransactionId == 1 has applied no transaction, hence has no account.
+	// Boundaries are preloaded for every Apply order, so this read is coverage-
+	// gated and deterministic across nodes.
+	if len(at.GetDefaultMetadata()) > 0 {
+		boundaries, bErr := loadBoundaries(s, ledgerName)
+		if bErr != nil {
+			return nil, bErr
+		}
+
+		if boundaries.GetNextTransactionId() > 1 {
+			return nil, &domain.ErrDefaultMetadataOnPopulatedLedger{Ledger: ledgerName, TypeName: at.GetName()}
+		}
+	}
+
 	if info.AccountTypes == nil {
 		info.AccountTypes = make(map[string]*commonpb.AccountType)
 	}

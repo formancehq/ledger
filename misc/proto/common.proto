@@ -971,11 +971,10 @@ message TransactionReferenceValue {
 // AccountState records that an account has been seen at least once. Its mere
 // presence is the per-account existence marker the FSM uses to answer "is this
 // account new (first time ever, any asset)?" — a cache miss on this key means
-// the account has never been created before. created_by_log is informational
-// (the log sequence of the first transaction to touch the account) and lets the
-// checker tie the marker back to the audit chain.
+// the account has never been created before. The marker is presence-only: it
+// carries no fields, so the bytes the FSM apply path writes and the bytes the
+// backup/rebuild path reconstructs are identical for the same applied index.
 message AccountState {
-  fixed64 created_by_log = 1;
 }
 
 // NumscriptVersionValue stores the latest version pointer for a named numscript.
