@@ -175,6 +175,101 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLedgerMismatch(t *testing.T)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
+// TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextReference
+// catches a tampered LedgerLog projection where the context.reference was
+// flipped to point at an unrelated R'. The LedgerLog is not hash-bound, so
+// only the audit chain's order.reference can be trusted as the ground
+// truth.
+func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextReference(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-chain",
+		},
+	}
+	refs := map[string]map[string]uint64{
+		"L": {"ref-chain": 3},
+	}
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{"reference": "ref-tampered"},
+			},
+		},
+	}
+
+	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger
+// catches a tampered context.ledger field.
+func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref",
+		},
+	}
+	refs := map[string]map[string]uint64{
+		"L": {"ref": 3},
+	}
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{"ledger": "L-tampered"},
+			},
+		},
+	}
+
+	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext pins the
+// happy-path round trip for context: when the persisted context.reference
+// and context.ledger match the chain-bound values, the verifier passes.
+func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref",
+		},
+	}
+	refs := map[string]map[string]uint64{
+		"L": {"ref": 3},
+	}
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{
+					"ledger":                "L",
+					"reference":             "ref",
+					"existingTransactionId": "42", // not verifiable from chain alone — must not fail the check
+				},
+			},
+		},
+	}
+
+	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	require.Empty(t, events, "matching context must round-trip even with non-verifiable fields like existingTransactionId")
+}
+
 // TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived pins the
 // archive boundary escape hatch: with archived chapters present, a missing
 // claim cannot be distinguished from one that lived in a purged chapter,

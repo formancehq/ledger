@@ -1893,6 +1893,37 @@ func verifySkippedOrder(
 
 			return
 		}
+
+		// Verify the persisted OrderSkipped.context fields against the
+		// chain-bound order. The context surfaces to clients via the REST
+		// response and gRPC log payload, so tampering only the context
+		// (without flipping the reason or rewriting an unrelated log)
+		// would otherwise pass Check() with no other tripwire — the
+		// LedgerLog projection is not hash-bound. ExistingTransactionId
+		// is not in the audit chain (tx ids are FSM-allocated and not
+		// re-derivable from the chain alone), so the verifier only pins
+		// the fields it can re-derive: `reference` and `ledger`.
+		ctx := skipped.OrderSkipped.GetContext()
+
+		if got := ctx["reference"]; got != "" && got != expected.reference {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.reference=%q but the chain-bound order references %q", seq, got, expected.reference),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		if got := ctx["ledger"]; got != "" && got != expected.ledger {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.ledger=%q but the chain-bound order targets ledger %q", seq, got, expected.ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
 	}
 }
 
