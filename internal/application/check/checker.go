@@ -181,7 +181,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Verify the audit hash chain before log replay.
 	// This iterates all non-archived audit entries and recomputes each hash
 	// from the stored orders, chaining from archiveLastAuditHash.
-	if err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, idempotencyTTLMicros, callback); err != nil {
+	// Returns the per-log-sequence skippable_reasons whitelist re-derived from
+	// the chain-bound Orders, consumed by verifySkippedOrders during the log
+	// iteration loop below.
+	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, idempotencyTTLMicros, callback)
+	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
 
@@ -469,6 +473,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						}
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
+
+						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, callback)
 
 						// Accumulate the LedgerLog.PurgedVolumes side of the
 						// stored projection while we have the log in hand;
@@ -1492,6 +1498,13 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 // Archived audit entries have been purged from Pebble, so the chain starts
 // at archiveLastAuditHash (from the latest archived chapter) or nil if no
 // chapters have been archived.
+//
+// Returns expectedSkippable: a map from log sequence to the chain-bound
+// Order.skippable_reasons whitelist that produced that log. The caller
+// uses it during log iteration to verify every OrderSkippedLog payload's
+// reason is one the corresponding order authorized — the LedgerLog
+// projection is not hash-chain bound, so a tampered skip log would
+// otherwise let a fabricated outcome slip past Check().
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
 	reader dal.PebbleReader,
@@ -1499,7 +1512,7 @@ func (c *Checker) verifyAuditHashChain(
 	archiveLastAuditHash []byte,
 	idempotencyTTLMicros *uint64,
 	callback func(*servicepb.CheckStoreEvent),
-) error {
+) (map[uint64][]commonpb.ErrorReason, error) {
 	// Find the last archived audit sequence to start iteration after it.
 	//
 	// CloseAuditSequence is the last audit entry written BEFORE the CloseChapter
@@ -1521,7 +1534,7 @@ func (c *Checker) verifyAuditHashChain(
 
 	auditCursor, err := query.ReadAuditEntries(ctx, reader, afterAuditSeq)
 	if err != nil {
-		return fmt.Errorf("reading audit entries: %w", err)
+		return nil, fmt.Errorf("reading audit entries: %w", err)
 	}
 
 	defer func() { _ = auditCursor.Close() }()
@@ -1534,6 +1547,11 @@ func (c *Checker) verifyAuditHashChain(
 		// Frozen idempotency outcomes the projection should hold, re-derived
 		// from each verified audit entry and compared to SubIdempKeys below.
 		expectedIdem = make(map[idemExpectedKey]expectedIdempotency)
+		// Per-log-sequence skippable_reasons whitelist re-derived from the
+		// chain-bound Order. Consumed by verifySkippedOrder during the
+		// log iteration loop to flag any OrderSkippedLog whose reason is
+		// not allowed by the originating order.
+		expectedSkippable = make(map[uint64][]commonpb.ErrorReason)
 		// hasVerifiedRange records whether any entry was verified; a dedicated
 		// bool rather than a 0-sentinel, since HLC timestamp 0 is a legitimate
 		// value (mirrors the *uint64 idemReportFloor tri-state below).
@@ -1557,7 +1575,7 @@ func (c *Checker) verifyAuditHashChain(
 			// here would let a corrupted audit entry partially-verify the
 			// hash chain and report "no mismatch" even though entries
 			// past the failure point were never checked.
-			return fmt.Errorf("reading audit entry for hash chain verification: %w", err)
+			return nil, fmt.Errorf("reading audit entry for hash chain verification: %w", err)
 		}
 
 		if !hasVerifiedRange {
@@ -1584,7 +1602,7 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			return nil
+			return nil, nil
 		}
 
 		// Read the audit items for this entry, then rebuild the canonical
@@ -1595,7 +1613,7 @@ func (c *Checker) verifyAuditHashChain(
 		// re-marshalling, immune to vtprotobuf and Order schema drift.
 		items, itemsErr := query.ReadAuditItems(ctx, reader, entry.GetSequence())
 		if itemsErr != nil {
-			return fmt.Errorf("reading audit items for sequence %d: %w", entry.GetSequence(), itemsErr)
+			return nil, fmt.Errorf("reading audit items for sequence %d: %w", entry.GetSequence(), itemsErr)
 		}
 
 		headerPayload, headerErr := state.BuildHashedHeaderPayload(entry)
@@ -1610,7 +1628,7 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			return nil
+			return nil, nil
 		}
 
 		hashSlices := make([][]byte, 0, 1+len(items))
@@ -1641,7 +1659,7 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			return nil // Stop on first mismatch — chain is broken from here.
+			return nil, nil // Stop on first mismatch — chain is broken from here.
 		}
 
 		lastHash = entry.GetHash()
@@ -1657,6 +1675,14 @@ func (c *Checker) verifyAuditHashChain(
 					createdAt: entry.GetTimestamp().GetData(),
 				}] = exp
 			}
+		}
+
+		// Per-order skippable_reasons whitelist re-derived from each
+		// chain-verified order. Stored under the log sequence the order
+		// produced (orders are paired 1:1 with logs, in order, within
+		// the range [MinLogSequence, MaxLogSequence]).
+		if success := entry.GetSuccess(); success != nil {
+			collectExpectedSkippable(success, items, expectedSkippable)
 		}
 	}
 
@@ -1699,10 +1725,105 @@ func (c *Checker) verifyAuditHashChain(
 	}
 
 	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, idemReportFloor, callback); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return expectedSkippable, nil
+}
+
+// collectExpectedSkippable populates expectedSkippable with the per-log
+// skippable_reasons whitelists re-derived from the chain-verified items of a
+// successful audit entry. Each item maps 1:1 to the log at
+// MinLogSequence + i. Orders without skippable_reasons are not recorded —
+// verifySkippedOrder treats an absent entry as "skip never authorised".
+func collectExpectedSkippable(
+	success *auditpb.AuditSuccess,
+	items []*auditpb.AuditItem,
+	expectedSkippable map[uint64][]commonpb.ErrorReason,
+) {
+	minSeq := success.GetMinLogSequence()
+	if minSeq == 0 {
+		return
+	}
+
+	for i, item := range items {
+		order := &raftcmdpb.Order{}
+		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+			// An item that fails to unmarshal cannot tell us what its order
+			// authorised; verifySkippedOrder will see no whitelist and
+			// surface an INVALID_SKIP if a skip log claims this sequence.
+			continue
+		}
+
+		reasons := order.GetSkippableReasons()
+		if len(reasons) == 0 {
+			continue
+		}
+
+		expectedSkippable[minSeq+uint64(i)] = reasons
+	}
+}
+
+// verifySkippedOrder flags an OrderSkippedLog projection whose reason was
+// not authorised by the chain-bound Order.skippable_reasons whitelist (or
+// is a structural KindInternal reason — defense in depth mirroring the
+// gate in matchOrderSkip). The OrderSkippedLog sits in the per-log
+// projection which is not hash-chain bound, so without this check a
+// tampered skip log could let a fabricated outcome through Check().
+func verifySkippedOrder(
+	ledger string,
+	seq uint64,
+	payload *commonpb.LedgerLogPayload,
+	expectedSkippable map[uint64][]commonpb.ErrorReason,
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	skipped, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped)
+	if !ok || skipped.OrderSkipped == nil {
+		return
+	}
+
+	reason := skipped.OrderSkipped.GetReason()
+
+	if reason == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records an OrderSkipped projection with UNSPECIFIED reason in ledger %q", seq, ledger),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
+
+	if domain.KindForReason(reason) == domain.KindInternal {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records an OrderSkipped projection with KindInternal reason %s in ledger %q (structural failures must never skip)", seq, reason, ledger),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
+
+	allowed, ok := expectedSkippable[seq]
+	if !ok {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records an OrderSkipped projection (reason %s) but the originating order did not authorise any skippable reason", seq, reason),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
+
+	if slices.Contains(allowed, reason) {
+		return
+	}
+
+	callback(errorEvent(
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+		fmt.Sprintf("log %d records an OrderSkipped projection with reason %s that is not in the originating order's skippable_reasons whitelist", seq, reason),
+		seq, ledger, "", "",
+	))
 }
 
 // resolveIdempotencyTTLMicros picks the TTL (in microseconds) that bounds the

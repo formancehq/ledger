@@ -447,6 +447,16 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateTransactionRequest'
       responses:
+        '200':
+          description: |
+            The order was matched by a `skippableReasons` opt-in: no state
+            mutation happened. The body carries the matched `reason` and
+            its `context` (for `TRANSACTION_REFERENCE_CONFLICT`, the
+            context contains `reference` and `existingTransactionId`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderSkippedResponse'
         '201':
           description: Transaction created successfully
           content:
@@ -473,7 +483,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict (e.g. concurrent modification)
+          description: Conflict (e.g. concurrent modification, or reference already exists when `skippableReasons` does NOT include `TRANSACTION_REFERENCE_CONFLICT`)
           content:
             application/json:
               schema:
@@ -2262,6 +2272,20 @@ components:
           type: boolean
           default: false
           description: When true, include post-commit volumes (per account/asset) in the response
+        skippableReasons:
+          type: array
+          items:
+            type: string
+          description: |
+            Opt-in continue-on-failure list. When the FSM would otherwise
+            reject the order with a business error whose typed reason
+            matches one of these entries, the order is recorded as an
+            `OrderSkippedLog` (no state mutation, HTTP 200) instead of
+            failing the proposal. Reasons outside the per-operation
+            business whitelist (structural / internal reasons) are
+            rejected at admission. Currently accepted on CreateTransaction:
+            `TRANSACTION_REFERENCE_CONFLICT`. Empty (default) preserves
+            the historical fail-on-error behaviour.
 
     PostingRequest:
       type: object
@@ -2506,6 +2530,37 @@ components:
               items:
                 $ref: '#/components/schemas/ChartViolation'
               description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
+
+    OrderSkippedResponse:
+      type: object
+      description: |
+        Returned with HTTP 200 when a request opted into `skippableReasons`
+        and the FSM matched one of the listed reasons. No state mutation
+        occurred. `data.skipped` is always `true` on this response shape —
+        branch on it to distinguish from the 201 / 200 create paths.
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - skipped
+            - reason
+          properties:
+            skipped:
+              type: boolean
+              description: Always true on this shape.
+            reason:
+              type: string
+              description: Typed reason that matched the skip (e.g. `ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT`).
+            context:
+              type: object
+              additionalProperties:
+                type: string
+              description: |
+                Reason-specific correlator. For
+                `ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT`, contains
+                `reference` and `existingTransactionId`.
 
     GetTransactionResponse:
       type: object

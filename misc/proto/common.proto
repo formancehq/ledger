@@ -662,7 +662,23 @@ message LedgerLogPayload {
     AddedAccountTypeLog added_account_type = 13;
     RemovedAccountTypeLog removed_account_type = 14;
     UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 15;
+    OrderSkippedLog order_skipped = 16;
   }
+}
+
+// OrderSkippedLog records an order that the FSM rejected with a business
+// error whose reason was listed in the order's `skippable_reasons` whitelist.
+// No state mutation occurred for the skipped order, but the rest of the
+// proposal applied normally. The `reason` is hash-chain-bound via the
+// AuditItem.serialized_order + LedgerLog projection; the checker re-derives
+// the projection at the applied index and confirms the matching error would
+// have been produced (defense against forged skip entries).
+message OrderSkippedLog {
+  ErrorReason reason = 1;
+  // Free-form context populated by the producing branch. Conventional keys
+  // are documented case-by-case (e.g. reference / existingTransactionId for
+  // TRANSACTION_REFERENCE_CONFLICT). Treat as opaque if the reason is unknown.
+  map<string, string> context = 2;
 }
 
 // CreatedIndexLog records the creation of an index.

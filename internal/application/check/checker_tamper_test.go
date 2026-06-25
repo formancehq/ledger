@@ -294,12 +294,13 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		// A nil TTL (PersistedConfig absent) skips the cold extension entirely,
 		// keeping the report floor at the archive boundary and isolating the
 		// post-boundary guard this test exercises.
-		require.NoError(t, checker.verifyAuditHashChain(context.Background(), handle, nil, nil, nil, func(event *servicepb.CheckStoreEvent) {
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, nil, func(event *servicepb.CheckStoreEvent) {
 			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
 			}
-		}))
+		})
+		require.NoError(t, err)
 
 		return got
 	}
@@ -416,7 +417,7 @@ func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*servi
 	var mismatches []*servicepb.CheckStoreError
 
 	// This test isolates HASH_MISMATCH; the idempotency TTL is irrelevant.
-	err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, nil, func(event *servicepb.CheckStoreEvent) {
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, nil, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}

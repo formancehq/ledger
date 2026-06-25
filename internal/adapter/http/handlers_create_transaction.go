@@ -57,11 +57,29 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	ledgerLog := logs[0].GetPayload().GetApply().GetLog()
-	ct, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
-	if !ok {
+	switch payload := ledgerLog.GetData().GetPayload().(type) {
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
+		writeCreated(w, payload.CreatedTransaction)
+	case *commonpb.LedgerLogPayload_OrderSkipped:
+		// `skippable_reasons` opted in for a reason that fired: no state
+		// mutation happened. Reply 200 (not 201) and surface the skip
+		// reason + context so clients can correlate without an extra GET.
+		writeOK(w, OrderSkippedResponse{
+			Skipped: true,
+			Reason:  payload.OrderSkipped.GetReason().String(),
+			Context: payload.OrderSkipped.GetContext(),
+		})
+	default:
 		writeInternalServerError(w, r, errors.New("unexpected log payload type"))
-
-		return
 	}
-	writeCreated(w, ct.CreatedTransaction)
+}
+
+// OrderSkippedResponse is the HTTP body returned when an Apply request opted
+// into `skippableReasons` and the FSM matched one of the listed reasons. The
+// `skipped: true` flag is the canonical branch point for clients
+// distinguishing this 200 response from the 201 Created path.
+type OrderSkippedResponse struct {
+	Skipped bool              `json:"skipped"`
+	Reason  string            `json:"reason"`
+	Context map[string]string `json:"context,omitempty"`
 }

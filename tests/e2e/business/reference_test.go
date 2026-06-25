@@ -3,12 +3,13 @@
 package business
 
 import (
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
+	"strconv"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -96,6 +97,147 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))
+		})
+	})
+
+	Context("With skippable_reasons opt-in", Ordered, func() {
+		var skipLedger = "ref-skip-ledger"
+
+		BeforeAll(func() {
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(skipLedger, nil)))
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+		})
+
+		It("Should succeed normally when the reference does not pre-exist (skip is a no-op)", func() {
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithSkippableReasons(
+				actions.WithReference(
+					actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+						actions.NewPosting("world", "account-fresh", big.NewInt(100), "USD"),
+					}, nil, nil),
+					"skip-fresh-ref",
+				),
+				commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+			)))
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			created := resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()
+			Expect(created).NotTo(BeNil())
+			Expect(created.GetTransaction().GetId()).NotTo(BeZero())
+		})
+
+		It("Should convert the duplicate-reference failure into an OrderSkipped log", func() {
+			firstResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+					actions.NewPosting("world", "account-skip", big.NewInt(100), "USD"),
+				}, nil, nil),
+				"skip-dup-ref",
+			)))
+			Expect(err).To(Succeed())
+			Expect(firstResp.Logs).To(HaveLen(1))
+
+			firstTxID := firstResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
+			Expect(firstTxID).NotTo(BeZero())
+
+			// Same reference, this time the caller authorises the skip.
+			skipResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithSkippableReasons(
+				actions.WithReference(
+					actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+						actions.NewPosting("world", "account-skip", big.NewInt(200), "USD"),
+					}, nil, nil),
+					"skip-dup-ref",
+				),
+				commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+			)))
+			Expect(err).To(Succeed())
+			Expect(skipResp.Logs).To(HaveLen(1))
+
+			skipped := skipResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
+			Expect(skipped).NotTo(BeNil())
+			Expect(skipped.GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
+			Expect(skipped.GetContext()["reference"]).To(Equal("skip-dup-ref"))
+			Expect(skipped.GetContext()["existingTransactionId"]).To(Equal(strconv.FormatUint(firstTxID, 10)))
+		})
+
+		It("Should still fail loudly when skippable_reasons is empty (default behaviour preserved)", func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+					actions.NewPosting("world", "account-skip", big.NewInt(300), "USD"),
+				}, nil, nil),
+				"skip-dup-ref",
+			)))
+			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.AlreadyExists))
+		})
+
+		It("Should keep an atomic batch's other orders intact when one order skips", func() {
+			// Pre-create the colliding reference so the skip-tolerant order
+			// in the batch hits TRANSACTION_REFERENCE_CONFLICT.
+			seedResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithReference(
+				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+					actions.NewPosting("world", "account-batch", big.NewInt(50), "USD"),
+				}, nil, nil),
+				"batch-dup-ref",
+			)))
+			Expect(err).To(Succeed())
+			Expect(seedResp.Logs).To(HaveLen(1))
+
+			seedTxID := seedResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
+
+			batchResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				// Order 0 — strict, must succeed.
+				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+					actions.NewPosting("world", "account-batch", big.NewInt(10), "USD"),
+				}, nil, nil),
+				// Order 1 — skip-tolerant, must convert the conflict.
+				actions.WithSkippableReasons(
+					actions.WithReference(
+						actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+							actions.NewPosting("world", "account-batch", big.NewInt(11), "USD"),
+						}, nil, nil),
+						"batch-dup-ref",
+					),
+					commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				),
+				// Order 2 — strict again, must still succeed even though
+				// the previous order produced a skip log (atomic batch
+				// continues on whitelisted business failures).
+				actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+					actions.NewPosting("world", "account-batch", big.NewInt(12), "USD"),
+				}, nil, nil),
+			))
+			Expect(err).To(Succeed())
+			Expect(batchResp.Logs).To(HaveLen(3))
+
+			Expect(batchResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()).NotTo(BeNil())
+
+			skipped := batchResp.Logs[1].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
+			Expect(skipped).NotTo(BeNil())
+			Expect(skipped.GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT))
+			Expect(skipped.GetContext()["existingTransactionId"]).To(Equal(strconv.FormatUint(seedTxID, 10)))
+
+			Expect(batchResp.Logs[2].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()).NotTo(BeNil())
+		})
+
+		It("Should reject a skippable_reasons entry that is not in the operation's whitelist", func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithSkippableReasons(
+				actions.WithReference(
+					actions.CreateTransactionAction(skipLedger, []*commonpb.Posting{
+						actions.NewPosting("world", "account-skip", big.NewInt(400), "USD"),
+					}, nil, nil),
+					"never-existed",
+				),
+				commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+			)))
+			Expect(err).To(HaveOccurred())
+
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(domain.ErrReasonValidation))
 		})
 	})
 

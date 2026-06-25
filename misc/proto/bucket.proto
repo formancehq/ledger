@@ -494,6 +494,14 @@ message CreateTransactionPayload {
   bool force = 7;
   bool expand_volumes = 8;
   ScriptReference script_reference = 9;
+  // Business error reasons the caller accepts to skip silently rather than
+  // fail the proposal. The FSM records a common.OrderSkippedLog for each
+  // matching skip; the proposal continues with Outcome=Success.
+  //
+  // Only reasons in the business whitelist are accepted at admission
+  // (TRANSACTION_REFERENCE_CONFLICT being the first supported one). Empty
+  // (default) preserves the historical 4xx-on-error behaviour.
+  repeated common.ErrorReason skippable_reasons = 10;
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction.
@@ -735,6 +743,14 @@ enum CheckStoreErrorType {
   // ride on a non-audited TechnicalUpdate (IndexReady) so the verifier
   // covers presence + identity (Ledger, Id), not the READY/BUILDING flag.
   CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH = 10;
+  // Emitted when a LedgerLogPayload.OrderSkipped projection records a reason
+  // that the audit-bound Order.skippable_reasons whitelist does not allow, or
+  // a reason classified as KindInternal (structural failure). The OrderSkippedLog
+  // sits in the per-log projection which is NOT hash-chain bound, so a tampered
+  // skip log would otherwise let a duplicate caller observe a fabricated outcome
+  // for an order that should have been rejected hard. The skippable_reasons
+  // whitelist on the audit-bound Order is the source of truth.
+  CHECK_STORE_ERROR_TYPE_INVALID_SKIP = 11;
 }
 
 message CheckStoreError {
