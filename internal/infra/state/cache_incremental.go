@@ -135,8 +135,12 @@ func flushAttributeAndCache[K attributes.Key, V proto.Message](
 		return fmt.Errorf("failed merging %s attributes: %w", label, err)
 	}
 
-	for _, update := range updates {
-		*bloomSlice = append(*bloomSlice, update.ID)
+	// bloomSlice is nil for attributes without a bloom filter (e.g. the
+	// SubAttrAccount existence marker, EN-1276): nothing to collect.
+	if bloomSlice != nil {
+		for _, update := range updates {
+			*bloomSlice = append(*bloomSlice, update.ID)
+		}
 	}
 
 	for _, deletion := range deletions {

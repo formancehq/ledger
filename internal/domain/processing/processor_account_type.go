@@ -42,13 +42,13 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 	// Boundaries are preloaded for every Apply order, so this read is coverage-
 	// gated and deterministic across nodes.
 	if len(at.GetDefaultMetadata()) > 0 {
-		boundaries, bErr := loadBoundaries(s, ledgerName)
+		boundaries, bErr := loadBoundaries(ctx.Scope, ledger)
 		if bErr != nil {
 			return nil, bErr
 		}
 
 		if boundaries.GetNextTransactionId() > 1 {
-			return nil, &domain.ErrDefaultMetadataOnPopulatedLedger{Ledger: ledgerName, TypeName: at.GetName()}
+			return nil, &domain.ErrDefaultMetadataOnPopulatedLedger{Ledger: ledger, TypeName: at.GetName()}
 		}
 	}
 

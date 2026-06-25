@@ -539,8 +539,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		return err
 	}
 
-	// SubAttrAccount (0x0D) — per-account existence markers (EN-1276).
-	if err := flushAttributeAndCache(b.attrs.Account, batch, genByte, dal.SubAttrAccount, accountUpdates, accountDeletions, &b.bloomUpdates.Accounts, "accounts"); err != nil {
+	// SubAttrAccount (0x0D) — per-account existence markers (EN-1276). These have
+	// no bloom filter (the preload always does a Pebble Get), so no bloom slice
+	// is collected: pass nil.
+	if err := flushAttributeAndCache(b.attrs.Account, batch, genByte, dal.SubAttrAccount, accountUpdates, accountDeletions, nil, "accounts"); err != nil {
 		return err
 	}
 

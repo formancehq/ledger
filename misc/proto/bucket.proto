@@ -737,11 +737,13 @@ enum CheckStoreErrorType {
   CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH = 10;
   // Emitted when the SubAttrAccount existence-marker projection diverges from
   // the account set the checker re-derived by replaying transaction postings
-  // (every non-system account ever referenced as source/destination). A marker
-  // with no matching referenced account — or a referenced account with no
-  // marker once the ledger is READY — is tampering. The account_defaults_status
-  // SEEDING→READY flip rides a non-audited TechnicalUpdate, so the verifier
-  // covers marker presence, not the status field.
+  // (every non-system account ever referenced as source/destination). Both
+  // directions are tampering: a marker with no matching referenced account, and
+  // an account the replay recorded as touched on a defaults-bearing ledger that
+  // has no live marker (a missing marker re-applies default metadata on the next
+  // touch). The reverse direction needs no activation status — recordTouched
+  // only records touches while the ledger declares default-bearing account
+  // types, so the replay-touched set is exactly the set that must carry markers.
   CHECK_STORE_ERROR_TYPE_ACCOUNT_MISMATCH = 11;
 }
 

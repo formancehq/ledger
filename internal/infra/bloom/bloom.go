@@ -440,7 +440,10 @@ type BloomUpdates struct {
 	PreparedQueries   []attributes.U128
 	LedgerMetadata    []attributes.U128
 	Indexes           []attributes.U128
-	Accounts          []attributes.U128
+	// No Accounts field: the SubAttrAccount existence marker (EN-1276) has no
+	// bloom filter, so its preload always does a Pebble Get (the miss is the
+	// newness signal). Adding one here without also wiring filterForAttrType and
+	// AddCanonicalKeys would only collect keys that are never applied.
 }
 
 // Reset clears all slices while preserving their backing arrays.
@@ -457,7 +460,6 @@ func (u *BloomUpdates) Reset() {
 	u.PreparedQueries = u.PreparedQueries[:0]
 	u.LedgerMetadata = u.LedgerMetadata[:0]
 	u.Indexes = u.Indexes[:0]
-	u.Accounts = u.Accounts[:0]
 }
 
 // AddCanonicalKeys inserts pre-hashed U128 IDs into the corresponding bloom filters.

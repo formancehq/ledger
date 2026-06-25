@@ -1252,41 +1252,76 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 }
 
 // compareAccounts verifies the per-account existence-marker projection
-// (SubAttrAccount, EN-1276). Markers are presence-only and never deleted, so
-// the check is one-directional: every live marker MUST correspond to an account
-// genuinely referenced by the audit. A marker with no referenced account is a
-// tampering / corruption signal (a forged marker would make the FSM treat an
-// existing account as new and re-apply default metadata), emitted as
-// CHECK_STORE_ERROR_TYPE_ACCOUNT_MISMATCH.
+// (SubAttrAccount, EN-1276). The check is bidirectional within the bounds the
+// audit can prove, both emitted as CHECK_STORE_ERROR_TYPE_ACCOUNT_MISMATCH:
+//
+//   - Forward: every live marker MUST correspond to an account genuinely
+//     referenced by the audit. A forged marker would make the FSM treat an
+//     existing account as new and re-apply default metadata.
+//   - Reverse (audit-provable bound): every account the replay recorded as
+//     touched MUST have a live marker. recordTouchedAccounts only records a
+//     touch while the ledger has default-bearing account types, so the
+//     replay-touched set is exactly the set the FSM must have marked; a missing
+//     marker makes the FSM re-apply default metadata on the next touch. No
+//     activation-status gate is needed (the gate is the presence of defaults,
+//     which the replay already applied).
 //
 // The referenced-account set is the union of: replay-recorded touches (which
 // include ephemeral/transient accounts whose volume was later purged), live
-// volume accounts, and baseline (archived-chapter) volume accounts. The reverse
-// direction (every eligible account HAS a marker) is intentionally not checked:
-// the default-metadata values themselves are verified by compareMetadata, and a
-// missing marker can legitimately arise from activation timing.
+// volume accounts, baseline (archived-chapter) volume accounts, and baseline
+// markers themselves. Folding in baseline markers is what stops archive
+// recovery from false-positiving: a marker captured by the archived checkpoint
+// is audit-derived, so it is legitimately referenced even when its account's
+// volume was purged and its account type later removed (markers are
+// presence-only and never deleted, invariant #5).
+//
+// Residual bounds: a forged marker for an account that still has volumes is in
+// `referenced` and is not detected here — the default-metadata values are
+// verified by compareMetadata. And an account first touched after the archive
+// boundary under an account type removed before the check, whose volume was then
+// purged, is seeded from final state during replay and so may be in neither the
+// replay set nor the baseline; that narrow case is the known limit of the
+// one-pass final-state replay seed (the common pre-archive marker is covered).
 func (c *Checker) compareAccounts(reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
-	emit := func(format string, args ...any) {
+	emit := func(ledger, account, format string, args ...any) {
 		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_MISMATCH,
-			fmt.Sprintf(format, args...), 0, "", "", ""))
+			fmt.Sprintf(format, args...), 0, ledger, account, ""))
 	}
 
+	// accountKeyFields renders a canonical account key for the emitted event,
+	// falling back to a hex rendering when the key is malformed — a corruption
+	// signal must never surface as an empty ledger=/account= event.
+	accountKeyFields := func(canonicalKey []byte) (label, ledger, account string) {
+		var ak domain.AccountKey
+		if err := ak.Unmarshal(canonicalKey); err != nil {
+			return fmt.Sprintf("0x%x", canonicalKey), "", ""
+		}
+
+		return fmt.Sprintf("ledger=%q account=%q", ak.LedgerName, ak.Account), ak.LedgerName, ak.Account
+	}
+
+	// replayTouched is kept separate from referenced: it drives the reverse
+	// check (every touched account must have a marker), whereas referenced is
+	// the forward check's allow-list (every marker must trace to one of these).
+	replayTouched := make(map[string]struct{})
 	referenced := make(map[string]struct{})
 
 	// Replay-recorded touches (prefix 'A').
 	replayIter, err := replay.newPrefixIter(replayPrefixAccount)
 	if err != nil {
-		emit("failed to create replay account iterator: %v", err)
+		emit("", "", "failed to create replay account iterator: %v", err)
 
 		return 1
 	}
 
 	for replayIter.First(); replayIter.Valid(); replayIter.Next() {
-		referenced[string(replayIter.Key()[1:])] = struct{}{} // strip prefix byte
+		key := string(replayIter.Key()[1:]) // strip prefix byte
+		replayTouched[key] = struct{}{}
+		referenced[key] = struct{}{}
 	}
 
 	if err := replayIter.Close(); err != nil {
-		emit("closing replay account iterator: %v", err)
+		emit("", "", "closing replay account iterator: %v", err)
 
 		return 1
 	}
@@ -1295,7 +1330,7 @@ func (c *Checker) compareAccounts(reader dal.PebbleReader, baselineDB *pebble.DB
 	addVolumeAccounts := func(src dal.PebbleReader, label string) int {
 		iter, err := c.attrs.Volume.NewStreamingIter(src, nil)
 		if err != nil {
-			emit("failed to create %s volume iterator for accounts: %v", label, err)
+			emit("", "", "failed to create %s volume iterator for accounts: %v", label, err)
 
 			return 1
 		}
@@ -1303,6 +1338,10 @@ func (c *Checker) compareAccounts(reader dal.PebbleReader, baselineDB *pebble.DB
 		for iter.Next() {
 			var vk domain.VolumeKey
 			if err := vk.Unmarshal(iter.Entry().CanonicalKey); err != nil {
+				// A malformed volume key is compareVolumes' corruption signal
+				// (it owns VOLUME_MISMATCH); here it would only over-derive a
+				// referenced account, so skipping it cannot mask a marker
+				// orphan. Leave the report to the owning pass.
 				continue
 			}
 
@@ -1310,7 +1349,7 @@ func (c *Checker) compareAccounts(reader dal.PebbleReader, baselineDB *pebble.DB
 		}
 
 		if err := iter.Close(); err != nil {
-			emit("closing %s volume iterator for accounts: %v", label, err)
+			emit("", "", "closing %s volume iterator for accounts: %v", label, err)
 
 			return 1
 		}
@@ -1326,43 +1365,77 @@ func (c *Checker) compareAccounts(reader dal.PebbleReader, baselineDB *pebble.DB
 		if n := addVolumeAccounts(baselineDB, "baseline"); n > 0 {
 			return n
 		}
+
+		// Baseline markers are audit-derived (captured by the archived
+		// checkpoint), so they are legitimately referenced even when the
+		// account's volume was purged and its type later removed.
+		baselineMarkers, err := c.attrs.Account.NewStreamingIter(baselineDB, nil)
+		if err != nil {
+			emit("", "", "failed to create baseline account iterator: %v", err)
+
+			return 1
+		}
+
+		for baselineMarkers.Next() {
+			referenced[string(baselineMarkers.Entry().CanonicalKey)] = struct{}{}
+		}
+
+		if err := baselineMarkers.Close(); err != nil {
+			emit("", "", "closing baseline account iterator: %v", err)
+
+			return 1
+		}
 	}
 
-	// Every live marker must correspond to a referenced account.
+	// Forward: every live marker must correspond to a referenced account.
+	// Collect the live marker set along the way for the reverse check.
 	errorCount := 0
+	liveMarkers := make(map[string]struct{})
 
 	liveIter, err := c.attrs.Account.NewStreamingIter(reader, nil)
 	if err != nil {
-		emit("failed to create live account iterator: %v", err)
+		emit("", "", "failed to create live account iterator: %v", err)
 
 		return 1
 	}
 
 	for liveIter.Next() {
-		canonicalKey := liveIter.Entry().CanonicalKey
+		canonicalKey := string(liveIter.Entry().CanonicalKey)
+		liveMarkers[canonicalKey] = struct{}{}
 
-		if _, ok := referenced[string(canonicalKey)]; ok {
+		if _, ok := referenced[canonicalKey]; ok {
 			continue
 		}
 
-		var ak domain.AccountKey
-		_ = ak.Unmarshal(canonicalKey)
-
-		emit("account marker for ledger=%q account=%q has no referenced account in the audit", ak.LedgerName, ak.Account)
+		label, ledger, account := accountKeyFields(liveIter.Entry().CanonicalKey)
+		emit(ledger, account, "account marker %s has no referenced account in the audit", label)
 
 		errorCount++
 	}
 
 	if err := liveIter.Close(); err != nil {
-		emit("closing live account iterator: %v", err)
+		emit("", "", "closing live account iterator: %v", err)
 
 		return errorCount + 1
 	}
 
 	if err := liveIter.Err(); err != nil {
-		emit("live account iterator error: %v", err)
+		emit("", "", "live account iterator error: %v", err)
 
 		return errorCount + 1
+	}
+
+	// Reverse: every replay-touched account (defaults-bearing ledger) must have
+	// a live marker. Missing markers re-apply default metadata on next touch.
+	for key := range replayTouched {
+		if _, ok := liveMarkers[key]; ok {
+			continue
+		}
+
+		label, ledger, account := accountKeyFields([]byte(key))
+		emit(ledger, account, "account %s was touched on a defaults-bearing ledger but has no existence marker", label)
+
+		errorCount++
 	}
 
 	return errorCount

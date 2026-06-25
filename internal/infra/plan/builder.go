@@ -466,7 +466,8 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 	if len(needs.Accounts) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			// A bloom-confirmed-absent (or Pebble-miss) account key is declared
+			// Accounts have no bloom filter, so the preload always does a Pebble
+			// Get (the bloomFilter argument is nil). A Pebble-miss key is declared
 			// (so the FSM read is covered) but no zero value is injected — the
 			// universal resolveAttributePreload behaviour — so Scope.GetAccount
 			// returns ErrNotFound for a genuinely-new account; that miss IS the
@@ -476,7 +477,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				p.cache.Accounts, p.loaders.Accounts,
 				p.attrs.Account.Get, p.store,
 				dal.SubAttrAccount, nil,
-				p.bloomFilter(dal.SubAttrAccount),
+				nil,
 				p.logger, "accounts",
 			)
 			results[i].resolve = r
