@@ -380,6 +380,7 @@ message ClusterConfig {
   BloomTypeConfig bloom_numscript_contents = 10;
   HashAlgorithm hash_algorithm = 11;
   BloomTypeConfig bloom_ledger_metadata = 12;
+  BloomTypeConfig bloom_prepared_queries = 13;
 }
 
 // PersistedClusterState wraps ClusterConfig with internal FSM state that must

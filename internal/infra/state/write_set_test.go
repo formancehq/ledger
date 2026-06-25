@@ -1,11 +1,15 @@
 package state
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -553,4 +557,125 @@ func TestWriteSetMergeDrainsMirrorSyncs(t *testing.T) {
 	status, err := query.ReadMirrorStatus(rh, "test")
 	require.NoError(t, err)
 	require.Nil(t, status, "status must be cleared by ClearError")
+}
+
+// TestWriteSetPreparedQueryPersistsThroughMerge pins that a prepared query
+// committed through buffer.Merge is written to the attributes zone and is
+// readable afterwards. It guards that routing prepared queries through
+// mergeAndTrackBloom — which now also collects their canonical keys into
+// bloomUpdates.PreparedQueries — leaves attribute persistence unaffected. The
+// bloom wire itself (keys actually landing in the filter) is exercised by
+// TestWriteSetPreparedQueryBloomFilterTracksKeys.
+func TestWriteSetPreparedQueryPersistsThroughMerge(t *testing.T) {
+	t.Parallel()
+	buf, _, dataStore := newTestBuffer(t)
+
+	const ledger = "test"
+	buf.PutPreparedQuery(ledger, &commonpb.PreparedQuery{Name: "pq-1"})
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, buf.Merge(batch, nil))
+	require.NoError(t, batch.Commit())
+
+	rh, err := dataStore.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = rh.Close() })
+
+	pq, err := query.ReadPreparedQuery(context.Background(), buf.attrs.PreparedQuery, rh, ledger, "pq-1")
+	require.NoError(t, err)
+	require.NotNil(t, pq, "prepared query must persist through Merge")
+	require.Equal(t, "pq-1", pq.GetName())
+}
+
+// TestWriteSetPreparedQueryDeletePersistsThroughMerge pins that deleting a
+// committed prepared query in a later proposal removes it from the attributes
+// zone, exercising the deletion branch of mergeAndTrackBloom for prepared
+// queries. This is a persistence guard; the bloom-filter wire is covered by
+// TestWriteSetPreparedQueryBloomFilterTracksKeys.
+func TestWriteSetPreparedQueryDeletePersistsThroughMerge(t *testing.T) {
+	t.Parallel()
+	buf, machine, dataStore := newTestBuffer(t)
+
+	const ledger = "test"
+
+	// Proposal 1: commit a prepared query.
+	buf.PutPreparedQuery(ledger, &commonpb.PreparedQuery{Name: "pq-del"})
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, buf.Merge(batch, nil))
+	require.NoError(t, batch.Commit())
+
+	// Confirm it is readable before we delete it, so this test fails if the
+	// create silently no-ops rather than only when the delete misbehaves.
+	rh1, err := dataStore.NewReadHandle()
+	require.NoError(t, err)
+	pq1, err := query.ReadPreparedQuery(context.Background(), buf.attrs.PreparedQuery, rh1, ledger, "pq-del")
+	require.NoError(t, err)
+	require.NotNil(t, pq1, "prepared query must exist before deletion")
+	require.NoError(t, rh1.Close())
+
+	// Proposal 2: delete it.
+	buf2 := NewWriteSet(machine)
+	buf2.Reset(&commonpb.Timestamp{Data: 1700000001})
+	buf2.DeletePreparedQuery(ledger, "pq-del")
+	batch2 := dataStore.OpenWriteSession()
+	require.NoError(t, buf2.Merge(batch2, nil))
+	require.NoError(t, batch2.Commit())
+
+	rh, err := dataStore.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = rh.Close() })
+
+	pq, err := query.ReadPreparedQuery(context.Background(), buf2.attrs.PreparedQuery, rh, ledger, "pq-del")
+	require.NoError(t, err)
+	require.Nil(t, pq, "deleted prepared query must be absent after Merge")
+}
+
+// TestWriteSetPreparedQueryBloomFilterTracksKeys is the regression guard for the
+// EN-1321 wiring: it proves a prepared-query canonical key collected during
+// Merge actually lands in the prepared-query bloom filter (iso with the other
+// attribute types). Without the wire — a filterSnapshot.PreparedQuery field, the
+// bloomTypes() descriptor, and the AddCanonicalKeys insert — the filter would be
+// nil or never see the key, which the persistence-only tests above would not
+// catch.
+func TestWriteSetPreparedQueryBloomFilterTracksKeys(t *testing.T) {
+	t.Parallel()
+	buf, _, dataStore := newTestBuffer(t)
+
+	// Build a FilterSet with prepared queries enabled, exactly as an operator
+	// configuring --bloom-prepared-queries-expected-keys would. A non-zero
+	// ExpectedKeys is what makes bloomTypes()/Rebuild allocate the filter.
+	meter := noop.NewMeterProvider().Meter("test")
+	filters := bloom.NewFilterSet(&commonpb.ClusterConfig{
+		BloomPreparedQueries: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	}, meter)
+	require.NotNil(t, filters)
+
+	pqFilter := filters.FilterForAttrType(dal.SubAttrPreparedQuery)
+	require.NotNil(t, pqFilter, "prepared-query filter must be built when configured")
+
+	const ledger = "test"
+	buf.PutPreparedQuery(ledger, &commonpb.PreparedQuery{Name: "pq-bloom"})
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, buf.Merge(batch, nil))
+	require.NoError(t, batch.Commit())
+
+	// Merge collects the canonical key into the prepared-query bloom slice.
+	keys := buf.BloomUpdates().PreparedQueries
+	require.Len(t, keys, 1, "Merge must collect exactly one prepared-query canonical key")
+
+	// Before AddCanonicalKeys the freshly built filter knows nothing.
+	require.False(t, pqFilter.MayContain(keys[0]), "key must be absent before AddCanonicalKeys")
+
+	// AddCanonicalKeys is what the FSM hot path runs post-Merge; it must route
+	// the collected prepared-query keys into the filter.
+	filters.AddCanonicalKeys(buf.BloomUpdates())
+
+	require.True(t, pqFilter.MayContain(keys[0]), "inserted prepared-query key must be reported present")
+
+	// A never-inserted key must be reported absent (modulo the configured fp rate,
+	// which is ~0 with a single key in a 1000-capacity filter).
+	absent := attributes.U128{0xFF, 0xFF, 0xFF, 0xFF}
+	require.NotEqual(t, keys[0], absent)
+	require.False(t, pqFilter.MayContain(absent), "never-inserted key must be reported absent")
 }

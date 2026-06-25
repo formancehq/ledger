@@ -66,6 +66,9 @@ spec:
     ledgerMetadata:
       expectedKeys: 1000000
       fpRate: "0.001"
+    preparedQueries:
+      expectedKeys: 1000000
+      fpRate: "0.001"
   persistence:
     wal:
       size: 5Gi

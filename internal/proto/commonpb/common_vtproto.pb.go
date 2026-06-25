@@ -1151,6 +1151,7 @@ func (m *ClusterConfig) CloneVT() *ClusterConfig {
 	r.BloomNumscriptContents = m.BloomNumscriptContents.CloneVT()
 	r.HashAlgorithm = m.HashAlgorithm
 	r.BloomLedgerMetadata = m.BloomLedgerMetadata.CloneVT()
+	r.BloomPreparedQueries = m.BloomPreparedQueries.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5642,6 +5643,9 @@ func (this *ClusterConfig) EqualVT(that *ClusterConfig) bool {
 		return false
 	}
 	if !this.BloomLedgerMetadata.EqualVT(that.BloomLedgerMetadata) {
+		return false
+	}
+	if !this.BloomPreparedQueries.EqualVT(that.BloomPreparedQueries) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -12264,6 +12268,16 @@ func (m *ClusterConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.BloomPreparedQueries != nil {
+		size, err := m.BloomPreparedQueries.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
 	}
 	if m.BloomLedgerMetadata != nil {
 		size, err := m.BloomLedgerMetadata.MarshalToSizedBufferVT(dAtA[:i])
@@ -19865,6 +19879,10 @@ func (m *ClusterConfig) SizeVT() (n int) {
 	}
 	if m.BloomLedgerMetadata != nil {
 		l = m.BloomLedgerMetadata.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BloomPreparedQueries != nil {
+		l = m.BloomPreparedQueries.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -29231,6 +29249,42 @@ func (m *ClusterConfig) UnmarshalVT(dAtA []byte) error {
 				m.BloomLedgerMetadata = &BloomTypeConfig{}
 			}
 			if err := m.BloomLedgerMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomPreparedQueries", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomPreparedQueries == nil {
+				m.BloomPreparedQueries = &BloomTypeConfig{}
+			}
+			if err := m.BloomPreparedQueries.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

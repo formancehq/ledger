@@ -1097,6 +1097,18 @@ spec:
                         description: FPRate is the false positive rate (0.0-1.0).
                         type: string
                     type: object
+                  preparedQueries:
+                    description: PreparedQueries bloom filter configuration.
+                    properties:
+                      expectedKeys:
+                        description: ExpectedKeys is the expected number of unique
+                          keys (0 to disable this filter).
+                        format: int64
+                        type: integer
+                      fpRate:
+                        description: FPRate is the false positive rate (0.0-1.0).
+                        type: string
+                    type: object
                   references:
                     description: References bloom filter configuration.
                     properties:

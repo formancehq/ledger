@@ -1049,6 +1049,7 @@ func TestAppendBloomEnvVars(t *testing.T) {
 	keys1 := int64(100)
 	keys2 := int64(200)
 	keys3 := int64(300)
+	keys4 := int64(400)
 	bloom := &ledgerv1alpha1.BloomConfig{
 		Volumes: &ledgerv1alpha1.BloomFilterConfig{
 			ExpectedKeys: &keys1,
@@ -1061,6 +1062,10 @@ func TestAppendBloomEnvVars(t *testing.T) {
 			ExpectedKeys: &keys3,
 			FPRate:       "0.001",
 		},
+		PreparedQueries: &ledgerv1alpha1.BloomFilterConfig{
+			ExpectedKeys: &keys4,
+			FPRate:       "0.002",
+		},
 	}
 
 	envs := appendBloomEnvVars(nil, bloom)
@@ -1071,6 +1076,8 @@ func TestAppendBloomEnvVars(t *testing.T) {
 	assertNoEnv(t, envs, "BLOOM_TRANSACTIONS_FP_RATE")
 	assertEnv(t, envs, "BLOOM_LEDGER_METADATA_EXPECTED_KEYS", "300")
 	assertEnv(t, envs, "BLOOM_LEDGER_METADATA_FP_RATE", "0.001")
+	assertEnv(t, envs, "BLOOM_PREPARED_QUERIES_EXPECTED_KEYS", "400")
+	assertEnv(t, envs, "BLOOM_PREPARED_QUERIES_FP_RATE", "0.002")
 	assertNoEnv(t, envs, "BLOOM_METADATA_EXPECTED_KEYS")
 	assertNoEnv(t, envs, "BLOOM_IDEMPOTENCY_EXPECTED_KEYS")
 	assertNoEnv(t, envs, "BLOOM_REFERENCES_EXPECTED_KEYS")

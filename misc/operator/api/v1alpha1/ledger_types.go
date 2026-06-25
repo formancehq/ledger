@@ -1325,6 +1325,10 @@ type BloomConfig struct {
 	// LedgerMetadata bloom filter configuration.
 	// +optional
 	LedgerMetadata *BloomFilterConfig `json:"ledgerMetadata,omitempty"`
+
+	// PreparedQueries bloom filter configuration.
+	// +optional
+	PreparedQueries *BloomFilterConfig `json:"preparedQueries,omitempty"`
 }
 
 // BloomFilterConfig holds configuration for a single bloom filter type.

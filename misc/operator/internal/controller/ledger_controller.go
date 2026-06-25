@@ -472,6 +472,7 @@ func validateClusterConfig(spec *ledgerv1alpha1.LedgerServiceSpec) error {
 		{"numscriptVersions", spec.Bloom.NumscriptVersions},
 		{"numscriptContents", spec.Bloom.NumscriptContents},
 		{"ledgerMetadata", spec.Bloom.LedgerMetadata},
+		{"preparedQueries", spec.Bloom.PreparedQueries},
 	}
 	for _, b := range bloomFilters {
 		if b.spec == nil {

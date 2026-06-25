@@ -126,3 +126,15 @@ func TestValidateClusterConfig_CoversLedgerMetadata(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bloom.ledgerMetadata.fpRate")
 }
+
+func TestValidateClusterConfig_CoversPreparedQueries(t *testing.T) {
+	t.Parallel()
+	// New CRD field — validation must cover it too.
+	err := validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+		Bloom: &ledgerv1alpha1.BloomConfig{
+			PreparedQueries: &ledgerv1alpha1.BloomFilterConfig{FPRate: "2.0"},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bloom.preparedQueries.fpRate")
+}

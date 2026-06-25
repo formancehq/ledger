@@ -2928,6 +2928,7 @@ type ClusterConfigReader interface {
 	GetBloomNumscriptContents() BloomTypeConfigReader
 	GetHashAlgorithm() HashAlgorithm
 	GetBloomLedgerMetadata() BloomTypeConfigReader
+	GetBloomPreparedQueries() BloomTypeConfigReader
 	Mutate() *ClusterConfig
 }
 
@@ -3015,6 +3016,14 @@ func (r *clusterConfigReadonly) GetHashAlgorithm() HashAlgorithm {
 
 func (r *clusterConfigReadonly) GetBloomLedgerMetadata() BloomTypeConfigReader {
 	v := r.v.GetBloomLedgerMetadata()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *clusterConfigReadonly) GetBloomPreparedQueries() BloomTypeConfigReader {
+	v := r.v.GetBloomPreparedQueries()
 	if v == nil {
 		return nil
 	}

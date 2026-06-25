@@ -3714,6 +3714,8 @@ Application-level bloom filters that avoid Pebble reads for keys known not to ex
 | `--bloom-numscript-contents-fp-rate` | float64 | `0` | False positive rate for numscript contents (0 = use 0.01 when enabled) |
 | `--bloom-ledger-metadata-expected-keys` | uint | `0` | Expected unique ledger metadata keys (0 = disabled by default) |
 | `--bloom-ledger-metadata-fp-rate` | float64 | `0` | False positive rate for ledger metadata (0 = use 0.01 when enabled) |
+| `--bloom-prepared-queries-expected-keys` | uint | `0` | Expected unique prepared query keys (0 = disabled by default) |
+| `--bloom-prepared-queries-fp-rate` | float64 | `0` | False positive rate for prepared queries (0 = use 0.01 when enabled) |
 
 Bloom filters are disabled by default. Enable only the attribute types that avoid enough missing-key Pebble reads to justify the memory cost.
 

@@ -234,6 +234,7 @@ type filterSnapshot struct {
 	NumscriptVersion *Filter
 	NumscriptContent *Filter
 	LedgerMetadata   *Filter
+	PreparedQuery    *Filter
 	// ready marks the snapshot as fully populated. Bound to the snap so a
 	// reader that captures the snap pointer sees consistent (filters, ready).
 	ready bool
@@ -261,6 +262,8 @@ func (s *filterSnapshot) filterForAttrType(attrType byte) *Filter {
 		return s.NumscriptContent
 	case dal.SubAttrLedgerMetadata:
 		return s.LedgerMetadata
+	case dal.SubAttrPreparedQuery:
+		return s.PreparedQuery
 	default:
 		return nil
 	}
@@ -271,6 +274,7 @@ func (s *filterSnapshot) allFilters() []*Filter {
 		s.Volume, s.Metadata, s.Reference,
 		s.Ledger, s.Boundary, s.Transaction, s.SinkConfig,
 		s.NumscriptVersion, s.NumscriptContent, s.LedgerMetadata,
+		s.PreparedQuery,
 	}
 }
 
@@ -475,6 +479,7 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 	addKeys(snap.NumscriptVersion, updates.NumscriptVersions)
 	addKeys(snap.NumscriptContent, updates.NumscriptContents)
 	addKeys(snap.LedgerMetadata, updates.LedgerMetadata)
+	addKeys(snap.PreparedQuery, updates.PreparedQueries)
 }
 
 // PersistDirtyBlocks writes all dirty blocks from all filters to the Pebble batch.
@@ -618,6 +623,7 @@ func bloomTypes(cfg *commonpb.ClusterConfig) []bloomType {
 		{cfg.GetBloomNumscriptVersions(), dal.SubAttrNumscriptVersion, "numscript_versions", func(snap *filterSnapshot) **Filter { return &snap.NumscriptVersion }},
 		{cfg.GetBloomNumscriptContents(), dal.SubAttrNumscriptContent, "numscript_contents", func(snap *filterSnapshot) **Filter { return &snap.NumscriptContent }},
 		{cfg.GetBloomLedgerMetadata(), dal.SubAttrLedgerMetadata, "ledger_metadata", func(snap *filterSnapshot) **Filter { return &snap.LedgerMetadata }},
+		{cfg.GetBloomPreparedQueries(), dal.SubAttrPreparedQuery, "prepared_queries", func(snap *filterSnapshot) **Filter { return &snap.PreparedQuery }},
 	}
 }
 
