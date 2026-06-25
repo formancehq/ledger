@@ -189,6 +189,44 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
 
+	// Open baseline checkpoint for archived state comparison. The baseline
+	// is the pre-archive Pebble snapshot the checker consults to verify
+	// archived data (volumes, metadata, transactions, and now references
+	// to scope the OrderSkipped archive escape). Opening it here — before
+	// log iteration — lets foldBaselineReferences populate
+	// chainBoundReferences in time for verifySkippedOrder, while the
+	// later compareVolumes / compareMetadata / compareTransactions pass
+	// reuses the same handle.
+	var baselineDB *pebble.DB
+
+	if hasArchivedChapters {
+		baselinePath, exists := c.store.BaselineCheckpointPath()
+		if exists {
+			db, openErr := pebble.Open(baselinePath, &pebble.Options{
+				Logger:   dal.NewPebbleLogger(c.logger),
+				ReadOnly: true,
+			})
+			if openErr != nil {
+				c.logger.Infof("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr)
+			} else {
+				baselineDB = db
+
+				defer func() { _ = baselineDB.Close() }()
+			}
+		}
+	}
+
+	// Fold the baseline TransactionReference attribute into
+	// chainBoundReferences with a sentinel sequence of 0 (precedes every
+	// live log seq). This is what lets verifySkippedOrder validate skips
+	// that conflict with a reference claimed in a purged chapter without
+	// falling back to the broad archive escape hatch — the escape now
+	// scopes only to the "no baseline available" case.
+	baselineReferencesAvailable, err := c.foldBaselineReferences(baselineDB, chainBoundReferences)
+	if err != nil {
+		return fmt.Errorf("loading baseline references: %w", err)
+	}
+
 	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, chapters, archiveEndSeq)
 	if err != nil {
 		return fmt.Errorf("reading proposal log boundaries: %w", err)
@@ -474,7 +512,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
 
-						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, chainBoundReferences, hasArchivedChapters, callback)
+						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, chainBoundReferences, hasArchivedChapters && !baselineReferencesAvailable, callback)
 
 						// Accumulate the LedgerLog.PurgedVolumes side of the
 						// stored projection while we have the log in hand;
@@ -541,27 +579,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// them via EXCLUSION_RECORD_MISMATCH for human review.
 	compareExclusionProjections(stored, excluded, callback)
 
-	// Open baseline checkpoint for archived state comparison.
-	var baselineDB *pebble.DB
-
-	if hasArchivedChapters {
-		baselinePath, exists := c.store.BaselineCheckpointPath()
-		if exists {
-			db, openErr := pebble.Open(baselinePath, &pebble.Options{
-				Logger:   dal.NewPebbleLogger(c.logger),
-				ReadOnly: true,
-			})
-			if openErr != nil {
-				c.logger.Infof("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr)
-			} else {
-				baselineDB = db
-
-				defer func() { _ = baselineDB.Close() }()
-			}
-		}
-	}
-
-	// If archived chapters exist but no baseline is available, we can't do
+	// baselineDB was opened earlier (before log iteration) so the
+	// reference-fold pass and the archived-state comparison passes share
+	// the same handle. If archived chapters exist but no baseline is
+	// available, we can't do
 	// entry-by-entry comparison (the replay only covers non-archived logs).
 	// This is expected after a restore. Warn and skip comparison passes.
 	if hasArchivedChapters && baselineDB == nil {
@@ -1848,6 +1869,71 @@ func collectExpectedSkippable(
 	}
 }
 
+// foldBaselineReferences merges the TransactionReference attribute from
+// the baseline checkpoint into chainBoundReferences with a sentinel
+// sequence of 0 (always precedes any live log seq). The baseline is the
+// pre-archive Pebble snapshot the checker already consults for
+// volumes/metadata/transactions; without this fold, references claimed
+// in purged chapters would be invisible to verifySkippedOrder and the
+// archive escape hatch would have to ignore the entire live skip range.
+//
+// Returns true when baseline references were successfully loaded. The
+// caller scopes the archive escape to (hasArchivedChapters && !baselineLoaded)
+// so a fabricated skip on a fresh live reference still surfaces as
+// INVALID_SKIP whenever a baseline is available.
+//
+// baselineDB=nil short-circuits the load (no archived data, or baseline
+// unavailable — the caller already paid for the open if applicable).
+func (c *Checker) foldBaselineReferences(
+	baselineDB *pebble.DB,
+	chainBoundReferences map[string]map[string]uint64,
+) (bool, error) {
+	if baselineDB == nil {
+		return false, nil
+	}
+
+	iter, err := c.attrs.References.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return false, fmt.Errorf("iterating baseline references: %w", err)
+	}
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var trk domain.TransactionReferenceKey
+		if err := trk.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		if trk.LedgerName == "" || trk.Reference == "" {
+			continue
+		}
+
+		perLedger := chainBoundReferences[trk.LedgerName]
+		if perLedger == nil {
+			perLedger = make(map[string]uint64)
+			chainBoundReferences[trk.LedgerName] = perLedger
+		}
+
+		// A live audit-derived sequence always wins over the baseline
+		// sentinel: if both layers know this reference, the live claim is
+		// the one verifySkippedOrder must compare against the skip seq.
+		if _, claimed := perLedger[trk.Reference]; !claimed {
+			perLedger[trk.Reference] = 0 // sentinel: precedes every live log seq
+		}
+	}
+
+	if err := iter.Close(); err != nil {
+		return false, fmt.Errorf("closing baseline references iterator: %w", err)
+	}
+
+	if err := iter.Err(); err != nil {
+		return false, fmt.Errorf("baseline references iterator error: %w", err)
+	}
+
+	return true, nil
+}
+
 // verifySkippedOrder flags an OrderSkippedLog projection whose reason was
 // not authorised by the chain-bound Order.skippable_reasons whitelist (or
 // is a structural KindInternal reason — defense in depth mirroring the
@@ -1981,13 +2067,17 @@ func verifySkippedOrder(
 		// response and gRPC log payload, so tampering only the context
 		// (without flipping the reason or rewriting an unrelated log)
 		// would otherwise pass Check() with no other tripwire — the
-		// LedgerLog projection is not hash-bound. ExistingTransactionId
-		// is not in the audit chain (tx ids are FSM-allocated and not
-		// re-derivable from the chain alone), so the verifier only pins
-		// the fields it can re-derive: `reference` and `ledger`.
+		// LedgerLog projection is not hash-bound.
+		//
+		// ErrTransactionReferenceConflict.Metadata() ALWAYS writes both
+		// `ledger` and `reference`, so missing or empty values are also
+		// tampering — flag them. ExistingTransactionId is not in the
+		// audit chain (tx ids are FSM-allocated and not re-derivable
+		// from the chain alone), so the verifier only pins the two
+		// fields it can re-derive.
 		ctx := skipped.OrderSkipped.GetContext()
 
-		if got := ctx["reference"]; got != "" && got != expected.reference {
+		if got := ctx["reference"]; got != expected.reference {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.reference=%q but the chain-bound order references %q", seq, got, expected.reference),
@@ -1997,7 +2087,7 @@ func verifySkippedOrder(
 			return
 		}
 
-		if got := ctx["ledger"]; got != "" && got != expected.ledger {
+		if got := ctx["ledger"]; got != expected.ledger {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.ledger=%q but the chain-bound order targets ledger %q", seq, got, expected.ledger),
