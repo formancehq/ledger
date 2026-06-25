@@ -7,7 +7,6 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -18,45 +17,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
-
-// mergeAndTrackBloom merges a DerivedKeyStore into its parent, writes the updates
-// to the Pebble batch via the Attribute AND to the 0xFF cache zone (lean format),
-// tracks canonical keys for bloom filter updates, and processes any attribute deletions.
-func mergeAndTrackBloom[K attributes.Key, V proto.Message](
-	derived *attributes.DerivedKeyStore[K, V],
-	attr *attributes.Attribute[V],
-	batch *dal.WriteSession,
-	genByte byte,
-	cacheType byte,
-	bloomSlice *[]attributes.U128,
-	label string,
-) ([]attributes.Update[K, V], []attributes.Deletion[K], error) {
-	updates, deletions, err := derived.Merge()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to merge %s: %w", label, err)
-	}
-
-	// Write to 0xF1 (attributes) + 0xFF (cache) in a single loop, sharing marshaled bytes.
-	if err := mergeSimpleWithCache(attr, batch, genByte, cacheType, updates); err != nil {
-		return nil, nil, fmt.Errorf("failed merging %s attributes: %w", label, err)
-	}
-
-	for _, update := range updates {
-		*bloomSlice = append(*bloomSlice, update.ID)
-	}
-
-	for _, deletion := range deletions {
-		if err := attr.Delete(batch, deletion.CanonicalKey); err != nil {
-			return nil, nil, fmt.Errorf("failed deleting %s attribute: %w", label, err)
-		}
-
-		if err := writeCacheTombstone(batch, cacheType, deletion.ID, deletion.Tag); err != nil {
-			return nil, nil, fmt.Errorf("failed writing %s cache tombstone: %w", label, err)
-		}
-	}
-
-	return updates, deletions, nil
-}
 
 // signingKeyUpdate represents a pending signing key change to be applied during Merge.
 type signingKeyUpdate struct {
@@ -203,24 +163,58 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 // purged_volumes subset (see purgedByLog), and writes the resulting logs to
 // Pebble via AppendLogs. Pass nil when the proposal produced no orders
 // (technical-only path).
+//
+// Merge is structured in four phases so Pebble keys are written in
+// monotonically increasing order, keeping the memtable skiplist on its fast
+// path and improving SST layout on flush. The phases are:
+//
+//  1. Overlay drain (no Pebble writes) — call derived.Merge() on each
+//     DerivedKeyStore in dependency order. updateBoundaryCounters reads volume
+//     / metadata / reference deltas, so those overlays drain before
+//     Boundaries.
+//  2. Cross-zone in-memory side effects — invariant checks, transient volume
+//     collection, in-memory bitset mutation (SetReverted), purged-by-log
+//     computation and per-log PurgedVolumes injection, deleteSequences map.
+//  3. Pebble flush in zone+sub-prefix monotone order:
+//     ZoneAttributes (0x01) + ZoneCache (0x02), sub-prefix monotone:
+//     SubAttrVolume (01) → Metadata (02) → Transaction (03) → Ledger (04)
+//     → Boundary (05) → Reference (06) → LedgerMetadata (07) → SinkConfig
+//     (08) → NumscriptVersion (09) → NumscriptContent (0A) → PreparedQuery
+//     (0B). Cache writes are emitted paired with the attribute writes via
+//     mergeSimpleWithCache so the marshaled value bytes are shared.
+//     ZonePerLedger (0x03): SubPLReversions (01) → MirrorSourceHead (04) →
+//     MirrorCursor (05) → MirrorStatus (06).
+//     ZoneCold (0x04): SubColdLog (01) via AppendLogs. SubColdAudit (02),
+//     AuditItem (03) and AppliedProposal (04) are written by applyProposal
+//     after Merge returns, preserving the global Cold ordering.
+//     ZoneIdempotency (0x05).
+//     ZoneGlobal (0x06): LedgerInfo (03) → SigningKey (04) → SigningConfig
+//     (05) → Chapters (06) → NextChapterID (07) → MaintenanceMode (0B) →
+//     ChapterSchedule (0D) → QueryCheckpoint (0E) → NextQueryCheckpointID
+//     (0F) → QueryCheckpointSchedule (10) → NextLedgerID (13).
+//  4. Range purges and in-memory FSM state finalisation — executePurge and
+//     pendingLedgerDeletions use DeleteRange (range tombstones live in a
+//     separate skiplist and do not affect point-write monotonicity).
+//
+// Any new write site must respect this ordering. If a new write would land
+// between zones already drained, route it through the appropriate sub-step
+// — never append at the end as a fresh block.
 func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.CreatedLogOrReference) error {
 	// gen0 byte for incremental 0xFF cache writes.
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
-	// Process Ledger updates
-	ledgerUpdates, _, err := mergeAndTrackBloom(b.Derived.Ledgers, b.attrs.Ledger, batch, genByte, dal.SubAttrLedger, &b.bloomUpdates.Ledgers, "ledgers")
+	// === Phase 1: overlay drain (no Pebble writes) ============================
+	//
+	// derived.Merge() pulls each DerivedKeyStore's dirty values into a
+	// (updates, deletions) pair and resets the overlay. Order is dictated by
+	// downstream consumers: counter aggregation reads Volume / Metadata /
+	// Reference deltas, so those overlays must drain before Boundaries.Merge.
+
+	ledgerUpdates, ledgerDeletions, err := b.Derived.Ledgers.Merge()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to merge ledgers: %w", err)
 	}
 
-	for _, update := range ledgerUpdates {
-		if err := SaveLedger(batch, update.New); err != nil {
-			return fmt.Errorf("failed to save ledger: %w", err)
-		}
-	}
-
-	// Process Volume updates — volumes are handled inline (not via mergeAndTrackBloom)
-	// because of the unique ephemeral purge, double-entry invariant, and sentinel checks.
 	volumeUpdates, _, err := b.Derived.Volumes.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge volumes: %w", err)
@@ -229,30 +223,55 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// Partition volumes by persistence mode: normal (kept), ephemeral (purged), transient (skipped).
 	partResult := b.partitionVolumes(volumeUpdates)
 
-	// Write kept volumes to 0xF1 + 0xFF in one pass (shared marshaled bytes).
-	if err := mergeSimpleWithCache(b.attrs.Volume, batch, genByte, dal.SubAttrVolume, partResult.kept); err != nil {
-		return fmt.Errorf("failed merging volume attributes: %w", err)
+	metadataUpdates, metadataDeletions, err := b.Derived.AccountMetadata.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge account metadata: %w", err)
 	}
 
-	for _, update := range partResult.kept {
-		b.bloomUpdates.Volumes = append(b.bloomUpdates.Volumes, update.ID)
+	referenceUpdates, referenceDeletions, err := b.Derived.References.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge references: %w", err)
 	}
 
-	if err := b.applyEphemeralPurge(batch, genByte, partResult.purged); err != nil {
-		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
+	// Update per-ledger attribute counters in boundaries before merging them.
+	b.updateBoundaryCounters(volumeUpdates, partResult.purged, partResult.transient, metadataUpdates, metadataDeletions, referenceUpdates)
+
+	boundaryUpdates, boundaryDeletions, err := b.Derived.Boundaries.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge boundaries: %w", err)
 	}
 
-	// Transient volumes are NOT written to 0xF1 (attributes). The in-memory
-	// KeyStore and 0xFF cache are overwritten with {0, 0} — matching the
-	// documented "never persisted, must be zero at end of batch" semantic.
-	// Writing the cumulative update.New here would silently accumulate across
-	// batches: the next GetVolume would return the prior cumulative value,
-	// causing PCVs on re-touched transient cells to drift. A populated cache
-	// entry (rather than a delete) is still required for any co-batched
-	// proposal admitted with CacheGuaranteed.
-	if err := b.zeroVolumeCache(batch, genByte, partResult.transient); err != nil {
-		return fmt.Errorf("failed zeroing transient volumes in cache: %w", err)
+	transactionUpdates, transactionDeletions, err := b.Derived.Transactions.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge transactions: %w", err)
 	}
+
+	ledgerMetadataUpdates, ledgerMetadataDeletions, err := b.Derived.LedgerMetadata.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge ledger metadata: %w", err)
+	}
+
+	sinkConfigUpdates, sinkConfigDeletions, err := b.Derived.SinkConfigs.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge sink configs: %w", err)
+	}
+
+	numscriptVersionUpdates, numscriptVersionDeletions, err := b.Derived.NumscriptVersions.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge numscript versions: %w", err)
+	}
+
+	numscriptContentUpdates, numscriptContentDeletions, err := b.Derived.NumscriptContents.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge numscript contents: %w", err)
+	}
+
+	preparedQueryUpdates, preparedQueryDeletions, err := b.Derived.PreparedQueries.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge prepared queries: %w", err)
+	}
+
+	// === Phase 2: cross-zone in-memory side effects (no Pebble writes) ========
 
 	// Trace volume partitions for sentinel diagnostics.
 	if b.fsm.sentinelMode {
@@ -334,13 +353,9 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.purgedVolumeKeys[i] = purged.Key
 	}
 
-	// Process AccountMetadata updates
-	metadataUpdates, metadataDeletions, err := mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, genByte, dal.SubAttrMetadata, &b.bloomUpdates.Metadata, "account metadata")
-	if err != nil {
-		return err
-	}
-
-	// Flush pending reversions to the authoritative in-memory bitset and persist only the modified words.
+	// Flush pending reversions to the authoritative in-memory bitset and
+	// collect the per-word dirty list. The Pebble writes for these dirty
+	// words happen in phase 3 (ZonePerLedger drain).
 	type dirtyWord struct {
 		ledgerName string
 		wordIndex  uint64
@@ -351,42 +366,6 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	for _, txKey := range b.Derived.PendingReversions {
 		wi := b.fsm.Registry.SetReverted(txKey)
 		dirtyWords = append(dirtyWords, dirtyWord{ledgerName: txKey.LedgerName, wordIndex: wi})
-	}
-
-	for _, dw := range dirtyWords {
-		word := b.fsm.Registry.Reversions[dw.ledgerName].Word(dw.wordIndex)
-		if err := saveReversionWord(batch, dw.ledgerName, dw.wordIndex, word); err != nil {
-			return fmt.Errorf("saving reversion word for %q: %w", dw.ledgerName, err)
-		}
-	}
-
-	// Process idempotency key updates (dedicated prefix, not attribute system)
-	if err := b.Derived.Idempotency.Merge(batch); err != nil {
-		return fmt.Errorf("failed to merge idempotency keys: %w", err)
-	}
-
-	// Process References updates
-	referenceUpdates, _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, genByte, dal.SubAttrReference, &b.bloomUpdates.References, "references")
-	if err != nil {
-		return err
-	}
-
-	// Update per-ledger attribute counters in boundaries before merging them.
-	b.updateBoundaryCounters(volumeUpdates, partResult.purged, partResult.transient, metadataUpdates, metadataDeletions, referenceUpdates)
-
-	// Process Boundary updates (after counted attributes so counters are included).
-	if _, _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, genByte, dal.SubAttrBoundary, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
-		return err
-	}
-
-	// Process Transaction state updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.Transactions, b.attrs.Transaction, batch, genByte, dal.SubAttrTransaction, &b.bloomUpdates.Transactions, "transactions"); err != nil {
-		return err
-	}
-
-	// Process LedgerMetadata updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.LedgerMetadata, b.attrs.LedgerMetadata, batch, genByte, dal.SubAttrLedgerMetadata, &b.bloomUpdates.LedgerMetadata, "ledger metadata"); err != nil {
-		return err
 	}
 
 	// Build createdLogs (skipping idempotency replays) and inject the
@@ -422,12 +401,174 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		createdLogs = append(createdLogs, log)
 	}
 
-	err = AppendLogs(batch, createdLogs)
-	if err != nil {
+	// Resolve the delete sequence for each ledger marked for cleanup. The
+	// actual PerLedger writes happen in phase 4 (after the Global drain)
+	// because they require createdLogs to be finalised first.
+	var deleteSequences map[string]uint64
+	if len(b.pendingLedgerDeletions) > 0 {
+		deleteSequences = make(map[string]uint64, len(b.pendingLedgerDeletions))
+
+		for _, log := range createdLogs {
+			if dl := log.GetPayload().GetDeleteLedger(); dl != nil {
+				deleteSequences[dl.GetName()] = log.GetSequence()
+			}
+		}
+	}
+
+	// === Phase 3: Pebble flush in monotone zone+sub order =====================
+	//
+	// Within each (zone, sub) bucket, paired attribute (0x01) + cache (0x02)
+	// writes still micro-zigzag at byte 0 — this is intentional:
+	// mergeSimpleWithCache shares the marshaled value bytes between the two
+	// writes and the issue explicitly calls this out as a paired logical step.
+
+	// ZoneAttributes (0x01) + ZoneCache (0x02), sub-prefix monotone.
+
+	// SubAttrVolume (0x01): kept go through mergeSimpleWithCache + bloom;
+	// purged go through applyEphemeralPurge (attribute Delete + cache zero);
+	// transient go through zeroVolumeCache (cache zero, no Pebble attribute
+	// write).
+	if err := mergeSimpleWithCache(b.attrs.Volume, batch, genByte, dal.SubAttrVolume, partResult.kept); err != nil {
+		return fmt.Errorf("failed merging volume attributes: %w", err)
+	}
+
+	for _, update := range partResult.kept {
+		b.bloomUpdates.Volumes = append(b.bloomUpdates.Volumes, update.ID)
+	}
+
+	if err := b.applyEphemeralPurge(batch, genByte, partResult.purged); err != nil {
+		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
+	}
+
+	// Transient volumes are NOT written to 0xF1 (attributes). The in-memory
+	// KeyStore and 0xFF cache are overwritten with {0, 0} — matching the
+	// documented "never persisted, must be zero at end of batch" semantic.
+	// Writing the cumulative update.New here would silently accumulate across
+	// batches: the next GetVolume would return the prior cumulative value,
+	// causing PCVs on re-touched transient cells to drift. A populated cache
+	// entry (rather than a delete) is still required for any co-batched
+	// proposal admitted with CacheGuaranteed.
+	if err := b.zeroVolumeCache(batch, genByte, partResult.transient); err != nil {
+		return fmt.Errorf("failed zeroing transient volumes in cache: %w", err)
+	}
+
+	// SubAttrMetadata (0x02)
+	if err := flushAttributeAndCache(b.attrs.Metadata, batch, genByte, dal.SubAttrMetadata, metadataUpdates, metadataDeletions, &b.bloomUpdates.Metadata, "account metadata"); err != nil {
+		return err
+	}
+
+	// SubAttrTransaction (0x03)
+	if err := flushAttributeAndCache(b.attrs.Transaction, batch, genByte, dal.SubAttrTransaction, transactionUpdates, transactionDeletions, &b.bloomUpdates.Transactions, "transactions"); err != nil {
+		return err
+	}
+
+	// SubAttrLedger (0x04)
+	if err := flushAttributeAndCache(b.attrs.Ledger, batch, genByte, dal.SubAttrLedger, ledgerUpdates, ledgerDeletions, &b.bloomUpdates.Ledgers, "ledgers"); err != nil {
+		return err
+	}
+
+	// SubAttrBoundary (0x05)
+	if err := flushAttributeAndCache(b.attrs.Boundary, batch, genByte, dal.SubAttrBoundary, boundaryUpdates, boundaryDeletions, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
+		return err
+	}
+
+	// SubAttrReference (0x06)
+	if err := flushAttributeAndCache(b.attrs.References, batch, genByte, dal.SubAttrReference, referenceUpdates, referenceDeletions, &b.bloomUpdates.References, "references"); err != nil {
+		return err
+	}
+
+	// SubAttrLedgerMetadata (0x07)
+	if err := flushAttributeAndCache(b.attrs.LedgerMetadata, batch, genByte, dal.SubAttrLedgerMetadata, ledgerMetadataUpdates, ledgerMetadataDeletions, &b.bloomUpdates.LedgerMetadata, "ledger metadata"); err != nil {
+		return err
+	}
+
+	// SubAttrSinkConfig (0x08)
+	if err := flushAttributeAndCache(b.attrs.SinkConfig, batch, genByte, dal.SubAttrSinkConfig, sinkConfigUpdates, sinkConfigDeletions, &b.bloomUpdates.SinkConfigs, "sink configs"); err != nil {
+		return err
+	}
+
+	// SubAttrNumscriptVersion (0x09)
+	if err := flushAttributeAndCache(b.attrs.NumscriptVersion, batch, genByte, dal.SubAttrNumscriptVersion, numscriptVersionUpdates, numscriptVersionDeletions, &b.bloomUpdates.NumscriptVersions, "numscript versions"); err != nil {
+		return err
+	}
+
+	// SubAttrNumscriptContent (0x0A)
+	if err := flushAttributeAndCache(b.attrs.NumscriptContent, batch, genByte, dal.SubAttrNumscriptContent, numscriptContentUpdates, numscriptContentDeletions, &b.bloomUpdates.NumscriptContents, "numscript contents"); err != nil {
+		return err
+	}
+
+	// SubAttrPreparedQuery (0x0B)
+	if err := flushAttributeAndCache(b.attrs.PreparedQuery, batch, genByte, dal.SubAttrPreparedQuery, preparedQueryUpdates, preparedQueryDeletions, &b.bloomUpdates.PreparedQueries, "prepared queries"); err != nil {
+		return err
+	}
+
+	// ZonePerLedger (0x03), sub-prefix monotone.
+
+	// SubPLReversions (0x01)
+	for _, dw := range dirtyWords {
+		word := b.fsm.Registry.Reversions[dw.ledgerName].Word(dw.wordIndex)
+		if err := saveReversionWord(batch, dw.ledgerName, dw.wordIndex, word); err != nil {
+			return fmt.Errorf("saving reversion word for %q: %w", dw.ledgerName, err)
+		}
+	}
+
+	// SubPLMirrorSourceHead (0x04), MirrorCursor (0x05), MirrorStatus (0x06)
+	// — three sub-prefixes drained in order, one pass each. Keys within a
+	// sub-prefix sort by ledger name (not sorted here — the monotonicity
+	// contract is at the (zone, sub) granularity only).
+	for _, w := range b.pendingMirrorSyncs {
+		if w.SourceLogCount > 0 {
+			if err := SetMirrorSourceHead(batch, w.LedgerName, w.SourceLogCount); err != nil {
+				return fmt.Errorf("setting mirror source head for %q: %w", w.LedgerName, err)
+			}
+		}
+	}
+
+	for _, w := range b.pendingMirrorSyncs {
+		if w.Cursor > 0 {
+			if err := SetMirrorCursor(batch, w.LedgerName, w.Cursor); err != nil {
+				return fmt.Errorf("setting mirror cursor for %q: %w", w.LedgerName, err)
+			}
+		}
+	}
+
+	for _, w := range b.pendingMirrorSyncs {
+		if w.ClearError {
+			if err := clearMirrorStatus(batch, w.LedgerName); err != nil {
+				return fmt.Errorf("clearing mirror status for %q: %w", w.LedgerName, err)
+			}
+		} else if w.Error != nil {
+			if err := SetMirrorStatus(batch, w.LedgerName, w.Error); err != nil {
+				return fmt.Errorf("setting mirror status for %q: %w", w.LedgerName, err)
+			}
+		}
+	}
+
+	// ZoneCold (0x04), SubColdLog (0x01) only. The higher Cold sub-prefixes
+	// (SubColdAudit, SubColdAuditItem, SubColdAppliedProposal) are written by
+	// applyProposal AFTER Merge returns, preserving the global Cold
+	// sub-prefix monotonicity established by PR #542.
+	if err := AppendLogs(batch, createdLogs); err != nil {
 		return fmt.Errorf("failed appending pending logs: %w", err)
 	}
 
-	// Apply signing key updates to Pebble batch and in-memory KeyStore
+	// ZoneIdempotency (0x05).
+	if err := b.Derived.Idempotency.Merge(batch); err != nil {
+		return fmt.Errorf("failed to merge idempotency keys: %w", err)
+	}
+
+	// ZoneGlobal (0x06), sub-prefix monotone.
+
+	// SubGlobLedgerInfo (0x03)
+	for _, update := range ledgerUpdates {
+		if err := SaveLedger(batch, update.New); err != nil {
+			return fmt.Errorf("failed to save ledger: %w", err)
+		}
+	}
+
+	// SubGlobSigningKey (0x04) — Pebble write paired with in-memory keyStore
+	// mutation; a batch.Commit failure leaves the keyStore mutated and
+	// unsynced with Pebble, matching the prior behaviour.
 	for _, update := range b.pendingSigningKeyUpdates {
 		if update.remove {
 			err := DeleteSigningKey(batch, update.keyID)
@@ -450,6 +591,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 	}
 
+	// SubGlobSigningConfig (0x05)
 	if b.pendingSigningConfigUpdate != nil {
 		err := SaveSigningConfig(batch, b.pendingSigningConfigUpdate.requireSignatures)
 		if err != nil {
@@ -459,6 +601,22 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.sharedState.SetRequireSignatures(b.pendingSigningConfigUpdate.requireSignatures)
 	}
 
+	// SubGlobChapters (0x06)
+	for _, p := range b.changedChapters {
+		err := StoreChapter(batch, p)
+		if err != nil {
+			return fmt.Errorf("storing chapter %d: %w", p.GetId(), err)
+		}
+	}
+
+	// SubGlobNextChapterID (0x07) — persist only if chapters were touched.
+	if b.chapters != nil {
+		if err := StoreNextChapterID(batch, b.chapters.NextChapterID()); err != nil {
+			return fmt.Errorf("storing next chapter ID: %w", err)
+		}
+	}
+
+	// SubGlobMaintenanceMode (0x0B)
 	if b.pendingMaintenanceModeUpdate != nil {
 		err := SaveMaintenanceMode(batch, b.pendingMaintenanceModeUpdate.enabled)
 		if err != nil {
@@ -468,6 +626,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.sharedState.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
 	}
 
+	// SubGlobChapterSchedule (0x0D)
 	if b.pendingChapterScheduleUpdate != nil {
 		if *b.pendingChapterScheduleUpdate == "" {
 			err := batchDeleteChapterSchedule(batch)
@@ -484,6 +643,29 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.Chapters.SetSchedule(*b.pendingChapterScheduleUpdate)
 	}
 
+	// SubGlobQueryCheckpoint (0x0E) — saves then deletes, both on the same
+	// sub-prefix. The (checkpoint_id BE 8) tail keeps per-call ordering
+	// deterministic; the contract is at zone+sub only.
+	for _, cp := range b.pendingQueryCheckpointSaves {
+		if err := saveQueryCheckpoint(batch, cp); err != nil {
+			return fmt.Errorf("saving query checkpoint %d: %w", cp.GetCheckpointId(), err)
+		}
+	}
+
+	for _, cpID := range b.pendingQueryCheckpointDeletes {
+		if err := deleteQueryCheckpointFromBatch(batch, cpID); err != nil {
+			return fmt.Errorf("deleting query checkpoint %d: %w", cpID, err)
+		}
+	}
+
+	// SubGlobNextQueryCheckpointID (0x0F)
+	if b.NextQueryCheckpointID != b.fsm.State.NextQueryCheckpointID {
+		if err := storeNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
+			return fmt.Errorf("storing next query checkpoint ID: %w", err)
+		}
+	}
+
+	// SubGlobQueryCheckpointSchedule (0x10)
 	if b.pendingQueryCheckpointScheduleUpdate != nil {
 		if *b.pendingQueryCheckpointScheduleUpdate == "" {
 			err := batchDeleteQueryCheckpointSchedule(batch)
@@ -500,41 +682,26 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.setQueryCheckpointSchedule(*b.pendingQueryCheckpointScheduleUpdate)
 	}
 
-	// Process SinkConfig updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.SinkConfigs, b.attrs.SinkConfig, batch, genByte, dal.SubAttrSinkConfig, &b.bloomUpdates.SinkConfigs, "sink configs"); err != nil {
-		return err
-	}
-
-	// Process NumscriptVersion updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptVersions, b.attrs.NumscriptVersion, batch, genByte, dal.SubAttrNumscriptVersion, &b.bloomUpdates.NumscriptVersions, "numscript versions"); err != nil {
-		return err
-	}
-
-	// Process NumscriptContent updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptContents, b.attrs.NumscriptContent, batch, genByte, dal.SubAttrNumscriptContent, &b.bloomUpdates.NumscriptContents, "numscript contents"); err != nil {
-		return err
-	}
-
-	// Process PreparedQuery updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.PreparedQueries, b.attrs.PreparedQuery, batch, genByte, dal.SubAttrPreparedQuery, &b.bloomUpdates.PreparedQueries, "prepared queries"); err != nil {
-		return err
-	}
-
-	for _, p := range b.changedChapters {
-		err := StoreChapter(batch, p)
-		if err != nil {
-			return fmt.Errorf("storing chapter %d: %w", p.GetId(), err)
+	// SubGlobNextLedgerID (0x13)
+	if b.NextLedgerID != b.fsm.State.NextLedgerID {
+		if err := saveNextLedgerID(batch, b.NextLedgerID); err != nil {
+			return fmt.Errorf("storing next ledger ID: %w", err)
 		}
 	}
 
-	// Persist next chapter ID only if chapters were touched.
-	if b.chapters != nil {
-		if err := StoreNextChapterID(batch, b.chapters.NextChapterID()); err != nil {
-			return fmt.Errorf("storing next chapter ID: %w", err)
-		}
-	}
+	// === Phase 4: range purges + FSM state finalisation =======================
+	//
+	// executePurge and the pendingLedgerDeletions block emit DeleteRange calls
+	// (range tombstones) on ZoneCold and ZonePerLedger, plus a handful of
+	// point writes/deletes (savePendingLedgerCleanup,
+	// deletePendingLedgerCleanup, deleteLedgerData). Range tombstones live in
+	// a dedicated skiplist, separate from the point-write skiplist, so they
+	// do not break the monotonicity invariant established in phase 3. The
+	// trailing point writes are bounded by the number of pending cleanups /
+	// purge ranges (not the hot-path order count) so any residual back-step
+	// they introduce is amortised across batches.
 
-	// Purge archived chapter data (logs + audit entries) if requested
+	// Purge archived chapter data (logs + audit entries) if requested.
 	for i := range b.purgeRanges {
 		err := b.executePurge(batch, &b.purgeRanges[i])
 		if err != nil {
@@ -542,108 +709,46 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 	}
 
-	// Process query checkpoint writes/deletes
-	for _, cp := range b.pendingQueryCheckpointSaves {
-		if err := saveQueryCheckpoint(batch, cp); err != nil {
-			return fmt.Errorf("saving query checkpoint %d: %w", cp.GetCheckpointId(), err)
+	// Register pending ledger data cleanups (deferred to purge time). Boundary
+	// deletion is handled by MarkLedgerForCleanup adding a Delete to the
+	// Derived.Boundaries overlay (flushed in phase 3 above).
+	for _, ledgerName := range b.pendingLedgerDeletions {
+		seq := deleteSequences[ledgerName]
+
+		if _, err := b.GetLedger(ledgerName); err != nil {
+			// The ledger name comes from a DeleteLedger order the
+			// processor already validated against b.GetLedger — a
+			// miss here means the WriteSet's view of ledgers became
+			// inconsistent between order processing and Merge. Fail
+			// loudly instead of skipping the cleanup write.
+			return fmt.Errorf("invariant: pending ledger deletion for %q but ledger not in WriteSet view", ledgerName)
+		}
+
+		if err := savePendingLedgerCleanup(batch, ledgerName, seq); err != nil {
+			return fmt.Errorf("saving pending ledger cleanup for %q: %w", ledgerName, err)
+		}
+
+		b.fsm.State.PendingLedgerCleanups[ledgerName] = seq
+
+		// Clean in-memory reversion bitset and Pebble words — not needed after deletion.
+		delete(b.fsm.Registry.Reversions, ledgerName)
+
+		if err := deleteReversionsByLedger(batch, ledgerName); err != nil {
+			return fmt.Errorf("deleting reversions for %q: %w", ledgerName, err)
 		}
 	}
 
-	for _, cpID := range b.pendingQueryCheckpointDeletes {
-		if err := deleteQueryCheckpointFromBatch(batch, cpID); err != nil {
-			return fmt.Errorf("deleting query checkpoint %d: %w", cpID, err)
-		}
-	}
-
-	for _, w := range b.pendingMirrorSyncs {
-		if w.Cursor > 0 {
-			if err := SetMirrorCursor(batch, w.LedgerName, w.Cursor); err != nil {
-				return fmt.Errorf("setting mirror cursor for %q: %w", w.LedgerName, err)
-			}
-		}
-
-		if w.SourceLogCount > 0 {
-			if err := SetMirrorSourceHead(batch, w.LedgerName, w.SourceLogCount); err != nil {
-				return fmt.Errorf("setting mirror source head for %q: %w", w.LedgerName, err)
-			}
-		}
-
-		if w.ClearError {
-			if err := clearMirrorStatus(batch, w.LedgerName); err != nil {
-				return fmt.Errorf("clearing mirror status for %q: %w", w.LedgerName, err)
-			}
-		} else if w.Error != nil {
-			if err := SetMirrorStatus(batch, w.LedgerName, w.Error); err != nil {
-				return fmt.Errorf("setting mirror status for %q: %w", w.LedgerName, err)
-			}
-		}
-	}
-
-	// Register pending ledger data cleanups (deferred to purge time).
-	// Find the delete sequence for each pending deletion from the logs.
-	if len(b.pendingLedgerDeletions) > 0 {
-		deleteSequences := make(map[string]uint64, len(b.pendingLedgerDeletions))
-
-		for _, log := range createdLogs {
-			if dl := log.GetPayload().GetDeleteLedger(); dl != nil {
-				deleteSequences[dl.GetName()] = log.GetSequence()
-			}
-		}
-
-		for _, ledgerName := range b.pendingLedgerDeletions {
-			seq := deleteSequences[ledgerName]
-
-			if _, err := b.GetLedger(ledgerName); err != nil {
-				// The ledger name comes from a DeleteLedger order the
-				// processor already validated against b.GetLedger — a
-				// miss here means the WriteSet's view of ledgers became
-				// inconsistent between order processing and Merge. Fail
-				// loudly instead of skipping the cleanup write.
-				return fmt.Errorf("invariant: pending ledger deletion for %q but ledger not in WriteSet view", ledgerName)
-			}
-
-			if err := savePendingLedgerCleanup(batch, ledgerName, seq); err != nil {
-				return fmt.Errorf("saving pending ledger cleanup for %q: %w", ledgerName, err)
-			}
-
-			b.fsm.State.PendingLedgerCleanups[ledgerName] = seq
-
-			// Boundary deletion is handled above via boundaryDeletions
-			// (MarkLedgerForCleanup adds a Delete to the Derived.Boundaries overlay).
-
-			// Clean in-memory reversion bitset and Pebble words — not needed after deletion.
-			delete(b.fsm.Registry.Reversions, ledgerName)
-
-			if err := deleteReversionsByLedger(batch, ledgerName); err != nil {
-				return fmt.Errorf("deleting reversions for %q: %w", ledgerName, err)
-			}
-		}
-	}
-
-	// Persist next query checkpoint ID if it changed.
-	if b.NextQueryCheckpointID != b.fsm.State.NextQueryCheckpointID {
-		if err := storeNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
-			return fmt.Errorf("storing next query checkpoint ID: %w", err)
-		}
-	}
-
-	// Persist next ledger ID if it changed.
-	if b.NextLedgerID != b.fsm.State.NextLedgerID {
-		if err := saveNextLedgerID(batch, b.NextLedgerID); err != nil {
-			return fmt.Errorf("storing next ledger ID: %w", err)
-		}
-	}
-
+	// In-memory FSM state finalisation.
 	b.fsm.State.NextSequenceID = b.NextSequenceID
 	b.fsm.State.NextLedgerID = b.NextLedgerID
 	b.fsm.State.NextQueryCheckpointID = b.NextQueryCheckpointID
 
-	// Apply changed chapters to Machine's Chapters tracker
+	// Apply changed chapters to Machine's Chapters tracker.
 	for _, p := range b.changedChapters {
 		b.fsm.Chapters.PutChapter(p)
 	}
 
-	// Remove purged chapters from memory
+	// Remove purged chapters from memory.
 	for _, pr := range b.purgeRanges {
 		b.fsm.Chapters.DeleteChapter(pr.chapterID)
 	}

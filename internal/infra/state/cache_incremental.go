@@ -88,6 +88,44 @@ func mergeSimpleWithCache[K attributes.Key, V proto.Message](
 	return nil
 }
 
+// flushAttributeAndCache writes a pre-computed batch of attribute updates and
+// deletions to ZoneAttributes (0xF1) + ZoneCache (0xFF), and tracks the
+// canonical keys for bloom updates. It is the Pebble-write half of
+// mergeAndTrackBloom — the in-memory overlay merge (derived.Merge()) is the
+// caller's responsibility, so callers can interleave overlay merges with the
+// cross-attribute side effects (counter aggregation, etc.) and still flush
+// in zone+sub-prefix monotone order.
+func flushAttributeAndCache[K attributes.Key, V proto.Message](
+	attr *attributes.Attribute[V],
+	batch *dal.WriteSession,
+	genByte byte,
+	cacheType byte,
+	updates []attributes.Update[K, V],
+	deletions []attributes.Deletion[K],
+	bloomSlice *[]attributes.U128,
+	label string,
+) error {
+	if err := mergeSimpleWithCache(attr, batch, genByte, cacheType, updates); err != nil {
+		return fmt.Errorf("failed merging %s attributes: %w", label, err)
+	}
+
+	for _, update := range updates {
+		*bloomSlice = append(*bloomSlice, update.ID)
+	}
+
+	for _, deletion := range deletions {
+		if err := attr.Delete(batch, deletion.CanonicalKey); err != nil {
+			return fmt.Errorf("failed deleting %s attribute: %w", label, err)
+		}
+
+		if err := writeCacheTombstone(batch, cacheType, deletion.ID, deletion.Tag); err != nil {
+			return fmt.Errorf("failed writing %s cache tombstone: %w", label, err)
+		}
+	}
+
+	return nil
+}
+
 // writeCacheRotation writes the 0xFF metadata and purges old gen1 data on a cache generation rotation.
 // Must be called AFTER CheckRotationNeeded (which performs the in-memory rotation),
 // so CurrentGeneration() and BaseIndex reflect the post-rotation state.
