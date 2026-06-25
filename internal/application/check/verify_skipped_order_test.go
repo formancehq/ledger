@@ -11,7 +11,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// TestVerifySkippedOrder_AllowedReasonEmitsNothing exercises the happy path.
+// TestVerifySkippedOrder_AllowedReasonEmitsNothing exercises the happy path:
+// reason in the whitelist, prior reference claim present, AND the persisted
+// context fields match the chain-bound expectations.
 func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 	t.Parallel()
 
@@ -26,9 +28,56 @@ func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 		"L": {"ref-x": 3},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{"ledger": "L", "reference": "ref-x"},
+			},
+		},
+	}
+
 	events := captureEvents(t, "L", 7, payload, expected, refs, false)
 	require.Empty(t, events, "an authorised skip with a satisfied correlator must emit nothing")
+}
+
+// TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext catches a
+// tampered LedgerLog where the persisted context fields were removed.
+// ErrTransactionReferenceConflict.Metadata() always writes both `ledger`
+// and `reference`, so missing/empty values are a tampering signal —
+// validating only "present and mismatched" lets a stripped context dodge
+// the check.
+func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref",
+		},
+	}
+	refs := map[string]map[string]uint64{
+		"L": {"ref": 3},
+	}
+
+	// Context entirely missing.
+	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	requireInvalidSkipEvent(t, events, 7)
+
+	// Only one field stripped.
+	payload = &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{"ledger": "L"}, // reference missing
+			},
+		},
+	}
+
+	events = captureEvents(t, "L", 7, payload, expected, refs, false)
+	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifySkippedOrder_RejectsKindInternal pins the defense-in-depth gate.
@@ -271,11 +320,13 @@ func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T
 }
 
 // TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived pins the
-// archive boundary escape hatch: with archived chapters present, a missing
-// claim cannot be distinguished from one that lived in a purged chapter,
-// so the verifier downgrades the missing-reference branch to a silent
-// pass to avoid false positives on legitimate skips against archived
-// references.
+// archive boundary escape hatch: when archived chapters exist AND the
+// baseline references could not be loaded, a missing claim cannot be
+// distinguished from a purged one — the verifier stays permissive.
+// Conversely, when a baseline is available (callers pass
+// archivedWithoutBaseline=false), the fold has already injected
+// archived references into chainBoundReferences, so a missing reference
+// IS fabrication and must fail loud.
 func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived(t *testing.T) {
 	t.Parallel()
 
@@ -289,13 +340,53 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived(t *testing.T
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 
-	// hasArchivedChapters=false → fails loud (no archive escape)
+	// archivedWithoutBaseline=false (no archive OR baseline available) →
+	// strict: missing claim is fabrication.
 	events := captureEvents(t, "L", 7, payload, expected, nil, false)
 	requireInvalidSkipEvent(t, events, 7)
 
-	// hasArchivedChapters=true → permissive (can't tell if claim was purged)
+	// archivedWithoutBaseline=true (archive AND no baseline) → permissive:
+	// the claim may live in a purged chapter we cannot verify.
 	events = captureEvents(t, "L", 7, payload, expected, nil, true)
-	require.Empty(t, events, "missing-claim skips must pass when archived chapters exist")
+	require.Empty(t, events, "missing-claim skips must pass only when archived chapters AND no baseline")
+}
+
+// TestVerifySkippedOrder_ReferenceConflictBaselineSeededReference pins the
+// fold semantic: when foldBaselineReferences seeds an archived reference
+// with sentinel sequence 0, verifySkippedOrder accepts the live skip
+// against it — sentinel 0 always precedes the skip's live seq, so the
+// firstSeenSeq < seq guard passes.
+func TestVerifySkippedOrder_ReferenceConflictBaselineSeededReference(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-from-baseline",
+		},
+	}
+	// Sentinel 0 represents a reference folded from baseline (archive).
+	refs := map[string]map[string]uint64{
+		"L": {"ref-from-baseline": 0},
+	}
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{
+					"ledger":    "L",
+					"reference": "ref-from-baseline",
+				},
+			},
+		},
+	}
+
+	// archivedWithoutBaseline=false (baseline was available and folded):
+	// the sentinel-seeded reference is enough to satisfy the check.
+	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	require.Empty(t, events)
 }
 
 // TestCollectExpectedSkippable_RecordsReferencesFromChain pins the
