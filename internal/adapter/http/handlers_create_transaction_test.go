@@ -131,9 +131,15 @@ func TestHandleCreateTransaction_InsufficientFunds(t *testing.T) {
 func TestHandleCreateTransaction_OrderSkipped(t *testing.T) {
 	t.Parallel()
 
+	var receivedSkippable []commonpb.ErrorReason
+
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			// Capture the decoded skippable_reasons so the assertions below
+			// pin both the JSON decode path AND the response path.
+			receivedSkippable = req.GetUnsigned().GetRequests()[0].GetApply().GetAction().GetCreateTransaction().GetSkippableReasons()
+
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -170,6 +176,13 @@ func TestHandleCreateTransaction_OrderSkipped(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 
+	// JSON decode → request: the caller's opt-in must reach the backend.
+	require.Equal(t,
+		[]commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		receivedSkippable,
+	)
+
+	// Response side: skip outcome surfaced to the client.
 	wrapper := decodeResponse[BaseResponse[OrderSkippedResponse]](t, w)
 	require.True(t, wrapper.Data.Skipped)
 	require.Equal(t, "ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT", wrapper.Data.Reason)
