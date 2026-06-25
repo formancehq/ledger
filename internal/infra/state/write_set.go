@@ -271,6 +271,11 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		return fmt.Errorf("failed to merge prepared queries: %w", err)
 	}
 
+	indexUpdates, indexDeletions, err := b.Derived.Indexes.Merge()
+	if err != nil {
+		return fmt.Errorf("failed to merge indexes: %w", err)
+	}
+
 	// === Phase 2: cross-zone in-memory side effects (no Pebble writes) ========
 
 	// Trace volume partitions for sentinel diagnostics.
@@ -499,6 +504,11 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// SubAttrPreparedQuery (0x0B)
 	if err := flushAttributeAndCache(b.attrs.PreparedQuery, batch, genByte, dal.SubAttrPreparedQuery, preparedQueryUpdates, preparedQueryDeletions, &b.bloomUpdates.PreparedQueries, "prepared queries"); err != nil {
+		return err
+	}
+
+	// SubAttrIndex (0x0C) — bucket-scoped index registry (per-ledger or bucket).
+	if err := flushAttributeAndCache(b.attrs.Index, batch, genByte, dal.SubAttrIndex, indexUpdates, indexDeletions, &b.bloomUpdates.Indexes, "indexes"); err != nil {
 		return err
 	}
 
@@ -1166,6 +1176,37 @@ func (b *WriteSet) RemoveSinkConfig(name string) {
 
 func (b *WriteSet) HasPendingSinkChanges() bool {
 	return b.sinkConfigChanged
+}
+
+// GetIndex returns the Index entry for the given key as a commonpb.IndexReader,
+// or domain.ErrNotFound when absent. Returning the Reader (instead of the raw
+// *commonpb.Index) mirrors the discipline GetBoundaries / GetVolume enforce
+// for other hot-path attribute kinds (#496) — callers that need to mutate must
+// go through reader.Mutate() to obtain a clone, so the cache-resident proto
+// can't be mutated in place. The bare *WriteSet has no coverage gate; the
+// *gatedScope wrapper layers CheckCoverage on top before delegating here.
+func (b *WriteSet) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
+	idx, err := b.Derived.Indexes.Get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if idx == nil {
+		return nil, domain.ErrNotFound
+	}
+
+	return idx.AsReader(), nil
+}
+
+// PutIndex upserts an Index entry in the overlay. The FSM hot path is expected
+// to set Index.Ledger to a value matching key.LedgerID (or empty when 0).
+func (b *WriteSet) PutIndex(key domain.IndexKey, idx *commonpb.Index) {
+	b.Derived.Indexes.Put(key, idx)
+}
+
+// DeleteIndex removes an Index entry from the overlay.
+func (b *WriteSet) DeleteIndex(key domain.IndexKey) {
+	b.Derived.Indexes.Delete(key)
 }
 
 // AllVolumeUpdates returns all volume updates (kept + purged) captured during Merge.

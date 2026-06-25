@@ -1,77 +1,113 @@
 package indexes
 
-import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+import (
+	"errors"
 
-// Find returns the Index entry for the given id, or nil if absent.
-func Find(info *commonpb.LedgerInfo, id *commonpb.IndexID) *commonpb.Index {
-	if info == nil || id == nil {
-		return nil
-	}
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+)
 
-	for _, idx := range info.GetIndexes() {
-		if Equal(idx.GetId(), id) {
-			return idx
-		}
-	}
+//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=lookup.go -destination=lookup_generated_test.go -package=indexes_test Lookup,IndexWriter
 
-	return nil
+// Lookup is implemented by anything that can serve a point lookup on the
+// bucket-scoped index registry. The FSM hot path uses the Scope view (with
+// coverage gating); read-side handlers use a Pebble-backed view through the
+// readstore. The returned value is a commonpb.IndexReader so callers cannot
+// mutate the cache-resident proto in place — mirror the discipline that
+// raftcmdpb.LedgerBoundariesReader / VolumePairReader enforce for the other
+// hot-path attribute kinds (#496).
+//
+// Return contract:
+//   - (idx, nil): entry exists and was returned.
+//   - (nil, domain.ErrNotFound): entry legitimately absent.
+//   - (nil, other err): infrastructure failure (Pebble I/O), or, on the
+//     FSM hot path, an *ErrCoverageMiss when the proposer did not declare
+//     the key — the apply path bubbles it up as a business rejection.
+type Lookup interface {
+	GetIndex(key domain.IndexKey) (commonpb.IndexReader, error)
 }
 
-// IsReady returns true iff an index with the given id exists and is in READY state.
-func IsReady(info *commonpb.LedgerInfo, id *commonpb.IndexID) bool {
-	idx := Find(info, id)
-	if idx == nil {
+// IndexWriter is implemented by the WriteSet used during FSM apply.
+type IndexWriter interface {
+	PutIndex(key domain.IndexKey, idx *commonpb.Index)
+	DeleteIndex(key domain.IndexKey)
+}
+
+// KeyFor builds the registry key for an index. An empty ledgerName addresses
+// the bucket-scoped slot (e.g. audit indexes); a non-empty name is the
+// ledger-scoped slot.
+func KeyFor(ledgerName string, id *commonpb.IndexID) domain.IndexKey {
+	return domain.IndexKey{LedgerName: ledgerName, Canonical: Canonical(id)}
+}
+
+// Find returns the Index entry for the (ledgerName, id) tuple.
+//
+//   - (idx, nil) on hit. The returned value is a Reader; callers that need
+//     to mutate (e.g. flip BuildStatus) MUST call Mutate() to obtain a
+//     writable clone before Put-ing it back through the IndexWriter.
+//   - (nil, nil) on legitimate absence (domain.ErrNotFound from the lookup).
+//   - (nil, err) for any other error (notably *state.ErrCoverageMiss on the
+//     FSM hot path); callers MUST propagate so the apply rejects the order.
+//
+// A nil lookup is treated as "no indexes registered" — returns (nil, nil) so
+// query.Compile / tests can drive the compiler without wiring a registry.
+func Find(r Lookup, ledgerName string, id *commonpb.IndexID) (commonpb.IndexReader, error) {
+	if r == nil || id == nil {
+		return nil, nil
+	}
+
+	idx, err := r.GetIndex(KeyFor(ledgerName, id))
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return idx, nil
+}
+
+// IsReady reports whether the index at (ledgerName, id) is registered and READY.
+// Infrastructure errors collapse to "not ready"; callers that need to surface
+// them must call Find directly.
+func IsReady(r Lookup, ledgerName string, id *commonpb.IndexID) bool {
+	idx, err := Find(r, ledgerName, id)
+	if err != nil || idx == nil {
 		return false
 	}
 
 	return idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 }
 
-// Status returns the build status for the given id. Returns UNSPECIFIED when
-// the index does not exist (callers should distinguish via Find when the
-// difference matters).
-func Status(info *commonpb.LedgerInfo, id *commonpb.IndexID) commonpb.IndexBuildStatus {
-	idx := Find(info, id)
-	if idx == nil {
+// Status returns the build status for (ledgerName, id), or UNSPECIFIED if absent
+// (or on any read error). Callers that need to distinguish "absent" from
+// "UNSPECIFIED but registered" should call Find directly.
+func Status(r Lookup, ledgerName string, id *commonpb.IndexID) commonpb.IndexBuildStatus {
+	idx, err := Find(r, ledgerName, id)
+	if err != nil || idx == nil {
 		return commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED
 	}
 
 	return idx.GetBuildStatus()
 }
 
-// Put upserts an Index entry by id. Existing entries with the same id are
-// replaced in place. Caller is responsible for cloning the LedgerInfo before
-// mutating it through this helper (the FSM convention CloneVT applies).
-func Put(info *commonpb.LedgerInfo, idx *commonpb.Index) {
-	if info == nil || idx == nil {
+// Put upserts an Index entry. The caller is responsible for ensuring
+// idx.GetLedger() matches ledgerName (empty for bucket-scope).
+func Put(w IndexWriter, ledgerName string, idx *commonpb.Index) {
+	if idx == nil || idx.GetId() == nil {
 		return
 	}
 
-	for i, existing := range info.GetIndexes() {
-		if Equal(existing.GetId(), idx.GetId()) {
-			info.Indexes[i] = idx
-
-			return
-		}
-	}
-
-	info.Indexes = append(info.Indexes, idx)
+	w.PutIndex(KeyFor(ledgerName, idx.GetId()), idx)
 }
 
-// Remove deletes the Index entry matching id. Returns true if an entry was
-// removed.
-func Remove(info *commonpb.LedgerInfo, id *commonpb.IndexID) bool {
-	if info == nil || id == nil {
-		return false
+// Remove deletes the Index entry matching (ledgerName, id). Silently no-ops on
+// nil ids so callers can pipe order payloads without explicit validation.
+func Remove(w IndexWriter, ledgerName string, id *commonpb.IndexID) {
+	if id == nil {
+		return
 	}
 
-	for i, idx := range info.GetIndexes() {
-		if Equal(idx.GetId(), id) {
-			info.Indexes = append(info.Indexes[:i], info.GetIndexes()[i+1:]...)
-
-			return true
-		}
-	}
-
-	return false
+	w.DeleteIndex(KeyFor(ledgerName, id))
 }

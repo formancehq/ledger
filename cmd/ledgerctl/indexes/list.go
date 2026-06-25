@@ -1,7 +1,9 @@
 package indexes
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"sort"
 
 	"github.com/pterm/pterm"
@@ -58,17 +60,35 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching indexes for %s...", ledgerName))
 
-	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+	stream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
+		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
 		Ledger: ledgerName,
 	})
 	if err != nil {
 		_ = spinner.Stop()
 
-		return cmdutil.FormatGRPCError("failed to get ledger", err)
+		return cmdutil.FormatGRPCError("failed to list indexes", err)
+	}
+
+	var entries []*commonpb.Index
+
+	for {
+		idx, recvErr := stream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+
+		if recvErr != nil {
+			_ = spinner.Stop()
+
+			return cmdutil.FormatGRPCError("streaming ListIndexes", recvErr)
+		}
+
+		entries = append(entries, idx)
 	}
 
 	hasBuilding := false
-	for _, idx := range ledger.GetIndexes() {
+	for _, idx := range entries {
 		if idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			hasBuilding = true
 
@@ -101,7 +121,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 
 	_ = spinner.Stop()
 
-	if handled, err := cmdutil.EncodeStructured(cmd, ledger.GetIndexes()); handled || err != nil {
+	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
 		return err
 	}
 
@@ -114,7 +134,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Sort indexes by canonical id for stable output.
-	sorted := append([]*commonpb.Index(nil), ledger.GetIndexes()...)
+	sorted := append([]*commonpb.Index(nil), entries...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return indexes.Canonical(sorted[i].GetId()) < indexes.Canonical(sorted[j].GetId())
 	})

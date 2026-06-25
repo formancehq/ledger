@@ -100,7 +100,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | **User-Configurable Indexes** |
 | Create index | ✅ | ❌ | Opt-in address, metadata, reference, timestamp, or inserted-at indexes per ledger |
 | Drop index | ✅ | ❌ | Remove an index from a ledger |
-| List indexes | ✅ | ❌ | View all indexes with build status and backfill progress (via GetLedger) |
+| List indexes | ✅ | ❌ | View all indexes with build status and backfill progress (via `BucketService.ListIndexes`, scoped `ALL` / `BUCKET` / `LEDGER`) |
 | **Volumes (responses)** |
 | postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |

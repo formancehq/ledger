@@ -19,6 +19,7 @@ type Needs struct {
 	NumscriptContents map[domain.NumscriptEntryKey]struct{}
 	PreparedQueries   map[domain.PreparedQueryKey]struct{}
 	LedgerMetadata    map[domain.LedgerMetadataKey]struct{}
+	Indexes           map[domain.IndexKey]struct{}
 }
 
 // TotalKeys returns the total number of keys across all need types,
@@ -41,7 +42,7 @@ func (n *Needs) AttributeKeysCount() int {
 		len(n.References) + len(n.Metadata) + len(n.Transactions) +
 		len(n.SinkConfigs) + len(n.NumscriptVersions) +
 		len(n.NumscriptContents) + len(n.PreparedQueries) +
-		len(n.LedgerMetadata)
+		len(n.LedgerMetadata) + len(n.Indexes)
 }
 
 // Merge unions every key set from src into dst. Used by admission to roll
@@ -95,6 +96,10 @@ func (n *Needs) Merge(src *Needs) {
 	for k := range src.LedgerMetadata {
 		n.LedgerMetadata[k] = struct{}{}
 	}
+
+	for k := range src.Indexes {
+		n.Indexes[k] = struct{}{}
+	}
 }
 
 // NewNeeds creates a Needs with all maps initialized.
@@ -112,5 +117,6 @@ func NewNeeds() *Needs {
 		NumscriptContents: make(map[domain.NumscriptEntryKey]struct{}),
 		PreparedQueries:   make(map[domain.PreparedQueryKey]struct{}),
 		LedgerMetadata:    make(map[domain.LedgerMetadataKey]struct{}),
+		Indexes:           make(map[domain.IndexKey]struct{}),
 	}
 }

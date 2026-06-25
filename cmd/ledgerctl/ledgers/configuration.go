@@ -1,7 +1,9 @@
 package ledgers
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -68,12 +70,41 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching configuration for %s...", ledgerName))
 
-	// Fetch ledger info (indexes, metadata schema)
+	// Fetch ledger info (metadata schema, account types). Indexes are fetched
+	// separately via BucketService.ListIndexes since they no longer live in
+	// LedgerInfo.
 	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to get ledger")
 
 		return cmdutil.FormatGRPCError("failed to get ledger", err)
+	}
+
+	// Fetch indexes for this ledger from the bucket index registry.
+	idxStream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
+		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
+		Ledger: ledgerName,
+	})
+	if err != nil {
+		spinner.Fail("Failed to list indexes")
+
+		return cmdutil.FormatGRPCError("failed to list indexes", err)
+	}
+
+	var ledgerIndexes []*commonpb.Index
+	for {
+		idx, recvErr := idxStream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+
+		if recvErr != nil {
+			spinner.Fail("Failed to receive indexes")
+
+			return cmdutil.FormatGRPCError("failed to receive indexes", recvErr)
+		}
+
+		ledgerIndexes = append(ledgerIndexes, idx)
 	}
 
 	// Fetch prepared queries
@@ -100,7 +131,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	// would dump the raw proto (preparedQueries as a list, full LedgerInfo
 	// envelope) and the inspect → file → apply round-trip would fail.
 	if cmdutil.IsStructuredOutput(cmd) {
-		cfg := ConfigFromProto(ledger, pqResp.GetQueries(), numscripts)
+		cfg := ConfigFromProto(ledger, ledgerIndexes, pqResp.GetQueries(), numscripts)
 		if yamlOutput, _ := cmd.Flags().GetBool("yaml"); yamlOutput {
 			// YAML emitted directly: encoding/json → yaml roundtrip would
 			// re-alphabetize top-level keys, diverging from `configuration
@@ -127,7 +158,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	renderConfigurationAccountTypes(ledger)
 
 	// 2. Indexes
-	renderConfigurationIndexes(ledger)
+	renderConfigurationIndexes(ledgerIndexes)
 
 	expand, _ := cmd.Flags().GetBool("expand")
 
@@ -173,7 +204,7 @@ func renderConfigurationAccountTypes(ledger *commonpb.LedgerInfo) {
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
 }
 
-func renderConfigurationIndexes(ledger *commonpb.LedgerInfo) {
+func renderConfigurationIndexes(ledgerIndexes []*commonpb.Index) {
 	pterm.Println()
 	pterm.DefaultSection.Println("Indexes")
 
@@ -181,9 +212,9 @@ func renderConfigurationIndexes(ledger *commonpb.LedgerInfo) {
 		{"TYPE", "TARGET", "KEY"},
 	}
 
-	rows := make([][3]string, 0, len(ledger.GetIndexes()))
+	rows := make([][3]string, 0, len(ledgerIndexes))
 
-	for _, idx := range ledger.GetIndexes() {
+	for _, idx := range ledgerIndexes {
 		typeName, target, key := describeIndex(idx.GetId())
 		rows = append(rows, [3]string{typeName, target, key})
 	}

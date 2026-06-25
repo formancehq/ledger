@@ -779,14 +779,16 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 		cursors[cursorKey{ledger: e.LedgerName, canonical: indexes.Canonical(id)}] = e.Cursor
 	}
 
-	// Enumerate ledgers and join their LedgerInfo.indexes with the backfill cursors.
+	// Build a name → id map for active ledgers so the streaming scan of the
+	// index registry can attach the ledger ID needed for the backfill-cursor
+	// lookup and skip orphans from tombstoned ledgers in one pass.
 	ledgerCursor, err := query.ReadLedgers(ctx, handle)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledgers: %w", err)
 	}
 	defer func() { _ = ledgerCursor.Close() }()
 
-	var entries []*servicepb.IndexEntry
+	ledgerNameToID := make(map[string]uint32)
 
 	for {
 		info, lErr := ledgerCursor.Next()
@@ -802,17 +804,44 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 			continue
 		}
 
-		if ledgerFilter != "" && info.GetName() != ledgerFilter {
+		ledgerNameToID[info.GetName()] = info.GetId()
+	}
+
+	idxIter, err := impl.attrs.Index.NewStreamingIter(handle, nil)
+	if err != nil {
+		return nil, fmt.Errorf("opening index registry iterator: %w", err)
+	}
+	defer func() { _ = idxIter.Close() }()
+
+	var entries []*servicepb.IndexEntry
+
+	for idxIter.Next() {
+		idx := idxIter.Entry().Value
+		if idx == nil || idx.GetId() == nil {
 			continue
 		}
 
-		for _, idx := range info.GetIndexes() {
-			entries = append(entries, &servicepb.IndexEntry{
-				Ledger: info.GetName(),
-				Index:  idx,
-				Cursor: cursors[cursorKey{ledger: info.GetName(), canonical: indexes.Canonical(idx.GetId())}],
-			})
+		name := idx.GetLedger()
+
+		if name != "" {
+			if _, ok := ledgerNameToID[name]; !ok {
+				continue // orphan or tombstoned ledger — skip
+			}
 		}
+
+		if ledgerFilter != "" && name != ledgerFilter {
+			continue
+		}
+
+		entries = append(entries, &servicepb.IndexEntry{
+			Ledger: name,
+			Index:  idx,
+			Cursor: cursors[cursorKey{ledger: name, canonical: indexes.Canonical(idx.GetId())}],
+		})
+	}
+
+	if err := idxIter.Err(); err != nil {
+		return nil, fmt.Errorf("iterating index registry: %w", err)
 	}
 
 	return &servicepb.GetIndexStatusResponse{
@@ -822,6 +851,128 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 		IndexFileSize:       fileSize,
 		Indexes:             entries,
 	}, nil
+}
+
+// ListIndexes streams the bucket-scoped index registry, optionally filtered
+// to a ledger (or bucket-scoped entries only) via the request Scope field.
+// Filtering happens at the iteration layer: orphan entries belonging to
+// deleted ledgers are skipped, but ALL entries pass to the client when the
+// caller asks for SCOPE_ALL.
+func (impl *BucketServiceServerImpl) ListIndexes(req *servicepb.ListIndexesRequest, stream servicepb.BucketService_ListIndexesServer) error {
+	ctx := stream.Context()
+
+	// Per-ledger callers previously read indexes through GetLedger under
+	// ledgers:read, so we keep that scope for SCOPE_LEDGER to preserve
+	// granular-auth tokens that don't carry ops:read. SCOPE_BUCKET and
+	// SCOPE_ALL surface cross-ledger / operator-grade visibility and stay
+	// under ops:read (PR #453 review).
+	requiredScope := internalauth.ScopeOpsRead
+	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
+		requiredScope = internalauth.ScopeLedgersRead
+	}
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, requiredScope); err != nil {
+		return err
+	}
+
+	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER && req.GetLedger() == "" {
+		return status.Error(codes.InvalidArgument, "scope SCOPE_LEDGER requires a non-empty ledger name")
+	}
+
+	handle, err := impl.store.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	// For SCOPE_LEDGER, probe ledger existence up front. A missing or
+	// soft-deleted ledger surfaces as NotFound — callers migrating from the
+	// previous LedgerInfo-embedded view (ledgerctl, WaitFor*IndexReady
+	// helpers) used to receive that error via GetLedger and must keep being
+	// able to distinguish "no indexes" from "bad/deleted ledger name"
+	// (PR #453 review). Filtering also avoids surfacing orphan SubAttrIndex
+	// entries that survive in Pebble until the deferred ledger-data purge.
+	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
+		if _, err := query.GetLedgerByName(ctx, handle, req.GetLedger()); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return status.Errorf(codes.NotFound, "ledger %q not found", req.GetLedger())
+			}
+
+			return fmt.Errorf("checking ledger %q: %w", req.GetLedger(), err)
+		}
+	}
+
+	// For SCOPE_LEDGER, bound the Pebble iterator to entries whose canonical
+	// key starts with `appendLedgerName(req.Ledger)` (the 64-byte zero-padded
+	// block). Without the bound, the iterator scans every entry in the
+	// SubAttrIndex zone and filters in memory — O(total indexes) instead of
+	// O(per-ledger indexes), which matters on buckets with thousands of
+	// ledgers. SCOPE_BUCKET and SCOPE_ALL keep the unbounded scan: bucket-
+	// scoped entries share the all-zero 64-byte prefix, and ALL needs the
+	// whole zone.
+	var canonicalPrefix []byte
+	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
+		canonicalPrefix = domain.IndexKey{LedgerName: req.GetLedger()}.Bytes()
+	}
+
+	idxIter, err := impl.attrs.Index.NewStreamingIter(handle, canonicalPrefix)
+	if err != nil {
+		return fmt.Errorf("opening index registry iterator: %w", err)
+	}
+	defer func() { _ = idxIter.Close() }()
+
+	// Memoize ledger existence across the stream — SCOPE_ALL would otherwise
+	// pay one Pebble Get per index entry. Bucket-scoped entries (Ledger == "")
+	// skip the lookup entirely.
+	activeLedger := make(map[string]bool)
+
+	for idxIter.Next() {
+		idx := idxIter.Entry().Value
+		if idx == nil || idx.GetId() == nil {
+			continue
+		}
+
+		switch req.GetScope() {
+		case servicepb.ListIndexesRequest_SCOPE_BUCKET:
+			if idx.GetLedger() != "" {
+				continue
+			}
+		case servicepb.ListIndexesRequest_SCOPE_LEDGER:
+			if idx.GetLedger() != req.GetLedger() {
+				continue
+			}
+		case servicepb.ListIndexesRequest_SCOPE_ALL:
+			// Drop entries whose owning ledger no longer exists — see the
+			// SCOPE_LEDGER short-circuit above for the orphan rationale.
+			name := idx.GetLedger()
+			if name != "" {
+				alive, cached := activeLedger[name]
+				if !cached {
+					_, err := query.GetLedgerByName(ctx, handle, name)
+					switch {
+					case err == nil:
+						alive = true
+					case errors.Is(err, domain.ErrNotFound):
+						alive = false
+					default:
+						return fmt.Errorf("checking ledger %q: %w", name, err)
+					}
+
+					activeLedger[name] = alive
+				}
+
+				if !alive {
+					continue
+				}
+			}
+		}
+
+		if err := stream.Send(idx); err != nil {
+			return err
+		}
+	}
+
+	return idxIter.Err()
 }
 
 // indexIDFromBackfillEntry rebuilds the IndexID associated with a persisted

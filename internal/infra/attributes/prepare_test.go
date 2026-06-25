@@ -296,6 +296,7 @@ func TestAttributesAllCoversEveryRegisteredType(t *testing.T) {
 		dal.SubAttrNumscriptVersion,
 		dal.SubAttrNumscriptContent,
 		dal.SubAttrPreparedQuery,
+		dal.SubAttrIndex,
 	}
 
 	require.Len(t, all, len(want), "All() must return every registered attribute")

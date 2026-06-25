@@ -49,6 +49,7 @@ const (
 	BucketService_ListPreparedQueries_FullMethodName     = "/ledger.BucketService/ListPreparedQueries"
 	BucketService_ExecutePreparedQuery_FullMethodName    = "/ledger.BucketService/ExecutePreparedQuery"
 	BucketService_GetIndexStatus_FullMethodName          = "/ledger.BucketService/GetIndexStatus"
+	BucketService_ListIndexes_FullMethodName             = "/ledger.BucketService/ListIndexes"
 	BucketService_GetLedgerStats_FullMethodName          = "/ledger.BucketService/GetLedgerStats"
 	BucketService_AggregateVolumes_FullMethodName        = "/ledger.BucketService/AggregateVolumes"
 	BucketService_GetNumscript_FullMethodName            = "/ledger.BucketService/GetNumscript"
@@ -119,6 +120,9 @@ type BucketServiceClient interface {
 	ExecutePreparedQuery(ctx context.Context, in *ExecutePreparedQueryRequest, opts ...grpc.CallOption) (*ExecutePreparedQueryResponse, error)
 	// GetIndexStatus returns the current state of the read index builder
 	GetIndexStatus(ctx context.Context, in *GetIndexStatusRequest, opts ...grpc.CallOption) (*GetIndexStatusResponse, error)
+	// ListIndexes streams the bucket-scoped index registry, optionally filtered
+	// to a single ledger (or to bucket-scoped indexes when ledger is empty).
+	ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error)
 	// GetLedgerStats returns aggregate statistics for a ledger
 	GetLedgerStats(ctx context.Context, in *GetLedgerStatsRequest, opts ...grpc.CallOption) (*commonpb.LedgerStats, error)
 	// AggregateVolumes returns per-asset aggregated volumes for filtered accounts
@@ -513,6 +517,25 @@ func (c *bucketServiceClient) GetIndexStatus(ctx context.Context, in *GetIndexSt
 	return out, nil
 }
 
+func (c *bucketServiceClient) ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[10], BucketService_ListIndexes_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListIndexesRequest, commonpb.Index]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListIndexesClient = grpc.ServerStreamingClient[commonpb.Index]
+
 func (c *bucketServiceClient) GetLedgerStats(ctx context.Context, in *GetLedgerStatsRequest, opts ...grpc.CallOption) (*commonpb.LedgerStats, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(commonpb.LedgerStats)
@@ -545,7 +568,7 @@ func (c *bucketServiceClient) GetNumscript(ctx context.Context, in *GetNumscript
 
 func (c *bucketServiceClient) ListNumscripts(ctx context.Context, in *ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[10], BucketService_ListNumscripts_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[11], BucketService_ListNumscripts_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -644,6 +667,9 @@ type BucketServiceServer interface {
 	ExecutePreparedQuery(context.Context, *ExecutePreparedQueryRequest) (*ExecutePreparedQueryResponse, error)
 	// GetIndexStatus returns the current state of the read index builder
 	GetIndexStatus(context.Context, *GetIndexStatusRequest) (*GetIndexStatusResponse, error)
+	// ListIndexes streams the bucket-scoped index registry, optionally filtered
+	// to a single ledger (or to bucket-scoped indexes when ledger is empty).
+	ListIndexes(*ListIndexesRequest, grpc.ServerStreamingServer[commonpb.Index]) error
 	// GetLedgerStats returns aggregate statistics for a ledger
 	GetLedgerStats(context.Context, *GetLedgerStatsRequest) (*commonpb.LedgerStats, error)
 	// AggregateVolumes returns per-asset aggregated volumes for filtered accounts
@@ -751,6 +777,9 @@ func (UnimplementedBucketServiceServer) ExecutePreparedQuery(context.Context, *E
 }
 func (UnimplementedBucketServiceServer) GetIndexStatus(context.Context, *GetIndexStatusRequest) (*GetIndexStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetIndexStatus not implemented")
+}
+func (UnimplementedBucketServiceServer) ListIndexes(*ListIndexesRequest, grpc.ServerStreamingServer[commonpb.Index]) error {
+	return status.Error(codes.Unimplemented, "method ListIndexes not implemented")
 }
 func (UnimplementedBucketServiceServer) GetLedgerStats(context.Context, *GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLedgerStats not implemented")
@@ -1225,6 +1254,17 @@ func _BucketService_GetIndexStatus_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_ListIndexes_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListIndexesRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BucketServiceServer).ListIndexes(m, &grpc.GenericServerStream[ListIndexesRequest, commonpb.Index]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListIndexesServer = grpc.ServerStreamingServer[commonpb.Index]
+
 func _BucketService_GetLedgerStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetLedgerStatsRequest)
 	if err := dec(in); err != nil {
@@ -1475,6 +1515,11 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "AnalyzeTransactions",
 			Handler:       _BucketService_AnalyzeTransactions_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ListIndexes",
+			Handler:       _BucketService_ListIndexes_Handler,
 			ServerStreams: true,
 		},
 		{

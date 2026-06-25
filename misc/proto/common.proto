@@ -234,14 +234,21 @@ message IndexID {
   }
 }
 
-// Index is the first-class representation of an index on a ledger.
-// Holds its identifier plus build state and audit metadata.
+// Index is the first-class representation of an index in the bucket-scoped
+// index registry. Holds its identifier, scope, build state and audit metadata.
+//
+// Scope:
+//   - ledger == ""   → bucket-scoped (e.g. audit indexes), single entry across the bucket.
+//   - ledger == "X"  → ledger-scoped, one entry per (ledger, IndexID) tuple.
+//
+// Entries live in the SubAttrIndex attribute zone, not in LedgerInfo.
 message Index {
   IndexID id = 1;
   IndexBuildStatus build_status = 2;
   Timestamp created_at = 3;
   Timestamp last_built_at = 4;
   string last_error = 5;
+  string ledger = 6;  // empty for bucket-scoped indexes
 }
 
 // ============================================================================
@@ -381,6 +388,7 @@ message ClusterConfig {
   HashAlgorithm hash_algorithm = 11;
   BloomTypeConfig bloom_ledger_metadata = 12;
   BloomTypeConfig bloom_prepared_queries = 13;
+  BloomTypeConfig bloom_indexes = 14;
 }
 
 // PersistedClusterState wraps ClusterConfig with internal FSM state that must
@@ -792,10 +800,11 @@ message MirrorSyncProgress {
 // Ledger Info
 // ============================================================================
 
-// LedgerInfo represents information about a ledger
+// LedgerInfo represents information about a ledger.
+//
+// Indexes do not live here: they are projected through the bucket-scoped
+// SubAttrIndex registry and surfaced via BucketService.ListIndexes.
 message LedgerInfo {
-  reserved 8, 9;
-  reserved "builtin_indexes", "log_builtin_indexes";
   string name = 1;                          // Ledger name
   Timestamp created_at = 2;                 // Creation timestamp
   Timestamp deleted_at = 3;                 // Soft delete timestamp (nil if not deleted)
@@ -807,7 +816,6 @@ message LedgerInfo {
   ChartEnforcementMode default_enforcement_mode = 11; // Default enforcement for unmatched accounts
   map<string, MetadataValue> metadata = 12; // Populated at read time from separate attribute store
   uint32 id = 13;                           // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
-  repeated Index indexes = 14;              // All indexes defined on this ledger
 }
 
 // ============================================================================

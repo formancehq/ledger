@@ -83,7 +83,7 @@ collection is bounded by design:
 | Command | Why unpaginated |
 |---|---|
 | `account-types list` | Embedded in `LedgerInfo`; cardinality bounded by ledger config. |
-| `indexes list` | Embedded in `LedgerInfo`; cardinality bounded by ledger config. |
+| `indexes list` | Streamed in full from the `SubAttrIndex` registry; cardinality bounded by ledger config (per-ledger / bucket-scope). |
 | `events list` | Raft-state cluster-wide sink config; cardinality bounded by deployment topology. |
 | `queries list` | Raft-state per-ledger prepared queries; cardinality bounded by ledger config. |
 | `querycheckpoint list` | Replicated state; cardinality bounded by retention policy. |

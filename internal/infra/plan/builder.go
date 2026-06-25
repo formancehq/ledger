@@ -348,8 +348,11 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		}).Tracef("Builder: buildPreloadsAt")
 	}
 
-	// Each goroutine writes to a distinct results[slot].
-	const maxTypes = 12
+	// Each goroutine writes to a distinct results[slot]. Bump this constant
+	// whenever a new launch() call is added: with the Indexes attribute
+	// (PR #453) the count went from 12 to 13, and `results[12]` would
+	// otherwise panic with an out-of-range index when every category fires.
+	const maxTypes = 13
 	results := make([]buildResult, maxTypes)
 
 	var wg sync.WaitGroup
@@ -580,6 +583,23 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 			)
 			results[i].resolve = r
 			results[i].loader = p.loaders.LedgerMetadata
+		})
+	}
+
+	if len(needs.Indexes) > 0 {
+		launch(func(i int) {
+			var r *resolveResult
+			r, results[i].err = resolveAttributePreload(
+				needs.Indexes, nextIndex, boundary, snap.Epoch,
+				p.cache.Indexes, p.loaders.Indexes,
+				p.attrs.Index.Get, p.store,
+				nil, false,
+				dal.SubAttrIndex, nil,
+				p.bloomFilter(dal.SubAttrIndex),
+				p.logger, "indexes",
+			)
+			results[i].resolve = r
+			results[i].loader = p.loaders.Indexes
 		})
 	}
 

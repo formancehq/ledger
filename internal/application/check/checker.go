@@ -17,6 +17,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -160,6 +161,30 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// Per-ledger account types for ephemeral purge simulation
 		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
+		// Expected SubAttrIndex registry state derived from CreateIndex /
+		// DropIndex / RemovedMetadataFieldType / DeleteLedger logs. The
+		// checker compares this against the stored projection in
+		// compareIndexes. BuildStatus is intentionally excluded — the
+		// BUILDING → READY flip rides on a non-audited IndexReady
+		// TechnicalUpdate, so presence + identity (Ledger, Id) are the
+		// fields we can re-derive from the audit-bound logs.
+		expectedIndexes = make(map[domain.IndexKey]*commonpb.Index)
+		// Index keys that had ANY replay activity (CreateIndex /
+		// DropIndex / RemovedMetadataFieldType cascade) in the verified
+		// range. Used by compareIndexes to decide whether a stored entry
+		// missing from `expectedIndexes` is an archive-orphan (no
+		// activity → CreateIndex may live in an archived chapter) or a
+		// genuine drop the projection should have honoured (activity →
+		// surviving entry is tampering, even on a pre-archive ledger).
+		indexReplayActivity = make(map[domain.IndexKey]struct{})
+		// Ledgers that had a DeleteLedger log replayed in the verified
+		// range. Combined with pendingCleanupLedgers in compareIndexes:
+		// if a ledger was deleted in replay AND its deferred Pebble purge
+		// has already run (not in pendingCleanupLedgers), every stored
+		// SubAttrIndex row for it is tampering — even when no per-key
+		// replay activity is recorded (e.g. CreateIndex was archived, so
+		// neither expectedIndexes nor replayActivity ever held the key).
+		deletedInReplay = make(map[string]struct{})
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -324,7 +349,21 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				}
 			case *commonpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
-					delete(knownLedgers, payload.DeleteLedger.GetName())
+					name := payload.DeleteLedger.GetName()
+					delete(knownLedgers, name)
+					deletedInReplay[name] = struct{}{}
+
+					// DeleteLedger purges every SubAttrIndex entry scoped to
+					// this ledger via the deferred Pebble range delete
+					// queued by MarkLedgerForCleanup (see processor_ledger.go
+					// + batch.deleteLedgerData). Mirror the cascade on the
+					// expected projection so a stored entry that survives a
+					// ledger deletion still surfaces as a mismatch.
+					for key := range expectedIndexes {
+						if key.LedgerName == name {
+							delete(expectedIndexes, key)
+						}
+					}
 				}
 			case *commonpb.LogPayload_Apply:
 				if payload.Apply != nil {
@@ -341,6 +380,46 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
 						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
+						}
+
+						// Index registry derivation: every CreateIndex /
+						// DropIndex / RemovedMetadataFieldType log entry
+						// shifts the expected SubAttrIndex projection. The
+						// build status (BUILDING ↔ READY) rides on a non-
+						// audited IndexReady TU and is not tracked here —
+						// compareIndexes verifies presence + identity only.
+						switch d := payload.Apply.GetLog().GetData().GetPayload().(type) {
+						case *commonpb.LedgerLogPayload_CreateIndex:
+							if id := d.CreateIndex.GetId(); id != nil {
+								key := domain.IndexKey{
+									LedgerName: ledgerName,
+									Canonical:  indexes.Canonical(id),
+								}
+								expectedIndexes[key] = &commonpb.Index{Id: id, Ledger: ledgerName}
+								indexReplayActivity[key] = struct{}{}
+							}
+						case *commonpb.LedgerLogPayload_DropIndex:
+							if id := d.DropIndex.GetId(); id != nil {
+								key := domain.IndexKey{
+									LedgerName: ledgerName,
+									Canonical:  indexes.Canonical(id),
+								}
+								delete(expectedIndexes, key)
+								indexReplayActivity[key] = struct{}{}
+							}
+						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+							// processRemoveMetadataFieldType cascades into a
+							// DropIndex when an index was attached to the
+							// removed field; the dropped id rides on the log
+							// so the cascade is auditable.
+							if id := d.RemovedMetadataFieldType.GetDroppedIndex(); id != nil {
+								key := domain.IndexKey{
+									LedgerName: ledgerName,
+									Canonical:  indexes.Canonical(id),
+								}
+								delete(expectedIndexes, key)
+								indexReplayActivity[key] = struct{}{}
+							}
 						}
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
@@ -451,6 +530,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	c.compareVolumes(ctx, snap, baselineDB, replay, excluded, callback)
 	c.compareMetadata(ctx, snap, baselineDB, replay, excluded, callback)
 	c.compareTransactions(ctx, snap, baselineDB, replay, callback)
+	pendingCleanups, err := query.ReadPendingLedgerCleanups(snap)
+	if err != nil {
+		return fmt.Errorf("reading pending ledger cleanups for index registry verification: %w", err)
+	}
+
+	pendingCleanupLedgers := make(map[string]struct{}, len(pendingCleanups))
+	for name := range pendingCleanups {
+		pendingCleanupLedgers[name] = struct{}{}
+	}
+
+	c.compareIndexes(snap, expectedIndexes, indexReplayActivity, deletedInReplay, hasArchivedChapters, pendingCleanupLedgers, callback)
 
 	return nil
 }
@@ -533,6 +623,188 @@ func compareExclusionProjections(stored, derived excludedVolumesSet, callback fu
 				0, ledger, vk.Account, vk.Asset,
 			))
 		}
+	}
+}
+
+// compareIndexes emits INDEX_MISMATCH events when the stored SubAttrIndex
+// registry diverges from the set the checker re-derived from the audit-bound
+// CreateIndex / DropIndex / RemovedMetadataFieldType / DeleteLedger logs.
+// Three failure shapes are surfaced:
+//
+//   - stored entry that has no matching audit-derived CreateIndex (or survives
+//     a DropIndex / RemoveMetadataFieldType cascade / ledger deletion) →
+//     "no matching audit entry"
+//   - audit-derived expected entry that the registry never produced → "missing"
+//   - identity drift: stored Ledger or Id field disagrees with the audit
+//     payload that produced the entry → "diverges from audit-derived"
+//
+// BuildStatus is intentionally not compared: the BUILDING → READY transition
+// rides on the IndexReady TechnicalUpdate, which is not part of the hash-
+// chained audit. Bucket-scoped entries (LedgerName == "") are also skipped
+// because no audit-chain producer exists for them today (#436 reserved).
+// Drift on those is invisible to this pass until the bucket-scoped producer
+// lands and threads an audit-bound order through the same machinery.
+//
+// Two replay-boundary cases are skipped without mismatch to mirror the
+// trade-offs the rest of the checker already accepts:
+//
+//   - archive boundary — when a CreateIndex log lives in an archived chapter
+//     the replay (which starts at archiveEndSeq+1) never repopulates the
+//     expected map for it. We can detect this case ONLY by the absence of
+//     replay activity for the exact key: a stored entry missing from
+//     `expected` AND missing from `replayActivity` AND archives exist is
+//     treated as an archive-orphan, mirroring compareIdempotencyOutcomes'
+//     verifiedRangeStartTs trade-off. A stored entry that DOES appear in
+//     `replayActivity` (CreateIndex/DropIndex/RemovedMetadataFieldType
+//     cascade replayed) must NOT be skipped — the replay decided what the
+//     projection should hold, and any divergence is tampering.
+//   - pendingCleanupLedgers — the deferred Pebble range delete queued by
+//     MarkLedgerForCleanup only runs when a chapter-purge range catches the
+//     DeleteLedger sequence. Between apply and that purge, the stored
+//     SubAttrIndex entries are still on disk while the DeleteLedger log has
+//     already wiped them from expected. Skip those instead of flagging the
+//     transient window.
+func (c *Checker) compareIndexes(
+	reader dal.PebbleReader,
+	expected map[domain.IndexKey]*commonpb.Index,
+	replayActivity map[domain.IndexKey]struct{},
+	deletedInReplay map[string]struct{},
+	hasArchivedChapters bool,
+	pendingCleanupLedgers map[string]struct{},
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	iter, err := c.attrs.Index.NewStreamingIter(reader, nil)
+	if err != nil {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+			fmt.Sprintf("opening index registry iterator: %v", err),
+			0, "", "", "",
+		))
+
+		return
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	seen := make(map[domain.IndexKey]struct{}, len(expected))
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		stored := entry.Value
+		if stored == nil || stored.GetId() == nil {
+			continue
+		}
+
+		var key domain.IndexKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+				fmt.Sprintf("stored index has unparsable canonical key %x: %v", entry.CanonicalKey, err),
+				0, stored.GetLedger(), "", "",
+			))
+
+			continue
+		}
+
+		// Bucket-scoped entries are produced by future audit-chain
+		// producers (#436); skip them here so this pass never emits a
+		// false positive on the reserved slot.
+		if key.LedgerName == "" {
+			continue
+		}
+
+		// Deferred-purge window: DeleteLedger's apply already wiped the
+		// expected entry but the Pebble range delete queued by
+		// MarkLedgerForCleanup runs only when a chapter-purge range
+		// catches the delete sequence. Until then the stored entry is
+		// legitimate, not corruption.
+		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
+			continue
+		}
+
+		seen[key] = struct{}{}
+
+		exp, ok := expected[key]
+		if !ok {
+			// Ledger was deleted in the verified replay range AND its
+			// deferred Pebble purge has already run (otherwise it would
+			// still appear in pendingCleanupLedgers above). Any stored
+			// SubAttrIndex row for that ledger is tampering — even when
+			// the per-key replayActivity guard would otherwise classify
+			// it as an archive-orphan (e.g. CreateIndex pre-archive +
+			// DeleteLedger post-archive: the cascade can't mark the
+			// individual key because expectedIndexes never held it).
+			if _, deleted := deletedInReplay[key.LedgerName]; deleted {
+				callback(errorEvent(
+					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+					fmt.Sprintf("registry has Index entry for ledger %q with id %q surviving a replayed DeleteLedger + completed cleanup", key.LedgerName, key.Canonical),
+					0, key.LedgerName, "", "",
+				))
+
+				continue
+			}
+
+			// Archive boundary: a stored entry missing from `expected`
+			// AND never seen by the replay (no CreateIndex / DropIndex /
+			// RemovedMetadataFieldType cascade for this exact key) is an
+			// archive-orphan candidate — the CreateIndex log may live in
+			// an archived chapter. We can only accept it as such when
+			// archives are known to exist; otherwise (no archives at all)
+			// any unmatched stored entry is a hard mismatch.
+			if hasArchivedChapters {
+				if _, hadActivity := replayActivity[key]; !hadActivity {
+					continue
+				}
+			}
+
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+				fmt.Sprintf("registry has Index entry for ledger %q with id %q that has no matching CreateIndex in the audit chain", key.LedgerName, key.Canonical),
+				0, key.LedgerName, "", "",
+			))
+
+			continue
+		}
+
+		if stored.GetLedger() != exp.GetLedger() {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+				fmt.Sprintf("Index entry for ledger %q id %q: stored Ledger=%q diverges from audit-derived Ledger=%q",
+					key.LedgerName, key.Canonical, stored.GetLedger(), exp.GetLedger()),
+				0, key.LedgerName, "", "",
+			))
+		}
+
+		if !indexes.Equal(stored.GetId(), exp.GetId()) {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+				fmt.Sprintf("Index entry for ledger %q id %q: stored Id diverges from audit-derived",
+					key.LedgerName, key.Canonical),
+				0, key.LedgerName, "", "",
+			))
+		}
+	}
+
+	if err := iter.Err(); err != nil {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+			fmt.Sprintf("scanning index registry: %v", err),
+			0, "", "", "",
+		))
+	}
+
+	for key := range expected {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+			fmt.Sprintf("audit chain expects Index entry for ledger %q id %q but the registry has no matching row",
+				key.LedgerName, key.Canonical),
+			0, key.LedgerName, "", "",
+		))
 	}
 }
 

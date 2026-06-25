@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -123,17 +124,29 @@ type indexReadyProposerAdapter struct {
 }
 
 func (a *indexReadyProposerAdapter) Propose(ctx context.Context, cmd *raftcmdpb.Proposal) error {
-	// applyIndexReady reads `fsm.Registry.Ledgers.Get(ledgerKey)`. One
-	// WriteOperation per TU with its own ledger declared so the gate
-	// rejects any cross-ledger read at FSM time.
+	// applyIndexReady reads both `fsm.Registry.Ledgers.Get(name)` (to soft-
+	// skip when the ledger is deleted — processDeleteLedger leaves the
+	// Index cache entry live and deleteLedgerData purges Pebble out-of-
+	// band, so without this check a racing IndexReady could resurrect an
+	// orphan entry post-cleanup) AND `fsm.Registry.Indexes.Get(idxKey)`
+	// via `indexes.Find(scope, ledgerName, id)`. The indexbuilder carries
+	// the ledger name on the IndexReadyUpdate, so the proposer declares
+	// both preloads directly — no chained name→ID resolution required.
+	// One WriteOperation per TU with its own narrow Needs so the gate
+	// rejects any cross-index or cross-ledger read at FSM time.
 	tus := cmd.GetTechnicalUpdates()
 	operations := make([]plan.WriteOperation, 0, len(tus))
 	for i, tu := range tus {
 		var needs *plan.Needs
 		if kind, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_IndexReady); ok {
-			if name := kind.IndexReady.GetLedger(); name != "" {
+			ledgerName := kind.IndexReady.GetLedger()
+			if id := kind.IndexReady.GetId(); id != nil && ledgerName != "" {
 				needs = plan.NewNeeds()
-				needs.Ledgers[domain.LedgerKey{Name: name}] = struct{}{}
+				needs.Indexes[domain.IndexKey{
+					LedgerName: ledgerName,
+					Canonical:  indexes.Canonical(id),
+				}] = struct{}{}
+				needs.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
 			}
 		}
 

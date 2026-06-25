@@ -9,6 +9,8 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -57,6 +59,11 @@ type Builder struct {
 
 	// Per-ledger index configuration cache.
 	indexConfig map[string]*ledgerIndexConfig
+
+	// Bucket-scoped index configuration (Index.Ledger == "" in the registry).
+	// Reserved for audit-style indexes (#436); nil until the first entry is
+	// loaded so single-ledger deployments don't carry an unused cfg.
+	bucketIndexConfig *ledgerIndexConfig
 
 	// Active backfill tasks for BUILDING indexes.
 	backfillTasks []*backfillTask
@@ -141,6 +148,43 @@ func NewBuilder(
 // SetNotifications sets the dedicated Notifications signal for the builder.
 func (b *Builder) SetNotifications(n *signal.Notifications) {
 	b.notifications = n
+}
+
+// indexReaderHandle bundles a Pebble read handle with the IndexReader built on
+// top so callers can defer a single Close that releases the handle. Used by
+// the indexbuilder's READY-status probes (isIndexAlreadyReady,
+// isSchemaRewriteIndexReady) that need to consult the bucket-scoped index
+// registry without holding state between ticks.
+type indexReaderHandle struct {
+	reader indexes.Lookup
+	handle *dal.ReadHandle
+}
+
+// GetIndex satisfies indexes.Lookup.
+func (h *indexReaderHandle) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
+	return h.reader.GetIndex(key)
+}
+
+// Close releases the underlying Pebble read handle.
+func (h *indexReaderHandle) Close() {
+	if h.handle != nil {
+		_ = h.handle.Close()
+	}
+}
+
+// newIndexReader opens a Pebble read handle on the main store and returns a
+// short-lived IndexReader backed by SubAttrIndex. The caller MUST call Close
+// when done. Returns an error if the handle cannot be opened.
+func (b *Builder) newIndexReader() (*indexReaderHandle, error) {
+	handle, err := b.pebbleStore.NewDirectReadHandle()
+	if err != nil {
+		return nil, err
+	}
+
+	return &indexReaderHandle{
+		reader: query.NewPebbleIndexReader(b.attrs.Index, handle),
+		handle: handle,
+	}, nil
 }
 
 // SetProposer sets the Raft proposer and leader check function.

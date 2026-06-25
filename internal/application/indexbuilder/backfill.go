@@ -21,7 +21,7 @@ import (
 
 // backfillTask tracks the progress of backfilling a single index.
 type backfillTask struct {
-	ledger             string // ledger name (used for BB keys, readstore keys, logging)
+	ledger             string // ledger name (used for BB keys, readstore keys, IndexReady proposal, logging)
 	index              *commonpb.IndexID
 	cursor             uint64 // current position (persisted in Pebble)
 	appliedProposalSeq uint64 // safe AppliedProposal resume sequence for transient-account filtering
@@ -1126,11 +1126,6 @@ func (b *Builder) proposeSchemaRewriteIndexReady(ctx context.Context, task *sche
 // or because another leader did the work. Used to clean up the task on every
 // node (followers can't propose, so they wait).
 func (b *Builder) isSchemaRewriteIndexReady(ctx context.Context, task *schemaRewriteTask) bool {
-	info, err := query.GetLedgerByName(ctx, b.pebbleStore, task.ledger)
-	if err != nil {
-		return false
-	}
-
 	if task.targetType != commonpb.TargetType_TARGET_TYPE_ACCOUNT &&
 		task.targetType != commonpb.TargetType_TARGET_TYPE_TRANSACTION {
 		// Ledger-target: no index, nothing to wait for. Treat as ready so
@@ -1138,7 +1133,13 @@ func (b *Builder) isSchemaRewriteIndexReady(ctx context.Context, task *schemaRew
 		return true
 	}
 
-	return indexes.IsReady(info, indexes.MetadataID(task.targetType, task.key))
+	reader, err := b.newIndexReader()
+	if err != nil {
+		return false
+	}
+	defer reader.Close()
+
+	return indexes.IsReady(reader, task.ledger, indexes.MetadataID(task.targetType, task.key))
 }
 
 // isIndexAlreadyReady checks if the index for this backfill task is already
@@ -1146,12 +1147,13 @@ func (b *Builder) isSchemaRewriteIndexReady(ctx context.Context, task *schemaRew
 // proposal). This prevents follower nodes from retrying IndexReady proposals
 // forever when no new logs arrive.
 func (b *Builder) isIndexAlreadyReady(ctx context.Context, task *backfillTask) bool {
-	info, err := query.GetLedgerByName(ctx, b.pebbleStore, task.ledger)
+	reader, err := b.newIndexReader()
 	if err != nil {
-		return false // ledger not found or error; assume not ready
+		return false // I/O error; assume not ready and try again next tick
 	}
+	defer reader.Close()
 
-	return indexes.IsReady(info, task.index)
+	return indexes.IsReady(reader, task.ledger, task.index)
 }
 
 // fetchStoredMetadataValue reads the raw stored metadata value from the FSM

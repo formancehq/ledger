@@ -331,6 +331,7 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 	numscriptContents := newProtoSnapshotSlot(dal.SubAttrNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
 	preparedQueries := newProtoSnapshotSlot(dal.SubAttrPreparedQuery, c.PreparedQueries, func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} })
 	ledgerMetadata := newProtoSnapshotSlot(dal.SubAttrLedgerMetadata, c.LedgerMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
+	indexEntries := newProtoSnapshotSlot(dal.SubAttrIndex, c.Indexes, func() *commonpb.Index { return &commonpb.Index{} })
 
 	return &CacheSnapshotter{
 		logger:       logger,
@@ -339,7 +340,7 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 		slots: []cacheSnapshotSlot{
 			volumes, metadata, ledgers, boundaries, references,
 			transactions, sinks, numscriptVersions, numscriptContents,
-			preparedQueries, ledgerMetadata,
+			preparedQueries, ledgerMetadata, indexEntries,
 		},
 		touchSlots: map[byte]cacheSnapshotSlot{
 			dal.SubAttrVolume:           volumes,
@@ -353,6 +354,7 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 			dal.SubAttrNumscriptContent: numscriptContents,
 			dal.SubAttrPreparedQuery:    preparedQueries,
 			dal.SubAttrLedgerMetadata:   ledgerMetadata,
+			dal.SubAttrIndex:            indexEntries,
 		},
 		bloomExecutor: worker.NewSingleTaskExecutor(logger),
 	}

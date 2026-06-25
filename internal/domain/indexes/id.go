@@ -1,9 +1,10 @@
 // Package indexes provides helpers around the canonical Index/IndexID protobuf
-// types stored in LedgerInfo.indexes. It is the single source of truth for
-// identity comparison, canonical encoding, and lookup operations on the index
-// list — all call sites (processor, FSM apply, indexbuilder, query compile,
-// API handlers) should go through it rather than reaching into the oneof
-// directly.
+// types persisted in the bucket-scoped SubAttrIndex registry (keyed by
+// {LedgerName, Canonical}). It is the single source of truth for identity
+// comparison, canonical encoding, and lookup operations — all call sites
+// (processor, FSM apply, indexbuilder, query compile, API handlers) should
+// go through Find / Put / Remove rather than reaching into the oneof or
+// the registry directly.
 package indexes
 
 import (

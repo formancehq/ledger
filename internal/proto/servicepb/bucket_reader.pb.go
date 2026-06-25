@@ -9050,6 +9050,78 @@ func (l indexEntryListReadonly) Range(yield func(int, IndexEntryReader) bool) {
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewIndexEntryListReader(s []*IndexEntry) IndexEntryListReader { return indexEntryListReadonly(s) }
 
+// ListIndexesRequestReader provides read-only access to ListIndexesRequest.
+// Call Mutate() to obtain a mutable clone.
+type ListIndexesRequestReader interface {
+	GetScope() ListIndexesRequest_Scope
+	GetLedger() string
+	Mutate() *ListIndexesRequest
+}
+
+type listIndexesRequestReadonly struct{ v *ListIndexesRequest }
+
+func (r *listIndexesRequestReadonly) GetScope() ListIndexesRequest_Scope {
+	return r.v.GetScope()
+}
+
+func (r *listIndexesRequestReadonly) GetLedger() string {
+	return r.v.GetLedger()
+}
+
+func (r *listIndexesRequestReadonly) Mutate() *ListIndexesRequest {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this ListIndexesRequest.
+func (m *ListIndexesRequest) AsReader() ListIndexesRequestReader {
+	if m == nil {
+		return nil
+	}
+	return &listIndexesRequestReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this ListIndexesRequest.
+func (m *ListIndexesRequest) Mutate() *ListIndexesRequest {
+	return m.CloneVT()
+}
+
+// ListIndexesRequestListReader provides read-only iteration over []*ListIndexesRequest.
+type ListIndexesRequestListReader interface {
+	Len() int
+	Get(i int) ListIndexesRequestReader
+	Range(yield func(int, ListIndexesRequestReader) bool)
+}
+
+type listIndexesRequestListReadonly []*ListIndexesRequest
+
+func (l listIndexesRequestListReadonly) Len() int { return len(l) }
+
+func (l listIndexesRequestListReadonly) Get(i int) ListIndexesRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l listIndexesRequestListReadonly) Range(yield func(int, ListIndexesRequestReader) bool) {
+	for i, v := range l {
+		var r ListIndexesRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewListIndexesRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewListIndexesRequestListReader(s []*ListIndexesRequest) ListIndexesRequestListReader {
+	return listIndexesRequestListReadonly(s)
+}
+
 // GetLedgerStatsRequestReader provides read-only access to GetLedgerStatsRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetLedgerStatsRequestReader interface {

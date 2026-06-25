@@ -41,8 +41,14 @@ type compileCtx struct {
 	params       map[string]*commonpb.ParameterValue
 	schema       map[string]*commonpb.MetadataFieldSchema
 	info         *commonpb.LedgerInfo
-	profile      *QueryProfile
-	depth        int
+	// indexRegistry resolves the bucket-scoped Index registry for checkIndexed.
+	// Callers wire a Pebble-backed reader (see indexes.NewPebbleReader); a nil
+	// reader is treated as "no indexes registered" — every index-bound filter
+	// fails with ErrIndexNotFound, which matches the contract for callers that
+	// don't carry indexes (tests, ad-hoc compilation outside the server path).
+	indexRegistry indexes.Lookup
+	profile       *QueryProfile
+	depth         int
 }
 
 // metadataCtx holds the per-field context used only by type-specific
@@ -58,7 +64,7 @@ type metadataCtx struct {
 // The params map resolves parameterized conditions at execution time.
 // The schema map validates condition types against declared metadata field types;
 // a nil schema causes ErrIndexNotFound for any metadata field condition.
-// The info argument carries the ledger's Index list (LedgerInfo.indexes): each
+// The indexRegistry argument resolves the bucket-scoped Index registry: each
 // indexed-read condition (metadata, address role, builtin field) verifies that
 // the required Index entry exists and is READY. Pass nil only when no
 // index-bound filter is expected (the compiler returns ErrIndexNotFound on the
@@ -74,19 +80,21 @@ func Compile(
 	params map[string]*commonpb.ParameterValue,
 	schema map[string]*commonpb.MetadataFieldSchema,
 	info *commonpb.LedgerInfo,
+	indexRegistry indexes.Lookup,
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
 ) (readstore.EntityIterator, error) {
 	ctx := &compileCtx{
-		kb:           kb,
-		pebbleReader: pebbleReader,
-		indexReader:  indexReader,
-		target:       target,
-		ledgerName:   ledgerName,
-		params:       params,
-		schema:       schema,
-		info:         info,
-		profile:      profile,
+		kb:            kb,
+		pebbleReader:  pebbleReader,
+		indexReader:   indexReader,
+		target:        target,
+		ledgerName:    ledgerName,
+		params:        params,
+		schema:        schema,
+		info:          info,
+		indexRegistry: indexRegistry,
+		profile:       profile,
 	}
 
 	return compile(ctx, filter)
@@ -319,7 +327,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	}
 
-	if err := checkIndexed(ctx.info, indexes.MetadataID(targetTypeForQueryTarget(ctx.target), metaKey),
+	if err := checkIndexed(ctx, indexes.MetadataID(targetTypeForQueryTarget(ctx.target), metaKey),
 		fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)); err != nil {
 		return nil, err
 	}
@@ -842,7 +850,7 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 	// For ACCOUNTS target, address matching uses the existence index (always on).
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		id, label := txAddressIndexID(role)
-		if err := checkIndexed(ctx.info, id, label); err != nil {
+		if err := checkIndexed(ctx, id, label); err != nil {
 			return nil, err
 		}
 	}
@@ -953,7 +961,7 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 		return nil, domain.NewFilterCompilationError("reference condition has no value")
 	}
 
-	if err := checkIndexed(ctx.info,
+	if err := checkIndexed(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 		"reference"); err != nil {
 		return nil, err
@@ -1055,7 +1063,7 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 // compileTimestampCondition filters transactions by timestamp using the transaction timestamp index.
 // Requires the timestamp builtin index to be READY.
 func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if err := checkIndexed(ctx.info,
+	if err := checkIndexed(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 		"timestamp"); err != nil {
 		return nil, err
@@ -1068,7 +1076,7 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 // compileInsertedAtCondition filters transactions by inserted_at using the transaction inserted_at index.
 // Requires the inserted_at builtin index to be READY.
 func compileInsertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if err := checkIndexed(ctx.info,
+	if err := checkIndexed(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
 		"inserted_at"); err != nil {
 		return nil, err
@@ -1151,7 +1159,7 @@ func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUi
 // compileLogDateCondition filters logs by date using the ledger log date index.
 // Requires the log date builtin index to be READY.
 func compileLogDateCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if err := checkIndexed(ctx.info,
+	if err := checkIndexed(ctx,
 		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 		"log date"); err != nil {
 		return nil, err
@@ -1241,14 +1249,18 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
 
-// checkIndexed verifies that an Index entry exists in info.indexes for the
-// given id and that its build status is READY. Returns ErrIndexNotFound when
-// the entry is missing, ErrIndexBuilding when it is still being built, or nil
-// otherwise. The label is surfaced in the error for diagnostic purposes
-// (callers tailor it to the condition site, e.g. "reference", "log date",
-// "metadata[\"color\"] on accounts").
-func checkIndexed(info *commonpb.LedgerInfo, id *commonpb.IndexID, label string) error {
-	idx := indexes.Find(info, id)
+// checkIndexed verifies that an Index entry exists in the bucket-scoped
+// registry for the (ledgerID, id) tuple and that its build status is READY.
+// Returns ErrIndexNotFound when the entry is missing, ErrIndexBuilding when
+// it is still being built, or nil otherwise. The label is surfaced in the
+// error for diagnostic purposes (callers tailor it to the condition site,
+// e.g. "reference", "log date", "metadata[\"color\"] on accounts").
+func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
+	idx, err := indexes.Find(ctx.indexRegistry, ctx.info.GetName(), id)
+	if err != nil {
+		return fmt.Errorf("looking up index %q: %w", label, err)
+	}
+
 	if idx == nil {
 		return &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
 	}

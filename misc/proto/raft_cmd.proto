@@ -280,8 +280,6 @@ message DropIndexOrder {
 // IndexReadyUpdate signals that an index has finished building.
 // Applied directly as a Proposal field (no log entry produced).
 message IndexReadyUpdate {
-  reserved 2, 3, 4;
-  reserved "log_builtin", "transaction", "account";
   string ledger = 1;
   common.IndexID id = 5;
 }

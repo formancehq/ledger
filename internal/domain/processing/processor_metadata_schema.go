@@ -57,15 +57,26 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 		info.MetadataSchema.LedgerFields[order.GetKey()] = field
 	}
 
+	s.PutLedger(ledgerName, info)
+
 	// If an index covers this field, flip it back to BUILDING: the existing
 	// forward entries were encoded under the previous declared_type and must
-	// be rewritten under the new one.
+	// be rewritten under the new one. The Index entry lives in the
+	// bucket-scoped registry (not in LedgerInfo), so the rewrite goes through
+	// the IndexWriter API and we Put the mutated copy back to avoid mutating
+	// the cached value in place — the Get returns the same pointer the cache
+	// holds.
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
-	if existing := indexes.Find(info, id); existing != nil {
-		existing.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
+	existing, findErr := indexes.Find(s, info.GetName(), id)
+	if findErr != nil {
+		return nil, &domain.ErrStorageOperation{Operation: "looking up index for schema change", Cause: findErr}
 	}
 
-	s.PutLedger(ledgerName, info)
+	if existing != nil {
+		updated := existing.Mutate()
+		updated.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
+		indexes.Put(s, info.GetName(), updated)
+	}
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
@@ -107,17 +118,25 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 		delete(info.GetMetadataSchema().GetLedgerFields(), order.GetKey())
 	}
 
+	s.PutLedger(ledgerName, info)
+
 	// Cascade: removing a schema field drops any index attached to it. The
 	// dropped IndexID is carried in the log so the indexbuilder can purge
-	// read-store entries within the same handler pass.
+	// read-store entries within the same handler pass. We probe the registry
+	// for an entry before deleting so the log only carries DroppedIndex when
+	// an index actually existed.
 	var droppedIndex *commonpb.IndexID
 
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
-	if indexes.Remove(info, id) {
-		droppedIndex = id
+	existing, findErr := indexes.Find(s, info.GetName(), id)
+	if findErr != nil {
+		return nil, &domain.ErrStorageOperation{Operation: "looking up index for schema removal", Cause: findErr}
 	}
 
-	s.PutLedger(ledgerName, info)
+	if existing != nil {
+		indexes.Remove(s, info.GetName(), id)
+		droppedIndex = id
+	}
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{

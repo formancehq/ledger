@@ -170,6 +170,7 @@ type Loaders struct {
 	NumscriptContents *AttributeLoader[*commonpb.NumscriptInfo]
 	PreparedQueries   *AttributeLoader[*commonpb.PreparedQuery]
 	LedgerMetadata    *AttributeLoader[*commonpb.MetadataValue]
+	Indexes           *AttributeLoader[*commonpb.Index]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
@@ -186,6 +187,7 @@ func NewLoaders() *Loaders {
 		NumscriptContents: NewAttributeLoader[*commonpb.NumscriptInfo](),
 		PreparedQueries:   NewAttributeLoader[*commonpb.PreparedQuery](),
 		LedgerMetadata:    NewAttributeLoader[*commonpb.MetadataValue](),
+		Indexes:           NewAttributeLoader[*commonpb.Index](),
 	}
 }
 

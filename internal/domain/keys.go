@@ -440,3 +440,53 @@ const (
 	// NumscriptVersionTagLatest is the tag byte for the "latest" numscript slot.
 	NumscriptVersionTagLatest byte = 0x01
 )
+
+// IndexKey identifies an entry in the bucket-scoped index registry.
+//
+// Scope:
+//   - LedgerName == "" → bucket-scoped (e.g. audit indexes), single entry
+//     across the bucket. Empty names are rejected by ledger validation
+//     so the sentinel cannot collide with a real ledger.
+//   - LedgerName != "" → ledger-scoped (tx / account / log / metadata indexes).
+//
+// Canonical is the result of indexes.Canonical(IndexID), which produces a
+// deterministic string encoding of the IndexID oneof.
+//
+// IndexKey uses LedgerName (not LedgerID) so admission can predict the cache
+// key without resolving the ledger ID — required when CreateLedger and
+// CreateIndex ride in the same proposal: the ledger ID is only assigned at
+// FSM apply time, so any LedgerID-based prediction at admission would mis-
+// declare the preload and bubble up as an *ErrCoverageMiss on apply.
+type IndexKey struct {
+	LedgerName string
+	Canonical  string
+}
+
+// AppendBytes appends the canonical byte representation to dst.
+// Format: [ledgerName padded 64B][canonical bytes].
+func (k IndexKey) AppendBytes(dst []byte) []byte {
+	dst = appendLedgerName(dst, k.LedgerName)
+	dst = append(dst, k.Canonical...)
+
+	return dst
+}
+
+// Bytes returns a canonical byte representation of the index key.
+func (k IndexKey) Bytes() []byte {
+	return k.AppendBytes(nil)
+}
+
+// Unmarshal parses canonical bytes into the IndexKey.
+func (k *IndexKey) Unmarshal(d []byte) error {
+	name, rest, err := readLedgerName(d)
+	if err != nil {
+		return fmt.Errorf("invalid index key bytes: %w", err)
+	}
+
+	k.LedgerName = name
+	k.Canonical = string(rest)
+
+	return nil
+}
+
+var _ CanonicalBytes = (*IndexKey)(nil)

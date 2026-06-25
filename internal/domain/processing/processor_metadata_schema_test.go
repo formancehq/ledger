@@ -28,6 +28,7 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
+	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.NotNil(t, info.GetMetadataSchema())
@@ -87,6 +88,7 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
+	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.NotNil(t, info.GetMetadataSchema())
@@ -138,6 +140,7 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
+	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.NotNil(t, info.GetMetadataSchema())
@@ -245,6 +248,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
+	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			_, exists := info.GetMetadataSchema().GetAccountFields()["amount"]
@@ -307,6 +311,7 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
+	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -357,6 +362,7 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
+	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			_, exists := info.GetMetadataSchema().GetLedgerFields()["env"]
@@ -419,15 +425,18 @@ func TestProcessSetMetadataFieldType_AcceptedDuringRebuild(t *testing.T) {
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		},
-		Indexes: []*commonpb.Index{{
-			Id:          id,
-			BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-		}},
+	}
+	existingIndex := &commonpb.Index{
+		Ledger:      "test-ledger",
+		Id:          id,
+		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, nil).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
+	mockStore.EXPECT().GetIndex(indexes.KeyFor("test-ledger", id)).Return(existingIndex.AsReader(), nil)
+	mockStore.EXPECT().PutIndex(indexes.KeyFor("test-ledger", id), gomock.Any())
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890})
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 

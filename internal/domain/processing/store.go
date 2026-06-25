@@ -2,9 +2,18 @@ package processing
 
 import (
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+)
+
+// Compile-time guarantee that Scope can be passed to indexes.Find/Put/Remove
+// without an adapter — the cache façade IS the Lookup and IndexWriter for the
+// FSM hot path.
+var (
+	_ indexes.Lookup      = (Scope)(nil)
+	_ indexes.IndexWriter = (Scope)(nil)
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source=store.go -destination=store_generated_test.go -typed -package=processing -mock_names=Scope=MockScope
@@ -141,6 +150,19 @@ type Scope interface {
 
 	// Ledger cleanup
 	MarkLedgerForCleanup(ledger string)
+
+	// Index registry operations (bucket-scoped, keyed by IndexKey{LedgerID, Canonical}).
+	// LedgerID == 0 reserves the slot for bucket-scoped indexes (audit).
+	//
+	// GetIndex returns:
+	//   - (idx, nil)              when the entry is present and the proposer declared the key.
+	//   - (nil, domain.ErrNotFound) when the entry is legitimately absent (deleted/never created).
+	//   - (nil, *ErrCoverageMiss) (gatedScope only) when the proposer's coverage_bits don't
+	//     flag this key — the apply path bubbles the error up as a business rejection so a
+	//     stale/malformed plan can't read past the gate.
+	GetIndex(key domain.IndexKey) (commonpb.IndexReader, error)
+	PutIndex(key domain.IndexKey, idx *commonpb.Index)
+	DeleteIndex(key domain.IndexKey)
 
 	// Numscript content resolution
 	ResolveNumscriptContent(ledgerName string, name, version string) (*commonpb.NumscriptInfo, error)

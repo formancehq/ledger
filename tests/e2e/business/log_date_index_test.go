@@ -59,10 +59,10 @@ var _ = Describe("Log date index", Ordered, func() {
 		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).To(Succeed())
 	})
 
-	It("Should show log date index as READY in GetLedger", func() {
-		info, err := sharedClient.GetLedger(sharedCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+	It("Should show log date index as READY in ListIndexes", func() {
+		indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
 		Expect(err).To(Succeed())
-		idx := findLogBuiltinIndex(info, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+		idx := findLogBuiltinIndex(indexes, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 		Expect(idx).NotTo(BeNil())
 		Expect(idx.GetBuildStatus()).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
 	})

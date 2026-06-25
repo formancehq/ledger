@@ -484,7 +484,20 @@ func setLastAppliedTimestamp(b *dal.WriteSession, timestamp uint64) error {
 }
 
 // ledgerScopedAttrTypes lists attribute types that use ledger-scoped canonical keys
-// (format [ledger\x00]...). Used by DeleteLedgerData for per-type range deletes.
+// (format [ledger padded 64B]...). Used by DeleteLedgerData for per-type range
+// deletes.
+//
+// SubAttrIndex carries ledger-scoped entries (keyed by
+// IndexKey{LedgerName, Canonical} where LedgerName is encoded as the same
+// 64-byte zero-padded block as the other ledger-scoped keys) alongside
+// bucket-scoped audit entries (LedgerName == ""). The range delete here
+// targets [SubAttrIndex][ledgerName padded 64B] → its byte-successor, so only
+// the ledger-scoped half of the registry is purged — the bucket-scoped slot
+// (empty LedgerName) lives under a distinct all-zero 64B prefix and is
+// unreachable from a non-empty ledger name's range. processDeleteLedger also
+// clears the cache-resident entries up-front for immediate visibility; without
+// the Pebble-level range delete here, entries evicted from the cache before
+// deletion would survive the purge (PR #453 review).
 var ledgerScopedAttrTypes = []byte{
 	dal.SubAttrVolume,
 	dal.SubAttrMetadata,
@@ -493,6 +506,7 @@ var ledgerScopedAttrTypes = []byte{
 	dal.SubAttrNumscriptVersion,
 	dal.SubAttrNumscriptContent,
 	dal.SubAttrPreparedQuery,
+	dal.SubAttrIndex,
 }
 
 // DeleteLedgerData removes all per-ledger data from Pebble for the given ledger.

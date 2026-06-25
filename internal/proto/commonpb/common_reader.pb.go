@@ -1897,6 +1897,7 @@ type IndexReader interface {
 	GetCreatedAt() TimestampReader
 	GetLastBuiltAt() TimestampReader
 	GetLastError() string
+	GetLedger() string
 	Mutate() *Index
 }
 
@@ -1932,6 +1933,10 @@ func (r *indexReadonly) GetLastBuiltAt() TimestampReader {
 
 func (r *indexReadonly) GetLastError() string {
 	return r.v.GetLastError()
+}
+
+func (r *indexReadonly) GetLedger() string {
+	return r.v.GetLedger()
 }
 
 func (r *indexReadonly) Mutate() *Index {
@@ -2929,6 +2934,7 @@ type ClusterConfigReader interface {
 	GetHashAlgorithm() HashAlgorithm
 	GetBloomLedgerMetadata() BloomTypeConfigReader
 	GetBloomPreparedQueries() BloomTypeConfigReader
+	GetBloomIndexes() BloomTypeConfigReader
 	Mutate() *ClusterConfig
 }
 
@@ -3024,6 +3030,14 @@ func (r *clusterConfigReadonly) GetBloomLedgerMetadata() BloomTypeConfigReader {
 
 func (r *clusterConfigReadonly) GetBloomPreparedQueries() BloomTypeConfigReader {
 	v := r.v.GetBloomPreparedQueries()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *clusterConfigReadonly) GetBloomIndexes() BloomTypeConfigReader {
+	v := r.v.GetBloomIndexes()
 	if v == nil {
 		return nil
 	}
@@ -7107,7 +7121,6 @@ type LedgerInfoReader interface {
 	GetDefaultEnforcementMode() ChartEnforcementMode
 	GetMetadata() LedgerInfo_MetadataMapReader
 	GetId() uint32
-	GetIndexes() IndexListReader
 	Mutate() *LedgerInfo
 }
 
@@ -7175,10 +7188,6 @@ func (r *ledgerInfoReadonly) GetMetadata() LedgerInfo_MetadataMapReader {
 
 func (r *ledgerInfoReadonly) GetId() uint32 {
 	return r.v.GetId()
-}
-
-func (r *ledgerInfoReadonly) GetIndexes() IndexListReader {
-	return NewIndexListReader(r.v.GetIndexes())
 }
 
 func (r *ledgerInfoReadonly) Mutate() *LedgerInfo {

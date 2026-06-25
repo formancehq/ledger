@@ -35,6 +35,7 @@ type StateRegistry struct {
 	NumscriptContents *CacheAwareEntry[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
 	PreparedQueries   *CacheAwareEntry[domain.PreparedQueryKey, *commonpb.PreparedQuery]
 	LedgerMetadata    *CacheAwareEntry[domain.LedgerMetadataKey, *commonpb.MetadataValue]
+	Indexes           *CacheAwareEntry[domain.IndexKey, *commonpb.Index]
 
 	// Reversions uses a compact bitset per ledger instead of a KeyStore.
 	// Bit N being set means transaction N in that ledger has been reverted.
@@ -112,6 +113,11 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes, idempotencyT
 			attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](c.LedgerMetadata),
 			attrs.LedgerMetadata,
 			dal.SubAttrLedgerMetadata,
+		),
+		Indexes: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.IndexKey, *commonpb.Index](c.Indexes),
+			attrs.Index,
+			dal.SubAttrIndex,
 		),
 		Reversions: make(map[string]*bitset.Bitset),
 		BackupJobs: NewBackupJobsState(),

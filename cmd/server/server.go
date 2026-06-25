@@ -841,6 +841,7 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 		cfg.BloomConfig.GetBloomNumscriptContents(),
 		cfg.BloomConfig.GetBloomLedgerMetadata(),
 		cfg.BloomConfig.GetBloomPreparedQueries(),
+		cfg.BloomConfig.GetBloomIndexes(),
 	} {
 		if tc.GetExpectedKeys() > 0 && tc.GetFpRate() > 0 {
 			bits := -float64(tc.GetExpectedKeys()) * math.Log(tc.GetFpRate()) / (math.Ln2 * math.Ln2)
@@ -999,6 +1000,7 @@ var bloomFlagNames = []string{
 	"numscript-contents",
 	"ledger-metadata",
 	"prepared-queries",
+	"indexes",
 }
 
 // registerBloomFlags registers per-attribute-type bloom filter flags.
@@ -1048,4 +1050,5 @@ func loadBloomConfig(cmd *cobra.Command, cfg *commonpb.ClusterConfig) {
 	cfg.BloomNumscriptContents = load("numscript-contents")
 	cfg.BloomLedgerMetadata = load("ledger-metadata")
 	cfg.BloomPreparedQueries = load("prepared-queries")
+	cfg.BloomIndexes = load("indexes")
 }

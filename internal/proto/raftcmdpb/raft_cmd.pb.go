@@ -6418,10 +6418,10 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x10CreateIndexOrder\x12\x1f\n" +
 	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"f\n" +
 	"\x0eDropIndexOrder\x12\x1f\n" +
-	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"\x80\x01\n" +
+	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"K\n" +
 	"\x10IndexReadyUpdate\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1f\n" +
-	"\x02id\x18\x05 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\vlog_builtinR\vtransactionR\aaccount\"M\n" +
+	"\x02id\x18\x05 \x01(\v2\x0f.common.IndexIDR\x02id\"M\n" +
 	"\x13AddAccountTypeOrder\x126\n" +
 	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\",\n" +
 	"\x16RemoveAccountTypeOrder\x12\x12\n" +

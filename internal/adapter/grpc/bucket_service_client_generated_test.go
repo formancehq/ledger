@@ -1230,6 +1230,50 @@ func (c *MockBucketServiceClientListChaptersCall) DoAndReturn(f func(context.Con
 	return c
 }
 
+// ListIndexes mocks base method.
+func (m *MockBucketServiceClient) ListIndexes(ctx context.Context, in *servicepb.ListIndexesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ListIndexes", varargs...)
+	ret0, _ := ret[0].(grpc.ServerStreamingClient[commonpb.Index])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIndexes indicates an expected call of ListIndexes.
+func (mr *MockBucketServiceClientMockRecorder) ListIndexes(ctx, in any, opts ...any) *MockBucketServiceClientListIndexesCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIndexes", reflect.TypeOf((*MockBucketServiceClient)(nil).ListIndexes), varargs...)
+	return &MockBucketServiceClientListIndexesCall{Call: call}
+}
+
+// MockBucketServiceClientListIndexesCall wrap *gomock.Call
+type MockBucketServiceClientListIndexesCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientListIndexesCall) Return(arg0 grpc.ServerStreamingClient[commonpb.Index], arg1 error) *MockBucketServiceClientListIndexesCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientListIndexesCall) Do(f func(context.Context, *servicepb.ListIndexesRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error)) *MockBucketServiceClientListIndexesCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientListIndexesCall) DoAndReturn(f func(context.Context, *servicepb.ListIndexesRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error)) *MockBucketServiceClientListIndexesCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // ListLedgers mocks base method.
 func (m *MockBucketServiceClient) ListLedgers(ctx context.Context, in *servicepb.ListLedgersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.LedgerInfo], error) {
 	m.ctrl.T.Helper()

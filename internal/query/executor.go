@@ -45,6 +45,7 @@ func Execute(
 	pebbleStore *dal.Store,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	preparedQueryAttr *attributes.Attribute[*commonpb.PreparedQuery],
+	indexAttr *attributes.Attribute[*commonpb.Index],
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	enricher *EntityEnricher,
@@ -110,7 +111,8 @@ func Execute(
 
 	kb := dal.NewKeyBuilder()
 
-	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, profile, handle)
+	indexRegistry := NewPebbleIndexReader(indexAttr, handle)
+	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, profile, handle)
 	if compileErr != nil {
 		return nil, domain.WrapCompileError(compileErr)
 	}

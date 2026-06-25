@@ -22,22 +22,28 @@ func (p *RequestProcessor) processCreateIndex(
 		return nil, err
 	}
 
-	info = info.CloneVT()
+	// Short-circuit when an index is already present and ready: the registry
+	// entry is left untouched (no Pebble write, no BuildStatus regression)
+	// but processApply still wraps the returned payload into a LogPayload_Apply
+	// — so a CreatedIndexLog IS appended to the ledger log. The indexbuilder's
+	// handleCreatedIndexLog must then guard against re-scheduling a backfill
+	// by consulting the registry (cfg.byCanonical alone can lag behind the
+	// applied READY state).
+	existing, findErr := indexes.Find(s, info.GetName(), id)
+	if findErr != nil {
+		return nil, &domain.ErrStorageOperation{Operation: "looking up existing index", Cause: findErr}
+	}
 
-	// Short-circuit when an index is already present and ready: no log entry
-	// is emitted, callers receive the same response shape as a fresh create.
-	if existing := indexes.Find(info, id); existing != nil &&
-		existing.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
+	if existing != nil && existing.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
 		return buildCreatedIndexLogPayload(id), nil
 	}
 
-	indexes.Put(info, &commonpb.Index{
+	indexes.Put(s, info.GetName(), &commonpb.Index{
 		Id:          id,
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		CreatedAt:   s.GetDate(),
+		Ledger:      ledgerName,
 	})
-
-	s.PutLedger(ledgerName, info)
 
 	return buildCreatedIndexLogPayload(id), nil
 }
@@ -52,10 +58,8 @@ func (p *RequestProcessor) processDropIndex(
 		return nil, loadErr
 	}
 
-	info = info.CloneVT()
 	id := order.GetId()
-	indexes.Remove(info, id)
-	s.PutLedger(ledgerName, info)
+	indexes.Remove(s, info.GetName(), id)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DropIndex{

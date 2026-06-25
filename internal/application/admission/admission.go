@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
@@ -980,6 +981,33 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
 				addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
 			}
+
+		case *raftcmdpb.LedgerApplyOrder_CreateIndex:
+			// processCreateIndex consults the registry to short-circuit on
+			// READY duplicates — preload the matching entry.
+			p.Indexes[domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.CreateIndex.GetId())}] = struct{}{}
+
+		case *raftcmdpb.LedgerApplyOrder_DropIndex:
+			// processDropIndex calls DeleteIndex unconditionally, but
+			// preloading keeps the FSM read side consistent with invariant 3.
+			p.Indexes[domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.DropIndex.GetId())}] = struct{}{}
+
+		case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
+			// Schema changes touch the matching metadata index entry to
+			// flip it back to BUILDING; preload so processSetMetadataFieldType
+			// finds the current state.
+			p.Indexes[domain.IndexKey{
+				LedgerName: ledgerName,
+				Canonical:  indexes.Canonical(indexes.MetadataID(applyData.SetMetadataFieldType.GetTargetType(), applyData.SetMetadataFieldType.GetKey())),
+			}] = struct{}{}
+
+		case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
+			// Removing a schema field cascades into dropping the index;
+			// processRemoveMetadataFieldType probes the registry first.
+			p.Indexes[domain.IndexKey{
+				LedgerName: ledgerName,
+				Canonical:  indexes.Canonical(indexes.MetadataID(applyData.RemoveMetadataFieldType.GetTargetType(), applyData.RemoveMetadataFieldType.GetKey())),
+			}] = struct{}{}
 		}
 	default:
 		// Loud failure for an unmapped ledger-scoped payload. The processor

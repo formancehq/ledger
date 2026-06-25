@@ -320,16 +320,17 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 	indexStart := time.Now()
 
 	result, err := listEntities(rs, entityListParams[uint64]{
-		target:       commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledgerName:   ledgerInfo.GetName(),
-		pageSize:     pageSize,
-		after:        afterTxID,
-		filter:       filter,
-		reverse:      !reverse, // API: reverse=false → newest-first (desc); listEntities: reverse=true → desc
-		schema:       schemaFields,
-		info:         ledgerInfo,
-		profile:      profile,
-		pebbleReader: handle,
+		target:        commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledgerName:    ledgerInfo.GetName(),
+		pageSize:      pageSize,
+		after:         afterTxID,
+		filter:        filter,
+		reverse:       !reverse, // API: reverse=false → newest-first (desc); listEntities: reverse=true → desc
+		schema:        schemaFields,
+		info:          ledgerInfo,
+		profile:       profile,
+		pebbleReader:  handle,
+		indexRegistry: query.NewPebbleIndexReader(ctrl.attrs.Index, handle),
 		afterToBytes: func(id uint64) []byte {
 			b := make([]byte, 8)
 			binary.BigEndian.PutUint64(b, id)
@@ -407,16 +408,17 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	indexStart := time.Now()
 
 	result, err := listEntities(ctrl.readStore, entityListParams[string]{
-		target:       commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		ledgerName:   ledgerInfo.GetName(),
-		pageSize:     pageSize,
-		after:        afterAddress,
-		filter:       filter,
-		reverse:      reverse,
-		schema:       schemaFields,
-		info:         ledgerInfo,
-		profile:      profile,
-		pebbleReader: handle,
+		target:        commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		ledgerName:    ledgerInfo.GetName(),
+		pageSize:      pageSize,
+		after:         afterAddress,
+		filter:        filter,
+		reverse:       reverse,
+		schema:        schemaFields,
+		info:          ledgerInfo,
+		profile:       profile,
+		pebbleReader:  handle,
+		indexRegistry: query.NewPebbleIndexReader(ctrl.attrs.Index, handle),
 		afterToBytes: func(addr string) []byte {
 			return []byte(addr)
 		},
@@ -809,7 +811,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, profile, handle)
+	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), profile, handle)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
@@ -873,7 +875,19 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		}}
 	}
 
-	idx := indexes.Find(ledgerInfo, indexes.MetadataID(req.GetTargetType(), metaKey))
+	handleForIndex, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle for index lookup: %w", err)
+	}
+	defer func() { _ = handleForIndex.Close() }()
+
+	indexReader := query.NewPebbleIndexReader(ctrl.attrs.Index, handleForIndex)
+
+	idx, err := indexes.Find(indexReader, ledgerInfo.GetName(), indexes.MetadataID(req.GetTargetType(), metaKey))
+	if err != nil {
+		return nil, fmt.Errorf("looking up index for inspect: %w", err)
+	}
+
 	if idx == nil {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{
 			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
@@ -1045,7 +1059,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		snap, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerInfo.GetName(), nil, nil,
-		ledgerInfo, nil, handle,
+		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), nil, handle,
 	)
 	if err != nil {
 		_ = handle.Close()
@@ -1230,7 +1244,7 @@ func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
 
-	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, ctrl.attrs.PreparedQuery, req, profile, ctrl.entityEnricher())
+	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, ctrl.attrs.PreparedQuery, ctrl.attrs.Index, req, profile, ctrl.entityEnricher())
 }
 
 // GetNumscript returns a numscript by ledger, name and optional version ("" = latest).

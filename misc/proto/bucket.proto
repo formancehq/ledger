@@ -71,6 +71,9 @@ service BucketService {
   rpc ExecutePreparedQuery(ExecutePreparedQueryRequest) returns (ExecutePreparedQueryResponse);
   // GetIndexStatus returns the current state of the read index builder
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
+  // ListIndexes streams the bucket-scoped index registry, optionally filtered
+  // to a single ledger (or to bucket-scoped indexes when ledger is empty).
+  rpc ListIndexes(ListIndexesRequest) returns (stream common.Index);
   // GetLedgerStats returns aggregate statistics for a ledger
   rpc GetLedgerStats(GetLedgerStatsRequest) returns (common.LedgerStats);
   // AggregateVolumes returns per-asset aggregated volumes for filtered accounts
@@ -723,6 +726,15 @@ enum CheckStoreErrorType {
   // tampered frozen outcome would otherwise replay an arbitrary error or wrong
   // log range to a duplicate caller. The audit chain is the source of truth.
   CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH = 9;
+  // Emitted when the SubAttrIndex registry entries (bucket-scoped Index zone)
+  // diverge from the set the checker re-derived by replaying CreateIndex /
+  // DropIndex / RemovedMetadataFieldType / DeleteLedger log payloads. The
+  // registry is a projection of those audit-bound orders; an entry that has
+  // no matching CreateIndex (or that survives an audit-bound DropIndex /
+  // ledger deletion) is tampering. Note: BuildStatus transitions to READY
+  // ride on a non-audited TechnicalUpdate (IndexReady) so the verifier
+  // covers presence + identity (Ledger, Id), not the READY/BUILDING flag.
+  CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH = 10;
 }
 
 message CheckStoreError {
@@ -1017,6 +1029,27 @@ message IndexEntry {
   string ledger = 1;
   common.Index index = 2;     // status + created_at + last_built_at + last_error
   fixed64 cursor = 3;         // backfill cursor (0 when not in backfill or done)
+}
+
+// ListIndexesRequest streams the bucket-scoped index registry.
+//
+// scope controls which entries are returned:
+//   - LEDGER_SCOPE_ALL (0):    return every entry in the registry
+//   - LEDGER_SCOPE_BUCKET (1): return only bucket-scoped entries (ledger == "")
+//   - LEDGER_SCOPE_LEDGER (2): return entries for the named ledger
+//
+// Pagination is not needed today — the registry is small enough that one
+// stream covers it. If it grows, add a cursor/page_size pair following the
+// shared ListOptions contract.
+message ListIndexesRequest {
+  enum Scope {
+    SCOPE_ALL    = 0;
+    SCOPE_BUCKET = 1;
+    SCOPE_LEDGER = 2;
+  }
+  Scope scope = 1;
+  // ledger is required when scope == SCOPE_LEDGER, ignored otherwise.
+  string ledger = 2;
 }
 
 message GetLedgerStatsRequest {

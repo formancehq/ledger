@@ -65,8 +65,12 @@ type EditableNumscript struct {
 }
 
 // ConfigFromProto builds an EditableConfig from the server's proto responses.
+//
+// indexes carries the entries returned by BucketService.ListIndexes scoped to
+// this ledger; it replaces the former LedgerInfo.indexes embed.
 func ConfigFromProto(
 	ledger *commonpb.LedgerInfo,
+	indexes []*commonpb.Index,
 	queries []*commonpb.PreparedQuery,
 	numscripts []*commonpb.NumscriptInfo,
 ) *EditableConfig {
@@ -87,15 +91,15 @@ func ConfigFromProto(
 	}
 
 	// indexedKeys collects the (target, key) pairs that have an active index
-	// declared on the ledger. The metadata schema no longer carries the
-	// "indexed" flag itself — it lives on LedgerInfo.indexes.
+	// declared on the ledger. Sourced from the indexes slice (BucketService.
+	// ListIndexes) since indexes no longer live inside LedgerInfo.
 	indexedKeys := map[commonpb.TargetType]map[string]bool{
 		commonpb.TargetType_TARGET_TYPE_ACCOUNT:     {},
 		commonpb.TargetType_TARGET_TYPE_TRANSACTION: {},
 		commonpb.TargetType_TARGET_TYPE_LEDGER:      {},
 	}
 
-	for _, idx := range ledger.GetIndexes() {
+	for _, idx := range indexes {
 		m, ok := idx.GetId().GetKind().(*commonpb.IndexID_Metadata)
 		if !ok {
 			continue
@@ -138,8 +142,8 @@ func ConfigFromProto(
 		}
 	}
 
-	// Builtin indexes — derived from LedgerInfo.indexes.
-	for _, idx := range ledger.GetIndexes() {
+	// Builtin indexes — sourced from the bucket index registry.
+	for _, idx := range indexes {
 		b, ok := idx.GetId().GetKind().(*commonpb.IndexID_TxBuiltin)
 		if !ok {
 			continue

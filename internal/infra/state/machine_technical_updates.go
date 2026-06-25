@@ -239,33 +239,65 @@ func (fsm *Machine) applyIdempotencyEviction(batch *dal.WriteSession, eviction *
 }
 
 // applyIndexReady applies an index-ready notification. No log entry is produced.
-// The index builder detects the status change by reading LedgerInfo on its next tick.
+// The index builder detects the status change by reading the index registry on
+// its next tick.
+//
+// `ready.LedgerId` is the canonical ledger ID resolved by the indexbuilder
+// when the proposal was scheduled; the proposer declares the matching
+// `needs.Indexes` AND `needs.Ledgers` preload so both reads hit a populated
+// cache via the per-update gatedScope.
+//
+// Three observable outcomes, all soft-skipped:
+//
+//   - ledger missing or deleted → soft skip. processDeleteLedger does NOT
+//     clear Index cache entries inline (see processor_ledger.go and
+//     batch.deleteLedgerData's deferred range delete). Without this guard
+//     an IndexReady proposed before the indexbuilder consumed the
+//     DeleteLedger log can race past the chapter-purge that ran
+//     deleteLedgerData and resurrect a Pebble row that no future cleanup
+//     will collect — the orphan persists across cache rotations because
+//     PendingLedgerCleanup is already consumed.
+//   - entry present → live index, flip to READY and write back via scope.
+//   - entry absent  → soft skip. The proposer's needs.Indexes preload only
+//     populates entries that exist in Pebble at propose time. A Drop +
+//     cache rotation can evict both the value and the tombstone before
+//     this apply runs (the rotated-out generation is discarded wholesale),
+//     in which case the preload finds nothing and ships nothing. Refusing
+//     to apply would abort Raft on a genuinely stale notification
+//     (PR #453 review pass 2).
 func (fsm *Machine) applyIndexReady(scope processing.Scope, ready *raftcmdpb.IndexReadyUpdate, proposalDate *commonpb.Timestamp) error {
 	info, err := scope.GetLedger(ready.GetLedger())
-	if errors.Is(err, domain.ErrNotFound) {
-		return nil // ledger no longer in cache — stale index ready, skip
-	}
-
 	if err != nil {
-		return fmt.Errorf("loading ledger for index ready: %w", err)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil // stale: ledger never existed under the cached view
+		}
+
+		return fmt.Errorf("loading ledger for IndexReady apply: %w", err)
 	}
 
 	if info.GetDeletedAt() != nil {
-		return nil // ledger was deleted — stale index ready, skip
+		// Ledger is deleted: deleteLedgerData will (or already did) range-
+		// delete every SubAttrIndex row for it. Writing READY back here
+		// would either be undone by the pending purge or — if the purge
+		// already ran — resurrect an orphan with no further cleanup.
+		return nil
 	}
 
-	idx := indexes.Find(info, ready.GetId())
+	idx, err := indexes.Find(scope, ready.GetLedger(), ready.GetId())
+	if err != nil {
+		return fmt.Errorf("loading index for IndexReady apply: %w", err)
+	}
+
 	if idx == nil {
-		return nil // index entry has been dropped between scheduling and apply
+		return nil // stale: missing or dropped before this apply
 	}
 
-	info = info.CloneVT()
-	idx = indexes.Find(info, ready.GetId())
-	idx.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-	idx.LastBuiltAt = proposalDate
-	idx.LastError = ""
+	updated := idx.Mutate()
+	updated.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	updated.LastBuiltAt = proposalDate
+	updated.LastError = ""
 
-	scope.PutLedger(ready.GetLedger(), info)
+	indexes.Put(scope, ready.GetLedger(), updated)
 
 	return nil
 }

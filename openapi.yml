@@ -2167,14 +2167,6 @@ components:
           $ref: '#/components/schemas/MirrorSourceConfig'
         mirror_sync_progress:
           $ref: '#/components/schemas/MirrorSyncProgress'
-        builtin_indexes:
-          type: object
-          description: Built-in transaction field index config
-          nullable: true
-        log_builtin_indexes:
-          type: object
-          description: Built-in log field index config
-          nullable: true
         account_types:
           type: object
           description: Per-type account address validation

@@ -1,13 +1,16 @@
 package ledgers
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
@@ -73,6 +76,32 @@ func fetchEditableConfig(cmd *cobra.Command, ledgerName string) (*EditableConfig
 		return nil, cmdutil.FormatGRPCError("failed to get ledger", err)
 	}
 
+	idxStream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
+		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
+		Ledger: ledgerName,
+	})
+	if err != nil {
+		spinner.Fail("Failed to list indexes")
+
+		return nil, cmdutil.FormatGRPCError("failed to list indexes", err)
+	}
+
+	var ledgerIndexes []*commonpb.Index
+	for {
+		idx, recvErr := idxStream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+
+		if recvErr != nil {
+			spinner.Fail("Failed to receive indexes")
+
+			return nil, cmdutil.FormatGRPCError("failed to receive indexes", recvErr)
+		}
+
+		ledgerIndexes = append(ledgerIndexes, idx)
+	}
+
 	pqResp, err := client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to list prepared queries")
@@ -91,5 +120,5 @@ func fetchEditableConfig(cmd *cobra.Command, ledgerName string) (*EditableConfig
 
 	_ = spinner.Stop()
 
-	return ConfigFromProto(ledger, pqResp.GetQueries(), numscripts), nil
+	return ConfigFromProto(ledger, ledgerIndexes, pqResp.GetQueries(), numscripts), nil
 }

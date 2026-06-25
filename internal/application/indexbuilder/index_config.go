@@ -3,11 +3,13 @@ package indexbuilder
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ledgerIndexConfig caches which indexes are enabled and ready for a ledger.
@@ -24,9 +26,19 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 	}
 }
 
-// initIndexConfig scans all ledgers from Pebble and populates the index config cache.
-// It also detects BUILDING indexes and creates backfill tasks, loading persisted
-// cursors from Pebble so backfills survive restarts.
+// initIndexConfig populates the in-memory index config cache from the
+// bucket-scoped Index registry. Two scans are required:
+//
+//  1. ReadLedgers seeds an empty ledgerIndexConfig per active ledger so
+//     handle{Created,Dropped}IndexLog can target the right cache without
+//     racing the registry scan.
+//  2. A streaming scan of SubAttrIndex enumerates Index entries; each is
+//     routed by Index.Ledger into the matching ledgerIndexConfig. BUILDING
+//     entries spawn backfill tasks.
+//
+// Bucket-scoped entries (Index.Ledger == "") land in b.bucketIndexConfig
+// and are reserved for audit-style indexes (see #436); they aren't tied
+// to any ledger and don't trigger per-ledger backfill paths.
 func (b *Builder) initIndexConfig(ctx context.Context) {
 	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
@@ -37,32 +49,16 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 
 	defer func() { _ = handle.Close() }()
 
-	cursor, err := query.ReadLedgers(ctx, handle)
-	if err != nil {
-		b.logger.Errorf("Failed to read ledgers for index config: %v", err)
+	if err := b.seedLedgerIndexConfig(ctx, handle); err != nil {
+		b.logger.Errorf("Failed to seed ledger index config: %v", err)
 
 		return
 	}
 
-	defer func() { _ = cursor.Close() }()
+	if err := b.loadIndexRegistry(handle); err != nil {
+		b.logger.Errorf("Failed to load index registry: %v", err)
 
-	for {
-		info, err := cursor.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			b.logger.Errorf("Error reading ledger info: %v", err)
-
-			return
-		}
-
-		if info.GetDeletedAt() != nil {
-			continue
-		}
-
-		b.loadLedgerIndexConfig(info)
+		return
 	}
 
 	// Load persisted backfill progress from Pebble.
@@ -86,7 +82,7 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 	// IndexReady is proposed by the first node whose local rewrite
 	// completes — it is NOT a cluster-wide "all nodes done" signal. So a
 	// node can crash mid-rewrite, another node can finish and apply
-	// IndexReady, and this node reboots with LedgerInfo.READY but a
+	// IndexReady, and this node reboots with the Index entry READY but a
 	// forward index that still mixes pre/post-retype encodings. Relying
 	// on the BUILDING flag alone (via scheduleBackfillForIndex above)
 	// misses that case because BUILDING is already gone.
@@ -94,7 +90,7 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 	// Mitigation: any persisted schema-rewrite cursor signals an
 	// unfinished local rewrite at the previous shutdown. Schedule a
 	// full backfill from cursor 0 for the corresponding metadata index
-	// — even if LedgerInfo says READY. The replay re-encodes the
+	// — even if the Index entry says READY. The replay re-encodes the
 	// forward under the current declared_type via the per-batch
 	// schemaResolver; cluster-wide IndexReady has already been
 	// proposed, so no new proposal will fire from this node when the
@@ -148,14 +144,84 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 	}
 }
 
-// loadLedgerIndexConfig populates the index config cache for a single ledger.
-// Both READY and BUILDING indexes are included so that normal processing writes
-// to new indexes immediately (covering logs after CreateIndex).
-func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
-	cfg := newLedgerIndexConfig()
+// seedLedgerIndexConfig enumerates every (non-deleted) ledger and seeds an
+// empty ledgerIndexConfig per ledger. loadIndexRegistry then fills the cfg
+// maps from the registry's actual entries.
+func (b *Builder) seedLedgerIndexConfig(ctx context.Context, handle *dal.ReadHandle) error {
+	cursor, err := query.ReadLedgers(ctx, handle)
+	if err != nil {
+		return fmt.Errorf("reading ledgers: %w", err)
+	}
 
-	for _, idx := range info.GetIndexes() {
-		if idx.GetId() == nil {
+	defer func() { _ = cursor.Close() }()
+
+	for {
+		info, err := cursor.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return fmt.Errorf("iterating ledgers: %w", err)
+		}
+
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		b.indexConfig[info.GetName()] = newLedgerIndexConfig()
+	}
+
+	return nil
+}
+
+// loadIndexRegistry streams the SubAttrIndex zone and dispatches each entry
+// to the matching ledgerIndexConfig (by Index.Ledger), then schedules a
+// backfill for every BUILDING entry. Bucket-scoped entries (LedgerID == 0,
+// Index.Ledger empty) are kept aside in bucketIndexConfig.
+func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
+	iter, err := b.attrs.Index.NewStreamingIter(handle, nil)
+	if err != nil {
+		return fmt.Errorf("opening index registry iterator: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		idx := entry.Value
+		if idx == nil || idx.GetId() == nil {
+			continue
+		}
+
+		ledgerName := idx.GetLedger()
+
+		// Bucket-scoped entries are not attached to any ledger; the per-
+		// ledger lookup map skips them. The bucket-scope cache lives next
+		// to b.indexConfig for symmetry; introducing it as a separate field
+		// avoids special-casing the empty-string key.
+		if ledgerName == "" {
+			if b.bucketIndexConfig == nil {
+				b.bucketIndexConfig = newLedgerIndexConfig()
+			}
+
+			b.bucketIndexConfig.byCanonical[indexes.Canonical(idx.GetId())] = idx
+
+			continue
+		}
+
+		cfg, ok := b.indexConfig[ledgerName]
+		if !ok {
+			// The ledger entry that owned this index was deleted but the
+			// SubAttrIndex range wasn't purged in lock-step. Drop the entry
+			// silently: an admin can re-run a compaction to clean up the
+			// orphan keys.
+			b.logger.WithFields(map[string]any{
+				"ledger": ledgerName,
+				"index":  indexes.Canonical(idx.GetId()),
+			}).Infof("Skipping orphan index entry (no matching ledger)")
+
 			continue
 		}
 
@@ -165,10 +231,10 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 			continue
 		}
 
-		b.scheduleBackfillForIndex(info.GetName(), idx.GetId())
+		b.scheduleBackfillForIndex(ledgerName, idx.GetId())
 	}
 
-	b.indexConfig[info.GetName()] = cfg
+	return iter.Err()
 }
 
 // scheduleBackfillForIndex dispatches a backfill task for a freshly-created or

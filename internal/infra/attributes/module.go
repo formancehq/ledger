@@ -25,6 +25,7 @@ type Attributes struct {
 	NumscriptContent *Attribute[*commonpb.NumscriptInfo]
 	PreparedQuery    *Attribute[*commonpb.PreparedQuery]
 	LedgerMetadata   *Attribute[*commonpb.MetadataValue]
+	Index            *Attribute[*commonpb.Index]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
@@ -41,6 +42,7 @@ func New() *Attributes {
 		NumscriptContent: NewAttribute[*commonpb.NumscriptInfo](dal.SubAttrNumscriptContent),
 		PreparedQuery:    NewAttribute[*commonpb.PreparedQuery](dal.SubAttrPreparedQuery),
 		LedgerMetadata:   NewAttribute[*commonpb.MetadataValue](dal.SubAttrLedgerMetadata),
+		Index:            NewAttribute[*commonpb.Index](dal.SubAttrIndex),
 	}
 }
 

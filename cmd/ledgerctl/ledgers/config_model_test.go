@@ -41,14 +41,17 @@ func TestConfigStructuredRoundTrip(t *testing.T) {
 				"coinbase":     {Type: commonpb.MetadataType_METADATA_TYPE_BOOL},
 			},
 		},
-		Indexes: []*commonpb.Index{
-			{Id: &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE}}},
-			{Id: &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP}}},
-			{Id: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-				Target: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				Key:    "block_height",
-			}}}},
-		},
+	}
+
+	// Indexes are no longer nested on LedgerInfo (#450). The CLI consumes them
+	// via BucketService.ListIndexes; the test wires them in as a separate slice.
+	ledgerIndexes := []*commonpb.Index{
+		{Id: &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE}}},
+		{Id: &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP}}},
+		{Id: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+			Target: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			Key:    "block_height",
+		}}}},
 	}
 
 	queries := []*commonpb.PreparedQuery{
@@ -63,7 +66,7 @@ func TestConfigStructuredRoundTrip(t *testing.T) {
 		{Name: "burn", Content: "send 1 BTC from @user:alice to @burn", Version: "1"},
 	}
 
-	original := ConfigFromProto(ledger, queries, numscripts)
+	original := ConfigFromProto(ledger, ledgerIndexes, queries, numscripts)
 
 	t.Run("yaml", func(t *testing.T) {
 		t.Parallel()

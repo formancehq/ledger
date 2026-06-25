@@ -373,6 +373,8 @@ func kindLabel(kind byte) string {
 		return "prepared_queries"
 	case dal.SubAttrLedgerMetadata:
 		return "ledger_metadata"
+	case dal.SubAttrIndex:
+		return "indexes"
 	default:
 		return fmt.Sprintf("unknown(0x%02x)", kind)
 	}
@@ -394,6 +396,7 @@ var cacheAttrKinds = [...]byte{
 	dal.SubAttrNumscriptContent,
 	dal.SubAttrPreparedQuery,
 	dal.SubAttrLedgerMetadata,
+	dal.SubAttrIndex,
 }
 
 // coverageSlots holds one slice of declared U128 ids per gated
@@ -546,4 +549,12 @@ func (g *gatedScope) NumscriptVersionExists(ledgerName string, name, version str
 	}
 
 	return g.WriteSet.NumscriptVersionExists(ledgerName, name, version)
+}
+
+func (g *gatedScope) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
+	if err := g.CheckCoverage(dal.SubAttrIndex, key.Bytes()); err != nil {
+		return nil, err
+	}
+
+	return g.WriteSet.GetIndex(key)
 }

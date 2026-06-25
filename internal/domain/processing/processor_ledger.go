@@ -91,6 +91,22 @@ func (p *RequestProcessor) processDeleteLedger(ledger string, s Scope) (*commonp
 	s.PutLedger(ledger, l)
 	s.MarkLedgerForCleanup(ledger)
 
+	// Index registry entries scoped to this ledger are NOT cleared here:
+	//   - processApply rejects every same-batch Apply order with
+	//     ErrLedgerDeleted (info.DeletedAt != nil), so no later order in
+	//     this proposal will read a stale Index row.
+	//   - MarkLedgerForCleanup queues a Pebble range delete on
+	//     [SubAttrIndex][ledgerName padded] (see batch.deleteLedgerData)
+	//     which purges every entry — cache-resident or not.
+	//   - All read paths (query.Compile, BucketService.ListIndexes) gate on
+	//     LedgerInfo.DeletedAt and surface NotFound before reaching the
+	//     registry, so orphan cache entries are unreachable.
+	// An in-batch cache-iteration drop would only matter for a pathological
+	// "delete then create on the same ledger" batch the DeletedAt guard
+	// already rejects, and it would bypass the coverage gate (KeyStore.M
+	// iter has no preload declaration). Dropping the loop keeps the
+	// coverage invariant intact.
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteLedger{
 			DeleteLedger: &commonpb.DeletedLedgerLog{

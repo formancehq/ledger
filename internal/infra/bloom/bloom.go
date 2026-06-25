@@ -235,6 +235,7 @@ type filterSnapshot struct {
 	NumscriptContent *Filter
 	LedgerMetadata   *Filter
 	PreparedQuery    *Filter
+	Index            *Filter
 	// ready marks the snapshot as fully populated. Bound to the snap so a
 	// reader that captures the snap pointer sees consistent (filters, ready).
 	ready bool
@@ -264,6 +265,8 @@ func (s *filterSnapshot) filterForAttrType(attrType byte) *Filter {
 		return s.LedgerMetadata
 	case dal.SubAttrPreparedQuery:
 		return s.PreparedQuery
+	case dal.SubAttrIndex:
+		return s.Index
 	default:
 		return nil
 	}
@@ -275,6 +278,7 @@ func (s *filterSnapshot) allFilters() []*Filter {
 		s.Ledger, s.Boundary, s.Transaction, s.SinkConfig,
 		s.NumscriptVersion, s.NumscriptContent, s.LedgerMetadata,
 		s.PreparedQuery,
+		s.Index,
 	}
 }
 
@@ -435,6 +439,7 @@ type BloomUpdates struct {
 	NumscriptContents []attributes.U128
 	PreparedQueries   []attributes.U128
 	LedgerMetadata    []attributes.U128
+	Indexes           []attributes.U128
 }
 
 // Reset clears all slices while preserving their backing arrays.
@@ -450,6 +455,7 @@ func (u *BloomUpdates) Reset() {
 	u.NumscriptContents = u.NumscriptContents[:0]
 	u.PreparedQueries = u.PreparedQueries[:0]
 	u.LedgerMetadata = u.LedgerMetadata[:0]
+	u.Indexes = u.Indexes[:0]
 }
 
 // AddCanonicalKeys inserts pre-hashed U128 IDs into the corresponding bloom filters.
@@ -480,6 +486,7 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 	addKeys(snap.NumscriptContent, updates.NumscriptContents)
 	addKeys(snap.LedgerMetadata, updates.LedgerMetadata)
 	addKeys(snap.PreparedQuery, updates.PreparedQueries)
+	addKeys(snap.Index, updates.Indexes)
 }
 
 // PersistDirtyBlocks writes all dirty blocks from all filters to the Pebble batch.
@@ -624,6 +631,7 @@ func bloomTypes(cfg *commonpb.ClusterConfig) []bloomType {
 		{cfg.GetBloomNumscriptContents(), dal.SubAttrNumscriptContent, "numscript_contents", func(snap *filterSnapshot) **Filter { return &snap.NumscriptContent }},
 		{cfg.GetBloomLedgerMetadata(), dal.SubAttrLedgerMetadata, "ledger_metadata", func(snap *filterSnapshot) **Filter { return &snap.LedgerMetadata }},
 		{cfg.GetBloomPreparedQueries(), dal.SubAttrPreparedQuery, "prepared_queries", func(snap *filterSnapshot) **Filter { return &snap.PreparedQuery }},
+		{cfg.GetBloomIndexes(), dal.SubAttrIndex, "indexes", func(snap *filterSnapshot) **Filter { return &snap.Index }},
 	}
 }
 

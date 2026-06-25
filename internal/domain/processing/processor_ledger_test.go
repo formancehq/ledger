@@ -104,6 +104,8 @@ func TestProcessDeleteLedger(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().MarkLedgerForCleanup("test-ledger")
+	// processDeleteLedger does not touch the Index registry: the deferred
+	// Pebble range delete in MarkLedgerForCleanup handles the physical purge.
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_DeleteLedger{

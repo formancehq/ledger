@@ -319,6 +319,42 @@ func (c *MockScopeDeleteChapterScheduleCall) DoAndReturn(f func()) *MockScopeDel
 	return c
 }
 
+// DeleteIndex mocks base method.
+func (m *MockScope) DeleteIndex(key domain.IndexKey) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeleteIndex", key)
+}
+
+// DeleteIndex indicates an expected call of DeleteIndex.
+func (mr *MockScopeMockRecorder) DeleteIndex(key any) *MockScopeDeleteIndexCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteIndex", reflect.TypeOf((*MockScope)(nil).DeleteIndex), key)
+	return &MockScopeDeleteIndexCall{Call: call}
+}
+
+// MockScopeDeleteIndexCall wrap *gomock.Call
+type MockScopeDeleteIndexCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeDeleteIndexCall) Return() *MockScopeDeleteIndexCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeDeleteIndexCall) Do(f func(domain.IndexKey)) *MockScopeDeleteIndexCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeDeleteIndexCall) DoAndReturn(f func(domain.IndexKey)) *MockScopeDeleteIndexCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // DeleteLedgerMetadata mocks base method.
 func (m *MockScope) DeleteLedgerMetadata(key domain.LedgerMetadataKey) {
 	m.ctrl.T.Helper()
@@ -844,6 +880,45 @@ func (c *MockScopeGetIdempotencyKeyCall) Do(f func(domain.IdempotencyKey) (*comm
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeGetIdempotencyKeyCall) DoAndReturn(f func(domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error)) *MockScopeGetIdempotencyKeyCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetIndex mocks base method.
+func (m *MockScope) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIndex", key)
+	ret0, _ := ret[0].(commonpb.IndexReader)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndex indicates an expected call of GetIndex.
+func (mr *MockScopeMockRecorder) GetIndex(key any) *MockScopeGetIndexCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndex", reflect.TypeOf((*MockScope)(nil).GetIndex), key)
+	return &MockScopeGetIndexCall{Call: call}
+}
+
+// MockScopeGetIndexCall wrap *gomock.Call
+type MockScopeGetIndexCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeGetIndexCall) Return(arg0 commonpb.IndexReader, arg1 error) *MockScopeGetIndexCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeGetIndexCall) Do(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockScopeGetIndexCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeGetIndexCall) DoAndReturn(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockScopeGetIndexCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1797,6 +1872,42 @@ func (c *MockScopePutIdempotencyKeyCall) Do(f func(domain.IdempotencyKey, *commo
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopePutIdempotencyKeyCall) DoAndReturn(f func(domain.IdempotencyKey, *commonpb.IdempotencyKeyValue)) *MockScopePutIdempotencyKeyCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// PutIndex mocks base method.
+func (m *MockScope) PutIndex(key domain.IndexKey, idx *commonpb.Index) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PutIndex", key, idx)
+}
+
+// PutIndex indicates an expected call of PutIndex.
+func (mr *MockScopeMockRecorder) PutIndex(key, idx any) *MockScopePutIndexCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutIndex", reflect.TypeOf((*MockScope)(nil).PutIndex), key, idx)
+	return &MockScopePutIndexCall{Call: call}
+}
+
+// MockScopePutIndexCall wrap *gomock.Call
+type MockScopePutIndexCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopePutIndexCall) Return() *MockScopePutIndexCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopePutIndexCall) Do(f func(domain.IndexKey, *commonpb.Index)) *MockScopePutIndexCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopePutIndexCall) DoAndReturn(f func(domain.IndexKey, *commonpb.Index)) *MockScopePutIndexCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
