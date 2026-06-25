@@ -77,6 +77,7 @@ type NodeInfo struct {
 	ServiceAddress string                 `protobuf:"bytes,5,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"` // Service API address
 	SyncProgress   *SyncProgress          `protobuf:"bytes,6,opt,name=sync_progress,json=syncProgress,proto3" json:"sync_progress,omitempty"`       // Checkpoint sync progress (populated by leader querying each node)
 	IndexProgress  *IndexProgress         `protobuf:"bytes,7,opt,name=index_progress,json=indexProgress,proto3" json:"index_progress,omitempty"`    // Index builder progress (populated by leader querying each node)
+	Version        string                 `protobuf:"bytes,8,opt,name=version,proto3" json:"version,omitempty"`                                     // Build version reported by this node (for skew detection)
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -158,6 +159,13 @@ func (x *NodeInfo) GetIndexProgress() *IndexProgress {
 		return x.IndexProgress
 	}
 	return nil
+}
+
+func (x *NodeInfo) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
 }
 
 // ProgressInfo represents the progress information for a node
@@ -374,6 +382,7 @@ type ClusterState struct {
 	SyncProgress    *SyncProgress           `protobuf:"bytes,7,opt,name=sync_progress,json=syncProgress,proto3" json:"sync_progress,omitempty"`           // Local node checkpoint sync progress
 	IndexProgress   *IndexProgress          `protobuf:"bytes,8,opt,name=index_progress,json=indexProgress,proto3" json:"index_progress,omitempty"`        // Local index builder progress
 	ClusterConfig   *commonpb.ClusterConfig `protobuf:"bytes,9,opt,name=cluster_config,json=clusterConfig,proto3" json:"cluster_config,omitempty"`        // Raft-replicated mutable cluster configuration
+	NodeVersion     string                  `protobuf:"bytes,10,opt,name=node_version,json=nodeVersion,proto3" json:"node_version,omitempty"`             // Build version of the responding (local) node
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -469,6 +478,13 @@ func (x *ClusterState) GetClusterConfig() *commonpb.ClusterConfig {
 		return x.ClusterConfig
 	}
 	return nil
+}
+
+func (x *ClusterState) GetNodeVersion() string {
+	if x != nil {
+		return x.NodeVersion
+	}
+	return ""
 }
 
 // IndexProgress tracks the index builder's position relative to Pebble.
@@ -2166,7 +2182,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"\rcluster.proto\x12\acluster\x1a\fcommon.proto\"1\n" +
 	"\x16GetClusterStateRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"\xb0\x02\n" +
+	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"\xca\x02\n" +
 	"\bNodeInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1a\n" +
 	"\bsuffrage\x18\x02 \x01(\tR\bsuffrage\x121\n" +
@@ -2174,7 +2190,8 @@ const file_cluster_proto_rawDesc = "" +
 	"\fraft_address\x18\x04 \x01(\tR\vraftAddress\x12'\n" +
 	"\x0fservice_address\x18\x05 \x01(\tR\x0eserviceAddress\x12:\n" +
 	"\rsync_progress\x18\x06 \x01(\v2\x15.cluster.SyncProgressR\fsyncProgress\x12=\n" +
-	"\x0eindex_progress\x18\a \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\"\x89\x02\n" +
+	"\x0eindex_progress\x18\a \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\x12\x18\n" +
+	"\aversion\x18\b \x01(\tR\aversion\"\x89\x02\n" +
 	"\fProgressInfo\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\x06R\x05match\x12\x12\n" +
 	"\x04next\x18\x02 \x01(\x06R\x04next\x12\x14\n" +
@@ -2198,7 +2215,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\bprogress\x18\b \x03(\v2!.cluster.RaftStatus.ProgressEntryR\bprogress\x1aR\n" +
 	"\rProgressEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\x9e\x03\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\xc1\x03\n" +
 	"\fClusterState\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
 	"\x06leader\x18\x02 \x01(\rR\x06leader\x12'\n" +
@@ -2210,7 +2227,9 @@ const file_cluster_proto_rawDesc = "" +
 	"\x10maintenance_mode\x18\x06 \x01(\bR\x0fmaintenanceMode\x12:\n" +
 	"\rsync_progress\x18\a \x01(\v2\x15.cluster.SyncProgressR\fsyncProgress\x12=\n" +
 	"\x0eindex_progress\x18\b \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\x12<\n" +
-	"\x0ecluster_config\x18\t \x01(\v2\x15.common.ClusterConfigR\rclusterConfig\"u\n" +
+	"\x0ecluster_config\x18\t \x01(\v2\x15.common.ClusterConfigR\rclusterConfig\x12!\n" +
+	"\fnode_version\x18\n" +
+	" \x01(\tR\vnodeVersion\"u\n" +
 	"\rIndexProgress\x122\n" +
 	"\x15last_indexed_sequence\x18\x01 \x01(\x06R\x13lastIndexedSequence\x120\n" +
 	"\x14pebble_last_sequence\x18\x02 \x01(\x06R\x12pebbleLastSequence\"n\n" +

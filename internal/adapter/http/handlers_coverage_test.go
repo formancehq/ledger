@@ -17,6 +17,7 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -30,7 +31,7 @@ func TestNewHandler_ReturnsNonNil(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 	require.NotNil(t, handler)
 }
 
@@ -39,7 +40,7 @@ func TestNewHandler_HealthEndpoint(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -55,7 +56,7 @@ func TestNewHandler_V2Prefix(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v2/health", nil)
@@ -69,7 +70,7 @@ func TestNewHandler_LivezEndpoint(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/livez", nil)
@@ -84,7 +85,7 @@ func TestNewHandler_ReadyzEndpoint(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().NotReadyReasons().Return(nil).AnyTimes()
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -1181,7 +1182,7 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 			}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
@@ -1200,7 +1201,7 @@ func TestNewHandler_GetLedgerRoute(t *testing.T) {
 			return &commonpb.LedgerInfo{Name: name}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/my-ledger", nil)
@@ -1219,7 +1220,7 @@ func TestNewHandler_ListAllLedgersRoute(t *testing.T) {
 			return cursor.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)

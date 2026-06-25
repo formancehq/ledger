@@ -58,6 +58,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -527,9 +528,9 @@ func Module() fx.Option {
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
-			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool) servicepb.BucketServiceServer {
-				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool)
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`)),
+			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
+				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, fsm *state.Machine) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, fsm.WaitForApplied)
 			},
@@ -554,14 +555,15 @@ func Module() fx.Option {
 			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
 				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, ms *membership.Service, bo *backupapp.Orchestrator, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, ms *membership.Service, bo *backupapp.Orchestrator, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig, info version.Info) clusterpb.ClusterServiceServer {
 				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, adm, ms, bo, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 					authCfg,
 					cfg.ClusterID,
+					info,
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
 			func(n *node.Node, raftTransport *node.DefaultTransport, ms *membership.Service, cfg Config, logger logging.Logger) clusterbootstrappb.ClusterBootstrapServiceServer {
 				return grpcadp.NewClusterBootstrapServiceServer(
 					n, raftTransport, ms, logger,
@@ -610,8 +612,8 @@ func Module() fx.Option {
 				return indexbuilder.NewBuilder(store, rs, attrs, logger, meterProvider.Meter("index.builder"), cfg.ReadIndexConfig.BatchSize)
 			},
 			httpcompat.NewServer,
-			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig) http.Handler {
-				return httpcompat.NewHandler(logger, backend, authCfg)
+			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
+				return httpcompat.NewHandler(logger, backend, authCfg, info)
 			},
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
 				return httpcompat.NewDefaultBackend(node, ctrl)

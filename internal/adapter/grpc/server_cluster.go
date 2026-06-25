@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -49,6 +50,7 @@ type ClusterServiceServerImpl struct {
 	localServiceAddr string // This node's own gRPC service address
 	authCfg          internalauth.AuthConfig
 	clusterID        string
+	info             version.Info
 	backupOrchestra  *backupapp.Orchestrator
 	forwarder        nodeForwarder
 }
@@ -71,6 +73,7 @@ func NewClusterServiceServer(
 	localServiceAddr string,
 	authCfg internalauth.AuthConfig,
 	clusterID string,
+	info version.Info,
 ) clusterpb.ClusterServiceServer {
 	return &ClusterServiceServerImpl{
 		node:             node,
@@ -90,6 +93,7 @@ func NewClusterServiceServer(
 		localServiceAddr: localServiceAddr,
 		authCfg:          authCfg,
 		clusterID:        clusterID,
+		info:             info,
 		forwarder:        nodeForwarder{node: node, servicePool: servicePool},
 	}
 }
@@ -135,6 +139,15 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 	return impl.getClusterStateLocal(ctx)
 }
 
+// mapNodeVersion returns the peer's self-reported version, or "" when the peer
+// is unreachable (peerState == nil) or runs a binary that predates the
+// node_version field (empty NodeVersion). It deliberately does NOT fall back to
+// the local node's version — doing so would mask the very version skew this
+// per-node reporting exists to surface. GetNodeVersion is nil-safe.
+func mapNodeVersion(peerState *clusterpb.ClusterState) string {
+	return peerState.GetNodeVersion()
+}
+
 // getClusterStateLocal returns cluster state with peer address information populated.
 func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) (*clusterpb.ClusterState, error) {
 	clusterState, err := impl.node.GetClusterState(ctx)
@@ -144,6 +157,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 
 	// Populate maintenance mode from shared state
 	clusterState.MaintenanceMode = impl.sharedState.MaintenanceMode()
+	clusterState.NodeVersion = impl.info.Version
 	// Read the full persisted cluster config (includes bloom filter settings).
 	// Fall back to a minimal config with just the rotation threshold if not yet persisted.
 	if persistedState, err := query.ReadClusterState(impl.store); err == nil && persistedState != nil {
@@ -172,6 +186,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 			// Local sync progress is already in clusterState.SyncProgress
 			nodeInfo.SyncProgress = clusterState.GetSyncProgress()
 			nodeInfo.IndexProgress = localIndexProgress
+			nodeInfo.Version = impl.info.Version
 		} else {
 			nodeInfo.RaftAddress = impl.raftTransport.GetPeerAddress(nodeID)
 			nodeInfo.ServiceAddress = impl.servicePool.GetPeerAddress(nodeID)
@@ -181,6 +196,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 				nodeInfo.SyncProgress = peerState.GetSyncProgress()
 				nodeInfo.IndexProgress = peerState.GetIndexProgress()
 			}
+			nodeInfo.Version = mapNodeVersion(peerState)
 		}
 	}
 

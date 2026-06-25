@@ -3462,10 +3462,91 @@ func NewDiscoveryRequestListReader(s []*DiscoveryRequest) DiscoveryRequestListRe
 	return discoveryRequestListReadonly(s)
 }
 
+// ServerInfoReader provides read-only access to ServerInfo.
+// Call Mutate() to obtain a mutable clone.
+type ServerInfoReader interface {
+	GetVersion() string
+	GetCommit() string
+	GetBuildDate() string
+	GetGoVersion() string
+	Mutate() *ServerInfo
+}
+
+type serverInfoReadonly struct{ v *ServerInfo }
+
+func (r *serverInfoReadonly) GetVersion() string {
+	return r.v.GetVersion()
+}
+
+func (r *serverInfoReadonly) GetCommit() string {
+	return r.v.GetCommit()
+}
+
+func (r *serverInfoReadonly) GetBuildDate() string {
+	return r.v.GetBuildDate()
+}
+
+func (r *serverInfoReadonly) GetGoVersion() string {
+	return r.v.GetGoVersion()
+}
+
+func (r *serverInfoReadonly) Mutate() *ServerInfo {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this ServerInfo.
+func (m *ServerInfo) AsReader() ServerInfoReader {
+	if m == nil {
+		return nil
+	}
+	return &serverInfoReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this ServerInfo.
+func (m *ServerInfo) Mutate() *ServerInfo {
+	return m.CloneVT()
+}
+
+// ServerInfoListReader provides read-only iteration over []*ServerInfo.
+type ServerInfoListReader interface {
+	Len() int
+	Get(i int) ServerInfoReader
+	Range(yield func(int, ServerInfoReader) bool)
+}
+
+type serverInfoListReadonly []*ServerInfo
+
+func (l serverInfoListReadonly) Len() int { return len(l) }
+
+func (l serverInfoListReadonly) Get(i int) ServerInfoReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l serverInfoListReadonly) Range(yield func(int, ServerInfoReader) bool) {
+	for i, v := range l {
+		var r ServerInfoReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewServerInfoListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewServerInfoListReader(s []*ServerInfo) ServerInfoListReader { return serverInfoListReadonly(s) }
+
 // DiscoveryResponseReader provides read-only access to DiscoveryResponse.
 // Call Mutate() to obtain a mutable clone.
 type DiscoveryResponseReader interface {
 	GetResponseSigning() ResponseSigningInfoReader
+	GetServerInfo() ServerInfoReader
 	Mutate() *DiscoveryResponse
 }
 
@@ -3473,6 +3554,14 @@ type discoveryResponseReadonly struct{ v *DiscoveryResponse }
 
 func (r *discoveryResponseReadonly) GetResponseSigning() ResponseSigningInfoReader {
 	v := r.v.GetResponseSigning()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *discoveryResponseReadonly) GetServerInfo() ServerInfoReader {
+	v := r.v.GetServerInfo()
 	if v == nil {
 		return nil
 	}

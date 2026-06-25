@@ -578,6 +578,7 @@ Read endpoints comparison with the original ledger:
 | `PUT /{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
 | `GET /{ledgerName}/indexes/{metadataKey}` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) |
 | `POST /{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
+| `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
 
 ---
 
@@ -651,7 +652,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination) | ✅ |
 | `GetLog` | Get a single system log by sequence number | ✅ |
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
-| `Discovery` | Return server capabilities (response signing config) | ✅ |
+| `Discovery` | Return server capabilities (response signing config) and build info (`ServerInfo`: version, commit, build date, Go version) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
 | `GetLedgerStats` | Get aggregate statistics (account + transaction count) | ✅ |

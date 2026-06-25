@@ -1116,6 +1116,17 @@ func (m *DiscoveryRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
+func (m *ServerInfo) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
 func (m *DiscoveryResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA

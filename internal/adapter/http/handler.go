@@ -15,12 +15,13 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 )
 
 // NewHandler creates a new HTTP handler (router) for the ledger service.
 // The authCfg parameter controls JWT authentication with read/write scopes:
 // when Enabled is false, requests pass through without authentication.
-func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig) http.Handler {
+func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
 	r := chi.NewRouter()
 
 	// Granular scope-bound middleware helpers
@@ -84,6 +85,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			r.Get("/livez", server.handleLivez)
 			r.Get("/readyz", server.handleReadyz)
 			r.Get("/clusterz", server.handleClusterz)
+			r.Get("/_info", infoHandler(info))
 
 			// Ledgers read scope
 			r.With(requireLedgersRead).Group(func(r chi.Router) {

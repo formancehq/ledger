@@ -32,10 +32,8 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/store"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/transactions"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/upgrade"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 )
-
-// Version information (set at build time).
-var version = "dev"
 
 func main() {
 	rootCmd := newRootCommand()
@@ -158,7 +156,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(authcmd.NewCommand())
 	rootCmd.AddCommand(profilecmd.NewCommand())
 	rootCmd.AddCommand(newVersionCommand())
-	rootCmd.AddCommand(upgrade.NewCommand(version))
+	rootCmd.AddCommand(upgrade.NewCommand(version.Get().Version))
 	rootCmd.AddCommand(provision.NewCommand())
 	rootCmd.AddCommand(querycheckpoint.NewCommand())
 	rootCmd.AddCommand(queries.NewCommand())
@@ -327,7 +325,7 @@ func newVersionCommand() *cobra.Command {
 			pterm.Println(banner)
 
 			pterm.DefaultBox.WithTitle(pterm.LightGreen("Version Info")).
-				Println(pterm.Sprintf("%s %s", pterm.LightCyan("Version:"), pterm.Green(version)))
+				Println(pterm.Sprintf("%s %s", pterm.LightCyan("Version:"), pterm.Green(version.Get().Version)))
 		},
 	}
 }

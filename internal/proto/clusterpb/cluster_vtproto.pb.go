@@ -50,6 +50,7 @@ func (m *NodeInfo) CloneVT() *NodeInfo {
 	r.ServiceAddress = m.ServiceAddress
 	r.SyncProgress = m.SyncProgress.CloneVT()
 	r.IndexProgress = m.IndexProgress.CloneVT()
+	r.Version = m.Version
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -128,6 +129,7 @@ func (m *ClusterState) CloneVT() *ClusterState {
 	r.SyncProgress = m.SyncProgress.CloneVT()
 	r.IndexProgress = m.IndexProgress.CloneVT()
 	r.ClusterConfig = m.ClusterConfig.CloneVT()
+	r.NodeVersion = m.NodeVersion
 	if rhs := m.Nodes; rhs != nil {
 		tmpContainer := make([]*NodeInfo, len(rhs))
 		for k, v := range rhs {
@@ -811,6 +813,9 @@ func (this *NodeInfo) EqualVT(that *NodeInfo) bool {
 	if !this.IndexProgress.EqualVT(that.IndexProgress) {
 		return false
 	}
+	if this.Version != that.Version {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -963,6 +968,9 @@ func (this *ClusterState) EqualVT(that *ClusterState) bool {
 		return false
 	}
 	if !this.ClusterConfig.EqualVT(that.ClusterConfig) {
+		return false
+	}
+	if this.NodeVersion != that.NodeVersion {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1776,6 +1784,13 @@ func (m *NodeInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Version) > 0 {
+		i -= len(m.Version)
+		copy(dAtA[i:], m.Version)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Version)))
+		i--
+		dAtA[i] = 0x42
+	}
 	if m.IndexProgress != nil {
 		size, err := m.IndexProgress.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -2056,6 +2071,13 @@ func (m *ClusterState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.NodeVersion) > 0 {
+		i -= len(m.NodeVersion)
+		copy(dAtA[i:], m.NodeVersion)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.NodeVersion)))
+		i--
+		dAtA[i] = 0x52
 	}
 	if m.ClusterConfig != nil {
 		size, err := m.ClusterConfig.MarshalToSizedBufferVT(dAtA[:i])
@@ -3681,6 +3703,10 @@ func (m *NodeInfo) SizeVT() (n int) {
 		l = m.IndexProgress.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	l = len(m.Version)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -3804,6 +3830,10 @@ func (m *ClusterState) SizeVT() (n int) {
 	}
 	if m.ClusterConfig != nil {
 		l = m.ClusterConfig.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.NodeVersion)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -4657,6 +4687,38 @@ func (m *NodeInfo) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Version = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -5444,6 +5506,38 @@ func (m *ClusterState) UnmarshalVT(dAtA []byte) error {
 			if err := m.ClusterConfig.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NodeVersion", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NodeVersion = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

@@ -1651,11 +1651,18 @@ ledgerctl accounts aggregate-volumes --ledger my-ledger --json
 
 ### version
 
-Print version information for ledgerctl.
+Print version information for `ledgerctl`. Release builds report the real version (injected at link time via goreleaser ldflags into `internal/pkg/version`); a binary built without ldflags reports `dev`.
 
 ```bash
 ledgerctl version
 ```
+
+The **server** exposes the same build metadata over two unauthenticated channels:
+
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…"}`.
+- **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same fields.
+
+This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
 
 ---
 

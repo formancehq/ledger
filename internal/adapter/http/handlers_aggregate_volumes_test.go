@@ -14,6 +14,7 @@ import (
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -225,7 +226,7 @@ func TestHandleAggregateVolumes_FullRouteIntegration(t *testing.T) {
 			}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/my-ledger/volumes", nil)
@@ -244,7 +245,7 @@ func TestHandleAggregateVolumes_V2RouteIntegration(t *testing.T) {
 			return &commonpb.AggregateResult{}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v2/my-ledger/volumes", nil)

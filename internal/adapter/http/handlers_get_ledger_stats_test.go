@@ -14,6 +14,7 @@ import (
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -168,7 +169,7 @@ func TestHandleGetLedgerStats_FullRouteIntegration(t *testing.T) {
 			}, nil
 		}).AnyTimes()
 
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/my-ledger/stats", nil)

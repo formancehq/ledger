@@ -142,6 +142,13 @@ func (m *ClusterState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.NodeVersion) > 0 {
+		i -= len(m.NodeVersion)
+		copy(dAtA[i:], m.NodeVersion)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.NodeVersion)))
+		i--
+		dAtA[i] = 0x52
+	}
 	if m.ClusterConfig != nil {
 		size, _ := m.ClusterConfig.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size

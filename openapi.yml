@@ -126,6 +126,21 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /_info:
+    get:
+      summary: Get server build information
+      description: Returns the server build metadata (version, commit, build date, Go runtime version). Unauthenticated.
+      operationId: info
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Server build information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerInfo'
+
   /{ledgerName}:
     get:
       summary: Get a ledger
@@ -3557,6 +3572,27 @@ components:
             status:
               type: string
               description: Health status (e.g. "ok")
+
+    ServerInfo:
+      type: object
+      required:
+        - version
+        - commit
+        - buildDate
+        - goVersion
+      properties:
+        version:
+          type: string
+          description: Server release version
+        commit:
+          type: string
+          description: Git commit the binary was built from
+        buildDate:
+          type: string
+          description: Build timestamp (RFC3339, "unknown" if unset)
+        goVersion:
+          type: string
+          description: Go runtime version the binary was built with
 
     AddAccountTypeRequest:
       type: object

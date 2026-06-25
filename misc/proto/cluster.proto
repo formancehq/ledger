@@ -97,6 +97,7 @@ message NodeInfo {
   string service_address = 5;  // Service API address
   SyncProgress sync_progress = 6;  // Checkpoint sync progress (populated by leader querying each node)
   IndexProgress index_progress = 7;  // Index builder progress (populated by leader querying each node)
+  string version = 8;  // Build version reported by this node (for skew detection)
 }
 
 // ProgressInfo represents the progress information for a node
@@ -134,6 +135,7 @@ message ClusterState {
   SyncProgress sync_progress = 7; // Local node checkpoint sync progress
   IndexProgress index_progress = 8; // Local index builder progress
   common.ClusterConfig cluster_config = 9; // Raft-replicated mutable cluster configuration
+  string node_version = 10;  // Build version of the responding (local) node
 }
 
 // IndexProgress tracks the index builder's position relative to Pebble.

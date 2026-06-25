@@ -14,9 +14,9 @@ builds:
   - s3
   - pyroscope
   ldflags:
-  - -X main.Version={{ .Version }}
-  - -X main.Commit={{ .ShortCommit }}
-  - -X main.BuildDate={{ .Date }}
+  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
+  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
+  - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
   - -extldflags=-static
   env:
   - CGO_ENABLED=0
@@ -31,9 +31,9 @@ builds:
   id: ledgerctl
   main: ./cmd/ledgerctl
   ldflags:
-  - -X main.Version={{ .Version }}
-  - -X main.Commit={{ .ShortCommit }}
-  - -X main.BuildDate={{ .Date }}
+  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
+  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
+  - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
   - -extldflags=-static
   env:
   - CGO_ENABLED=0

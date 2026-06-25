@@ -84,6 +84,7 @@ type NodeInfoReader interface {
 	GetServiceAddress() string
 	GetSyncProgress() SyncProgressReader
 	GetIndexProgress() IndexProgressReader
+	GetVersion() string
 	Mutate() *NodeInfo
 }
 
@@ -127,6 +128,10 @@ func (r *nodeInfoReadonly) GetIndexProgress() IndexProgressReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *nodeInfoReadonly) GetVersion() string {
+	return r.v.GetVersion()
 }
 
 func (r *nodeInfoReadonly) Mutate() *NodeInfo {
@@ -426,6 +431,7 @@ type ClusterStateReader interface {
 	GetSyncProgress() SyncProgressReader
 	GetIndexProgress() IndexProgressReader
 	GetClusterConfig() commonpb.ClusterConfigReader
+	GetNodeVersion() string
 	Mutate() *ClusterState
 }
 
@@ -481,6 +487,10 @@ func (r *clusterStateReadonly) GetClusterConfig() commonpb.ClusterConfigReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *clusterStateReadonly) GetNodeVersion() string {
+	return r.v.GetNodeVersion()
 }
 
 func (r *clusterStateReadonly) Mutate() *ClusterState {

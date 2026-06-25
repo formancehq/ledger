@@ -36,16 +36,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/bytesize"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
-)
-
-var (
-	version = "dev"
-	commit  = "unknown"
 )
 
 func NewRootCommand() *cobra.Command {
@@ -350,14 +346,18 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		authModule = fx.Module("auth")
 	}
 
+	info := version.Get()
+
 	// Create fx application options
 	opts := []fx.Option{
 		// Provide configuration
 		fx.Supply(*cfg),
+		// Provide build metadata for version reporting
+		fx.Supply(info),
 		// Add authentication module (OIDC discovery when issuer is configured)
 		authModule,
 		// Add OpenTelemetry modules from go-libs (using flags)
-		observefx.ResourceModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", version, commit))),
+		observefx.ResourceModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", info.Version, info.Commit))),
 		observefx.TracesModuleFromFlags(cmd),
 		observefx.MetricsModuleFromFlags(cmd),
 		// Add trace sampling module (wraps exporter with error-aware sampling)

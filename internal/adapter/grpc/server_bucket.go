@@ -34,6 +34,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -64,11 +65,12 @@ type BucketServiceServerImpl struct {
 	authCfg               internalauth.AuthConfig
 	queryProfileThreshold time.Duration
 	clusterID             string
+	info                  version.Info
 	applyDuration         metric.Int64Histogram
 	forwarder             nodeForwarder
 }
 
-func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
@@ -91,6 +93,7 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 		authCfg:               authCfg,
 		queryProfileThreshold: queryProfileThreshold,
 		clusterID:             clusterID,
+		info:                  info,
 		applyDuration:         applyDuration,
 		forwarder:             nodeForwarder{node: n, servicePool: servicePool},
 	}
@@ -1440,7 +1443,14 @@ func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.B
 }
 
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
-	resp := &servicepb.DiscoveryResponse{}
+	resp := &servicepb.DiscoveryResponse{
+		ServerInfo: &servicepb.ServerInfo{
+			Version:   impl.info.Version,
+			Commit:    impl.info.Commit,
+			BuildDate: impl.info.BuildDate,
+			GoVersion: impl.info.GoVersion,
+		},
+	}
 	if impl.responseSigner != nil {
 		resp.ResponseSigning = &servicepb.ResponseSigningInfo{
 			PublicKey: impl.responseSigner.PublicKey(),

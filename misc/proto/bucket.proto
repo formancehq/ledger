@@ -457,8 +457,17 @@ message GetChapterScheduleResponse {
 
 message DiscoveryRequest {}
 
+// ServerInfo carries the server build metadata (unauthenticated).
+message ServerInfo {
+  string version = 1;     // semver / git tag (e.g. v3.1.0), "dev" if unset
+  string commit = 2;      // git SHA, "unknown" if unset
+  string build_date = 3;  // RFC3339, "unknown" if unset
+  string go_version = 4;  // runtime Go version
+}
+
 message DiscoveryResponse {
   ResponseSigningInfo response_signing = 1;  // Response signing config (nil if disabled)
+  ServerInfo server_info = 2;                // Server build metadata
 }
 
 // ResponseSigningInfo describes the server's response signing configuration.
