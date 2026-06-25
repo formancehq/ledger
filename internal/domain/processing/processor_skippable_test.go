@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -116,3 +117,92 @@ func (unknownReasonErr) Reason() string              { return "THIS_IS_NOT_A_KNO
 func (unknownReasonErr) Metadata() map[string]string { return nil }
 
 var _ domain.Describable = unknownReasonErr{}
+
+// TestAssignSkipLogIDAndDate_AllocatesLogIDAndDateOnParent pins the contract
+// that the skip log gets a real per-ledger Log.Id (the read-side index keys
+// by it) and a date drawn from the parent Scope — never the overlay. The
+// boundaries Put must flow to the PARENT (not the overlay) so the slot is
+// persisted even after the overlay is dropped on rollback.
+func TestAssignSkipLogIDAndDate_AllocatesLogIDAndDateOnParent(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	parent := NewMockScope(ctrl)
+
+	base := &raftcmdpb.LedgerBoundaries{NextLogId: 42}
+	parent.EXPECT().GetBoundaries("L").Return(base.AsReader(), nil)
+	parent.EXPECT().PutBoundaries("L", gomock.AssignableToTypeOf(&raftcmdpb.LedgerBoundaries{})).
+		Do(func(_ string, b *raftcmdpb.LedgerBoundaries) {
+			require.Equal(t, uint64(43), b.GetNextLogId())
+		})
+	parent.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1700})
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L"},
+		},
+	}
+	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{
+		Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	})
+
+	require.Nil(t, assignSkipLogIDAndDate(parent, order, payload))
+
+	ledgerLog := payload.GetApply().GetLog()
+	require.Equal(t, uint64(42), ledgerLog.GetId())
+	require.Equal(t, uint64(1700), ledgerLog.GetDate().GetData())
+}
+
+// TestAssignSkipLogIDAndDate_RefusesNonLedgerScoped surfaces a structural
+// invariant violation as a typed business error rather than silently
+// shipping a log with Id=0. The admission whitelist only authorises
+// LedgerScoped Apply orders today.
+func TestAssignSkipLogIDAndDate_RefusesNonLedgerScoped(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	parent := NewMockScope(ctrl) // no calls expected
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{},
+		},
+	}
+	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{})
+
+	err := assignSkipLogIDAndDate(parent, order, payload)
+	require.NotNil(t, err)
+
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid)
+}
+
+// TestAssignSkipLogIDAndDate_RefusesUnknownLedger triggers the second
+// structural defense: the apply order targets a ledger the parent Scope
+// does not know about (the sub-handler should have already failed with
+// LedgerNotFound — reaching this branch means an invariant is broken).
+func TestAssignSkipLogIDAndDate_RefusesUnknownLedger(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	parent := NewMockScope(ctrl)
+	parent.EXPECT().GetBoundaries("L").Return(nil, domain.ErrNotFound)
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L"},
+		},
+	}
+	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{})
+
+	err := assignSkipLogIDAndDate(parent, order, payload)
+	require.NotNil(t, err)
+
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid)
+}

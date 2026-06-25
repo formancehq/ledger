@@ -389,19 +389,19 @@ func (o *orderOverlayScope) Commit() {
 		o.Scope.PutTransactionState(k, v)
 	}
 
-	for range uint64(o.seqIDDelta) {
+	for range o.seqIDDelta {
 		o.Scope.IncrementNextSequenceID()
 	}
 
-	for range uint32(o.ledgerIDDelta) {
+	for range o.ledgerIDDelta {
 		o.Scope.IncrementNextLedgerID()
 	}
 
-	for range uint64(o.chapterIDDelta) {
+	for range o.chapterIDDelta {
 		o.Scope.IncrementNextChapterID()
 	}
 
-	for range uint64(o.queryCheckpointDelta) {
+	for range o.queryCheckpointDelta {
 		o.Scope.IncrementNextQueryCheckpointID()
 	}
 }
