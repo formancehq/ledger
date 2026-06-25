@@ -218,6 +218,26 @@ func Int64RangeMetadataFilterExclusive(key string, minVal, maxVal *int64, minExc
 	}
 }
 
+// UintMetadataFilter creates a filter matching a metadata uint64 field with
+// a single exact value (closed range [val, val]).
+func UintMetadataFilter(key string, val uint64) *commonpb.QueryFilter {
+	v := val
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field: &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_UintCond{
+					UintCond: &commonpb.UintCondition{
+						Min: &v,
+						Max: &v,
+					},
+				},
+			},
+		},
+	}
+}
+
 // BoolMetadataFilter creates a filter matching a metadata bool field with a hardcoded value.
 func BoolMetadataFilter(key string, val bool) *commonpb.QueryFilter {
 	return &commonpb.QueryFilter{

@@ -1189,24 +1189,6 @@ func (m *DropIndexOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *IndexReadyUpdate) CloneVT() *IndexReadyUpdate {
-	if m == nil {
-		return (*IndexReadyUpdate)(nil)
-	}
-	r := new(IndexReadyUpdate)
-	r.Ledger = m.Ledger
-	r.Id = m.Id.CloneVT()
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *IndexReadyUpdate) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
 func (m *AddAccountTypeOrder) CloneVT() *AddAccountTypeOrder {
 	if m == nil {
 		return (*AddAccountTypeOrder)(nil)
@@ -1573,15 +1555,6 @@ func (m *TechnicalUpdate_ClusterConfig) CloneVT() isTechnicalUpdate_Kind {
 	}
 	r := new(TechnicalUpdate_ClusterConfig)
 	r.ClusterConfig = m.ClusterConfig.CloneVT()
-	return r
-}
-
-func (m *TechnicalUpdate_IndexReady) CloneVT() isTechnicalUpdate_Kind {
-	if m == nil {
-		return (*TechnicalUpdate_IndexReady)(nil)
-	}
-	r := new(TechnicalUpdate_IndexReady)
-	r.IndexReady = m.IndexReady.CloneVT()
 	return r
 }
 
@@ -4580,28 +4553,6 @@ func (this *DropIndexOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *IndexReadyUpdate) EqualVT(that *IndexReadyUpdate) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
-	if !this.Id.EqualVT(that.Id) {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *IndexReadyUpdate) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*IndexReadyUpdate)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
 func (this *AddAccountTypeOrder) EqualVT(that *AddAccountTypeOrder) bool {
 	if this == that {
 		return true
@@ -5206,31 +5157,6 @@ func (this *TechnicalUpdate_ClusterConfig) EqualVT(thatIface isTechnicalUpdate_K
 		}
 		if q == nil {
 			q = &commonpb.ClusterConfig{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *TechnicalUpdate_IndexReady) EqualVT(thatIface isTechnicalUpdate_Kind) bool {
-	that, ok := thatIface.(*TechnicalUpdate_IndexReady)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.IndexReady, that.IndexReady; p != q {
-		if p == nil {
-			p = &IndexReadyUpdate{}
-		}
-		if q == nil {
-			q = &IndexReadyUpdate{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -9328,56 +9254,6 @@ func (m *DropIndexOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *IndexReadyUpdate) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *IndexReadyUpdate) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *IndexReadyUpdate) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Id != nil {
-		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x2a
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *AddAccountTypeOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -10364,25 +10240,6 @@ func (m *TechnicalUpdate_ClusterConfig) MarshalToSizedBufferVT(dAtA []byte) (int
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x2a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *TechnicalUpdate_IndexReady) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *TechnicalUpdate_IndexReady) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.IndexReady != nil {
-		size, err := m.IndexReady.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x42
 	}
 	return len(dAtA) - i, nil
 }
@@ -13983,24 +13840,6 @@ func (m *DropIndexOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *IndexReadyUpdate) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Id != nil {
-		l = m.Id.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
 func (m *AddAccountTypeOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14401,18 +14240,6 @@ func (m *TechnicalUpdate_ClusterConfig) SizeVT() (n int) {
 	_ = l
 	if m.ClusterConfig != nil {
 		l = m.ClusterConfig.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *TechnicalUpdate_IndexReady) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.IndexReady != nil {
-		l = m.IndexReady.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -21184,125 +21011,6 @@ func (m *DropIndexOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *IndexReadyUpdate) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: IndexReadyUpdate: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: IndexReadyUpdate: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Id == nil {
-				m.Id = &commonpb.IndexID{}
-			}
-			if err := m.Id.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *AddAccountTypeOrder) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -23971,47 +23679,6 @@ func (m *TechnicalUpdate) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Kind = &TechnicalUpdate_ClusterConfig{ClusterConfig: v}
-			}
-			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IndexReady", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Kind.(*TechnicalUpdate_IndexReady); ok {
-				if err := oneof.IndexReady.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &IndexReadyUpdate{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Kind = &TechnicalUpdate_IndexReady{IndexReady: v}
 			}
 			iNdEx = postIndex
 		case 9:

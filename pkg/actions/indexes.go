@@ -2,9 +2,7 @@ package actions
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -45,46 +43,44 @@ func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) 
 	}
 }
 
-// indexReadyForLedger streams BucketService.ListIndexes scoped to a single
-// ledger and returns nil iff an Index satisfying matches is reported READY.
+// indexReadyOnReplica returns nil when the (ledger, IndexID) entry in
+// the GetIndexStatus response carries a non-zero current_version on
+// the replica the client is talking to. current_version == 0 (or a
+// missing entry) means the local backfill / rewrite has not yet
+// performed the atomic switch into a live keyspace, so queries that
+// require this index would short-read.
 //
-// Replaces the former GetLedger projection path: indexes no longer live on
-// LedgerInfo, the registry is consulted explicitly via ListIndexes.
-func indexReadyForLedger(ctx context.Context, client servicepb.BucketServiceClient, ledger string, matches func(*commonpb.IndexID) bool, label string) error {
-	stream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
-		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
-		Ledger: ledger,
-	})
-	if err != nil {
-		return fmt.Errorf("opening ListIndexes stream: %w", err)
-	}
-
-	for {
-		idx, recvErr := stream.Recv()
-		if errors.Is(recvErr, io.EOF) {
-			return fmt.Errorf("index %s not found", label)
-		}
-
-		if recvErr != nil {
-			return fmt.Errorf("streaming ListIndexes: %w", recvErr)
-		}
-
-		if !matches(idx.GetId()) {
+// Replaces the BuildStatus-based ready check: EN-1323 made BuildStatus
+// informational only. The cluster-wide IndexReady proposal that used
+// to flip BuildStatus to READY is gone; each replica advances its
+// IndexVersionState independently as soon as its local backfill / rewrite
+// finishes.
+func indexReadyOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, label string) error {
+	for _, entry := range resp.GetIndexes() {
+		if entry.GetLedger() != ledger || !matches(entry.GetIndex().GetId()) {
 			continue
 		}
 
-		if idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
-			return nil
+		if entry.GetCurrentVersion() == 0 {
+			return fmt.Errorf("index %s on %s has current_version=0 (local backfill / rewrite not finished)", label, ledger)
 		}
 
-		return fmt.Errorf("index %s status is %v, want READY", label, idx.GetBuildStatus())
+		return nil
 	}
+
+	return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
 }
 
-// WaitForMetadataIndexReady polls until a metadata index reaches READY status or the timeout expires.
+// WaitForMetadataIndexReady polls until the metadata index has been
+// atomically switched into a live keyspace on the local replica.
 func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string) error {
 	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
-		return indexReadyForLedger(ctx, client, ledger, func(id *commonpb.IndexID) bool {
+		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+		if err != nil {
+			return err
+		}
+
+		return indexReadyOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
 			m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
 
 			return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
@@ -92,10 +88,16 @@ func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServi
 	})
 }
 
-// WaitForBuiltinIndexReady polls until a builtin transaction index reaches READY status.
+// WaitForBuiltinIndexReady polls until a builtin transaction index has been
+// atomically switched into a live keyspace on the local replica.
 func WaitForBuiltinIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, index commonpb.TransactionBuiltinIndex) error {
 	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
-		return indexReadyForLedger(ctx, client, ledger, func(id *commonpb.IndexID) bool {
+		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+		if err != nil {
+			return err
+		}
+
+		return indexReadyOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
 			b, ok := id.GetKind().(*commonpb.IndexID_TxBuiltin)
 
 			return ok && b.TxBuiltin == index
@@ -103,15 +105,22 @@ func WaitForBuiltinIndexReady(ctx context.Context, client servicepb.BucketServic
 	})
 }
 
-// WaitForAddressIndexReady polls until an address index reaches READY status.
+// WaitForAddressIndexReady polls until an address index has been
+// atomically switched into a live keyspace on the local replica.
 func WaitForAddressIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, role commonpb.AddressRole) error {
 	return WaitForBuiltinIndexReady(ctx, client, ledger, AddressRoleToBuiltinIndex(role))
 }
 
-// WaitForLogBuiltinIndexReady polls until a log builtin index reaches READY status.
+// WaitForLogBuiltinIndexReady polls until a log builtin index has been
+// atomically switched into a live keyspace on the local replica.
 func WaitForLogBuiltinIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, index commonpb.LogBuiltinIndex) error {
 	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
-		return indexReadyForLedger(ctx, client, ledger, func(id *commonpb.IndexID) bool {
+		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+		if err != nil {
+			return err
+		}
+
+		return indexReadyOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
 			b, ok := id.GetKind().(*commonpb.IndexID_LogBuiltin)
 
 			return ok && b.LogBuiltin == index

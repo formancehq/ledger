@@ -250,12 +250,13 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
-		It("Should show reference index as READY in ListIndexes", func() {
-			indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
-			Expect(err).To(Succeed())
-			idx := findTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-			Expect(idx).NotTo(BeNil())
-			Expect(idx.GetBuildStatus()).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+		It("Should show reference index as ready locally via GetIndexStatus", func() {
+			// Per-replica readiness lives in IndexEntry.current_version
+			// on GetIndexStatus since EN-1323 (BuildStatus is informational
+			// only). The registry entry itself is exercised by
+			// ListIndexes elsewhere.
+			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)).
+				To(Succeed())
 		})
 
 		It("Should reject reference filter queries after dropping the index", func() {
@@ -363,12 +364,11 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(result.GetCursor().TransactionData).To(HaveLen(2))
 		})
 
-		It("Should show timestamp index as READY in ListIndexes", func() {
-			indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
-			Expect(err).To(Succeed())
-			idx := findTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
-			Expect(idx).NotTo(BeNil())
-			Expect(idx.GetBuildStatus()).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+		It("Should show timestamp index as ready locally via GetIndexStatus", func() {
+			// Per-replica readiness lives in IndexEntry.current_version
+			// on GetIndexStatus since EN-1323.
+			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).
+				To(Succeed())
 		})
 	})
 
@@ -473,12 +473,11 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(result.GetCursor().TransactionData).To(BeEmpty())
 		})
 
-		It("Should show inserted_at index as READY in ListIndexes", func() {
-			indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
-			Expect(err).To(Succeed())
-			idx := findTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)
-			Expect(idx).NotTo(BeNil())
-			Expect(idx.GetBuildStatus()).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+		It("Should show inserted_at index as ready locally via GetIndexStatus", func() {
+			// Per-replica readiness lives in IndexEntry.current_version
+			// on GetIndexStatus since EN-1323.
+			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)).
+				To(Succeed())
 		})
 
 		It("Should reject inserted_at filter queries after dropping the index", func() {

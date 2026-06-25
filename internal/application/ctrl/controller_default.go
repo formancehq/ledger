@@ -173,6 +173,7 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 // intended for read-only query-checkpoint access: callers open a checkpoint's
 // stores and route GetAccount/ListAccounts/GetLedgerStats/etc. through the
 // returned controller. Write paths must not be used on the result.
+
 func (ctrl *DefaultController) WithStores(store *dal.Store, readStore *readstore.Store) *DefaultController {
 	clone := *ctrl
 	clone.store = store
@@ -331,6 +332,8 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 		profile:       profile,
 		pebbleReader:  handle,
 		indexRegistry: query.NewPebbleIndexReader(ctrl.attrs.Index, handle),
+		// indexVersionFor deliberately omitted — listEntities binds
+		// it to its own iteration snapshot.
 		afterToBytes: func(id uint64) []byte {
 			b := make([]byte, 8)
 			binary.BigEndian.PutUint64(b, id)
@@ -419,6 +422,8 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		profile:       profile,
 		pebbleReader:  handle,
 		indexRegistry: query.NewPebbleIndexReader(ctrl.attrs.Index, handle),
+		// indexVersionFor deliberately omitted — listEntities binds
+		// it to its own iteration snapshot.
 		afterToBytes: func(addr string) []byte {
 			return []byte(addr)
 		},
@@ -811,7 +816,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), profile, handle)
+	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), profile, handle)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
@@ -883,7 +888,8 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 
 	indexReader := query.NewPebbleIndexReader(ctrl.attrs.Index, handleForIndex)
 
-	idx, err := indexes.Find(indexReader, ledgerInfo.GetName(), indexes.MetadataID(req.GetTargetType(), metaKey))
+	indexID := indexes.MetadataID(req.GetTargetType(), metaKey)
+	idx, err := indexes.Find(indexReader, ledgerInfo.GetName(), indexID)
 	if err != nil {
 		return nil, fmt.Errorf("looking up index for inspect: %w", err)
 	}
@@ -894,14 +900,28 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		}}
 	}
 
-	if idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+	// Per-replica readiness: BuildStatus on the FSM Index entry is
+	// informational only since EN-1323; the local replica's
+	// IndexVersionState.CurrentVersion is what decides whether queries
+	// can be served. We take the snapshot FIRST and read the version
+	// state through it so the gate and the subsequent Inspect scan
+	// observe the same point-in-time view — without this the atomic
+	// version switch could promote CurrentVersion between the gate
+	// and the iteration, leaving the scan looking at a keyspace that
+	// has already been GC'd in this snapshot.
+	snap := ctrl.readStore.NewSnapshot()
+	defer func() { _ = snap.Close() }()
+
+	state, _, err := readstore.ReadIndexVersionStateFrom(snap, ledgerInfo.GetName(), indexes.Canonical(indexID))
+	if err != nil {
+		return nil, fmt.Errorf("reading index version state: %w", err)
+	}
+
+	if state.CurrentVersion == 0 {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{
 			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
 		}}
 	}
-
-	snap := ctrl.readStore.NewSnapshot()
-	defer func() { _ = snap.Close() }()
 
 	var cursorBytes []byte
 	if c := req.GetCursor(); c != "" {
@@ -927,6 +947,7 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		LedgerName:  ledgerInfo.GetName(),
 		Namespace:   namespace,
 		MetadataKey: metaKey,
+		Version:     state.CurrentVersion,
 		Mode:        mode,
 		PageSize:    req.GetPageSize(),
 		CursorBytes: cursorBytes,
@@ -1059,7 +1080,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		snap, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerInfo.GetName(), nil, nil,
-		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), nil, handle,
+		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), nil, handle,
 	)
 	if err != nil {
 		_ = handle.Close()

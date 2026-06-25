@@ -2525,15 +2525,29 @@ func (*IndexID_Metadata) isIndexID_Kind() {}
 //
 // Entries live in the SubAttrIndex attribute zone, not in LedgerInfo.
 type Index struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            *IndexID               `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	BuildStatus   IndexBuildStatus       `protobuf:"varint,2,opt,name=build_status,json=buildStatus,proto3,enum=common.IndexBuildStatus" json:"build_status,omitempty"`
-	CreatedAt     *Timestamp             `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	LastBuiltAt   *Timestamp             `protobuf:"bytes,4,opt,name=last_built_at,json=lastBuiltAt,proto3" json:"last_built_at,omitempty"`
-	LastError     string                 `protobuf:"bytes,5,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
-	Ledger        string                 `protobuf:"bytes,6,opt,name=ledger,proto3" json:"ledger,omitempty"` // empty for bucket-scoped indexes
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    *IndexID               `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Informational: tracks whether the FSM has triggered a rebuild
+	// (e.g. CreateIndex or SetMetadataFieldType). NOT consulted by the
+	// query path — see forward_encoding_version below.
+	BuildStatus IndexBuildStatus `protobuf:"varint,2,opt,name=build_status,json=buildStatus,proto3,enum=common.IndexBuildStatus" json:"build_status,omitempty"`
+	CreatedAt   *Timestamp       `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	LastBuiltAt *Timestamp       `protobuf:"bytes,4,opt,name=last_built_at,json=lastBuiltAt,proto3" json:"last_built_at,omitempty"`
+	LastError   string           `protobuf:"bytes,5,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	Ledger      string           `protobuf:"bytes,6,opt,name=ledger,proto3" json:"ledger,omitempty"` // empty for bucket-scoped indexes
+	// Cluster-wide forward-encoding version. Bumped at every event that
+	// requires the indexer to rewrite its forward index (CreateIndex,
+	// SetMetadataFieldType). The per-replica local view of this value
+	// lives in `readstore.IndexVersionState.CurrentVersion` (internal)
+	// and is exposed on the wire as `IndexEntry.current_version` on
+	// `GetIndexStatusResponse`. Queries read from the replica's local
+	// current_version, not from this cluster-wide field. Synchronization
+	// is client-driven via min_log_sequence on the read API — but note
+	// that min_log_sequence pins log application on this replica, NOT
+	// local rewrite completion; see api-comparison.md for the contract.
+	ForwardEncodingVersion uint32 `protobuf:"varint,7,opt,name=forward_encoding_version,json=forwardEncodingVersion,proto3" json:"forward_encoding_version,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *Index) Reset() {
@@ -2606,6 +2620,13 @@ func (x *Index) GetLedger() string {
 		return x.Ledger
 	}
 	return ""
+}
+
+func (x *Index) GetForwardEncodingVersion() uint32 {
+	if x != nil {
+		return x.ForwardEncodingVersion
+	}
+	return 0
 }
 
 type Idempotency struct {
@@ -10552,7 +10573,7 @@ const file_common_proto_rawDesc = "" +
 	"logBuiltin\x12F\n" +
 	"\x0faccount_builtin\x18\x03 \x01(\x0e2\x1b.common.AccountBuiltinIndexH\x00R\x0eaccountBuiltin\x125\n" +
 	"\bmetadata\x18\x04 \x01(\v2\x17.common.MetadataIndexIDH\x00R\bmetadataB\x06\n" +
-	"\x04kind\"\x85\x02\n" +
+	"\x04kind\"\xbf\x02\n" +
 	"\x05Index\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\x12;\n" +
 	"\fbuild_status\x18\x02 \x01(\x0e2\x18.common.IndexBuildStatusR\vbuildStatus\x120\n" +
@@ -10561,7 +10582,8 @@ const file_common_proto_rawDesc = "" +
 	"\rlast_built_at\x18\x04 \x01(\v2\x11.common.TimestampR\vlastBuiltAt\x12\x1d\n" +
 	"\n" +
 	"last_error\x18\x05 \x01(\tR\tlastError\x12\x16\n" +
-	"\x06ledger\x18\x06 \x01(\tR\x06ledger\"\x1f\n" +
+	"\x06ledger\x18\x06 \x01(\tR\x06ledger\x128\n" +
+	"\x18forward_encoding_version\x18\a \x01(\rR\x16forwardEncodingVersion\"\x1f\n" +
 	"\vIdempotency\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"=\n" +
 	"\x10IdempotencyEntry\x12\x12\n" +

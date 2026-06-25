@@ -244,11 +244,25 @@ message IndexID {
 // Entries live in the SubAttrIndex attribute zone, not in LedgerInfo.
 message Index {
   IndexID id = 1;
+  // Informational: tracks whether the FSM has triggered a rebuild
+  // (e.g. CreateIndex or SetMetadataFieldType). NOT consulted by the
+  // query path — see forward_encoding_version below.
   IndexBuildStatus build_status = 2;
   Timestamp created_at = 3;
   Timestamp last_built_at = 4;
   string last_error = 5;
   string ledger = 6;  // empty for bucket-scoped indexes
+  // Cluster-wide forward-encoding version. Bumped at every event that
+  // requires the indexer to rewrite its forward index (CreateIndex,
+  // SetMetadataFieldType). The per-replica local view of this value
+  // lives in `readstore.IndexVersionState.CurrentVersion` (internal)
+  // and is exposed on the wire as `IndexEntry.current_version` on
+  // `GetIndexStatusResponse`. Queries read from the replica's local
+  // current_version, not from this cluster-wide field. Synchronization
+  // is client-driven via min_log_sequence on the read API — but note
+  // that min_log_sequence pins log application on this replica, NOT
+  // local rewrite completion; see api-comparison.md for the contract.
+  uint32 forward_encoding_version = 7;
 }
 
 // ============================================================================

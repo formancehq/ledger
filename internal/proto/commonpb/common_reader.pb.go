@@ -1898,6 +1898,7 @@ type IndexReader interface {
 	GetLastBuiltAt() TimestampReader
 	GetLastError() string
 	GetLedger() string
+	GetForwardEncodingVersion() uint32
 	Mutate() *Index
 }
 
@@ -1937,6 +1938,10 @@ func (r *indexReadonly) GetLastError() string {
 
 func (r *indexReadonly) GetLedger() string {
 	return r.v.GetLedger()
+}
+
+func (r *indexReadonly) GetForwardEncodingVersion() uint32 {
+	return r.v.GetForwardEncodingVersion()
 }
 
 func (r *indexReadonly) Mutate() *Index {

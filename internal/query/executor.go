@@ -112,7 +112,16 @@ func Execute(
 	kb := dal.NewKeyBuilder()
 
 	indexRegistry := NewPebbleIndexReader(indexAttr, handle)
-	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, profile, handle)
+
+	// Resolve the per-replica version through THE SAME snapshot used
+	// for iteration. Reading the version from the live DB while the
+	// scan uses indexSnap would let a concurrent atomic version switch
+	// (rewrite commit) return v_new from the resolver while the
+	// snapshot still holds an incomplete v_new keyspace — silent
+	// partial results.
+	indexVersionFor := readstore.SnapshotVersionResolver(indexSnap, ledgerInfo.GetName())
+
+	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle)
 	if compileErr != nil {
 		return nil, domain.WrapCompileError(compileErr)
 	}

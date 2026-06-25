@@ -8,6 +8,15 @@ import (
 
 // ledgerScopedPrefixes lists all readstore key prefixes that contain
 // ledger-scoped data (keyed by [prefix...][ledgerName padded 64B]...).
+//
+// Every entry MUST be wiped by DeleteLedgerIndexes — missing one leaks
+// rows past a ledger drop, and a same-name recreate then resurrects
+// stale state under the new ledger. The per-replica IndexVersionState
+// is the load-bearing example: a `CurrentVersion=2` row outliving the
+// ledger that wrote it would make a freshly recreated index's queries
+// scan an empty v=2 keyspace instead of returning ErrIndexBuilding,
+// and `purgeOrphanVersions` at boot would GC v=1 (and others) against
+// a config that no longer exists.
 var ledgerScopedPrefixes = [][]byte{
 	{PrefixMetadataIndex},
 	{PrefixEntityExists},
@@ -21,6 +30,7 @@ var ledgerScopedPrefixes = [][]byte{
 	{PrefixLedgerLogDate},
 	{PrefixTransactionInsertedAt},
 	{PrefixInternal, SubInternalBackfill},
+	{PrefixInternal, SubInternalIndexVersion},
 }
 
 // DeleteLedgerIndexes removes all read index data for the given ledger.

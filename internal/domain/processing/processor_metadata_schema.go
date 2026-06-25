@@ -59,13 +59,15 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 
 	s.PutLedger(ledgerName, info)
 
-	// If an index covers this field, flip it back to BUILDING: the existing
-	// forward entries were encoded under the previous declared_type and must
-	// be rewritten under the new one. The Index entry lives in the
-	// bucket-scoped registry (not in LedgerInfo), so the rewrite goes through
-	// the IndexWriter API and we Put the mutated copy back to avoid mutating
-	// the cached value in place — the Get returns the same pointer the cache
-	// holds.
+	// If an index covers this field, flip it back to BUILDING (informational
+	// since EN-1323) and bump its forward_encoding_version. The version bump
+	// is what triggers each replica to rewrite locally into the new versioned
+	// keyspace; BuildStatus = BUILDING is kept for the API surface but no
+	// longer gates queries.
+	//
+	// The Index entry lives in the bucket-scoped registry (not in
+	// LedgerInfo), so we Mutate() a copy and Put it back rather than mutating
+	// the cached pointer in place — the Find returns the cache's pointer.
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
 	existing, findErr := indexes.Find(s, info.GetName(), id)
 	if findErr != nil {
@@ -75,6 +77,7 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 	if existing != nil {
 		updated := existing.Mutate()
 		updated.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
+		updated.ForwardEncodingVersion++
 		indexes.Put(s, info.GetName(), updated)
 	}
 

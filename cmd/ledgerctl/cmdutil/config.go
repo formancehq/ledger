@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/spf13/cobra"
 )
 
 // Profile holds connection settings for a named server environment.
@@ -146,6 +148,29 @@ func ProfileFlagValue(p *Profile, flagName string) string {
 	default:
 		return ""
 	}
+}
+
+// CompleteProfileNames is a cobra shell-completion function that suggests the
+// connection profiles declared in the local config file. It is wired to the
+// persistent --profile flag so pressing TAB lists the configured profile names.
+//
+// Completion runs in the user's interactive shell, so any failure (missing or
+// malformed config) returns no suggestions rather than surfacing an error: a
+// broken config must never disrupt tab completion.
+func CompleteProfileNames(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	names := make([]string, 0, len(cfg.Profiles))
+	for name := range cfg.Profiles {
+		names = append(names, name)
+	}
+
+	sortStrings(names)
+
+	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
 // HasStoredToken checks whether the OS keychain contains a token for the given server address.

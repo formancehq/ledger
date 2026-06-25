@@ -1025,10 +1025,23 @@ message GetIndexStatusResponse {
 
 // IndexEntry joins a ledger's index definition (status + audit metadata) with
 // its backfill cursor position. Replaces the former IndexBackfillProgress.
+//
+// current_version + pending_version surface the per-replica forward-
+// encoding version state (EN-1323). current_version == 0 means the
+// local replica has never finished building this index; > 0 means the
+// last completed backfill / rewrite atomic-switched into this version
+// and queries served from this replica are reading it. pending_version
+// is the in-flight rewrite target on this replica (0 when no rewrite
+// is running). Clients that need to wait for the local replica to
+// finish building an index poll current_version > 0 — the
+// cluster-wide IndexReady BuildStatus flip is gone, BuildStatus is
+// kept on the Index message only as informational.
 message IndexEntry {
   string ledger = 1;
   common.Index index = 2;     // status + created_at + last_built_at + last_error
   fixed64 cursor = 3;         // backfill cursor (0 when not in backfill or done)
+  uint32 current_version = 4; // per-replica live keyspace; 0 until first switch
+  uint32 pending_version = 5; // per-replica in-flight rewrite target; 0 when idle
 }
 
 // ListIndexesRequest streams the bucket-scoped index registry.

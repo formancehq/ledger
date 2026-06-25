@@ -1,6 +1,7 @@
 package readstore
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -335,6 +336,193 @@ func (s *Store) DeleteBackfillProgress(key []byte) error {
 	return s.db.Delete(fullKey, pebble.NoSync)
 }
 
+// IndexVersionState is the per-replica forward-encoding state for a
+// single metadata index. Persisted under SubInternalIndexVersion.
+type IndexVersionState struct {
+	// CurrentVersion is the forward-encoding version actually served
+	// by queries on this replica. Zero means the index has never been
+	// built locally (no v_n keyspace populated yet).
+	CurrentVersion uint32
+	// PendingVersion is the target version of an in-flight local
+	// rewrite. Zero when no rewrite is running.
+	PendingVersion uint32
+	// RewriteProgress is the cursor of the in-flight rewrite (e.g. the
+	// last reverse-map key processed). Empty when no rewrite is
+	// running. Variable-length, opaque to the readstore.
+	RewriteProgress []byte
+}
+
+// IndexVersionStateEntry is the decoded form returned by
+// ReadAllIndexVersionStates. CanonicalKey is the [ledger||canonicalID]
+// suffix that uniquely identifies the index.
+type IndexVersionStateEntry struct {
+	LedgerName  string
+	CanonicalID string
+	State       IndexVersionState
+}
+
+// encodeIndexVersionState packs the state to a single byte slice.
+// Layout: [current(4B BE)][pending(4B BE)][rewrite_progress…].
+func encodeIndexVersionState(s IndexVersionState) []byte {
+	out := make([]byte, 8+len(s.RewriteProgress))
+	binary.BigEndian.PutUint32(out[0:4], s.CurrentVersion)
+	binary.BigEndian.PutUint32(out[4:8], s.PendingVersion)
+	copy(out[8:], s.RewriteProgress)
+
+	return out
+}
+
+// decodeIndexVersionState parses a stored value back to IndexVersionState.
+// Returns (zero, false) on any malformed input — caller treats it as
+// "absent" and re-initializes.
+func decodeIndexVersionState(v []byte) (IndexVersionState, bool) {
+	if len(v) < 8 {
+		return IndexVersionState{}, false
+	}
+
+	progress := make([]byte, len(v)-8)
+	copy(progress, v[8:])
+
+	return IndexVersionState{
+		CurrentVersion:  binary.BigEndian.Uint32(v[0:4]),
+		PendingVersion:  binary.BigEndian.Uint32(v[4:8]),
+		RewriteProgress: progress,
+	}, true
+}
+
+// WriteIndexVersionState persists the per-replica version state for an
+// index. canonicalID must be indexes.Canonical(id) bytes.
+func (s *Store) WriteIndexVersionState(batch *dal.WriteSession, ledgerName string, canonicalID string, state IndexVersionState) error {
+	key := IndexVersionStateKey(dal.NewKeyBuilder(), ledgerName, canonicalID)
+
+	return batch.SetBytes(key, encodeIndexVersionState(state))
+}
+
+// ReadIndexVersionStateFrom reads the per-replica version state for an
+// index through the given reader (a snapshot, ReadHandle, or the live
+// DB). Returns:
+//   - (state, true, nil) when the key exists.
+//   - (zero, false, nil) when the key does not exist — equivalent to
+//     CurrentVersion=0 with no pending rewrite (i.e. "not yet primed").
+//   - (zero, false, err) on a real Pebble I/O failure.
+//
+// Per CLAUDE.md invariant #7, callers MUST NOT collapse a non-nil err
+// into "absent" — a transient I/O error masquerading as `index still
+// building` would lie to the client indefinitely.
+func ReadIndexVersionStateFrom(reader dal.PebbleGetter, ledgerName, canonicalID string) (IndexVersionState, bool, error) {
+	key := IndexVersionStateKey(dal.NewKeyBuilder(), ledgerName, canonicalID)
+
+	v, closer, err := reader.Get(key)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return IndexVersionState{}, false, nil
+		}
+
+		return IndexVersionState{}, false, fmt.Errorf("reading index version state for %q/%s: %w", ledgerName, canonicalID, err)
+	}
+
+	defer func() { _ = closer.Close() }()
+
+	state, ok := decodeIndexVersionState(v)
+
+	return state, ok, nil
+}
+
+// ReadIndexVersionState is a convenience wrapper that reads from the
+// live DB. Query-path callers should prefer ReadIndexVersionStateFrom
+// against the same snapshot/reader they iterate, so the resolved version
+// matches the keyspace contents the query will scan (see the "torn read"
+// hazard around atomic version switches).
+func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVersionState, bool, error) {
+	return ReadIndexVersionStateFrom(s.db, ledgerName, canonicalID)
+}
+
+// SnapshotVersionResolver returns a closure that resolves per-replica
+// index versions via the given reader. The intended call site is right
+// after a NewSnapshot() (or ReadHandle creation) so the resolver and
+// the iteration share a single point-in-time view — the resolver MUST
+// NOT close over the live `*Store` while the caller iterates a
+// snapshot, or a concurrent atomic version switch will hand the
+// caller a version that does not match the snapshot's keyspace.
+//
+// Returns (0, error) on a real Pebble I/O failure; (0, nil) when no
+// version state has been written yet (caller should translate to
+// ErrIndexBuilding at query boundaries).
+func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(canonical string) (uint32, error) {
+	return func(canonical string) (uint32, error) {
+		state, _, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
+		if err != nil {
+			return 0, err
+		}
+
+		return state.CurrentVersion, nil
+	}
+}
+
+// DeleteIndexVersionState removes the per-replica version state for an
+// index (e.g. when the index is dropped from the ledger).
+func (s *Store) DeleteIndexVersionState(ledgerName string, canonicalID string) error {
+	key := IndexVersionStateKey(dal.NewKeyBuilder(), ledgerName, canonicalID)
+
+	return s.db.Delete(key, pebble.NoSync)
+}
+
+// ReadAllIndexVersionStates returns every persisted per-index version
+// state. Used at boot to rebuild the in-memory map of versions and to
+// detect orphan keyspaces for GC.
+func (s *Store) ReadAllIndexVersionStates() ([]IndexVersionStateEntry, error) {
+	prefix := IndexVersionStatePrefix()
+	upper := IncrementBytes(prefix)
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating index version state iterator: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	var out []IndexVersionStateEntry
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		k := iter.Key()
+		// Strip the 2-byte prefix [PrefixInternal][SubInternalIndexVersion].
+		suffix := k[len(prefix):]
+		if len(suffix) < dal.LedgerNameFixedSize+1 {
+			continue
+		}
+
+		rawName := suffix[:dal.LedgerNameFixedSize]
+		end := bytes.IndexByte(rawName, 0)
+		if end < 0 {
+			end = dal.LedgerNameFixedSize
+		}
+
+		ledgerName := string(rawName[:end])
+		canonical := string(suffix[dal.LedgerNameFixedSize:])
+
+		v, verr := iter.ValueAndErr()
+		if verr != nil {
+			return nil, verr
+		}
+
+		state, ok := decodeIndexVersionState(v)
+		if !ok {
+			continue
+		}
+
+		out = append(out, IndexVersionStateEntry{
+			LedgerName:  ledgerName,
+			CanonicalID: canonical,
+			State:       state,
+		})
+	}
+
+	return out, nil
+}
+
 // ReadAllBackfillProgress returns all backfill cursors for startup recovery.
 func (s *Store) ReadAllBackfillProgress() (map[string]uint64, error) {
 	prefix := BackfillKeyPrefix()
@@ -370,86 +558,6 @@ func (s *Store) ReadAllBackfillProgress() (map[string]uint64, error) {
 	}
 
 	return result, nil
-}
-
-// SchemaRewriteEntry is a decoded schema rewrite progress entry.
-type SchemaRewriteEntry struct {
-	LedgerName string
-	TargetType byte   // from key: [ledgerName padded 64B]S[targetType_byte][key]
-	Key        string // metadata field name
-	BBKey      []byte // key without the prefix byte (for backfill operations)
-	ToType     byte   // first byte of value
-	Cursor     []byte // remaining bytes of value (reverse map cursor)
-}
-
-// ReadAllSchemaRewriteProgress reads all schema rewrite entries from the backfill prefix.
-func (s *Store) ReadAllSchemaRewriteProgress() ([]SchemaRewriteEntry, error) {
-	prefix := BackfillKeyPrefix()
-	upper := IncrementBytes(prefix)
-
-	iter, err := s.db.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating schema rewrite iterator: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	var entries []SchemaRewriteEntry
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		k := iter.Key()
-		if len(k) < len(prefix)+1 {
-			continue
-		}
-
-		// Strip prefix bytes.
-		innerKey := k[len(prefix):]
-		ledgerName, kind, details, ok := ParseBackfillKey(innerKey)
-
-		if !ok || kind != BackfillKindSchemaRewrite {
-			continue
-		}
-
-		if len(details) < 1 {
-			continue
-		}
-
-		v, verr := iter.ValueAndErr()
-		if verr != nil {
-			return nil, verr
-		}
-
-		targetType := details[0]
-		metaKey := string(details[1:])
-
-		var toType byte
-		var cursor []byte
-
-		if len(v) >= 1 {
-			toType = v[0]
-			if len(v) > 1 {
-				cursor = make([]byte, len(v)-1)
-				copy(cursor, v[1:])
-			}
-		}
-
-		bbKey := make([]byte, len(innerKey))
-		copy(bbKey, innerKey)
-
-		entries = append(entries, SchemaRewriteEntry{
-			LedgerName: ledgerName,
-			TargetType: targetType,
-			Key:        metaKey,
-			BBKey:      bbKey,
-			ToType:     toType,
-			Cursor:     cursor,
-		})
-	}
-
-	return entries, nil
 }
 
 // BackfillEntry is a decoded backfill progress entry returned by ListBackfillProgress.

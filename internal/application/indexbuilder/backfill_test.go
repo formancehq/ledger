@@ -1,7 +1,6 @@
 package indexbuilder
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -9,7 +8,6 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -584,6 +582,176 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 	assertReadStoreMissing(t, b, rawForwardKey)
 }
 
+// TestIndexSavedMetadata_DualWritesDuringRewrite pins the EN-1323 step 4b
+// contract: while a rewrite is in flight (pending_version != current),
+// every live SavedMetadata is mirrored into BOTH the current and the
+// pending forward/rmap keyspaces. The dual-write keeps v_current serving
+// queries (entities that received updates after the retype stay
+// reachable) and pre-populates v_pending so the rewrite's atomic switch
+// promotes a fully-consistent view.
+func TestIndexSavedMetadata_DualWritesDuringRewrite(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.seedBatchSchema(t)
+
+	const (
+		ledger  = "test"
+		account = "acct-101"
+		key     = "score"
+	)
+	entityID := []byte(account)
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+
+	// IndexVersionState: rewrite v=1 → v=2 in flight.
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
+		CurrentVersion: 1,
+		PendingVersion: 2,
+	})
+
+	cfg := newLedgerIndexConfig()
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	sm := &commonpb.SavedMetadata{
+		Target: &commonpb.Target{
+			Target: &commonpb.Target_Account{
+				Account: &commonpb.TargetAccount{Addr: account},
+			},
+		},
+		Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(42)},
+	}
+
+	batch := b.readStore.NewBatch()
+	b.wb.Init(batch)
+	require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, sm))
+	require.NoError(t, b.wb.Flush())
+
+	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
+
+	// Both versions must hold the entry.
+	v1Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID))
+	v2Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID))
+	v1Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 1))
+	v2Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 2))
+
+	assertReadStoreValue(t, b, v1Forward, nil)
+	assertReadStoreValue(t, b, v2Forward, nil)
+	assertReadStoreValue(t, b, v1Rmap, encoded)
+	assertReadStoreValue(t, b, v2Rmap, encoded)
+}
+
+// TestIndexDeletedMetadata_DualDeleteDuringRewrite mirrors the dual-write
+// invariant for the delete path: a DeletedMetadata log while a rewrite is
+// in flight must purge the entry from BOTH v_current and v_pending so the
+// atomic switch doesn't promote a tombstoned entity back into existence.
+func TestIndexDeletedMetadata_DualDeleteDuringRewrite(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.seedBatchSchema(t)
+
+	const (
+		ledger  = "test"
+		account = "acct-202"
+		key     = "score"
+	)
+	entityID := []byte(account)
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
+		CurrentVersion: 1,
+		PendingVersion: 2,
+	})
+
+	cfg := newLedgerIndexConfig()
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
+
+	// Pre-seed both versions to mimic post-dual-write state.
+	v1Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 1))
+	v2Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 2))
+	v1Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID))
+	v2Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID))
+
+	seed := b.readStore.NewBatch()
+	require.NoError(t, seed.SetBytes(v1Rmap, encoded))
+	require.NoError(t, seed.SetBytes(v2Rmap, encoded))
+	require.NoError(t, seed.SetBytes(v1Forward, nil))
+	require.NoError(t, seed.SetBytes(v2Forward, nil))
+	require.NoError(t, seed.Commit())
+
+	dm := &commonpb.DeletedMetadata{
+		Target: &commonpb.Target{
+			Target: &commonpb.Target_Account{
+				Account: &commonpb.TargetAccount{Addr: account},
+			},
+		},
+		Key: key,
+	}
+
+	batch := b.readStore.NewBatch()
+	b.wb.Init(batch)
+	require.NoError(t, b.indexDeletedMetadata(b.kb, cfg, ledger, dm))
+	require.NoError(t, b.wb.Flush())
+
+	assertReadStoreMissing(t, b, v1Forward)
+	assertReadStoreMissing(t, b, v2Forward)
+	assertReadStoreMissing(t, b, v1Rmap)
+	assertReadStoreMissing(t, b, v2Rmap)
+}
+
+// TestIndexSavedMetadata_SingleWriteWhenNoRewrite confirms that the live
+// path writes only to v_current when no rewrite is in flight — no wasted
+// duplicate write at a pending version that doesn't exist.
+func TestIndexSavedMetadata_SingleWriteWhenNoRewrite(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.seedBatchSchema(t)
+
+	const (
+		ledger  = "test"
+		account = "acct-303"
+		key     = "score"
+	)
+	entityID := []byte(account)
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+
+	// Steady state: current=1, no pending rewrite.
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
+		CurrentVersion: 1,
+		PendingVersion: 0,
+	})
+
+	cfg := newLedgerIndexConfig()
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	sm := &commonpb.SavedMetadata{
+		Target: &commonpb.Target{
+			Target: &commonpb.Target_Account{
+				Account: &commonpb.TargetAccount{Addr: account},
+			},
+		},
+		Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(7)},
+	}
+
+	batch := b.readStore.NewBatch()
+	b.wb.Init(batch)
+	require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, sm))
+	require.NoError(t, b.wb.Flush())
+
+	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
+	v1Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID))
+	v2Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID))
+
+	assertReadStoreValue(t, b, v1Forward, nil)
+	assertReadStoreMissing(t, b, v2Forward)
+}
+
 // TestIndexCreatedThenOverwrittenTxMetadataSameBatch guards the overlay against
 // the create-then-overwrite-in-one-batch interleaving: a transaction sets indexed
 // metadata at creation (first write, no previous value), and a later SaveMetadata
@@ -731,6 +899,14 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	stop := make(chan struct{})
 	ledgerName := "test"
 
+	// Per-replica IndexVersionState as set by addSchemaRewriteTask: this
+	// rewrite migrates v=1 → v=2 for (account, "status").
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
+	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
+		CurrentVersion: 1,
+		PendingVersion: 2,
+	})
+
 	firstSkippedKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-001", "other")
 	secondSkippedKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-002", "other")
 	matchingKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-003", "status")
@@ -739,14 +915,20 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	oldEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("42"))
 	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
 	entityID := []byte("acct-003")
-	oldForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, "status", oldEncoded, entityID))
-	newForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, "status", newEncoded, entityID))
+
+	// v=1 forward entry (the pre-retype state). The rewrite no longer
+	// touches v=1 (in-place mutation is gone); v=1 stays until GC.
+	oldForwardKeyV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, entityID))
+	// v=2 forward entry (target of the rewrite).
+	newForwardKeyV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, "status", 2, newEncoded, entityID))
+	// v=2 rmap entry (target of the rewrite).
+	newRmapKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, "acct-003", "status", 2))
 
 	batch := b.readStore.NewBatch()
 	require.NoError(t, batch.SetBytes(firstSkippedKey, skippedEncoded))
 	require.NoError(t, batch.SetBytes(secondSkippedKey, skippedEncoded))
 	require.NoError(t, batch.SetBytes(matchingKey, oldEncoded))
-	require.NoError(t, batch.SetBytes(oldForwardKey, nil))
+	require.NoError(t, batch.SetBytes(oldForwardKeyV1, nil))
 	require.NoError(t, batch.Commit())
 
 	// Seed the FSM-side canonical stored value for acct-003.status. The schema
@@ -778,7 +960,7 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	cursor, ok := b.readStore.ReadBackfillCursor(task.bbKey)
 	require.True(t, ok)
 	assert.Equal(t, append([]byte{byte(task.toType)}, secondSkippedKey...), cursor)
-	assertReadStoreValue(t, b, oldForwardKey, nil)
+	assertReadStoreValue(t, b, oldForwardKeyV1, nil)
 	assertReadStoreValue(t, b, matchingKey, oldEncoded)
 
 	done, err = b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
@@ -787,9 +969,18 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	assert.Equal(t, uint64(1), task.processedCount)
 	assert.Equal(t, matchingKey, task.rmapCursor)
 
-	assertReadStoreMissing(t, b, oldForwardKey)
-	assertReadStoreValue(t, b, newForwardKey, nil)
-	assertReadStoreValue(t, b, matchingKey, newEncoded)
+	// Atomic switch GCs v_old in the same batch: the v=1 forward
+	// entry and the v=1 rmap row are gone; v=2 forward and rmap are
+	// populated by the rewrite.
+	assertReadStoreMissing(t, b, oldForwardKeyV1)
+	assertReadStoreValue(t, b, newForwardKeyV2, nil)
+	assertReadStoreMissing(t, b, matchingKey)
+	assertReadStoreValue(t, b, newRmapKeyV2, newEncoded)
+
+	// Atomic switch promoted current ← pending; queries now read v=2.
+	current, pending := b.versionFor(ledgerName, canonical)
+	assert.Equal(t, uint32(2), current)
+	assert.Equal(t, uint32(0), pending)
 }
 
 func TestProcessSchemaRewriteStopsBeforeScanningWhenStopClosed(t *testing.T) {
@@ -801,6 +992,17 @@ func TestProcessSchemaRewriteStopsBeforeScanningWhenStopClosed(t *testing.T) {
 	close(stop)
 
 	ledgerName := "test"
+
+	// Seed the per-replica version state so processSchemaRewrite has a
+	// well-formed (current, pending) pair to consult. The stop signal
+	// fires before any rewrite work happens so this state will be
+	// unchanged after the call.
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
+	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
+		CurrentVersion: 1,
+		PendingVersion: 2,
+	})
+
 	reverseKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-001", "status")
 	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("42"))
 
@@ -825,6 +1027,11 @@ func TestProcessSchemaRewriteStopsBeforeScanningWhenStopClosed(t *testing.T) {
 	_, ok := b.readStore.ReadBackfillCursor(task.bbKey)
 	assert.False(t, ok)
 	assertReadStoreValue(t, b, reverseKey, encoded)
+
+	// Atomic switch did NOT fire — task was stopped before any work.
+	current, pending := b.versionFor(ledgerName, canonical)
+	assert.Equal(t, uint32(1), current)
+	assert.Equal(t, uint32(2), pending)
 }
 
 func assertReadStoreValue(t *testing.T, b *Builder, key, expected []byte) {
@@ -1066,6 +1273,12 @@ func TestIsPostingIndex(t *testing.T) {
 // type that loses information (STRING "030" → UINT64 30), running the
 // rewrite a second time targeting STRING returns to the original "030"
 // because the canonical stored value in the FSM was never mutated.
+//
+// Versioned form: each rewrite writes into a fresh v_pending keyspace.
+// The first rewrite migrates v=1 → v=2 (STRING → UINT64). The second
+// then migrates v=2 → v=3 (UINT64 → STRING). The FSM raw value
+// ("030") drives both re-encodings, so the leading zero survives the
+// round trip.
 func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -1078,6 +1291,7 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 		account    = "users:001"
 		key        = "score"
 	)
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 
 	// Seed FSM canonical stored value: STRING "030" (immutable through the
 	// whole test — only the indexer's encoding view changes).
@@ -1095,15 +1309,20 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	// was STRING-typed.
 	stringEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("030"))
 	entityID := []byte(account)
-	reverseKey := cloneBytes(readstore.AccountReverseMapKey(kb, ledgerName, account, key))
-	stringForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, stringEncoded, entityID))
+	reverseKeyV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 1))
+	stringForwardKeyV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID))
 
 	seed := b.readStore.NewBatch()
-	require.NoError(t, seed.SetBytes(reverseKey, stringEncoded))
-	require.NoError(t, seed.SetBytes(stringForwardKey, nil))
+	require.NoError(t, seed.SetBytes(reverseKeyV1, stringEncoded))
+	require.NoError(t, seed.SetBytes(stringForwardKeyV1, nil))
 	require.NoError(t, seed.Commit())
 
-	// First rewrite: STRING → UINT64. Forward index now holds uint64(30).
+	// First rewrite: STRING (v=1) → UINT64 (v=2).
+	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
+		CurrentVersion: 1,
+		PendingVersion: 2,
+	})
+
 	task := &schemaRewriteTask{
 		ledger:     ledgerName,
 		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -1116,14 +1335,27 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	require.True(t, done)
 
 	uint64Encoded := readstore.EncodeMetadataValue(nil, commonpb.NewUintValue(30))
-	uint64ForwardKey := readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, uint64Encoded, entityID)
-	assertReadStoreMissing(t, b, stringForwardKey)
-	assertReadStoreValue(t, b, uint64ForwardKey, nil)
-	assertReadStoreValue(t, b, reverseKey, uint64Encoded)
+	uint64ForwardKeyV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 2, uint64Encoded, entityID))
+	reverseKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 2))
 
-	// Second rewrite: UINT64 → STRING. The new encoding sources from the
-	// raw stored STRING "030", NOT from the uint64(30) currently in the
-	// rmap — so the leading zero is preserved.
+	assertReadStoreValue(t, b, uint64ForwardKeyV2, nil)
+	assertReadStoreValue(t, b, reverseKeyV2, uint64Encoded)
+	// Atomic switch GC purges v=1 in the same batch as the version
+	// promotion — the pre-retype forward entry is gone.
+	assertReadStoreMissing(t, b, stringForwardKeyV1)
+
+	current, pending := b.versionFor(ledgerName, canonical)
+	require.Equal(t, uint32(2), current)
+	require.Equal(t, uint32(0), pending)
+
+	// Second rewrite: UINT64 (v=2) → STRING (v=3). The new encoding
+	// sources from the raw stored STRING "030", NOT from the uint64(30)
+	// currently in the v=2 rmap — so the leading zero is preserved.
+	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
+		CurrentVersion: 2,
+		PendingVersion: 3,
+	})
+
 	task2 := &schemaRewriteTask{
 		ledger:     ledgerName,
 		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -1135,10 +1367,19 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, done)
 
-	roundTripForwardKey := readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, stringEncoded, entityID)
-	assertReadStoreMissing(t, b, uint64ForwardKey)
-	assertReadStoreValue(t, b, roundTripForwardKey, nil)
-	assertReadStoreValue(t, b, reverseKey, stringEncoded)
+	roundTripForwardKeyV3 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 3, stringEncoded, entityID))
+	reverseKeyV3 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 3))
+
+	assertReadStoreValue(t, b, roundTripForwardKeyV3, nil)
+	assertReadStoreValue(t, b, reverseKeyV3, stringEncoded)
+	// v=2 forward + rmap (the previous "current") are GC'd by the
+	// second switch.
+	assertReadStoreMissing(t, b, uint64ForwardKeyV2)
+	assertReadStoreMissing(t, b, reverseKeyV2)
+
+	current, pending = b.versionFor(ledgerName, canonical)
+	assert.Equal(t, uint32(3), current)
+	assert.Equal(t, uint32(0), pending)
 }
 
 // TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel pins behavior for
@@ -1171,13 +1412,19 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 
 	stringEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("abc"))
 	entityID := []byte(account)
-	reverseKey := cloneBytes(readstore.AccountReverseMapKey(kb, ledgerName, account, key))
-	stringForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, stringEncoded, entityID))
+	reverseKeyV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 1))
+	stringForwardKeyV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID))
 
 	seed := b.readStore.NewBatch()
-	require.NoError(t, seed.SetBytes(reverseKey, stringEncoded))
-	require.NoError(t, seed.SetBytes(stringForwardKey, nil))
+	require.NoError(t, seed.SetBytes(reverseKeyV1, stringEncoded))
+	require.NoError(t, seed.SetBytes(stringForwardKeyV1, nil))
 	require.NoError(t, seed.Commit())
+
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
+		CurrentVersion: 1,
+		PendingVersion: 2,
+	})
 
 	task := &schemaRewriteTask{
 		ledger:     ledgerName,
@@ -1190,58 +1437,140 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, done)
 
-	// Forward is now keyed by the Null sentinel for "abc"; old STRING
-	// forward entry is gone.
+	// v=2 forward is keyed by the Null sentinel for "abc". Atomic
+	// switch GC purges v=1 in the same batch as the version
+	// promotion, so the pre-retype forward entry is gone.
 	nullEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewNullValue("abc"))
-	nullForwardKey := readstore.MetadataIndexKey(kb, ledgerName, readstore.NamespaceAccount, key, nullEncoded, entityID)
-	assertReadStoreMissing(t, b, stringForwardKey)
-	assertReadStoreValue(t, b, nullForwardKey, nil)
-	assertReadStoreValue(t, b, reverseKey, nullEncoded)
+	nullForwardKeyV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 2, nullEncoded, entityID))
+	reverseKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 2))
+
+	assertReadStoreMissing(t, b, stringForwardKeyV1)
+	assertReadStoreValue(t, b, nullForwardKeyV2, nil)
+	assertReadStoreValue(t, b, reverseKeyV2, nullEncoded)
+
+	current, pending := b.versionFor(ledgerName, canonical)
+	assert.Equal(t, uint32(2), current)
+	assert.Equal(t, uint32(0), pending)
 }
 
-// TestTryProposeSchemaRewriteIndexReady_BlocksUntilIndexerCatchesUp pins the
-// gate that holds IndexReady until the read store's lastIndexedSequence has
-// reached the FSM applied-index sampled during the rewrite. Without it, the
-// forward index could be marked READY while it reflects logs the indexer
-// has not yet ingested — a prefix-invariant violation observable via
-// min_log_sequence queries.
-func TestTryProposeSchemaRewriteIndexReady_BlocksUntilIndexerCatchesUp(t *testing.T) {
+// TestSchemaRewrite_SeqGate_DefersSwitchWhenReadStoreLags pins the F3
+// contract: when the rewrite scan exhausts with a non-zero
+// requiredIndexedSeq watermark that the read-store cursor hasn't
+// reached yet, the atomic switch must be DEFERRED until
+// LastIndexedSequence catches up. Without this gate, the post-switch
+// v_new keyspace would serve rows derived from FSM log seq > cursor,
+// breaking the contiguous-prefix invariant min_log_sequence-gated
+// queries rely on.
+//
+// Setup short-circuits the scan via scanComplete=true so the test
+// exercises only the gate logic; the scan path's sampling of
+// query.ReadLastSequence is covered by the lossless retype round-trip
+// tests (which exhaust the scan and fire the same-batch switch).
+func TestSchemaRewrite_SeqGate_DefersSwitchWhenReadStoreLags(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
-	b.logger = noopLogger{}
+	stop := make(chan struct{})
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	const ledger = "test"
 
-	mockProposer := NewMockProposer(ctrl)
-	b.proposer = mockProposer
-	b.isLeader = func() bool { return true }
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
+		CurrentVersion: 1,
+		PendingVersion: 2,
+	})
 
 	task := &schemaRewriteTask{
-		ledger:             "test-ledger",
+		ledger:             ledger,
 		targetType:         commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-		key:                "score",
-		toType:             commonpb.MetadataType_METADATA_TYPE_UINT64,
-		done:               true,
-		requiredIndexedSeq: 10,
+		key:                "status",
+		toType:             commonpb.MetadataType_METADATA_TYPE_INT64,
+		bbKey:              schemaRewriteBBKey(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+		scanComplete:       true,
+		requiredIndexedSeq: 100, // rewrite observed FSM at log seq 100
 	}
 
-	// Indexer at seq 5: gate must hold, no proposal sent (mock has no EXPECT).
-	progress := b.readStore.NewBatch()
-	require.NoError(t, b.readStore.WriteProgress(progress, 5))
-	require.NoError(t, progress.Commit())
+	// Read store cursor is behind the FSM watermark.
+	progressBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteProgress(progressBatch, 50))
+	require.NoError(t, progressBatch.Commit())
 
-	b.tryProposeSchemaRewriteIndexReady(context.Background(), task)
-	assert.False(t, task.proposed, "gate must hold while lastIndexedSequence < requiredIndexedSeq")
+	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.False(t, done,
+		"switch must be deferred when LastIndexedSequence (50) < requiredIndexedSeq (100) — otherwise the v_new keyspace would serve rows ahead of the read-store cursor")
 
-	// Indexer catches up to seq 10: proposal fires exactly once.
-	mockProposer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	current, pending := b.versionFor(ledger, canonical)
+	assert.Equal(t, uint32(1), current,
+		"current_version must NOT advance while the seq gate is closed (got %d, want 1)", current)
+	assert.Equal(t, uint32(2), pending,
+		"pending_version must stay set so the task survives to the next tick (got %d, want 2)", pending)
+	assert.True(t, task.scanComplete,
+		"scanComplete must remain true so the next tick routes through tryCommitScanCompleteSwitch")
 
-	progress = b.readStore.NewBatch()
-	require.NoError(t, b.readStore.WriteProgress(progress, 10))
-	require.NoError(t, progress.Commit())
+	// Read-store cursor catches up to (past) the watermark.
+	progressBatch2 := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteProgress(progressBatch2, 100))
+	require.NoError(t, progressBatch2.Commit())
 
-	b.tryProposeSchemaRewriteIndexReady(context.Background(), task)
-	assert.True(t, task.proposed, "gate must release once lastIndexedSequence catches up")
+	done, err = b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.True(t, done,
+		"switch must fire once LastIndexedSequence (100) >= requiredIndexedSeq (100)")
+
+	current, pending = b.versionFor(ledger, canonical)
+	assert.Equal(t, uint32(2), current,
+		"current_version must advance to pending after the gate releases (got %d, want 2)", current)
+	assert.Equal(t, uint32(0), pending,
+		"pending_version must clear after the switch (got %d, want 0)", pending)
+}
+
+// TestSchemaRewrite_SeqGate_SameBatchSwitchWhenGateMet pins the
+// performance-side contract: when the seq gate is already met at
+// scan-exhaust time (LastIndexedSequence >= requiredIndexedSeq), the
+// switch + GC commit in the SAME batch as the last v_pending writes
+// — no extra batch needed. This is the common steady-state path and
+// the test guards against accidentally always-splitting into two
+// commits.
+func TestSchemaRewrite_SeqGate_SameBatchSwitchWhenGateMet(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	stop := make(chan struct{})
+
+	const ledger = "test"
+
+	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{
+		CurrentVersion: 1,
+		PendingVersion: 2,
+	})
+
+	// Read store cursor already at/past whatever FSM watermark the
+	// rewrite samples — sufficient because the FSM Pebble in
+	// newTestBuilderWithStore is fresh (no log entries written), so
+	// ReadLastSequence returns 0 and the gate fires immediately.
+	progressBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteProgress(progressBatch, 1))
+	require.NoError(t, progressBatch.Commit())
+
+	task := &schemaRewriteTask{
+		ledger:     ledger,
+		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		key:        "status",
+		toType:     commonpb.MetadataType_METADATA_TYPE_INT64,
+		bbKey:      schemaRewriteBBKey(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+	}
+
+	// Empty rmap → scan exhausts immediately on the first call. With
+	// the gate already met (FSM seq 0, readStore cursor 1), the switch
+	// fires in the same batch and the task retires in one shot.
+	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.True(t, done, "single-call retirement is the happy-path contract — gate met means same-batch switch")
+	assert.True(t, task.scanComplete)
+
+	current, pending := b.versionFor(ledger, canonical)
+	assert.Equal(t, uint32(2), current)
+	assert.Equal(t, uint32(0), pending)
 }

@@ -1319,11 +1319,10 @@ func Module() fx.Option {
 			// Start and stop the index builder.
 			// The builder has its own dedicated Notifications signal to receive
 			// log-committed events from the FSM without competing with other consumers.
-			fx.Annotate(func(lc fx.Lifecycle, indexBuilder *indexbuilder.Builder, notifications *signal.Notifications, raftNode *node.Node, planBuilder *plan.Builder) {
+			fx.Annotate(func(lc fx.Lifecycle, indexBuilder *indexbuilder.Builder, notifications *signal.Notifications) {
 				indexBuilder.SetNotifications(notifications)
-				indexBuilder.SetProposer(&indexReadyProposerAdapter{builder: planBuilder, proposer: raftNode}, raftNode.IsLeader)
 				lc.Append(worker.FxHook(indexBuilder))
-			}, fx.ParamTags(``, ``, `name:"index"`, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"index"`)),
 		),
 	)
 }

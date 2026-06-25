@@ -43,6 +43,9 @@ func (p *RequestProcessor) processCreateIndex(
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		CreatedAt:   s.GetDate(),
 		Ledger:      ledgerName,
+		// First version each replica will build into when the initial
+		// backfill runs (cf. EN-1323 per-replica versioning).
+		ForwardEncodingVersion: 1,
 	})
 
 	return buildCreatedIndexLogPayload(id), nil

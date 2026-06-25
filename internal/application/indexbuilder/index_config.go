@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // ledgerIndexConfig caches which indexes are enabled and ready for a ledger.
@@ -27,14 +28,21 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 }
 
 // initIndexConfig populates the in-memory index config cache from the
-// bucket-scoped Index registry. Two scans are required:
+// bucket-scoped Index registry. Three steps:
 //
-//  1. ReadLedgers seeds an empty ledgerIndexConfig per active ledger so
-//     handle{Created,Dropped}IndexLog can target the right cache without
-//     racing the registry scan.
-//  2. A streaming scan of SubAttrIndex enumerates Index entries; each is
-//     routed by Index.Ledger into the matching ledgerIndexConfig. BUILDING
-//     entries spawn backfill tasks.
+//  1. ReadAllIndexVersionStates seeds the per-replica version cache so
+//     loadIndexRegistry's BUILDING-scheduling decision can consult
+//     CurrentVersion for metadata indexes (a non-zero CurrentVersion
+//     means the local replica already built v_current; the BUILDING
+//     flag reflects a retype handled by scheduleResumedRewrites
+//     instead of a from-scratch backfill).
+//  2. ReadLedgers seeds an empty ledgerIndexConfig per active ledger so
+//     handle{Created,Dropped}IndexLog can target the right cache
+//     without racing the registry scan.
+//  3. A streaming scan of SubAttrIndex enumerates Index entries; each
+//     is routed by Index.Ledger into the matching ledgerIndexConfig.
+//     BUILDING entries spawn backfill tasks unless step 1 indicated
+//     the local replica already finished a prior build (rewrite path).
 //
 // Bucket-scoped entries (Index.Ledger == "") land in b.bucketIndexConfig
 // and are reserved for audit-style indexes (see #436); they aren't tied
@@ -48,6 +56,20 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 	}
 
 	defer func() { _ = handle.Close() }()
+
+	// Restore the per-replica forward-encoding versions from the read
+	// store. Done before the ledger scan so loadIndexRegistry can
+	// consult the cache when deciding whether to schedule a backfill.
+	versionEntries, err := b.readStore.ReadAllIndexVersionStates()
+	if err != nil {
+		b.logger.Errorf("Failed to read index version state: %v", err)
+
+		return
+	}
+
+	for _, e := range versionEntries {
+		b.putVersionState(e.LedgerName, e.CanonicalID, e.State)
+	}
 
 	if err := b.seedLedgerIndexConfig(ctx, handle); err != nil {
 		b.logger.Errorf("Failed to seed ledger index config: %v", err)
@@ -77,70 +99,30 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 		}
 	}
 
-	// Recover unfinished schema rewrites left over from a previous boot.
-	//
-	// IndexReady is proposed by the first node whose local rewrite
-	// completes — it is NOT a cluster-wide "all nodes done" signal. So a
-	// node can crash mid-rewrite, another node can finish and apply
-	// IndexReady, and this node reboots with the Index entry READY but a
-	// forward index that still mixes pre/post-retype encodings. Relying
-	// on the BUILDING flag alone (via scheduleBackfillForIndex above)
-	// misses that case because BUILDING is already gone.
-	//
-	// Mitigation: any persisted schema-rewrite cursor signals an
-	// unfinished local rewrite at the previous shutdown. Schedule a
-	// full backfill from cursor 0 for the corresponding metadata index
-	// — even if the Index entry says READY. The replay re-encodes the
-	// forward under the current declared_type via the per-batch
-	// schemaResolver; cluster-wide IndexReady has already been
-	// proposed, so no new proposal will fire from this node when the
-	// backfill finishes. Once scheduled, delete the persisted cursor —
-	// the backfill keeps its own cursor under a different bbKey.
-	//
-	// Cluster-wide "consensus IndexReady" is the long-term fix
-	// tracked in LED-XXX; this recovery is the stopgap.
-	rewriteEntries, err := b.readStore.ReadAllSchemaRewriteProgress()
-	if err != nil {
-		b.logger.Errorf("Failed to read schema-rewrite progress: %v", err)
+	// Resume any rewrite that was in flight when the previous process
+	// stopped: every (ledger, indexedField) with pending_version != 0
+	// AND a non-zero current_version (i.e. the local replica already
+	// built v_current at some point) gets a schemaRewriteTask. The
+	// atomic switch hasn't fired yet on this replica, so v_current
+	// keeps serving queries while the rewrite catches up and v_pending
+	// receives the new keyspace. Cursor and toType come from the
+	// persisted BackfillCursor — the rewrite resumes mid-rmap-scan
+	// instead of restarting from scratch.
+	b.scheduleResumedRewrites()
 
-		return
-	}
-
-	for _, entry := range rewriteEntries {
-		target := commonpb.TargetType(entry.TargetType)
-		if target != commonpb.TargetType_TARGET_TYPE_ACCOUNT &&
-			target != commonpb.TargetType_TARGET_TYPE_TRANSACTION {
-			// Unknown target — drop the cursor and move on.
-			_ = b.readStore.DeleteBackfillProgress(entry.BBKey)
-
-			continue
-		}
-
-		id := indexes.MetadataID(target, entry.Key)
-		b.scheduleBackfillForIndex(entry.LedgerName, id)
-
-		// Force the backfill to restart from 0: the schemaResolver
-		// re-encodes every replayed log under the new declared_type.
-		for _, bt := range b.backfillTasks {
-			if bt.ledger == entry.LedgerName && indexes.Equal(bt.index, id) {
-				bt.cursor = 0
-				bt.appliedProposalSeq = 0
-				bt.proposed = false
-				bt.lastProgressSeq = 0
-				_ = b.readStore.DeleteBackfillProgress(bt.bbKey)
-
-				break
-			}
-		}
-
-		// The schema-rewrite cursor itself is no longer used.
-		_ = b.readStore.DeleteBackfillProgress(entry.BBKey)
-
-		b.logger.WithFields(map[string]any{
-			"ledger": entry.LedgerName,
-			"target": target.String(),
-			"key":    entry.Key,
-		}).Infof("Recovered unfinished schema rewrite — scheduled full backfill")
+	// Crash-recovery sweep: the atomic switch GCs v_old in the same
+	// batch as the version promotion, so steady-state operation never
+	// leaves orphan versions on disk. A crash mid-batch leaves either
+	// a fully-pre-switch state (handled by resuming the rewrite via
+	// pending_version) or a fully-post-switch state with no orphans.
+	// What this sweep guards against is the long-tail case: a
+	// re-retype that bumped pending past an in-flight rewrite (the
+	// abandoned v_n is never the local current and never the new
+	// pending, so its keyspace lingers), or a snapshot install whose
+	// read-store delta dropped a version entry. Cheap unconditional
+	// pass — DeleteRange on an empty range is a tombstone no-op.
+	if err := b.purgeOrphanVersions(); err != nil {
+		b.logger.Errorf("Failed to purge orphan index versions: %v", err)
 	}
 }
 
@@ -179,6 +161,17 @@ func (b *Builder) seedLedgerIndexConfig(ctx context.Context, handle *dal.ReadHan
 // to the matching ledgerIndexConfig (by Index.Ledger), then schedules a
 // backfill for every BUILDING entry. Bucket-scoped entries (LedgerID == 0,
 // Index.Ledger empty) are kept aside in bucketIndexConfig.
+//
+// Backfill scheduling logic for BUILDING entries:
+//   - Non-metadata indexes (builtin tx/account/log): schedule unconditionally.
+//     BuildStatus is the FSM-side signal for these — versioning doesn't apply.
+//   - Metadata indexes: cross-check the local IndexVersionState cache.
+//     If CurrentVersion != 0, the local replica already finished a prior
+//     build, so any BUILDING flag reflects a *new* retype which is handled
+//     by scheduleResumedRewrites (rewrite task) — NOT a backfill from
+//     cursor 0. If CurrentVersion == 0, the local replica has never built
+//     this index; a backfill IS needed to populate v_pending (or v=1 by
+//     default).
 func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 	iter, err := b.attrs.Index.NewStreamingIter(handle, nil)
 	if err != nil {
@@ -225,10 +218,21 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 			continue
 		}
 
-		cfg.byCanonical[indexes.Canonical(idx.GetId())] = idx
+		canonical := indexes.Canonical(idx.GetId())
+		cfg.byCanonical[canonical] = idx
 
 		if idx.GetBuildStatus() != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			continue
+		}
+
+		if _, isMetadata := idx.GetId().GetKind().(*commonpb.IndexID_Metadata); isMetadata {
+			current, _ := b.versionFor(ledgerName, canonical)
+			if current != 0 {
+				// The local replica already built v_current; the
+				// resume path (scheduleResumedRewrites) owns the
+				// BUILDING flag here.
+				continue
+			}
 		}
 
 		b.scheduleBackfillForIndex(ledgerName, idx.GetId())
@@ -374,9 +378,37 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	}
 
 	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{
-		Id:          id,
-		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+		Id:                     id,
+		BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+		ForwardEncodingVersion: 1,
 	}
+
+	// First time this replica sees the index: target v=1 via the
+	// backfill task. current stays at 0 until the backfill completes
+	// and switches it via the atomic-switch path. Persisted in the
+	// active batch so the per-replica readiness signal survives a
+	// crash between CreateIndex apply and backfill completion — the
+	// boot recovery would otherwise have to guess from cfg.byCanonical
+	// alone, which loses the distinction between "fresh index" and
+	// "stale READY index from a snapshot install".
+	state := readstore.IndexVersionState{
+		CurrentVersion: 0,
+		PendingVersion: 1,
+	}
+
+	if b.wb != nil && b.readStore != nil {
+		if batch := b.wb.Batch(); batch != nil {
+			if err := b.readStore.WriteIndexVersionState(batch, ledgerName, indexes.Canonical(id), state); err != nil {
+				b.logger.WithFields(map[string]any{
+					"ledger": ledgerName,
+					"index":  indexes.Canonical(id),
+					"error":  err,
+				}).Errorf("Persisting IndexVersionState on CreateIndex")
+			}
+		}
+	}
+
+	b.putVersionState(ledgerName, indexes.Canonical(id), state)
 
 	b.scheduleBackfillForIndex(ledgerName, id)
 }
@@ -395,6 +427,8 @@ func (b *Builder) handleDroppedIndexLog(ledger string, log *commonpb.DroppedInde
 	cfg := b.getOrCreateLedgerConfig(ledger)
 	delete(cfg.byCanonical, indexes.Canonical(id))
 	b.removeBackfillTask(ledger, id)
+	b.dropVersionState(ledger, indexes.Canonical(id))
+	_ = b.readStore.DeleteIndexVersionState(ledger, indexes.Canonical(id))
 
 	if meta, ok := id.GetKind().(*commonpb.IndexID_Metadata); ok && meta.Metadata != nil {
 		b.removeSchemaRewriteTaskByField(ledger, meta.Metadata.GetTarget(), meta.Metadata.GetKey())

@@ -120,59 +120,101 @@ func (wb *WriteBatch) WriteDestAccountTxMapping(kb *dal.KeyBuilder, ledgerName s
 	return wb.put(key, nil)
 }
 
-// WriteMetadataIndex inserts a forward index entry in the metadata inverted index.
+// WriteMetadataIndex inserts a forward index entry in the metadata inverted
+// index under version 1. Equivalent to WriteMetadataIndexV(..., 1, ...) —
+// kept for callers not yet aware of versioning.
 func (wb *WriteBatch) WriteMetadataIndex(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, encodedValue, entityID []byte) error {
-	key := MetadataIndexKey(kb, ledgerName, ns, metadataKey, encodedValue, entityID)
+	return wb.WriteMetadataIndexV(kb, ledgerName, ns, metadataKey, 1, encodedValue, entityID)
+}
+
+// WriteMetadataIndexV inserts a forward index entry at an explicit
+// forward-encoding version. Used by the indexer hot path to write
+// against local_current_version and (during a rewrite) pending_version.
+func (wb *WriteBatch) WriteMetadataIndexV(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, version uint32, encodedValue, entityID []byte) error {
+	key := MetadataIndexKeyV(kb, ledgerName, ns, metadataKey, version, encodedValue, entityID)
 
 	return wb.put(key, nil)
 }
 
-// DeleteMetadataIndex removes a forward index entry from the metadata inverted index.
+// DeleteMetadataIndex removes a forward index entry under version 1.
 func (wb *WriteBatch) DeleteMetadataIndex(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, encodedValue, entityID []byte) error {
-	key := MetadataIndexKey(kb, ledgerName, ns, metadataKey, encodedValue, entityID)
+	return wb.DeleteMetadataIndexV(kb, ledgerName, ns, metadataKey, 1, encodedValue, entityID)
+}
+
+// DeleteMetadataIndexV is the version-aware variant of DeleteMetadataIndex.
+func (wb *WriteBatch) DeleteMetadataIndexV(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, version uint32, encodedValue, entityID []byte) error {
+	key := MetadataIndexKeyV(kb, ledgerName, ns, metadataKey, version, encodedValue, entityID)
 
 	return wb.del(key)
 }
 
-// WriteEntityExists inserts an entry in the entity-ordered existence index.
+// WriteEntityExists inserts an entry in the entity-ordered existence index
+// under version 1.
 func (wb *WriteBatch) WriteEntityExists(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, isNull bool, entityID []byte) error {
-	key := EntityExistsKey(kb, ledgerName, ns, metaKey, isNull, entityID)
+	return wb.WriteEntityExistsV(kb, ledgerName, ns, metaKey, 1, isNull, entityID)
+}
+
+// WriteEntityExistsV is the version-aware variant of WriteEntityExists.
+func (wb *WriteBatch) WriteEntityExistsV(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, version uint32, isNull bool, entityID []byte) error {
+	key := EntityExistsKeyV(kb, ledgerName, ns, metaKey, version, isNull, entityID)
 
 	return wb.put(key, nil)
 }
 
-// DeleteEntityExists removes an entry from the entity-ordered existence index.
+// DeleteEntityExists removes an entry from the entity-ordered existence index
+// under version 1.
 func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, isNull bool, entityID []byte) error {
-	key := EntityExistsKey(kb, ledgerName, ns, metaKey, isNull, entityID)
+	return wb.DeleteEntityExistsV(kb, ledgerName, ns, metaKey, 1, isNull, entityID)
+}
+
+// DeleteEntityExistsV is the version-aware variant of DeleteEntityExists.
+func (wb *WriteBatch) DeleteEntityExistsV(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, version uint32, isNull bool, entityID []byte) error {
+	key := EntityExistsKeyV(kb, ledgerName, ns, metaKey, version, isNull, entityID)
 
 	return wb.del(key)
 }
 
-// ReplaceMetadataIndex replaces a metadata index entry using the
-// previous encoded value supplied by the caller (typically looked up
-// via reverseMapValue on the indexer hot path; nil means "no prior
-// entry to delete").
+// ReplaceMetadataIndex replaces a metadata index entry at version 1 (the
+// default for callers that have not been versioned yet). See
+// ReplaceMetadataIndexV for the explicit-version variant used by the
+// indexer hot path.
 func (wb *WriteBatch) ReplaceMetadataIndex(
 	kb *dal.KeyBuilder,
 	reverseKey []byte,
 	ledgerName string, ns, metadataKey string,
 	newEncodedValue, oldEncodedValue, entityID []byte,
 ) error {
+	return wb.ReplaceMetadataIndexV(kb, reverseKey, ledgerName, ns, metadataKey, 1, newEncodedValue, oldEncodedValue, entityID)
+}
+
+// ReplaceMetadataIndexV replaces a metadata index entry at an explicit
+// forward-encoding version. The reverseKey is supplied by the caller so
+// dual-write call sites can target distinct rmap rows for v_current and
+// v_pending. The old encoded value is the entry currently in the index
+// (typically looked up via reverseMapValue on the indexer hot path; nil
+// means "no prior entry to delete").
+func (wb *WriteBatch) ReplaceMetadataIndexV(
+	kb *dal.KeyBuilder,
+	reverseKey []byte,
+	ledgerName string, ns, metadataKey string,
+	version uint32,
+	newEncodedValue, oldEncodedValue, entityID []byte,
+) error {
 	if oldEncodedValue != nil {
-		if err := wb.DeleteMetadataIndex(kb, ledgerName, ns, metadataKey, oldEncodedValue, entityID); err != nil {
+		if err := wb.DeleteMetadataIndexV(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID); err != nil {
 			return err
 		}
 
-		if err := wb.DeleteEntityExists(kb, ledgerName, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+		if err := wb.DeleteEntityExistsV(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID); err != nil {
 			return err
 		}
 	}
 
-	if err := wb.WriteMetadataIndex(kb, ledgerName, ns, metadataKey, newEncodedValue, entityID); err != nil {
+	if err := wb.WriteMetadataIndexV(kb, ledgerName, ns, metadataKey, version, newEncodedValue, entityID); err != nil {
 		return err
 	}
 
-	if err := wb.WriteEntityExists(kb, ledgerName, ns, metadataKey, isNullEncoded(newEncodedValue), entityID); err != nil {
+	if err := wb.WriteEntityExistsV(kb, ledgerName, ns, metadataKey, version, isNullEncoded(newEncodedValue), entityID); err != nil {
 		return err
 	}
 
@@ -185,22 +227,33 @@ func (wb *WriteBatch) ReplaceMetadataIndex(
 	return nil
 }
 
-// DeleteMetadataEntryWithPrevious removes both the forward index and
-// reverse map entries for a metadata key on a specific entity, using
-// the previous encoded value supplied by the caller (typically looked
-// up via reverseMapValue on the indexer hot path).
+// DeleteMetadataEntryWithPrevious removes a metadata entry at version 1.
+// See DeleteMetadataEntryWithPreviousV for the explicit-version variant.
 func (wb *WriteBatch) DeleteMetadataEntryWithPrevious(
 	kb *dal.KeyBuilder,
 	reverseKey []byte,
 	ledgerName string, ns, metadataKey string,
 	oldEncodedValue, entityID []byte,
 ) error {
+	return wb.DeleteMetadataEntryWithPreviousV(kb, reverseKey, ledgerName, ns, metadataKey, 1, oldEncodedValue, entityID)
+}
+
+// DeleteMetadataEntryWithPreviousV removes both the forward index and the
+// reverse-map entry for a metadata key on a specific entity at an explicit
+// forward-encoding version.
+func (wb *WriteBatch) DeleteMetadataEntryWithPreviousV(
+	kb *dal.KeyBuilder,
+	reverseKey []byte,
+	ledgerName string, ns, metadataKey string,
+	version uint32,
+	oldEncodedValue, entityID []byte,
+) error {
 	if oldEncodedValue != nil {
-		if err := wb.DeleteMetadataIndex(kb, ledgerName, ns, metadataKey, oldEncodedValue, entityID); err != nil {
+		if err := wb.DeleteMetadataIndexV(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID); err != nil {
 			return err
 		}
 
-		if err := wb.DeleteEntityExists(kb, ledgerName, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+		if err := wb.DeleteEntityExistsV(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID); err != nil {
 			return err
 		}
 	}

@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -26,7 +25,6 @@ type backfillTask struct {
 	cursor             uint64 // current position (persisted in Pebble)
 	appliedProposalSeq uint64 // safe AppliedProposal resume sequence for transient-account filtering
 	bbKey              []byte // precomputed key for progress persistence
-	proposed           bool   // true after IndexReady has been proposed; awaiting FSM apply
 
 	// Progress logging state.
 	lastProgressLog time.Time // last time a progress log was emitted
@@ -179,6 +177,13 @@ func (b *Builder) removeBackfillTask(ledgerName string, id *commonpb.IndexID) {
 // when a SetMetadataFieldType schema change occurs. Instead of scanning the
 // entire reverse map inline during processLogs (hot path), the rewrite is
 // deferred and processed in batches alongside backfill tasks.
+//
+// The task is removed from the slice once the atomic switch fires.
+// In the common case the switch lands in the same batch as the last
+// v_pending writes; when the read-store cursor is behind the FSM at
+// scan-exhaust time (see requiredIndexedSeq below) the switch is
+// deferred to a later tick — the scan-complete flag keeps the task
+// alive across ticks until the gate releases it.
 type schemaRewriteTask struct {
 	ledger     string
 	targetType commonpb.TargetType   // account or transaction
@@ -190,26 +195,30 @@ type schemaRewriteTask struct {
 	lastProgressLog time.Time
 	processedCount  uint64
 
-	// requiredIndexedSeq is the highest log sequence sampled in the FSM
-	// snapshot at the start of any batch this task has run (via
-	// query.ReadLastSequence). Because the rewrite sources raw values
-	// from the FSM Pebble store (Option B in PR #503's plan), which is
-	// always at least as fresh as the indexer cursor, the forward entries
-	// it writes may reflect a log seq newer than what processLogs has
-	// ingested. We must therefore hold IndexReady until
-	// readStore.LastIndexedSequence() >= requiredIndexedSeq, so that an
-	// index marked READY actually represents a contiguous log prefix.
-	// Tracked in the *log sequence* space to match LastIndexedSequence —
-	// the Raft applied-index counts technical / config / no-op entries
-	// too and would leave the gate stuck whenever Raft is ahead of log
-	// seq.
+	// requiredIndexedSeq is the highest FSM log sequence sampled at
+	// the start of any batch this task has run. The rewrite reads raw
+	// stored values from the FSM Pebble store (via fetchStoredMetadataValue);
+	// the FSM is always at least as fresh as the read store, so a value
+	// the rewrite encodes can reflect log state newer than what
+	// processLogs has ingested into the read index. Holding the atomic
+	// switch until `readStore.LastIndexedSequence() >= requiredIndexedSeq`
+	// guarantees that when CurrentVersion flips to v_new, every entry in
+	// the v_new keyspace corresponds to a log sequence the read index
+	// has already processed — preserving the contiguous-prefix invariant
+	// every query relies on through min_log_sequence.
+	//
+	// Sampled per batch (not per task lifetime) so it tracks the
+	// freshest FSM state any batch could have observed. Reset on a
+	// retype landing on an existing task (addSchemaRewriteTask):
+	// the previous high-water mark no longer applies once toType
+	// changes.
 	requiredIndexedSeq uint64
 
-	// done flips when the reverse-map scan is exhausted. We keep the task in
-	// the slice afterwards so the loop can propose IndexReady and confirm the
-	// FSM applied it before cleanup — same pattern as backfillTask.
-	done     bool
-	proposed bool
+	// scanComplete flips when the rmap iteration exhausts. After this
+	// point processSchemaRewrite skips the scan and only tries the
+	// atomic switch + GC; the task survives in the slice until the
+	// requiredIndexedSeq gate releases it. Reset on retype.
+	scanComplete bool
 }
 
 // schemaRewriteBBKey builds the key for persisting schema rewrite progress.
@@ -231,7 +240,11 @@ func schemaRewriteBBKey(ledgerName string, targetType commonpb.TargetType, key s
 // log entry, avoiding duplicates. The ledger name is captured so the
 // follow-up IndexReady proposal can address the right LedgerInfo (the FSM
 // keys by name).
-func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string, smft *commonpb.SetMetadataFieldTypeLog) {
+//
+// Returns an error if persisting the bumped pending_version (or the
+// reset backfill cursor) fails — the caller propagates so the batch
+// aborts rather than continuing with a desynced cache vs. read store.
+func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string, smft *commonpb.SetMetadataFieldTypeLog) error {
 	// If a backfill is in flight for the same (ledger, metadata index),
 	// reset its cursor to 0 instead of enqueueing a separate
 	// schemaRewriteTask. The backfill replays the logs via the
@@ -241,6 +254,13 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 	// stripBuildingIndexes can temporarily hide the BUILDING index from
 	// cfg during initial catch-up: relying solely on cfg.isMetadataIndexed
 	// would let a stale backfill resume after a crash-recovered retype.
+	//
+	// NB: no pending_version bump here. The in-flight backfill targets
+	// pending_version already; resetting its cursor restarts it under
+	// the new declared_type (via the per-batch schemaResolver) into the
+	// same v_pending keyspace. Bumping would orphan whatever the
+	// backfill already wrote at the current pending and add a second
+	// version with no benefit.
 	indexID := indexes.MetadataID(smft.GetTargetType(), smft.GetKey())
 	for _, bt := range b.backfillTasks {
 		if bt.ledger != ledgerName || !indexes.Equal(bt.index, indexID) {
@@ -249,7 +269,6 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 
 		bt.cursor = 0
 		bt.appliedProposalSeq = 0
-		bt.proposed = false
 		bt.lastProgressSeq = 0
 		// If DeleteBackfillProgress fails, a crash before the first
 		// post-reset Commit would resume from the stale persisted cursor
@@ -264,35 +283,48 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			}).Errorf("Deleting persisted backfill cursor on retype reset")
 		}
 
-		return
+		return nil
 	}
 
 	// No in-flight backfill: only enqueue a rewrite if the index is
 	// actually registered (READY). isMetadataIndexed is nil-safe so an
 	// unknown ledger (cfg == nil) short-circuits here.
 	if !cfg.isMetadataIndexed(smft.GetTargetType(), smft.GetKey()) {
-		return
+		return nil
+	}
+
+	// Bump pending_version in the in-memory cache and persist it in the
+	// current batch. The rewrite task will read pending_version from
+	// the cache at processSchemaRewrite time to know its target
+	// keyspace, and the live write path will dual-write into it.
+	if err := b.bumpPendingVersion(ledgerName, indexID); err != nil {
+		return fmt.Errorf("bumping pending_version on retype: %w", err)
 	}
 
 	bbKey := schemaRewriteBBKey(ledgerName, smft.GetTargetType(), smft.GetKey())
 	for _, t := range b.schemaRewriteTasks {
 		if string(t.bbKey) == string(bbKey) {
-			// Type changed again while a rewrite is in flight or pending
-			// cleanup — restart from scratch since already-processed entries
-			// used the old type. `done` and `proposed` must also clear: with
-			// either still set, tryProposeSchemaRewriteIndexReady would mark
-			// the index ready with entries still encoded under the prior type.
-			// requiredIndexedSeq is reset as well — the high-water mark from
-			// the previous declared type no longer reflects what this new
-			// rewrite will actually observe.
+			// Type changed again while a rewrite is in flight — restart
+			// from scratch since already-processed entries used the old
+			// type. The previously-targeted v_pending keyspace becomes
+			// an orphan; the bumpPendingVersion call above already
+			// promoted pending to a fresh version, and purgeOrphan-
+			// Versions cleans the abandoned one at the next boot.
+			//
+			// requiredIndexedSeq + scanComplete must also clear: the
+			// high-water mark and "scan exhausted" flag from the
+			// previous declared type no longer reflect what this
+			// new rewrite will observe. Keeping scanComplete=true
+			// across a retype would let the new rewrite skip its
+			// scan entirely and switch into v_new without writing
+			// any entries.
 			t.toType = smft.GetType()
 			t.rmapCursor = nil
 			t.processedCount = 0
-			t.done = false
-			t.proposed = false
 			t.requiredIndexedSeq = 0
+			t.scanComplete = false
 
-			return
+			return nil
 		}
 	}
 
@@ -303,6 +335,44 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 		toType:     smft.GetType(),
 		bbKey:      bbKey,
 	})
+
+	return nil
+}
+
+// bumpPendingVersion advances the per-replica pending_version for an
+// index by 1 (or by max(current,pending)+1 when a rewrite is already
+// in flight) and persists the resulting IndexVersionState into the
+// current batch. Mirrors the FSM-side increment of
+// Index.ForwardEncodingVersion in processSetMetadataFieldType — each
+// replica derives its own pending the same way, so the two converge as
+// long as every log is seen.
+func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexID) error {
+	canonical := indexes.Canonical(indexID)
+	current, pending := b.versionFor(ledgerName, canonical)
+
+	base := max(pending, current)
+
+	newState := readstore.IndexVersionState{
+		CurrentVersion: current,
+		PendingVersion: base + 1,
+	}
+
+	batch := b.wb.Batch()
+	if batch == nil {
+		// addSchemaRewriteTask is only ever called with an active batch
+		// (processLogs / indexLogEntry both Init the WriteBatch before
+		// dispatching log payloads). A nil batch here means the call
+		// site is broken — surface it loudly per CLAUDE.md invariant #7.
+		return errors.New("invariant: bumpPendingVersion called without an active write batch")
+	}
+
+	if err := b.readStore.WriteIndexVersionState(batch, ledgerName, canonical, newState); err != nil {
+		return fmt.Errorf("persisting IndexVersionState: %w", err)
+	}
+
+	b.putVersionState(ledgerName, canonical, newState)
+
+	return nil
 }
 
 // removeSchemaRewriteTask removes a schema rewrite task and deletes its persisted progress.
@@ -313,6 +383,140 @@ func (b *Builder) removeSchemaRewriteTask(idx int) {
 
 	b.schemaRewriteTasks[idx] = b.schemaRewriteTasks[len(b.schemaRewriteTasks)-1]
 	b.schemaRewriteTasks = b.schemaRewriteTasks[:len(b.schemaRewriteTasks)-1]
+}
+
+// scheduleResumedRewrites reconstructs the in-flight rewrite task list
+// at boot from the persisted per-replica state. Every IndexVersionState
+// entry with pending_version != 0 belonged to a rewrite that had not
+// reached the atomic switch on this replica when it stopped; the
+// dual-write path was active, and v_pending was being populated. The
+// resumed task carries the same target keyspace (read from the cache),
+// the rmap cursor and the new declared_type (read from the persisted
+// BackfillCursor written at the previous batch), and continues the
+// rmap scan from where it left off.
+//
+// Replaces the legacy stopgap that scheduled a from-scratch backfill
+// when ReadAllSchemaRewriteProgress found a leftover cursor — that
+// path relied on cluster-wide IndexReady to mark progress and didn't
+// know which (current, pending) the local replica was at.
+func (b *Builder) scheduleResumedRewrites() {
+	for ledgerName, inner := range b.indexVersions {
+		cfg := b.ledgerConfig(ledgerName)
+		if cfg == nil {
+			continue
+		}
+
+		for canonical, state := range inner {
+			if state.PendingVersion == 0 {
+				continue
+			}
+
+			idx, ok := cfg.byCanonical[canonical]
+			if !ok || idx.GetId() == nil {
+				continue
+			}
+
+			meta, ok := idx.GetId().GetKind().(*commonpb.IndexID_Metadata)
+			if !ok || meta.Metadata == nil {
+				// pending_version on a non-metadata index is impossible
+				// under the current versioning rules — surface it as
+				// invariant-violated rather than silently swallowing.
+				b.logger.WithFields(map[string]any{
+					"ledger":    ledgerName,
+					"canonical": canonical,
+				}).Errorf("invariant: IndexVersionState with pending_version != 0 on non-metadata index")
+
+				continue
+			}
+
+			target := meta.Metadata.GetTarget()
+			key := meta.Metadata.GetKey()
+
+			bbKey := schemaRewriteBBKey(ledgerName, target, key)
+
+			rawCursor, hasCursor := b.readStore.ReadBackfillCursor(bbKey)
+
+			var (
+				toType     commonpb.MetadataType
+				rmapCursor []byte
+				haveType   bool
+			)
+
+			if hasCursor && len(rawCursor) >= 1 {
+				toType = commonpb.MetadataType(rawCursor[0])
+				haveType = true
+
+				if len(rawCursor) > 1 {
+					rmapCursor = make([]byte, len(rawCursor)-1)
+					copy(rmapCursor, rawCursor[1:])
+				}
+			}
+
+			// If no persisted cursor (the rewrite had been enqueued
+			// but never ran a batch), source toType from the FSM —
+			// the latest SetMetadataFieldType committed it as the
+			// field's declared type before the pending bump landed.
+			if !haveType {
+				toType = b.resolveResumedToType(ledgerName, target, key)
+			}
+
+			b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
+				ledger:     ledgerName,
+				targetType: target,
+				key:        key,
+				toType:     toType,
+				bbKey:      bbKey,
+				rmapCursor: rmapCursor,
+			})
+
+			b.logger.WithFields(map[string]any{
+				"ledger":         ledgerName,
+				"key":            key,
+				"target":         target.String(),
+				"pendingVersion": state.PendingVersion,
+				"resumeCursor":   len(rmapCursor),
+			}).Infof("Resumed in-flight schema rewrite from persisted state")
+		}
+	}
+}
+
+// resolveResumedToType reads the declared_type for a metadata field
+// from the FSM-side LedgerInfo.MetadataSchema. Used at boot when the
+// resumed rewrite has no persisted toType byte (because the task was
+// enqueued but never ran a batch). Falls back to the zero
+// MetadataType (STRING) if the FSM has no entry — pathological but
+// safe: the rewrite will treat existing rmap entries as already at
+// the declared type, run an idempotent re-encode, and reach the
+// atomic switch with no functional damage.
+func (b *Builder) resolveResumedToType(ledgerName string, target commonpb.TargetType, key string) commonpb.MetadataType {
+	handle, err := b.pebbleStore.NewDirectReadHandle()
+	if err != nil {
+		return commonpb.MetadataType_METADATA_TYPE_STRING
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	info, err := query.GetLedgerByName(context.Background(), handle, ledgerName)
+	if err != nil || info == nil || info.GetMetadataSchema() == nil {
+		return commonpb.MetadataType_METADATA_TYPE_STRING
+	}
+
+	var fields map[string]*commonpb.MetadataFieldSchema
+
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		fields = info.GetMetadataSchema().GetAccountFields()
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		fields = info.GetMetadataSchema().GetTransactionFields()
+	default:
+		return commonpb.MetadataType_METADATA_TYPE_STRING
+	}
+
+	if schema, ok := fields[key]; ok {
+		return schema.GetType()
+	}
+
+	return commonpb.MetadataType_METADATA_TYPE_STRING
 }
 
 // removeSchemaRewriteTaskByField cancels any in-flight rewrite task matching
@@ -331,6 +535,13 @@ func (b *Builder) removeSchemaRewriteTaskByField(ledgerName string, target commo
 
 // processSchemaRewrite processes a batch of reverse map entries for a schema rewrite task.
 // Returns true when the rewrite is complete (no more entries to process).
+//
+// Versioning: the task targets the v_pending keyspace declared in the
+// per-replica IndexVersionState cache (set by addSchemaRewriteTask in
+// the same FSM batch that ingested the SetMetadataFieldType log). Live
+// dual-writes mirror updates into v_pending as the rewrite progresses;
+// v_current entries are left untouched until the atomic switch fires
+// on completion.
 func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, stop <-chan struct{}, deadline time.Time) (bool, error) {
 	var ns string
 
@@ -343,9 +554,45 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 		return true, nil
 	}
 
-	done := false
+	canonical := indexes.Canonical(indexes.MetadataID(task.targetType, task.key))
+	currentVersion, pendingVersion := b.versionFor(task.ledger, canonical)
+
+	if pendingVersion == 0 {
+		// The schemaRewriteTask exists but the IndexVersionState cache
+		// has no pending_version recorded — addSchemaRewriteTask must
+		// have populated it. Surface loudly per CLAUDE.md invariant #7
+		// rather than spinning silently: a missing pending here means
+		// the rewrite would target the same keyspace as live writes,
+		// which can't be right.
+		return true, fmt.Errorf("invariant: schemaRewriteTask for %s has no pending_version in the cache", canonical)
+	}
+
+	// effectiveCurrentVersion's 0→1 promotion mirrors what the live
+	// path uses: a never-built-yet index still has its rmap entries
+	// under v=1 (the default the non-V helpers embed).
+	if currentVersion == 0 {
+		currentVersion = 1
+	}
+
+	if currentVersion == pendingVersion {
+		// Edge case — task would write into the same keyspace it reads.
+		// Treat as already-done so the loop cleans it up.
+		return true, nil
+	}
 
 	kb := dal.NewKeyBuilder()
+
+	// If a prior batch already exhausted the rmap scan, nothing left to
+	// rewrite — only the atomic switch stands between us and the new
+	// keyspace. Skip the scan setup (snap + fsmHandle + iter) entirely
+	// and try the gated switch directly. This is the second-half of the
+	// "scan, then maybe switch later" split forced by the requiredIndexedSeq
+	// gate: once the gate fires, the task can finally retire.
+	if task.scanComplete {
+		return b.tryCommitScanCompleteSwitch(task, kb, ns, canonical, currentVersion, pendingVersion)
+	}
+
+	done := false
 
 	rmapPrefix := readstore.ReverseMapPrefix(kb, task.ledger, ns)
 	upper := readstore.IncrementBytes(rmapPrefix)
@@ -363,14 +610,6 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	snap := b.readStore.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
-	// Use a point-in-time snapshot of the FSM Pebble store so both the
-	// log-seq high-water mark and the per-entity fetchStoredMetadataValue
-	// lookups observe the same state. A direct handle would let the FSM
-	// commit new logs in between, which means the rewrite could encode a
-	// value tied to a log seq strictly higher than the bound we
-	// captured — leaving requiredIndexedSeq lower than what the forward
-	// actually reflects, and reopening the prefix-violation window the
-	// gate is meant to close.
 	fsmHandle, err := b.pebbleStore.NewReadHandle()
 	if err != nil {
 		return false, fmt.Errorf("opening FSM snapshot for schema rewrite: %w", err)
@@ -378,21 +617,23 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 
 	defer func() { _ = fsmHandle.Close() }()
 
-	// Capture the highest *log sequence* in the FSM snapshot — NOT the
-	// Raft applied-index. The indexer's LastIndexedSequence advances by
-	// applicative log seq, while Raft applied-index counts technical /
-	// config / no-op entries too. Comparing the two would leave the gate
-	// stuck whenever Raft is ahead of log seq, even though the indexer
-	// has fully caught up to the log prefix we read. A slightly inflated
-	// bound is safe (only delays IndexReady) but the dimensions must
-	// match.
-	fsmLogSeq, err := query.ReadLastSequence(fsmHandle)
-	if err != nil {
-		return false, fmt.Errorf("reading FSM last log sequence for schema rewrite: %w", err)
-	}
-
-	if fsmLogSeq > task.requiredIndexedSeq {
-		task.requiredIndexedSeq = fsmLogSeq
+	// Sample the highest FSM log sequence this batch could read from.
+	// fetchStoredMetadataValue below returns FSM-latest values, so the
+	// forward entries we'll write may reflect log state newer than what
+	// processLogs has ingested into the read store. Hold the atomic
+	// switch (further down) until LastIndexedSequence catches up to
+	// this watermark — otherwise post-switch the v_new keyspace would
+	// serve rows reflecting state ahead of the read-store cursor,
+	// breaking the contiguous-prefix invariant min_log_sequence
+	// callers rely on.
+	//
+	// Sampled per batch and accumulated as a max so the gate tracks
+	// the freshest FSM state any of this task's batches could have
+	// observed.
+	if fsmSeq, sampleErr := query.ReadLastSequence(fsmHandle); sampleErr != nil {
+		return false, fmt.Errorf("sampling FSM log sequence for schema-rewrite gate: %w", sampleErr)
+	} else if fsmSeq > task.requiredIndexedSeq {
+		task.requiredIndexedSeq = fsmSeq
 	}
 
 	var lowerBound []byte
@@ -412,29 +653,50 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 
 	defer func() { _ = iter.Close() }()
 
-	// If resuming from a cursor, seek past it.
+	// Seek to (or past) the cursor. iterValid tracks whether there's
+	// anything left to scan after this seek; an empty / fully-cursored
+	// rmap sets iterValid=false → the scan loop is a no-op and the
+	// switch path below sees done=true. We deliberately do NOT
+	// early-return here any more (pre-F3 the function returned done=true
+	// before opening the batch, skipping the seq gate and firing the
+	// switch unconditionally on empty rmap).
+	iterValid := false
 	if len(task.rmapCursor) > 0 {
-		if !iter.First() {
-			done = true
-
-			return done, nil
-		}
-		// If the first key equals the cursor, skip it (already processed).
-		if string(iter.Key()) == string(task.rmapCursor) {
-			if !iter.Next() {
-				done = true
-
-				return done, nil
+		if iter.First() {
+			iterValid = true
+			// If the first key equals the cursor, skip it (already processed).
+			if string(iter.Key()) == string(task.rmapCursor) {
+				iterValid = iter.Next()
 			}
 		}
-	} else if !iter.First() {
-		done = true
-
-		return done, nil
+	} else {
+		iterValid = iter.First()
 	}
 
+	// Bind the WriteBatch to a fresh Pebble batch so the rewrite can
+	// use the version-aware helpers (ReplaceMetadataIndexV /
+	// DeleteMetadataEntryWithPreviousV) and benefit from the
+	// read-your-writes rmap overlay across multiple entities within
+	// the same batch. Cancel-on-error / Commit-on-success below
+	// guarantees we never leave the batch dangling.
 	batch := b.readStore.NewBatch()
-	defer func() { _ = batch.Cancel() }()
+	b.wb.Init(batch)
+	committed := false
+
+	defer func() {
+		if !committed {
+			_ = batch.Cancel()
+			b.wb.Reset()
+		}
+	}()
+
+	if !iterValid {
+		// Nothing to scan in this batch — the rmap is empty for this
+		// (ns, key) or the cursor already covers everything. Fall
+		// through to the switch path so the seq gate decides whether
+		// to retire the task now or defer to a later tick.
+		done = true
+	}
 
 	scanned := 0
 	rewritten := 0
@@ -457,49 +719,52 @@ scan:
 		lastScannedKey = cloneBytes(k)
 		scanned++
 
-		// Strip the PrefixReverseMap byte for the extract helpers.
-		suffixAfterByte := k[1:]
-		metaKey := extractMetadataKeyFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns)
-
-		if metaKey != task.key {
+		entityID, metaKey, entryVersion, parsed := parseReverseMapKey(k, rmapPrefix, ns)
+		if !parsed || metaKey != task.key {
 			continue
 		}
 
-		entityID := extractEntityIDFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns)
-
-		v, verr := iter.ValueAndErr()
-		if verr != nil {
-			return false, verr
+		// Skip rmap rows that don't belong to v_current. The rewrite
+		// reads from v_current and writes to v_pending; without this
+		// filter the iterator would also see v_pending rows already
+		// written by us or by live dual-writes, leading to wasted
+		// re-processing in the best case and lossy overwrites in the
+		// worst.
+		if entryVersion != currentVersion {
+			continue
 		}
-
-		// The rmap value is the encoded form currently in the forward
-		// index — used to delete the existing entry. The new encoded form
-		// is derived from the immutable raw stored value in the FSM, NOT
-		// from the rmap (which may be a lossy projection from a prior
-		// retype).
-		oldEncoded := v
 
 		rawValue, lookupErr := b.fetchStoredMetadataValue(fsmHandle, task.ledger, task.targetType, task.key, entityID)
 		if lookupErr != nil {
 			return false, fmt.Errorf("reading stored metadata from FSM at key %x: %w", k, lookupErr)
 		}
 
+		// The v_pending rmap may already hold an entry for this entity
+		// (live dual-write touched it between retype and the rewrite).
+		// Look that up so we delete the matching forward / eidx rows
+		// before writing the rewrite's value — otherwise leftover live
+		// entries shadow the rewrite under a stale encoding.
+		pendingRmapKey := metadataReverseMapKeyV(kb, task.ledger, task.targetType, entityID, task.key, pendingVersion)
+
+		pendingOldEncoded, lookupErr := b.reverseMapValue(pendingRmapKey)
+		if lookupErr != nil {
+			return false, fmt.Errorf("reading pending-version reverse map: %w", lookupErr)
+		}
+
 		// If the FSM has nothing for this entity (deleted between writes
-		// and rewrite), drop both forward and rmap entries.
+		// and rewrite), drop the v_pending entry (if any). v_current is
+		// left intact — queries that still read v_current keep working
+		// against the existing snapshot, and v_current's GC happens
+		// when the atomic switch fires.
 		if rawValue == nil {
-			oldFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, oldEncoded, entityID)
-			if derr := batch.DeleteKey(oldFwdKey); derr != nil {
-				return false, fmt.Errorf("deleting forward entry for missing FSM value: %w", derr)
-			}
-
-			oldIsNull := len(oldEncoded) > 0 && oldEncoded[0] == readstore.TypeTagNull
-			oldEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, oldIsNull, entityID)
-			if derr := batch.DeleteKey(oldEidxKey); derr != nil {
-				return false, fmt.Errorf("deleting eidx for missing FSM value: %w", derr)
-			}
-
-			if derr := batch.DeleteKey(cloneBytes(k)); derr != nil {
-				return false, fmt.Errorf("deleting rmap entry for missing FSM value: %w", derr)
+			if pendingOldEncoded != nil {
+				if derr := b.wb.DeleteMetadataEntryWithPreviousV(
+					kb, pendingRmapKey,
+					task.ledger, ns, task.key, pendingVersion,
+					pendingOldEncoded, entityID,
+				); derr != nil {
+					return false, fmt.Errorf("deleting v_pending entry for missing FSM value: %w", derr)
+				}
 			}
 
 			rewritten++
@@ -510,37 +775,15 @@ scan:
 		newMV := commonpb.ConvertMetadataValue(rawValue, task.toType)
 		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
 
-		// Delete old forward index entry.
-		oldFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, oldEncoded, entityID)
-		if err := batch.DeleteKey(oldFwdKey); err != nil {
-			return false, fmt.Errorf("deleting old forward index: %w", err)
-		}
-
-		// Update eidx if null status changed.
-		oldIsNull := len(oldEncoded) > 0 && oldEncoded[0] == readstore.TypeTagNull
-		newIsNull := len(newEncoded) > 0 && newEncoded[0] == readstore.TypeTagNull
-
-		if oldIsNull != newIsNull {
-			oldEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, oldIsNull, entityID)
-			if err := batch.DeleteKey(oldEidxKey); err != nil {
-				return false, fmt.Errorf("deleting old eidx: %w", err)
-			}
-
-			newEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, newIsNull, entityID)
-			if err := batch.SetBytes(newEidxKey, nil); err != nil {
-				return false, fmt.Errorf("setting new eidx: %w", err)
-			}
-		}
-
-		// Write new forward index entry.
-		newFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, newEncoded, entityID)
-		if err := batch.SetBytes(newFwdKey, nil); err != nil {
-			return false, fmt.Errorf("setting new forward index: %w", err)
-		}
-
-		// Update reverse map with new encoded value.
-		if err := batch.SetBytes(cloneBytes(k), newEncoded); err != nil {
-			return false, fmt.Errorf("updating reverse map: %w", err)
+		// ReplaceMetadataIndexV at v_pending deletes the old v_pending
+		// forward/eidx (if any), writes the new ones, and updates the
+		// v_pending rmap row. v_current is untouched.
+		if err := b.wb.ReplaceMetadataIndexV(
+			kb, pendingRmapKey,
+			task.ledger, ns, task.key, pendingVersion,
+			newEncoded, pendingOldEncoded, entityID,
+		); err != nil {
+			return false, fmt.Errorf("writing v_pending metadata entry: %w", err)
 		}
 
 		rewritten++
@@ -566,11 +809,181 @@ scan:
 		}
 	}
 
-	if err := batch.Commit(); err != nil {
-		return false, err
+	// Atomic switch: when the rewrite has just finished its last entry,
+	// promote v_pending to local_current_version *and* GC the v_old
+	// keyspaces in the same batch. Single-batch atomicity means a
+	// crash mid-commit leaves the read store either fully pre-switch
+	// (v_old serves queries, rewrite resumes) or fully post-switch
+	// (v_pending serves queries, v_old is gone). No intermediate
+	// state where queries land on a switched current_version while
+	// stale v_old keys still sit on disk.
+	//
+	// The switch is GATED on `LastIndexedSequence >= requiredIndexedSeq`
+	// (the FSM watermark accumulated during the scan above). If the
+	// read store hasn't caught up yet, freeze the task in the
+	// scanComplete state — the next call to processSchemaRewrite will
+	// route through tryCommitScanCompleteSwitch and fire the switch
+	// once the gate releases. Splitting the switch into its own batch
+	// in the laggy case is safe: v_pending is fully populated, v_current
+	// keeps serving queries, and the switch itself is still a single
+	// atomic batch (WriteIndexVersionState + gcVersionAt together).
+	var (
+		didSwitch bool
+		newState  readstore.IndexVersionState
+	)
+
+	if done {
+		task.scanComplete = true
+
+		lastSeq, seqErr := b.readStore.LastIndexedSequence()
+		if seqErr != nil {
+			return false, fmt.Errorf("reading indexer progress for schema-rewrite gate: %w", seqErr)
+		}
+
+		if lastSeq < task.requiredIndexedSeq {
+			// Read store is behind the FSM we observed — defer the switch.
+			// Commit only what's in `batch` (cursor + v_pending writes
+			// from this scan iteration). The task survives to the next
+			// tick via the scanComplete branch at the top of the function.
+			done = false
+		} else {
+			newState = readstore.IndexVersionState{
+				CurrentVersion: pendingVersion,
+				PendingVersion: 0,
+			}
+
+			if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
+				return false, fmt.Errorf("persisting atomic version switch: %w", err)
+			}
+
+			if err := b.gcVersionAt(batch, kb, task.ledger, ns, task.key, currentVersion); err != nil {
+				return false, fmt.Errorf("gc v_old keyspace: %w", err)
+			}
+
+			didSwitch = true
+		}
+	}
+
+	if err := b.wb.Flush(); err != nil {
+		return false, fmt.Errorf("committing schema rewrite batch: %w", err)
+	}
+
+	committed = true
+
+	if didSwitch {
+		b.putVersionState(task.ledger, canonical, newState)
+		b.logger.WithFields(map[string]any{
+			"ledger":         task.ledger,
+			"key":            task.key,
+			"toType":         task.toType.String(),
+			"fromVersion":    currentVersion,
+			"toVersion":      pendingVersion,
+			"gcedVersion":    currentVersion,
+			"processedCount": task.processedCount,
+		}).Infof("Schema rewrite atomic switch — local_current_version advanced")
 	}
 
 	return done, nil
+}
+
+// tryCommitScanCompleteSwitch handles the second half of a rewrite
+// whose rmap scan exhausted in a prior batch (task.scanComplete=true)
+// but whose atomic switch was deferred because the read-store cursor
+// hadn't caught up to the FSM log seq the rewrite observed. Each tick
+// re-checks the gate; once `LastIndexedSequence() >= task.requiredIndexedSeq`
+// it opens a small batch with just `WriteIndexVersionState` +
+// `gcVersionAt` and commits — the switch is still a single atomic
+// batch, just decoupled from the scan-completion batch.
+//
+// Returns (true, nil) when the switch committed and the task can be
+// retired; (false, nil) when the gate hasn't released yet (keep the
+// task alive); (false, err) on commit failure.
+func (b *Builder) tryCommitScanCompleteSwitch(
+	task *schemaRewriteTask, kb *dal.KeyBuilder, ns, canonical string,
+	currentVersion, pendingVersion uint32,
+) (bool, error) {
+	lastSeq, err := b.readStore.LastIndexedSequence()
+	if err != nil {
+		return false, fmt.Errorf("reading indexer progress for schema-rewrite gate: %w", err)
+	}
+
+	if lastSeq < task.requiredIndexedSeq {
+		// Gate still closed — task survives, retry next tick.
+		return false, nil
+	}
+
+	batch := b.readStore.NewBatch()
+	b.wb.Init(batch)
+	committed := false
+
+	defer func() {
+		if !committed {
+			_ = batch.Cancel()
+			b.wb.Reset()
+		}
+	}()
+
+	newState := readstore.IndexVersionState{
+		CurrentVersion: pendingVersion,
+		PendingVersion: 0,
+	}
+
+	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
+		return false, fmt.Errorf("persisting atomic version switch: %w", err)
+	}
+
+	if err := b.gcVersionAt(batch, kb, task.ledger, ns, task.key, currentVersion); err != nil {
+		return false, fmt.Errorf("gc v_old keyspace: %w", err)
+	}
+
+	if err := b.wb.Flush(); err != nil {
+		return false, fmt.Errorf("committing deferred schema-rewrite switch: %w", err)
+	}
+
+	committed = true
+
+	b.putVersionState(task.ledger, canonical, newState)
+	b.logger.WithFields(map[string]any{
+		"ledger":             task.ledger,
+		"key":                task.key,
+		"toType":             task.toType.String(),
+		"fromVersion":        currentVersion,
+		"toVersion":          pendingVersion,
+		"gcedVersion":        currentVersion,
+		"processedCount":     task.processedCount,
+		"requiredIndexedSeq": task.requiredIndexedSeq,
+		"lastIndexedSeq":     lastSeq,
+	}).Infof("Schema rewrite deferred atomic switch — gate released, local_current_version advanced")
+
+	return true, nil
+}
+
+// metadataReverseMapKeyV returns the reverse-map key for an entity at a
+// given forward-encoding version. entityID is the raw byte form held by
+// the rmap key (account address bytes for accounts, 8-byte BE txID for
+// transactions).
+func metadataReverseMapKeyV(
+	kb *dal.KeyBuilder,
+	ledger string,
+	target commonpb.TargetType,
+	entityID []byte,
+	metaKey string,
+	version uint32,
+) []byte {
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		return readstore.AccountReverseMapKeyV(kb, ledger, string(entityID), metaKey, version)
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		if len(entityID) != 8 {
+			return nil
+		}
+
+		txID := binary.BigEndian.Uint64(entityID)
+
+		return readstore.TransactionReverseMapKeyV(kb, ledger, txID, metaKey, version)
+	}
+
+	return nil
 }
 
 // processBackgroundTasks advances both backfill and schema rewrite tasks using
@@ -584,15 +997,14 @@ func (b *Builder) processBackgroundTasks(ctx context.Context, stop <-chan struct
 
 // processSchemaRewrites advances schema rewrite tasks with a time budget.
 //
-// A task lifecycle has three phases:
-//  1. Rewriting: processSchemaRewrite consumes reverse-map entries in batches.
-//  2. Done, waiting for IndexReady to flip the field's IndexBuildStatus back
-//     from BUILDING to READY (leader proposes; followers wait).
-//  3. Cleanup: once the FSM applies IndexReady on this node, the task is
-//     removed.
-//
-// Phase 2 mirrors processBackfills: without it the index stays BUILDING
-// forever after a SetMetadataFieldType on an indexed field (see #275).
+// A task lives in the slice while the rmap scan is still consuming
+// entries. processSchemaRewrite returns done==true on the final batch,
+// in which the atomic switch (current ← pending) and v_old GC have
+// already landed. We remove the task immediately on that same iteration
+// — no cluster-wide IndexReady proposal, no waiting, no Phase 2/3.
+// The local replica's IndexVersionState is the source of truth for
+// queries; the atomic switch's batch commit is the "rewrite complete"
+// signal.
 func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{}) {
 	if len(b.schemaRewriteTasks) == 0 {
 		return
@@ -611,23 +1023,6 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 
 		task := b.schemaRewriteTasks[i]
 
-		// Phase 3: cleanup once the FSM applied IndexReady.
-		if task.done && b.isSchemaRewriteIndexReady(ctx, task) {
-			b.removeSchemaRewriteTask(i)
-
-			continue
-		}
-
-		// Phase 2: rewrite finished, drive IndexReady through Raft. Skip the
-		// rewrite step; just keep retrying the proposal until applied.
-		if task.done {
-			b.tryProposeSchemaRewriteIndexReady(ctx, task)
-			i++
-
-			continue
-		}
-
-		// Phase 1: still rewriting.
 		done, err := b.processSchemaRewrite(task, maxEntriesPerBatch, stop, deadline)
 		if err != nil {
 			b.logger.WithFields(map[string]any{
@@ -641,7 +1036,6 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 			continue
 		}
 
-		// Periodic progress logging.
 		now := time.Now()
 		if task.lastProgressLog.IsZero() || now.Sub(task.lastProgressLog) >= 10*time.Second {
 			b.logger.WithFields(map[string]any{
@@ -662,59 +1056,13 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 				"processed": task.processedCount,
 			}).Infof("Schema rewrite complete")
 
-			task.done = true
-			b.tryProposeSchemaRewriteIndexReady(ctx, task)
+			b.removeSchemaRewriteTask(i)
+
+			continue
 		}
 
 		i++
 	}
-}
-
-// tryProposeSchemaRewriteIndexReady proposes IndexReady on the rewritten
-// field (leader only). The flag is reset on leadership loss so a new leader
-// can re-propose. Mirrors the backfill flow.
-func (b *Builder) tryProposeSchemaRewriteIndexReady(ctx context.Context, task *schemaRewriteTask) {
-	if task.proposed && (b.isLeader == nil || !b.isLeader()) {
-		task.proposed = false
-	}
-
-	// Hold IndexReady until the indexer has ingested every log up to the
-	// highest FSM applied-index this rewrite has observed. Without this
-	// the index could be marked READY while the forward already reflects
-	// logs not yet in the read store, violating the prefix invariant
-	// clients rely on through min_log_sequence.
-	if task.requiredIndexedSeq > 0 {
-		lastSeq, err := b.readStore.LastIndexedSequence()
-		if err != nil {
-			b.logger.WithFields(map[string]any{
-				"ledger": task.ledger,
-				"key":    task.key,
-				"error":  err,
-			}).Errorf("Reading indexer progress before proposing schema-rewrite IndexReady")
-
-			return
-		}
-
-		if lastSeq < task.requiredIndexedSeq {
-			return
-		}
-	}
-
-	if task.proposed {
-		return
-	}
-
-	if !b.proposeSchemaRewriteIndexReady(ctx, task) {
-		return
-	}
-
-	task.proposed = true
-
-	b.logger.WithFields(map[string]any{
-		"ledger": task.ledger,
-		"key":    task.key,
-		"toType": task.toType.String(),
-	}).Infof("Schema rewrite complete, IndexReady proposed — waiting for FSM apply")
 }
 
 // processBackfills advances backfill tasks using round-robin scheduling with a
@@ -746,63 +1094,32 @@ func (b *Builder) processBackfills(ctx context.Context, stop <-chan struct{}, gl
 		task := b.backfillTasks[b.nextBackfillIdx]
 
 		if task.cursor >= globalCursor {
-			// Check if the index is already READY (e.g., applied by the FSM
-			// from another leader's proposal). If so, skip proposing and just
-			// clean up the task. This prevents follower nodes from getting
-			// stuck retrying a proposal they can never send.
-			if b.isIndexAlreadyReady(ctx, task) {
+			// Backfill caught up to the global indexer cursor. For
+			// metadata indexes, promote pending → current locally and
+			// clean up. Builtin indexes (tx/account/log) don't use
+			// versioning, so the only cleanup is dropping the task.
+			if err := b.completeBackfill(task); err != nil {
 				b.logger.WithFields(map[string]any{
 					"ledger": task.ledger,
 					"index":  backfillIndexName(task.index),
-				}).Infof("Index already READY in Pebble, cleaning up backfill task")
+					"error":  err,
+				}).Errorf("Failed to finalize backfill")
 
-				_ = b.readStore.DeleteBackfillProgress(task.bbKey)
-				b.backfillTasks[b.nextBackfillIdx] = b.backfillTasks[len(b.backfillTasks)-1]
-				b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
+				b.nextBackfillIdx++
+				tasksProcessed++
 
 				continue
 			}
 
-			// Backfill is caught up — propose IndexReady if not already proposed.
-			// The task is kept until isIndexAlreadyReady confirms the FSM applied
-			// the IndexReady update. This prevents progress deletion before apply,
-			// which would lose the backfill state if leadership changes.
-			// Reset proposed flag on leadership loss so the task can
-			// re-propose on the new leader.
-			if task.proposed && (b.isLeader == nil || !b.isLeader()) {
-				task.proposed = false
-			}
+			b.logger.WithFields(map[string]any{
+				"ledger": task.ledger,
+				"index":  backfillIndexName(task.index),
+				"cursor": task.cursor,
+			}).Infof("Backfill complete — local atomic switch applied")
 
-			if !task.proposed {
-				if b.proposeIndexReady(ctx, task) {
-					task.proposed = true
-
-					b.logger.WithFields(map[string]any{
-						"ledger": task.ledger,
-						"index":  backfillIndexName(task.index),
-						"cursor": task.cursor,
-					}).Infof("Backfill complete, IndexReady proposed — waiting for FSM apply")
-				} else {
-					now := time.Now()
-					if task.lastProgressLog.IsZero() || now.Sub(task.lastProgressLog) >= 30*time.Second {
-						b.logger.WithFields(map[string]any{
-							"ledger":       task.ledger,
-							"index":        backfillIndexName(task.index),
-							"cursor":       task.cursor,
-							"globalCursor": globalCursor,
-							"isLeader":     b.isLeader != nil && b.isLeader(),
-							"hasProposer":  b.proposer != nil,
-						}).Infof("Backfill caught up, waiting for leadership to propose IndexReady")
-
-						task.lastProgressLog = now
-					}
-				}
-			}
-
-			// Whether proposed or not, keep the task and check again next tick.
-			// isIndexAlreadyReady (above) will clean up once the FSM applies.
-			b.nextBackfillIdx++
-			tasksProcessed++
+			_ = b.readStore.DeleteBackfillProgress(task.bbKey)
+			b.backfillTasks[b.nextBackfillIdx] = b.backfillTasks[len(b.backfillTasks)-1]
+			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
 
 			continue
 		}
@@ -863,6 +1180,54 @@ func (b *Builder) processBackfills(ctx context.Context, stop <-chan struct{}, gl
 // during backfill. Larger than DefaultBatchSize to amortize write overhead
 // while keeping memory bounded.
 const backfillBatchSize = 10_000
+
+// completeBackfill finalizes a backfill task that has caught up to the
+// global indexer cursor. Performs the local atomic switch
+// (current ← pending, pending ← 0) in a fresh batch and updates the
+// in-memory cache after commit. Covers both metadata indexes (where
+// the dual-write path also targets v_pending) and builtin indexes
+// (tx/account/log) — the unified IndexVersionState is the per-replica
+// "this index is ready to serve queries" signal that drove away
+// from the cluster-wide IndexReady proposal.
+//
+// Note: there's no v_old GC here because a backfill builds v_pending
+// from scratch — there's no v_old to reclaim on this replica. (The
+// only versioned predecessor that exists is the never-built v=0
+// sentinel, which has no on-disk keyspace.)
+func (b *Builder) completeBackfill(task *backfillTask) error {
+	canonical := indexes.Canonical(task.index)
+	_, pending := b.versionFor(task.ledger, canonical)
+
+	if pending == 0 {
+		// No pending version was ever recorded — handleCreatedIndexLog
+		// always sets pending=1 on a fresh CreateIndex, so this branch
+		// means the cache lost the entry (snapshot install, manual
+		// state drop). Surface loudly per the project's invariant rule:
+		// the backfill ran but has nowhere to promote into.
+		return fmt.Errorf("invariant: backfill complete on %s/%s but IndexVersionState has no pending_version",
+			task.ledger, canonical)
+	}
+
+	newState := readstore.IndexVersionState{
+		CurrentVersion: pending,
+		PendingVersion: 0,
+	}
+
+	batch := b.readStore.NewBatch()
+	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("persisting backfill atomic switch: %w", err)
+	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("committing backfill atomic switch: %w", err)
+	}
+
+	b.putVersionState(task.ledger, canonical, newState)
+
+	return nil
+}
 
 // processBackfill reads logs from Pebble using a single iterator and indexes
 // them in batches using only the backfilling index's configuration.
@@ -1045,115 +1410,6 @@ func isDataLog(log *commonpb.Log) bool {
 	default:
 		return false
 	}
-}
-
-// proposeIndexReady proposes an IndexReadyUpdate through Raft as a direct
-// Proposal field (leader only). Returns true if the proposal was submitted
-// successfully, false otherwise. ctx is the stop-derived context of the
-// builder loop — the proposer now waits for FSM apply through proposeTechnical,
-// so a non-cancellable context would pin this goroutine on shutdown or
-// leadership loss.
-func (b *Builder) proposeIndexReady(ctx context.Context, task *backfillTask) bool {
-	if b.proposer == nil || b.isLeader == nil || !b.isLeader() {
-		return false
-	}
-
-	update := &raftcmdpb.IndexReadyUpdate{
-		Ledger: task.ledger,
-		Id:     task.index,
-	}
-
-	if err := b.proposer.Propose(ctx, &raftcmdpb.Proposal{
-		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
-			Kind: &raftcmdpb.TechnicalUpdate_IndexReady{IndexReady: update},
-		}},
-	}); err != nil {
-		b.logger.WithFields(map[string]any{
-			"ledger": task.ledger,
-			"error":  err,
-		}).Errorf("Failed to propose IndexReady")
-
-		return false
-	}
-
-	return true
-}
-
-// proposeSchemaRewriteIndexReady proposes an IndexReadyUpdate for a
-// schema-rewrite task (leader only). The update shape is the same as a
-// backfill IndexReady for the equivalent metadata index, so the FSM applies
-// it through the existing applyIndexReady →
-// processing.ProcessIndexReadyMetadata path and flips IndexBuildStatus from
-// BUILDING back to READY.
-func (b *Builder) proposeSchemaRewriteIndexReady(ctx context.Context, task *schemaRewriteTask) bool {
-	if b.proposer == nil || b.isLeader == nil || !b.isLeader() {
-		return false
-	}
-
-	if task.targetType != commonpb.TargetType_TARGET_TYPE_ACCOUNT &&
-		task.targetType != commonpb.TargetType_TARGET_TYPE_TRANSACTION {
-		// Ledger-target metadata isn't indexed today; nothing to mark ready.
-		return true
-	}
-
-	// After the Index-first-class refactor every metadata-key index is
-	// identified by an IndexID{Metadata: {target, key}}, regardless of
-	// whether the target is ACCOUNT or TRANSACTION.
-	update := &raftcmdpb.IndexReadyUpdate{
-		Ledger: task.ledger,
-		Id:     indexes.MetadataID(task.targetType, task.key),
-	}
-
-	if err := b.proposer.Propose(ctx, &raftcmdpb.Proposal{
-		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
-			Kind: &raftcmdpb.TechnicalUpdate_IndexReady{IndexReady: update},
-		}},
-	}); err != nil {
-		b.logger.WithFields(map[string]any{
-			"ledger": task.ledger,
-			"key":    task.key,
-			"error":  err,
-		}).Errorf("Failed to propose IndexReady for schema rewrite")
-
-		return false
-	}
-
-	return true
-}
-
-// isSchemaRewriteIndexReady checks if the rewritten index has reached READY
-// in Pebble — either because the leader proposed it and the FSM applied here,
-// or because another leader did the work. Used to clean up the task on every
-// node (followers can't propose, so they wait).
-func (b *Builder) isSchemaRewriteIndexReady(ctx context.Context, task *schemaRewriteTask) bool {
-	if task.targetType != commonpb.TargetType_TARGET_TYPE_ACCOUNT &&
-		task.targetType != commonpb.TargetType_TARGET_TYPE_TRANSACTION {
-		// Ledger-target: no index, nothing to wait for. Treat as ready so
-		// the task is cleaned up.
-		return true
-	}
-
-	reader, err := b.newIndexReader()
-	if err != nil {
-		return false
-	}
-	defer reader.Close()
-
-	return indexes.IsReady(reader, task.ledger, indexes.MetadataID(task.targetType, task.key))
-}
-
-// isIndexAlreadyReady checks if the index for this backfill task is already
-// marked READY in Pebble (e.g. applied by the FSM from another leader's
-// proposal). This prevents follower nodes from retrying IndexReady proposals
-// forever when no new logs arrive.
-func (b *Builder) isIndexAlreadyReady(ctx context.Context, task *backfillTask) bool {
-	reader, err := b.newIndexReader()
-	if err != nil {
-		return false // I/O error; assume not ready and try again next tick
-	}
-	defer reader.Close()
-
-	return indexes.IsReady(reader, task.ledger, task.index)
 }
 
 // fetchStoredMetadataValue reads the raw stored metadata value from the FSM

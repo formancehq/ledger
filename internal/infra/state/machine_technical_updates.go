@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -56,10 +55,6 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 			if err := fsm.applyIdempotencyEviction(batch, kind.IdempotencyEviction); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] idempotency eviction: %w", i, err)
 			}
-		case *raftcmdpb.TechnicalUpdate_IndexReady:
-			if err := fsm.applyIndexReady(scope, kind.IndexReady, proposal.GetDate()); err != nil {
-				return fmt.Errorf("applying technical_updates[%d] index ready: %w", i, err)
-			}
 		case *raftcmdpb.TechnicalUpdate_BackupOrder:
 			if err := fsm.applyBackupOrder(batch, raftIndex, raftcmdpb.BackupKind_BACKUP_KIND_FULL, kind.BackupOrder); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] backup order: %w", i, err)
@@ -69,7 +64,30 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 				return fmt.Errorf("applying technical_updates[%d] incremental backup order: %w", i, err)
 			}
 		default:
-			return fmt.Errorf("technical_updates[%d]: unsupported kind %T", i, kind)
+			// Rolling-upgrade hazard for the EN-1323 cutover: the
+			// cluster-wide IndexReady mechanism (oneof field 8) was
+			// removed and the field number reserved. New nodes
+			// unmarshal a pre-upgrade IndexReadyUpdate proposal into
+			// a nil-kind TechnicalUpdate and fall here, while old
+			// nodes still in the cluster successfully apply the
+			// proposal via the now-deleted applyIndexReady — FSM
+			// divergence.
+			//
+			// Mitigation is operational, not in-code: drain Raft
+			// commit-side before rolling the binary upgrade. A clean
+			// drain ensures no IndexReadyUpdate sits past the
+			// last-applied index of the old replicas, so newcomers
+			// never see one. See docs/ops/deployment.md for the
+			// upgrade procedure.
+			//
+			// Returning an error here (rather than silently no-op'ing)
+			// is intentional: per CLAUDE.md invariant #7 a truly-
+			// impossible case must surface loudly, and an FSM
+			// divergence is the only way this arm fires. All-error
+			// on every new node is the safer divergence pattern —
+			// operators see the failure on upgraded nodes immediately
+			// rather than discover stale forward indexes later.
+			return fmt.Errorf("technical_updates[%d]: unsupported kind %T (drain Raft commits before upgrading past EN-1323)", i, kind)
 		}
 	}
 
@@ -234,70 +252,6 @@ func (fsm *Machine) applyIdempotencyEviction(batch *dal.WriteSession, eviction *
 	if evicted > 0 {
 		fsm.logger.Infof("Evicted %d expired idempotency keys (cutoff=%d)", evicted, eviction.GetCutoffMicros())
 	}
-
-	return nil
-}
-
-// applyIndexReady applies an index-ready notification. No log entry is produced.
-// The index builder detects the status change by reading the index registry on
-// its next tick.
-//
-// `ready.LedgerId` is the canonical ledger ID resolved by the indexbuilder
-// when the proposal was scheduled; the proposer declares the matching
-// `needs.Indexes` AND `needs.Ledgers` preload so both reads hit a populated
-// cache via the per-update gatedScope.
-//
-// Three observable outcomes, all soft-skipped:
-//
-//   - ledger missing or deleted → soft skip. processDeleteLedger does NOT
-//     clear Index cache entries inline (see processor_ledger.go and
-//     batch.deleteLedgerData's deferred range delete). Without this guard
-//     an IndexReady proposed before the indexbuilder consumed the
-//     DeleteLedger log can race past the chapter-purge that ran
-//     deleteLedgerData and resurrect a Pebble row that no future cleanup
-//     will collect — the orphan persists across cache rotations because
-//     PendingLedgerCleanup is already consumed.
-//   - entry present → live index, flip to READY and write back via scope.
-//   - entry absent  → soft skip. The proposer's needs.Indexes preload only
-//     populates entries that exist in Pebble at propose time. A Drop +
-//     cache rotation can evict both the value and the tombstone before
-//     this apply runs (the rotated-out generation is discarded wholesale),
-//     in which case the preload finds nothing and ships nothing. Refusing
-//     to apply would abort Raft on a genuinely stale notification
-//     (PR #453 review pass 2).
-func (fsm *Machine) applyIndexReady(scope processing.Scope, ready *raftcmdpb.IndexReadyUpdate, proposalDate *commonpb.Timestamp) error {
-	info, err := scope.GetLedger(ready.GetLedger())
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return nil // stale: ledger never existed under the cached view
-		}
-
-		return fmt.Errorf("loading ledger for IndexReady apply: %w", err)
-	}
-
-	if info.GetDeletedAt() != nil {
-		// Ledger is deleted: deleteLedgerData will (or already did) range-
-		// delete every SubAttrIndex row for it. Writing READY back here
-		// would either be undone by the pending purge or — if the purge
-		// already ran — resurrect an orphan with no further cleanup.
-		return nil
-	}
-
-	idx, err := indexes.Find(scope, ready.GetLedger(), ready.GetId())
-	if err != nil {
-		return fmt.Errorf("loading index for IndexReady apply: %w", err)
-	}
-
-	if idx == nil {
-		return nil // stale: missing or dropped before this apply
-	}
-
-	updated := idx.Mutate()
-	updated.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-	updated.LastBuiltAt = proposalDate
-	updated.LastError = ""
-
-	indexes.Put(scope, ready.GetLedger(), updated)
 
 	return nil
 }

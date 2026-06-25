@@ -2,6 +2,7 @@ package indexbuilder
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -325,8 +326,10 @@ func (b *Builder) indexPayload(
 		return b.indexDeletedMetadata(kb, cfg, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 		// Defer the rewrite to a background task instead of scanning
-		// the reverse map inline during the hot path.
-		b.addSchemaRewriteTask(cfg, ledgerName, p.SetMetadataFieldType)
+		// the reverse map inline during the hot path. addSchemaRewriteTask
+		// also bumps pending_version in the current batch — propagate
+		// any persistence error so the batch aborts.
+		return b.addSchemaRewriteTask(cfg, ledgerName, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 		return b.handleRemovedMetadataFieldType(kb, cfg, ledgerName, p.RemovedMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
@@ -496,22 +499,20 @@ func (b *Builder) indexCreatedTransaction(
 					continue
 				}
 
-				reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, key)
 				coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
 				if err != nil {
 					return err
 				}
 				newEncoded := readstore.EncodeMetadataValue(nil, coerced)
 
-				oldEncoded, err := b.reverseMapValue(reverseKey)
-				if err != nil {
-					return err
-				}
-
-				if err := wb.ReplaceMetadataIndex(
-					kb, reverseKey,
+				if err := b.dualWriteMetadataIndex(
+					kb,
 					ledger, readstore.NamespaceAccount, key,
-					newEncoded, oldEncoded, []byte(account),
+					commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					newEncoded, []byte(account),
+					func(version uint32) []byte {
+						return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
+					},
 				); err != nil {
 					return err
 				}
@@ -528,27 +529,26 @@ func (b *Builder) indexCreatedTransaction(
 		txIDBytes := make([]byte, 0, 8)
 
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txn.GetId())
+		txID := txn.GetId()
 		for key, value := range txn.GetMetadata() {
 			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
 				continue
 			}
 
-			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txn.GetId(), key)
 			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
 			if err != nil {
 				return err
 			}
 			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
 
-			oldEncoded, err := b.reverseMapValue(reverseKey)
-			if err != nil {
-				return err
-			}
-
-			if err := wb.ReplaceMetadataIndex(
-				kb, reverseKey,
+			if err := b.dualWriteMetadataIndex(
+				kb,
 				ledger, readstore.NamespaceTransaction, key,
-				newEncoded, oldEncoded, txIDBytes,
+				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				newEncoded, txIDBytes,
+				func(version uint32) []byte {
+					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
+				},
 			); err != nil {
 				return err
 			}
@@ -623,27 +623,26 @@ func (b *Builder) indexRevertedTransaction(
 		txIDBytes := make([]byte, 0, 8)
 
 		txIDBytes = readstore.EncodeTxID(txIDBytes, revertTxn.GetId())
+		txID := revertTxn.GetId()
 		for key, value := range revertTxn.GetMetadata() {
 			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
 				continue
 			}
 
-			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, revertTxn.GetId(), key)
 			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
 			if err != nil {
 				return err
 			}
 			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
 
-			oldEncoded, err := b.reverseMapValue(reverseKey)
-			if err != nil {
-				return err
-			}
-
-			if err := wb.ReplaceMetadataIndex(
-				kb, reverseKey,
+			if err := b.dualWriteMetadataIndex(
+				kb,
 				ledger, readstore.NamespaceTransaction, key,
-				newEncoded, oldEncoded, txIDBytes,
+				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				newEncoded, txIDBytes,
+				func(version uint32) []byte {
+					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
+				},
 			); err != nil {
 				return err
 			}
@@ -750,8 +749,6 @@ func (b *Builder) indexSavedMetadata(
 		return nil
 	}
 
-	wb := b.wb
-
 	switch t := sm.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
 		account := t.Account.GetAddr()
@@ -761,22 +758,20 @@ func (b *Builder) indexSavedMetadata(
 				continue
 			}
 
-			reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, key)
 			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
 			if err != nil {
 				return err
 			}
 			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
 
-			oldEncoded, err := b.reverseMapValue(reverseKey)
-			if err != nil {
-				return err
-			}
-
-			if err := wb.ReplaceMetadataIndex(
-				kb, reverseKey,
+			if err := b.dualWriteMetadataIndex(
+				kb,
 				ledger, readstore.NamespaceAccount, key,
-				newEncoded, oldEncoded, []byte(account),
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				newEncoded, []byte(account),
+				func(version uint32) []byte {
+					return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
+				},
 			); err != nil {
 				return err
 			}
@@ -791,22 +786,20 @@ func (b *Builder) indexSavedMetadata(
 				continue
 			}
 
-			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, key)
 			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
 			if err != nil {
 				return err
 			}
 			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
 
-			oldEncoded, err := b.reverseMapValue(reverseKey)
-			if err != nil {
-				return err
-			}
-
-			if err := wb.ReplaceMetadataIndex(
-				kb, reverseKey,
+			if err := b.dualWriteMetadataIndex(
+				kb,
 				ledger, readstore.NamespaceTransaction, key,
-				newEncoded, oldEncoded, txIDBytes,
+				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				newEncoded, txIDBytes,
+				func(version uint32) []byte {
+					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
+				},
 			); err != nil {
 				return err
 			}
@@ -827,8 +820,6 @@ func (b *Builder) indexDeletedMetadata(
 		return nil
 	}
 
-	wb := b.wb
-
 	switch t := dm.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
 		if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, dm.GetKey()) {
@@ -836,17 +827,16 @@ func (b *Builder) indexDeletedMetadata(
 		}
 
 		account := t.Account.GetAddr()
-		reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, dm.GetKey())
+		metaKey := dm.GetKey()
 
-		oldEncoded, err := b.reverseMapValue(reverseKey)
-		if err != nil {
-			return err
-		}
-
-		return wb.DeleteMetadataEntryWithPrevious(
-			kb, reverseKey,
-			ledger, readstore.NamespaceAccount, dm.GetKey(),
-			oldEncoded, []byte(account),
+		return b.dualDeleteMetadataEntry(
+			kb,
+			ledger, readstore.NamespaceAccount, metaKey,
+			commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			[]byte(account),
+			func(version uint32) []byte {
+				return readstore.AccountReverseMapKeyV(kb, ledger, account, metaKey, version)
+			},
 		)
 	case *commonpb.Target_TransactionId:
 		if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, dm.GetKey()) {
@@ -856,17 +846,16 @@ func (b *Builder) indexDeletedMetadata(
 		txID := t.TransactionId
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
-		reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, dm.GetKey())
+		metaKey := dm.GetKey()
 
-		oldEncoded, err := b.reverseMapValue(reverseKey)
-		if err != nil {
-			return err
-		}
-
-		return wb.DeleteMetadataEntryWithPrevious(
-			kb, reverseKey,
-			ledger, readstore.NamespaceTransaction, dm.GetKey(),
-			oldEncoded, txIDBytes,
+		return b.dualDeleteMetadataEntry(
+			kb,
+			ledger, readstore.NamespaceTransaction, metaKey,
+			commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			txIDBytes,
+			func(version uint32) []byte {
+				return readstore.TransactionReverseMapKeyV(kb, ledger, txID, metaKey, version)
+			},
 		)
 	}
 
@@ -999,23 +988,33 @@ func cloneBytes(b []byte) []byte {
 
 // extractMetadataKeyFromReverseMap extracts the metadata key name from a
 // reverse map key, given the prefix up to the namespace.
-// For accounts:     [ledger\x00][a:][account\x00][metadataKey]
-// For transactions: [ledger\x00][t:][txID(8B)][metadataKey].
+// For accounts:     [ledger\x00][a:][account\x00][version:4B BE][metadataKey]
+// For transactions: [ledger\x00][t:][txID(8B)][version:4B BE][metadataKey].
+//
+// The 4-byte forward-encoding version sitting between the entity
+// delimiter and the metadata key was introduced as part of EN-1323's
+// per-replica versioning; the entity scan helpers skip past it.
 func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
 	suffix := key[len(nsPrefix):]
 	if ns == readstore.NamespaceAccount {
-		// Find the null terminator after the account address
+		// Find the null terminator after the account address, then
+		// skip the 4-byte version prefix that precedes metadataKey.
 		for i, b := range suffix {
 			if b == 0x00 {
-				return string(suffix[i+1:])
+				rest := suffix[i+1:]
+				if len(rest) < 4 {
+					return ""
+				}
+
+				return string(rest[4:])
 			}
 		}
 
 		return ""
 	}
-	// Transaction: skip 8-byte txID
-	if len(suffix) > 8 {
-		return string(suffix[8:])
+	// Transaction: skip 8-byte txID then 4-byte version.
+	if len(suffix) > 12 {
+		return string(suffix[12:])
 	}
 
 	return ""
@@ -1054,4 +1053,72 @@ func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
 	}
 
 	return suffix
+}
+
+// parseReverseMapKey parses a full reverse-map key (including the
+// PrefixReverseMap discriminator byte) and returns the (entityID,
+// metaKey, version) tuple it encodes. ok=false when the key shape is
+// incompatible with the namespace (corrupt key, scanning past a fresh
+// version frontier with truncated tails).
+//
+// This is the single chokepoint for "the rmap key offset math" — any
+// caller that needs more than one of the three fields should route
+// through here instead of calling the individual extractors. The
+// extract* helpers are kept as-is for callers that want only one
+// field cheaply, but the multi-field sites (schema rewrite, GC, field
+// removal) all read from this helper so an offset bug only has one
+// place to break.
+func parseReverseMapKey(k, rmapPrefix []byte, ns string) (entityID []byte, metaKey string, version uint32, ok bool) {
+	if len(k) < 1 || len(rmapPrefix) < 1 {
+		return nil, "", 0, false
+	}
+
+	suffix := k[1:]
+	nsPrefix := rmapPrefix[1:]
+
+	metaKey = extractMetadataKeyFromReverseMap(suffix, nsPrefix, ns)
+	if metaKey == "" {
+		// Either the key is corrupt or the suffix is too short to hold
+		// a non-empty metaKey — caller treats both as "skip".
+		return nil, "", 0, false
+	}
+
+	v, vOk := extractVersionFromReverseMap(suffix, nsPrefix, ns)
+	if !vOk {
+		return nil, "", 0, false
+	}
+
+	return extractEntityIDFromReverseMap(suffix, nsPrefix, ns), metaKey, v, true
+}
+
+// extractVersionFromReverseMap returns the 4-byte big-endian
+// forward-encoding version embedded in a reverse map key suffix.
+// Returns (0, false) when the suffix is too short or malformed —
+// callers treat that as "skip this entry" rather than crash.
+//
+// Key layout (after stripping the PrefixReverseMap byte):
+//   - Account:     [ledger\x00][a:][account\x00][version:4B BE][metadataKey]
+//   - Transaction: [ledger\x00][t:][txID(8B)][version:4B BE][metadataKey]
+func extractVersionFromReverseMap(key, nsPrefix []byte, ns string) (uint32, bool) {
+	suffix := key[len(nsPrefix):]
+	if ns == readstore.NamespaceAccount {
+		for i, b := range suffix {
+			if b == 0x00 {
+				rest := suffix[i+1:]
+				if len(rest) < 4 {
+					return 0, false
+				}
+
+				return binary.BigEndian.Uint32(rest[:4]), true
+			}
+		}
+
+		return 0, false
+	}
+	// Transaction: version sits at suffix[8:12].
+	if len(suffix) >= 12 {
+		return binary.BigEndian.Uint32(suffix[8:12]), true
+	}
+
+	return 0, false
 }

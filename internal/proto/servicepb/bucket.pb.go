@@ -7649,13 +7649,26 @@ func (x *GetIndexStatusResponse) GetIndexes() []*IndexEntry {
 
 // IndexEntry joins a ledger's index definition (status + audit metadata) with
 // its backfill cursor position. Replaces the former IndexBackfillProgress.
+//
+// current_version + pending_version surface the per-replica forward-
+// encoding version state (EN-1323). current_version == 0 means the
+// local replica has never finished building this index; > 0 means the
+// last completed backfill / rewrite atomic-switched into this version
+// and queries served from this replica are reading it. pending_version
+// is the in-flight rewrite target on this replica (0 when no rewrite
+// is running). Clients that need to wait for the local replica to
+// finish building an index poll current_version > 0 — the
+// cluster-wide IndexReady BuildStatus flip is gone, BuildStatus is
+// kept on the Index message only as informational.
 type IndexEntry struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Index         *commonpb.Index        `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`     // status + created_at + last_built_at + last_error
-	Cursor        uint64                 `protobuf:"fixed64,3,opt,name=cursor,proto3" json:"cursor,omitempty"` // backfill cursor (0 when not in backfill or done)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Ledger         string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Index          *commonpb.Index        `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`                                          // status + created_at + last_built_at + last_error
+	Cursor         uint64                 `protobuf:"fixed64,3,opt,name=cursor,proto3" json:"cursor,omitempty"`                                      // backfill cursor (0 when not in backfill or done)
+	CurrentVersion uint32                 `protobuf:"varint,4,opt,name=current_version,json=currentVersion,proto3" json:"current_version,omitempty"` // per-replica live keyspace; 0 until first switch
+	PendingVersion uint32                 `protobuf:"varint,5,opt,name=pending_version,json=pendingVersion,proto3" json:"pending_version,omitempty"` // per-replica in-flight rewrite target; 0 when idle
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *IndexEntry) Reset() {
@@ -7705,6 +7718,20 @@ func (x *IndexEntry) GetIndex() *commonpb.Index {
 func (x *IndexEntry) GetCursor() uint64 {
 	if x != nil {
 		return x.Cursor
+	}
+	return 0
+}
+
+func (x *IndexEntry) GetCurrentVersion() uint32 {
+	if x != nil {
+		return x.CurrentVersion
+	}
+	return 0
+}
+
+func (x *IndexEntry) GetPendingVersion() uint32 {
+	if x != nil {
+		return x.PendingVersion
 	}
 	return 0
 }
@@ -9185,12 +9212,14 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11last_log_sequence\x18\x02 \x01(\x06R\x0flastLogSequence\x12\x10\n" +
 	"\x03lag\x18\x03 \x01(\x06R\x03lag\x12&\n" +
 	"\x0findex_file_size\x18\x04 \x01(\x06R\rindexFileSize\x12,\n" +
-	"\aindexes\x18\x06 \x03(\v2\x12.ledger.IndexEntryR\aindexesJ\x04\b\x05\x10\x06R\x11backfill_progress\"a\n" +
+	"\aindexes\x18\x06 \x03(\v2\x12.ledger.IndexEntryR\aindexesJ\x04\b\x05\x10\x06R\x11backfill_progress\"\xb3\x01\n" +
 	"\n" +
 	"IndexEntry\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
 	"\x05index\x18\x02 \x01(\v2\r.common.IndexR\x05index\x12\x16\n" +
-	"\x06cursor\x18\x03 \x01(\x06R\x06cursor\"\xa0\x01\n" +
+	"\x06cursor\x18\x03 \x01(\x06R\x06cursor\x12'\n" +
+	"\x0fcurrent_version\x18\x04 \x01(\rR\x0ecurrentVersion\x12'\n" +
+	"\x0fpending_version\x18\x05 \x01(\rR\x0ependingVersion\"\xa0\x01\n" +
 	"\x12ListIndexesRequest\x126\n" +
 	"\x05scope\x18\x01 \x01(\x0e2 .ledger.ListIndexesRequest.ScopeR\x05scope\x12\x16\n" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\":\n" +

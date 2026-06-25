@@ -833,11 +833,35 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 			continue
 		}
 
-		entries = append(entries, &servicepb.IndexEntry{
+		canonical := indexes.Canonical(idx.GetId())
+		entry := &servicepb.IndexEntry{
 			Ledger: name,
 			Index:  idx,
-			Cursor: cursors[cursorKey{ledger: name, canonical: indexes.Canonical(idx.GetId())}],
-		})
+			Cursor: cursors[cursorKey{ledger: name, canonical: canonical}],
+		}
+
+		// Per-replica forward-encoding state. (0, 0) is the default
+		// zero value when the cache has no record — equivalent to
+		// "not yet built on this replica" so clients reading
+		// current_version == 0 keep the same semantics regardless of
+		// whether the entry exists or not. A real Pebble I/O failure
+		// surfaces as a logged warning + zero state — the status RPC
+		// is informational, so degrading to "BUILDING-looking" beats
+		// failing the whole response, but we log so operators can
+		// correlate.
+		state, ok, stateErr := impl.readStore.ReadIndexVersionState(name, canonical)
+		if stateErr != nil {
+			impl.logger.WithFields(map[string]any{
+				"ledger":    name,
+				"canonical": canonical,
+				"error":     stateErr,
+			}).Errorf("Reading IndexVersionState for GetIndexStatus")
+		} else if ok {
+			entry.CurrentVersion = state.CurrentVersion
+			entry.PendingVersion = state.PendingVersion
+		}
+
+		entries = append(entries, entry)
 	}
 
 	if err := idxIter.Err(); err != nil {

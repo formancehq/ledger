@@ -1,8 +1,6 @@
 package indexbuilder
 
 import (
-	"bytes"
-
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -16,20 +14,26 @@ import (
 // metadata field is removed from the schema, its read-store entries must
 // be purged so subsequent queries do not surface stale results.
 //
-// Three stores are touched for a metadata index on (ns, key):
-//   - 0x01 (forward): `MetadataIndexPrefix(ns, key)` is a clean prefix and is
-//     wiped via a single DeleteRange.
-//   - 0x02 (entity-exists): `EntityExistsKeyPrefix(ns, key)` covers both
-//     null and non-null variants; another DeleteRange.
-//   - 0x03 (reverse map): keys are `[ns:][entityID\x00][metaKey]` — metaKey
-//     is a suffix, so we scan the per-namespace range and delete the keys
-//     ending with this metaKey inline.
+// Three stores are touched for a metadata index on (ns, key) across every
+// per-replica version that ever existed:
+//   - 0x01 (forward): MetadataIndexFieldPrefix(ns, key) covers every v_n
+//     and is wiped via a single DeleteRange.
+//   - 0x02 (entity-exists): EntityExistsFieldPrefix(ns, key) likewise
+//     covers every v_n (both null and non-null variants).
+//   - 0x03 (reverse map): keys are
+//     [ns:][entityID\x00][version:4B BE][metaKey] — metaKey is the
+//     suffix but it's preceded by a fixed-width version block, so we
+//     scan the per-namespace range and use extractMetadataKeyFromReverseMap
+//     (which already accounts for the version block) to delete every
+//     row matching this metaKey regardless of version.
 //
-// The reverse-map scan reuses the in-flight indexed batch as snapshot would
-// not see uncommitted writes, but the scan iterates from a fresh Pebble
-// snapshot for consistency. The handler also strips the corresponding entry
-// from the local ledgerIndexConfig cache so the live path stops considering
-// the index as active immediately.
+// The reverse-map scan reuses the in-flight indexed batch as snapshot
+// would not see uncommitted writes, but the scan iterates from a fresh
+// Pebble snapshot for consistency. The handler also strips the
+// corresponding entry from the local ledgerIndexConfig cache so the
+// live path stops considering the index as active immediately, and
+// drops the per-replica IndexVersionState entry so the boot orphan
+// sweep doesn't try to GC versions of a field that no longer exists.
 func (b *Builder) handleRemovedMetadataFieldType(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
@@ -58,13 +62,13 @@ func (b *Builder) handleRemovedMetadataFieldType(
 		return nil
 	}
 
-	// Forward inverted index.
-	if err := deleteReadStoreRange(batch, readstore.MetadataIndexPrefix(kb, ledgerName, ns, key)); err != nil {
+	// Forward inverted index — every version in one range delete.
+	if err := deleteReadStoreRange(batch, readstore.MetadataIndexFieldPrefix(kb, ledgerName, ns, key)); err != nil {
 		return err
 	}
 
-	// Entity-existence index (covers both null and non-null variants).
-	if err := deleteReadStoreRange(batch, readstore.EntityExistsKeyPrefix(kb, ledgerName, ns, key)); err != nil {
+	// Entity-existence index — every version, both null and non-null.
+	if err := deleteReadStoreRange(batch, readstore.EntityExistsFieldPrefix(kb, ledgerName, ns, key)); err != nil {
 		return err
 	}
 
@@ -86,19 +90,35 @@ func (b *Builder) handleRemovedMetadataFieldType(
 	// Same hazard on the backfill side: an initial CreateIndex backfill
 	// for this metadata index could still be running. processBackfill
 	// uses a one-index cfg, so it would repopulate the entries we just
-	// purged and then loop forever waiting for IndexReady on an index
-	// the FSM already removed. removeBackfillTask drops the task and
-	// deletes its persisted progress.
+	// purged and then loop forever. removeBackfillTask drops the task
+	// and deletes its persisted progress.
 	b.removeBackfillTask(ledgerName, dropped)
+
+	// Drop the per-replica IndexVersionState for the removed field
+	// so the boot orphan sweep doesn't try to GC versions of a field
+	// that no longer exists in the schema.
+	canonical := indexes.Canonical(dropped)
+	b.dropVersionState(ledgerName, canonical)
+
+	if err := b.readStore.DeleteIndexVersionState(ledgerName, canonical); err != nil {
+		b.logger.WithFields(map[string]any{
+			"ledger":    ledgerName,
+			"canonical": canonical,
+			"error":     err,
+		}).Errorf("Deleting IndexVersionState on field removal")
+	}
 
 	return nil
 }
 
 // purgeReverseMapForKey scans the reverse map for a (ns, key) pair and
-// deletes every entry whose suffix matches the metadata key. The reverse
-// map cannot be range-deleted directly because the metadata key sits as a
-// suffix; the scan cost is bounded by the number of entities that had this
-// metadata key.
+// deletes every entry whose metadata key field matches, across every
+// per-replica forward-encoding version. The reverse map can't be
+// range-deleted by (ns, key) because the rmap key shape is
+// [entity\x00][version:4B BE][metaKey] — metaKey sits after a
+// fixed-width version block, not directly after the entity null. The
+// scan cost is bounded by the number of (entity, version) tuples that
+// ever held this metadata key.
 func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerName string, ns, key string) error {
 	rmapPrefix := readstore.ReverseMapPrefix(kb, ledgerName, ns)
 	upper := readstore.IncrementBytes(rmapPrefix)
@@ -119,24 +139,11 @@ func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerName string, n
 
 	defer func() { _ = iter.Close() }()
 
-	keyBytes := []byte(key)
-
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 
-		// Reverse map keys end with the metadata key as a raw suffix (no
-		// null terminator). Match by trailing equality.
-		if !bytes.HasSuffix(k, keyBytes) {
-			continue
-		}
-
-		// Defensive: ensure the suffix sits at the actual reverse-map slot,
-		// i.e. immediately after the entity null terminator. Otherwise a
-		// metadata key string that happens to share a suffix with another
-		// would collide. We look for the rightmost `\x00` and check that
-		// the metaKey starts right after it.
-		nullIdx := bytes.LastIndexByte(k, 0)
-		if nullIdx < 0 || nullIdx != len(k)-1-len(keyBytes) {
+		_, mk, _, parsed := parseReverseMapKey(k, rmapPrefix, ns)
+		if !parsed || mk != key {
 			continue
 		}
 

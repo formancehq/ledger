@@ -9,13 +9,11 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -25,22 +23,12 @@ import (
 // commit. Can be overridden via --read-index-batch-size.
 const DefaultBatchSize = 1000
 
-// Proposer submits a technical Raft proposal (no orders, no preload
-// payload) and blocks until the FSM applies. Implemented in bootstrap
-// via a closure that routes the proposal through plan.RunWithPreload
-// with empty Needs.
-//
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source builder.go -destination proposer_generated_test.go -typed -package indexbuilder . Proposer
-type Proposer interface {
-	Propose(ctx context.Context, cmd *raftcmdpb.Proposal) error
-}
-
 // Builder tails the system log and populates the Pebble read store indexes.
 // It runs as a background goroutine on ALL nodes (not just the leader).
-// Progress is stored locally in Pebble (no Raft needed).
-//
-// When a new index is created, the builder also backfills historical data.
-// Only the leader proposes IndexReady through Raft when backfill completes.
+// Progress is stored locally in Pebble (no Raft needed). Index promotion
+// (BUILDING → effectively READY) is fully local: backfill and rewrite
+// tasks atomically flip IndexVersionState.CurrentVersion in their
+// final batch — no cluster-wide IndexReady proposal is involved.
 type Builder struct {
 	pebbleStore   *dal.Store
 	readStore     *readstore.Store
@@ -48,8 +36,6 @@ type Builder struct {
 	logger        logging.Logger
 	meter         metric.Meter
 	notifications *signal.Notifications
-	proposer      Proposer
-	isLeader      func() bool
 	w             worker.Worker
 
 	lastIndexedSeq      atomic.Uint64
@@ -94,6 +80,207 @@ type Builder struct {
 	// Accessed via b.coerceForLedger from the per-write hot path; no
 	// concurrent access — the indexer loop is single-threaded.
 	batchSchema *schemaResolver
+
+	// indexVersions caches per-(ledger, canonicalID) forward encoding
+	// state for this replica. Boot loads it from
+	// readstore.ReadAllIndexVersionStates; the indexer mutates it when
+	// a SetMetadataFieldType / CreateIndex log lands or when a local
+	// rewrite finishes. Inner map is keyed by indexes.Canonical(id),
+	// always interpreted as string(canonical) for map lookups.
+	indexVersions map[string]map[string]readstore.IndexVersionState
+}
+
+// versionFor returns (current, pending) for an indexed (ledger, canonicalID).
+// current == 0 means the index has not been built locally yet (no v_n
+// keyspace populated). pending > 0 means a local rewrite to v_pending is
+// in progress. Defaults: when the cache has no entry, current == 0 and
+// pending == 0 — the caller (write/query path) typically promotes
+// (0, 0) to "version 1" via effectiveCurrentVersion below because
+// Index.ForwardEncodingVersion is initialised to 1 at CreateIndex /
+// first SetMetadataFieldType apply.
+func (b *Builder) versionFor(ledgerName, canonicalID string) (current uint32, pending uint32) {
+	if b.indexVersions == nil {
+		return 0, 0
+	}
+
+	inner, ok := b.indexVersions[ledgerName]
+	if !ok {
+		return 0, 0
+	}
+
+	state, ok := inner[canonicalID]
+	if !ok {
+		return 0, 0
+	}
+
+	return state.CurrentVersion, state.PendingVersion
+}
+
+// putVersionState writes a per-index version state into the in-memory
+// cache. Persistence is the caller's responsibility (via
+// readStore.WriteIndexVersionState in the current batch).
+func (b *Builder) putVersionState(ledgerName, canonicalID string, state readstore.IndexVersionState) {
+	if b.indexVersions == nil {
+		b.indexVersions = make(map[string]map[string]readstore.IndexVersionState, 4)
+	}
+
+	inner, ok := b.indexVersions[ledgerName]
+	if !ok {
+		inner = make(map[string]readstore.IndexVersionState, 4)
+		b.indexVersions[ledgerName] = inner
+	}
+
+	inner[canonicalID] = state
+}
+
+// dropVersionState removes a per-index version state from the cache —
+// used when an index is dropped via RemoveMetadataFieldType / DropIndex.
+func (b *Builder) dropVersionState(ledgerName, canonicalID string) {
+	if b.indexVersions == nil {
+		return
+	}
+
+	inner, ok := b.indexVersions[ledgerName]
+	if !ok {
+		return
+	}
+
+	delete(inner, canonicalID)
+}
+
+// effectiveCurrentVersion returns the forward-encoding version live
+// writes and queries should currently target on this replica. The
+// indexer hot path calls this for every metadata index touched.
+//
+// Promotion of 0 → 1: a never-seen index defaults to v1, matching the
+// FSM-side initialisation in processCreateIndex (and the version=1
+// embedded by the non-V key helpers). The actual switch to higher
+// versions happens in the rewrite-completion path (atomicSwitch).
+func (b *Builder) effectiveCurrentVersion(ledgerName, canonicalID string) uint32 {
+	current, _ := b.versionFor(ledgerName, canonicalID)
+	if current == 0 {
+		return 1
+	}
+
+	return current
+}
+
+// pendingVersion returns the in-flight rewrite target for an index on
+// this replica, or 0 when no rewrite is running. Live writes consult
+// it to decide whether to dual-write.
+func (b *Builder) pendingVersion(ledgerName, canonicalID string) uint32 {
+	_, pending := b.versionFor(ledgerName, canonicalID)
+
+	return pending
+}
+
+// metadataIndexVersions returns the (current, pending) encoding versions a
+// live write must target for a metadata index on (ledger, target, key).
+// current is always >= 1 — effectiveCurrentVersion promotes the
+// never-built-yet 0 to 1 to match the non-versioned key helpers.
+// pending == 0 means no rewrite is in flight.
+func (b *Builder) metadataIndexVersions(ledger string, target commonpb.TargetType, key string) (current uint32, pending uint32) {
+	canonical := indexes.Canonical(indexes.MetadataID(target, key))
+
+	return b.effectiveCurrentVersion(ledger, canonical), b.pendingVersion(ledger, canonical)
+}
+
+// reverseKeyForVersion is a typed adapter to the namespace-specific
+// AccountReverseMapKeyV / TransactionReverseMapKeyV helpers. The
+// dual-write code below takes a function value of this shape so it can
+// stay namespace-agnostic.
+type reverseKeyForVersion func(version uint32) []byte
+
+// dualWriteMetadataIndex applies a metadata index write to v_current on
+// this replica, plus a mirrored write at v_pending when a rewrite is
+// in flight. rmapKeyAtVersion returns the reverse-map key the namespace
+// uses for a given version.
+//
+// On the encoding side, the value (newEncoded) is identical across
+// versions — the live path always coerces to the *current* declared
+// type. The rmap rows differ only by the version embedded in the key;
+// having distinct rows means a query at v_pending sees only entries
+// that were either backfilled by the rewrite OR mirrored here. Once
+// the rewrite finishes and the atomic switch flips current←pending,
+// the v_pending rows become the authoritative view.
+func (b *Builder) dualWriteMetadataIndex(
+	kb *dal.KeyBuilder,
+	ledger, ns, metaKey string,
+	target commonpb.TargetType,
+	newEncoded, entityID []byte,
+	rmapKeyAtVersion reverseKeyForVersion,
+) error {
+	current, pending := b.metadataIndexVersions(ledger, target, metaKey)
+
+	if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, current, newEncoded, entityID, rmapKeyAtVersion(current)); err != nil {
+		return err
+	}
+
+	if pending != 0 && pending != current {
+		if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, pending, newEncoded, entityID, rmapKeyAtVersion(pending)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// writeMetadataIndexAtVersion resolves the version-scoped reverse-map
+// value (committed state + uncommitted overlay) and replaces the
+// metadata index entry at the given version. Centralises the
+// reverseMapValue lookup so the dual-write loop never reads from the
+// wrong rmap row.
+func (b *Builder) writeMetadataIndexAtVersion(
+	kb *dal.KeyBuilder,
+	ledger, ns, metaKey string,
+	version uint32,
+	newEncoded, entityID, reverseKey []byte,
+) error {
+	oldEncoded, err := b.reverseMapValue(reverseKey)
+	if err != nil {
+		return err
+	}
+
+	return b.wb.ReplaceMetadataIndexV(kb, reverseKey, ledger, ns, metaKey, version, newEncoded, oldEncoded, entityID)
+}
+
+// dualDeleteMetadataEntry mirrors dualWriteMetadataIndex for delete
+// operations (DeletedMetadata logs). Same shape: delete at v_current,
+// and at v_pending too when a rewrite is in flight.
+func (b *Builder) dualDeleteMetadataEntry(
+	kb *dal.KeyBuilder,
+	ledger, ns, metaKey string,
+	target commonpb.TargetType,
+	entityID []byte,
+	rmapKeyAtVersion reverseKeyForVersion,
+) error {
+	current, pending := b.metadataIndexVersions(ledger, target, metaKey)
+
+	if err := b.deleteMetadataEntryAtVersion(kb, ledger, ns, metaKey, current, entityID, rmapKeyAtVersion(current)); err != nil {
+		return err
+	}
+
+	if pending != 0 && pending != current {
+		if err := b.deleteMetadataEntryAtVersion(kb, ledger, ns, metaKey, pending, entityID, rmapKeyAtVersion(pending)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (b *Builder) deleteMetadataEntryAtVersion(
+	kb *dal.KeyBuilder,
+	ledger, ns, metaKey string,
+	version uint32,
+	entityID, reverseKey []byte,
+) error {
+	oldEncoded, err := b.reverseMapValue(reverseKey)
+	if err != nil {
+		return err
+	}
+
+	return b.wb.DeleteMetadataEntryWithPreviousV(kb, reverseKey, ledger, ns, metaKey, version, oldEncoded, entityID)
 }
 
 // coerceForLedger looks up the declared type for (ledger, target, key) via
@@ -148,50 +335,6 @@ func NewBuilder(
 // SetNotifications sets the dedicated Notifications signal for the builder.
 func (b *Builder) SetNotifications(n *signal.Notifications) {
 	b.notifications = n
-}
-
-// indexReaderHandle bundles a Pebble read handle with the IndexReader built on
-// top so callers can defer a single Close that releases the handle. Used by
-// the indexbuilder's READY-status probes (isIndexAlreadyReady,
-// isSchemaRewriteIndexReady) that need to consult the bucket-scoped index
-// registry without holding state between ticks.
-type indexReaderHandle struct {
-	reader indexes.Lookup
-	handle *dal.ReadHandle
-}
-
-// GetIndex satisfies indexes.Lookup.
-func (h *indexReaderHandle) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
-	return h.reader.GetIndex(key)
-}
-
-// Close releases the underlying Pebble read handle.
-func (h *indexReaderHandle) Close() {
-	if h.handle != nil {
-		_ = h.handle.Close()
-	}
-}
-
-// newIndexReader opens a Pebble read handle on the main store and returns a
-// short-lived IndexReader backed by SubAttrIndex. The caller MUST call Close
-// when done. Returns an error if the handle cannot be opened.
-func (b *Builder) newIndexReader() (*indexReaderHandle, error) {
-	handle, err := b.pebbleStore.NewDirectReadHandle()
-	if err != nil {
-		return nil, err
-	}
-
-	return &indexReaderHandle{
-		reader: query.NewPebbleIndexReader(b.attrs.Index, handle),
-		handle: handle,
-	}, nil
-}
-
-// SetProposer sets the Raft proposer and leader check function.
-// Must be called before Start.
-func (b *Builder) SetProposer(p Proposer, isLeader func() bool) {
-	b.proposer = p
-	b.isLeader = isLeader
 }
 
 // Start begins the background index-building loop and registers OTEL metrics.

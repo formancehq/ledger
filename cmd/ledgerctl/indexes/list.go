@@ -87,35 +87,43 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		entries = append(entries, idx)
 	}
 
-	hasBuilding := false
-	for _, idx := range entries {
-		if idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			hasBuilding = true
-
-			break
-		}
-	}
-
+	// EN-1323: BuildStatus is informational only; the per-replica
+	// readiness signal lives in IndexEntry.current_version (>0 ⇒ local
+	// atomic switch has fired). Fetch IndexStatus unconditionally so
+	// the status column reflects the local replica's view rather than
+	// the never-updated FSM-side BUILDING flag.
+	//
+	// statusOK distinguishes "RPC succeeded, got real data" from "RPC
+	// failed, no version info available" — the renderer uses it to
+	// show UNKNOWN instead of falsely reporting BUILDING when we
+	// genuinely have no signal.
 	var (
-		cursorByID map[string]uint64
-		lastLogSeq uint64
+		statusOK           bool
+		cursorByID         map[string]uint64
+		currentVersionByID map[string]uint32
+		pendingVersionByID map[string]uint32
+		lastLogSeq         uint64
 	)
 
-	if hasBuilding {
-		idxStatus, statusErr := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledgerName})
-		if statusErr != nil {
-			spinner.Fail(fmt.Sprintf("Failed to fetch index status: %v", statusErr))
-		} else {
-			lastLogSeq = idxStatus.GetLastLogSequence()
-			cursorByID = make(map[string]uint64)
+	idxStatus, statusErr := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledgerName})
+	if statusErr != nil {
+		spinner.Fail(fmt.Sprintf("Failed to fetch index status: %v", statusErr))
+	} else {
+		statusOK = true
+		lastLogSeq = idxStatus.GetLastLogSequence()
+		cursorByID = make(map[string]uint64)
+		currentVersionByID = make(map[string]uint32)
+		pendingVersionByID = make(map[string]uint32)
 
-			for _, e := range idxStatus.GetIndexes() {
-				if e.GetLedger() != ledgerName {
-					continue
-				}
-
-				cursorByID[indexes.Canonical(e.GetIndex().GetId())] = e.GetCursor()
+		for _, e := range idxStatus.GetIndexes() {
+			if e.GetLedger() != ledgerName {
+				continue
 			}
+
+			canonical := indexes.Canonical(e.GetIndex().GetId())
+			cursorByID[canonical] = e.GetCursor()
+			currentVersionByID[canonical] = e.GetCurrentVersion()
+			pendingVersionByID[canonical] = e.GetPendingVersion()
 		}
 	}
 
@@ -141,11 +149,12 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 
 	for _, idx := range sorted {
 		typeName, target, key := describeIndex(idx.GetId())
+		canonical := indexes.Canonical(idx.GetId())
 		table = append(table, []string{
 			typeName,
 			target,
 			key,
-			indexStatusWithProgress(idx.GetBuildStatus(), cursorByID, lastLogSeq, indexes.Canonical(idx.GetId())),
+			indexStatusWithProgress(statusOK, currentVersionByID[canonical], pendingVersionByID[canonical], cursorByID, lastLogSeq, canonical),
 		})
 	}
 
@@ -206,34 +215,43 @@ func targetName(t commonpb.TargetType) string {
 	return "-"
 }
 
-// indexStatusWithProgress returns the status string, appending progress percentage for BUILDING indexes.
-func indexStatusWithProgress(status commonpb.IndexBuildStatus, cursorByID map[string]uint64, lastLogSeq uint64, canonical string) string {
-	if status != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-		return indexBuildStatusString(status)
-	}
-
-	if cursorByID == nil || lastLogSeq == 0 {
-		return indexBuildStatusString(status)
-	}
-
-	cursor, ok := cursorByID[canonical]
-	if !ok {
-		return pterm.Yellow("BUILDING (starting...)")
-	}
-
-	pct := cursor * 100 / lastLogSeq
-
-	return pterm.Yellow(fmt.Sprintf("BUILDING (%d%%)", pct))
-}
-
-// indexBuildStatusString returns a user-friendly string for IndexBuildStatus.
-func indexBuildStatusString(status commonpb.IndexBuildStatus) string {
-	switch status {
-	case commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING:
-		return pterm.Yellow("BUILDING")
-	case commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY:
-		return pterm.Green("READY")
-	default:
+// indexStatusWithProgress derives the per-replica status from
+// IndexVersionState (current_version > 0 = READY locally, pending_version
+// != 0 = rewrite in flight). When the IndexStatus RPC failed entirely
+// (statusOK=false) we surface UNKNOWN rather than the misleading
+// BUILDING the old code returned — pre-fix an RPC outage looked
+// identical to a fresh-CreateIndex still-priming case.
+func indexStatusWithProgress(statusOK bool, currentVersion, pendingVersion uint32, cursorByID map[string]uint64, lastLogSeq uint64, canonical string) string {
+	if !statusOK {
+		// GetIndexStatus failed — we have no signal at all. Don't
+		// pretend BUILDING; that would let an operator misread an
+		// RPC outage as a healthy still-priming index.
 		return pterm.Gray("UNKNOWN")
+	}
+
+	switch {
+	case currentVersion == 0 && pendingVersion == 0:
+		// IndexStatus returned but no IndexVersionState entry for this
+		// index — the local backfill hasn't primed it yet.
+		return pterm.Yellow("BUILDING")
+	case currentVersion == 0 && pendingVersion != 0:
+		// Initial backfill in flight on this replica.
+		if cursorByID == nil || lastLogSeq == 0 {
+			return pterm.Yellow("BUILDING")
+		}
+
+		cursor, ok := cursorByID[canonical]
+		if !ok {
+			return pterm.Yellow("BUILDING (starting...)")
+		}
+
+		pct := cursor * 100 / lastLogSeq
+
+		return pterm.Yellow(fmt.Sprintf("BUILDING (%d%%)", pct))
+	case currentVersion != 0 && pendingVersion != 0:
+		// Rewrite in flight; v_current keeps serving queries.
+		return pterm.Cyan(fmt.Sprintf("READY (v%d, rewriting → v%d)", currentVersion, pendingVersion))
+	default:
+		return pterm.Green(fmt.Sprintf("READY (v%d)", currentVersion))
 	}
 }

@@ -536,6 +536,64 @@ The response will include a `postCommitVolumes` field:
 
 See [Idempotency](../architecture/data-model/idempotency.md) for detailed documentation.
 
+### 5. Index readiness and metadata schema retypes (EN-1323)
+
+**POC:** Index "readiness" is a per-replica concept driven by the
+local `IndexVersionState` (`current_version`, `pending_version`), not
+by a cluster-wide flag.
+
+- `CreateIndex` registers the index with `BuildStatus = BUILDING` and
+  each replica starts a local backfill. When the backfill catches up
+  to the global indexer cursor, the replica performs a local atomic
+  switch (`current_version` 0 → 1) in a single Pebble batch. There is
+  no cluster-wide `IndexReady` proposal — different replicas can be
+  in different states at the same wall-clock moment.
+- `BuildStatus` on the API is **informational only**. It is set to
+  `BUILDING` at CreateIndex and never flipped to `READY` by the FSM.
+  Clients that need to gate on "this replica is ready to query" must
+  use `GetIndexStatus` and check `IndexEntry.current_version > 0`,
+  or use `min_log_sequence` (below) to enforce ordering.
+- `SetMetadataFieldType` (retype) bumps the cluster-wide
+  `Index.forward_encoding_version`. Each replica then runs a local
+  rewrite into the new versioned keyspace (`pending_version`), with
+  live writes dual-writing into both `current_version` and
+  `pending_version` until the local rewrite finishes and atomically
+  switches. Queries served from the replica's `current_version` stay
+  consistent throughout — no half-rewritten state is ever observable.
+
+**Client synchronization:** Use `ReadOptions.min_log_sequence` to
+require the read replica to have applied at least the given log
+sequence. The gate is satisfied by `LastIndexedSequence >=
+min_log_sequence` — it pins **log application** on this replica,
+not rewrite completion. After a `SetMetadataFieldType` apply,
+setting `min_log_sequence` to the retype's log sequence (returned
+in `ApplyResponse.logs[].sequence`) guarantees:
+
+  - the retype log has been processed locally,
+  - `pending_version` has been bumped, and
+  - the local schema-rewrite has been *scheduled*.
+
+It does **not** guarantee that the rewrite has completed or that
+the replica is serving the new encoding. The atomic switch
+(`current_version ← pending_version`) is a separate per-replica
+background event, gated internally on the read store catching up to
+the FSM seq the rewrite observed. Queries against the replica
+continue serving from `current_version` (the pre-retype encoding)
+until that switch fires — see the previous bullet's "consistent
+throughout" guarantee. Clients that need *post-switch* consistency
+must poll `GetIndexStatus.IndexEntry.current_version` and wait for
+it to reflect the bumped forward-encoding version, OR rely on the
+eventual-consistency window (typically seconds) inherent to
+background rewrites. No client primitive currently blocks until
+that switch lands.
+
+**Original:** No equivalent — the original ledger has no
+per-replica versioning and reaches "ready" via a single
+synchronously-applied schema migration.
+
+**Status:** ⚠️ Different model — wire shape compatible (BuildStatus
+still on the proto, populated, just ignored by query gating).
+
 ---
 
 ## Read Features

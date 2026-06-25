@@ -277,13 +277,6 @@ message DropIndexOrder {
   common.IndexID id = 4;
 }
 
-// IndexReadyUpdate signals that an index has finished building.
-// Applied directly as a Proposal field (no log entry produced).
-message IndexReadyUpdate {
-  string ledger = 1;
-  common.IndexID id = 5;
-}
-
 // AddAccountTypeOrder adds a new account type to the ledger.
 message AddAccountTypeOrder {
   common.AccountType account_type = 1;
@@ -427,13 +420,14 @@ message Proposal {
 // IdempotencyEviction, ClusterConfig, BackupOrder, IncrementalBackupOrder)
 // ship with empty bits.
 message TechnicalUpdate {
+  reserved 8;                  // was: IndexReadyUpdate index_ready
+  reserved "index_ready";
   bytes coverage_bits = 1;
   oneof kind {
     MirrorSyncUpdate mirror_sync = 2;
     EventsSinkUpdate events_sink = 3;
     IdempotencyEviction idempotency_eviction = 4;
     common.ClusterConfig cluster_config = 5;
-    IndexReadyUpdate index_ready = 8;
     BackupOrder backup_order = 9;                          // Full-backup lifecycle
     IncrementalBackupOrder incremental_backup_order = 10;  // Incremental-backup lifecycle
   }

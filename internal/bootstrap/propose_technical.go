@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -111,52 +110,4 @@ func waitTechnical(ctx context.Context, result *plan.RunResult) error {
 	}
 
 	return nil
-}
-
-// indexReadyProposerAdapter satisfies indexbuilder.Proposer by routing
-// each `IndexReadyUpdates` proposal through proposeTechnical with the
-// `Ledgers` keys its apply path will read. Lives here (not in
-// indexbuilder) because preload depends on state for ApplyResult and the
-// indexbuilder package shouldn't have to know about preload internals.
-type indexReadyProposerAdapter struct {
-	builder  *plan.Builder
-	proposer plan.Proposer
-}
-
-func (a *indexReadyProposerAdapter) Propose(ctx context.Context, cmd *raftcmdpb.Proposal) error {
-	// applyIndexReady reads both `fsm.Registry.Ledgers.Get(name)` (to soft-
-	// skip when the ledger is deleted — processDeleteLedger leaves the
-	// Index cache entry live and deleteLedgerData purges Pebble out-of-
-	// band, so without this check a racing IndexReady could resurrect an
-	// orphan entry post-cleanup) AND `fsm.Registry.Indexes.Get(idxKey)`
-	// via `indexes.Find(scope, ledgerName, id)`. The indexbuilder carries
-	// the ledger name on the IndexReadyUpdate, so the proposer declares
-	// both preloads directly — no chained name→ID resolution required.
-	// One WriteOperation per TU with its own narrow Needs so the gate
-	// rejects any cross-index or cross-ledger read at FSM time.
-	tus := cmd.GetTechnicalUpdates()
-	operations := make([]plan.WriteOperation, 0, len(tus))
-	for i, tu := range tus {
-		var needs *plan.Needs
-		if kind, ok := tu.GetKind().(*raftcmdpb.TechnicalUpdate_IndexReady); ok {
-			ledgerName := kind.IndexReady.GetLedger()
-			if id := kind.IndexReady.GetId(); id != nil && ledgerName != "" {
-				needs = plan.NewNeeds()
-				needs.Indexes[domain.IndexKey{
-					LedgerName: ledgerName,
-					Canonical:  indexes.Canonical(id),
-				}] = struct{}{}
-				needs.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
-			}
-		}
-
-		operations = append(operations, plan.WriteOperation{
-			Needs: needs,
-			SetCoverage: func(bits []byte) {
-				cmd.GetTechnicalUpdates()[i].CoverageBits = bits
-			},
-		})
-	}
-
-	return proposeTechnical(ctx, a.builder, a.proposer, cmd, operations)
 }

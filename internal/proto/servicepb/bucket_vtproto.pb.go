@@ -2801,6 +2801,8 @@ func (m *IndexEntry) CloneVT() *IndexEntry {
 	r.Ledger = m.Ledger
 	r.Index = m.Index.CloneVT()
 	r.Cursor = m.Cursor
+	r.CurrentVersion = m.CurrentVersion
+	r.PendingVersion = m.PendingVersion
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7547,6 +7549,12 @@ func (this *IndexEntry) EqualVT(that *IndexEntry) bool {
 		return false
 	}
 	if this.Cursor != that.Cursor {
+		return false
+	}
+	if this.CurrentVersion != that.CurrentVersion {
+		return false
+	}
+	if this.PendingVersion != that.PendingVersion {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -15089,6 +15097,16 @@ func (m *IndexEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.PendingVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PendingVersion))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.CurrentVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CurrentVersion))
+		i--
+		dAtA[i] = 0x20
+	}
 	if m.Cursor != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Cursor))
@@ -18854,6 +18872,12 @@ func (m *IndexEntry) SizeVT() (n int) {
 	}
 	if m.Cursor != 0 {
 		n += 9
+	}
+	if m.CurrentVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.CurrentVersion))
+	}
+	if m.PendingVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PendingVersion))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -35178,6 +35202,44 @@ func (m *IndexEntry) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Cursor = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CurrentVersion", wireType)
+			}
+			m.CurrentVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CurrentVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PendingVersion", wireType)
+			}
+			m.PendingVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PendingVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

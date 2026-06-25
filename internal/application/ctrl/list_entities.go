@@ -14,6 +14,11 @@ import (
 
 // entityListParams holds the parameters for a generic entity listing.
 // T is the entity identifier type ([]byte for both txIDs and account addresses).
+//
+// Note: there is deliberately no `indexVersionFor` field on this struct.
+// listEntities builds its own resolver bound to the snapshot it
+// iterates — see the comment on listEntities for why the resolver
+// MUST share the iteration snapshot.
 type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	target        commonpb.QueryTarget
 	ledgerName    string
@@ -26,6 +31,9 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	profile       *query.QueryProfile
 	pebbleReader  dal.PebbleReader
 	indexRegistry indexes.Lookup
+	// indexVersionFor is filled in by listEntities (bound to the
+	// iteration snapshot); leaf compilers should never see a nil here.
+	indexVersionFor func(canonical string) (uint32, error)
 	// afterToBytes converts the after cursor to a byte slice for pagination.
 	afterToBytes func(T) []byte
 }
@@ -39,6 +47,13 @@ type entityListResult struct {
 // reverse=false returns natural ascending order; reverse=true returns descending.
 // It returns the raw entity ID bytes along with the last indexed raft index for
 // cross-store consistency.
+//
+// The function takes a Pebble snapshot for the iteration and builds
+// `params.indexVersionFor` from THAT snapshot. Callers must not set
+// the field themselves — a resolver constructed against the live store
+// would race with a concurrent atomic version switch and hand the
+// scan a version that does not match the snapshot's keyspace
+// (silent partial results).
 func listEntities[T interface{ ~string | ~uint64 }](
 	readStore *readstore.Store,
 	params entityListParams[T],
@@ -47,6 +62,8 @@ func listEntities[T interface{ ~string | ~uint64 }](
 
 	snap := readStore.NewSnapshot()
 	defer func() { _ = snap.Close() }()
+
+	params.indexVersionFor = readstore.SnapshotVersionResolver(snap, params.ledgerName)
 
 	var err error
 
@@ -70,7 +87,7 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 	iter, err := query.Compile(
 		indexReader, kb, params.filter,
 		params.target,
-		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.profile,
+		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
 		params.pebbleReader,
 	)
 	if err != nil {
@@ -187,7 +204,7 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 	iter, err := query.Compile(
 		indexReader, kb, params.filter,
 		params.target,
-		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.profile,
+		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
 		params.pebbleReader,
 	)
 	if err != nil {

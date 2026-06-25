@@ -59,12 +59,14 @@ var _ = Describe("Log date index", Ordered, func() {
 		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).To(Succeed())
 	})
 
-	It("Should show log date index as READY in ListIndexes", func() {
-		indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
-		Expect(err).To(Succeed())
-		idx := findLogBuiltinIndex(indexes, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
-		Expect(idx).NotTo(BeNil())
-		Expect(idx.GetBuildStatus()).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+	It("Should show log date index as ready locally via GetIndexStatus", func() {
+		// Per-replica readiness lives in IndexEntry.current_version
+		// on GetIndexStatus since EN-1323 (BuildStatus is informational
+		// only). The registry entry itself is exercised by ListIndexes
+		// elsewhere; this test only pins the local-replica readiness
+		// signal.
+		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).
+			To(Succeed())
 	})
 
 	It("Should list all logs without date filter", func() {

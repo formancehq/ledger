@@ -8977,6 +8977,8 @@ type IndexEntryReader interface {
 	GetLedger() string
 	GetIndex() commonpb.IndexReader
 	GetCursor() uint64
+	GetCurrentVersion() uint32
+	GetPendingVersion() uint32
 	Mutate() *IndexEntry
 }
 
@@ -8996,6 +8998,14 @@ func (r *indexEntryReadonly) GetIndex() commonpb.IndexReader {
 
 func (r *indexEntryReadonly) GetCursor() uint64 {
 	return r.v.GetCursor()
+}
+
+func (r *indexEntryReadonly) GetCurrentVersion() uint32 {
+	return r.v.GetCurrentVersion()
+}
+
+func (r *indexEntryReadonly) GetPendingVersion() uint32 {
+	return r.v.GetPendingVersion()
 }
 
 func (r *indexEntryReadonly) Mutate() *IndexEntry {

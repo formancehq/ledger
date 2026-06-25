@@ -47,7 +47,7 @@ func TestExtractMetadataKeyFromReverseMap_Account(t *testing.T) {
 
 	// Build a reverse map key for an account.
 	// Key format after stripping PrefixReverseMap byte:
-	//   [ledger\x00][a:][account\x00][metadataKey]
+	//   [ledger\x00][a:][account\x00][version:4B BE][metadataKey]
 	// The nsPrefix (also without PrefixReverseMap) is: [ledger\x00][a:]
 	ledger := "myled"
 	account := "users:alice"
@@ -61,6 +61,7 @@ func TestExtractMetadataKeyFromReverseMap_Account(t *testing.T) {
 	suffix = append(suffix, ns...)
 	suffix = append(suffix, account...)
 	suffix = append(suffix, 0x00)
+	suffix = append(suffix, 0, 0, 0, 1) // forward_encoding_version=1
 	suffix = append(suffix, metaKey...)
 
 	// Build the nsPrefix (everything up to and including namespace).
@@ -80,13 +81,14 @@ func TestExtractMetadataKeyFromReverseMap_Transaction(t *testing.T) {
 	metaKey := "category"
 	ns := readstore.NamespaceTransaction
 
-	// Build the suffix: [ledger\x00][t:][txID(8B)][metadataKey]
+	// Build the suffix: [ledger\x00][t:][txID(8B)][version:4B BE][metadataKey]
 	var suffix []byte
 	suffix = append(suffix, ledger...)
 	suffix = append(suffix, 0x00)
 	suffix = append(suffix, ns...)
 	// 8-byte txID (e.g., txID=42 big-endian).
 	suffix = append(suffix, 0, 0, 0, 0, 0, 0, 0, 42)
+	suffix = append(suffix, 0, 0, 0, 1) // forward_encoding_version=1
 	suffix = append(suffix, metaKey...)
 
 	var nsPrefix []byte

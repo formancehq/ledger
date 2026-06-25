@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -661,4 +663,162 @@ func TestSchemaFieldsForTarget(t *testing.T) {
 		require.Len(t, result, 1)
 		assert.Contains(t, result, "ref")
 	})
+}
+
+// TestBuiltinCompilers_GateOnLocalReadiness pins the F4 fix: every
+// builtin compiler (reference, timestamp, inserted_at, log_date, plus
+// the transaction-side address index) must refuse with
+// ErrIndexBuilding when the local replica's IndexVersionState reports
+// CurrentVersion == 0 — i.e. the initial backfill has not yet flipped
+// into a live keyspace. Pre-fix only the metadata compiler gated on
+// this signal, so a query mid-backfill silently scanned a partially
+// populated builtin index.
+func TestBuiltinCompilers_GateOnLocalReadiness(t *testing.T) {
+	t.Parallel()
+
+	const ledgerName = "ledger1"
+
+	// indexResolverZero simulates a replica whose initial backfill
+	// has not yet completed. Real production wiring uses
+	// readstore.SnapshotVersionResolver against the iteration snapshot.
+	indexResolverZero := func(string) (uint32, error) { return 0, nil }
+
+	info := &commonpb.LedgerInfo{Name: ledgerName}
+
+	// indexRegistry declares every builtin index via the bucket-scoped
+	// Lookup interface (post-PR#453 architecture). Per-replica readiness
+	// lives in IndexVersionState (modelled here via the resolver), not
+	// on Index.BuildStatus — see EN-1323.
+	indexRegistry := staticIndexLookup{}
+	for _, id := range []*commonpb.IndexID{
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
+		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+	} {
+		indexRegistry[indexes.KeyFor(ledgerName, id)] = &commonpb.Index{Ledger: ledgerName, Id: id}
+	}
+
+	tcs := []struct {
+		name   string
+		target commonpb.QueryTarget
+		filter *commonpb.QueryFilter
+	}{
+		{
+			name:   "reference",
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reference{
+				Reference: &commonpb.ReferenceCondition{
+					Cond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "x"}},
+				},
+			}},
+		},
+		{
+			name:   "builtin-uint:timestamp",
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &commonpb.BuiltinUintCondition{
+					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+					Cond:  &commonpb.UintCondition{},
+				},
+			}},
+		},
+		{
+			name:   "builtin-uint:inserted_at",
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &commonpb.BuiltinUintCondition{
+					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+					Cond:  &commonpb.UintCondition{},
+				},
+			}},
+		},
+		{
+			name:   "address (transactions target)",
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
+				Address: &commonpb.AddressMatch{
+					Role:  commonpb.AddressRole_ADDRESS_ROLE_ANY,
+					Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "alice"},
+				},
+			}},
+		},
+		{
+			name:   "log-builtin-uint:date",
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+					Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+					Cond:  &commonpb.UintCondition{},
+				},
+			}},
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Compile(
+				nil, nil, tc.filter, tc.target, ledgerName,
+				nil, nil, info, indexRegistry, indexResolverZero, nil, nil)
+			require.Error(t, err, "compiler must refuse when CurrentVersion=0")
+
+			var building *domain.ErrIndexBuilding
+			require.ErrorAs(t, err, &building,
+				"compiler must return ErrIndexBuilding when local IndexVersionState has CurrentVersion=0 — pre-fix builtin compilers silently scanned a partial keyspace and returned incomplete results (got %T: %v)", err, err)
+		})
+	}
+}
+
+// TestRequireIndexReady_SurfacesPebbleError pins the CLAUDE.md
+// invariant #7 corollary on the gate side: a Pebble I/O failure in
+// the version resolver MUST bubble up — never get masqueraded as
+// ErrIndexBuilding. The pre-fix code would mistake an unreadable
+// PEBBLE_GET for "still building", looping clients indefinitely on a
+// disk that's actually broken.
+func TestRequireIndexReady_SurfacesPebbleError(t *testing.T) {
+	t.Parallel()
+
+	pebbleErr := errors.New("simulated pebble corruption")
+	info := &commonpb.LedgerInfo{Name: "ledger1"}
+
+	refID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	indexRegistry := staticIndexLookup{
+		indexes.KeyFor("ledger1", refID): {Ledger: "ledger1", Id: refID},
+	}
+
+	ctx := &compileCtx{
+		target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		indexRegistry:   indexRegistry,
+		ledgerName:      "ledger1",
+		info:            info,
+		indexVersionFor: func(string) (uint32, error) { return 0, pebbleErr },
+	}
+
+	_, err := requireIndexReady(ctx,
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		"reference")
+	require.Error(t, err)
+	require.ErrorIs(t, err, pebbleErr,
+		"requireIndexReady must wrap and propagate the Pebble error rather than swallow it as ErrIndexBuilding (got %v)", err)
+
+	var building *domain.ErrIndexBuilding
+	require.False(t, errors.As(err, &building),
+		"a Pebble I/O failure must NOT be reported as ErrIndexBuilding — that would mask a real outage as a transient readiness state")
+}
+
+// staticIndexLookup is an in-memory indexes.Lookup for unit tests that
+// need to populate the bucket-scoped Index registry without spinning up
+// a Pebble store. Keyed exactly like the production registry.
+type staticIndexLookup map[domain.IndexKey]*commonpb.Index
+
+func (s staticIndexLookup) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
+	idx, ok := s[key]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	return idx.AsReader(), nil
 }

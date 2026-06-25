@@ -114,6 +114,7 @@ func newRootCommand() *cobra.Command {
 
 	// Add persistent flags for connection profiles.
 	rootCmd.PersistentFlags().String("profile", "", "Connection profile name (env: LEDGERCTL_PROFILE)")
+	_ = rootCmd.RegisterFlagCompletionFunc("profile", cmdutil.CompleteProfileNames)
 
 	// Add persistent flags for server connection.
 	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address (env: LEDGERCTL_SERVER)")

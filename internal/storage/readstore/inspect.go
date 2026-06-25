@@ -28,6 +28,11 @@ type InspectParams struct {
 	LedgerName  string
 	Namespace   string // "a:" or "t:"
 	MetadataKey string
+	// Version is the per-replica forward-encoding version to scan
+	// (IndexVersionState.CurrentVersion). 0 is an invariant — callers
+	// must resolve a non-zero current_version before calling Inspect
+	// (or short-circuit and return "index not built locally").
+	Version     uint32
 	Mode        InspectMode
 	PageSize    uint32
 	CursorBytes []byte // decoded opaque cursor (nil = start)
@@ -68,7 +73,7 @@ func InspectIndex(params InspectParams) (*InspectResult, error) {
 
 // inspectDistinctValues scans the metadata index and collects unique values with pagination.
 func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
-	prefix := MetadataIndexPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
+	prefix := MetadataIndexPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
 	upper := IncrementBytes(prefix)
 
 	lower := prefix
@@ -133,7 +138,7 @@ func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 
 // inspectFacets scans the metadata index and collects (value, count) pairs with pagination.
 func inspectFacets(params InspectParams) (*InspectResult, error) {
-	prefix := MetadataIndexPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
+	prefix := MetadataIndexPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
 	upper := IncrementBytes(prefix)
 
 	lower := prefix
@@ -225,7 +230,7 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 	result := &InspectResult{}
 
 	// Scan metadata index for cardinality, min, max.
-	prefix := MetadataIndexPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
+	prefix := MetadataIndexPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
 	upper := IncrementBytes(prefix)
 
 	iter, err := params.Reader.NewIter(&pebble.IterOptions{
@@ -273,7 +278,7 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 	_ = iter.Close()
 
 	// Count entities with key (non-null).
-	nonNullPrefix := EntityExistsNonNullPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
+	nonNullPrefix := EntityExistsNonNullPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
 	result.EntitiesWithKey, err = countPrefix(params.Reader, nonNullPrefix)
 
 	if err != nil {
@@ -281,7 +286,7 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 	}
 
 	// Count entities with null value.
-	nullPrefix := EntityExistsNullPrefix(params.KB, params.LedgerName, params.Namespace, params.MetadataKey)
+	nullPrefix := EntityExistsNullPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
 	result.EntitiesWithNull, err = countPrefix(params.Reader, nullPrefix)
 
 	if err != nil {

@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -26,16 +25,10 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 
 	const gen0Byte byte = 0
 
-	// Seed the "ok" ledger in the cache + global store so saveLedgerWithCache
-	// would have a fresh index entry to flip if the second handler runs.
-	indexID := &commonpb.IndexID{
-		Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE},
-	}
+	// Seed the "ok" ledger in the cache + global store so the second
+	// handler would have a real entry to read if it were reached.
 	okKey := domain.LedgerKey{Name: "ok"}
-	okInfo := &commonpb.LedgerInfo{
-		Id:   1,
-		Name: "ok",
-	}
+	okInfo := &commonpb.LedgerInfo{Id: 1, Name: "ok"}
 
 	seedBatch := dataStore.OpenWriteSession()
 	_, _, err := fsm.Registry.Ledgers.PutWithCache(seedBatch, gen0Byte, okKey.Bytes(), okInfo)
@@ -53,18 +46,18 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 		},
 	}
 
-	// Build the proposal with TWO IndexReady TechnicalUpdates. Order
-	// matters: "missed" first so its short-circuit happens BEFORE the
-	// second handler would mutate. Both TUs use bits=nil — "missed" is not
-	// in the plan at all so any bitset would miss; the second TU is never
-	// reached so its bitset is moot.
+	// Build the proposal with TWO MirrorSyncUpdate TechnicalUpdates.
+	// Order matters: "missed" first so its short-circuit happens BEFORE
+	// the second handler would queue a mirror-sync write. MirrorSync's
+	// handler calls scope.GetLedger — so the coverage miss surfaces
+	// from the same code path the historical IndexReady test exercised.
 	proposal := &raftcmdpb.Proposal{
 		Id:            1,
 		Date:          &commonpb.Timestamp{Data: 1700000000},
 		ExecutionPlan: executionPlan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{
-			{Kind: &raftcmdpb.TechnicalUpdate_IndexReady{IndexReady: &raftcmdpb.IndexReadyUpdate{Ledger: "missed", Id: indexID}}},
-			{Kind: &raftcmdpb.TechnicalUpdate_IndexReady{IndexReady: &raftcmdpb.IndexReadyUpdate{Ledger: "ok", Id: indexID}}},
+			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "missed", Cursor: 1}}},
+			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "ok", Cursor: 2}}},
 		},
 	}
 
@@ -84,13 +77,11 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 	// DeletedAt), so the first undeclared key the gate rejects is "ledgers".
 	require.Equal(t, "ledgers", miss.Attribute)
 
-	// The second handler MUST NOT have been reached — the first handler's
-	// coverage miss short-circuits the loop before "ok" is touched. The
-	// seeded entry's index is still BUILDING; a successful second handler
-	// would have queued a cloned LedgerInfo with status READY in the
-	// overlay's dirty set.
-	dirty := buffer.Derived.Ledgers.DirtyValues()
-	require.Empty(t, dirty, "later handler must not have queued an update — short-circuit failed")
+	// The second handler MUST NOT have been reached — the first
+	// handler's coverage miss short-circuits the loop before "ok" is
+	// touched. A successful second handler would have queued a
+	// MirrorSyncWrite for "ok".
+	require.Empty(t, buffer.pendingMirrorSyncs, "later handler must not have queued an update — short-circuit failed")
 }
 
 // TestScope_TechnicalUpdate_PerUpdateCoverageIsolation pins that the
@@ -196,162 +187,4 @@ func TestScope_OrderRead_RequiresCoverageEvenForOverlayHit(t *testing.T) {
 
 	var miss *ErrCoverageMiss
 	require.ErrorAs(t, err, &miss, "Scope.GetLedger must surface ErrCoverageMiss instead of the overlay value")
-}
-
-// TestApplyIndexReady_SkipsDeletedLedger anchors the deleted-ledger guard:
-// processDeleteLedger leaves the Index cache entry live (we removed the
-// per-batch RangeIndexes cascade), and deleteLedgerData range-deletes
-// Pebble out-of-band at chapter purge. An IndexReady racing through this
-// window — possibly arriving AFTER deleteLedgerData has run — would
-// otherwise resurrect an orphan Index row with no future cleanup
-// (PendingLedgerCleanup already consumed). The fix soft-skips on
-// LedgerInfo.DeletedAt != nil before touching the registry.
-func TestApplyIndexReady_SkipsDeletedLedger(t *testing.T) {
-	t.Parallel()
-
-	fsm, dataStore, _ := newTestMachine(t)
-
-	const gen0Byte byte = 0
-	const ledgerName = "doomed"
-
-	indexID := &commonpb.IndexID{
-		Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE},
-	}
-
-	ledgerKey := domain.LedgerKey{Name: ledgerName}
-	deletedAt := &commonpb.Timestamp{Data: 1699999999}
-	ledgerInfo := &commonpb.LedgerInfo{
-		Id:        1,
-		Name:      ledgerName,
-		DeletedAt: deletedAt,
-	}
-
-	indexCanonical := canonicalIndexID(t, indexID)
-	indexKey := domain.IndexKey{LedgerName: ledgerName, Canonical: indexCanonical}
-	indexValue := &commonpb.Index{
-		Id:          indexID,
-		Ledger:      ledgerName,
-		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-	}
-
-	seedBatch := dataStore.OpenWriteSession()
-	_, _, err := fsm.Registry.Ledgers.PutWithCache(seedBatch, gen0Byte, ledgerKey.Bytes(), ledgerInfo)
-	require.NoError(t, err)
-	require.NoError(t, SaveLedger(seedBatch, ledgerInfo))
-	_, _, err = fsm.Registry.Indexes.PutWithCache(seedBatch, gen0Byte, indexKey.Bytes(), indexValue)
-	require.NoError(t, err)
-	require.NoError(t, seedBatch.Commit())
-
-	ledgerU128, _ := attributes.MakeKey(ledgerKey.Bytes())
-	indexU128, _ := attributes.MakeKey(indexKey.Bytes())
-	executionPlan := &raftcmdpb.ExecutionPlan{
-		LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{
-			declareTestPlan(ledgerU128, dal.SubAttrLedger),
-			declareTestPlan(indexU128, dal.SubAttrIndex),
-		},
-	}
-
-	proposal := &raftcmdpb.Proposal{
-		Id:            1,
-		Date:          &commonpb.Timestamp{Data: 1700000000},
-		ExecutionPlan: executionPlan,
-		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
-			CoverageBits: []byte{0b00000011}, // both ledger + index plans
-			Kind:         &raftcmdpb.TechnicalUpdate_IndexReady{IndexReady: &raftcmdpb.IndexReadyUpdate{Ledger: ledgerName, Id: indexID}},
-		}},
-	}
-
-	applyBatch := dataStore.OpenWriteSession()
-	defer func() { _ = applyBatch.Cancel() }()
-
-	fsm.writeSet.Reset(proposal.GetDate())
-	buffer := fsm.writeSet
-	scopeFactory := NewScopeFactory(buffer, executionPlan, fsm.logger, fsm.preloadMissCounter, proposal.GetId())
-
-	require.NoError(t, fsm.applyTechnicalUpdates(scopeFactory, applyBatch, proposal.GetId(), proposal))
-
-	// applyIndexReady must NOT have written a Mutate'd index back into the
-	// overlay — a non-empty DirtyValues here would mean the deleted-ledger
-	// guard failed and an orphan READY entry was queued for flush.
-	require.Empty(t, buffer.Derived.Indexes.DirtyValues(),
-		"deleted ledger must not flow an Index update into the overlay")
-}
-
-// TestApplyIndexReady_FlipsLiveLedger is the positive counterpart: when
-// the ledger is alive (no DeletedAt), the IndexReady TU must read the
-// BUILDING entry and queue a READY clone in the WriteSet overlay.
-func TestApplyIndexReady_FlipsLiveLedger(t *testing.T) {
-	t.Parallel()
-
-	fsm, dataStore, _ := newTestMachine(t)
-
-	const gen0Byte byte = 0
-	const ledgerName = "live"
-
-	indexID := &commonpb.IndexID{
-		Kind: &commonpb.IndexID_LogBuiltin{LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE},
-	}
-
-	ledgerKey := domain.LedgerKey{Name: ledgerName}
-	ledgerInfo := &commonpb.LedgerInfo{Id: 2, Name: ledgerName}
-
-	indexCanonical := canonicalIndexID(t, indexID)
-	indexKey := domain.IndexKey{LedgerName: ledgerName, Canonical: indexCanonical}
-	indexValue := &commonpb.Index{
-		Id:          indexID,
-		Ledger:      ledgerName,
-		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-	}
-
-	seedBatch := dataStore.OpenWriteSession()
-	_, _, err := fsm.Registry.Ledgers.PutWithCache(seedBatch, gen0Byte, ledgerKey.Bytes(), ledgerInfo)
-	require.NoError(t, err)
-	require.NoError(t, SaveLedger(seedBatch, ledgerInfo))
-	_, _, err = fsm.Registry.Indexes.PutWithCache(seedBatch, gen0Byte, indexKey.Bytes(), indexValue)
-	require.NoError(t, err)
-	require.NoError(t, seedBatch.Commit())
-
-	ledgerU128, _ := attributes.MakeKey(ledgerKey.Bytes())
-	indexU128, _ := attributes.MakeKey(indexKey.Bytes())
-	executionPlan := &raftcmdpb.ExecutionPlan{
-		LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{
-			declareTestPlan(ledgerU128, dal.SubAttrLedger),
-			declareTestPlan(indexU128, dal.SubAttrIndex),
-		},
-	}
-
-	proposalDate := &commonpb.Timestamp{Data: 1700000000}
-	proposal := &raftcmdpb.Proposal{
-		Id:            2,
-		Date:          proposalDate,
-		ExecutionPlan: executionPlan,
-		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
-			CoverageBits: []byte{0b00000011},
-			Kind:         &raftcmdpb.TechnicalUpdate_IndexReady{IndexReady: &raftcmdpb.IndexReadyUpdate{Ledger: ledgerName, Id: indexID}},
-		}},
-	}
-
-	applyBatch := dataStore.OpenWriteSession()
-	defer func() { _ = applyBatch.Cancel() }()
-
-	fsm.writeSet.Reset(proposal.GetDate())
-	buffer := fsm.writeSet
-	scopeFactory := NewScopeFactory(buffer, executionPlan, fsm.logger, fsm.preloadMissCounter, proposal.GetId())
-
-	require.NoError(t, fsm.applyTechnicalUpdates(scopeFactory, applyBatch, proposal.GetId(), proposal))
-
-	dirty := buffer.Derived.Indexes.DirtyValues()
-	require.Len(t, dirty, 1, "live ledger must produce an IndexReady write in the overlay")
-	updated := dirty[indexKey]
-	require.NotNil(t, updated, "the dirty entry must be keyed by the IndexReady target")
-	require.Equal(t, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY, updated.GetBuildStatus())
-	require.Equal(t, proposalDate.GetData(), updated.GetLastBuiltAt().GetData())
-}
-
-func canonicalIndexID(t *testing.T, id *commonpb.IndexID) string {
-	t.Helper()
-
-	return indexes.Canonical(id)
 }

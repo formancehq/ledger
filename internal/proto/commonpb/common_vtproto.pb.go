@@ -632,6 +632,7 @@ func (m *Index) CloneVT() *Index {
 	r.LastBuiltAt = m.LastBuiltAt.CloneVT()
 	r.LastError = m.LastError
 	r.Ledger = m.Ledger
+	r.ForwardEncodingVersion = m.ForwardEncodingVersion
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4624,6 +4625,9 @@ func (this *Index) EqualVT(that *Index) bool {
 		return false
 	}
 	if this.Ledger != that.Ledger {
+		return false
+	}
+	if this.ForwardEncodingVersion != that.ForwardEncodingVersion {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11036,6 +11040,11 @@ func (m *Index) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ForwardEncodingVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ForwardEncodingVersion))
+		i--
+		dAtA[i] = 0x38
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -19277,6 +19286,9 @@ func (m *Index) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.ForwardEncodingVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ForwardEncodingVersion))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -26436,6 +26448,25 @@ func (m *Index) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ForwardEncodingVersion", wireType)
+			}
+			m.ForwardEncodingVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ForwardEncodingVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

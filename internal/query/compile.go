@@ -47,8 +47,19 @@ type compileCtx struct {
 	// fails with ErrIndexNotFound, which matches the contract for callers that
 	// don't carry indexes (tests, ad-hoc compilation outside the server path).
 	indexRegistry indexes.Lookup
-	profile       *QueryProfile
-	depth         int
+	// indexVersionFor resolves the per-replica forward-encoding
+	// current_version for an IndexID canonical string. The closure
+	// MUST read through the same snapshot/reader the iteration uses
+	// — otherwise a concurrent atomic version switch can hand the
+	// query a version that does not match the snapshot's keyspace.
+	// Returns 0 when the local replica has not yet completed a build
+	// (BUILDING in the conventional sense), and a non-nil error on
+	// read failure. Compile uses it to pick the right v_n keyspace
+	// and to refuse early with ErrIndexBuilding when no live keyspace
+	// exists yet.
+	indexVersionFor func(canonical string) (uint32, error)
+	profile         *QueryProfile
+	depth           int
 }
 
 // metadataCtx holds the per-field context used only by type-specific
@@ -58,6 +69,11 @@ type metadataCtx struct {
 	entityLen int
 	namespace string
 	metaKey   string
+	// version is the per-replica forward-encoding version resolved
+	// by compileFieldCondition for this metadata index. Sub-compilers
+	// (compileExistsCondition in particular) use it to build the
+	// version-aware eidx prefix.
+	version uint32
 }
 
 // Compile translates a QueryFilter proto into an EntityIterator tree.
@@ -81,20 +97,29 @@ func Compile(
 	schema map[string]*commonpb.MetadataFieldSchema,
 	info *commonpb.LedgerInfo,
 	indexRegistry indexes.Lookup,
+	indexVersionFor func(canonical string) (uint32, error),
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
 ) (readstore.EntityIterator, error) {
+	if indexVersionFor == nil {
+		// A nil resolver means "every index is at v=1" — only safe in
+		// tests that pre-date EN-1323 versioning. Production wiring
+		// always supplies a resolver backed by readstore.
+		indexVersionFor = func(string) (uint32, error) { return 1, nil }
+	}
+
 	ctx := &compileCtx{
-		kb:            kb,
-		pebbleReader:  pebbleReader,
-		indexReader:   indexReader,
-		target:        target,
-		ledgerName:    ledgerName,
-		params:        params,
-		schema:        schema,
-		info:          info,
-		indexRegistry: indexRegistry,
-		profile:       profile,
+		kb:              kb,
+		pebbleReader:    pebbleReader,
+		indexReader:     indexReader,
+		target:          target,
+		ledgerName:      ledgerName,
+		params:          params,
+		schema:          schema,
+		info:            info,
+		indexRegistry:   indexRegistry,
+		indexVersionFor: indexVersionFor,
+		profile:         profile,
 	}
 
 	return compile(ctx, filter)
@@ -327,12 +352,13 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	}
 
-	if err := checkIndexed(ctx, indexes.MetadataID(targetTypeForQueryTarget(ctx.target), metaKey),
-		fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)); err != nil {
+	metaID := indexes.MetadataID(targetTypeForQueryTarget(ctx.target), metaKey)
+
+	indexVersion, err := requireIndexReady(ctx, metaID,
+		fmt.Sprintf("metadata[%q] on %s", metaKey, targetName))
+	if err != nil {
 		return nil, err
 	}
-
-	var err error
 
 	fc, err = validateAndCoerceCondition(fc, fieldSchema)
 	if err != nil {
@@ -340,10 +366,11 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	}
 
 	mc := &metadataCtx{
-		prefix:    readstore.MetadataIndexPrefix(ctx.kb, ctx.ledgerName, ns, metaKey),
+		prefix:    readstore.MetadataIndexPrefixV(ctx.kb, ctx.ledgerName, ns, metaKey, indexVersion),
 		entityLen: entityLen,
 		namespace: ns,
 		metaKey:   metaKey,
+		version:   indexVersion,
 	}
 
 	switch cond := fc.GetCondition().(type) {
@@ -756,7 +783,7 @@ func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolC
 // compileExistsCondition -- streaming scan on the entity-ordered existence index (eidx).
 // Entities are stored in entity ID order, so no materialization or sorting is needed.
 func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.ExistsCondition) (readstore.EntityIterator, error) {
-	nonNullPrefix := readstore.EntityExistsNonNullPrefix(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey)
+	nonNullPrefix := readstore.EntityExistsNonNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
 	if !cond.GetIncludeNull() {
 		// Only non-null entries
 		iter, err := readstore.NewPrefixIterator(ctx.indexReader, nonNullPrefix, len(nonNullPrefix), mc.entityLen)
@@ -772,7 +799,7 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	}
 
 	// Both non-null and null entries: merge two prefix iterators
-	nullPrefix := readstore.EntityExistsNullPrefix(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey)
+	nullPrefix := readstore.EntityExistsNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
 
 	nonNullIter, err := readstore.NewPrefixIterator(ctx.indexReader, nonNullPrefix, len(nonNullPrefix), mc.entityLen)
 	if err != nil {
@@ -850,7 +877,7 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 	// For ACCOUNTS target, address matching uses the existence index (always on).
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		id, label := txAddressIndexID(role)
-		if err := checkIndexed(ctx, id, label); err != nil {
+		if _, err := requireIndexReady(ctx, id, label); err != nil {
 			return nil, err
 		}
 	}
@@ -961,7 +988,7 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 		return nil, domain.NewFilterCompilationError("reference condition has no value")
 	}
 
-	if err := checkIndexed(ctx,
+	if _, err := requireIndexReady(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 		"reference"); err != nil {
 		return nil, err
@@ -1063,7 +1090,7 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 // compileTimestampCondition filters transactions by timestamp using the transaction timestamp index.
 // Requires the timestamp builtin index to be READY.
 func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if err := checkIndexed(ctx,
+	if _, err := requireIndexReady(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 		"timestamp"); err != nil {
 		return nil, err
@@ -1076,7 +1103,7 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 // compileInsertedAtCondition filters transactions by inserted_at using the transaction inserted_at index.
 // Requires the inserted_at builtin index to be READY.
 func compileInsertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if err := checkIndexed(ctx,
+	if _, err := requireIndexReady(ctx,
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
 		"inserted_at"); err != nil {
 		return nil, err
@@ -1159,7 +1186,7 @@ func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUi
 // compileLogDateCondition filters logs by date using the ledger log date index.
 // Requires the log date builtin index to be READY.
 func compileLogDateCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if err := checkIndexed(ctx,
+	if _, err := requireIndexReady(ctx,
 		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 		"log date"); err != nil {
 		return nil, err
@@ -1250,11 +1277,13 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 }
 
 // checkIndexed verifies that an Index entry exists in the bucket-scoped
-// registry for the (ledgerID, id) tuple and that its build status is READY.
-// Returns ErrIndexNotFound when the entry is missing, ErrIndexBuilding when
-// it is still being built, or nil otherwise. The label is surfaced in the
-// error for diagnostic purposes (callers tailor it to the condition site,
-// e.g. "reference", "log date", "metadata[\"color\"] on accounts").
+// registry for (ctx.ledgerName, id). Returns ErrIndexNotFound when the
+// entry is missing.
+//
+// No BuildStatus check: per EN-1323, BuildStatus is informational only.
+// Per-replica readiness is signalled by IndexVersionState — see
+// requireIndexReady for the combined declaration + local-readiness
+// gate every indexed read should use.
 func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
 	idx, err := indexes.Find(ctx.indexRegistry, ctx.info.GetName(), id)
 	if err != nil {
@@ -1265,11 +1294,43 @@ func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
 		return &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
 	}
 
-	if idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
+	return nil
+}
+
+// requireIndexReady checks BOTH that the index is declared on the
+// ledger AND that the local replica has primed a live keyspace for it
+// (CurrentVersion > 0 in the per-replica IndexVersionState). Returns:
+//   - ErrIndexNotFound when the index isn't declared.
+//   - ErrIndexBuilding when the local replica's initial backfill /
+//     rewrite hasn't yet performed an atomic switch. This holds for
+//     EVERY index kind — builtin (reference, timestamp, inserted_at,
+//     address, log_date) and metadata alike — because handleCreatedIndexLog
+//     primes each new index at {CurrentVersion: 0, PendingVersion: 1}
+//     and only completeBackfill / processSchemaRewrite flips it past 0.
+//   - A wrapped error on Pebble I/O failure (per CLAUDE.md invariant
+//     #7 the silent "treat as building" fallback is forbidden).
+//
+// Returns the resolved CurrentVersion on success — callers that key
+// their forward index on the version (metadata) use it; builtin
+// callers ignore it. The version comes from `ctx.indexVersionFor`,
+// which MUST be bound to the iteration snapshot — never the live
+// store — so the gate and the scan observe the same point-in-time
+// view of the atomic-switch state.
+func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (uint32, error) {
+	if err := checkIndexed(ctx, id, label); err != nil {
+		return 0, err
 	}
 
-	return nil
+	v, err := ctx.indexVersionFor(indexes.Canonical(id))
+	if err != nil {
+		return 0, fmt.Errorf("resolving index version for %s: %w", label, err)
+	}
+
+	if v == 0 {
+		return 0, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
+	}
+
+	return v, nil
 }
 
 // targetTypeForQueryTarget maps a QueryTarget to the matching TargetType used
