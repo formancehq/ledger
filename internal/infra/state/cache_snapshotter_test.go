@@ -399,6 +399,30 @@ func TestCacheSnapshotter_PersistAndRestoreTransactions(t *testing.T) {
 	require.Equal(t, uint64(7), restored.Tag)
 }
 
+// TestCacheSnapshotter_PersistAndRestoreAccounts verifies an account existence
+// marker survives a snapshot/restore round-trip as a LIVE (non-deleted) entry,
+// so a node that rehydrates its cache from the 0xFF zone still sees a
+// pre-existing account as existing — never re-applying default metadata to it.
+func TestCacheSnapshotter_PersistAndRestoreAccounts(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	acctKey := domain.AccountKey{LedgerName: "test", Account: "users:alice"}
+	u128, tag := attributes.MakeKey(acctKey.Bytes())
+	registry.Cache.Accounts.Gen0().Put(u128, attributes.Entry[*commonpb.AccountState]{
+		Tag: tag, Data: &commonpb.AccountState{Exists: true},
+	})
+
+	require.NoError(t, persistToStore(snapshotter, dataStore))
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+
+	restored, ok := registry.Cache.Accounts.Gen0().Get(u128)
+	require.True(t, ok, "account marker missing from cache after restore")
+	require.False(t, restored.Deleted, "account marker restored as deleted — existing account would be treated as new")
+}
+
 func TestCacheSnapshotter_PersistOverwritesPrevious(t *testing.T) {
 	t.Parallel()
 

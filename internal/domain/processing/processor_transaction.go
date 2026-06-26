@@ -289,10 +289,11 @@ func markNewAccountAndMatchDefaults(
 	}
 
 	// First time this account is ever touched: record the marker so it is
-	// recognised as existing from now on. The marker is presence-only
-	// (AccountState carries no fields), so apply and rebuild write byte-identical
-	// values.
-	s.PutAccount(key, &commonpb.AccountState{})
+	// recognised as existing from now on. Exists=true keeps the serialized
+	// marker non-empty (an empty value is a tombstone to the cache snapshot/
+	// preload machinery and would be dropped on restart/rotation); apply and
+	// rebuild both write Exists=true, so the marker bytes are byte-identical.
+	s.PutAccount(key, &commonpb.AccountState{Exists: true})
 
 	matched := accounttype.FindMatchingType(account, compiled)
 	if matched == nil {

@@ -7724,11 +7724,18 @@ func (x *TransactionReferenceValue) GetTransactionId() uint64 {
 // AccountState records that an account has been seen at least once. Its mere
 // presence is the per-account existence marker the FSM uses to answer "is this
 // account new (first time ever, any asset)?" — a cache miss on this key means
-// the account has never been created before. The marker is presence-only: it
-// carries no fields, so the bytes the FSM apply path writes and the bytes the
-// backup/rebuild path reconstructs are identical for the same applied index.
+// the account has never been created before.
+//
+// `exists` is always set to true when the marker is written. It exists so the
+// serialized marker is NON-EMPTY: the cache snapshot/preload machinery treats an
+// empty value as a tombstone (RestoreEntry/MirrorPreload would restore a present
+// marker as Deleted), so an empty marker would be silently dropped on restart,
+// rotation, or cache-miss and the account would be wrongly treated as new. Both
+// the FSM apply path and the backup/rebuild path write `exists = true`, so the
+// bytes are identical for the same applied index.
 type AccountState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Exists        bool                   `protobuf:"varint,1,opt,name=exists,proto3" json:"exists,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7761,6 +7768,13 @@ func (x *AccountState) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AccountState.ProtoReflect.Descriptor instead.
 func (*AccountState) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{93}
+}
+
+func (x *AccountState) GetExists() bool {
+	if x != nil {
+		return x.Exists
+	}
+	return false
 }
 
 // NumscriptVersionValue stores the latest version pointer for a named numscript.
@@ -11172,8 +11186,9 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\"\x0e\n" +
-	"\fAccountState\"1\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\"&\n" +
+	"\fAccountState\x12\x16\n" +
+	"\x06exists\x18\x01 \x01(\bR\x06exists\"1\n" +
 	"\x15NumscriptVersionValue\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\"\xc6\x01\n" +
 	"\vSegmentType\x12\x16\n" +

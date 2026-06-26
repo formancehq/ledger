@@ -471,7 +471,9 @@ func (w *attributeReplayWriter) RecordAccount(canonicalKey []byte) error {
 		return nil
 	}
 
-	_, err = w.account.Set(w.batch, canonicalKey, &commonpb.AccountState{})
+	// Exists=true mirrors the apply path: the marker must be non-empty so the
+	// cache snapshot/preload machinery does not read it back as a tombstone.
+	_, err = w.account.Set(w.batch, canonicalKey, &commonpb.AccountState{Exists: true})
 
 	return err
 }
