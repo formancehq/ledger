@@ -33,6 +33,7 @@ This document contains rules and conventions for AI agents working on this codeb
 
 **CRITICAL**: Always maintain documentation when making changes.
 
+- **Document new technical mechanisms** — when introducing a new technical mechanism, subsystem, or non-obvious invariant, add a dedicated page under `docs/technical/architecture/` and link it from the corresponding `README.md`
 - **Update `docs/technical/contributing/api-comparison.md`** when adding, modifying, or removing API endpoints
 - **Update `docs/ops/cli.md`** when modifying CLI commands, flags, or behavior
 - **Update `openapi.yml`** if HTTP endpoints change

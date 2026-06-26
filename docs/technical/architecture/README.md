@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-25 architecture documents organized into four topic areas.
+27 architecture documents organized into four topic areas.
 
 ## Core
 
@@ -40,6 +40,8 @@ Ledgers, transactions, chapters, events, and wire formats.
 | [typed-metadata.md](data-model/typed-metadata.md) | Typed metadata values, per-ledger schema, and hybrid conversion strategy |
 | [uint256-wire-format.md](data-model/uint256-wire-format.md) | Fixed-size Uint256 wire format for monetary amounts |
 | [query-checkpoints.md](data-model/query-checkpoints.md) | Point-in-time snapshots of main store and read index for historical queries |
+| [indexes.md](data-model/indexes.md) | Index definition, per-replica version state, on-demand statistics, and rewrite lifecycle |
+| [indexer.md](data-model/indexer.md) | Indexer pipeline: builder loop, two-pass commit, handlers, read-store key layout, atomic switch |
 | [events.md](data-model/events.md) | Domain event types and event sink system (NATS, Kafka, ClickHouse, HTTP) |
 
 ## API
