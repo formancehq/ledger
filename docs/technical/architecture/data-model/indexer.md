@@ -63,7 +63,7 @@ flowchart TB
 - Opens a direct Pebble read handle on the **main store** (`query.ReadLogsSince(ctx, handle, cursor, ...)`).
 - Iterates committed logs starting at `cursor + 1`.
 - For each log entry, calls `b.indexPayload(kb, cfg, ledger, payload, excludedVolumes)`, which switches on the payload type and dispatches to the matching handler.
-- Handlers buffer their key/value writes into a single `pebble.Batch` (`b.wb`), they never `Commit()` themselves.
+- Handlers buffer their key/value writes into a single `readstore.WriteBatch` (`b.wb`) that wraps an underlying `dal.WriteSession`; they never `Commit()` themselves.
 - An `AppliedProposal` cursor is advanced in lock-step so the next pass can filter transient-account postings deterministically.
 
 ### Pass 2 — commit (or skip)
@@ -124,8 +124,10 @@ Internal sub-prefixes (`0xFE` + 1 B):
 ### The versioned metadata-index key
 
 ```
-[0x01] [ledger 64B] [ns: 2B] [metadataKey \x00] [version 4B BE] [typedValue] [entityID]
+[0x01] [ledger 64B] [ns:] [metadataKey \x00] [version 4B BE] [typedValue] [entityID]
 ```
+
+`ledger` is fixed-width (`dal.LedgerNameFixedSize` = 64B, zero-padded). `ns:` is the entity namespace — currently `"a:"` for accounts and `"t:"` for transactions; not a fixed width, but always followed by `\x00` after `metadataKey`.
 
 Two adjacent versions share the same prefix up to the `version` field, so a single Pebble `DeleteRange` over `MetadataIndexPrefixV(..., v)` cleanly drops a whole version in one operation (used by GC after an atomic switch).
 
@@ -190,14 +192,14 @@ If the rewrite's scan cursor has reached the head **but** `LastIndexedSequence <
 
 ## Changing a Metadata Key's Type (`SetMetadataFieldType`)
 
-Re-typing a metadata key (e.g. `category: string → int`) is the most subtle path the indexer handles. It is the *only* operation that needs to **re-encode all live entities at a new type tag** while continuing to serve queries against the old encoding — and it is also the original motivation for the dual-write + versioned-keyspace machinery described above.
+Re-typing a metadata key (e.g. `category: string → int`) is the most subtle path the indexer handles. It is the operation that **re-encodes all live entities at a new type tag** while continuing to serve queries against the old encoding — and it is the original motivation for the dual-write + versioned-keyspace machinery described above. (A second `SetMetadataFieldType` arriving while a previous rewrite is still in flight is the only other trigger: it resets the in-flight task's cursor to start over under the new target type, see `addSchemaRewriteTask` → `backfill.go:310-324`.)
 
 ### Order flow
 
 1. **Admission** receives a `SetMetadataFieldTypeRequest` and emits a `SetMetadataFieldTypeOrder(target, key, type)` (`internal/application/admission/admission.go:1391-1405`). The admission layer preloads the current `MetadataID` (READY or BUILDING) so the FSM can read the prior schema state (`admission.go:995-1002`). **There is no pre-validation of value convertibility** — admission only validates the metadata key shape via `ValidateMetadataKey`.
 2. **FSM apply** updates the per-ledger schema in `LedgerInfo` and emits a `SetMetadataFieldType` audit log. The corresponding `Index.forward_encoding_version` is bumped (cluster-wide).
 3. **Indexer**, on the next tick, sees the log in `processLogs` and dispatches to `addSchemaRewriteTask` (`internal/application/indexbuilder/backfill.go:247+`). Two transitions happen in the same Pebble batch as the indexer's progress write:
-   - `bumpPendingVersion(ledger, indexID)` — increments `IndexVersionState.PendingVersion` (typically `current + 1`) and persists it.
+   - `bumpPendingVersion(ledger, indexID)` — sets `IndexVersionState.PendingVersion = max(pending, current) + 1` and persists it. In steady state this is `current + 1`; the `max(pending, …)` only matters when a second `SetMetadataFieldType` lands during an in-flight rewrite, in which case the version keeps climbing rather than being recycled.
    - A `schemaRewriteTask` is registered in memory with the target type, an empty reverse-map cursor, and `requiredIndexedSeq = 0`. The gate watermark is **not** sampled at task creation — it is sampled per batch later, see [below](#atomic-switch--and-why-it-is-gated).
 
 ### What runs during the rewrite — a state scan, not a log replay
@@ -211,7 +213,7 @@ Re-typing a metadata key (e.g. `category: string → int`) is the most subtle pa
 
 While this loop runs, new `SavedMetadata` / `DeletedMetadata` logs continue to land in `processLogs`. The handlers detect `PendingVersion != 0` and dual-write the **same encoded value** to both `v_current` and `v_pending` — the encoding always uses the current declared type, which by the time the indexer sees these logs is already the *new* type. The rewrite never has to "catch up" to live writes — they keep `v_pending` fresh autonomously.
 
-> **Consequence — transient query semantics during a rewrite.** Queries continue to scan `v_current` (the gate `requireIndexedReady` returns `CurrentVersion` — `query/compile.go:1300-1334`), and the query parameter is encoded under the *current* declared type. Pre-existing rows in `v_current` that the rewrite has not yet touched are still encoded under the *old* type, so they are **invisible to queries** during the rewrite window. New writes post-`SetMetadataFieldType` land in `v_current` under the new type (via the dual-write) and remain visible. After the atomic switch, queries land on `v_pending`, which is fully re-encoded under the new type — visibility is restored uniformly. This is the only window where queries can see a degraded view of an index, and it is the price the design pays to avoid log-replay machinery in the rewrite path.
+> **Consequence — transient query semantics during a rewrite.** Queries continue to scan `v_current` (the gate `requireIndexReady` at `query/compile.go:1319+` returns `CurrentVersion`), and the query parameter is encoded under the *current* declared type. Pre-existing rows in `v_current` that the rewrite has not yet touched are still encoded under the *old* type, so they are **invisible to queries** during the rewrite window. New writes post-`SetMetadataFieldType` land in `v_current` under the new type (via the dual-write) and remain visible. After the atomic switch, queries land on `v_pending`, which is fully re-encoded under the new type — visibility is restored uniformly. This is the only window where queries can see a degraded view of an index, and it is the price the design pays to avoid log-replay machinery in the rewrite path.
 
 > **Design note — why not bound the rewrite to the log that triggered it?**
 > A possible alternative design is to bound the scan at the log sequence of the `SetMetadataFieldType` log itself and rely entirely on the dual-write path for everything that comes after. The current code does *not* do that: because step 2 reads the **latest** stored value from the FSM rather than reconstructing the value at the triggering sequence, a row written to `v_pending` may reflect a state newer than the triggering log. This trades off an extra consistency gate at the end (next section) for a much simpler scan loop — no per-row "what was this value at sequence S?" reconstruction, no replay machinery. The gate makes that trade safe.

@@ -60,7 +60,7 @@ v_current → served by queries
 v_pending → populated by the backfill / rewrite task
 ```
 
-The atomic switch is a single Pebble batch commit that flips `Pending → Current`; old-version keys are garbage-collected afterwards.
+The atomic switch is a single Pebble batch commit that flips `Pending → Current`. Old-version keys are garbage-collected **in the same batch as the switch for the schema-rewrite path only** — the `CreateIndex` backfill path has no `v_old` to reclaim because the index was never served before. See [indexer.md — `completeBackfill`](indexer.md#completebackfill--the-switch) for the per-path detail.
 
 ## Build / Rewrite Lifecycle
 
@@ -71,7 +71,7 @@ A rewrite is driven by `indexbuilder.Builder` (`internal/application/indexbuilde
 - `completeBackfill` — when the cursor reaches the global indexer cursor, the **atomic switch** runs: `CurrentVersion ← PendingVersion`, `PendingVersion ← 0`, `RewriteProgress ← nil`, all in one Pebble batch (`backfill.go:1197+`).
 - `handleDroppedIndexLog` — clears version state and v_n keyspaces (`index_config.go`).
 
-A `SetMetadataFieldType` order bumps the cluster-wide `forward_encoding_version` and triggers the same rewrite path: queries continue to serve `v_current` until each replica completes its local rewrite and flips its own switch. Synchronisation across nodes is client-driven through `min_log_sequence` on the read API (note: that pins **log application**, not local rewrite completion — see `api-comparison.md`).
+A `SetMetadataFieldType` order bumps the cluster-wide `forward_encoding_version` and triggers a **schema rewrite** — a distinct code path (`schemaRewriteTask` / `processSchemaRewrite`, see [indexer.md](indexer.md#changing-a-metadata-keys-type-setmetadatafieldtype)) that reuses the same versioning strategy: queries continue to serve `v_current` until each replica completes its local rewrite and flips its own switch. Synchronisation across nodes is client-driven through `min_log_sequence` on the read API (note: that pins **log application**, not local rewrite completion — see `api-comparison.md`).
 
 ```mermaid
 stateDiagram-v2
@@ -136,7 +136,7 @@ The controller (`internal/application/ctrl/controller_default.go`) gates the ins
 
 ## Bloom Filter Metrics (Not Index Stats)
 
-Bloom filters are a separate optimisation that lives in front of the attribute caches. They expose OTel counters (`internal/infra/bloom/bloom.go:641-670`):
+Bloom filters are a separate optimisation that lives in front of the attribute caches. They expose OTel counters (`internal/infra/bloom/bloom.go:641-659`):
 
 | Counter | Meaning |
 |---------|---------|
