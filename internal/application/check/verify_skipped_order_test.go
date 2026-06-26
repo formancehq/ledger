@@ -141,6 +141,111 @@ func TestVerifySkippedOrder_IgnoresNonSkipPayloads(t *testing.T) {
 	require.Empty(t, events)
 }
 
+// TestVerifyExpectedSkipNotElided_RejectsTamperedCreatedTransaction is the
+// inverse-direction sibling of the OrderSkipped tampering tests above: a
+// chain-bound order opted into TRANSACTION_REFERENCE_CONFLICT skip AND the
+// audit-derived references show the reference was claimed earlier, so the
+// FSM MUST have skipped — yet the persisted LedgerLog at this sequence is a
+// CreatedTransaction. The LedgerLog is not hash-chain bound, so without this
+// check a tamperer could elide the skip and forge a successful landing.
+func TestVerifyExpectedSkipNotElided_RejectsTamperedCreatedTransaction(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-claimed-earlier",
+		},
+	}
+	refs := map[string]map[string]uint64{
+		"L": {"ref-claimed-earlier": 3},
+	}
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{},
+		},
+	}
+
+	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifyExpectedSkipNotElided_AcceptsLegitimateCreatedTransaction pins the
+// happy path: when the order opted into skip but the reference was not
+// claimed before, the FSM correctly emitted a CreatedTransaction and the
+// verifier stays silent.
+func TestVerifyExpectedSkipNotElided_AcceptsLegitimateCreatedTransaction(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-first-claim",
+		},
+	}
+	// ref-first-claim is claimed at seq=7 itself — no earlier claim.
+	refs := map[string]map[string]uint64{
+		"L": {"ref-first-claim": 7},
+	}
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{},
+		},
+	}
+
+	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	require.Empty(t, events, "first-claim CreatedTransaction must round-trip silently")
+}
+
+// TestVerifyExpectedSkipNotElided_NoExpectedEntryStaysSilent pins that a
+// non-skip projection is fine when the originating order never opted into
+// skip — the FSM had no option to skip, the CreatedTransaction is correct.
+func TestVerifyExpectedSkipNotElided_NoExpectedEntryStaysSilent(t *testing.T) {
+	t.Parallel()
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{},
+		},
+	}
+
+	events := captureEvents(t, "L", 7, payload, nil, nil, false)
+	require.Empty(t, events)
+}
+
+// TestVerifyExpectedSkipNotElided_PermissiveWhenArchived covers the same
+// archive-boundary escape hatch as verifySkippedOrder: when archived chapters
+// exist, references claimed in purged ranges legitimately fail to appear in
+// chainBoundReferences. The verifier cannot positively prove the conflict
+// happened, so it must NOT flag a non-skip projection here.
+func TestVerifyExpectedSkipNotElided_PermissiveWhenArchived(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-claimed-earlier",
+		},
+	}
+	refs := map[string]map[string]uint64{
+		"L": {"ref-claimed-earlier": 3},
+	}
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{},
+		},
+	}
+
+	events := captureEvents(t, "L", 7, payload, expected, refs, true)
+	require.Empty(t, events, "the inverse check must stay permissive under the same archive escape as the forward direction")
+}
+
 // TestVerifySkippedOrder_ReferenceConflictRejectsUnclaimedReference covers
 // the central tampering scenario the checker pass was hardened against: a
 // store that flipped a successful CreatedTransaction → OrderSkipped on a
