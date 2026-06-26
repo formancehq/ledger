@@ -374,6 +374,14 @@ operator-helm-publish version='' suffix='':
 docker-build *ARGS:
     docker buildx build -t ghcr.io/formancehq/ledger-v3-poc --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,azure,pyroscope {{ARGS}} .
 
+# Build and push a PR docker image under a single explicit tag (no `:latest`).
+# Used by the `Build-PR-Image` workflow job to publish
+# `ghcr.io/formancehq/ledger-v3-poc:pr-<num>-<sha7>` for smoke tests
+# before merge — keeps the same BUILD_TAGS set as `docker-build` so a
+# reviewer exercises the full optional-feature surface.
+docker-build-pr image:
+    docker buildx build -t '{{ image }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,azure,pyroscope .
+
 # Docker builds are handled via Pulumi
 
 k8s-install:

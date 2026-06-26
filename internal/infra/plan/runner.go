@@ -224,13 +224,34 @@ func (p *Builder) Run(
 // AttributePlan slice into every WriteOperation's coverage bitset. Run
 // calls this once on the happy path and again on the rare rebuild
 // under guard.
+//
+// The planLookupKey→position index is built ONCE per call and reused
+// across every operation: a proposal's plans slice is identical for
+// all operations in the batch, so rebuilding the map per operation
+// costs O(N·P) runtime.mapassign for N orders × P plans where O(P)
+// suffices.
 func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.AttributePlan) {
+	var (
+		index     map[planLookupKey]uint32
+		planCount = len(plans)
+	)
+
+	if planCount > 0 {
+		index = buildPlanIndex(plans)
+	}
+
 	for _, op := range b.operations {
 		if op.SetCoverage == nil {
 			continue
 		}
 
-		op.SetCoverage(bitsForNeeds(op.Needs, plans))
+		if planCount == 0 {
+			op.SetCoverage(nil)
+
+			continue
+		}
+
+		op.SetCoverage(bitsForNeedsWithIndex(op.Needs, planCount, index))
 	}
 }
 

@@ -276,3 +276,73 @@ jobs:
           nix develop --command just operator-helm-publish '' nightly
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
+  Build-PR-Image:
+    # Builds and pushes a docker image tagged `pr-<num>-<sha7>` so a
+    # reviewer can deploy the PR build for smoke tests before merge.
+    # The label is opt-in (apply manually on the PR) — every push to a
+    # labeled PR republishes the image under a SHA-pinned tag, so no two
+    # PRs ever fight for the same tag.
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-images')
+    needs:
+      [
+        Dirty,
+        Tests,
+        Tests-E2E,
+        Tests-Scenarios,
+        Tests-Model,
+        Tests-Schemathesis,
+        Build,
+      ]
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    permissions:
+      # Job-level `permissions:` REPLACES the workflow-level set (it does
+      # not merge), so we must restate `contents: read` here — otherwise
+      # actions/checkout cannot clone this private repo and fails with
+      # "repository not found".
+      contents: read
+      packages: write
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          dissociate: true
+          # Default checkout on `pull_request` produces a synthetic merge
+          # commit. Pin to the PR HEAD so the image tag matches the
+          # commit the contributor actually pushed.
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Set up Docker Buildx
+        uses: namespacelabs/nscloud-setup-buildx-action@v0
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: NumaryBot
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Compute image tag
+        id: tag
+        run: |
+          short=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          tag="pr-${{ github.event.pull_request.number }}-${short}"
+          image="ghcr.io/formancehq/ledger-v3-poc:${tag}"
+          echo "tag=${tag}"     >> "$GITHUB_OUTPUT"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+      - name: Build and push PR image
+        run: >
+          nix develop --command just docker-build-pr '${{ steps.tag.outputs.image }}'
+      - name: Summarize image digest
+        if: always()
+        run: |
+          image='${{ steps.tag.outputs.image }}'
+          digest=$(docker buildx imagetools inspect "$image" --format '{{ .Manifest.Digest }}' 2>/dev/null || echo "(inspect failed)")
+          {
+            echo "## PR docker image"
+            echo ""
+            echo "| Image | Digest |"
+            echo "|---|---|"
+            echo "| \`${image}\` | \`${digest}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

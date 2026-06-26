@@ -187,3 +187,106 @@ func TestBitsForNeeds_TracksPlanPosition(t *testing.T) {
 	require.Equal(t, []byte{0b10}, bitsForNeeds(needs, []*raftcmdpb.AttributePlan{padding, ledgerPlan}),
 		"rebuild must produce bits tracking the new plan position")
 }
+
+// TestApplyBits_SharesPlanIndexAcrossOperations pins the
+// buildPlanIndex hoist: applyBits must build the planLookupKey→position
+// map once per call and feed it to every WriteOperation, yet still
+// emit a coverage bitset that mirrors only the per-operation Needs.
+//
+// This is the hot-path optimization that drops applyBits' cost from
+// O(N · P) runtime.mapassign (one map rebuild per operation) to O(P)
+// for a batch of N operations sharing the same proposal plans slice.
+// A regression that goes back to per-op map building still passes
+// TestBitsForNeeds_* — only a batch-level test catches it.
+func TestApplyBits_SharesPlanIndexAcrossOperations(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ledgerA = "alpha"
+		ledgerB = "beta"
+	)
+
+	idA, _ := attributes.MakeKey(domain.LedgerKey{Name: ledgerA}.Bytes())
+	idB, _ := attributes.MakeKey(domain.LedgerKey{Name: ledgerB}.Bytes())
+
+	plans := []*raftcmdpb.AttributePlan{
+		{
+			Id: &raftcmdpb.AttributeID{Id: idA[:]}, AttrCode: uint32(dal.SubAttrLedger),
+			Intent: &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
+		},
+		{
+			Id: &raftcmdpb.AttributeID{Id: idB[:]}, AttrCode: uint32(dal.SubAttrLedger),
+			Intent: &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
+		},
+	}
+
+	needsA := NewNeeds()
+	needsA.Ledgers[domain.LedgerKey{Name: ledgerA}] = struct{}{}
+
+	needsB := NewNeeds()
+	needsB.Ledgers[domain.LedgerKey{Name: ledgerB}] = struct{}{}
+
+	needsAB := NewNeeds()
+	needsAB.Ledgers[domain.LedgerKey{Name: ledgerA}] = struct{}{}
+	needsAB.Ledgers[domain.LedgerKey{Name: ledgerB}] = struct{}{}
+
+	var (
+		gotA  []byte
+		gotB  []byte
+		gotAB []byte
+		gotZ  []byte
+		gotN  bool // SetCoverage(nil) for the no-needs op
+	)
+
+	build := &BuildResult{
+		operations: []WriteOperation{
+			{Needs: needsA, SetCoverage: func(b []byte) { gotA = b }},
+			{Needs: needsB, SetCoverage: func(b []byte) { gotB = b }},
+			{Needs: needsAB, SetCoverage: func(b []byte) { gotAB = b }},
+			{Needs: NewNeeds(), SetCoverage: func(b []byte) { gotZ = b }},
+			{Needs: nil, SetCoverage: func(b []byte) { gotN = true }},
+			{Needs: needsA, SetCoverage: nil}, // skip — nil callback, must not panic
+		},
+	}
+
+	build.applyBits(nil, plans)
+
+	require.Equal(t, []byte{0b01}, gotA, "op A flags only bit 0 (ledgerA at index 0)")
+	require.Equal(t, []byte{0b10}, gotB, "op B flags only bit 1 (ledgerB at index 1)")
+	require.Equal(t, []byte{0b11}, gotAB, "op AB flags both bits")
+	require.Equal(t, []byte{0b00}, gotZ, "op with empty Needs gets a zero bitset, not nil")
+	require.True(t, gotN, "nil Needs op must still be invoked with nil per the original contract")
+	// gotN's nil-input path returns nil from bitsForNeedsWithIndex; the
+	// callback simply records that it ran.
+}
+
+// TestApplyBits_EmptyPlansPreservesNilContract pins the no-plan branch
+// of applyBits: when the proposal carries zero AttributePlan entries
+// (every WriteOperation has empty Needs, common for technical-only
+// proposals), every SetCoverage callback must still fire with nil to
+// keep the original bitsForNeeds(_, nil) → nil contract that handlers
+// rely on (a zero-length bitset is semantically different from a
+// missing one in the FSM's coverage check).
+func TestApplyBits_EmptyPlansPreservesNilContract(t *testing.T) {
+	t.Parallel()
+
+	calls := make([]struct {
+		called bool
+		got    []byte
+	}, 3)
+
+	build := &BuildResult{
+		operations: []WriteOperation{
+			{Needs: NewNeeds(), SetCoverage: func(b []byte) { calls[0].called = true; calls[0].got = b }},
+			{Needs: nil, SetCoverage: func(b []byte) { calls[1].called = true; calls[1].got = b }},
+			{Needs: NewNeeds(), SetCoverage: nil}, // must be skipped silently
+		},
+	}
+
+	build.applyBits(nil, nil)
+
+	require.True(t, calls[0].called, "non-nil-callback op must be invoked even with empty plans")
+	require.Nil(t, calls[0].got, "empty plans must yield nil bitset (not zero-length)")
+	require.True(t, calls[1].called)
+	require.Nil(t, calls[1].got)
+}

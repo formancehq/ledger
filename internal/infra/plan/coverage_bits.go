@@ -20,17 +20,34 @@ type planLookupKey struct {
 // one set of Needs. Used by Run internally to flow per-WriteOperation
 // needs onto each operation's coverage field at marshal time.
 //
-// Returns nil when plans is empty (no coverage to flag) or needs is nil
-// or empty.
+// Returns nil when plans is empty (no coverage to flag) or needs is nil.
+//
+// When assigning coverage for many WriteOperations against the same
+// plans slice (the admission batch case), prefer bitsForNeedsWithIndex
+// after a single buildPlanIndex call — applyBits does exactly that to
+// amortize the index build across the whole batch.
 func bitsForNeeds(needs *Needs, plans []*raftcmdpb.AttributePlan) []byte {
 	if needs == nil || len(plans) == 0 {
 		return nil
 	}
 
-	index := buildPlanIndex(plans)
-	bitsetLen := (len(plans) + 7) / 8
+	return bitsForNeedsWithIndex(needs, len(plans), buildPlanIndex(plans))
+}
 
-	bits := make([]byte, bitsetLen)
+// bitsForNeedsWithIndex is the inner loop of bitsForNeeds: same output,
+// but the caller is responsible for building the index once and passing
+// it in. planCount is the number of AttributePlan entries the index was
+// built over — used to size the returned bitset, since the index may
+// have fewer entries than the slice (idempotency-key plans are skipped).
+//
+// Returns nil when needs is nil; callers that have already filtered
+// empty-plans cases keep that responsibility (applyBits does).
+func bitsForNeedsWithIndex(needs *Needs, planCount int, index map[planLookupKey]uint32) []byte {
+	if needs == nil {
+		return nil
+	}
+
+	bits := make([]byte, (planCount+7)/8)
 	setIDInBitset(bits, index, needs)
 
 	return bits
