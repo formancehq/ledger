@@ -37,9 +37,17 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 	// EN-1276 is create-only: default_metadata may only be attached to an account
 	// type while the ledger has no accounts yet. A populated ledger's pre-existing
 	// accounts carry no existence marker, so attaching defaults now would backfill
-	// them on next touch (the deferred one-time seeding pass lifts this). A ledger
-	// with NextTransactionId == 1 has applied no transaction, hence has no account.
-	// Boundaries are preloaded for every Apply order, so this read is coverage-
+	// them on next touch (the deferred one-time seeding pass lifts this). Two
+	// signals together prove "no account exists yet":
+	//   - NextTransactionId == 1: no transaction has applied, so no posting ever
+	//     created an account or a volume.
+	//   - MetadataCount == 0: no account metadata has been written. A metadata-set
+	//     (processAddMetadata) is itself an account-creation path but does not bump
+	//     NextTransactionId, so a ledger with only metadata-set writes still has
+	//     NextTransactionId == 1 yet carries metadata-only accounts that lack a
+	//     marker — MetadataCount catches exactly those (it counts account-keyed
+	//     metadata only; transaction metadata lives in TransactionState).
+	// Boundaries are preloaded for every Apply order, so both reads are coverage-
 	// gated and deterministic across nodes.
 	if len(at.GetDefaultMetadata()) > 0 {
 		boundaries, bErr := loadBoundaries(ctx.Scope, ledger)
@@ -47,7 +55,7 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 			return nil, bErr
 		}
 
-		if boundaries.GetNextTransactionId() > 1 {
+		if boundaries.GetNextTransactionId() > 1 || boundaries.GetMetadataCount() > 0 {
 			return nil, &domain.ErrDefaultMetadataOnPopulatedLedger{Ledger: ledger, TypeName: at.GetName()}
 		}
 	}

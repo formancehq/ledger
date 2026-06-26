@@ -93,6 +93,50 @@ func TestAddAccountType_WithDefaultMetadata_PopulatedLedger(t *testing.T) {
 	require.Equal(t, "user", target.TypeName)
 }
 
+// TestAddAccountType_WithDefaultMetadata_MetadataOnlyLedger verifies that adding
+// an account type carrying default_metadata to a ledger that has no transactions
+// (NextTransactionId == 1) but DOES have account metadata (MetadataCount > 0)
+// returns ErrDefaultMetadataOnPopulatedLedger. A metadata-set is an
+// account-creation path that does not bump NextTransactionId, so those
+// metadata-only accounts carry no existence marker and would be backfilled on
+// next touch — the MetadataCount arm of the create-only guard catches them.
+func TestAddAccountType_WithDefaultMetadata_MetadataOnlyLedger(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	const ledger = "test-ledger"
+	info := ledgerInfoWithID(ledger, 1)
+
+	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
+	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
+
+	// Inner loadBoundaries for the guard: no transactions, but account metadata
+	// has been written (a metadata-only account exists with no marker).
+	metadataOnlyBoundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, MetadataCount: 3}
+	mockStore.EXPECT().GetBoundaries(ledger).Return(metadataOnlyBoundaries.AsReader(), nil)
+
+	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", map[string]*commonpb.MetadataValue{
+		"tier": commonpb.NewStringValue("standard"),
+	})
+
+	result, descErr := processor.ProcessOrder(order, mockStore)
+	require.Nil(t, result)
+	require.NotNil(t, descErr)
+
+	var target *domain.ErrDefaultMetadataOnPopulatedLedger
+	require.True(t, errors.As(descErr.(error), &target),
+		"expected ErrDefaultMetadataOnPopulatedLedger, got %T: %v", descErr, descErr)
+	require.Equal(t, ledger, target.Ledger)
+	require.Equal(t, "user", target.TypeName)
+}
+
 // TestAddAccountType_WithDefaultMetadata_FreshLedger verifies that adding an
 // account type with default_metadata to a fresh ledger (NextTransactionId == 1)
 // succeeds and returns the AddedAccountType log.
