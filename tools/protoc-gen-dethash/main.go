@@ -18,7 +18,6 @@ import (
 
 var (
 	slicesPkg       = protogen.GoImportPath("slices")
-	sortPkg         = protogen.GoImportPath("sort")
 	syncPkg         = protogen.GoImportPath("sync")
 	protohelpersPkg = protogen.GoImportPath("github.com/planetscale/vtprotobuf/protohelpers")
 	binaryPkg       = protogen.GoImportPath("encoding/binary")
@@ -45,8 +44,12 @@ type keyKindInfo struct {
 
 // supportedKeyKinds maps every map-key kind the plugin accepts to its
 // pool/sort recipe. The kinds match the panic guard in genMapMarshal.
+// `slices.Sort` is used uniformly (Go 1.21+ pdqsort generic) — measured
+// marginally faster than `sort.Strings` on strings of any size and the
+// fastest std-lib option on ints; using a single sort function avoids
+// pulling the `sort` package into the generated file.
 var supportedKeyKinds = map[protoreflect.Kind]keyKindInfo{
-	protoreflect.StringKind: {goType: "string", pkgVar: "_dethashKeyPoolString", sortPkg: sortPkg, sortFunc: "Strings"},
+	protoreflect.StringKind: {goType: "string", pkgVar: "_dethashKeyPoolString", sortPkg: slicesPkg, sortFunc: "Sort"},
 	protoreflect.Int32Kind:  {goType: "int32", pkgVar: "_dethashKeyPoolInt32", sortPkg: slicesPkg, sortFunc: "Sort"},
 	protoreflect.Uint32Kind: {goType: "uint32", pkgVar: "_dethashKeyPoolUint32", sortPkg: slicesPkg, sortFunc: "Sort"},
 	protoreflect.Int64Kind:  {goType: "int64", pkgVar: "_dethashKeyPoolInt64", sortPkg: slicesPkg, sortFunc: "Sort"},
