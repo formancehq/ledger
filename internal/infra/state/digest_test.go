@@ -26,72 +26,55 @@ func newDigestStore(t *testing.T, deterministic bool) *dal.Store {
 	return store
 }
 
-// TestCanonicalBatchPayload_OrderIndependent verifies that two WriteSessions
-// receiving the same logical writes in DIFFERENT insertion orders produce
-// identical canonical payloads. This is the core invariant of the cross-node
-// digest: Pebble batches are insertion-ordered, but the canonical sort
-// neutralises that.
-func TestCanonicalBatchPayload_OrderIndependent(t *testing.T) {
+// TestWriteSession_Repr_SameWrites_SameBytes verifies that two
+// WriteSessions receiving the same logical writes in the same order produce
+// identical batch.Repr() bytes — the core invariant the digest relies on.
+// If the FSM hot path's insertion-order contract (cf. WriteSet.Merge
+// doc-block, EN-1325) holds, two nodes will hash identical bytes.
+func TestWriteSession_Repr_SameWrites_SameBytes(t *testing.T) {
 	t.Parallel()
 
-	store := newDigestStore(t, true)
+	storeA := newDigestStore(t, true)
+	storeB := newDigestStore(t, true)
 
-	writeOps := func(sess *dal.WriteSession, reverse bool) {
-		keys := [][]byte{
-			{0x06, 0x01, 0x01},
-			{0x06, 0x01, 0x02},
-			{0x06, 0x01, 0x03},
-			{0x06, 0x02, 0x01},
-			{0x01, 0x01, 0xAA, 0xBB},
-		}
-		values := [][]byte{
-			[]byte("alpha"),
-			[]byte("beta"),
-			[]byte("gamma"),
-			[]byte("delta"),
-			[]byte("epsilon"),
-		}
-
-		idx := []int{0, 1, 2, 3, 4}
-		if reverse {
-			idx = []int{4, 3, 2, 1, 0}
+	writeFixedSequence := func(sess *dal.WriteSession) {
+		// Sorted-by-key writes to mirror the post-EN-1325 invariant: the
+		// FSM hot path always emits in monotonic zone+sub-prefix order.
+		writes := []struct {
+			key   []byte
+			value []byte
+		}{
+			{[]byte{0x01, 0x01, 0xAA, 0xBB}, []byte("epsilon")},
+			{[]byte{0x06, 0x01, 0x01}, []byte("alpha")},
+			{[]byte{0x06, 0x01, 0x02}, []byte("beta")},
+			{[]byte{0x06, 0x01, 0x03}, []byte("gamma")},
+			{[]byte{0x06, 0x02, 0x01}, []byte("delta")},
 		}
 
-		for _, i := range idx {
-			require.NoError(t, sess.SetBytes(keys[i], values[i]))
+		for _, w := range writes {
+			require.NoError(t, sess.SetBytes(w.key, w.value))
 		}
 	}
 
-	sessFwd := store.OpenWriteSession()
-	defer func() { _ = sessFwd.Cancel() }()
-	writeOps(sessFwd, false)
+	sessA := storeA.OpenWriteSession()
+	defer func() { _ = sessA.Cancel() }()
+	writeFixedSequence(sessA)
 
-	sessRev := store.OpenWriteSession()
-	defer func() { _ = sessRev.Cancel() }()
-	writeOps(sessRev, true)
+	sessB := storeB.OpenWriteSession()
+	defer func() { _ = sessB.Cancel() }()
+	writeFixedSequence(sessB)
 
-	var (
-		opsBuf []bufferedOp
-		fwdBuf []byte
-		revBuf []byte
-		fwdPay []byte
-		revPay []byte
-		err    error
-	)
+	reprA := sessA.Repr()
+	reprB := sessB.Repr()
 
-	fwdPay, opsBuf, err = canonicalBatchPayload(fwdBuf, opsBuf, sessFwd)
-	require.NoError(t, err)
-
-	revPay, _, err = canonicalBatchPayload(revBuf, opsBuf, sessRev)
-	require.NoError(t, err)
-
-	require.Equal(t, fwdPay, revPay,
-		"canonical payloads must be byte-identical regardless of insertion order")
+	require.NotEmpty(t, reprA)
+	require.Equal(t, reprA, reprB,
+		"batch.Repr() must be byte-identical for sessions that received the same writes in the same order — this is what makes the cross-node digest comparable without canonicalisation")
 }
 
 // TestChainFSMDigest_DependsOnAllInputs sanity-checks that the chained
 // digest reacts to every input component: previous digest, snapshot index,
-// applied index, and the canonical payload itself. A change in any one of
+// applied index, and the batch repr itself. A change in any one of
 // these must produce a different digest — otherwise the chain is broken.
 func TestChainFSMDigest_DependsOnAllInputs(t *testing.T) {
 	t.Parallel()
@@ -99,7 +82,7 @@ func TestChainFSMDigest_DependsOnAllInputs(t *testing.T) {
 	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, "cluster-1")
 
 	baseline := func() []byte {
-		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 7, 42, []byte("payload-A"))
+		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 7, 42, []byte("repr-A"))
 
 		return append([]byte(nil), d...)
 	}
@@ -108,31 +91,31 @@ func TestChainFSMDigest_DependsOnAllInputs(t *testing.T) {
 
 	t.Run("different_previous_digest", func(t *testing.T) {
 		t.Parallel()
-		_, d := chainFSMDigest(gen, nil, []byte{0x99}, 7, 42, []byte("payload-A"))
+		_, d := chainFSMDigest(gen, nil, []byte{0x99}, 7, 42, []byte("repr-A"))
 		require.NotEqual(t, original, d)
 	})
 
 	t.Run("different_snapshot_index", func(t *testing.T) {
 		t.Parallel()
-		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 8, 42, []byte("payload-A"))
+		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 8, 42, []byte("repr-A"))
 		require.NotEqual(t, original, d)
 	})
 
 	t.Run("different_applied_index", func(t *testing.T) {
 		t.Parallel()
-		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 7, 43, []byte("payload-A"))
+		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 7, 43, []byte("repr-A"))
 		require.NotEqual(t, original, d)
 	})
 
-	t.Run("different_payload", func(t *testing.T) {
+	t.Run("different_repr", func(t *testing.T) {
 		t.Parallel()
-		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 7, 42, []byte("payload-B"))
+		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 7, 42, []byte("repr-B"))
 		require.NotEqual(t, original, d)
 	})
 
 	t.Run("identical_inputs_match", func(t *testing.T) {
 		t.Parallel()
-		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 7, 42, []byte("payload-A"))
+		_, d := chainFSMDigest(gen, nil, []byte{0x01, 0x02}, 7, 42, []byte("repr-A"))
 		require.Equal(t, original, d,
 			"identical inputs must yield identical digest (deterministic)")
 	})
@@ -149,8 +132,8 @@ func TestChainFSMDigest_DifferentClusterIDs_DifferentDigests(t *testing.T) {
 	a := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, "cluster-a")
 	b := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, "cluster-b")
 
-	_, da := chainFSMDigest(a, nil, nil, 0, 1, []byte("payload"))
-	_, db := chainFSMDigest(b, nil, nil, 0, 1, []byte("payload"))
+	_, da := chainFSMDigest(a, nil, nil, 0, 1, []byte("repr"))
+	_, db := chainFSMDigest(b, nil, nil, 0, 1, []byte("repr"))
 
 	require.NotEqual(t, da, db,
 		"per-cluster keying must make the digest cluster-bound")
@@ -175,44 +158,4 @@ func TestEncodeFSMDigestValue(t *testing.T) {
 		v[8:16])
 	// Digest trailer.
 	require.Equal(t, digest, v[16:])
-}
-
-// TestWriteSession_IterateBufferedOps verifies that the iterator yields every
-// buffered op exactly once, in insertion order (the digest path then sorts
-// them — see canonicalBatchPayload).
-func TestWriteSession_IterateBufferedOps(t *testing.T) {
-	t.Parallel()
-
-	store := newDigestStore(t, true)
-	sess := store.OpenWriteSession()
-	defer func() { _ = sess.Cancel() }()
-
-	require.NoError(t, sess.SetBytes([]byte("key-1"), []byte("val-1")))
-	require.NoError(t, sess.SetBytes([]byte("key-2"), []byte("val-2")))
-	require.NoError(t, sess.DeleteKey([]byte("key-3")))
-
-	type op struct {
-		kind  uint8
-		key   string
-		value string
-	}
-
-	var collected []op
-
-	err := sess.IterateBufferedOps(func(kind uint8, key, value []byte) error {
-		collected = append(collected, op{kind: kind, key: string(key), value: string(value)})
-
-		return nil
-	})
-	require.NoError(t, err)
-
-	require.Len(t, collected, 3)
-	require.Equal(t, "key-1", collected[0].key)
-	require.Equal(t, "val-1", collected[0].value)
-	require.Equal(t, "key-2", collected[1].key)
-	require.Equal(t, "key-3", collected[2].key)
-	require.Empty(t, collected[2].value, "delete op carries no value")
-	// The set/delete kinds must differ — exact numeric value is Pebble's
-	// internal constant; we only assert they don't collide.
-	require.NotEqual(t, collected[0].kind, collected[2].kind)
 }

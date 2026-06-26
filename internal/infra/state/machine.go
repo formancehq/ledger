@@ -67,10 +67,8 @@ type Machine struct {
 	// Cross-node FSM digest scratch buffers. Reused across commits to keep
 	// the digest path allocation-free in steady state. Owned by the FSM
 	// hot path (mutated only inside CommitPreparedBatch under fsm.mu).
-	digestPayloadBuf []byte
-	digestOpsBuf     []bufferedOp
-	digestHashBuf    []byte
-	digestValueBuf   []byte
+	digestHashBuf  []byte
+	digestValueBuf []byte
 
 	// Composed subsystems
 	Registry *StateRegistry  // KeyStores + Cache + Attrs
@@ -770,26 +768,25 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	// Only runs when the cluster-wide fsm_determinism_enabled flag is ON
 	// (carried by the WriteSession from the parent Store). Must precede
 	// pb.batch.Commit() — the digest covers the writes accumulated so far
-	// and we want IterateBufferedOps to skip the digest key itself, which
-	// only gets added after the canonical payload is built.
+	// and the digest's own SetBytes (which lands AFTER this point) is
+	// deliberately excluded from the hashed bytes (otherwise the digest
+	// would hash itself, recursive).
+	//
+	// The hash input is pb.batch.Repr() — the in-memory Pebble batch's
+	// insertion-ordered byte stream. The FSM hot path guarantees this is
+	// deterministic across nodes (cf. WriteSet.Merge doc-block enforced by
+	// EN-1325). If a future write violates the contract, the digest
+	// diverges cross-node and the divergence is the signal.
 	var newDigest []byte
 
 	if pb.batch.DeterministicEncoding() {
-		payload, ops, payloadErr := canonicalBatchPayload(fsm.digestPayloadBuf, fsm.digestOpsBuf, pb.batch)
-		if payloadErr != nil {
-			return fmt.Errorf("building digest canonical payload: %w", payloadErr)
-		}
-
-		fsm.digestPayloadBuf = payload
-		fsm.digestOpsBuf = ops
-
 		fsm.digestHashBuf, newDigest = chainFSMDigest(
 			fsm.State.HashGenerator,
 			fsm.digestHashBuf,
 			fsm.State.LastFSMDigest,
 			fsm.State.SnapshotIndex,
 			pb.lastAppliedIndex,
-			payload,
+			pb.batch.Repr(),
 		)
 
 		fsm.digestValueBuf = encodeFSMDigestValue(fsm.digestValueBuf, pb.lastAppliedIndex, fsm.State.SnapshotIndex, newDigest)

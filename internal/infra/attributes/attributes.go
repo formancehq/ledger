@@ -61,19 +61,22 @@ func prefixLen(canonicalKey []byte) int {
 	return 2 + len(canonicalKey) // 1 for KeyPrefixAttributes + 1 for attrType + N for canonicalKey
 }
 
-// vtSizedMarshaler is implemented by vtprotobuf-generated messages.
+// vtSizedMarshaler is implemented by every vtprotobuf-generated message:
+// in-place forward marshal into a caller-supplied buffer (no allocation).
 type vtSizedMarshaler interface {
 	SizeVT() int
 	MarshalToVT([]byte) (int, error)
 }
 
-// vtDeterministicMarshaler is implemented by messages that have a
-// protoc-gen-dethash generated MarshalDeterministicVT method (map keys sorted).
-// Used when the parent WriteSession is in deterministic mode so attribute
-// values written into Pebble are byte-identical across nodes.
-type vtDeterministicMarshaler interface {
+// vtSizedBufferDeterministicMarshaler is implemented only by messages whose
+// transitive shape contains a map<>: the dethash plugin emits an in-place
+// sized-buffer marshaler that sorts the map keys before writing. For
+// map-free messages the regular MarshalToVT output is byte-identical to
+// the deterministic output (no maps to sort), so we fall through to the
+// regular path — zero allocation, byte-equivalent.
+type vtSizedBufferDeterministicMarshaler interface {
 	SizeVT() int
-	MarshalDeterministicVT(dAtA []byte) []byte
+	MarshalToSizedBufferDeterministicVT([]byte) (int, error)
 }
 
 // vtUnmarshaler is implemented by vtprotobuf-generated messages.
@@ -82,25 +85,55 @@ type vtUnmarshaler interface {
 }
 
 // marshalProto marshals a proto message using vtprotobuf when available,
-// falling back to standard proto.MarshalOptions otherwise.
-// The provided buf is reused when large enough; the returned slice may be a
-// different backing array.
+// falling back to standard proto.MarshalOptions otherwise. The provided buf
+// is reused when large enough; the returned slice may be a different
+// backing array.
 //
-// When deterministic=true, the marshal path routes through
-// MarshalDeterministicVT so two nodes at the same applied index produce
-// byte-identical attribute values; the cluster-wide fsm_determinism_enabled
-// flag controls it via WriteSession.DeterministicEncoding().
+// When deterministic=true:
+//   - Messages with maps: route through MarshalToSizedBufferDeterministicVT
+//     (sorts map keys before writing). Generated only for messages whose
+//     shape transitively contains a map<>.
+//   - Messages without maps: fall through to MarshalToVT. Wire output is
+//     byte-identical to the dethash output (no maps means no order to sort),
+//     so determinism is free.
+//
+// Both paths reuse buf in place — zero alloc steady-state. The cost of the
+// flag is reduced to the marshal-time map-key sort actually present in the
+// message (and nothing for the majority of attribute types: VolumePair,
+// TransactionState (with metadata map), MetadataValue scalar, etc.).
 func marshalProto(buf []byte, msg proto.Message, deterministic bool) ([]byte, error) {
 	if deterministic {
-		if m, ok := msg.(vtDeterministicMarshaler); ok {
+		// Map-bearing messages: in-place sized-buffer dethash marshal.
+		if m, ok := msg.(vtSizedBufferDeterministicMarshaler); ok {
 			size := m.SizeVT()
-			if cap(buf) < size {
-				buf = make([]byte, 0, size)
+			if cap(buf) >= size {
+				buf = buf[:size]
+			} else {
+				buf = make([]byte, size)
 			}
 
-			return m.MarshalDeterministicVT(buf[:0]), nil
+			n, err := m.MarshalToSizedBufferDeterministicVT(buf)
+
+			return buf[size-n:], err
 		}
 
+		// Map-free vt messages: standard in-place marshal is byte-equivalent
+		// to the deterministic output (no maps to sort), and saves the
+		// allocation MarshalDeterministicVT would do internally.
+		if m, ok := msg.(vtSizedMarshaler); ok {
+			size := m.SizeVT()
+			if cap(buf) >= size {
+				buf = buf[:size]
+			} else {
+				buf = make([]byte, size)
+			}
+
+			n, err := m.MarshalToVT(buf)
+
+			return buf[:n], err
+		}
+
+		// Non-vt fallback: use protobuf's deterministic marshaler.
 		return proto.MarshalOptions{Deterministic: true}.MarshalAppend(buf[:0], msg)
 	}
 

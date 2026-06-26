@@ -1,10 +1,7 @@
 package state
 
 import (
-	"bytes"
 	"encoding/binary"
-	"fmt"
-	"sort"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -18,70 +15,21 @@ import (
 // shared between the two paths.
 const fsmDigestDomain = "fsm-digest:v1"
 
-// bufferedOp is one (kind, key, value) record produced by
-// dal.WriteSession.IterateBufferedOps. A reusable slice of bufferedOp is
-// pooled on the Machine to avoid per-batch allocations on the digest path.
-type bufferedOp struct {
-	kind  uint8
-	key   []byte
-	value []byte
-}
-
-// canonicalBatchPayload streams the WriteSession's buffered ops into the
-// supplied byte slice in canonical order (sorted by key then by op kind)
-// using the wire format
-// `kind(1B) || uvarint(len(key)) || key || uvarint(len(value)) || value`.
-//
-// The Pebble batch is insertion-ordered (legitimate apply paths may emit
-// ops in different per-node orders — map iteration, etc.), so a canonical
-// sort is mandatory before hashing: two nodes must produce the same byte
-// stream for the same logical write set. dst is reused across calls; the
-// returned slice may alias dst's backing array.
-func canonicalBatchPayload(
-	dst []byte,
-	ops []bufferedOp,
-	session *dal.WriteSession,
-) ([]byte, []bufferedOp, error) {
-	ops = ops[:0]
-
-	err := session.IterateBufferedOps(func(kind uint8, key, value []byte) error {
-		ops = append(ops, bufferedOp{kind: kind, key: key, value: value})
-
-		return nil
-	})
-	if err != nil {
-		return nil, ops, fmt.Errorf("iterating batch ops: %w", err)
-	}
-
-	sort.Slice(ops, func(a, b int) bool {
-		if cmp := bytes.Compare(ops[a].key, ops[b].key); cmp != 0 {
-			return cmp < 0
-		}
-
-		return ops[a].kind < ops[b].kind
-	})
-
-	dst = dst[:0]
-
-	var lenBuf [binary.MaxVarintLen64]byte
-
-	for i := range ops {
-		dst = append(dst, ops[i].kind)
-		n := binary.PutUvarint(lenBuf[:], uint64(len(ops[i].key)))
-		dst = append(dst, lenBuf[:n]...)
-		dst = append(dst, ops[i].key...)
-		n = binary.PutUvarint(lenBuf[:], uint64(len(ops[i].value)))
-		dst = append(dst, lenBuf[:n]...)
-		dst = append(dst, ops[i].value...)
-	}
-
-	return dst, ops, nil
-}
-
 // chainFSMDigest computes the next rolling FSM digest:
 //
 //	digest_n = H_seed( "fsm-digest:v1" || u64(snapshotIndex) || u64(appliedIndex)
-//	                   || canonicalBatchPayload || digest_{n-1} )
+//	                   || batch.Repr() || digest_{n-1} )
+//
+// batch.Repr() is the in-memory Pebble batch's on-wire representation —
+// insertion-ordered. The FSM hot path's insertion order is deterministic by
+// construction (the doc-block in front of WriteSet.Merge enforces monotonic
+// zone+sub-prefix order, see EN-1325; helpers like appendLogs / appendAuditEntries
+// iterate sorted slices; AppliedProposal writes a single Pebble entry with a
+// deterministically-encoded value). Two nodes applying the same Raft entries
+// therefore produce a byte-identical batch.Repr(), which produces an identical
+// digest. If a future write violates the insertion-order contract, the digest
+// diverges cross-node and the comparison surfaces it — which is exactly the
+// signal the digest exists for.
 //
 // The snapshotIndex term re-anchors the chain after a snapshot install: a
 // follower restored from a leader checkpoint at index N starts from
@@ -97,7 +45,7 @@ func chainFSMDigest(
 	hashBuf []byte,
 	previousDigest []byte,
 	snapshotIndex, appliedIndex uint64,
-	canonicalPayload []byte,
+	batchRepr []byte,
 ) (resBuf []byte, newDigest []byte) {
 	var indexBytes [16]byte
 
@@ -107,7 +55,7 @@ func chainFSMDigest(
 	return gen.Compute(hashBuf, previousDigest, [][]byte{
 		[]byte(fsmDigestDomain),
 		indexBytes[:],
-		canonicalPayload,
+		batchRepr,
 	})
 }
 
