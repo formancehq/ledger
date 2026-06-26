@@ -4,7 +4,7 @@
 
 Indexes accelerate read queries over per-ledger attributes (notably metadata-keyed lookups on accounts and transactions). Their lifecycle, on-wire definition, and the statistics exposed through the inspection API are decoupled by design:
 
-- The **`Index` proto** is the cluster-wide, hash-bound definition — what an index is, when it was created, what its current cluster-wide forward-encoding version is.
+- The **`Index` proto** is the cluster-wide definition stored in the `SubAttrIndex` registry — what an index is, when it was created, what its current cluster-wide forward-encoding version is. It is a *projection* of the underlying `CreateIndex` / `SetMetadataFieldType` / `RemovedMetadataFieldType` / `DropIndex` / `DeleteLedger` audit logs (which are the only hash-bound records) and is re-derivable by replaying them — see [Checker Coverage](#checker-coverage).
 - The **`IndexVersionState`** is the per-replica local view of the rewrite — which version is actually served by queries on this node.
 - The **index statistics** (cardinality, min/max, existence counts) are **not persisted**. They are recomputed on demand by scanning Pebble whenever a client calls the inspect API.
 - The **bloom filter counters** that show up in monitoring are *not* index statistics — they belong to the bloom layer described in [storage/attributes.md](../storage/attributes.md).
@@ -143,7 +143,7 @@ Bloom filters are a separate optimisation that lives in front of the attribute c
 | `bloom.lookups` | Total `MayContain` calls. |
 | `bloom.negatives` | Certain misses (skipped Pebble fetch). |
 | `bloom.adds` | Insertions. |
-| `bloom.falsePositives` | `MayContain` said maybe; Pebble said no. |
+| `bloom.false_positives` | `MayContain` said maybe; Pebble said no. |
 
 These are **monitoring signals**, not persisted state and not visible through any inspect endpoint. See [storage/attributes.md](../storage/attributes.md) for the bloom layer.
 
@@ -152,7 +152,7 @@ These are **monitoring signals**, not persisted state and not visible through an
 Because the index registry and the per-replica version state are projections (only the originating audit logs — `CreateIndex`, `SetMetadataFieldType`, `RemovedMetadataFieldType`, `DropIndex`, `DeleteLedger` — are hash-bound), the checker re-derives the expected set of indexes from the audit chain and compares it to the stored `SubAttrIndex` registry.
 
 - `compareIndexes` (`internal/application/check/checker.go:667+`) verifies **presence + identity** (the `IndexID` matches).
-- `BuildStatus` is **intentionally excluded** from the comparison: the `BUILDING → READY` flip rides on a non-audited `IndexReady` TechnicalUpdate (informational signal — queries already use `IndexVersionState.CurrentVersion`).
+- `BuildStatus` is **intentionally excluded** from the comparison: it is purely informational and per-replica, queries already gate on `IndexVersionState.CurrentVersion`. (There used to be a cluster-wide `IndexReadyUpdate` TechnicalUpdate driving the `BUILDING → READY` flip; it has been removed — see [No Cluster-Wide `IndexReady`](indexer.md#no-cluster-wide-indexready) in the indexer page.)
 - Mismatches emit `CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH`.
 
 In-flight `IndexVersionState` is NOT checked: by design it is per-replica and may legitimately differ across nodes while a rewrite is propagating.

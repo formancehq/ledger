@@ -165,10 +165,19 @@ In both paths, every dispatched write lands in `v_pending`, while `v_current` co
 
 ### `completeBackfill` — the switch
 
-`internal/application/indexbuilder/backfill.go:1197+` and the schema-rewrite equivalent at the end of `processSchemaRewrite`. A single Pebble batch performs:
+The two paths use the **same** switch primitive but write **different** batches.
+
+**Index backfill path** (`internal/application/indexbuilder/backfill.go:1197+`, `completeBackfill`). There is no `v_old` keyspace to reclaim — the index has never been served before, the previous "version" is the empty sentinel `v=0`. The batch performs a single operation:
 
 1. `WriteIndexVersionState(batch, ledger, canonicalID, {Current: pending, Pending: 0, RewriteProgress: nil})` — flips the served version.
-2. `gcVersionAt(batch, old)` — `DeleteRange` over `MetadataIndexPrefixV(..., old)`, `EntityExistsKey…PrefixV(..., old)`, and per-key reverse-map cleanup. Immediate, in-batch, **not deferred**.
+2. `batch.Commit()`.
+
+No `gcVersionAt` call is needed (and none is made — see the explicit comment in `backfill.go:1193-1196`).
+
+**Schema-rewrite path** (in `processSchemaRewrite`, around `backfill.go:855-864` and the deferred-switch path at `backfill.go:931-937`). The batch additionally reclaims the old keyspace:
+
+1. `WriteIndexVersionState(batch, ledger, canonicalID, {Current: pending, Pending: 0, RewriteProgress: nil})`.
+2. `gcVersionAt(batch, old)` — `DeleteRange` over `MetadataIndexPrefixV(..., old)` and `EntityExistsKey…PrefixV(..., old)`, plus per-key reverse-map cleanup at `gcReverseMapVersion`. Immediate, in-batch, **not deferred**.
 3. `batch.Commit()`.
 
 The single-batch commit is what makes the version flip + old-version GC atomic from a query's point of view: there is no instant at which a query could observe `Current = new` and still see live keys at `v_old`.
@@ -176,6 +185,54 @@ The single-batch commit is what makes the version flip + old-version GC atomic f
 ### Deferred switch (`scanComplete` gate)
 
 If the rewrite's scan cursor has reached the head **but** `LastIndexedSequence < requiredIndexedSeq` (i.e. the FSM has committed logs past what the indexer has applied), the switch must be deferred: flipping early would expose `v_new` keys that do not yet contain the late writes. The builder sets `task.scanComplete = true`, commits the `v_pending` writes alone, and the next loop tick calls `tryCommitScanCompleteSwitch()`, which re-checks the gate and fires the switch as a small standalone batch once the indexer catches up. See `backfill.go:889-959`.
+
+## Changing a Metadata Key's Type (`SetMetadataFieldType`)
+
+Re-typing a metadata key (e.g. `category: string → int`) is the most subtle path the indexer handles. It is the *only* operation that needs to **re-encode all live entities at a new type tag** while continuing to serve queries against the old encoding — and it is also the original motivation for the dual-write + versioned-keyspace machinery described above.
+
+### Order flow
+
+1. **Admission** receives a `SetMetadataFieldTypeRequest` and emits a `SetMetadataFieldTypeOrder(target, key, type)` (`internal/application/admission/admission.go:1391-1405`). The admission layer preloads the current `MetadataID` (READY or BUILDING) so the FSM can read the prior schema state (`admission.go:995-1002`). **There is no pre-validation of value convertibility** — admission only validates the metadata key shape via `ValidateMetadataKey`.
+2. **FSM apply** updates the per-ledger schema in `LedgerInfo` and emits a `SetMetadataFieldType` audit log. The corresponding `Index.forward_encoding_version` is bumped (cluster-wide).
+3. **Indexer**, on the next tick, sees the log in `processLogs` and dispatches to `addSchemaRewriteTask` (`internal/application/indexbuilder/backfill.go:247+`). Two transitions happen in the same Pebble batch as the indexer's progress write:
+   - `bumpPendingVersion(ledger, indexID)` — increments `IndexVersionState.PendingVersion` (typically `current + 1`) and persists it.
+   - A `schemaRewriteTask` is registered in memory with the target type, the reverse-map cursor (initially empty), and `requiredIndexedSeq = readStore.LastIndexedSequence()` snapshotted at task creation. This is the FSM watermark the deferred switch will gate on.
+
+### What runs during the rewrite
+
+`processSchemaRewrite` (`backfill.go:545-887`) is the workhorse. Each indexer tick runs one budget-bounded slice:
+
+1. **Iterate the reverse map** for `(ledger, namespace, key)` between the persisted cursor and the upper bound (`backfill.go:597-650`). Reverse-map entries that already live at `v_pending` are skipped — they were written by the dual-write path while the rewrite was running, and re-touching them would be wasted work (`backfill.go:727-735`).
+2. **Fetch the raw value** from the FSM-side attribute store (the schema-rewrite path reads the canonical attribute, not the forward index), and **convert** through `commonpb.ConvertMetadataValue` to the new type. Notable behaviour: **conversion failures silently downgrade to `NullValue`** with the original payload preserved in `value.Original` (`internal/proto/commonpb/metadata_convert.go:221-260`). There is no error returned, no `LastError` set on the `Index` — a "category" field that was numeric strings ending up retyped to `int` will lose its non-numeric rows to `null`. This is a known limitation of the current path.
+3. **Write to `v_pending`** via `ReplaceMetadataIndexV` (`backfill.go:781-787`): delete any prior `v_pending` forward-index + existence keys for that entity, write the new ones, update the reverse-map row at the pending version.
+4. **Persist the cursor** in the same batch as the writes, so a crash resumes from exactly the same reverse-map position.
+
+While this loop runs, new `SavedMetadata` / `DeletedMetadata` logs continue to land in `processLogs`. The handlers detect `PendingVersion != 0` and dual-write to both `v_current` (under the *old* type) and `v_pending` (under the *new* type). The rewrite never has to "catch up" to live writes — they keep `v_pending` fresh autonomously.
+
+### Atomic switch — and why it is gated
+
+Once the reverse-map iterator hits EOF, the rewrite *could* fire the switch. But there is a subtle hazard: the FSM may have committed logs past what the indexer has applied. If we flipped now, queries would serve `v_pending` while `v_pending` does not yet reflect the most recent live writes — a contiguous-prefix violation.
+
+The fix is the **`requiredIndexedSeq` gate** (`backfill.go:821-864`):
+
+- If `LastIndexedSequence >= requiredIndexedSeq`, fire the switch immediately: `{Current: pending, Pending: 0}` + `gcVersionAt(old)` in one batch.
+- Otherwise, set `task.scanComplete = true`, commit the `v_pending` writes alone, and the next loop tick calls `tryCommitScanCompleteSwitch()` (`backfill.go:901-948`), which re-checks the gate and fires the switch as a small standalone batch once the indexer catches up.
+
+The GC step (`gcVersionAt` → `gc.go:30-95`) reclaims the old forward-index range, the old existence ranges, and walks the reverse map to delete per-key rows at the old version. **For the schema-rewrite path this GC is part of the same atomic batch as the switch** — unlike the index-backfill path where there is no `v_old` to reclaim.
+
+### Cancellation: `RemovedMetadataFieldType`
+
+If the field type is removed mid-rewrite (`RemovedMetadataFieldType`), the indexer purges every versioned namespace for that key (`process_metadata_field_removal.go:37-111`) and `removeSchemaRewriteTaskByField` (`backfill.go`) drops the in-flight task. Any orphan `v_pending` rows are reclaimed by the same purge. No special end-state is needed: the entire key is gone.
+
+### Recovery and observability
+
+| Failure mode | What survives | What replays |
+|--------------|---------------|--------------|
+| Indexer crashes mid-scan | `IndexVersionState.PendingVersion`, reverse-map cursor (`SubInternalBackfill`), partial `v_pending` writes | The task is re-registered on boot from `IndexVersionState`; the loop resumes from the persisted cursor. |
+| Crash *after* `v_pending` writes but *before* the switch | Everything in step 3 above | The next tick re-evaluates the gate and fires the switch. `v_pending` rows already in place are idempotent (`ReplaceMetadataIndexV` deletes-then-writes). |
+| Conversion error on a row | `Null` row in `v_pending` with `Original` payload | Nothing — the row is converted once and not retried. **No `LastError` is surfaced**; operators who care must inspect via `InspectIndex` to spot unexpected null counts. |
+
+Queries that need to know whether a rewrite is in flight can read `IndexVersionState` for the target index — `PendingVersion != 0` signals an active rewrite. There is no dedicated wire-level "rewrite progress" endpoint today.
 
 ## `min_log_sequence` — Read Barrier
 
