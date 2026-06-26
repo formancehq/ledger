@@ -2377,7 +2377,6 @@ func (m *LedgerInfo) CloneVT() *LedgerInfo {
 	r.MirrorSyncProgress = m.MirrorSyncProgress.CloneVT()
 	r.DefaultEnforcementMode = m.DefaultEnforcementMode
 	r.Id = m.Id
-	r.AccountDefaultsStatus = m.AccountDefaultsStatus
 	if rhs := m.AccountTypes; rhs != nil {
 		tmpContainer := make(map[string]*AccountType, len(rhs))
 		for k, v := range rhs {
@@ -2544,7 +2543,7 @@ func (m *AccountState) CloneVT() *AccountState {
 		return (*AccountState)(nil)
 	}
 	r := new(AccountState)
-	r.Exists = m.Exists
+	r.InsertionDate = m.InsertionDate.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7658,9 +7657,6 @@ func (this *LedgerInfo) EqualVT(that *LedgerInfo) bool {
 	if this.Id != that.Id {
 		return false
 	}
-	if this.AccountDefaultsStatus != that.AccountDefaultsStatus {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -7870,7 +7866,7 @@ func (this *AccountState) EqualVT(that *AccountState) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Exists != that.Exists {
+	if !this.InsertionDate.EqualVT(that.InsertionDate) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -15727,11 +15723,6 @@ func (m *LedgerInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.AccountDefaultsStatus != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AccountDefaultsStatus))
-		i--
-		dAtA[i] = 0x70
-	}
 	if m.Id != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
 		i--
@@ -16248,15 +16239,15 @@ func (m *AccountState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Exists {
-		i--
-		if m.Exists {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
+	if m.InsertionDate != nil {
+		size, err := m.InsertionDate.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
 		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -21570,9 +21561,6 @@ func (m *LedgerInfo) SizeVT() (n int) {
 	if m.Id != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Id))
 	}
-	if m.AccountDefaultsStatus != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.AccountDefaultsStatus))
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -21729,8 +21717,9 @@ func (m *AccountState) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Exists {
-		n += 2
+	if m.InsertionDate != nil {
+		l = m.InsertionDate.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -37849,25 +37838,6 @@ func (m *LedgerInfo) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 14:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AccountDefaultsStatus", wireType)
-			}
-			m.AccountDefaultsStatus = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.AccountDefaultsStatus |= AccountDefaultsStatus(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -38960,10 +38930,10 @@ func (m *AccountState) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Exists", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InsertionDate", wireType)
 			}
-			var v int
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -38973,12 +38943,28 @@ func (m *AccountState) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Exists = bool(v != 0)
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.InsertionDate == nil {
+				m.InsertionDate = &Timestamp{}
+			}
+			if err := m.InsertionDate.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

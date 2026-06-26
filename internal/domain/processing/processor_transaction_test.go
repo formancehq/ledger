@@ -19,6 +19,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -42,7 +43,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes() // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, sourceKey, sourceVolume.AsReader(), nil)
@@ -148,6 +149,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -169,7 +171,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, worldKey, worldVolume.AsReader(), nil)
@@ -259,6 +261,15 @@ func setupNumscriptVolumeMocks(mockStore *MockScope) {
 	})
 }
 
+// allowAccountMarkers permits the EN-1276 universal account-existence marker
+// reads/writes (GetAccount + PutAccount) that every account-creation path now
+// performs. For tests not asserting marker behaviour: every touched account is
+// new (ErrNotFound) so the marker is written; the value is irrelevant here.
+func allowAccountMarkers(mockStore *MockScope) {
+	mockStore.EXPECT().GetAccount(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
+	mockStore.EXPECT().PutAccount(gomock.Any(), gomock.Any()).AnyTimes()
+}
+
 func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	t.Parallel()
 
@@ -266,6 +277,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -328,6 +340,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -396,6 +409,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -464,6 +478,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -647,6 +662,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -714,6 +730,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -908,6 +925,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -996,6 +1014,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1059,6 +1078,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1080,7 +1100,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, sourceKey, sourceVolume.AsReader(), nil)
@@ -1138,6 +1158,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1155,7 +1176,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, sourceKey, zeroVol.AsReader(), nil)
@@ -1202,6 +1223,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1365,6 +1387,7 @@ func TestProcessCreateTransaction_ChapterIdInCreatedTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1387,7 +1410,7 @@ func TestProcessCreateTransaction_ChapterIdInCreatedTransaction(t *testing.T) {
 	expectPutVolume(t, mockStore, destKey, nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return((&commonpb.Chapter{Id: 5, Status: commonpb.ChapterStatus_CHAPTER_OPEN}).AsReader(), true)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
@@ -1432,6 +1455,7 @@ func TestProcessCreateTransaction_ChapterIdZeroWhenNoChapter(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1454,7 +1478,7 @@ func TestProcessCreateTransaction_ChapterIdZeroWhenNoChapter(t *testing.T) {
 	expectPutVolume(t, mockStore, destKey, nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
@@ -1503,6 +1527,7 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1532,7 +1557,7 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, worldKey, zero.AsReader(), nil)

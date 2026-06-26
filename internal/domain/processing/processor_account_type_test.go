@@ -47,7 +47,10 @@ func ledgerInfoWithID(name string, id uint32) *commonpb.LedgerInfo {
 
 // TestAddAccountType_WithDefaultMetadata_PopulatedLedger verifies that adding
 // an account type carrying default_metadata to a ledger that already has
-// transactions (NextTransactionId > 1) returns ErrDefaultMetadataOnPopulatedLedger.
+// transactions and account metadata now SUCCEEDS (EN-1276 is no longer
+// create-only). The universal existence marker protects pre-existing accounts
+// from backfill, so attaching defaults at any time is safe; processAddAccountType
+// no longer reads boundaries (no inner GetBoundaries call).
 func TestAddAccountType_WithDefaultMetadata_PopulatedLedger(t *testing.T) {
 	t.Parallel()
 
@@ -61,80 +64,29 @@ func TestAddAccountType_WithDefaultMetadata_PopulatedLedger(t *testing.T) {
 	const ledger = "test-ledger"
 	info := ledgerInfoWithID(ledger, 1)
 
-	// processApply outer mocks: GetLedger (AnyTimes covers inner loadLedger
-	// call too, but processApply returns early on error before PutBoundaries).
+	// Only the outer processApply GetBoundaries fires (Times(1)); the create-only
+	// guard that read boundaries a second time is gone. Populated boundaries are
+	// irrelevant to the outcome now — adding defaults succeeds regardless.
 	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
+	mockStore.EXPECT().GetBoundaries(ledger).
+		Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1, NextTransactionId: 5, MetadataCount: 3}).AsReader(), nil).
+		Times(1)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
-
-	// processAddAccountType: loadBoundaries (inner) returns populated ledger.
-	// Note: processApply calls loadBoundaries first (using the outer mock above),
-	// then processAddAccountType calls loadBoundaries again internally.
-	// The second GetBoundaries call comes from inside processAddAccountType.
-	populatedBoundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5}
-	mockStore.EXPECT().GetBoundaries(ledger).Return(populatedBoundaries.AsReader(), nil)
-
-	// processApply does NOT call PutBoundaries when processAddAccountType
-	// returns an error (it short-circuits before the PutBoundaries call).
+	mockStore.EXPECT().PutBoundaries(ledger, gomock.Any())
+	mockStore.EXPECT().PutLedger(ledger, gomock.Any())
 
 	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", map[string]*commonpb.MetadataValue{
 		"tier": commonpb.NewStringValue("standard"),
 	})
 
 	result, descErr := processor.ProcessOrder(order, mockStore)
-	require.Nil(t, result)
-	require.NotNil(t, descErr)
+	require.Nil(t, descErr)
+	require.NotNil(t, result)
 
-	// Must be exactly ErrDefaultMetadataOnPopulatedLedger.
-	var target *domain.ErrDefaultMetadataOnPopulatedLedger
-	require.True(t, errors.As(descErr.(error), &target),
-		"expected ErrDefaultMetadataOnPopulatedLedger, got %T: %v", descErr, descErr)
-	require.Equal(t, ledger, target.Ledger)
-	require.Equal(t, "user", target.TypeName)
-}
-
-// TestAddAccountType_WithDefaultMetadata_MetadataOnlyLedger verifies that adding
-// an account type carrying default_metadata to a ledger that has no transactions
-// (NextTransactionId == 1) but DOES have account metadata (MetadataCount > 0)
-// returns ErrDefaultMetadataOnPopulatedLedger. A metadata-set is an
-// account-creation path that does not bump NextTransactionId, so those
-// metadata-only accounts carry no existence marker and would be backfilled on
-// next touch — the MetadataCount arm of the create-only guard catches them.
-func TestAddAccountType_WithDefaultMetadata_MetadataOnlyLedger(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
-
-	const ledger = "test-ledger"
-	info := ledgerInfoWithID(ledger, 1)
-
-	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
-	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
-
-	// Inner loadBoundaries for the guard: no transactions, but account metadata
-	// has been written (a metadata-only account exists with no marker).
-	metadataOnlyBoundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, MetadataCount: 3}
-	mockStore.EXPECT().GetBoundaries(ledger).Return(metadataOnlyBoundaries.AsReader(), nil)
-
-	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", map[string]*commonpb.MetadataValue{
-		"tier": commonpb.NewStringValue("standard"),
-	})
-
-	result, descErr := processor.ProcessOrder(order, mockStore)
-	require.Nil(t, result)
-	require.NotNil(t, descErr)
-
-	var target *domain.ErrDefaultMetadataOnPopulatedLedger
-	require.True(t, errors.As(descErr.(error), &target),
-		"expected ErrDefaultMetadataOnPopulatedLedger, got %T: %v", descErr, descErr)
-	require.Equal(t, ledger, target.Ledger)
-	require.Equal(t, "user", target.TypeName)
+	added := result.GetApply().GetLog().GetData().GetAddedAccountType()
+	require.NotNil(t, added)
+	require.Equal(t, "user", added.GetAccountType().GetName())
+	require.Equal(t, commonpb.NewStringValue("standard"), added.GetAccountType().GetDefaultMetadata()["tier"])
 }
 
 // TestAddAccountType_WithDefaultMetadata_FreshLedger verifies that adding an
@@ -158,11 +110,6 @@ func TestAddAccountType_WithDefaultMetadata_FreshLedger(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 	mockStore.EXPECT().PutBoundaries(ledger, gomock.Any())
-
-	// processAddAccountType inner: loadBoundaries for the default_metadata guard.
-	// Fresh ledger: NextTransactionId == 1.
-	freshBoundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1}
-	mockStore.EXPECT().GetBoundaries(ledger).Return(freshBoundaries.AsReader(), nil)
 
 	// processAddAccountType updates ledger info.
 	mockStore.EXPECT().PutLedger(ledger, gomock.Any())
@@ -252,10 +199,10 @@ func TestAddAccountType_DefaultMetadata_NullByteValueRejected(t *testing.T) {
 	require.True(t, errors.Is(target.Cause.(error), domain.ErrMetadataValueContainsNullByte))
 }
 
-// TestAddAccountType_WithoutDefaultMetadata_PopulatedLedger verifies that the
-// guard is NOT triggered when the account type has no default_metadata, even
-// when the ledger is populated. The inner GetBoundaries call inside
-// processAddAccountType must NOT happen — only the outer processApply call does.
+// TestAddAccountType_WithoutDefaultMetadata_PopulatedLedger verifies that adding
+// an account type with no default_metadata to a populated ledger succeeds and
+// reads boundaries only once (the outer processApply call) — processAddAccountType
+// itself never reads boundaries.
 func TestAddAccountType_WithoutDefaultMetadata_PopulatedLedger(t *testing.T) {
 	t.Parallel()
 

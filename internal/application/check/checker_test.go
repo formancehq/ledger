@@ -182,6 +182,16 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		require.NoError(e.t, err)
 	}
 
+	// Write account existence markers (EN-1276). Markers are written on every
+	// account-creation path and are append-only (never deleted), so persisting
+	// the full in-memory set each batch is idempotent — mirrors the real
+	// WriteSet.Merge flushing SubAttrAccount attributes to Pebble so the checker
+	// can read the live markers it verifies.
+	for keyStr, marker := range e.accounts {
+		_, err := e.attrs.Account.Set(batch, []byte(keyStr), marker)
+		require.NoError(e.t, err)
+	}
+
 	// Write ledger info
 	for _, info := range e.ledgers {
 		err := state.SaveLedger(batch, info)

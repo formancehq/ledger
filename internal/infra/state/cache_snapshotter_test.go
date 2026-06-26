@@ -411,7 +411,7 @@ func TestCacheSnapshotter_PersistAndRestoreAccounts(t *testing.T) {
 	acctKey := domain.AccountKey{LedgerName: "test", Account: "users:alice"}
 	u128, tag := attributes.MakeKey(acctKey.Bytes())
 	registry.Cache.Accounts.Gen0().Put(u128, attributes.Entry[*commonpb.AccountState]{
-		Tag: tag, Data: &commonpb.AccountState{Exists: true},
+		Tag: tag, Data: &commonpb.AccountState{InsertionDate: &commonpb.Timestamp{Data: 1234567890}},
 	})
 
 	require.NoError(t, persistToStore(snapshotter, dataStore))

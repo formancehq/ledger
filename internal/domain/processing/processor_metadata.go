@@ -60,23 +60,23 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 		account := target.Account.GetAddr()
 
 		// EN-1276: a metadata-set is an account-creation path. When this is the
-		// first time the account is ever seen on a defaults-bearing ledger,
-		// record the existence marker and merge the account type's
-		// default_metadata for keys the caller did not set explicitly — so the
-		// account materialises with its defaults exactly as it would via a
-		// transaction. Explicit keys always win. The merged map is what we both
-		// apply and log, so replay/rebuild reconstruct the same metadata; the
-		// marker keeps the next touch from re-applying defaults.
-		if ledgerHasAccountTypeDefaults(info) {
-			compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info)
+		// first time the account is ever seen, record the universal existence
+		// marker and merge the matching account type's default_metadata for keys
+		// the caller did not set explicitly — so the account materialises with
+		// its defaults exactly as it would via a transaction. Explicit keys
+		// always win. The merged map is what we both apply and log, so
+		// replay/rebuild reconstruct the same metadata; the marker keeps the next
+		// touch from re-applying defaults. The marker is written unconditionally
+		// (universal account signal); the defaults merge is naturally gated by
+		// FindMatchingType inside markNewAccountAndMatchDefaults.
+		compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info)
 
-			defaults, defErr := markNewAccountAndMatchDefaults(s, ledger, account, compiled)
-			if defErr != nil {
-				return nil, defErr
-			}
-
-			loggedMetadata = mergeFlatDefaults(loggedMetadata, defaults)
+		defaults, defErr := markNewAccountAndMatchDefaults(s, ledger, account, compiled)
+		if defErr != nil {
+			return nil, defErr
 		}
+
+		loggedMetadata = mergeFlatDefaults(loggedMetadata, defaults)
 
 		for key, value := range loggedMetadata {
 			metaKey := domain.MetadataKey{

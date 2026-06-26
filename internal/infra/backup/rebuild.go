@@ -151,7 +151,7 @@ func RebuildDelta(
 
 			ledgerName := p.Apply.GetLedgerName()
 
-			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetDate(), p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
@@ -454,8 +454,10 @@ type attributeReplayWriter struct {
 // RecordAccount writes the per-account existence marker (EN-1276) on first
 // occurrence, reconstructing the projection the FSM apply path persists. The
 // pendingAccounts set makes repeated touches within the rebuild idempotent;
-// markers already present from a prior batch are left untouched.
-func (w *attributeReplayWriter) RecordAccount(canonicalKey []byte) error {
+// markers already present from a prior batch are left untouched. The first
+// touch wins, which is the account's creation log, so insertionDate (the log's
+// HLC date) reconstructs the exact value the FSM stamped at apply.
+func (w *attributeReplayWriter) RecordAccount(canonicalKey []byte, insertionDate *commonpb.Timestamp) error {
 	if _, seen := w.pendingAccounts[string(canonicalKey)]; seen {
 		return nil
 	}
@@ -471,9 +473,10 @@ func (w *attributeReplayWriter) RecordAccount(canonicalKey []byte) error {
 		return nil
 	}
 
-	// Exists=true mirrors the apply path: the marker must be non-empty so the
+	// InsertionDate mirrors the apply path: it is the creation log's HLC date,
+	// and being a non-nil message field it keeps the marker non-empty so the
 	// cache snapshot/preload machinery does not read it back as a tombstone.
-	_, err = w.account.Set(w.batch, canonicalKey, &commonpb.AccountState{Exists: true})
+	_, err = w.account.Set(w.batch, canonicalKey, &commonpb.AccountState{InsertionDate: insertionDate})
 
 	return err
 }

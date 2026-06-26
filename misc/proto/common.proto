@@ -833,7 +833,6 @@ message LedgerInfo {
   ChartEnforcementMode default_enforcement_mode = 11; // Default enforcement for unmatched accounts
   map<string, MetadataValue> metadata = 12; // Populated at read time from separate attribute store
   uint32 id = 13;                           // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
-  AccountDefaultsStatus account_defaults_status = 14; // Activation state of account-type default metadata (see AccountDefaultsStatus)
 }
 
 // ============================================================================
@@ -973,15 +972,19 @@ message TransactionReferenceValue {
 // account new (first time ever, any asset)?" — a cache miss on this key means
 // the account has never been created before.
 //
-// `exists` is always set to true when the marker is written. It exists so the
-// serialized marker is NON-EMPTY: the cache snapshot/preload machinery treats an
-// empty value as a tombstone (RestoreEntry/MirrorPreload would restore a present
-// marker as Deleted), so an empty marker would be silently dropped on restart,
-// rotation, or cache-miss and the account would be wrongly treated as new. Both
-// the FSM apply path and the backup/rebuild path write `exists = true`, so the
-// bytes are identical for the same applied index.
+// `insertion_date` is the HLC date of the log that first created the account
+// (LedgerLog.date, identical to the value the FSM clock produced at apply). It
+// serves two purposes: (1) it keeps the serialized marker NON-EMPTY — the cache
+// snapshot/preload machinery treats an empty value as a tombstone
+// (RestoreEntry/MirrorPreload would restore a present marker as Deleted), so an
+// empty marker would be silently dropped on restart, rotation, or cache-miss and
+// the account would be wrongly treated as new (a non-nil message field always
+// emits a tag, so even a zero Timestamp keeps AccountState non-empty); and (2)
+// it is the FSM-side source for the account insertion-date projection (EN-1360).
+// The FSM apply path and the backup/rebuild path both write the same log date,
+// so the bytes are identical for the same applied index.
 message AccountState {
-  bool exists = 1;
+  Timestamp insertion_date = 1;
 }
 
 // NumscriptVersionValue stores the latest version pointer for a named numscript.
@@ -1004,16 +1007,6 @@ enum AccountTypePersistence {
   ACCOUNT_TYPE_NORMAL = 0;     // Default: fully persisted
   ACCOUNT_TYPE_EPHEMERAL = 1;  // Persisted, purged when zero balance after commit
   ACCOUNT_TYPE_TRANSIENT = 2;  // Never persisted, must be zero at end of batch
-}
-
-// AccountDefaultsStatus tracks per-ledger activation of account-type default
-// metadata. It gates the existence-marker machinery so ledgers that declare no
-// default_metadata pay zero hot-path cost, and it sequences the one-time
-// seeding of markers for pre-existing accounts so they are never backfilled.
-enum AccountDefaultsStatus {
-  ACCOUNT_DEFAULTS_NONE = 0;     // No account type declares default_metadata; feature off (zero cost)
-  ACCOUNT_DEFAULTS_SEEDING = 1;  // Seeding existence markers for pre-existing accounts; not yet enforcing
-  ACCOUNT_DEFAULTS_READY = 2;    // Enforcing defaults on first-touch of new accounts
 }
 
 // SegmentType defines the constraint for a variable segment in an account type pattern.

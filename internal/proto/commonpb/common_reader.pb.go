@@ -7126,7 +7126,6 @@ type LedgerInfoReader interface {
 	GetDefaultEnforcementMode() ChartEnforcementMode
 	GetMetadata() LedgerInfo_MetadataMapReader
 	GetId() uint32
-	GetAccountDefaultsStatus() AccountDefaultsStatus
 	Mutate() *LedgerInfo
 }
 
@@ -7194,10 +7193,6 @@ func (r *ledgerInfoReadonly) GetMetadata() LedgerInfo_MetadataMapReader {
 
 func (r *ledgerInfoReadonly) GetId() uint32 {
 	return r.v.GetId()
-}
-
-func (r *ledgerInfoReadonly) GetAccountDefaultsStatus() AccountDefaultsStatus {
-	return r.v.GetAccountDefaultsStatus()
 }
 
 func (r *ledgerInfoReadonly) Mutate() *LedgerInfo {
@@ -7881,14 +7876,18 @@ func NewTransactionReferenceValueListReader(s []*TransactionReferenceValue) Tran
 // AccountStateReader provides read-only access to AccountState.
 // Call Mutate() to obtain a mutable clone.
 type AccountStateReader interface {
-	GetExists() bool
+	GetInsertionDate() TimestampReader
 	Mutate() *AccountState
 }
 
 type accountStateReadonly struct{ v *AccountState }
 
-func (r *accountStateReadonly) GetExists() bool {
-	return r.v.GetExists()
+func (r *accountStateReadonly) GetInsertionDate() TimestampReader {
+	v := r.v.GetInsertionDate()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *accountStateReadonly) Mutate() *AccountState {

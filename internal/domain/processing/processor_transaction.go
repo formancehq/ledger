@@ -170,7 +170,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// time by this transaction (EN-1276). Runs after the explicit
 	// script/order metadata is merged so explicit keys win; merges into
 	// accountMetadata so defaults ride the same PutAccountMetadata + log path.
-	accountMetadata, err = applyDefaultMetadataToNewAccounts(s, ledger, info, result.Postings, compiled, accountMetadata)
+	accountMetadata, err = applyDefaultMetadataToNewAccounts(s, ledger, result.Postings, compiled, accountMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -233,38 +233,29 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	}, nil
 }
 
-// ledgerHasAccountTypeDefaults reports whether any account type on the ledger
-// declares default_metadata. Derived from the audit-built LedgerInfo, so it is
-// deterministic across nodes and replay with no stored state — the apply-path
-// gate for EN-1276 default-metadata application.
-func ledgerHasAccountTypeDefaults(info *commonpb.LedgerInfo) bool {
-	for _, at := range info.GetAccountTypes() {
-		if len(at.GetDefaultMetadata()) > 0 {
-			return true
-		}
-	}
-
-	return false
-}
-
 // markNewAccountAndMatchDefaults is the shared per-account core for every
 // account-creation path (EN-1276): transaction postings and metadata-set alike.
-// When `account` is touched for the FIRST TIME EVER (any asset) on a ledger that
-// declares default-bearing account types, it records the presence-only existence
-// marker and returns the matching account type's default_metadata for the caller
-// to merge. Returns (nil, nil) for the world system account, for accounts already
-// created before this order, and for accounts matching no default-bearing type
-// (the marker is still written in the last case — markers track existence, not
-// just defaults).
+// When `account` is touched for the FIRST TIME EVER (any asset) it records the
+// account-existence marker and returns the matching account type's
+// default_metadata for the caller to merge. The marker is a UNIVERSAL account
+// signal — written on every creation path regardless of whether the ledger
+// declares default-bearing types — so a pre-existing account is always protected
+// from later backfill. Returns (nil, nil) for the world system account, for
+// accounts already created before this order, and for accounts matching no
+// default-bearing type (the marker is still written in the last case — markers
+// track existence, not just defaults).
+//
+// The marker value is the log's HLC date (s.GetDate(), identical to the
+// LedgerLog.date the envelope is stamped with), which both keeps the serialized
+// marker non-empty (snapshotter/preload tombstone trap) and feeds the
+// insertion-date projection (EN-1360). Replay/rebuild reconstruct the same value
+// from LedgerLog.date, so the bytes are identical for the same applied index.
 //
 // Newness is authoritative here at apply: GetAccount returns ErrNotFound only
 // when the account has never been seen. The PutAccount marker is written to the
 // WriteSet so a later order in the same batch (and the next order) sees the
 // account as existing. A non-ErrNotFound error (e.g. a coverage miss from a
 // stale plan that failed to declare the key) is surfaced loudly, never skipped.
-//
-// Callers MUST gate on ledgerHasAccountTypeDefaults so a ledger without defaults
-// pays no GetAccount/PutAccount cost.
 func markNewAccountAndMatchDefaults(
 	s Scope,
 	ledgerName string,
@@ -289,11 +280,12 @@ func markNewAccountAndMatchDefaults(
 	}
 
 	// First time this account is ever touched: record the marker so it is
-	// recognised as existing from now on. Exists=true keeps the serialized
-	// marker non-empty (an empty value is a tombstone to the cache snapshot/
-	// preload machinery and would be dropped on restart/rotation); apply and
-	// rebuild both write Exists=true, so the marker bytes are byte-identical.
-	s.PutAccount(key, &commonpb.AccountState{Exists: true})
+	// recognised as existing from now on. The value is the log's HLC date
+	// (s.GetDate(), identical to LedgerLog.date) — non-empty so the cache
+	// snapshot/preload machinery never reads it back as a tombstone, and the
+	// FSM-side source of the insertion-date projection (EN-1360). Apply and
+	// rebuild both write LedgerLog.date, so the marker bytes are byte-identical.
+	s.PutAccount(key, &commonpb.AccountState{InsertionDate: s.GetDate().Mutate()})
 
 	matched := accounttype.FindMatchingType(account, compiled)
 	if matched == nil {
@@ -306,31 +298,25 @@ func markNewAccountAndMatchDefaults(
 // applyDefaultMetadataToNewAccounts records an existence marker for each
 // non-system account this transaction touches for the FIRST TIME EVER (any
 // asset) and merges its matching account type's default_metadata into
-// accountMetadata for keys not already set explicitly. It is a no-op unless the
-// ledger declares at least one account type with default_metadata (the derived
-// ledgerHasAccountTypeDefaults gate), so ledgers without defaults pay nothing.
+// accountMetadata for keys not already set explicitly.
 //
-// EN-1276 is create-only — the AddAccountType apply path rejects adding a
-// default-bearing account type to a ledger that already has transactions
-// (ErrDefaultMetadataOnPopulatedLedger), so every account this gate sees on a
-// defaults-bearing ledger is genuinely new and is never backfilled. The
-// AccountDefaultsStatus enum is reserved for a later phase that adds an explicit
-// one-time seeding pass; it is intentionally unwired today.
+// The existence marker is written on every account-creation path regardless of
+// whether the ledger declares default_metadata: it is a universal account
+// signal, so a pre-existing account always carries a marker and is never
+// backfilled when defaults are added later. The defaults MERGE, by contrast, is
+// naturally gated by FindMatchingType inside markNewAccountAndMatchDefaults —
+// an account matching no default-bearing type pays only the marker write.
 //
-// Determinism: the set of accounts and the set of default keys written are
-// independent of map iteration order, so replay is identical across nodes.
+// Determinism: the set of accounts, the marker date (LedgerLog.date), and the
+// set of default keys written are independent of map iteration order, so replay
+// is identical across nodes.
 func applyDefaultMetadataToNewAccounts(
 	s Scope,
 	ledgerName string,
-	info *commonpb.LedgerInfo,
 	postings []*commonpb.Posting,
 	compiled []accounttype.CompiledType,
 	accountMetadata map[string]*commonpb.MetadataMap,
 ) (map[string]*commonpb.MetadataMap, domain.Describable) {
-	if !ledgerHasAccountTypeDefaults(info) {
-		return accountMetadata, nil
-	}
-
 	seen := make(map[string]struct{}, len(postings)*2)
 
 	for _, posting := range postings {

@@ -56,6 +56,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -78,7 +79,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:001"},
 		Key:        "age",
 	}, nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	request := &servicepb.Request{

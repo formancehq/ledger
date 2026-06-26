@@ -34,31 +34,11 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 		return nil, err
 	}
 
-	// EN-1276 is create-only: default_metadata may only be attached to an account
-	// type while the ledger has no accounts yet. A populated ledger's pre-existing
-	// accounts carry no existence marker, so attaching defaults now would backfill
-	// them on next touch (the deferred one-time seeding pass lifts this). Two
-	// signals together prove "no account exists yet":
-	//   - NextTransactionId == 1: no transaction has applied, so no posting ever
-	//     created an account or a volume.
-	//   - MetadataCount == 0: no account metadata has been written. A metadata-set
-	//     (processAddMetadata) is itself an account-creation path but does not bump
-	//     NextTransactionId, so a ledger with only metadata-set writes still has
-	//     NextTransactionId == 1 yet carries metadata-only accounts that lack a
-	//     marker — MetadataCount catches exactly those (it counts account-keyed
-	//     metadata only; transaction metadata lives in TransactionState).
-	// Boundaries are preloaded for every Apply order, so both reads are coverage-
-	// gated and deterministic across nodes.
-	if len(at.GetDefaultMetadata()) > 0 {
-		boundaries, bErr := loadBoundaries(ctx.Scope, ledger)
-		if bErr != nil {
-			return nil, bErr
-		}
-
-		if boundaries.GetNextTransactionId() > 1 || boundaries.GetMetadataCount() > 0 {
-			return nil, &domain.ErrDefaultMetadataOnPopulatedLedger{Ledger: ledger, TypeName: at.GetName()}
-		}
-	}
+	// EN-1276 allows attaching default_metadata at any time, including to a
+	// populated ledger. Pre-existing accounts already carry a universal existence
+	// marker (written on every account-creation path), so they are recognised as
+	// existing and never backfilled; only accounts created after this point and
+	// matching the type receive its defaults on first touch.
 
 	if info.AccountTypes == nil {
 		info.AccountTypes = make(map[string]*commonpb.AccountType)

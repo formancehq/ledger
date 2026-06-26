@@ -378,7 +378,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetDate(), payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
@@ -1252,19 +1252,24 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 }
 
 // compareAccounts verifies the per-account existence-marker projection
-// (SubAttrAccount, EN-1276). The check is bidirectional within the bounds the
-// audit can prove, both emitted as CHECK_STORE_ERROR_TYPE_ACCOUNT_MISMATCH:
+// (SubAttrAccount, EN-1276). Markers are now a UNIVERSAL account signal — the
+// FSM writes one on every account-creation path regardless of whether the
+// ledger declares default_metadata — so the check is bidirectional and
+// unconditional, both emitted as CHECK_STORE_ERROR_TYPE_ACCOUNT_MISMATCH:
 //
 //   - Forward: every live marker MUST correspond to an account genuinely
 //     referenced by the audit. A forged marker would make the FSM treat an
 //     existing account as new and re-apply default metadata.
-//   - Reverse (audit-provable bound): every account the replay recorded as
-//     touched MUST have a live marker. recordTouchedAccounts only records a
-//     touch while the ledger has default-bearing account types, so the
-//     replay-touched set is exactly the set the FSM must have marked; a missing
-//     marker makes the FSM re-apply default metadata on the next touch. No
-//     activation-status gate is needed (the gate is the presence of defaults,
-//     which the replay already applied).
+//   - Reverse: every account the replay recorded as touched MUST have a live
+//     marker. replay records a touch for every non-system account on every
+//     transaction posting and metadata-set (no defaults gate), exactly
+//     mirroring the apply path, so the replay-touched set is precisely the set
+//     the FSM must have marked; a missing marker makes the FSM re-apply default
+//     metadata on the next touch.
+//
+// This verifies marker PRESENCE only. The marker's insertion-date value is not
+// re-derived from the audit here; that value check lands with the insertion-date
+// projection work (EN-1360).
 //
 // The referenced-account set is the union of: replay-recorded touches (which
 // include ephemeral/transient accounts whose volume was later purged), live
@@ -1275,13 +1280,11 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 // volume was purged and its account type later removed (markers are
 // presence-only and never deleted, invariant #5).
 //
-// Residual bounds: a forged marker for an account that still has volumes is in
-// `referenced` and is not detected here — the default-metadata values are
-// verified by compareMetadata. And an account first touched after the archive
-// boundary under an account type removed before the check, whose volume was then
-// purged, is seeded from final state during replay and so may be in neither the
-// replay set nor the baseline; that narrow case is the known limit of the
-// one-pass final-state replay seed (the common pre-archive marker is covered).
+// Residual bound: an account first touched after the archive boundary, whose
+// volume was then purged, is seeded from final state during replay and so may
+// be in neither the replay set nor the baseline; that narrow case is the known
+// limit of the one-pass final-state replay seed (the common pre-archive marker
+// is covered).
 func (c *Checker) compareAccounts(reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
 	emit := func(ledger, account, format string, args ...any) {
 		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_MISMATCH,
@@ -1425,15 +1428,17 @@ func (c *Checker) compareAccounts(reader dal.PebbleReader, baselineDB *pebble.DB
 		return errorCount + 1
 	}
 
-	// Reverse: every replay-touched account (defaults-bearing ledger) must have
-	// a live marker. Missing markers re-apply default metadata on next touch.
+	// Reverse: every replay-touched account must have a live marker. Markers are
+	// universal (written on every account-creation path), so a missing marker
+	// would let the FSM treat an existing account as new and re-apply default
+	// metadata on next touch.
 	for key := range replayTouched {
 		if _, ok := liveMarkers[key]; ok {
 			continue
 		}
 
 		label, ledger, account := accountKeyFields([]byte(key))
-		emit(ledger, account, "account %s was touched on a defaults-bearing ledger but has no existence marker", label)
+		emit(ledger, account, "account %s was touched but has no existence marker", label)
 
 		errorCount++
 	}

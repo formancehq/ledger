@@ -54,7 +54,9 @@ func ledgerWithTwoDefaults() *commonpb.LedgerInfo {
 }
 
 // ledgerWithNoAccountTypeDefaults returns a LedgerInfo whose account type has
-// no default_metadata, so the EN-1276 gate stays off.
+// no default_metadata. The universal existence marker is still written for new
+// accounts; only the default-metadata merge is skipped (FindMatchingType for a
+// type with no defaults yields nothing to merge).
 func ledgerWithNoAccountTypeDefaults() *commonpb.LedgerInfo {
 	return &commonpb.LedgerInfo{
 		Name:                   "test-ledger",
@@ -430,10 +432,11 @@ func TestProcessCreateTransaction_NoMatchingType_MarkerOnlyNoDefaults(t *testing
 	require.Nil(t, createdTx.GetAccountMetadata()["vendors:acme"])
 }
 
-// TestProcessCreateTransaction_GateOff_NoAccountCalls verifies that when the
-// ledger has no account type with default_metadata, the EN-1276 gate is off
-// and neither GetAccount nor PutAccount is ever called.
-func TestProcessCreateTransaction_GateOff_NoAccountCalls(t *testing.T) {
+// TestProcessCreateTransaction_NoDefaults_MarkerWrittenNoMetadata verifies that
+// when the ledger has no account type with default_metadata, the universal
+// existence marker is STILL written for a new account (markers are not gated on
+// defaults), but NO default metadata is applied (nothing to merge).
+func TestProcessCreateTransaction_NoDefaults_MarkerWrittenNoMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -443,16 +446,24 @@ func TestProcessCreateTransaction_GateOff_NoAccountCalls(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	// Use a ledger whose account type has NO default_metadata — gate stays off.
+	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
+
+	// Use a ledger whose account type has NO default_metadata.
 	commonTxMocks(mockStore, ledgerWithNoAccountTypeDefaults())
 	expectWorldToAccountPostingMocks(mockStore, "users:alice")
 
-	// Strict gomock: GetAccount and PutAccount must NOT be called at all.
-	// (No EXPECT() registered → any call panics the test.)
+	// New account: marker absent, then written. No PutAccountMetadata expected —
+	// strict gomock fails the test if a default metadata write is attempted.
+	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().PutAccount(acctKey, gomock.Any())
 
 	result, err := processor.ProcessOrder(requestToOrder(worldToAccountRequest("users:alice", nil)), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
+
+	createdTx := result.GetApply().GetLog().GetData().GetCreatedTransaction()
+	require.NotNil(t, createdTx)
+	require.Nil(t, createdTx.GetAccountMetadata()["users:alice"])
 }
 
 // TestProcessCreateTransaction_PartialExplicitMetadata verifies that when the

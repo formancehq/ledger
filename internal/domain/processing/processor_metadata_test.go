@@ -19,6 +19,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -32,7 +33,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectPutAccountMetadata(t, mockStore, metaKey, commonpb.NewStringValue("active"))
 
@@ -79,6 +80,7 @@ func TestProcessAddMetadata_StoresClientValueVerbatim(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -105,7 +107,7 @@ func TestProcessAddMetadata_StoresClientValueVerbatim(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectPutAccountMetadata(t, mockStore, metaKey, clientSent)
 

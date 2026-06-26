@@ -207,9 +207,11 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 }
 
 // RecordAccount marks that an account marker is expected for canonicalKey
-// (EN-1276). Presence is the signal — the value is unused — so repeated calls
-// are naturally idempotent.
-func (s *replayStore) RecordAccount(canonicalKey []byte) error {
+// (EN-1276). compareAccounts verifies marker PRESENCE only — the insertion-date
+// value is not re-derived here (that audit-replay value check is EN-1360) — so
+// the insertionDate argument is intentionally ignored and repeated calls are
+// naturally idempotent.
+func (s *replayStore) RecordAccount(canonicalKey []byte, _ *commonpb.Timestamp) error {
 	key := replayKey(replayPrefixAccount, canonicalKey)
 
 	return s.db.Set(key, []byte{1}, pebble.NoSync)

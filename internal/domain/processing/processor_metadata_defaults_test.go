@@ -147,10 +147,11 @@ func TestProcessAddMetadata_ExistingAccount_NoDefaults(t *testing.T) {
 	require.NotContains(t, logged, "tier")
 }
 
-// TestProcessAddMetadata_GateOff_NoMarker verifies that on a ledger with no
-// default-bearing account types the marker path is skipped entirely — GetAccount
-// and PutAccount are never called (the strict mock fails if they are).
-func TestProcessAddMetadata_GateOff_NoMarker(t *testing.T) {
+// TestProcessAddMetadata_NoDefaults_MarkerWritten verifies that on a ledger with
+// no default-bearing account types a metadata-set that first creates an account
+// STILL writes the universal existence marker (markers are not gated on
+// defaults), but merges no default metadata.
+func TestProcessAddMetadata_NoDefaults_MarkerWritten(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -162,9 +163,12 @@ func TestProcessAddMetadata_GateOff_NoMarker(t *testing.T) {
 
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
-	// Ledger declares no defaults → gate off.
+	// Ledger declares no defaults.
 	addMetadataCommonMocks(mockStore, ledgerInfoWithID("test-ledger", 1))
 
+	// New account: marker written exactly once, but no default metadata merged.
+	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound).Times(1)
+	mockStore.EXPECT().PutAccount(acctKey, gomock.Any()).Times(1)
 	mockStore.EXPECT().PutAccountMetadata(
 		domain.MetadataKey{AccountKey: acctKey, Key: "note"}, commonpb.NewStringValue("hi"))
 

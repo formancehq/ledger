@@ -188,6 +188,19 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePla
 	}
 	txs := map[txKeyT]struct{}{}
 	accMeta := map[acctMetaKey]struct{}{}
+	// EN-1276: the FSM reads the per-account existence marker on every
+	// account-creation path (transaction postings, metadata-set target),
+	// regardless of whether the ledger declares default_metadata. Declaring the
+	// marker key admits that read (a new account's cache miss returns ErrNotFound,
+	// which apply treats as "new"), mirroring admission.addAccountNeed.
+	accounts := map[domain.AccountKey]struct{}{}
+	addAccount := func(ledgerName, account string) {
+		if account == "" || account == "world" {
+			return
+		}
+
+		accounts[domain.AccountKey{LedgerName: ledgerName, Account: account}] = struct{}{}
+	}
 
 	for _, order := range orders {
 		ls := order.GetLedgerScoped()
@@ -219,8 +232,17 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePla
 			txs[txKeyT{ledgerName: ledgerName, id: rt.GetTransactionId()}] = struct{}{}
 		}
 
+		if ct := apply.GetCreateTransaction(); ct != nil {
+			for _, p := range ct.GetPostings() {
+				addAccount(ledgerName, p.GetSource())
+				addAccount(ledgerName, p.GetDestination())
+			}
+		}
+
 		if sm := apply.GetAddMetadata(); sm != nil {
 			if acc := sm.GetTarget().GetAccount(); acc != nil {
+				addAccount(ledgerName, acc.GetAddr())
+
 				for key := range sm.GetMetadata() {
 					accMeta[acctMetaKey{ledgerName: ledgerName, account: acc.GetAddr(), key: key}] = struct{}{}
 				}
@@ -257,6 +279,11 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePla
 		}.Bytes()
 		mkID, _ := attributes.MakeKey(mkBytes)
 		declared = append(declared, declareTestPlan(mkID, dal.SubAttrMetadata))
+	}
+
+	for acc := range accounts {
+		accID, _ := attributes.MakeKey(acc.Bytes())
+		declared = append(declared, declareTestPlan(accID, dal.SubAttrAccount))
 	}
 
 	return declared

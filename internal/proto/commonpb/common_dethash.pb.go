@@ -2037,11 +2037,6 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.AccountDefaultsStatus != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AccountDefaultsStatus))
-		i--
-		dAtA[i] = 0x70
-	}
 	if m.Id != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
 		i--

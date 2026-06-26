@@ -107,12 +107,11 @@ func TestCompareAccounts_OrphanMarker_ForwardCheck(t *testing.T) {
 }
 
 // TestCompareAccounts_MissingMarker_ReverseCheck verifies that an account
-// recorded as touched in the replay store (because a defaults-bearing ledger
-// touched it) but with NO live marker emits exactly ONE ACCOUNT_MISMATCH.
+// recorded as touched in the replay store (markers are now recorded for every
+// account touch) but with NO live marker emits exactly ONE ACCOUNT_MISMATCH.
 //
 // This uses the compareAccounts method directly with a hand-crafted replayStore
-// so we can seed a replay touch without requiring a real processAndCommit cycle
-// with a defaults-bearing ledger account type.
+// so we can seed a replay touch without requiring a real processAndCommit cycle.
 func TestCompareAccounts_MissingMarker_ReverseCheck(t *testing.T) {
 	t.Parallel()
 
@@ -124,7 +123,7 @@ func TestCompareAccounts_MissingMarker_ReverseCheck(t *testing.T) {
 	// Build a replayStore with a single account touch but no live marker.
 	rs := newTestReplayStore(t)
 	key := domain.AccountKey{LedgerName: "test", Account: "users:bob"}
-	require.NoError(t, rs.RecordAccount(key.Bytes()))
+	require.NoError(t, rs.RecordAccount(key.Bytes(), &commonpb.Timestamp{Data: 1}))
 
 	// compareAccounts needs a PebbleReader: use a snapshot from the store.
 	snap, err := store.NewReadHandle()
@@ -173,7 +172,7 @@ func TestCompareAccounts_TouchedAccountWithMarker_NoError(t *testing.T) {
 
 	// Record the account as replay-touched.
 	rs := newTestReplayStore(t)
-	require.NoError(t, rs.RecordAccount(key.Bytes()))
+	require.NoError(t, rs.RecordAccount(key.Bytes(), &commonpb.Timestamp{Data: 1}))
 
 	snap, err := store.NewReadHandle()
 	require.NoError(t, err)
