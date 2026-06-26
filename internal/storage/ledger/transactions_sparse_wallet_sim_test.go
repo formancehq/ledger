@@ -255,6 +255,11 @@ func TestSparseWalletSimulation(t *testing.T) {
 		fmt.Sprintf(`ANALYZE %q.transactions`, indexed.GetLedger().Bucket))
 	require.NoError(t, err)
 
+	// Refresh the store's confirmed-key snapshot now that the functional index exists.
+	// Without this, Transactions().Paginate uses the unresolved feature-flag fallback
+	// rather than the pg_index-confirmed path that production code follows.
+	require.NoError(t, indexed.ResolveIndexedMetadataKeys(ctx))
+
 	walletFilter := query.Match("metadata[source_wallet_id]", walletID)
 	order := paginate.Order(paginate.OrderDesc)
 	q := common.ColumnPaginatedQuery[any]{

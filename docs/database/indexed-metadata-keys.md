@@ -53,24 +53,26 @@ Wait for `CREATE INDEX` to complete before proceeding.
 
 ### 2. Enable the feature flag
 
-```
+```http
 PATCH /ledgers/<ledger>
 Content-Type: application/json
 
 {"features": {"INDEXED_METADATA_KEYS": "source_wallet_id,destination_wallet_id"}}
 ```
 
-Ledger validates that each named key has a corresponding functional index in
-`pg_indexes` and rejects the request if any index is missing.
+Ledger accepts the PATCH immediately and validates only key name syntax (must
+match `[a-zA-Z0-9_]+`). Index existence is verified at store-open time (the
+start of each request): if no matching functional index is found in `pg_indexes`
+for a given key, that key falls back to the `@>` containment form and an INFO
+message is logged — the request is not rejected.
 
-After the PATCH, new query plans will use the functional index. Existing
-connections pick up the change on their next query (no restart needed).
+After the PATCH, new requests will use the functional index for confirmed keys.
 
 ### 3. Deactivation
 
 To deactivate, remove the key from the flag **before** dropping the index:
 
-```
+```http
 PATCH /ledgers/<ledger>
 {"features": {"INDEXED_METADATA_KEYS": ""}}
 ```
@@ -102,6 +104,6 @@ the generated SQL to enable functional-index matching.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Flag accepted but queries still use `@>` | Index does not exist or has a different expression | Check `pg_indexes` for the exact index expression |
-| PATCH rejected with "index not found" | Index was not yet created, or the key name or partial condition does not match | Create the index first, then retry the PATCH |
-| Slow queries after dropping the index | Flag still references the dropped key | Clear the flag or restart Ledger to trigger the startup check |
+| Flag accepted but queries still use `@>` | Index does not exist or expression does not match | Check `pg_index` via `pg_get_expr` for the exact expression; INFO log at startup shows unconfirmed keys |
+| Key listed in flag but not confirmed (INFO at startup) | Index not yet created, or expression / partial condition differs | Create the index (`CONCURRENTLY`), then wait for the next request open to re-confirm |
+| Slow queries after dropping the index | Flag still references the dropped key | Clear the flag so the next store-open falls back to `@>` |

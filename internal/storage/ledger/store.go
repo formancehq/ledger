@@ -164,16 +164,22 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 	schema := store.ledger.Bucket
 	confirmed := make([]string, 0, len(requested))
 	for _, key := range requested {
+		// Use pg_get_expr(indexprs, indrelid) so we match the exact index expression
+		// rather than substring-matching the full CREATE INDEX text in pg_indexes.indexdef.
+		// Key names are validated as [a-zA-Z0-9_]+, so embedding in the LIKE pattern is safe.
 		var count int
 		err := store.db.NewSelect().
-			TableExpr("pg_indexes").
+			TableExpr("pg_index i").
+			Join("JOIN pg_class c ON c.oid = i.indrelid").
+			Join("JOIN pg_namespace n ON n.oid = c.relnamespace").
 			ColumnExpr("COUNT(*)").
-			Where("schemaname = ?", schema).
-			Where("tablename = ?", "transactions").
-			Where("indexdef LIKE ?", "%metadata ->> '"+key+"'%").
+			Where("n.nspname = ?", schema).
+			Where("c.relname = ?", "transactions").
+			Where("i.indexprs IS NOT NULL").
+			Where("pg_get_expr(i.indexprs, i.indrelid) LIKE ?", "%metadata ->> '"+key+"'%").
 			Scan(ctx, &count)
 		if err != nil {
-			return fmt.Errorf("checking pg_indexes for key %q: %w", key, err)
+			return fmt.Errorf("checking pg_index for key %q: %w", key, err)
 		}
 		if count > 0 {
 			confirmed = append(confirmed, key)
