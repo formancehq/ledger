@@ -266,6 +266,143 @@ func (p *ClusterLogReaderProvider) GetForPeer(id uint64) (store.LogReader, error
 
 **In production**, use `GRPCLogReaderProvider` to stream logs via gRPC.
 
+## Antithesis (Autonomous Testing)
+
+**Location**: `tests/antithesis/`
+
+**Objective**: Drive the running system with randomized workloads and assert
+high-level correctness properties under fault injection (node kills, network
+faults, restarts). Workloads are written against the [Antithesis SDK](https://antithesis.com),
+whose `random.*` choices the platform steers to explore rare interleavings, and
+whose `assert.*` calls become catalogued properties.
+
+### Drivers and templates
+
+A **driver** is a standalone workload binary under
+`tests/antithesis/workload/bin/cmds/`. Drivers are grouped into two **test
+templates** — Antithesis runs exactly one template per execution history, so a
+driver's template decides who it shares the timeline with:
+
+| Template | Location | Shape |
+|----------|----------|-------|
+| `main` | `bin/cmds/main/` | Dozens of drivers run **concurrently** against one faulted cluster. Each targets a feature area (transactions, reverts, idempotency, account types, metadata, backups, chapters, …) and asserts feature-local invariants. |
+| `model` | `bin/cmds/model/` | A single driver (`singleton_driver_model`) **owns the whole timeline** — no other driver runs alongside it — because it drives the system itself and checks global consensus conformance. |
+
+The split is wired in `tests/antithesis/workload/Dockerfile`.
+
+### Model-based conformance test (`singleton_driver_model`)
+
+This is an in-memory **model checker**: it runs a deterministic reference model
+of the ledger alongside the real server and asserts that **every observed
+response is explainable by some valid serialization of the bulks currently in
+flight**. It is a single-process driver requiring no Antithesis platform — it
+runs against a local single node (fast inner loop) or an N-node Raft cluster
+(leadership-change / snapshot-install coverage), and is wired into the `model`
+template for platform runs.
+
+#### What it verifies
+
+The core invariant — *every observed response is consistent with some
+serialization of the in-flight bulks* — turns the consensus guarantees into
+concrete assertions. A violation surfaces as a failed Antithesis assertion, a
+server/driver panic, or (on a cluster) failure to return to N voters after a
+restart. It catches:
+
+- **FSM determinism / cache–Pebble consistency** — a committed bulk whose
+  outcome (assigned transaction id, post-commit volumes, stored metadata,
+  chart/schema mutation) the model rejects or predicts differently.
+- **Lost or double-applied commits** — a success returning no committed log, or
+  volumes/ids that don't line up with the model's forward prediction.
+- **Illegal business outcomes** — a failure the model can't reproduce under any
+  serialization, or a linearizable read returning state outside the candidate
+  set.
+
+It exercises the chart of accounts, transactions and reverts (with post-commit
+volumes), account/transaction/ledger metadata, the typed-metadata schema, and
+the transient/ephemeral persistence classes.
+
+#### How it works
+
+N workers fan out across a fleet of ledgers, dispatching bulks concurrently;
+the model mirrors the single Raft log (one global re-order buffer, one committed
+state across all ledgers). The pieces:
+
+| File | Role |
+|------|------|
+| `model.go` | The pure forward model: `GlobalState`/`LedgerState` + `Apply`, which predicts the server's legal outcome for a bulk, atomically across whatever ledgers it touches. |
+| `checker.go` | Harness bookkeeping: the in-flight set, the re-order buffer, and the committed model state. |
+| `processor.go` | One goroutine that re-orders observed responses by log sequence and drains them into the committed state in commit order. |
+| `search.go` | `candidateBases` — enumerates the states the server could legitimately be in. |
+| `validate.go` | The conformance checks for committed bulks, failures, and reads. |
+| `actions.go` / `reads.go` | Random bulk generation; `GetAccount` / `GetLedger` read execution. |
+
+The key primitive is **`candidateBases`**: a committed bulk drains in
+log-sequence order, so the committed model state is its exact predecessor and
+its outcome is checked deterministically. A *failure* or a *read* has no fixed
+position, so it is validated against the set of states the server could be in —
+the committed state folded with the in-flight bulks in every commit-consistent
+order. Only operations dispatched no later than the observation's **high-water
+mark** are folded: one dispatched after the observation's response cannot have
+preceded it, so folding it would invent a state the server was never in. This
+lets failures and reads validate against the model without quiescing the
+workload.
+
+#### Running it
+
+```bash
+# Single node, fast inner loop (default 60s). No fault injection.
+just test-model
+
+# 3-node cluster with rolling restarts (default 180s) — the CI gate.
+# Kills one node at a time keeping quorum; a killed node stays down long
+# enough that it rejoins via snapshot install, exercising snapshot transfer
+# and follower restore.
+just test-model-cluster
+
+# Custom duration / topology via the runner directly:
+tests/antithesis/run_model_test.sh --nodes 5 300
+```
+
+Both targets call `tests/antithesis/run_model_test.sh`, which builds the server
+and driver and runs the checker. It exits non-zero on the first finding by
+default. Common tunables (full list in the script header):
+
+| Variable | Meaning |
+|----------|---------|
+| `MODEL_LEDGERS` / `MODEL_WORKERS` | Fleet size and concurrency. |
+| `MODEL_DEBUG` | Enable driver debug logging. |
+| `MODEL_FAIL_FAST` | Stop on first finding (default); `0` runs the full duration. |
+| `RESTART_INTERVAL` / `DEAD_TIME` | Cluster restart cadence and how long a killed node stays down. |
+| `COMPACTION_MARGIN` | Raft entries between snapshots; low values force snapshot recovery. |
+
+#### Maintaining the model
+
+The model in `model.go` is a hand-written mirror of the server's *intended*
+behavior; nothing keeps the two in sync automatically. Treat them as one unit —
+when a change alters behavior the model relies on, update the model in the same
+change, or the next run will either cry wolf (model stricter than the server) or
+go blind (model more lenient than the server).
+
+Where to make the matching change:
+
+| Server change | Model change |
+|---|---|
+| New request type or ledger action | Add a `case` to `applyOne` in `model.go` **and** a generator in `actions.go`. |
+| Changed business/validation rule (new rejection condition, enforcement change, volume math) | Update the matching `apply*` predictor in `model.go`. |
+| New or changed response field the test should check | Update the validator in `validate.go` and the predicted effect it compares against. |
+| New rejection reason | Return the matching `domain.ErrReason*` from the right model branch so `validateFailure` can explain it. |
+| New persisted projection or read surface | Add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. |
+
+The model is built to fail loud on anything it hasn't been taught: `Apply`
+panics on an unmodeled request type or action rather than skipping it — the same
+"never silently skip a should-not-happen branch" rule the server follows. So an
+action you forget to model shows up as a finding, not a green run. Keep that
+panic; don't downgrade it to a soft skip.
+
+The runtime mechanisms the model cross-checks against (audit hash chain,
+double-entry balance, the offline `store check`) are documented in
+[Log Integrity and Correctness](../../ops/correctness.md).
+
 ## Best Practices
 
 ### Avoid `time.Sleep`
