@@ -183,12 +183,19 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 			Where("n.nspname = ?", schema).
 			Where("c.relname = ?", "transactions").
 			Where("i.indexprs IS NOT NULL").
-			// Use position() rather than LIKE so that underscores and percent signs
-			// in key names or ledger names are treated as literals, not wildcards.
+			// Only accept valid indexes; CONCURRENTLY-failed builds leave an entry
+			// with indisvalid=false that the planner will not use.
+			Where("i.indisvalid = true").
+			// Use position() rather than LIKE: underscores and percent signs in key
+			// names or ledger names must not be treated as wildcards.
 			// Key names are validated as [a-zA-Z0-9_]+; ledger names are trusted
 			// internal values — both are safe to embed in the search strings below.
 			Where("position(? IN pg_get_expr(i.indexprs, i.indrelid)) > 0", "metadata ->> '"+key+"'").
-			Where("(i.indpred IS NULL OR position(? IN pg_get_expr(i.indpred, i.indrelid)) > 0)", "ledger = '"+store.ledger.Name+"'").
+			// Search for '= ''ledger_name''' rather than 'ledger = ''ledger_name''' because
+			// pg_get_expr renders varchar predicates with explicit casts, e.g.
+			// ((ledger)::text = 'name'::text).  The column-side cast varies by Postgres
+			// version; the '= ''name''' substring is present in all observed forms.
+			Where("(i.indpred IS NULL OR position(? IN pg_get_expr(i.indpred, i.indrelid)) > 0)", "= '"+store.ledger.Name+"'").
 			Scan(ctx, &count)
 		if err != nil {
 			return fmt.Errorf("checking pg_index for key %q: %w", key, err)
