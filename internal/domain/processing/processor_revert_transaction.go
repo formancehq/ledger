@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"errors"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -69,18 +71,18 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	boundaries.RevertCount++
 
 	// Update the original transaction's state to record the reversion
-	origStateReader, err := s.GetTransactionState(txKey)
+	origStateReader, err := s.TransactionStates().Get(txKey)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
+	}
+
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "getting original transaction state", Cause: err}
 	}
 
-	if origStateReader == nil {
-		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
-	}
-
 	origState := origStateReader.Mutate()
 	origState.RevertedByTransaction = revertTxID
-	s.PutTransactionState(txKey, origState)
+	s.TransactionStates().Put(txKey, origState)
 
 	// Resolve the revert timestamp. When at_effective_date is set, the compensating
 	// transaction inherits the original's effective timestamp (parity with
@@ -97,7 +99,7 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	}
 
 	// Store the revert transaction's state (include metadata from the revert order)
-	s.PutTransactionState(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
+	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     order.GetMetadata(),
 		Timestamp:    revertTimestamp,

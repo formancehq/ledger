@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -104,12 +105,12 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 	t.Run("DeleteLedger → deletedLedgers + Boundaries drop", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
-		b.PutBoundaries("L", &raftcmdpb.LedgerBoundaries{NextTransactionId: 1})
+		b.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{NextTransactionId: 1})
 		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: "L"}},
 		}})
 		require.Equal(t, []string{"L"}, b.deletedLedgers)
-		_, err := b.GetBoundaries("L")
+		_, err := b.Boundaries().Get(domain.LedgerKey{Name: "L"})
 		require.Error(t, err, "boundaries overlay must reflect the deletion immediately")
 	})
 

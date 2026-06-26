@@ -348,15 +348,6 @@ func (f constantCheckScopeFactory) NewProposalScope() (processing.Scope, error) 
 	return f.scope, nil
 }
 
-func (s *scopeImpl) GetLedger(name string) (commonpb.LedgerInfoReader, error) {
-	info, ok := s.engine.ledgers[name]
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-
-	return info.AsReader(), nil
-}
-
 // ForOrder is a no-op for the test scopeImpl: the checker runs without
 // an FSM-side coverage gate, so per-order narrowing returns the same
 // scope (all keys remain admitted).
@@ -366,68 +357,166 @@ func (s *scopeImpl) ForOrder(_, _ []byte) processing.Scope { return s }
 // to enforce, every read is admitted.
 func (s *scopeImpl) CheckCoverage(_ byte, _ []byte) error { return nil }
 
-func (s *scopeImpl) PutLedger(name string, info *commonpb.LedgerInfo) {
-	s.engine.ledgers[name] = info
+// scopeFuncAccessor is the generic test-side Accessor: each operation is
+// a function closure wired against the scope's in-memory maps. The Put /
+// Delete functions tolerate being nil for kinds that the checker tests
+// never mutate, so callers stay terse for the read-only kinds.
+type scopeFuncAccessor[K processing.AccessorKey, V any, R any] struct {
+	get    func(K) (R, error)
+	put    func(K, V)
+	delete func(K)
 }
 
-func (s *scopeImpl) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, error) {
-	b, ok := s.engine.boundaries[ledger]
-	if !ok {
-		return nil, domain.ErrNotFound
+func (a *scopeFuncAccessor[K, V, R]) Get(key K) (R, error) {
+	return a.get(key)
+}
+
+func (a *scopeFuncAccessor[K, V, R]) Put(key K, value V) {
+	if a.put != nil {
+		a.put(key, value)
 	}
-
-	return b.AsReader(), nil
 }
 
-func (s *scopeImpl) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
-	s.engine.boundaries[ledger] = boundaries
-}
-
-func (s *scopeImpl) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
-	vp, ok := s.engine.volumes[string(key.Bytes())]
-	if !ok {
-		// Simulate preloaded zero volumes (in production, admission always preloads)
-		vp = &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(0),
-			Output: commonpb.NewUint256FromUint64(0),
-		}
+func (a *scopeFuncAccessor[K, V, R]) Delete(key K) {
+	if a.delete != nil {
+		a.delete(key)
 	}
-
-	return vp.AsReader(), nil
 }
 
-func (s *scopeImpl) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
-	k := string(key.Bytes())
-	s.engine.volumes[k] = value
-	s.modifiedVolumes[k] = struct{}{}
-}
+func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+	return &scopeFuncAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]{
+		get: func(key domain.LedgerKey) (commonpb.LedgerInfoReader, error) {
+			info, ok := s.engine.ledgers[key.Name]
+			if !ok {
+				return nil, domain.ErrNotFound
+			}
 
-func (s *scopeImpl) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
-	v, ok := s.engine.metadata[string(key.Bytes())]
-	if !ok {
-		return nil, domain.ErrNotFound
+			return info.AsReader(), nil
+		},
+		put: func(key domain.LedgerKey, info *commonpb.LedgerInfo) {
+			s.engine.ledgers[key.Name] = info
+		},
 	}
-
-	return v.AsReader(), nil
 }
 
-func (s *scopeImpl) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
-	k := string(key.Bytes())
-	s.engine.metadata[k] = value
-	s.modifiedMetadata[k] = struct{}{}
+func (s *scopeImpl) Boundaries() processing.Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader] {
+	return &scopeFuncAccessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]{
+		get: func(key domain.LedgerKey) (raftcmdpb.LedgerBoundariesReader, error) {
+			b, ok := s.engine.boundaries[key.Name]
+			if !ok {
+				return nil, domain.ErrNotFound
+			}
+
+			return b.AsReader(), nil
+		},
+		put: func(key domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) {
+			s.engine.boundaries[key.Name] = b
+		},
+	}
 }
 
-func (s *scopeImpl) DeleteAccountMetadata(key domain.MetadataKey) {
-	k := string(key.Bytes())
-	delete(s.engine.metadata, k)
-	s.modifiedMetadata[k] = struct{}{}
+func (s *scopeImpl) Volumes() processing.Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader] {
+	return &scopeFuncAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]{
+		get: func(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
+			vp, ok := s.engine.volumes[string(key.Bytes())]
+			if !ok {
+				// Simulate preloaded zero volumes (in production, admission always preloads)
+				vp = &raftcmdpb.VolumePair{
+					Input:  commonpb.NewUint256FromUint64(0),
+					Output: commonpb.NewUint256FromUint64(0),
+				}
+			}
+
+			return vp.AsReader(), nil
+		},
+		put: func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
+			k := string(key.Bytes())
+			s.engine.volumes[k] = value
+			s.modifiedVolumes[k] = struct{}{}
+		},
+	}
 }
 
-func (s *scopeImpl) GetLedgerMetadata(_ domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
-	return nil, domain.ErrNotFound
+func (s *scopeImpl) AccountMetadata() processing.Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+	return &scopeFuncAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{
+		get: func(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
+			v, ok := s.engine.metadata[string(key.Bytes())]
+			if !ok {
+				return nil, domain.ErrNotFound
+			}
+
+			return v.AsReader(), nil
+		},
+		put: func(key domain.MetadataKey, value *commonpb.MetadataValue) {
+			k := string(key.Bytes())
+			s.engine.metadata[k] = value
+			s.modifiedMetadata[k] = struct{}{}
+		},
+		delete: func(key domain.MetadataKey) {
+			k := string(key.Bytes())
+			delete(s.engine.metadata, k)
+			s.modifiedMetadata[k] = struct{}{}
+		},
+	}
 }
-func (s *scopeImpl) PutLedgerMetadata(_ domain.LedgerMetadataKey, _ *commonpb.MetadataValue) {}
-func (s *scopeImpl) DeleteLedgerMetadata(_ domain.LedgerMetadataKey)                         {}
+
+func (s *scopeImpl) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+	return &scopeFuncAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{
+		get: func(_ domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
+			return nil, domain.ErrNotFound
+		},
+	}
+}
+
+func (s *scopeImpl) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
+	return &scopeFuncAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]{
+		get: func(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
+			v, ok := s.engine.references[string(key.Bytes())]
+			if !ok {
+				return nil, domain.ErrNotFound
+			}
+
+			return v.AsReader(), nil
+		},
+		put: func(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+			s.engine.references[string(key.Bytes())] = value
+		},
+	}
+}
+
+func (s *scopeImpl) TransactionStates() processing.Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
+	return &scopeFuncAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{
+		get: func(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
+			st := s.engine.transactionStates[string(key.Bytes())]
+			if st == nil {
+				return nil, nil
+			}
+
+			return st.AsReader(), nil
+		},
+		put: func(key domain.TransactionKey, txState *commonpb.TransactionState) {
+			k := string(key.Bytes())
+			s.engine.transactionStates[k] = txState
+			s.modifiedTxStates[k] = struct{}{}
+		},
+	}
+}
+
+func (s *scopeImpl) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
+	return &scopeFuncAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]{
+		get: func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+			return nil, nil
+		},
+	}
+}
+
+func (s *scopeImpl) Indexes() processing.Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
+	return &scopeFuncAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]{
+		get: func(_ domain.IndexKey) (commonpb.IndexReader, error) {
+			return nil, domain.ErrNotFound
+		},
+	}
+}
 
 func (s *scopeImpl) GetReverted(key domain.TransactionKey) (bool, error) {
 	return s.reverted[string(key.Bytes())], nil
@@ -435,47 +524,6 @@ func (s *scopeImpl) GetReverted(key domain.TransactionKey) (bool, error) {
 
 func (s *scopeImpl) PutReverted(key domain.TransactionKey, reverted bool) {
 	s.reverted[string(key.Bytes())] = reverted
-}
-
-func (s *scopeImpl) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
-	v, ok := s.engine.idempotency[key.Key]
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-
-	return v.AsReader(), nil
-}
-
-func (s *scopeImpl) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
-	s.engine.idempotency[key.Key] = value
-}
-
-func (s *scopeImpl) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
-	v, ok := s.engine.references[string(key.Bytes())]
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-
-	return v.AsReader(), nil
-}
-
-func (s *scopeImpl) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
-	s.engine.references[string(key.Bytes())] = value
-}
-
-func (s *scopeImpl) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
-	st := s.engine.transactionStates[string(key.Bytes())]
-	if st == nil {
-		return nil, nil
-	}
-
-	return st.AsReader(), nil
-}
-
-func (s *scopeImpl) PutTransactionState(key domain.TransactionKey, txState *commonpb.TransactionState) {
-	k := string(key.Bytes())
-	s.engine.transactionStates[k] = txState
-	s.modifiedTxStates[k] = struct{}{}
 }
 
 func (s *scopeImpl) AddSigningKey(_ string, _ []byte, _ string)                {}

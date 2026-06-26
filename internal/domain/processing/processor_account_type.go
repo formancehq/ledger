@@ -55,7 +55,7 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 	}
 
 	info.AccountTypes[at.GetName()] = at
-	ctx.Scope.PutLedger(ledger, info)
+	ctx.Scope.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 	invalidateCompiledTypes(ctx.CompiledTypes, ledger)
 
 	return &commonpb.LedgerLogPayload{
@@ -81,7 +81,7 @@ func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeO
 	}
 
 	delete(info.GetAccountTypes(), order.GetName())
-	ctx.Scope.PutLedger(ledger, info)
+	ctx.Scope.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 	invalidateCompiledTypes(ctx.CompiledTypes, ledger)
 
 	return &commonpb.LedgerLogPayload{
@@ -163,7 +163,7 @@ func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateD
 	info = info.CloneVT()
 
 	info.DefaultEnforcementMode = order.GetEnforcementMode()
-	ctx.Scope.PutLedger(ledger, info)
+	ctx.Scope.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{

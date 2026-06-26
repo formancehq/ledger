@@ -53,7 +53,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	posting.GetAmount().IntoUint256(&amount)
 
 	// Get current volume pair for source — must be preloaded
-	sourceReader, err := s.GetVolume(sourceKey)
+	sourceReader, err := s.Volumes().Get(sourceKey)
 	if err != nil {
 		// ErrNotFound means the admission layer didn't preload this volume
 		// — a precondition the caller can satisfy. Anything else is an
@@ -116,12 +116,12 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	}
 
 	sourceVol.GetOutput().SetFromUint256(&sum)
-	s.PutVolume(sourceKey, sourceVol)
+	s.Volumes().Put(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
 	destKey := cachedVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset(), assetCache)
 
-	destReader, err := s.GetVolume(destKey)
+	destReader, err := s.Volumes().Get(destKey)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset()}
@@ -147,7 +147,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	}
 
 	destVol.GetInput().SetFromUint256(&sum)
-	s.PutVolume(destKey, destVol)
+	s.Volumes().Put(destKey, destVol)
 
 	return nil
 }

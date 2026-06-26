@@ -18,7 +18,7 @@ import (
 // write it back through s.PutLedger without mutating the cached pointer
 // in place. The clone cost is bounded (one CloneVT per handler invocation).
 func loadLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.Describable) {
-	info, err := s.GetLedger(name)
+	info, err := s.Ledgers().Get(domain.LedgerKey{Name: name})
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, &domain.ErrLedgerNotFound{Name: name}
 	}
@@ -32,7 +32,7 @@ func loadLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.Describable)
 
 // loadBoundaries mirrors loadLedger for the LedgerBoundaries channel.
 func loadBoundaries(s Scope, name string) (raftcmdpb.LedgerBoundariesReader, domain.Describable) {
-	boundaries, err := s.GetBoundaries(name)
+	boundaries, err := s.Boundaries().Get(domain.LedgerKey{Name: name})
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, &domain.ErrLedgerNotFound{Name: name}
 	}

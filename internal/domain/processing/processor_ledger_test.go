@@ -25,22 +25,18 @@ func TestProcessCreateLedger(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 
 	// Setup expectations
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
-		func(name string, info *commonpb.LedgerInfo) {
-			require.Equal(t, "test-ledger", info.GetName())
-			require.Equal(t, now, info.GetCreatedAt())
-			require.Equal(t, uint32(1), info.GetId(), "LedgerInfo should have Id == 1")
-		},
-	)
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any()).Do(
-		func(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
-			require.Equal(t, uint64(1), boundaries.GetNextTransactionId())
-			require.Equal(t, uint64(1), boundaries.GetNextLogId())
-		},
-	)
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(name string, info *commonpb.LedgerInfo) {
+		require.Equal(t, "test-ledger", info.GetName())
+		require.Equal(t, now, info.GetCreatedAt())
+		require.Equal(t, uint32(1), info.GetId(), "LedgerInfo should have Id == 1")
+	})
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
+		require.Equal(t, uint64(1), boundaries.GetNextTransactionId())
+		require.Equal(t, uint64(1), boundaries.GetNextLogId())
+	})
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
@@ -71,7 +67,7 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
-	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, existingLedger.AsReader(), nil)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
@@ -100,9 +96,9 @@ func TestProcessDeleteLedger(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, existingLedger.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_DeleteLedger{
@@ -132,7 +128,7 @@ func TestProcessDeleteLedger_NotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_DeleteLedger{

@@ -25,7 +25,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	// handleCreatedIndexLog must then guard against re-scheduling a backfill
 	// by consulting the registry (cfg.byCanonical alone can lag behind the
 	// applied READY state).
-	existing, findErr := indexes.Find(ctx.Scope, info.GetName(), id)
+	existing, findErr := indexes.Find(ctx.Scope.Indexes(), info.GetName(), id)
 	if findErr != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "looking up existing index", Cause: findErr}
 	}
@@ -34,7 +34,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 		return buildCreatedIndexLogPayload(id), nil
 	}
 
-	indexes.Put(ctx.Scope, info.GetName(), &commonpb.Index{
+	indexes.Put(ctx.Scope.Indexes(), info.GetName(), &commonpb.Index{
 		Id:          id,
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		CreatedAt:   ctx.Scope.GetDate().Mutate(),
@@ -54,7 +54,7 @@ func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Conte
 	}
 
 	id := order.GetId()
-	indexes.Remove(ctx.Scope, info.GetName(), id)
+	indexes.Remove(ctx.Scope.Indexes(), info.GetName(), id)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DropIndex{

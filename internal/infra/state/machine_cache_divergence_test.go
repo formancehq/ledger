@@ -624,7 +624,7 @@ func buildProposalWithLeaderPreloads(
 
 		// Check volumes for each posting
 		if ct := apply.GetCreateTransaction(); ct != nil {
-			ledgerInfo, _ := leader.writeSet.GetLedger(ledger)
+			ledgerInfo, _ := leader.writeSet.Ledgers().Get(domain.LedgerKey{Name: ledger})
 			if ledgerInfo == nil {
 				// Try from parent store
 				if direct, _, _ := leader.Registry.Ledgers.GetKey(ledgerKey); direct != nil {

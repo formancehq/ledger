@@ -30,7 +30,7 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	// Re-touch ledger info so it enters the Merge buffer and gets propagated
 	// back to Gen0 on commit. Without this, ledger info is evicted after two
 	// cache rotations because mirror proposals bypass the admission preloader.
-	s.PutLedger(ledger, info)
+	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 
 	boundariesReader, loadErr := loadBoundaries(s, ledger)
 	if loadErr != nil {
@@ -93,7 +93,7 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	// Assign per-ledger log ID and advance boundaries
 	nextLogID := boundaries.GetNextLogId()
 	boundaries.NextLogId = nextLogID + 1
-	s.PutBoundaries(ledger, boundaries)
+	s.Boundaries().Put(domain.LedgerKey{Name: ledger}, boundaries)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{
@@ -159,7 +159,7 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 	}
 
 	// Record transaction state (include metadata from the mirrored transaction)
-	s.PutTransactionState(domain.TransactionKey{LedgerName: ledger, ID: txID}, &commonpb.TransactionState{
+	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: txID}, &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     ct.GetMetadata(),
 		Timestamp:    timestamp,
@@ -167,7 +167,7 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 
 	// Store reference if provided
 	if ct.GetReference() != "" {
-		s.PutTransactionReference(
+		s.TransactionReferences().Put(
 			domain.TransactionReferenceKey{LedgerName: ledger, Reference: ct.GetReference()},
 			&commonpb.TransactionReferenceValue{TransactionId: txID},
 		)
@@ -186,7 +186,7 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 					Key:        key,
 				}
 
-				s.PutAccountMetadata(metaKey, value)
+				s.AccountMetadata().Put(metaKey, value)
 			}
 		}
 	}
@@ -230,13 +230,13 @@ func processMirrorSavedMetadata(ledger string, sm *raftcmdpb.MirrorSavedMetadata
 					AccountKey: domain.AccountKey{LedgerName: ledger, Account: target.Account.GetAddr()},
 					Key:        key,
 				}
-				s.PutAccountMetadata(metaKey, value)
+				s.AccountMetadata().Put(metaKey, value)
 			}
 		case *commonpb.Target_TransactionId:
 			if len(sm.GetMetadata()) > 0 {
 				txKey := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}
 
-				stateReader, err := s.GetTransactionState(txKey)
+				stateReader, err := s.TransactionStates().Get(txKey)
 				if err != nil && !errors.Is(err, domain.ErrNotFound) {
 					return nil, &domain.ErrStorageOperation{Operation: "reading transaction state", Cause: err}
 				}
@@ -250,7 +250,7 @@ func processMirrorSavedMetadata(ledger string, sm *raftcmdpb.MirrorSavedMetadata
 
 					maps.Copy(state.GetMetadata(), sm.GetMetadata())
 
-					s.PutTransactionState(txKey, state)
+					s.TransactionStates().Put(txKey, state)
 				}
 			}
 		}
@@ -280,11 +280,11 @@ func processMirrorDeletedMetadata(ledger string, dm *raftcmdpb.MirrorDeletedMeta
 				AccountKey: domain.AccountKey{LedgerName: ledger, Account: target.Account.GetAddr()},
 				Key:        dm.GetKey(),
 			}
-			s.DeleteAccountMetadata(metaKey)
+			s.AccountMetadata().Delete(metaKey)
 		case *commonpb.Target_TransactionId:
 			txKey := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}
 
-			stateReader, err := s.GetTransactionState(txKey)
+			stateReader, err := s.TransactionStates().Get(txKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrStorageOperation{Operation: "reading transaction state", Cause: err}
 			}
@@ -294,7 +294,7 @@ func processMirrorDeletedMetadata(ledger string, dm *raftcmdpb.MirrorDeletedMeta
 
 				delete(state.GetMetadata(), dm.GetKey())
 
-				s.PutTransactionState(txKey, state)
+				s.TransactionStates().Put(txKey, state)
 			}
 		}
 	}
@@ -336,7 +336,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	// Update the original transaction's state to record the reversion
 	origKey := domain.TransactionKey{LedgerName: ledger, ID: rt.GetRevertedTransactionId()}
 
-	origReader, err := s.GetTransactionState(origKey)
+	origReader, err := s.TransactionStates().Get(origKey)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return nil, &domain.ErrStorageOperation{Operation: "reading original transaction state", Cause: err}
 	}
@@ -344,7 +344,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	if origReader != nil {
 		origState := origReader.Mutate()
 		origState.RevertedByTransaction = revertTxID
-		s.PutTransactionState(origKey, origState)
+		s.TransactionStates().Put(origKey, origState)
 	}
 
 	timestamp := rt.GetTimestamp()
@@ -353,7 +353,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	}
 
 	// Store the revert transaction's state (include metadata from the mirror revert)
-	s.PutTransactionState(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
+	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     rt.GetMetadata(),
 		Timestamp:    timestamp,
@@ -393,7 +393,7 @@ func processPromoteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, do
 
 	info.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
 	info.MirrorSource = nil
-	s.PutLedger(ledger, info)
+	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_PromoteLedger{

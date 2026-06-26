@@ -105,11 +105,11 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 
 	// No idempotency check should be made
 	// Process the order normally
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, domain.ErrNotFound)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
 
 	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore), noopSink{})
@@ -140,32 +140,38 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	// Track the ledger info stored by CreateLedger so GetLedger can return it.
 	var storedLedgerInfo *commonpb.LedgerInfo
 
-	// Order 1: CreateLedger("myled")
-	mockStore.EXPECT().GetLedger("myled").Return(nil, domain.ErrNotFound) // does not exist yet
-	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().PutLedger("myled", gomock.Any()).Do(
-		func(_ string, info *commonpb.LedgerInfo) {
-			storedLedgerInfo = info
-		},
-	)
-	mockStore.EXPECT().PutBoundaries("myled", gomock.Any())
-
-	// Order 2: CreateTransaction on "myled"
-	// After order 1 runs, GetLedger should return the stored info.
-	mockStore.EXPECT().GetLedger("myled").DoAndReturn(func(_ string) (commonpb.LedgerInfoReader, error) {
+	// Shared Ledgers stub: Get returns storedLedgerInfo (or ErrNotFound
+	// before CreateLedger runs); Put captures the info written by
+	// CreateLedger so the subsequent CreateTransaction order sees it.
+	ledgers := setupLedgersStub(mockStore)
+	ledgers.onGet(func(_ domain.LedgerKey) (commonpb.LedgerInfoReader, error) {
 		if storedLedgerInfo == nil {
 			return nil, domain.ErrNotFound
 		}
 
 		return storedLedgerInfo.AsReader(), nil
-	}).AnyTimes()
-	mockStore.EXPECT().GetBoundaries("myled").Return((&raftcmdpb.LedgerBoundaries{
+	})
+	ledgers.onPut(func(_ domain.LedgerKey, info *commonpb.LedgerInfo) {
+		storedLedgerInfo = info
+	})
+
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+
+	// Boundaries: CreateLedger Puts initial boundaries, then CreateTransaction
+	// Gets/Puts them. A single shared stub serves both calls; the Get hook
+	// returns the stored boundaries (post-CreateLedger).
+	var storedBoundaries = &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,
 		NextLogId:         1,
-	}).AsReader(), nil)
+	}
+	boundaries := setupBoundariesStub(mockStore)
+	boundaries.expectGet(domain.LedgerKey{Name: "myled"}, storedBoundaries.AsReader(), nil)
+	boundaries.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) {
+		storedBoundaries = b
+	})
+
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
-	mockStore.EXPECT().PutBoundaries("myled", gomock.Any())
 
 	// Volume operations: the LedgerID should be 1 (assigned by CreateLedger).
 	srcKey := domain.NewVolumeKey("myled", "world", "USD")
@@ -176,12 +182,11 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(srcKey).Return(zeroVol.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(srcKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(dstKey).Return(zeroVol.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(dstKey, gomock.Any())
+	volumes := setupVolumesStub(mockStore)
+	volumes.expectGet(srcKey, zeroVol.AsReader(), nil)
+	volumes.expectGet(dstKey, zeroVol.AsReader(), nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerName: "myled", ID: 1}, gomock.Any())
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "myled", ID: 1}, nil)
 
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(2))
@@ -259,17 +264,17 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	// are 100 and 110 — chosen non-contiguous so the test catches a min/max
 	// confusion (an off-by-one or last-wins bug on min would still match if
 	// the sequences were consecutive).
-	mockStore.EXPECT().GetLedger("ledger-a").Return(nil, domain.ErrNotFound)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "ledger-a"}, nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
-	mockStore.EXPECT().PutLedger("ledger-a", gomock.Any())
-	mockStore.EXPECT().PutBoundaries("ledger-a", gomock.Any())
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "ledger-a"}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "ledger-a"}, nil)
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
 
-	mockStore.EXPECT().GetLedger("ledger-b").Return(nil, domain.ErrNotFound)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "ledger-b"}, nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(2))
-	mockStore.EXPECT().PutLedger("ledger-b", gomock.Any())
-	mockStore.EXPECT().PutBoundaries("ledger-b", gomock.Any())
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "ledger-b"}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "ledger-b"}, nil)
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(110))
 
 	orders := []*raftcmdpb.Order{

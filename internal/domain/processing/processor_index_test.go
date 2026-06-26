@@ -29,17 +29,19 @@ func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	now := &commonpb.Timestamp{Data: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil)
-	mockStore.EXPECT().GetIndex(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}).Return(nil, domain.ErrNotFound)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 
+	// Shared Indexes stub: Get returns ErrNotFound (entry not present yet);
+	// Put captures the new entry written by processCreateIndex.
 	var seenKey domain.IndexKey
 	var seenIdx *commonpb.Index
-
-	mockStore.EXPECT().PutIndex(gomock.Any(), gomock.Any()).Do(func(key domain.IndexKey, idx *commonpb.Index) {
+	idxStub := setupIndexesStub(mockStore)
+	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
+	idxStub.putHook = func(key domain.IndexKey, idx *commonpb.Index) {
 		seenKey = key
 		seenIdx = idx
-	})
+	}
 
 	order := &raftcmdpb.CreateIndexOrder{Id: indexID}
 	payload, derr := processCreateIndex("test-ledger", order, &Context{Scope: mockStore})
@@ -67,8 +69,8 @@ func TestProcessCreateIndex_ShortCircuitOnReady(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
 	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil)
-	mockStore.EXPECT().GetIndex(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}).Return(
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
+	expectGetIndex(mockStore, domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)},
 		(&commonpb.Index{Id: indexID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY}).AsReader(),
 		nil,
 	)
@@ -92,8 +94,8 @@ func TestProcessDropIndex_DeletesByRegistryKey(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 3}
 	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color")
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil)
-	mockStore.EXPECT().DeleteIndex(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)})
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
+	expectDeleteIndex(t, mockStore, domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)})
 
 	payload, derr := processDropIndex("test-ledger", &raftcmdpb.DropIndexOrder{Id: indexID}, &Context{Scope: mockStore})
 	require.Nil(t, derr)
@@ -121,9 +123,9 @@ func TestProcessDeleteLedger_DoesNotTouchIndexRegistry(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 4}).AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 4}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	// No DeleteIndex / RangeIndexes — the deferred Pebble range delete is
 	// derived from the DeletedLedgerLog by the WriteSet sink via Absorb at
 	// commit time, not requested directly by the processor.

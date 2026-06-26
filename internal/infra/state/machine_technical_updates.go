@@ -220,7 +220,7 @@ func (fsm *Machine) applyEventsSinkUpdate(batch *dal.WriteSession, update *raftc
 //
 // No log entry is produced.
 func (fsm *Machine) applyMirrorSyncUpdate(scope processing.Scope, buffer *WriteSet, update *raftcmdpb.MirrorSyncUpdate) error {
-	ledgerInfo, err := scope.GetLedger(update.GetLedgerName())
+	ledgerInfo, err := scope.Ledgers().Get(domain.LedgerKey{Name: update.GetLedgerName()})
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil // ledger may have been deleted — stale update, skip
 	}

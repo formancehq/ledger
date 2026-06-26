@@ -11,7 +11,7 @@ import (
 
 func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
-	existing, err := s.GetLedger(ledger)
+	existing, err := s.Ledgers().Get(domain.LedgerKey{Name: ledger})
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: err}
 	}
@@ -45,8 +45,8 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		AccountTypes:           order.GetAccountTypes(),
 		DefaultEnforcementMode: order.GetDefaultEnforcementMode(),
 	}
-	s.PutLedger(ledger, info)
-	s.PutBoundaries(ledger, &raftcmdpb.LedgerBoundaries{
+	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
+	s.Boundaries().Put(domain.LedgerKey{Name: ledger}, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,
 		NextLogId:         1,
 	})
@@ -92,7 +92,7 @@ func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, dom
 
 	l.DeletedAt = s.GetDate().Mutate()
 
-	s.PutLedger(ledger, l)
+	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, l)
 	// The LedgerCleanup signal (cleanup queue + boundary overlay drop) is
 	// derived from DeletedLedgerLog by deriveSignals.
 

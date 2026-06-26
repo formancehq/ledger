@@ -43,7 +43,7 @@ func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Pos
 	var scratch uint256.Int
 
 	for _, pair := range pairs {
-		vol, err := s.GetVolume(domain.NewVolumeKey(ledgerName, pair.account, pair.asset))
+		vol, err := s.Volumes().Get(domain.NewVolumeKey(ledgerName, pair.account, pair.asset))
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			continue
 		}

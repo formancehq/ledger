@@ -30,11 +30,11 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().PutAccountMetadata(metaKey, commonpb.NewStringValue("active"))
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectPutAccountMetadata(t, mockStore, metaKey, commonpb.NewStringValue("active"))
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -103,11 +103,11 @@ func TestProcessAddMetadata_StoresClientValueVerbatim(t *testing.T) {
 	// coerced uint64(30). Leading-zero preservation matters for type round-trips.
 	clientSent := commonpb.NewStringValue("030")
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().PutAccountMetadata(metaKey, clientSent)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectPutAccountMetadata(t, mockStore, metaKey, clientSent)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -149,19 +149,17 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 		CreatedByLog: 1,
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetTransactionState(txKey).Return(existingState.AsReader(), nil)
-	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any()).Do(
-		func(_ domain.TransactionKey, state *commonpb.TransactionState) {
-			require.NotNil(t, state.GetMetadata())
-			require.Len(t, state.GetMetadata(), 1)
-			require.Contains(t, state.GetMetadata(), "category")
-			require.Equal(t, commonpb.NewStringValue("payment"), state.GetMetadata()["category"])
-		},
-	)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectGetTransactionState(mockStore, txKey, existingState.AsReader(), nil)
+	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, state *commonpb.TransactionState) {
+		require.NotNil(t, state.GetMetadata())
+		require.Len(t, state.GetMetadata(), 1)
+		require.Contains(t, state.GetMetadata(), "category")
+		require.Equal(t, commonpb.NewStringValue("payment"), state.GetMetadata()["category"])
+	})
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -204,12 +202,12 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return((&commonpb.MetadataValue{}).AsReader(), nil)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetAccountMetadata(mockStore, metaKey, (&commonpb.MetadataValue{}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().DeleteAccountMetadata(metaKey)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectDeleteAccountMetadata(t, mockStore, metaKey)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -257,9 +255,9 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, domain.ErrNotFound)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetAccountMetadata(mockStore, metaKey, nil, domain.ErrNotFound)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -308,12 +306,12 @@ func TestProcessDeleteMetadata_Account_NilValueDeletable(t *testing.T) {
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, nil)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetAccountMetadata(mockStore, metaKey, nil, nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().DeleteAccountMetadata(metaKey)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectDeleteAccountMetadata(t, mockStore, metaKey)
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -354,8 +352,8 @@ func TestProcessAddMetadata_TransactionTargetMissing(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{

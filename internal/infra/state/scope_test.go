@@ -178,12 +178,12 @@ func TestScope_OrderRead_RequiresCoverageEvenForOverlayHit(t *testing.T) {
 	require.NoError(t, err)
 
 	// Simulate a prior handler write inside this batch.
-	scope.PutLedger("K", &commonpb.LedgerInfo{Id: 7, Name: "K"})
+	scope.Ledgers().Put(domain.LedgerKey{Name: "K"}, &commonpb.LedgerInfo{Id: 7, Name: "K"})
 
 	// A later handler reads "K" through the same Scope. The overlay HAS it,
 	// but coverage doesn't — the wrapper must gate before the engine reads
 	// the value out of the overlay.
-	_, err = scope.GetLedger("K")
+	_, err = scope.Ledgers().Get(domain.LedgerKey{Name: "K"})
 
 	var miss *ErrCoverageMiss
 	require.ErrorAs(t, err, &miss, "Scope.GetLedger must surface ErrCoverageMiss instead of the overlay value")

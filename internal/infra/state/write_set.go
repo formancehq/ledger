@@ -93,26 +93,10 @@ type WriteSet struct {
 	// correctly described when only some of its assets are transient.
 	transientVolumes map[string][]*commonpb.TouchedVolume
 
-	// perOrderVolumeKeys[i] records the VolumeKeys touched by the order at
-	// zero-based index i within the current proposal. Populated by PutVolume
-	// (which reads currentOrderIndex set via BeginOrder) and drained at Merge
-	// time to compute purgedByLog. Reset to length 0 between proposals so the
-	// outer slice's backing array is reused; PutVolume overwrites each inner
-	// slot with a fresh nil before re-growing it, so inner backing arrays are
-	// not preserved.
-	perOrderVolumeKeys [][]domain.VolumeKey
-
-	// currentOrderIndex is the index passed to the most recent BeginOrder
-	// call. PutVolume uses it to attribute each volume touch to the order
-	// that produced it. Defaults to -1 before the first BeginOrder so that
-	// out-of-band PutVolume calls (recovery, technical updates) are not
-	// silently attributed to order 0.
-	currentOrderIndex int
-
 	// purgedByLog[i] is the deduplicated list of (account, asset) volumes
 	// that the log produced by order i touched and that the proposal-level
 	// partitionVolumes classified as purged. Computed during Merge from
-	// perOrderVolumeKeys ∩ partResult.purged. Injected into each
+	// volumes.Slots() ∩ partResult.purged. Injected into each
 	// LedgerLog.purged_volumes before AppendLogs.
 	purgedByLog [][]*commonpb.TouchedVolume
 
@@ -145,6 +129,22 @@ type WriteSet struct {
 	// pendingQueryCheckpointSaves and proposal.GetOrders() respectively.
 	queryCheckpointCreated uint64
 	queryCheckpointDeleted uint64
+
+	// Per-kind accessors — instantiated once at NewWriteSet and reused
+	// across proposals. The Derived stores they wrap are reset between
+	// proposals but the accessor pointers stay valid. Volumes wraps the
+	// raw store in a recorderAccessor: every Put records the touched key
+	// under the current slot (set via BeginOrder) so Merge can compute
+	// the per-log subset of purged ephemeral accounts (purgedByLog).
+	ledgers               *rawAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	boundaries            *rawAccessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
+	volumes               *recorderAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
+	accountMetadata       *rawAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	ledgerMetadata        *rawAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	transactionReferences *rawAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
+	transactionStates     *rawAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+	preparedQueries       *rawAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
+	indexes               *rawAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 }
 
 // purgeRange identifies a chapter's sequence ranges to delete from Pebble during Merge().
@@ -400,7 +400,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// indexed by ORDER index — same as logsOrRefs — so the mapping uses
 	// the loop's i, not the createdLogs append index.
 	purgedSet := makePurgedKeySet(partResult.purged)
-	b.purgedByLog = buildPurgedByLog(b.perOrderVolumeKeys, purgedSet)
+	b.purgedByLog = buildPurgedByLog(b.volumes.Slots(), purgedSet)
 
 	createdLogs := make([]*commonpb.Log, 0, len(logsOrRefs))
 	for i, lr := range logsOrRefs {
@@ -798,12 +798,25 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 }
 
 func NewWriteSet(fsm *Machine) *WriteSet {
-	return &WriteSet{
-		fsm:               fsm,
-		attrs:             fsm.Registry.Attrs,
-		Derived:           NewDerivedRegistry(fsm.Registry),
-		currentOrderIndex: -1,
+	ws := &WriteSet{
+		fsm:     fsm,
+		attrs:   fsm.Registry.Attrs,
+		Derived: NewDerivedRegistry(fsm.Registry),
 	}
+
+	ws.ledgers = newRawAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader](ws.Derived.Ledgers)
+	ws.boundaries = newRawAccessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader](ws.Derived.Boundaries)
+	ws.volumes = newRecorderAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader](
+		newRawAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader](ws.Derived.Volumes),
+	)
+	ws.accountMetadata = newRawAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](ws.Derived.AccountMetadata)
+	ws.ledgerMetadata = newRawAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](ws.Derived.LedgerMetadata)
+	ws.transactionReferences = newRawAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader](ws.Derived.References)
+	ws.transactionStates = newRawAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader](ws.Derived.Transactions)
+	ws.preparedQueries = newRawAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader](ws.Derived.PreparedQueries)
+	ws.indexes = newRawAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader](ws.Derived.Indexes)
+
+	return ws
 }
 
 // Reset prepares the WriteSet for a new proposal, clearing all per-proposal
@@ -833,11 +846,7 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.allVolumeUpdates = b.allVolumeUpdates[:0]
 	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
 	b.transientVolumes = nil
-	// Outer-only truncate: PutVolume below overwrites each inner slot with a
-	// fresh nil before re-growing, so an inner [:0] loop would be wasted work
-	// — the preserved [:0] slices are clobbered on the next PutVolume.
-	b.perOrderVolumeKeys = b.perOrderVolumeKeys[:0]
-	b.currentOrderIndex = -1
+	b.volumes.Reset()
 	for i := range b.purgedByLog {
 		b.purgedByLog[i] = nil
 	}
@@ -967,25 +976,65 @@ func (b *WriteSet) QueryCheckpointDeleted() uint64 {
 	return b.queryCheckpointDeleted
 }
 
-// Engine surface: the read/write/counter/chapter methods that gatedScope
-// forwards via embedding. The coverage gate method (CheckCoverage) is
-// deliberately absent here — it lives on gatedScope, which embeds
-// *WriteSet and overrides the cache-attribute Get* to insert the gate.
+// Engine surface: the per-kind Accessor methods, plus the hetero counter,
+// chapter, signing-key and bool-state methods. The Accessor methods are
+// overridden on gatedScope to layer the coverage gate; the hetero methods
+// pass through *WriteSet directly via embedding. The coverage gate
+// method (CheckCoverage) is deliberately absent here — it lives on
+// gatedScope so a future engine implementation cannot accidentally route
+// around the gate.
 
-func (b *WriteSet) GetLedger(name string) (commonpb.LedgerInfoReader, error) {
-	info, err := b.getLedgerData(name)
-	if err != nil {
-		return nil, err
-	}
+// Ledgers returns the bare ledger accessor — no coverage gate.
+func (b *WriteSet) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+	return b.ledgers
+}
 
-	return info.AsReader(), nil
+// Boundaries returns the bare boundaries accessor — no coverage gate.
+func (b *WriteSet) Boundaries() processing.Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader] {
+	return b.boundaries
+}
+
+// Volumes returns the volume accessor whose Put records the per-order
+// touch slot consumed by Merge.
+func (b *WriteSet) Volumes() processing.Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader] {
+	return b.volumes
+}
+
+// AccountMetadata returns the bare account-metadata accessor.
+func (b *WriteSet) AccountMetadata() processing.Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+	return b.accountMetadata
+}
+
+// LedgerMetadata returns the bare ledger-metadata accessor.
+func (b *WriteSet) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+	return b.ledgerMetadata
+}
+
+// TransactionReferences returns the bare transaction-reference accessor.
+func (b *WriteSet) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
+	return b.transactionReferences
+}
+
+// TransactionStates returns the bare transaction-state accessor.
+func (b *WriteSet) TransactionStates() processing.Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
+	return b.transactionStates
+}
+
+// PreparedQueries returns the bare prepared-query accessor.
+func (b *WriteSet) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
+	return b.preparedQueries
+}
+
+// Indexes returns the bare index-registry accessor.
+func (b *WriteSet) Indexes() processing.Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
+	return b.indexes
 }
 
 // getLedgerData is the internal accessor that returns the underlying
 // *LedgerInfo pointer. It exists so paths inside the state package
 // (Merge, ephemeral purge) can avoid the AsReader/Mutate clone round-trip
-// the Scope-facing GetLedger would otherwise impose. External callers
-// MUST go through GetLedger — only state-package code is trusted not to
+// the Scope-facing accessor would otherwise impose. External callers MUST
+// go through Ledgers().Get — only state-package code is trusted not to
 // mutate the cache pointer in place.
 func (b *WriteSet) getLedgerData(name string) (*commonpb.LedgerInfo, error) {
 	info, err := b.Derived.Ledgers.Get(domain.LedgerKey{Name: name})
@@ -1000,23 +1049,8 @@ func (b *WriteSet) getLedgerData(name string) (*commonpb.LedgerInfo, error) {
 	return info, nil
 }
 
-func (b *WriteSet) PutLedger(name string, info *commonpb.LedgerInfo) {
-	b.Derived.Ledgers.Put(domain.LedgerKey{Name: name}, info)
-}
-
-func (b *WriteSet) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, error) {
-	boundaries, err := b.Derived.Boundaries.Get(domain.LedgerKey{Name: ledger})
-	if err != nil {
-		return nil, err
-	}
-
-	if boundaries == nil {
-		return nil, domain.ErrNotFound
-	}
-
-	return boundaries.AsReader(), nil
-}
-
+// ResolveNumscriptContent stays as a discrete method on Scope — its
+// (ledgerName, name, version) signature does not fit the Accessor trio.
 func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error) {
 	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
 	if err != nil || info == nil {
@@ -1026,43 +1060,12 @@ func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version stri
 	return info.AsReader(), nil
 }
 
-func (b *WriteSet) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
-	b.Derived.Boundaries.Put(domain.LedgerKey{Name: ledger}, boundaries)
-}
-
-func (b *WriteSet) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
-	v, err := b.Derived.Volumes.Get(key)
-	if err != nil || v == nil {
-		return nil, err
-	}
-
-	return v.AsReader(), nil
-}
-
-func (b *WriteSet) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
-	b.Derived.Volumes.Put(key, value)
-
-	// Record the touch under the current order so Merge can compute the
-	// per-log subset of purged ephemeral accounts (see purgedByLog).
-	// currentOrderIndex < 0 means PutVolume is being called outside of an
-	// order — e.g. recovery, technical updates, ValidateTransientVolumes —
-	// where per-log attribution is meaningless; skip silently.
-	if b.currentOrderIndex < 0 {
-		return
-	}
-
-	for len(b.perOrderVolumeKeys) <= b.currentOrderIndex {
-		b.perOrderVolumeKeys = append(b.perOrderVolumeKeys, nil)
-	}
-	b.perOrderVolumeKeys[b.currentOrderIndex] = append(b.perOrderVolumeKeys[b.currentOrderIndex], key)
-}
-
 // BeginOrder tags subsequent PutVolume calls with the given zero-based order
 // index. Called by ProcessOrders before each handler invocation so the
 // WriteSet can attribute volume touches to the order that produced them. See
 // purgedByLog for how the recorded touches are consumed at Merge time.
 func (b *WriteSet) BeginOrder(orderIndex int) {
-	b.currentOrderIndex = orderIndex
+	b.volumes.BeginSlot(orderIndex)
 }
 
 // ValidateTransientVolumes checks that all transient account volumes have zero balance.
@@ -1086,7 +1089,7 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 	for key, vol := range b.Derived.Volumes.DirtyValues() {
 		compiled, ok := ledgerTypes[key.LedgerName]
 		if !ok {
-			info, err := scope.GetLedger(key.LedgerName)
+			info, err := scope.Ledgers().Get(domain.LedgerKey{Name: key.LedgerName})
 			if errors.Is(err, domain.ErrNotFound) {
 				continue
 			}
@@ -1133,57 +1136,29 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 	return nil
 }
 
-func (b *WriteSet) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
-	v, err := b.Derived.AccountMetadata.Get(key)
-	if err != nil || v == nil {
-		return nil, err
-	}
-
-	return v.AsReader(), nil
-}
-
-func (b *WriteSet) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
-	b.Derived.AccountMetadata.Put(key, value)
-}
-
-func (b *WriteSet) DeleteAccountMetadata(key domain.MetadataKey) {
-	b.Derived.AccountMetadata.Delete(key)
-}
-
-func (b *WriteSet) GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
-	v, err := b.Derived.LedgerMetadata.Get(key)
-	if err != nil || v == nil {
-		return nil, err
-	}
-
-	return v.AsReader(), nil
-}
-
-func (b *WriteSet) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
-	b.Derived.LedgerMetadata.Put(key, value)
-}
-
-func (b *WriteSet) DeleteLedgerMetadata(key domain.LedgerMetadataKey) {
-	b.Derived.LedgerMetadata.Delete(key)
-}
-
+// GetReverted is the bool-valued reversion probe — stays discrete (no Reader).
 func (b *WriteSet) GetReverted(key domain.TransactionKey) (bool, error) {
 	return b.Derived.GetReverted(key), nil
 }
 
+// PutReverted records a reversion in the pending bitset. Idempotent under
+// reverted=false (the FSM never un-reverts).
 func (b *WriteSet) PutReverted(key domain.TransactionKey, reverted bool) {
 	if reverted {
 		b.Derived.PutReverted(key)
 	}
 }
 
+// GetIdempotencyKey reads through the idempotency overlay with TTL
+// filtering. Not part of the Scope contract — production code goes
+// through fsm.Registry.Idempotency directly — but exposed on the
+// WriteSet so unit tests can drive the overlay end-to-end.
 func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
 	value, err := b.Derived.Idempotency.Get(key.Key)
 	if err != nil || value == nil {
 		return nil, err
 	}
 
-	// Check TTL expiration: treat expired keys as not found.
 	if b.fsm.Registry.Idempotency.IsExpired(value, b.Date.GetData()) {
 		return nil, nil
 	}
@@ -1191,35 +1166,12 @@ func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.Idempo
 	return value.AsReader(), nil
 }
 
+// PutIdempotencyKey stamps the proposal HLC and writes through the
+// idempotency overlay. Not part of the Scope contract; kept on the
+// WriteSet for parity with GetIdempotencyKey and the unit tests.
 func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	value.CreatedAt = b.Date.GetData() // HLC timestamp
 	b.Derived.Idempotency.Put(key.Key, value)
-}
-
-func (b *WriteSet) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
-	v, err := b.Derived.References.Get(key)
-	if err != nil || v == nil {
-		return nil, err
-	}
-
-	return v.AsReader(), nil
-}
-
-func (b *WriteSet) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
-	b.Derived.References.Put(key, value)
-}
-
-func (b *WriteSet) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
-	v, err := b.Derived.Transactions.Get(key)
-	if err != nil || v == nil {
-		return nil, err
-	}
-
-	return v.AsReader(), nil
-}
-
-func (b *WriteSet) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
-	b.Derived.Transactions.Put(key, state)
 }
 
 func (b *WriteSet) AddSigningKey(keyID string, publicKey []byte, parentKeyID string) {
@@ -1295,37 +1247,6 @@ func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error)
 
 func (b *WriteSet) SinkConfigChanged() bool {
 	return b.sinkConfigChanged
-}
-
-// GetIndex returns the Index entry for the given key as a commonpb.IndexReader,
-// or domain.ErrNotFound when absent. Returning the Reader (instead of the raw
-// *commonpb.Index) mirrors the discipline GetBoundaries / GetVolume enforce
-// for other hot-path attribute kinds (#496) — callers that need to mutate must
-// go through reader.Mutate() to obtain a clone, so the cache-resident proto
-// can't be mutated in place. The bare *WriteSet has no coverage gate; the
-// *gatedScope wrapper layers CheckCoverage on top before delegating here.
-func (b *WriteSet) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
-	idx, err := b.Derived.Indexes.Get(key)
-	if err != nil {
-		return nil, err
-	}
-
-	if idx == nil {
-		return nil, domain.ErrNotFound
-	}
-
-	return idx.AsReader(), nil
-}
-
-// PutIndex upserts an Index entry in the overlay. The FSM hot path is expected
-// to set Index.Ledger to a value matching key.LedgerID (or empty when 0).
-func (b *WriteSet) PutIndex(key domain.IndexKey, idx *commonpb.Index) {
-	b.Derived.Indexes.Put(key, idx)
-}
-
-// DeleteIndex removes an Index entry from the overlay.
-func (b *WriteSet) DeleteIndex(key domain.IndexKey) {
-	b.Derived.Indexes.Delete(key)
 }
 
 // AllVolumeUpdates returns all volume updates (kept + purged) captured during Merge.
@@ -1616,29 +1537,6 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 	}
 
 	return nil
-}
-
-func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error) {
-	pq, err := b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{LedgerName: ledgerName, Name: name})
-	// Treat a cache miss as "doesn't exist". A delete in an earlier entry of
-	// the same batch will have cleared the cache
-	if errors.Is(err, domain.ErrNotFound) {
-		return nil, nil
-	}
-
-	if err != nil || pq == nil {
-		return nil, err
-	}
-
-	return pq.AsReader(), nil
-}
-
-func (b *WriteSet) PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery) {
-	b.Derived.PreparedQueries.Put(domain.PreparedQueryKey{LedgerName: ledgerName, Name: pq.GetName()}, pq)
-}
-
-func (b *WriteSet) DeletePreparedQuery(ledgerName string, name string) {
-	b.Derived.PreparedQueries.Delete(domain.PreparedQueryKey{LedgerName: ledgerName, Name: name})
 }
 
 // Numscript library operations

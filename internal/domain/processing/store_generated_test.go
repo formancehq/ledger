@@ -100,6 +100,44 @@ func (m *MockScope) EXPECT() *MockScopeMockRecorder {
 	return m.recorder
 }
 
+// AccountMetadata mocks base method.
+func (m *MockScope) AccountMetadata() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AccountMetadata")
+	ret0, _ := ret[0].(Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader])
+	return ret0
+}
+
+// AccountMetadata indicates an expected call of AccountMetadata.
+func (mr *MockScopeMockRecorder) AccountMetadata() *MockScopeAccountMetadataCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccountMetadata", reflect.TypeOf((*MockScope)(nil).AccountMetadata))
+	return &MockScopeAccountMetadataCall{Call: call}
+}
+
+// MockScopeAccountMetadataCall wrap *gomock.Call
+type MockScopeAccountMetadataCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeAccountMetadataCall) Return(arg0 Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeAccountMetadataCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeAccountMetadataCall) Do(f func() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeAccountMetadataCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeAccountMetadataCall) DoAndReturn(f func() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeAccountMetadataCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // AddClosingChapter mocks base method.
 func (m *MockScope) AddClosingChapter(chapter *commonpb.Chapter) {
 	m.ctrl.T.Helper()
@@ -172,6 +210,44 @@ func (c *MockScopeAddSigningKeyCall) DoAndReturn(f func(string, []byte, string))
 	return c
 }
 
+// Boundaries mocks base method.
+func (m *MockScope) Boundaries() Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Boundaries")
+	ret0, _ := ret[0].(Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader])
+	return ret0
+}
+
+// Boundaries indicates an expected call of Boundaries.
+func (mr *MockScopeMockRecorder) Boundaries() *MockScopeBoundariesCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Boundaries", reflect.TypeOf((*MockScope)(nil).Boundaries))
+	return &MockScopeBoundariesCall{Call: call}
+}
+
+// MockScopeBoundariesCall wrap *gomock.Call
+type MockScopeBoundariesCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeBoundariesCall) Return(arg0 Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]) *MockScopeBoundariesCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeBoundariesCall) Do(f func() Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]) *MockScopeBoundariesCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeBoundariesCall) DoAndReturn(f func() Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]) *MockScopeBoundariesCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // CheckCoverage mocks base method.
 func (m *MockScope) CheckCoverage(kind byte, canonical []byte) error {
 	m.ctrl.T.Helper()
@@ -206,114 +282,6 @@ func (c *MockScopeCheckCoverageCall) Do(f func(byte, []byte) error) *MockScopeCh
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeCheckCoverageCall) DoAndReturn(f func(byte, []byte) error) *MockScopeCheckCoverageCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// DeleteAccountMetadata mocks base method.
-func (m *MockScope) DeleteAccountMetadata(key domain.MetadataKey) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteAccountMetadata", key)
-}
-
-// DeleteAccountMetadata indicates an expected call of DeleteAccountMetadata.
-func (mr *MockScopeMockRecorder) DeleteAccountMetadata(key any) *MockScopeDeleteAccountMetadataCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*MockScope)(nil).DeleteAccountMetadata), key)
-	return &MockScopeDeleteAccountMetadataCall{Call: call}
-}
-
-// MockScopeDeleteAccountMetadataCall wrap *gomock.Call
-type MockScopeDeleteAccountMetadataCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeDeleteAccountMetadataCall) Return() *MockScopeDeleteAccountMetadataCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeDeleteAccountMetadataCall) Do(f func(domain.MetadataKey)) *MockScopeDeleteAccountMetadataCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeDeleteAccountMetadataCall) DoAndReturn(f func(domain.MetadataKey)) *MockScopeDeleteAccountMetadataCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// DeleteIndex mocks base method.
-func (m *MockScope) DeleteIndex(key domain.IndexKey) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteIndex", key)
-}
-
-// DeleteIndex indicates an expected call of DeleteIndex.
-func (mr *MockScopeMockRecorder) DeleteIndex(key any) *MockScopeDeleteIndexCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteIndex", reflect.TypeOf((*MockScope)(nil).DeleteIndex), key)
-	return &MockScopeDeleteIndexCall{Call: call}
-}
-
-// MockScopeDeleteIndexCall wrap *gomock.Call
-type MockScopeDeleteIndexCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeDeleteIndexCall) Return() *MockScopeDeleteIndexCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeDeleteIndexCall) Do(f func(domain.IndexKey)) *MockScopeDeleteIndexCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeDeleteIndexCall) DoAndReturn(f func(domain.IndexKey)) *MockScopeDeleteIndexCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// DeleteLedgerMetadata mocks base method.
-func (m *MockScope) DeleteLedgerMetadata(key domain.LedgerMetadataKey) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteLedgerMetadata", key)
-}
-
-// DeleteLedgerMetadata indicates an expected call of DeleteLedgerMetadata.
-func (mr *MockScopeMockRecorder) DeleteLedgerMetadata(key any) *MockScopeDeleteLedgerMetadataCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLedgerMetadata", reflect.TypeOf((*MockScope)(nil).DeleteLedgerMetadata), key)
-	return &MockScopeDeleteLedgerMetadataCall{Call: call}
-}
-
-// MockScopeDeleteLedgerMetadataCall wrap *gomock.Call
-type MockScopeDeleteLedgerMetadataCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeDeleteLedgerMetadataCall) Return() *MockScopeDeleteLedgerMetadataCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeDeleteLedgerMetadataCall) Do(f func(domain.LedgerMetadataKey)) *MockScopeDeleteLedgerMetadataCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeDeleteLedgerMetadataCall) DoAndReturn(f func(domain.LedgerMetadataKey)) *MockScopeDeleteLedgerMetadataCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -354,42 +322,6 @@ func (c *MockScopeDeleteNumscriptLatestCall) DoAndReturn(f func(string, string))
 	return c
 }
 
-// DeletePreparedQuery mocks base method.
-func (m *MockScope) DeletePreparedQuery(ledgerName, name string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeletePreparedQuery", ledgerName, name)
-}
-
-// DeletePreparedQuery indicates an expected call of DeletePreparedQuery.
-func (mr *MockScopeMockRecorder) DeletePreparedQuery(ledgerName, name any) *MockScopeDeletePreparedQueryCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePreparedQuery", reflect.TypeOf((*MockScope)(nil).DeletePreparedQuery), ledgerName, name)
-	return &MockScopeDeletePreparedQueryCall{Call: call}
-}
-
-// MockScopeDeletePreparedQueryCall wrap *gomock.Call
-type MockScopeDeletePreparedQueryCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeDeletePreparedQueryCall) Return() *MockScopeDeletePreparedQueryCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeDeletePreparedQueryCall) Do(f func(string, string)) *MockScopeDeletePreparedQueryCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeDeletePreparedQueryCall) DoAndReturn(f func(string, string)) *MockScopeDeletePreparedQueryCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // DeleteQueryCheckpoint mocks base method.
 func (m *MockScope) DeleteQueryCheckpoint(checkpointID uint64) {
 	m.ctrl.T.Helper()
@@ -422,84 +354,6 @@ func (c *MockScopeDeleteQueryCheckpointCall) Do(f func(uint64)) *MockScopeDelete
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeDeleteQueryCheckpointCall) DoAndReturn(f func(uint64)) *MockScopeDeleteQueryCheckpointCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetAccountMetadata mocks base method.
-func (m *MockScope) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAccountMetadata", key)
-	ret0, _ := ret[0].(commonpb.MetadataValueReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetAccountMetadata indicates an expected call of GetAccountMetadata.
-func (mr *MockScopeMockRecorder) GetAccountMetadata(key any) *MockScopeGetAccountMetadataCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccountMetadata", reflect.TypeOf((*MockScope)(nil).GetAccountMetadata), key)
-	return &MockScopeGetAccountMetadataCall{Call: call}
-}
-
-// MockScopeGetAccountMetadataCall wrap *gomock.Call
-type MockScopeGetAccountMetadataCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetAccountMetadataCall) Return(arg0 commonpb.MetadataValueReader, arg1 error) *MockScopeGetAccountMetadataCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetAccountMetadataCall) Do(f func(domain.MetadataKey) (commonpb.MetadataValueReader, error)) *MockScopeGetAccountMetadataCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetAccountMetadataCall) DoAndReturn(f func(domain.MetadataKey) (commonpb.MetadataValueReader, error)) *MockScopeGetAccountMetadataCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetBoundaries mocks base method.
-func (m *MockScope) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBoundaries", ledger)
-	ret0, _ := ret[0].(raftcmdpb.LedgerBoundariesReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetBoundaries indicates an expected call of GetBoundaries.
-func (mr *MockScopeMockRecorder) GetBoundaries(ledger any) *MockScopeGetBoundariesCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBoundaries", reflect.TypeOf((*MockScope)(nil).GetBoundaries), ledger)
-	return &MockScopeGetBoundariesCall{Call: call}
-}
-
-// MockScopeGetBoundariesCall wrap *gomock.Call
-type MockScopeGetBoundariesCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetBoundariesCall) Return(arg0 raftcmdpb.LedgerBoundariesReader, arg1 error) *MockScopeGetBoundariesCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetBoundariesCall) Do(f func(string) (raftcmdpb.LedgerBoundariesReader, error)) *MockScopeGetBoundariesCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetBoundariesCall) DoAndReturn(f func(string) (raftcmdpb.LedgerBoundariesReader, error)) *MockScopeGetBoundariesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -693,162 +547,6 @@ func (c *MockScopeGetDateCall) Do(f func() commonpb.TimestampReader) *MockScopeG
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeGetDateCall) DoAndReturn(f func() commonpb.TimestampReader) *MockScopeGetDateCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetIdempotencyKey mocks base method.
-func (m *MockScope) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetIdempotencyKey", key)
-	ret0, _ := ret[0].(commonpb.IdempotencyKeyValueReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetIdempotencyKey indicates an expected call of GetIdempotencyKey.
-func (mr *MockScopeMockRecorder) GetIdempotencyKey(key any) *MockScopeGetIdempotencyKeyCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIdempotencyKey", reflect.TypeOf((*MockScope)(nil).GetIdempotencyKey), key)
-	return &MockScopeGetIdempotencyKeyCall{Call: call}
-}
-
-// MockScopeGetIdempotencyKeyCall wrap *gomock.Call
-type MockScopeGetIdempotencyKeyCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetIdempotencyKeyCall) Return(arg0 commonpb.IdempotencyKeyValueReader, arg1 error) *MockScopeGetIdempotencyKeyCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetIdempotencyKeyCall) Do(f func(domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error)) *MockScopeGetIdempotencyKeyCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetIdempotencyKeyCall) DoAndReturn(f func(domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error)) *MockScopeGetIdempotencyKeyCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetIndex mocks base method.
-func (m *MockScope) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetIndex", key)
-	ret0, _ := ret[0].(commonpb.IndexReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetIndex indicates an expected call of GetIndex.
-func (mr *MockScopeMockRecorder) GetIndex(key any) *MockScopeGetIndexCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndex", reflect.TypeOf((*MockScope)(nil).GetIndex), key)
-	return &MockScopeGetIndexCall{Call: call}
-}
-
-// MockScopeGetIndexCall wrap *gomock.Call
-type MockScopeGetIndexCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetIndexCall) Return(arg0 commonpb.IndexReader, arg1 error) *MockScopeGetIndexCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetIndexCall) Do(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockScopeGetIndexCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetIndexCall) DoAndReturn(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockScopeGetIndexCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetLedger mocks base method.
-func (m *MockScope) GetLedger(name string) (commonpb.LedgerInfoReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLedger", name)
-	ret0, _ := ret[0].(commonpb.LedgerInfoReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetLedger indicates an expected call of GetLedger.
-func (mr *MockScopeMockRecorder) GetLedger(name any) *MockScopeGetLedgerCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedger", reflect.TypeOf((*MockScope)(nil).GetLedger), name)
-	return &MockScopeGetLedgerCall{Call: call}
-}
-
-// MockScopeGetLedgerCall wrap *gomock.Call
-type MockScopeGetLedgerCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetLedgerCall) Return(arg0 commonpb.LedgerInfoReader, arg1 error) *MockScopeGetLedgerCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetLedgerCall) Do(f func(string) (commonpb.LedgerInfoReader, error)) *MockScopeGetLedgerCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetLedgerCall) DoAndReturn(f func(string) (commonpb.LedgerInfoReader, error)) *MockScopeGetLedgerCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetLedgerMetadata mocks base method.
-func (m *MockScope) GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLedgerMetadata", key)
-	ret0, _ := ret[0].(commonpb.MetadataValueReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetLedgerMetadata indicates an expected call of GetLedgerMetadata.
-func (mr *MockScopeMockRecorder) GetLedgerMetadata(key any) *MockScopeGetLedgerMetadataCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerMetadata", reflect.TypeOf((*MockScope)(nil).GetLedgerMetadata), key)
-	return &MockScopeGetLedgerMetadataCall{Call: call}
-}
-
-// MockScopeGetLedgerMetadataCall wrap *gomock.Call
-type MockScopeGetLedgerMetadataCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetLedgerMetadataCall) Return(arg0 commonpb.MetadataValueReader, arg1 error) *MockScopeGetLedgerMetadataCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetLedgerMetadataCall) Do(f func(domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error)) *MockScopeGetLedgerMetadataCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetLedgerMetadataCall) DoAndReturn(f func(domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error)) *MockScopeGetLedgerMetadataCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1082,45 +780,6 @@ func (c *MockScopeGetNumscriptLatestVersionCall) DoAndReturn(f func(string, stri
 	return c
 }
 
-// GetPreparedQuery mocks base method.
-func (m *MockScope) GetPreparedQuery(ledgerName, name string) (commonpb.PreparedQueryReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPreparedQuery", ledgerName, name)
-	ret0, _ := ret[0].(commonpb.PreparedQueryReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetPreparedQuery indicates an expected call of GetPreparedQuery.
-func (mr *MockScopeMockRecorder) GetPreparedQuery(ledgerName, name any) *MockScopeGetPreparedQueryCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPreparedQuery", reflect.TypeOf((*MockScope)(nil).GetPreparedQuery), ledgerName, name)
-	return &MockScopeGetPreparedQueryCall{Call: call}
-}
-
-// MockScopeGetPreparedQueryCall wrap *gomock.Call
-type MockScopeGetPreparedQueryCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetPreparedQueryCall) Return(arg0 commonpb.PreparedQueryReader, arg1 error) *MockScopeGetPreparedQueryCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetPreparedQueryCall) Do(f func(string, string) (commonpb.PreparedQueryReader, error)) *MockScopeGetPreparedQueryCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetPreparedQueryCall) DoAndReturn(f func(string, string) (commonpb.PreparedQueryReader, error)) *MockScopeGetPreparedQueryCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // GetReverted mocks base method.
 func (m *MockScope) GetReverted(key domain.TransactionKey) (bool, error) {
 	m.ctrl.T.Helper()
@@ -1233,123 +892,6 @@ func (c *MockScopeGetSinkConfigCall) Do(f func(string) (commonpb.SinkConfigReade
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeGetSinkConfigCall) DoAndReturn(f func(string) (commonpb.SinkConfigReader, error)) *MockScopeGetSinkConfigCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetTransactionReference mocks base method.
-func (m *MockScope) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTransactionReference", key)
-	ret0, _ := ret[0].(commonpb.TransactionReferenceValueReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetTransactionReference indicates an expected call of GetTransactionReference.
-func (mr *MockScopeMockRecorder) GetTransactionReference(key any) *MockScopeGetTransactionReferenceCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionReference", reflect.TypeOf((*MockScope)(nil).GetTransactionReference), key)
-	return &MockScopeGetTransactionReferenceCall{Call: call}
-}
-
-// MockScopeGetTransactionReferenceCall wrap *gomock.Call
-type MockScopeGetTransactionReferenceCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetTransactionReferenceCall) Return(arg0 commonpb.TransactionReferenceValueReader, arg1 error) *MockScopeGetTransactionReferenceCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetTransactionReferenceCall) Do(f func(domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error)) *MockScopeGetTransactionReferenceCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetTransactionReferenceCall) DoAndReturn(f func(domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error)) *MockScopeGetTransactionReferenceCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetTransactionState mocks base method.
-func (m *MockScope) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTransactionState", key)
-	ret0, _ := ret[0].(commonpb.TransactionStateReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetTransactionState indicates an expected call of GetTransactionState.
-func (mr *MockScopeMockRecorder) GetTransactionState(key any) *MockScopeGetTransactionStateCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionState", reflect.TypeOf((*MockScope)(nil).GetTransactionState), key)
-	return &MockScopeGetTransactionStateCall{Call: call}
-}
-
-// MockScopeGetTransactionStateCall wrap *gomock.Call
-type MockScopeGetTransactionStateCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetTransactionStateCall) Return(arg0 commonpb.TransactionStateReader, arg1 error) *MockScopeGetTransactionStateCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetTransactionStateCall) Do(f func(domain.TransactionKey) (commonpb.TransactionStateReader, error)) *MockScopeGetTransactionStateCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetTransactionStateCall) DoAndReturn(f func(domain.TransactionKey) (commonpb.TransactionStateReader, error)) *MockScopeGetTransactionStateCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetVolume mocks base method.
-func (m *MockScope) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetVolume", key)
-	ret0, _ := ret[0].(raftcmdpb.VolumePairReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetVolume indicates an expected call of GetVolume.
-func (mr *MockScopeMockRecorder) GetVolume(key any) *MockScopeGetVolumeCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolume", reflect.TypeOf((*MockScope)(nil).GetVolume), key)
-	return &MockScopeGetVolumeCall{Call: call}
-}
-
-// MockScopeGetVolumeCall wrap *gomock.Call
-type MockScopeGetVolumeCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetVolumeCall) Return(arg0 raftcmdpb.VolumePairReader, arg1 error) *MockScopeGetVolumeCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetVolumeCall) Do(f func(domain.VolumeKey) (raftcmdpb.VolumePairReader, error)) *MockScopeGetVolumeCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetVolumeCall) DoAndReturn(f func(domain.VolumeKey) (raftcmdpb.VolumePairReader, error)) *MockScopeGetVolumeCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1506,6 +1048,120 @@ func (c *MockScopeIncrementNextSequenceIDCall) DoAndReturn(f func() uint64) *Moc
 	return c
 }
 
+// Indexes mocks base method.
+func (m *MockScope) Indexes() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Indexes")
+	ret0, _ := ret[0].(Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader])
+	return ret0
+}
+
+// Indexes indicates an expected call of Indexes.
+func (mr *MockScopeMockRecorder) Indexes() *MockScopeIndexesCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Indexes", reflect.TypeOf((*MockScope)(nil).Indexes))
+	return &MockScopeIndexesCall{Call: call}
+}
+
+// MockScopeIndexesCall wrap *gomock.Call
+type MockScopeIndexesCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeIndexesCall) Return(arg0 Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]) *MockScopeIndexesCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeIndexesCall) Do(f func() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]) *MockScopeIndexesCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeIndexesCall) DoAndReturn(f func() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]) *MockScopeIndexesCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// LedgerMetadata mocks base method.
+func (m *MockScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LedgerMetadata")
+	ret0, _ := ret[0].(Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader])
+	return ret0
+}
+
+// LedgerMetadata indicates an expected call of LedgerMetadata.
+func (mr *MockScopeMockRecorder) LedgerMetadata() *MockScopeLedgerMetadataCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LedgerMetadata", reflect.TypeOf((*MockScope)(nil).LedgerMetadata))
+	return &MockScopeLedgerMetadataCall{Call: call}
+}
+
+// MockScopeLedgerMetadataCall wrap *gomock.Call
+type MockScopeLedgerMetadataCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeLedgerMetadataCall) Return(arg0 Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeLedgerMetadataCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeLedgerMetadataCall) Do(f func() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeLedgerMetadataCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeLedgerMetadataCall) DoAndReturn(f func() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]) *MockScopeLedgerMetadataCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// Ledgers mocks base method.
+func (m *MockScope) Ledgers() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Ledgers")
+	ret0, _ := ret[0].(Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader])
+	return ret0
+}
+
+// Ledgers indicates an expected call of Ledgers.
+func (mr *MockScopeMockRecorder) Ledgers() *MockScopeLedgersCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ledgers", reflect.TypeOf((*MockScope)(nil).Ledgers))
+	return &MockScopeLedgersCall{Call: call}
+}
+
+// MockScopeLedgersCall wrap *gomock.Call
+type MockScopeLedgersCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeLedgersCall) Return(arg0 Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]) *MockScopeLedgersCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeLedgersCall) Do(f func() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]) *MockScopeLedgersCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeLedgersCall) DoAndReturn(f func() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]) *MockScopeLedgersCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // NumscriptVersionExists mocks base method.
 func (m *MockScope) NumscriptVersionExists(ledgerName, name, version string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -1545,218 +1201,40 @@ func (c *MockScopeNumscriptVersionExistsCall) DoAndReturn(f func(string, string,
 	return c
 }
 
-// PutAccountMetadata mocks base method.
-func (m *MockScope) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
+// PreparedQueries mocks base method.
+func (m *MockScope) PreparedQueries() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutAccountMetadata", key, value)
+	ret := m.ctrl.Call(m, "PreparedQueries")
+	ret0, _ := ret[0].(Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader])
+	return ret0
 }
 
-// PutAccountMetadata indicates an expected call of PutAccountMetadata.
-func (mr *MockScopeMockRecorder) PutAccountMetadata(key, value any) *MockScopePutAccountMetadataCall {
+// PreparedQueries indicates an expected call of PreparedQueries.
+func (mr *MockScopeMockRecorder) PreparedQueries() *MockScopePreparedQueriesCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutAccountMetadata", reflect.TypeOf((*MockScope)(nil).PutAccountMetadata), key, value)
-	return &MockScopePutAccountMetadataCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PreparedQueries", reflect.TypeOf((*MockScope)(nil).PreparedQueries))
+	return &MockScopePreparedQueriesCall{Call: call}
 }
 
-// MockScopePutAccountMetadataCall wrap *gomock.Call
-type MockScopePutAccountMetadataCall struct {
+// MockScopePreparedQueriesCall wrap *gomock.Call
+type MockScopePreparedQueriesCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopePutAccountMetadataCall) Return() *MockScopePutAccountMetadataCall {
-	c.Call = c.Call.Return()
+func (c *MockScopePreparedQueriesCall) Return(arg0 Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]) *MockScopePreparedQueriesCall {
+	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopePutAccountMetadataCall) Do(f func(domain.MetadataKey, *commonpb.MetadataValue)) *MockScopePutAccountMetadataCall {
+func (c *MockScopePreparedQueriesCall) Do(f func() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]) *MockScopePreparedQueriesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutAccountMetadataCall) DoAndReturn(f func(domain.MetadataKey, *commonpb.MetadataValue)) *MockScopePutAccountMetadataCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// PutBoundaries mocks base method.
-func (m *MockScope) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutBoundaries", ledger, boundaries)
-}
-
-// PutBoundaries indicates an expected call of PutBoundaries.
-func (mr *MockScopeMockRecorder) PutBoundaries(ledger, boundaries any) *MockScopePutBoundariesCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutBoundaries", reflect.TypeOf((*MockScope)(nil).PutBoundaries), ledger, boundaries)
-	return &MockScopePutBoundariesCall{Call: call}
-}
-
-// MockScopePutBoundariesCall wrap *gomock.Call
-type MockScopePutBoundariesCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopePutBoundariesCall) Return() *MockScopePutBoundariesCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopePutBoundariesCall) Do(f func(string, *raftcmdpb.LedgerBoundaries)) *MockScopePutBoundariesCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutBoundariesCall) DoAndReturn(f func(string, *raftcmdpb.LedgerBoundaries)) *MockScopePutBoundariesCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// PutIdempotencyKey mocks base method.
-func (m *MockScope) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutIdempotencyKey", key, value)
-}
-
-// PutIdempotencyKey indicates an expected call of PutIdempotencyKey.
-func (mr *MockScopeMockRecorder) PutIdempotencyKey(key, value any) *MockScopePutIdempotencyKeyCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutIdempotencyKey", reflect.TypeOf((*MockScope)(nil).PutIdempotencyKey), key, value)
-	return &MockScopePutIdempotencyKeyCall{Call: call}
-}
-
-// MockScopePutIdempotencyKeyCall wrap *gomock.Call
-type MockScopePutIdempotencyKeyCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopePutIdempotencyKeyCall) Return() *MockScopePutIdempotencyKeyCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopePutIdempotencyKeyCall) Do(f func(domain.IdempotencyKey, *commonpb.IdempotencyKeyValue)) *MockScopePutIdempotencyKeyCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutIdempotencyKeyCall) DoAndReturn(f func(domain.IdempotencyKey, *commonpb.IdempotencyKeyValue)) *MockScopePutIdempotencyKeyCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// PutIndex mocks base method.
-func (m *MockScope) PutIndex(key domain.IndexKey, idx *commonpb.Index) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutIndex", key, idx)
-}
-
-// PutIndex indicates an expected call of PutIndex.
-func (mr *MockScopeMockRecorder) PutIndex(key, idx any) *MockScopePutIndexCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutIndex", reflect.TypeOf((*MockScope)(nil).PutIndex), key, idx)
-	return &MockScopePutIndexCall{Call: call}
-}
-
-// MockScopePutIndexCall wrap *gomock.Call
-type MockScopePutIndexCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopePutIndexCall) Return() *MockScopePutIndexCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopePutIndexCall) Do(f func(domain.IndexKey, *commonpb.Index)) *MockScopePutIndexCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutIndexCall) DoAndReturn(f func(domain.IndexKey, *commonpb.Index)) *MockScopePutIndexCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// PutLedger mocks base method.
-func (m *MockScope) PutLedger(name string, info *commonpb.LedgerInfo) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutLedger", name, info)
-}
-
-// PutLedger indicates an expected call of PutLedger.
-func (mr *MockScopeMockRecorder) PutLedger(name, info any) *MockScopePutLedgerCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutLedger", reflect.TypeOf((*MockScope)(nil).PutLedger), name, info)
-	return &MockScopePutLedgerCall{Call: call}
-}
-
-// MockScopePutLedgerCall wrap *gomock.Call
-type MockScopePutLedgerCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopePutLedgerCall) Return() *MockScopePutLedgerCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopePutLedgerCall) Do(f func(string, *commonpb.LedgerInfo)) *MockScopePutLedgerCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutLedgerCall) DoAndReturn(f func(string, *commonpb.LedgerInfo)) *MockScopePutLedgerCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// PutLedgerMetadata mocks base method.
-func (m *MockScope) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutLedgerMetadata", key, value)
-}
-
-// PutLedgerMetadata indicates an expected call of PutLedgerMetadata.
-func (mr *MockScopeMockRecorder) PutLedgerMetadata(key, value any) *MockScopePutLedgerMetadataCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutLedgerMetadata", reflect.TypeOf((*MockScope)(nil).PutLedgerMetadata), key, value)
-	return &MockScopePutLedgerMetadataCall{Call: call}
-}
-
-// MockScopePutLedgerMetadataCall wrap *gomock.Call
-type MockScopePutLedgerMetadataCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopePutLedgerMetadataCall) Return() *MockScopePutLedgerMetadataCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopePutLedgerMetadataCall) Do(f func(domain.LedgerMetadataKey, *commonpb.MetadataValue)) *MockScopePutLedgerMetadataCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutLedgerMetadataCall) DoAndReturn(f func(domain.LedgerMetadataKey, *commonpb.MetadataValue)) *MockScopePutLedgerMetadataCall {
+func (c *MockScopePreparedQueriesCall) DoAndReturn(f func() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]) *MockScopePreparedQueriesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1797,42 +1275,6 @@ func (c *MockScopePutNumscriptCall) DoAndReturn(f func(string, *commonpb.Numscri
 	return c
 }
 
-// PutPreparedQuery mocks base method.
-func (m *MockScope) PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutPreparedQuery", ledgerName, pq)
-}
-
-// PutPreparedQuery indicates an expected call of PutPreparedQuery.
-func (mr *MockScopeMockRecorder) PutPreparedQuery(ledgerName, pq any) *MockScopePutPreparedQueryCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutPreparedQuery", reflect.TypeOf((*MockScope)(nil).PutPreparedQuery), ledgerName, pq)
-	return &MockScopePutPreparedQueryCall{Call: call}
-}
-
-// MockScopePutPreparedQueryCall wrap *gomock.Call
-type MockScopePutPreparedQueryCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopePutPreparedQueryCall) Return() *MockScopePutPreparedQueryCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopePutPreparedQueryCall) Do(f func(string, *commonpb.PreparedQuery)) *MockScopePutPreparedQueryCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutPreparedQueryCall) DoAndReturn(f func(string, *commonpb.PreparedQuery)) *MockScopePutPreparedQueryCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // PutReverted mocks base method.
 func (m *MockScope) PutReverted(key domain.TransactionKey, reverted bool) {
 	m.ctrl.T.Helper()
@@ -1865,114 +1307,6 @@ func (c *MockScopePutRevertedCall) Do(f func(domain.TransactionKey, bool)) *Mock
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopePutRevertedCall) DoAndReturn(f func(domain.TransactionKey, bool)) *MockScopePutRevertedCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// PutTransactionReference mocks base method.
-func (m *MockScope) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutTransactionReference", key, value)
-}
-
-// PutTransactionReference indicates an expected call of PutTransactionReference.
-func (mr *MockScopeMockRecorder) PutTransactionReference(key, value any) *MockScopePutTransactionReferenceCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutTransactionReference", reflect.TypeOf((*MockScope)(nil).PutTransactionReference), key, value)
-	return &MockScopePutTransactionReferenceCall{Call: call}
-}
-
-// MockScopePutTransactionReferenceCall wrap *gomock.Call
-type MockScopePutTransactionReferenceCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopePutTransactionReferenceCall) Return() *MockScopePutTransactionReferenceCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopePutTransactionReferenceCall) Do(f func(domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue)) *MockScopePutTransactionReferenceCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutTransactionReferenceCall) DoAndReturn(f func(domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue)) *MockScopePutTransactionReferenceCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// PutTransactionState mocks base method.
-func (m *MockScope) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutTransactionState", key, state)
-}
-
-// PutTransactionState indicates an expected call of PutTransactionState.
-func (mr *MockScopeMockRecorder) PutTransactionState(key, state any) *MockScopePutTransactionStateCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutTransactionState", reflect.TypeOf((*MockScope)(nil).PutTransactionState), key, state)
-	return &MockScopePutTransactionStateCall{Call: call}
-}
-
-// MockScopePutTransactionStateCall wrap *gomock.Call
-type MockScopePutTransactionStateCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopePutTransactionStateCall) Return() *MockScopePutTransactionStateCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopePutTransactionStateCall) Do(f func(domain.TransactionKey, *commonpb.TransactionState)) *MockScopePutTransactionStateCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutTransactionStateCall) DoAndReturn(f func(domain.TransactionKey, *commonpb.TransactionState)) *MockScopePutTransactionStateCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// PutVolume mocks base method.
-func (m *MockScope) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutVolume", key, value)
-}
-
-// PutVolume indicates an expected call of PutVolume.
-func (mr *MockScopeMockRecorder) PutVolume(key, value any) *MockScopePutVolumeCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutVolume", reflect.TypeOf((*MockScope)(nil).PutVolume), key, value)
-	return &MockScopePutVolumeCall{Call: call}
-}
-
-// MockScopePutVolumeCall wrap *gomock.Call
-type MockScopePutVolumeCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopePutVolumeCall) Return() *MockScopePutVolumeCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopePutVolumeCall) Do(f func(domain.VolumeKey, *raftcmdpb.VolumePair)) *MockScopePutVolumeCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopePutVolumeCall) DoAndReturn(f func(domain.VolumeKey, *raftcmdpb.VolumePair)) *MockScopePutVolumeCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -2232,6 +1566,82 @@ func (c *MockScopeSetRequireSignaturesCall) DoAndReturn(f func(bool)) *MockScope
 	return c
 }
 
+// TransactionReferences mocks base method.
+func (m *MockScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TransactionReferences")
+	ret0, _ := ret[0].(Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader])
+	return ret0
+}
+
+// TransactionReferences indicates an expected call of TransactionReferences.
+func (mr *MockScopeMockRecorder) TransactionReferences() *MockScopeTransactionReferencesCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransactionReferences", reflect.TypeOf((*MockScope)(nil).TransactionReferences))
+	return &MockScopeTransactionReferencesCall{Call: call}
+}
+
+// MockScopeTransactionReferencesCall wrap *gomock.Call
+type MockScopeTransactionReferencesCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeTransactionReferencesCall) Return(arg0 Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeTransactionReferencesCall) Do(f func() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeTransactionReferencesCall) DoAndReturn(f func() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]) *MockScopeTransactionReferencesCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// TransactionStates mocks base method.
+func (m *MockScope) TransactionStates() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TransactionStates")
+	ret0, _ := ret[0].(Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader])
+	return ret0
+}
+
+// TransactionStates indicates an expected call of TransactionStates.
+func (mr *MockScopeMockRecorder) TransactionStates() *MockScopeTransactionStatesCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransactionStates", reflect.TypeOf((*MockScope)(nil).TransactionStates))
+	return &MockScopeTransactionStatesCall{Call: call}
+}
+
+// MockScopeTransactionStatesCall wrap *gomock.Call
+type MockScopeTransactionStatesCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeTransactionStatesCall) Return(arg0 Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeTransactionStatesCall) Do(f func() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeTransactionStatesCall) DoAndReturn(f func() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // UpdateChapter mocks base method.
 func (m *MockScope) UpdateChapter(chapter *commonpb.Chapter) {
 	m.ctrl.T.Helper()
@@ -2264,6 +1674,44 @@ func (c *MockScopeUpdateChapterCall) Do(f func(*commonpb.Chapter)) *MockScopeUpd
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeUpdateChapterCall) DoAndReturn(f func(*commonpb.Chapter)) *MockScopeUpdateChapterCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// Volumes mocks base method.
+func (m *MockScope) Volumes() Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Volumes")
+	ret0, _ := ret[0].(Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader])
+	return ret0
+}
+
+// Volumes indicates an expected call of Volumes.
+func (mr *MockScopeMockRecorder) Volumes() *MockScopeVolumesCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Volumes", reflect.TypeOf((*MockScope)(nil).Volumes))
+	return &MockScopeVolumesCall{Call: call}
+}
+
+// MockScopeVolumesCall wrap *gomock.Call
+type MockScopeVolumesCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeVolumesCall) Return(arg0 Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]) *MockScopeVolumesCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeVolumesCall) Do(f func() Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]) *MockScopeVolumesCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeVolumesCall) DoAndReturn(f func() Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]) *MockScopeVolumesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

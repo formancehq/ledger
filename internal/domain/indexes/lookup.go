@@ -10,12 +10,13 @@ import (
 //go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=lookup.go -destination=lookup_generated_test.go -package=indexes_test Lookup,IndexWriter
 
 // Lookup is implemented by anything that can serve a point lookup on the
-// bucket-scoped index registry. The FSM hot path uses the Scope view (with
-// coverage gating); read-side handlers use a Pebble-backed view through the
-// readstore. The returned value is a commonpb.IndexReader so callers cannot
-// mutate the cache-resident proto in place — mirror the discipline that
-// raftcmdpb.LedgerBoundariesReader / VolumePairReader enforce for the other
-// hot-path attribute kinds (#496).
+// bucket-scoped index registry. The FSM hot path passes Scope.Indexes()
+// (a processing.Accessor whose Get satisfies this shape); read-side
+// handlers pass a Pebble-backed view through the readstore. The returned
+// value is a commonpb.IndexReader so callers cannot mutate the
+// cache-resident proto in place — mirror the discipline that
+// raftcmdpb.LedgerBoundariesReader / VolumePairReader enforce for the
+// other hot-path attribute kinds (#496).
 //
 // Return contract:
 //   - (idx, nil): entry exists and was returned.
@@ -24,13 +25,15 @@ import (
 //     FSM hot path, an *ErrCoverageMiss when the proposer did not declare
 //     the key — the apply path bubbles it up as a business rejection.
 type Lookup interface {
-	GetIndex(key domain.IndexKey) (commonpb.IndexReader, error)
+	Get(key domain.IndexKey) (commonpb.IndexReader, error)
 }
 
-// IndexWriter is implemented by the WriteSet used during FSM apply.
+// IndexWriter is implemented by the FSM-apply Accessor returned from
+// Scope.Indexes(). Method names match Accessor so the same instance
+// satisfies both Lookup and IndexWriter without an adapter.
 type IndexWriter interface {
-	PutIndex(key domain.IndexKey, idx *commonpb.Index)
-	DeleteIndex(key domain.IndexKey)
+	Put(key domain.IndexKey, idx *commonpb.Index)
+	Delete(key domain.IndexKey)
 }
 
 // KeyFor builds the registry key for an index. An empty ledgerName addresses
@@ -56,7 +59,7 @@ func Find(r Lookup, ledgerName string, id *commonpb.IndexID) (commonpb.IndexRead
 		return nil, nil
 	}
 
-	idx, err := r.GetIndex(KeyFor(ledgerName, id))
+	idx, err := r.Get(KeyFor(ledgerName, id))
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
 	}
@@ -99,7 +102,7 @@ func Put(w IndexWriter, ledgerName string, idx *commonpb.Index) {
 		return
 	}
 
-	w.PutIndex(KeyFor(ledgerName, idx.GetId()), idx)
+	w.Put(KeyFor(ledgerName, idx.GetId()), idx)
 }
 
 // Remove deletes the Index entry matching (ledgerName, id). Silently no-ops on
@@ -109,5 +112,5 @@ func Remove(w IndexWriter, ledgerName string, id *commonpb.IndexID) {
 		return
 	}
 
-	w.DeleteIndex(KeyFor(ledgerName, id))
+	w.Delete(KeyFor(ledgerName, id))
 }

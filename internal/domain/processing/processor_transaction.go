@@ -19,7 +19,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	if order.GetReference() != "" {
 		refKey := domain.TransactionReferenceKey{LedgerName: ledger, Reference: order.GetReference()}
 
-		existingRef, err := s.GetTransactionReference(refKey)
+		existingRef, err := s.TransactionReferences().Get(refKey)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.ErrStorageOperation{Operation: "checking transaction reference", Cause: err}
 		}
@@ -135,7 +135,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		txState.Metadata = finalMetadata
 	}
 
-	s.PutTransactionState(txKey, txState)
+	s.TransactionStates().Put(txKey, txState)
 
 	// Merge account metadata from script output and order.
 	// Order metadata takes precedence over script metadata (same key → order wins).
@@ -175,13 +175,13 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 				Key:        key,
 			}
 
-			s.PutAccountMetadata(metaKey, value)
+			s.AccountMetadata().Put(metaKey, value)
 		}
 	}
 
 	// Store transaction reference if provided
 	if order.GetReference() != "" {
-		s.PutTransactionReference(
+		s.TransactionReferences().Put(
 			domain.TransactionReferenceKey{LedgerName: ledger, Reference: order.GetReference()},
 			&commonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
 		)

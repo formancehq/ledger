@@ -27,11 +27,11 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(zeroVol.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
+	expectGetVolume(mockStore, sourceKey, zeroVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, sourceKey, nil)
 
-	mockStore.EXPECT().GetVolume(destKey).Return(zeroVol.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
+	expectGetVolume(mockStore, destKey, zeroVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, destKey, nil)
 
 	posting := &commonpb.Posting{
 		Source:      "world",
@@ -59,7 +59,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(50),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol.AsReader(), nil)
+	expectGetVolume(mockStore, sourceKey, sourceVol.AsReader(), nil)
 
 	posting := &commonpb.Posting{
 		Source:      "bank",
@@ -92,7 +92,7 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol.AsReader(), nil)
+	expectGetVolume(mockStore, sourceKey, sourceVol.AsReader(), nil)
 
 	posting := &commonpb.Posting{
 		Source:      "bank",
@@ -131,10 +131,10 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destKey).Return(destVol.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
+	expectGetVolume(mockStore, sourceKey, sourceVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, sourceKey, nil)
+	expectGetVolume(mockStore, destKey, destVol.AsReader(), nil)
+	expectPutVolume(t, mockStore, destKey, nil)
 
 	posting := &commonpb.Posting{
 		Source:      "bank",
@@ -156,7 +156,7 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, nil) //nolint:nilnil // test: nil volume
+	expectGetVolume(mockStore, sourceKey, nil, nil) //nolint:nilnil // test: nil volume
 
 	posting := &commonpb.Posting{
 		Source:      "bank",
@@ -207,11 +207,12 @@ func TestApplyPosting_DestinationInputOverflow_Rejects(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(worldVol.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destKey).Return(destVol.AsReader(), nil)
+	volumes := setupVolumesStub(mockStore)
+	volumes.expectGet(sourceKey, worldVol.AsReader(), nil)
+	volumes.expectGet(destKey, destVol.AsReader(), nil)
 	// destination PutVolume must NOT be called once the overflow is
-	// detected.
+	// detected — left unchecked here; the assertion below is on the
+	// returned error type.
 
 	posting := &commonpb.Posting{
 		Source:      "world",
@@ -249,7 +250,7 @@ func TestApplyPosting_SourceOutputOverflow_Rejects(t *testing.T) {
 		Output: commonpb.NewUint256(uint256Max()),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(worldVol.AsReader(), nil)
+	expectGetVolume(mockStore, sourceKey, worldVol.AsReader(), nil)
 	// source PutVolume must NOT be called once the overflow is detected.
 
 	posting := &commonpb.Posting{

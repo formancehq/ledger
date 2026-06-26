@@ -26,7 +26,7 @@ func TestFind_ReturnsValueOnHit(t *testing.T) {
 	key := indexes.KeyFor("main", ref())
 	expected := (&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING}).AsReader()
 
-	reader.EXPECT().GetIndex(key).Return(expected, nil)
+	reader.EXPECT().Get(key).Return(expected, nil)
 
 	got, err := indexes.Find(reader, "main", ref())
 	require.NoError(t, err)
@@ -40,7 +40,7 @@ func TestFind_ErrNotFoundCollapsesToNilNoError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockLookup(ctrl)
 
-	reader.EXPECT().GetIndex(indexes.KeyFor("main", ref())).Return(nil, domain.ErrNotFound)
+	reader.EXPECT().Get(indexes.KeyFor("main", ref())).Return(nil, domain.ErrNotFound)
 
 	got, err := indexes.Find(reader, "main", ref())
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestFind_PropagatesOtherErrors(t *testing.T) {
 	reader := NewMockLookup(ctrl)
 
 	boom := errors.New("coverage miss")
-	reader.EXPECT().GetIndex(indexes.KeyFor("main", ref())).Return(nil, boom)
+	reader.EXPECT().Get(indexes.KeyFor("main", ref())).Return(nil, boom)
 
 	got, err := indexes.Find(reader, "main", ref())
 	require.ErrorIs(t, err, boom)
@@ -90,9 +90,9 @@ func TestIsReady_TrueOnlyForReadyStatus(t *testing.T) {
 	key := indexes.KeyFor("main", ref())
 
 	gomock.InOrder(
-		reader.EXPECT().GetIndex(key).Return((&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING}).AsReader(), nil),
-		reader.EXPECT().GetIndex(key).Return((&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY}).AsReader(), nil),
-		reader.EXPECT().GetIndex(key).Return(nil, domain.ErrNotFound),
+		reader.EXPECT().Get(key).Return((&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING}).AsReader(), nil),
+		reader.EXPECT().Get(key).Return((&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY}).AsReader(), nil),
+		reader.EXPECT().Get(key).Return(nil, domain.ErrNotFound),
 	)
 
 	assert.False(t, indexes.IsReady(reader, "main", ref()))
@@ -109,8 +109,8 @@ func TestStatus_ReportsStoredOrUnspecified(t *testing.T) {
 	key := indexes.KeyFor("main", ref())
 
 	gomock.InOrder(
-		reader.EXPECT().GetIndex(key).Return((&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY}).AsReader(), nil),
-		reader.EXPECT().GetIndex(key).Return(nil, domain.ErrNotFound),
+		reader.EXPECT().Get(key).Return((&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY}).AsReader(), nil),
+		reader.EXPECT().Get(key).Return(nil, domain.ErrNotFound),
 	)
 
 	assert.Equal(t, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY, indexes.Status(reader, "main", ref()))
@@ -124,7 +124,7 @@ func TestPut_DispatchesPutIndex(t *testing.T) {
 	writer := NewMockIndexWriter(ctrl)
 
 	idx := &commonpb.Index{Id: ref(), Ledger: "main", BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING}
-	writer.EXPECT().PutIndex(indexes.KeyFor("main", ref()), idx)
+	writer.EXPECT().Put(indexes.KeyFor("main", ref()), idx)
 
 	indexes.Put(writer, "main", idx)
 }
@@ -154,7 +154,7 @@ func TestRemove_DispatchesDeleteIndex(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	writer := NewMockIndexWriter(ctrl)
 
-	writer.EXPECT().DeleteIndex(indexes.KeyFor("main", ref()))
+	writer.EXPECT().Delete(indexes.KeyFor("main", ref()))
 
 	indexes.Remove(writer, "main", ref())
 }

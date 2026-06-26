@@ -57,7 +57,7 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
 
 	// Input=1000, Output=300, Balance=700
-	mockStore.EXPECT().GetVolume(volumeKey).Return((&raftcmdpb.VolumePair{
+	expectGetVolume(mockStore, volumeKey, (&raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(1000),
 		Output: commonpb.NewUint256FromUint64(300),
 	}).AsReader(), nil)
@@ -88,7 +88,7 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
 
 	// Volume exists but has no input values (not preloaded)
-	mockStore.EXPECT().GetVolume(volumeKey).Return((&raftcmdpb.VolumePair{}).AsReader(), nil)
+	expectGetVolume(mockStore, volumeKey, (&raftcmdpb.VolumePair{}).AsReader(), nil)
 
 	query := numscriptlib.BalanceQuery{
 		"bank": {"USD"},
@@ -115,7 +115,7 @@ func TestGetBalances_VolumeNotFound_ReturnsError(t *testing.T) {
 	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
 
 	// Volume not found — the adapter returns ErrBalanceNotPreloaded
-	mockStore.EXPECT().GetVolume(volumeKey).Return(nil, domain.ErrNotFound)
+	expectGetVolume(mockStore, volumeKey, nil, domain.ErrNotFound)
 
 	query := numscriptlib.BalanceQuery{
 		"bank": {"USD"},
@@ -148,7 +148,7 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("active"), nil)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("active"), nil)
 
 	query := numscriptlib.MetadataQuery{
 		"users:001": {"status"},
@@ -178,7 +178,7 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, domain.ErrNotFound)
+	expectGetAccountMetadata(mockStore, metaKey, nil, domain.ErrNotFound)
 
 	query := numscriptlib.MetadataQuery{
 		"users:001": {"status"},
@@ -217,7 +217,7 @@ func TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType(t *testing.T) {
 	// "030" stored verbatim; even if a declared UINT64 type existed on
 	// this field, the adapter must not project it through commonpb's
 	// converter — Numscript must observe "030".
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("030"), nil)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("030"), nil)
 
 	query := numscriptlib.MetadataQuery{
 		"users:001": {"age"},
@@ -248,7 +248,7 @@ func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
 		Key:        "age",
 	}
 
-	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("25"), nil)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("25"), nil)
 
 	query := numscriptlib.MetadataQuery{
 		"users:001": {"age"},

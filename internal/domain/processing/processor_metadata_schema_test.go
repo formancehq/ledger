@@ -26,20 +26,18 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
-		func(_ string, info *commonpb.LedgerInfo) {
-			require.NotNil(t, info.GetMetadataSchema())
-			require.NotNil(t, info.GetMetadataSchema().GetAccountFields())
-			field := info.GetMetadataSchema().GetAccountFields()["amount"]
-			require.NotNil(t, field)
-			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
-		},
-	)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		require.NotNil(t, info.GetMetadataSchema())
+		require.NotNil(t, info.GetMetadataSchema().GetAccountFields())
+		field := info.GetMetadataSchema().GetAccountFields()["amount"]
+		require.NotNil(t, field)
+		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
+	})
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -86,20 +84,18 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
-		func(_ string, info *commonpb.LedgerInfo) {
-			require.NotNil(t, info.GetMetadataSchema())
-			require.NotNil(t, info.GetMetadataSchema().GetTransactionFields())
-			field := info.GetMetadataSchema().GetTransactionFields()["priority"]
-			require.NotNil(t, field)
-			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
-		},
-	)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		require.NotNil(t, info.GetMetadataSchema())
+		require.NotNil(t, info.GetMetadataSchema().GetTransactionFields())
+		field := info.GetMetadataSchema().GetTransactionFields()["priority"]
+		require.NotNil(t, field)
+		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
+	})
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -138,20 +134,18 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
-		func(_ string, info *commonpb.LedgerInfo) {
-			require.NotNil(t, info.GetMetadataSchema())
-			require.NotNil(t, info.GetMetadataSchema().GetLedgerFields())
-			field := info.GetMetadataSchema().GetLedgerFields()["env"]
-			require.NotNil(t, field)
-			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
-		},
-	)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		require.NotNil(t, info.GetMetadataSchema())
+		require.NotNil(t, info.GetMetadataSchema().GetLedgerFields())
+		field := info.GetMetadataSchema().GetLedgerFields()["env"]
+		require.NotNil(t, field)
+		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
+	})
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -195,8 +189,8 @@ func TestProcessSetMetadataFieldType_LedgerNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	mockStore.EXPECT().GetBoundaries("missing").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("missing").Return(nil, domain.ErrNotFound).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "missing"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "missing"}, nil, domain.ErrNotFound).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -246,17 +240,15 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
-		func(_ string, info *commonpb.LedgerInfo) {
-			_, exists := info.GetMetadataSchema().GetAccountFields()["amount"]
-			require.False(t, exists, "amount field should have been removed")
-		},
-	)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		_, exists := info.GetMetadataSchema().GetAccountFields()["amount"]
+		require.False(t, exists, "amount field should have been removed")
+	})
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -309,12 +301,12 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -360,17 +352,15 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetIndex(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
-		func(_ string, info *commonpb.LedgerInfo) {
-			_, exists := info.GetMetadataSchema().GetLedgerFields()["env"]
-			require.False(t, exists, "env field should have been removed")
-		},
-	)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		_, exists := info.GetMetadataSchema().GetLedgerFields()["env"]
+		require.False(t, exists, "env field should have been removed")
+	})
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -432,13 +422,13 @@ func TestProcessSetMetadataFieldType_AcceptedDuringRebuild(t *testing.T) {
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
-	mockStore.EXPECT().GetIndex(indexes.KeyFor("test-ledger", id)).Return(existingIndex.AsReader(), nil)
-	mockStore.EXPECT().PutIndex(indexes.KeyFor("test-ledger", id), gomock.Any())
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectGetIndex(mockStore, indexes.KeyFor("test-ledger", id), existingIndex.AsReader(), nil)
+	expectPutIndex(t, mockStore, indexes.KeyFor("test-ledger", id), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890})
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{

@@ -31,7 +31,7 @@ func processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadata
 			Key:        key,
 		}
 
-		s.PutLedgerMetadata(metaKey, value)
+		s.LedgerMetadata().Put(metaKey, value)
 	}
 
 	return &commonpb.LogPayload{
@@ -67,7 +67,7 @@ func processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMet
 	// Existence check (METADATA_NOT_FOUND on miss). The stored value itself
 	// is no longer captured into the log; the indexer resolves the old
 	// encoded value via the reverse map at apply time.
-	if _, err := s.GetLedgerMetadata(metaKey); err != nil {
+	if _, err := s.LedgerMetadata().Get(metaKey); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.ErrMetadataNotFound{
 				Target: ledger,
@@ -78,7 +78,7 @@ func processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMet
 		return nil, &domain.ErrStorageOperation{Operation: "checking ledger metadata", Cause: err}
 	}
 
-	s.DeleteLedgerMetadata(metaKey)
+	s.LedgerMetadata().Delete(metaKey)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedLedgerMetadata{

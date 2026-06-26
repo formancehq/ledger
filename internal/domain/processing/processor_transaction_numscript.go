@@ -87,7 +87,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		// Update source output (money going out)
 		sourceKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset)
 
-		sourceReader, err := s.GetVolume(sourceKey)
+		sourceReader, err := s.Volumes().Get(sourceKey)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Source, Asset: posting.Asset}
@@ -122,12 +122,12 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 
 		sourceVol.GetOutput().SetFromUint256(&sum)
-		s.PutVolume(sourceKey, sourceVol)
+		s.Volumes().Put(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
 		destKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset)
 
-		destReader, err := s.GetVolume(destKey)
+		destReader, err := s.Volumes().Get(destKey)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Destination, Asset: posting.Asset}
@@ -160,7 +160,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 
 		destVol.GetInput().SetFromUint256(&sum)
-		s.PutVolume(destKey, destVol)
+		s.Volumes().Put(destKey, destVol)
 	}
 
 	// Collect account metadata from script execution for return. The caller
@@ -246,7 +246,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 
 			volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset)
 
-			vol, err := s.store.GetVolume(volumeKey)
+			vol, err := s.store.Volumes().Get(volumeKey)
 			if err != nil {
 				if errors.Is(err, domain.ErrNotFound) {
 					return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
@@ -289,7 +289,7 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 				Key: key,
 			}
 
-			valueReader, err := s.store.GetAccountMetadata(metaKey)
+			valueReader, err := s.store.AccountMetadata().Get(metaKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, err
 			}

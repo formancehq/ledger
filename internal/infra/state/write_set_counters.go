@@ -125,7 +125,7 @@ func (b *WriteSet) updateBoundaryCounters(
 	}
 
 	for ledgerName := range affected {
-		boundariesReader, err := b.GetBoundaries(ledgerName)
+		boundariesReader, err := b.Boundaries().Get(domain.LedgerKey{Name: ledgerName})
 		if err != nil {
 			continue
 		}
@@ -136,6 +136,6 @@ func (b *WriteSet) updateBoundaryCounters(
 		boundaries.ReferenceCount = applyDelta(boundaries.GetReferenceCount(), referenceDeltas[ledgerName])
 		boundaries.EphemeralEvictedCount += ephemeralEvicted[ledgerName]
 		boundaries.TransientUsedCount += transientUsed[ledgerName]
-		b.PutBoundaries(ledgerName, boundaries)
+		b.Boundaries().Put(domain.LedgerKey{Name: ledgerName}, boundaries)
 	}
 }

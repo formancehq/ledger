@@ -33,13 +33,13 @@ func TestWriteSetGetPutLedger(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	// Non-existent ledger returns ErrNotFound
-	info, err := buf.GetLedger("nonexistent")
+	info, err := buf.Ledgers().Get(domain.LedgerKey{Name: "nonexistent"})
 	require.ErrorIs(t, err, domain.ErrNotFound)
 	require.Nil(t, info)
 
 	// Put and get
-	buf.PutLedger("test", &commonpb.LedgerInfo{Name: "test"})
-	info, err = buf.GetLedger("test")
+	buf.Ledgers().Put(domain.LedgerKey{Name: "test"}, &commonpb.LedgerInfo{Name: "test"})
+	info, err = buf.Ledgers().Get(domain.LedgerKey{Name: "test"})
 	require.NoError(t, err)
 	require.Equal(t, "test", info.GetName())
 }
@@ -49,16 +49,16 @@ func TestWriteSetGetPutBoundaries(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	// Non-existent
-	b, err := buf.GetBoundaries("nonexistent")
+	b, err := buf.Boundaries().Get(domain.LedgerKey{Name: "nonexistent"})
 	require.ErrorIs(t, err, domain.ErrNotFound)
 	require.Nil(t, b)
 
 	// Put and get
-	buf.PutBoundaries("ledger-1", &raftcmdpb.LedgerBoundaries{
+	buf.Boundaries().Put(domain.LedgerKey{Name: "ledger-1"}, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 10,
 		NextLogId:         20,
 	})
-	b, err = buf.GetBoundaries("ledger-1")
+	b, err = buf.Boundaries().Get(domain.LedgerKey{Name: "ledger-1"})
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), b.GetNextTransactionId())
 	require.Equal(t, uint64(20), b.GetNextLogId())
@@ -71,11 +71,11 @@ func TestWriteSetGetPutAccountMetadata(t *testing.T) {
 	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"}
 
 	// Non-existent key falls through to KeyStore which returns ErrNotFound
-	_, err := buf.GetAccountMetadata(key)
+	_, err := buf.AccountMetadata().Get(key)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	buf.PutAccountMetadata(key, commonpb.NewStringValue("admin"))
-	val, err := buf.GetAccountMetadata(key)
+	buf.AccountMetadata().Put(key, commonpb.NewStringValue("admin"))
+	val, err := buf.AccountMetadata().Get(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
 }
@@ -85,16 +85,16 @@ func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "bob"}, Key: "label"}
-	buf.PutAccountMetadata(key, commonpb.NewStringValue("value"))
+	buf.AccountMetadata().Put(key, commonpb.NewStringValue("value"))
 
-	val, err := buf.GetAccountMetadata(key)
+	val, err := buf.AccountMetadata().Get(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
 
-	buf.DeleteAccountMetadata(key)
+	buf.AccountMetadata().Delete(key)
 
 	// After delete the key reads as absent (ErrNotFound), like a committed tombstone.
-	_, err = buf.GetAccountMetadata(key)
+	_, err = buf.AccountMetadata().Get(key)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
@@ -139,11 +139,11 @@ func TestWriteSetGetPutTransactionReference(t *testing.T) {
 	key := domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-1"}
 
 	// Non-existent key returns ErrNotFound
-	_, err := buf.GetTransactionReference(key)
+	_, err := buf.TransactionReferences().Get(key)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	buf.PutTransactionReference(key, &commonpb.TransactionReferenceValue{TransactionId: 100})
-	val, err := buf.GetTransactionReference(key)
+	buf.TransactionReferences().Put(key, &commonpb.TransactionReferenceValue{TransactionId: 100})
+	val, err := buf.TransactionReferences().Get(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
 	require.Equal(t, uint64(100), val.GetTransactionId())
@@ -158,8 +158,8 @@ func TestWriteSetTransactionState(t *testing.T) {
 		CreatedByLog: 5,
 	}
 
-	buf.PutTransactionState(key, state)
-	got, err := buf.GetTransactionState(key)
+	buf.TransactionStates().Put(key, state)
+	got, err := buf.TransactionStates().Get(key)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, uint64(5), got.GetCreatedByLog())
@@ -489,9 +489,9 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	// --- Proposal N: write various data ---
 
 	// Derived stores
-	buf.PutLedger("leaked", &commonpb.LedgerInfo{Name: "leaked"})
-	buf.PutBoundaries("leaked", &raftcmdpb.LedgerBoundaries{NextTransactionId: 99})
-	buf.PutAccountMetadata(
+	buf.Ledgers().Put(domain.LedgerKey{Name: "leaked"}, &commonpb.LedgerInfo{Name: "leaked"})
+	buf.Boundaries().Put(domain.LedgerKey{Name: "leaked"}, &raftcmdpb.LedgerBoundaries{NextTransactionId: 99})
+	buf.AccountMetadata().Put(
 		domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"},
 		commonpb.NewStringValue("admin"),
 	)
@@ -499,7 +499,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 		domain.IdempotencyKey{Key: "ik-leak"},
 		&commonpb.IdempotencyKeyValue{FirstLogSequence: 7, LogCount: 1},
 	)
-	buf.PutTransactionReference(
+	buf.TransactionReferences().Put(
 		domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-leak"},
 		&commonpb.TransactionReferenceValue{TransactionId: 42},
 	)
@@ -516,7 +516,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.QueueMirrorSync(MirrorSyncWrite{LedgerName: "leaked", Cursor: 42, ClearError: true})
 
 	// Verify data is present before Reset
-	_, err := buf.GetLedger("leaked")
+	_, err := buf.Ledgers().Get(domain.LedgerKey{Name: "leaked"})
 	require.NoError(t, err, "ledger should exist before Reset")
 	require.True(t, (len(buf.purgeRanges) > 0), "purges should exist before Reset")
 	require.Len(t, buf.pendingSigningKeyUpdates, 1)
@@ -531,19 +531,19 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	// --- Verify complete isolation ---
 
 	// Derived stores must be empty
-	_, err = buf.GetLedger("leaked")
+	_, err = buf.Ledgers().Get(domain.LedgerKey{Name: "leaked"})
 	require.ErrorIs(t, err, domain.ErrNotFound, "ledger from previous proposal must not be visible after Reset")
 
-	_, err = buf.GetBoundaries("leaked")
+	_, err = buf.Boundaries().Get(domain.LedgerKey{Name: "leaked"})
 	require.ErrorIs(t, err, domain.ErrNotFound, "boundaries from previous proposal must not be visible after Reset")
 
-	_, err = buf.GetAccountMetadata(domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"})
+	_, err = buf.AccountMetadata().Get(domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"}, Key: "role"})
 	require.ErrorIs(t, err, domain.ErrNotFound, "account metadata from previous proposal must not be visible after Reset")
 
 	_, err = buf.GetIdempotencyKey(domain.IdempotencyKey{Key: "ik-leak"})
 	require.ErrorIs(t, err, domain.ErrNotFound, "idempotency key from previous proposal must not be visible after Reset")
 
-	_, err = buf.GetTransactionReference(domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-leak"})
+	_, err = buf.TransactionReferences().Get(domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-leak"})
 	require.ErrorIs(t, err, domain.ErrNotFound, "transaction reference from previous proposal must not be visible after Reset")
 
 	// Pending slices must be cleared
@@ -609,7 +609,7 @@ func TestWriteSetPreparedQueryPersistsThroughMerge(t *testing.T) {
 	buf, _, dataStore := newTestBuffer(t)
 
 	const ledger = "test"
-	buf.PutPreparedQuery(ledger, &commonpb.PreparedQuery{Name: "pq-1"})
+	buf.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-1"}, &commonpb.PreparedQuery{Name: "pq-1"})
 
 	batch := dataStore.OpenWriteSession()
 	require.NoError(t, buf.Merge(batch, nil))
@@ -637,7 +637,7 @@ func TestWriteSetPreparedQueryDeletePersistsThroughMerge(t *testing.T) {
 	const ledger = "test"
 
 	// Proposal 1: commit a prepared query.
-	buf.PutPreparedQuery(ledger, &commonpb.PreparedQuery{Name: "pq-del"})
+	buf.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-del"}, &commonpb.PreparedQuery{Name: "pq-del"})
 	batch := dataStore.OpenWriteSession()
 	require.NoError(t, buf.Merge(batch, nil))
 	require.NoError(t, batch.Commit())
@@ -654,7 +654,7 @@ func TestWriteSetPreparedQueryDeletePersistsThroughMerge(t *testing.T) {
 	// Proposal 2: delete it.
 	buf2 := NewWriteSet(machine)
 	buf2.Reset(&commonpb.Timestamp{Data: 1700000001})
-	buf2.DeletePreparedQuery(ledger, "pq-del")
+	buf2.PreparedQueries().Delete(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-del"})
 	batch2 := dataStore.OpenWriteSession()
 	require.NoError(t, buf2.Merge(batch2, nil))
 	require.NoError(t, batch2.Commit())
@@ -692,7 +692,7 @@ func TestWriteSetPreparedQueryBloomFilterTracksKeys(t *testing.T) {
 	require.NotNil(t, pqFilter, "prepared-query filter must be built when configured")
 
 	const ledger = "test"
-	buf.PutPreparedQuery(ledger, &commonpb.PreparedQuery{Name: "pq-bloom"})
+	buf.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-bloom"}, &commonpb.PreparedQuery{Name: "pq-bloom"})
 
 	batch := dataStore.OpenWriteSession()
 	require.NoError(t, buf.Merge(batch, nil))

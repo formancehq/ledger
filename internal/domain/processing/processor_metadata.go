@@ -61,7 +61,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 				Key: key,
 			}
 
-			s.PutAccountMetadata(metaKey, value)
+			s.AccountMetadata().Put(metaKey, value)
 		}
 	case *commonpb.Target_TransactionId:
 		txID := target.TransactionId
@@ -71,13 +71,13 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 
 		txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
 
-		stateReader, err := s.GetTransactionState(txKey)
-		if err != nil {
-			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state", Cause: err}
+		stateReader, err := s.TransactionStates().Get(txKey)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
 
-		if stateReader == nil {
-			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
+		if err != nil {
+			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state", Cause: err}
 		}
 
 		// Mutate() yields a fresh clone — handlers may freely modify the
@@ -91,7 +91,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 
 		maps.Copy(state.GetMetadata(), order.GetMetadata())
 
-		s.PutTransactionState(txKey, state)
+		s.TransactionStates().Put(txKey, state)
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -131,7 +131,7 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 		// Existence check (METADATA_NOT_FOUND on miss) — the stored value
 		// itself is no longer captured into the log; the indexer resolves
 		// the old encoded value via the reverse map on apply.
-		if _, err := s.GetAccountMetadata(metaKey); err != nil {
+		if _, err := s.AccountMetadata().Get(metaKey); err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrMetadataNotFound{
 					Target: target.Account.GetAddr(),
@@ -142,7 +142,7 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 			return nil, &domain.ErrStorageOperation{Operation: "checking account metadata", Cause: err}
 		}
 
-		s.DeleteAccountMetadata(metaKey)
+		s.AccountMetadata().Delete(metaKey)
 	case *commonpb.Target_TransactionId:
 		txID := target.TransactionId
 		if resolveErr := validateTransactionTarget(txID, boundaries); resolveErr != nil {
@@ -151,13 +151,13 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 
 		txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
 
-		stateReader, err := s.GetTransactionState(txKey)
-		if err != nil {
-			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state for delete", Cause: err}
+		stateReader, err := s.TransactionStates().Get(txKey)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
 
-		if stateReader == nil {
-			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
+		if err != nil {
+			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state for delete", Cause: err}
 		}
 
 		state := stateReader.Mutate()
@@ -173,7 +173,7 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 		}
 
 		delete(state.GetMetadata(), order.GetKey())
-		s.PutTransactionState(txKey, state)
+		s.TransactionStates().Put(txKey, state)
 	}
 
 	return &commonpb.LedgerLogPayload{

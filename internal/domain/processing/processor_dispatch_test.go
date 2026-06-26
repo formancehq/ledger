@@ -145,11 +145,11 @@ func TestProcessOrder_DispatchEveryLedgerScopedVariant(t *testing.T) {
 			// "slot free" and proceeds. Returning an existing LedgerInfo
 			// makes it fail with ErrLedgerAlreadyExists.
 			if tc.name == "create_ledger" {
-				mockStore.EXPECT().GetLedger(ledger).Return((&commonpb.LedgerInfo{Name: ledger}).AsReader(), nil).AnyTimes()
+				expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&commonpb.LedgerInfo{Name: ledger}).AsReader(), nil).AnyTimes()
 			} else {
-				mockStore.EXPECT().GetLedger(ledger).Return(nil, domain.ErrNotFound).AnyTimes()
+				expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, nil, domain.ErrNotFound).AnyTimes()
 			}
-			mockStore.EXPECT().GetBoundaries(ledger).Return(nil, domain.ErrNotFound).AnyTimes()
+			expectGetBoundaries(mockStore, domain.LedgerKey{Name: ledger}, nil, domain.ErrNotFound).AnyTimes()
 			mockStore.EXPECT().NumscriptVersionExists(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 
 			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: tc.payload}}

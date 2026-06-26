@@ -2,17 +2,8 @@ package processing
 
 import (
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-)
-
-// Compile-time guarantee that Scope can be passed to indexes.Find/Put/Remove
-// without an adapter — the cache façade IS the Lookup and IndexWriter for the
-// FSM hot path.
-var (
-	_ indexes.Lookup      = (Scope)(nil)
-	_ indexes.IndexWriter = (Scope)(nil)
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source=store.go -destination=store_generated_test.go -typed -package=processing -mock_names=Scope=MockScope
@@ -38,53 +29,38 @@ type OrderTagger interface {
 //   - *state.WriteSet (recovery/tests): bare engine, no coverage gate —
 //     CheckCoverage and ResolveProductions are no-ops.
 //
-// Cache-backed Get* methods return a Reader view over the cache entry so
-// handlers cannot accidentally mutate cached state in place. Use
-// Reader.Mutate() to obtain a writeable clone before modifying, then write
-// the result back through the matching Put* method.
+// The 9 gated cache-attribute kinds are exposed via per-kind Accessor
+// methods (Ledgers, Boundaries, Volumes, AccountMetadata, LedgerMetadata,
+// TransactionReferences, TransactionStates, PreparedQueries, Indexes).
+// Each accessor's Get returns a Reader view; call Reader.Mutate() to
+// obtain a writeable clone before writing back through Put.
+//
+// IdempotencyKeys is also accessor-shaped but bypasses the coverage gate
+// (idempotency lookups are not part of per-order coverage planning) and
+// applies TTL filtering on read.
+//
+// The remaining kinds (sink configs, numscript versions/contents,
+// reverted bitset) and the FSM-primitive surface (counters, chapters,
+// signing keys, maintenance mode, dates) stay as discrete methods because
+// their value/key shapes do not match the generic Accessor trio.
 type Scope interface {
-	// Ledger operations
-	//
-	// Get* methods that read cache-attribute keys return (nil,
-	// domain.ErrNotFound) when the key is absent, (nil, *ErrCoverageMiss)
-	// when the proposer did not declare the key in this scope's
-	// coverage_bits (gatedScope only), or (reader, nil) on a hit.
-	GetLedger(name string) (commonpb.LedgerInfoReader, error)
-	PutLedger(name string, info *commonpb.LedgerInfo)
+	// Per-kind accessors — Get returns a Reader, Put records a write,
+	// Delete records a tombstone. All four operate against the in-batch
+	// overlay (attributes.DerivedKeyStore); reads fall through to the
+	// parent registry on overlay miss.
+	Ledgers() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	Boundaries() Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
+	Volumes() Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
+	AccountMetadata() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	LedgerMetadata() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	TransactionReferences() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
+	TransactionStates() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+	PreparedQueries() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
+	Indexes() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 
-	// Boundaries operations
-	GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, error)
-	PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries)
-
-	// Volume operations (merged Input+Output)
-	GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error)
-	PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair)
-
-	// Account metadata operations
-	GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error)
-	PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue)
-	DeleteAccountMetadata(key domain.MetadataKey)
-
-	// Ledger metadata operations
-	GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error)
-	PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue)
-	DeleteLedgerMetadata(key domain.LedgerMetadataKey)
-
-	// Transaction reversion status operations
+	// Transaction reversion status — bool-valued, no Reader, kept discrete.
 	GetReverted(key domain.TransactionKey) (bool, error)
 	PutReverted(key domain.TransactionKey, reverted bool)
-
-	// Idempotency key operations
-	GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error)
-	PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue)
-
-	// Transaction reference operations
-	GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error)
-	PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
-
-	// Transaction state operations
-	GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error)
-	PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState)
 
 	// Signing key operations
 	AddSigningKey(keyID string, publicKey []byte, parentKeyID string)
@@ -120,38 +96,19 @@ type Scope interface {
 	GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool)
 	UpdateChapter(chapter *commonpb.Chapter)
 
-	// Prepared query operations
-	GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error)
-	PutPreparedQuery(ledgerName string, pq *commonpb.PreparedQuery)
-	DeletePreparedQuery(ledgerName string, name string)
-
-	// Numscript library operations
+	// Numscript library operations — heterogeneous shapes (string/bool returns,
+	// multi-arg keys). Kept discrete; the Accessor trio does not fit.
 	GetNumscriptLatestVersion(ledgerName string, name string) (string, error)
 	NumscriptVersionExists(ledgerName string, name, version string) (bool, error)
 	PutNumscript(ledgerName string, info *commonpb.NumscriptInfo)
 	DeleteNumscriptLatest(ledgerName string, name string)
+	ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error)
 
 	// Query checkpoint operations
 	GetNextQueryCheckpointID() uint64
 	IncrementNextQueryCheckpointID() uint64
 	SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState)
 	DeleteQueryCheckpoint(checkpointID uint64)
-
-	// Index registry operations (bucket-scoped, keyed by IndexKey{LedgerID, Canonical}).
-	// LedgerID == 0 reserves the slot for bucket-scoped indexes (audit).
-	//
-	// GetIndex returns:
-	//   - (idx, nil)              when the entry is present and the proposer declared the key.
-	//   - (nil, domain.ErrNotFound) when the entry is legitimately absent (deleted/never created).
-	//   - (nil, *ErrCoverageMiss) (gatedScope only) when the proposer's coverage_bits don't
-	//     flag this key — the apply path bubbles the error up as a business rejection so a
-	//     stale/malformed plan can't read past the gate.
-	GetIndex(key domain.IndexKey) (commonpb.IndexReader, error)
-	PutIndex(key domain.IndexKey, idx *commonpb.Index)
-	DeleteIndex(key domain.IndexKey)
-
-	// Numscript content resolution
-	ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error)
 
 	// CheckCoverage exposes the gate for paths that read state directly
 	// (bypassing the engine overlay) and still want the coverage

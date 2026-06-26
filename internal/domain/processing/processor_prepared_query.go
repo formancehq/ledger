@@ -1,10 +1,29 @@
 package processing
 
 import (
+	"errors"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+// lookupPreparedQuery centralises the (nil, ErrNotFound) vs (nil, otherErr)
+// discrimination on the Accessor contract: a tombstone / absent-key returns
+// (nil, nil) so callers see "doesn't exist"; any other error wraps into
+// ErrStorageOperation. Mirrors the loadLedger pattern.
+func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryReader, domain.Describable) {
+	pq, err := s.PreparedQueries().Get(domain.PreparedQueryKey{LedgerName: ledger, Name: name})
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
+	}
+
+	return pq, nil
+}
 
 func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
@@ -27,9 +46,9 @@ func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQu
 		return nil, loadErr
 	}
 
-	existing, err := s.GetPreparedQuery(ledger, q.GetName())
-	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
+	existing, lookupErr := lookupPreparedQuery(s, ledger, q.GetName())
+	if lookupErr != nil {
+		return nil, lookupErr
 	}
 
 	if existing != nil {
@@ -39,7 +58,7 @@ func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQu
 		}
 	}
 
-	s.PutPreparedQuery(ledger, q)
+	s.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: q.GetName()}, q)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreatedPreparedQuery{
@@ -61,9 +80,9 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 		return nil, loadErr
 	}
 
-	existing, err := s.GetPreparedQuery(ledger, order.GetName())
-	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
+	existing, lookupErr := lookupPreparedQuery(s, ledger, order.GetName())
+	if lookupErr != nil {
+		return nil, lookupErr
 	}
 
 	if existing == nil {
@@ -76,7 +95,7 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 	updated := existing.Mutate()
 	previousFilter := updated.GetFilter().CloneVT()
 	updated.Filter = order.GetFilter()
-	s.PutPreparedQuery(ledger, updated)
+	s.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: updated.GetName()}, updated)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_UpdatedPreparedQuery{
@@ -100,9 +119,9 @@ func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQu
 		return nil, loadErr
 	}
 
-	existing, err := s.GetPreparedQuery(ledger, order.GetName())
-	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
+	existing, lookupErr := lookupPreparedQuery(s, ledger, order.GetName())
+	if lookupErr != nil {
+		return nil, lookupErr
 	}
 
 	if existing == nil {
@@ -112,7 +131,7 @@ func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQu
 		}
 	}
 
-	s.DeletePreparedQuery(ledger, order.GetName())
+	s.PreparedQueries().Delete(domain.PreparedQueryKey{LedgerName: ledger, Name: order.GetName()})
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedPreparedQuery{

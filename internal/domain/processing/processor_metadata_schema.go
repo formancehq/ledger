@@ -55,7 +55,7 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 		info.MetadataSchema.LedgerFields[order.GetKey()] = field
 	}
 
-	s.PutLedger(ledger, info)
+	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 
 	// If an index covers this field, flip it back to BUILDING (informational
 	// since EN-1323) and bump its forward_encoding_version. The version bump
@@ -67,7 +67,7 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 	// LedgerInfo), so we Mutate() a copy and Put it back rather than mutating
 	// the cached pointer in place — the Find returns the cache's pointer.
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
-	existing, findErr := indexes.Find(s, info.GetName(), id)
+	existing, findErr := indexes.Find(s.Indexes(), info.GetName(), id)
 	if findErr != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "looking up index for schema change", Cause: findErr}
 	}
@@ -76,7 +76,7 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 		updated := existing.Mutate()
 		updated.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
 		updated.ForwardEncodingVersion++
-		indexes.Put(s, info.GetName(), updated)
+		indexes.Put(s.Indexes(), info.GetName(), updated)
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -117,7 +117,7 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 		delete(info.GetMetadataSchema().GetLedgerFields(), order.GetKey())
 	}
 
-	s.PutLedger(ledger, info)
+	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 
 	// Cascade: removing a schema field drops any index attached to it. The
 	// dropped IndexID is carried in the log so the indexbuilder can purge
@@ -127,13 +127,13 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 	var droppedIndex *commonpb.IndexID
 
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
-	existing, findErr := indexes.Find(s, info.GetName(), id)
+	existing, findErr := indexes.Find(s.Indexes(), info.GetName(), id)
 	if findErr != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "looking up index for schema removal", Cause: findErr}
 	}
 
 	if existing != nil {
-		indexes.Remove(s, info.GetName(), id)
+		indexes.Remove(s.Indexes(), info.GetName(), id)
 		droppedIndex = id
 	}
 

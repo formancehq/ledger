@@ -19,7 +19,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 	// Check deletion status before boundaries: MarkLedgerForCleanup removes
 	// boundaries on delete, so loadBoundaries would surface ErrLedgerNotFound
 	// even though the ledger is just deleted.
-	ledgerInfoReader, infoErr := s.GetLedger(ledger)
+	ledgerInfoReader, infoErr := s.Ledgers().Get(domain.LedgerKey{Name: ledger})
 	if infoErr != nil && !errors.Is(infoErr, domain.ErrNotFound) {
 		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: infoErr}
 	}
@@ -92,7 +92,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 	nextLogID := boundaries.GetNextLogId()
 	boundaries.NextLogId = nextLogID + 1
 
-	s.PutBoundaries(ledger, boundaries)
+	s.Boundaries().Put(domain.LedgerKey{Name: ledger}, boundaries)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{

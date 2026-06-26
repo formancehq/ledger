@@ -30,13 +30,13 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 
 	var putBoundaries *raftcmdpb.LedgerBoundaries
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
-	mockStore.EXPECT().PutBoundaries("mirror-ledger", gomock.Any()).Do(
-		func(_ string, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b },
-	)
+
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	boundariesStub.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b })
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -94,35 +94,32 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 
 	var putBoundaries *raftcmdpb.LedgerBoundaries
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
-	mockStore.EXPECT().PutBoundaries("mirror-ledger", gomock.Any()).Do(
-		func(_ string, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b },
-	)
+
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	boundariesStub.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b })
 
 	// Expect volume operations for source and destination (force=true, no balance checks)
 	zeroVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
 		Output: commonpb.NewUint256FromUint64(0),
 	}
-	mockStore.EXPECT().GetVolume(gomock.Any()).Return(zeroVol.AsReader(), nil).Times(2)
-	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).Times(2)
+	volumes := setupVolumesStub(mockStore)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), zeroVol.AsReader(), nil)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "users:001", "USD/2"), zeroVol.AsReader(), nil)
 
 	// Transaction state update
-	mockStore.EXPECT().PutTransactionState(
-		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42},
-		gomock.Any(),
-	)
+	expectPutTransactionState(t, mockStore,
+		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
 
 	// Reference storage
-	mockStore.EXPECT().PutTransactionReference(
-		domain.TransactionReferenceKey{LedgerName: "mirror-ledger", Reference: "tx-ref-v2"},
-		gomock.Any(),
-	)
+	expectPutTransactionReference(t, mockStore,
+		domain.TransactionReferenceKey{LedgerName: "mirror-ledger", Reference: "tx-ref-v2"}, nil)
 
 	postings := []*commonpb.Posting{{
 		Source:      "world",
@@ -185,7 +182,7 @@ func TestMirrorIngest_NotMirrorMode(t *testing.T) {
 		Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL,
 	}
 
-	mockStore.EXPECT().GetLedger("normal-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "normal-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -222,7 +219,7 @@ func TestMirrorIngest_LedgerNotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().GetLedger("missing").Return(nil, domain.ErrNotFound)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "missing"}, nil, domain.ErrNotFound)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -272,13 +269,11 @@ func TestPromoteLedger_Success(t *testing.T) {
 		},
 	}
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), nil)
-	mockStore.EXPECT().PutLedger("mirror-ledger", gomock.Any()).Do(
-		func(_ string, info *commonpb.LedgerInfo) {
-			require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
-			require.Nil(t, info.GetMirrorSource())
-		},
-	)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil)
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
+		require.Nil(t, info.GetMirrorSource())
+	})
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -315,7 +310,7 @@ func TestPromoteLedger_NotMirrorMode(t *testing.T) {
 		Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL,
 	}
 
-	mockStore.EXPECT().GetLedger("normal-ledger").Return(ledgerInfo.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "normal-ledger"}, ledgerInfo.AsReader(), nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -346,7 +341,7 @@ func TestPromoteLedger_NotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().GetLedger("missing").Return(nil, domain.ErrNotFound)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "missing"}, nil, domain.ErrNotFound)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -388,14 +383,14 @@ func TestMirrorIngest_CreatedTransaction_MissingVolumes(t *testing.T) {
 	}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
 	// Simulate cache miss: GetVolume returns ErrNotFound for the source volume.
 	// This happens when a volume was evicted from the dual-generation cache
 	// and the preload didn't include it.
-	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, domain.ErrNotFound)
+	expectGetVolume(mockStore, domain.VolumeKey{}, nil, domain.ErrNotFound)
 
 	postings := []*commonpb.Posting{{
 		Source:      "world",
@@ -449,12 +444,12 @@ func TestMirrorIngest_RevertedTransaction_MissingVolumes(t *testing.T) {
 	}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1}
 
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
 	// Simulate cache miss for volumes
-	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, domain.ErrNotFound)
+	expectGetVolume(mockStore, domain.VolumeKey{}, nil, domain.ErrNotFound)
 
 	reversePostings := []*commonpb.Posting{{
 		Source:      "users:rare-account",
@@ -507,8 +502,8 @@ func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {
 		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo.AsReader(), nil)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{

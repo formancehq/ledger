@@ -26,7 +26,7 @@ func NewPebbleIndexReader(attr *attributes.Attribute[*commonpb.Index], reader da
 	return &pebbleIndexReader{attr: attr, reader: reader}
 }
 
-func (r *pebbleIndexReader) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
+func (r *pebbleIndexReader) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
 	if r == nil || r.attr == nil || r.reader == nil {
 		return nil, domain.ErrNotFound
 	}

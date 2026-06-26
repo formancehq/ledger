@@ -39,41 +39,41 @@ func (m *MockLookup) EXPECT() *MockLookupMockRecorder {
 	return m.recorder
 }
 
-// GetIndex mocks base method.
-func (m *MockLookup) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
+// Get mocks base method.
+func (m *MockLookup) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetIndex", key)
+	ret := m.ctrl.Call(m, "Get", key)
 	ret0, _ := ret[0].(commonpb.IndexReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetIndex indicates an expected call of GetIndex.
-func (mr *MockLookupMockRecorder) GetIndex(key any) *MockLookupGetIndexCall {
+// Get indicates an expected call of Get.
+func (mr *MockLookupMockRecorder) Get(key any) *MockLookupGetCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndex", reflect.TypeOf((*MockLookup)(nil).GetIndex), key)
-	return &MockLookupGetIndexCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockLookup)(nil).Get), key)
+	return &MockLookupGetCall{Call: call}
 }
 
-// MockLookupGetIndexCall wrap *gomock.Call
-type MockLookupGetIndexCall struct {
+// MockLookupGetCall wrap *gomock.Call
+type MockLookupGetCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockLookupGetIndexCall) Return(arg0 commonpb.IndexReader, arg1 error) *MockLookupGetIndexCall {
+func (c *MockLookupGetCall) Return(arg0 commonpb.IndexReader, arg1 error) *MockLookupGetCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockLookupGetIndexCall) Do(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockLookupGetIndexCall {
+func (c *MockLookupGetCall) Do(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockLookupGetCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockLookupGetIndexCall) DoAndReturn(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockLookupGetIndexCall {
+func (c *MockLookupGetCall) DoAndReturn(f func(domain.IndexKey) (commonpb.IndexReader, error)) *MockLookupGetCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -102,74 +102,74 @@ func (m *MockIndexWriter) EXPECT() *MockIndexWriterMockRecorder {
 	return m.recorder
 }
 
-// DeleteIndex mocks base method.
-func (m *MockIndexWriter) DeleteIndex(key domain.IndexKey) {
+// Delete mocks base method.
+func (m *MockIndexWriter) Delete(key domain.IndexKey) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteIndex", key)
+	m.ctrl.Call(m, "Delete", key)
 }
 
-// DeleteIndex indicates an expected call of DeleteIndex.
-func (mr *MockIndexWriterMockRecorder) DeleteIndex(key any) *MockIndexWriterDeleteIndexCall {
+// Delete indicates an expected call of Delete.
+func (mr *MockIndexWriterMockRecorder) Delete(key any) *MockIndexWriterDeleteCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteIndex", reflect.TypeOf((*MockIndexWriter)(nil).DeleteIndex), key)
-	return &MockIndexWriterDeleteIndexCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockIndexWriter)(nil).Delete), key)
+	return &MockIndexWriterDeleteCall{Call: call}
 }
 
-// MockIndexWriterDeleteIndexCall wrap *gomock.Call
-type MockIndexWriterDeleteIndexCall struct {
+// MockIndexWriterDeleteCall wrap *gomock.Call
+type MockIndexWriterDeleteCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockIndexWriterDeleteIndexCall) Return() *MockIndexWriterDeleteIndexCall {
+func (c *MockIndexWriterDeleteCall) Return() *MockIndexWriterDeleteCall {
 	c.Call = c.Call.Return()
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIndexWriterDeleteIndexCall) Do(f func(domain.IndexKey)) *MockIndexWriterDeleteIndexCall {
+func (c *MockIndexWriterDeleteCall) Do(f func(domain.IndexKey)) *MockIndexWriterDeleteCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIndexWriterDeleteIndexCall) DoAndReturn(f func(domain.IndexKey)) *MockIndexWriterDeleteIndexCall {
+func (c *MockIndexWriterDeleteCall) DoAndReturn(f func(domain.IndexKey)) *MockIndexWriterDeleteCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
-// PutIndex mocks base method.
-func (m *MockIndexWriter) PutIndex(key domain.IndexKey, idx *commonpb.Index) {
+// Put mocks base method.
+func (m *MockIndexWriter) Put(key domain.IndexKey, idx *commonpb.Index) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutIndex", key, idx)
+	m.ctrl.Call(m, "Put", key, idx)
 }
 
-// PutIndex indicates an expected call of PutIndex.
-func (mr *MockIndexWriterMockRecorder) PutIndex(key, idx any) *MockIndexWriterPutIndexCall {
+// Put indicates an expected call of Put.
+func (mr *MockIndexWriterMockRecorder) Put(key, idx any) *MockIndexWriterPutCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutIndex", reflect.TypeOf((*MockIndexWriter)(nil).PutIndex), key, idx)
-	return &MockIndexWriterPutIndexCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put", reflect.TypeOf((*MockIndexWriter)(nil).Put), key, idx)
+	return &MockIndexWriterPutCall{Call: call}
 }
 
-// MockIndexWriterPutIndexCall wrap *gomock.Call
-type MockIndexWriterPutIndexCall struct {
+// MockIndexWriterPutCall wrap *gomock.Call
+type MockIndexWriterPutCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockIndexWriterPutIndexCall) Return() *MockIndexWriterPutIndexCall {
+func (c *MockIndexWriterPutCall) Return() *MockIndexWriterPutCall {
 	c.Call = c.Call.Return()
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIndexWriterPutIndexCall) Do(f func(domain.IndexKey, *commonpb.Index)) *MockIndexWriterPutIndexCall {
+func (c *MockIndexWriterPutCall) Do(f func(domain.IndexKey, *commonpb.Index)) *MockIndexWriterPutCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIndexWriterPutIndexCall) DoAndReturn(f func(domain.IndexKey, *commonpb.Index)) *MockIndexWriterPutIndexCall {
+func (c *MockIndexWriterPutCall) DoAndReturn(f func(domain.IndexKey, *commonpb.Index)) *MockIndexWriterPutCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
