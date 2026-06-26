@@ -90,6 +90,10 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		return nil, postgres.ResolveError(err)
 	}
 
+	if err := ret.ResolveIndexedMetadataKeys(ctx); err != nil {
+		return nil, fmt.Errorf("resolving indexed metadata keys: %w", err)
+	}
+
 	return ret, nil
 }
 
@@ -111,6 +115,10 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 
 	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
 	store.SetAloneInBucket(count == 1)
+
+	if err := store.ResolveIndexedMetadataKeys(ctx); err != nil {
+		return nil, nil, fmt.Errorf("resolving indexed metadata keys: %w", err)
+	}
 
 	return store, ret, err
 }
