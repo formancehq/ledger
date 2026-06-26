@@ -17,6 +17,8 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -54,6 +56,9 @@ type Store struct {
 	beginTXHistogram                   metric.Int64Histogram
 	commitTXHistogram                  metric.Int64Histogram
 	rollbackTXHistogram                metric.Int64Histogram
+
+	indexedMetadataKeys []string
+	indexedKeysResolved bool
 }
 
 func (store *Store) Volumes() common.PaginatedResource[
@@ -141,6 +146,46 @@ func (store *Store) Rollback(ctx context.Context) error {
 
 func (store *Store) GetLedger() ledger.Ledger {
 	return store.ledger
+}
+
+func (store *Store) IndexedMetadataKeys() []string {
+	if store.indexedKeysResolved {
+		return store.indexedMetadataKeys
+	}
+	return store.ledger.GetIndexedMetadataKeys()
+}
+
+func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
+	store.indexedKeysResolved = true
+	requested := store.ledger.GetIndexedMetadataKeys()
+	if len(requested) == 0 {
+		return nil
+	}
+	schema := store.ledger.Bucket
+	confirmed := make([]string, 0, len(requested))
+	for _, key := range requested {
+		var count int
+		err := store.db.NewSelect().
+			TableExpr("pg_indexes").
+			ColumnExpr("COUNT(*)").
+			Where("schemaname = ?", schema).
+			Where("tablename = ?", "transactions").
+			Where("indexdef LIKE ?", "%metadata ->> '"+key+"'%").
+			Scan(ctx, &count)
+		if err != nil {
+			return fmt.Errorf("checking pg_indexes for key %q: %w", key, err)
+		}
+		if count > 0 {
+			confirmed = append(confirmed, key)
+		} else {
+			logging.FromContext(ctx).WithFields(map[string]any{
+				"key":    key,
+				"ledger": store.ledger.Name,
+			}).Infof("INDEXED_METADATA_KEYS: no functional index found for key — rewrite disabled, falling back to @>")
+		}
+	}
+	store.indexedMetadataKeys = confirmed
+	return nil
 }
 
 func (store *Store) GetDB() bun.IDB {
