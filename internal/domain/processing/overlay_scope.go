@@ -14,31 +14,33 @@ import (
 // skip the overlay is dropped without committing and the parent never sees
 // any of the writes.
 //
-// Read methods that participate in a Get/Put pair are overridden to read
-// from the staged map first (read-your-writes consistency within the same
-// order). The remaining read methods delegate to the embedded Scope via
-// interface promotion. Counters that an order may increment are tracked as
-// a delta so the order observes a monotonic sequence while the increments
-// are flushed to the parent on Commit only.
+// The overlay overrides the per-kind Accessor methods (Ledgers, Boundaries,
+// Volumes, AccountMetadata, LedgerMetadata, TransactionReferences,
+// TransactionStates) to return a stagedAccessor that buffers writes
+// locally. The remaining Scope methods delegate to the embedded parent via
+// interface promotion — kinds the sub-processor cannot mutate (signing,
+// chapter, numscript, query-checkpoint, sink) don't need overlay buffering
+// because no skip-tolerant order writes to them today.
 //
-// The overlay does NOT speculate beyond the order boundary: it copies the
-// parent's current state lazily (on first read of a staged-eligible key)
-// so an order that never reads or writes a category pays no allocation
-// cost for that category.
+// Counter increments are buffered as deltas. Each Increment* call records
+// itself in the overlay so the order sees a monotonic sequence while the
+// parent only learns about the increments on Commit.
+//
+// Reverted is bool-valued and stays discrete (Scope still exposes it as
+// dedicated Get/Put methods rather than an Accessor).
 type orderOverlayScope struct {
 	Scope
 
-	stagedBoundaries        map[string]*raftcmdpb.LedgerBoundaries
-	stagedLedgers           map[string]*commonpb.LedgerInfo
-	stagedTxStates          map[domain.TransactionKey]*commonpb.TransactionState
-	stagedAcctMetaPuts      map[domain.MetadataKey]*commonpb.MetadataValue
-	stagedAcctMetaDeletes   map[domain.MetadataKey]struct{}
-	stagedLedgerMetaPuts    map[domain.LedgerMetadataKey]*commonpb.MetadataValue
-	stagedLedgerMetaDeletes map[domain.LedgerMetadataKey]struct{}
-	stagedReverted          map[domain.TransactionKey]bool
-	stagedIdempotency       map[domain.IdempotencyKey]*commonpb.IdempotencyKeyValue
-	stagedTxRefs            map[domain.TransactionReferenceKey]*commonpb.TransactionReferenceValue
-	stagedVolumes           map[domain.VolumeKey]*raftcmdpb.VolumePair
+	ledgers           *stagedAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	boundaries        *stagedAccessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
+	volumes           *stagedAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
+	accountMetadata   *stagedAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	ledgerMetadata    *stagedAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	transactionRefs   *stagedAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
+	transactionStates *stagedAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+
+	// Reverted is bool-valued (no Reader). Kept as a discrete map.
+	stagedReverted map[domain.TransactionKey]bool
 
 	// Counter increments are buffered as deltas. Each `Increment*` call
 	// records itself in the overlay so the order sees a monotonic sequence
@@ -55,145 +57,61 @@ type orderOverlayScope struct {
 }
 
 func newOrderOverlayScope(parent Scope) *orderOverlayScope {
-	return &orderOverlayScope{Scope: parent}
+	return &orderOverlayScope{
+		Scope: parent,
+		ledgers: newStagedAccessor(parent.Ledgers(),
+			func(v *commonpb.LedgerInfo) commonpb.LedgerInfoReader { return v.AsReader() }),
+		boundaries: newStagedAccessor(parent.Boundaries(),
+			func(v *raftcmdpb.LedgerBoundaries) raftcmdpb.LedgerBoundariesReader { return v.AsReader() }),
+		volumes: newStagedAccessor(parent.Volumes(),
+			func(v *raftcmdpb.VolumePair) raftcmdpb.VolumePairReader { return v.AsReader() }),
+		accountMetadata: newStagedAccessor(parent.AccountMetadata(),
+			func(v *commonpb.MetadataValue) commonpb.MetadataValueReader { return v.AsReader() }),
+		ledgerMetadata: newStagedAccessor(parent.LedgerMetadata(),
+			func(v *commonpb.MetadataValue) commonpb.MetadataValueReader { return v.AsReader() }),
+		transactionRefs: newStagedAccessor(parent.TransactionReferences(),
+			func(v *commonpb.TransactionReferenceValue) commonpb.TransactionReferenceValueReader {
+				return v.AsReader()
+			}),
+		transactionStates: newStagedAccessor(parent.TransactionStates(),
+			func(v *commonpb.TransactionState) commonpb.TransactionStateReader { return v.AsReader() }),
+	}
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Ledger
+// Accessor overrides
 // ──────────────────────────────────────────────────────────────────────────
 
-func (o *orderOverlayScope) GetLedger(name string) (commonpb.LedgerInfoReader, error) {
-	if v, ok := o.stagedLedgers[name]; ok {
-		return v.AsReader(), nil
-	}
-
-	return o.Scope.GetLedger(name)
+func (o *orderOverlayScope) Ledgers() Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
+	return o.ledgers
 }
 
-func (o *orderOverlayScope) PutLedger(name string, info *commonpb.LedgerInfo) {
-	if o.stagedLedgers == nil {
-		o.stagedLedgers = map[string]*commonpb.LedgerInfo{}
-	}
-
-	o.stagedLedgers[name] = info
+func (o *orderOverlayScope) Boundaries() Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader] {
+	return o.boundaries
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// Boundaries
-// ──────────────────────────────────────────────────────────────────────────
-
-func (o *orderOverlayScope) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, error) {
-	if b, ok := o.stagedBoundaries[ledger]; ok {
-		return b.AsReader(), nil
-	}
-
-	return o.Scope.GetBoundaries(ledger)
+func (o *orderOverlayScope) Volumes() Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader] {
+	return o.volumes
 }
 
-func (o *orderOverlayScope) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
-	if o.stagedBoundaries == nil {
-		o.stagedBoundaries = map[string]*raftcmdpb.LedgerBoundaries{}
-	}
+func (o *orderOverlayScope) AccountMetadata() Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+	return o.accountMetadata
+}
 
-	o.stagedBoundaries[ledger] = boundaries
+func (o *orderOverlayScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
+	return o.ledgerMetadata
+}
+
+func (o *orderOverlayScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
+	return o.transactionRefs
+}
+
+func (o *orderOverlayScope) TransactionStates() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
+	return o.transactionStates
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Volumes
-// ──────────────────────────────────────────────────────────────────────────
-
-func (o *orderOverlayScope) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
-	if v, ok := o.stagedVolumes[key]; ok {
-		return v.AsReader(), nil
-	}
-
-	return o.Scope.GetVolume(key)
-}
-
-func (o *orderOverlayScope) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
-	if o.stagedVolumes == nil {
-		o.stagedVolumes = map[domain.VolumeKey]*raftcmdpb.VolumePair{}
-	}
-
-	o.stagedVolumes[key] = value
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// Account metadata
-// ──────────────────────────────────────────────────────────────────────────
-
-func (o *orderOverlayScope) GetAccountMetadata(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
-	if _, deleted := o.stagedAcctMetaDeletes[key]; deleted {
-		return nil, domain.ErrNotFound
-	}
-
-	if v, ok := o.stagedAcctMetaPuts[key]; ok {
-		return v.AsReader(), nil
-	}
-
-	return o.Scope.GetAccountMetadata(key)
-}
-
-func (o *orderOverlayScope) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
-	if o.stagedAcctMetaPuts == nil {
-		o.stagedAcctMetaPuts = map[domain.MetadataKey]*commonpb.MetadataValue{}
-	}
-
-	delete(o.stagedAcctMetaDeletes, key)
-	o.stagedAcctMetaPuts[key] = value
-}
-
-func (o *orderOverlayScope) DeleteAccountMetadata(key domain.MetadataKey) {
-	if o.stagedAcctMetaDeletes == nil {
-		o.stagedAcctMetaDeletes = map[domain.MetadataKey]struct{}{}
-	}
-
-	delete(o.stagedAcctMetaPuts, key)
-	o.stagedAcctMetaDeletes[key] = struct{}{}
-}
-
-// GetAccountMetadataEntry delegates: the entry surface is read-only and
-// returning a staged metadata value as an attributes.Entry would require
-// fabricating a canonical encoding that the engine alone owns. Sub-
-// processors that read this entry today do not also Put the same key in
-// the same order, so the delegated read suffices.
-
-// ──────────────────────────────────────────────────────────────────────────
-// Ledger metadata
-// ──────────────────────────────────────────────────────────────────────────
-
-func (o *orderOverlayScope) GetLedgerMetadata(key domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
-	if _, deleted := o.stagedLedgerMetaDeletes[key]; deleted {
-		return nil, domain.ErrNotFound
-	}
-
-	if v, ok := o.stagedLedgerMetaPuts[key]; ok {
-		return v.AsReader(), nil
-	}
-
-	return o.Scope.GetLedgerMetadata(key)
-}
-
-func (o *orderOverlayScope) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
-	if o.stagedLedgerMetaPuts == nil {
-		o.stagedLedgerMetaPuts = map[domain.LedgerMetadataKey]*commonpb.MetadataValue{}
-	}
-
-	delete(o.stagedLedgerMetaDeletes, key)
-	o.stagedLedgerMetaPuts[key] = value
-}
-
-func (o *orderOverlayScope) DeleteLedgerMetadata(key domain.LedgerMetadataKey) {
-	if o.stagedLedgerMetaDeletes == nil {
-		o.stagedLedgerMetaDeletes = map[domain.LedgerMetadataKey]struct{}{}
-	}
-
-	delete(o.stagedLedgerMetaPuts, key)
-	o.stagedLedgerMetaDeletes[key] = struct{}{}
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// Reverted / Idempotency / TransactionReference / TransactionState
+// Reverted (bool-valued, no Reader — kept discrete on the Scope interface)
 // ──────────────────────────────────────────────────────────────────────────
 
 func (o *orderOverlayScope) GetReverted(key domain.TransactionKey) (bool, error) {
@@ -210,54 +128,6 @@ func (o *orderOverlayScope) PutReverted(key domain.TransactionKey, reverted bool
 	}
 
 	o.stagedReverted[key] = reverted
-}
-
-func (o *orderOverlayScope) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
-	if v, ok := o.stagedIdempotency[key]; ok {
-		return v.AsReader(), nil
-	}
-
-	return o.Scope.GetIdempotencyKey(key)
-}
-
-func (o *orderOverlayScope) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
-	if o.stagedIdempotency == nil {
-		o.stagedIdempotency = map[domain.IdempotencyKey]*commonpb.IdempotencyKeyValue{}
-	}
-
-	o.stagedIdempotency[key] = value
-}
-
-func (o *orderOverlayScope) GetTransactionReference(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
-	if v, ok := o.stagedTxRefs[key]; ok {
-		return v.AsReader(), nil
-	}
-
-	return o.Scope.GetTransactionReference(key)
-}
-
-func (o *orderOverlayScope) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
-	if o.stagedTxRefs == nil {
-		o.stagedTxRefs = map[domain.TransactionReferenceKey]*commonpb.TransactionReferenceValue{}
-	}
-
-	o.stagedTxRefs[key] = value
-}
-
-func (o *orderOverlayScope) GetTransactionState(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
-	if v, ok := o.stagedTxStates[key]; ok {
-		return v.AsReader(), nil
-	}
-
-	return o.Scope.GetTransactionState(key)
-}
-
-func (o *orderOverlayScope) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
-	if o.stagedTxStates == nil {
-		o.stagedTxStates = map[domain.TransactionKey]*commonpb.TransactionState{}
-	}
-
-	o.stagedTxStates[key] = state
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -345,48 +215,16 @@ func (o *orderOverlayScope) captureBaseCounters() {
 // order to a skip), the overlay is dropped by going out of scope and the
 // parent state is never touched — the order is effectively rolled back.
 func (o *orderOverlayScope) Commit() {
-	for name, info := range o.stagedLedgers {
-		o.Scope.PutLedger(name, info)
-	}
-
-	for ledger, b := range o.stagedBoundaries {
-		o.Scope.PutBoundaries(ledger, b)
-	}
-
-	for k, v := range o.stagedVolumes {
-		o.Scope.PutVolume(k, v)
-	}
-
-	for k, v := range o.stagedAcctMetaPuts {
-		o.Scope.PutAccountMetadata(k, v)
-	}
-
-	for k := range o.stagedAcctMetaDeletes {
-		o.Scope.DeleteAccountMetadata(k)
-	}
-
-	for k, v := range o.stagedLedgerMetaPuts {
-		o.Scope.PutLedgerMetadata(k, v)
-	}
-
-	for k := range o.stagedLedgerMetaDeletes {
-		o.Scope.DeleteLedgerMetadata(k)
-	}
+	o.ledgers.flush()
+	o.boundaries.flush()
+	o.volumes.flush()
+	o.accountMetadata.flush()
+	o.ledgerMetadata.flush()
+	o.transactionRefs.flush()
+	o.transactionStates.flush()
 
 	for k, v := range o.stagedReverted {
 		o.Scope.PutReverted(k, v)
-	}
-
-	for k, v := range o.stagedIdempotency {
-		o.Scope.PutIdempotencyKey(k, v)
-	}
-
-	for k, v := range o.stagedTxRefs {
-		o.Scope.PutTransactionReference(k, v)
-	}
-
-	for k, v := range o.stagedTxStates {
-		o.Scope.PutTransactionState(k, v)
 	}
 
 	for range o.seqIDDelta {
@@ -407,3 +245,72 @@ func (o *orderOverlayScope) Commit() {
 }
 
 var _ Scope = (*orderOverlayScope)(nil)
+
+// stagedAccessor wraps a parent Accessor with per-order buffering: Put and
+// Delete go into a local staged map / tombstone set; Get prefers the
+// staged value (or surfaces ErrNotFound for a tombstone) before falling
+// back to the parent. flush() replays the buffer onto the parent in a
+// single pass — called by orderOverlayScope.Commit().
+type stagedAccessor[K AccessorKey, V any, R any] struct {
+	parent   Accessor[K, V, R]
+	staged   map[K]V
+	deletes  map[K]struct{}
+	asReader func(V) R
+}
+
+func newStagedAccessor[K AccessorKey, V any, R any](
+	parent Accessor[K, V, R],
+	asReader func(V) R,
+) *stagedAccessor[K, V, R] {
+	return &stagedAccessor[K, V, R]{
+		parent:   parent,
+		asReader: asReader,
+	}
+}
+
+func (a *stagedAccessor[K, V, R]) Get(key K) (R, error) {
+	if _, deleted := a.deletes[key]; deleted {
+		var zero R
+
+		return zero, domain.ErrNotFound
+	}
+
+	if v, ok := a.staged[key]; ok {
+		return a.asReader(v), nil
+	}
+
+	return a.parent.Get(key)
+}
+
+func (a *stagedAccessor[K, V, R]) Put(key K, value V) {
+	if a.staged == nil {
+		a.staged = make(map[K]V)
+	}
+
+	delete(a.deletes, key)
+	a.staged[key] = value
+}
+
+func (a *stagedAccessor[K, V, R]) Delete(key K) {
+	if a.deletes == nil {
+		a.deletes = make(map[K]struct{})
+	}
+
+	delete(a.staged, key)
+	a.deletes[key] = struct{}{}
+}
+
+// flush replays every staged write and tombstone onto the parent accessor.
+// Idempotent in the sense that calling it twice produces the same parent
+// state — but the caller is expected to invoke it at most once per
+// orderOverlayScope lifecycle. Maps iterate in random order; the parent
+// implementations do not depend on per-key order, so this is safe.
+func (a *stagedAccessor[K, V, R]) flush() {
+	for k, v := range a.staged {
+		a.parent.Put(k, v)
+	}
+
+	for k := range a.deletes {
+		a.parent.Delete(k)
+	}
+}

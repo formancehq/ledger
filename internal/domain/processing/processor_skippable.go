@@ -123,7 +123,9 @@ func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *commo
 		return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("skip payload for ledger %q has no inner Apply/Log envelope", ledger)}
 	}
 
-	boundariesReader, err := parent.GetBoundaries(ledger)
+	boundariesAccessor := parent.Boundaries()
+
+	boundariesReader, err := boundariesAccessor.Get(domain.LedgerKey{Name: ledger})
 	if err != nil {
 		// ErrNotFound means the apply order references a ledger that does
 		// not exist — that should have surfaced as the sub-handler's
@@ -141,7 +143,7 @@ func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *commo
 	nextLogID := boundaries.GetNextLogId()
 	boundaries.NextLogId = nextLogID + 1
 
-	parent.PutBoundaries(ledger, boundaries)
+	boundariesAccessor.Put(domain.LedgerKey{Name: ledger}, boundaries)
 
 	apply.Log.Id = nextLogID
 	apply.Log.Date = parent.GetDate().Mutate()
