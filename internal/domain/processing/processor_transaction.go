@@ -247,6 +247,61 @@ func ledgerHasAccountTypeDefaults(info *commonpb.LedgerInfo) bool {
 	return false
 }
 
+// markNewAccountAndMatchDefaults is the shared per-account core for every
+// account-creation path (EN-1276): transaction postings and metadata-set alike.
+// When `account` is touched for the FIRST TIME EVER (any asset) on a ledger that
+// declares default-bearing account types, it records the presence-only existence
+// marker and returns the matching account type's default_metadata for the caller
+// to merge. Returns (nil, nil) for the world system account, for accounts already
+// created before this order, and for accounts matching no default-bearing type
+// (the marker is still written in the last case — markers track existence, not
+// just defaults).
+//
+// Newness is authoritative here at apply: GetAccount returns ErrNotFound only
+// when the account has never been seen. The PutAccount marker is written to the
+// WriteSet so a later order in the same batch (and the next order) sees the
+// account as existing. A non-ErrNotFound error (e.g. a coverage miss from a
+// stale plan that failed to declare the key) is surfaced loudly, never skipped.
+//
+// Callers MUST gate on ledgerHasAccountTypeDefaults so a ledger without defaults
+// pays no GetAccount/PutAccount cost.
+func markNewAccountAndMatchDefaults(
+	s Scope,
+	ledgerName string,
+	account string,
+	compiled []accounttype.CompiledType,
+) (map[string]*commonpb.MetadataValue, domain.Describable) {
+	// System accounts (world) are never marked or assigned default metadata.
+	if account == "world" {
+		return nil, nil
+	}
+
+	key := domain.AccountKey{LedgerName: ledgerName, Account: account}
+
+	existing, err := s.GetAccount(key)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, &domain.ErrStorageOperation{Operation: "loading account state", Cause: err}
+	}
+
+	if existing != nil {
+		// Account already created before this order — not new.
+		return nil, nil
+	}
+
+	// First time this account is ever touched: record the marker so it is
+	// recognised as existing from now on. The marker is presence-only
+	// (AccountState carries no fields), so apply and rebuild write byte-identical
+	// values.
+	s.PutAccount(key, &commonpb.AccountState{})
+
+	matched := accounttype.FindMatchingType(account, compiled)
+	if matched == nil {
+		return nil, nil
+	}
+
+	return matched.GetDefaultMetadata(), nil
+}
+
 // applyDefaultMetadataToNewAccounts records an existence marker for each
 // non-system account this transaction touches for the FIRST TIME EVER (any
 // asset) and merges its matching account type's default_metadata into
@@ -254,12 +309,12 @@ func ledgerHasAccountTypeDefaults(info *commonpb.LedgerInfo) bool {
 // ledger declares at least one account type with default_metadata (the derived
 // ledgerHasAccountTypeDefaults gate), so ledgers without defaults pay nothing.
 //
-// Newness is authoritative here at apply: GetAccount returns ErrNotFound only
-// when the account has never been seen. The PutAccount marker is written to the
-// WriteSet so a later order in the same batch (and the next transaction) sees
-// the account as existing — an account first seen in this batch is created
-// once. A non-ErrNotFound error (e.g. a coverage miss from a stale plan that
-// failed to declare the key) is surfaced loudly rather than silently skipped.
+// EN-1276 is create-only — the AddAccountType apply path rejects adding a
+// default-bearing account type to a ledger that already has transactions
+// (ErrDefaultMetadataOnPopulatedLedger), so every account this gate sees on a
+// defaults-bearing ledger is genuinely new and is never backfilled. The
+// AccountDefaultsStatus enum is reserved for a later phase that adds an explicit
+// one-time seeding pass; it is intentionally unwired today.
 //
 // Determinism: the set of accounts and the set of default keys written are
 // independent of map iteration order, so replay is identical across nodes.
@@ -271,15 +326,6 @@ func applyDefaultMetadataToNewAccounts(
 	compiled []accounttype.CompiledType,
 	accountMetadata map[string]*commonpb.MetadataMap,
 ) (map[string]*commonpb.MetadataMap, domain.Describable) {
-	// Apply-path gate (behaviour-first): derived deterministically from the
-	// audit-built LedgerInfo, so it survives replay/recovery without any stored
-	// status. EN-1276 is create-only — the AddAccountType apply path rejects
-	// adding a default-bearing account type to a ledger that already has
-	// transactions (ErrDefaultMetadataOnPopulatedLedger), so every account this
-	// gate sees on a defaults-bearing ledger is genuinely new and is never
-	// backfilled. The AccountDefaultsStatus enum is reserved for a later phase
-	// that adds an explicit one-time seeding pass to attach defaults to
-	// already-populated ledgers; it is intentionally unwired today.
 	if !ledgerHasAccountTypeDefaults(info) {
 		return accountMetadata, nil
 	}
@@ -288,85 +334,72 @@ func applyDefaultMetadataToNewAccounts(
 
 	for _, posting := range postings {
 		for _, account := range [2]string{posting.GetSource(), posting.GetDestination()} {
-			// System accounts (world) are never assigned default metadata.
-			if account == "world" {
-				continue
-			}
-
 			if _, dup := seen[account]; dup {
 				continue
 			}
 
 			seen[account] = struct{}{}
 
-			key := domain.AccountKey{LedgerName: ledgerName, Account: account}
-
-			existing, err := s.GetAccount(key)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return accountMetadata, &domain.ErrStorageOperation{Operation: "loading account state", Cause: err}
+			defaults, err := markNewAccountAndMatchDefaults(s, ledgerName, account, compiled)
+			if err != nil {
+				return accountMetadata, err
 			}
 
-			if existing != nil {
-				// Account already created before this transaction — not new.
-				continue
-			}
-
-			// First time this account is ever touched: record the marker so it
-			// is recognised as existing from now on. The marker is presence-only
-			// (AccountState carries no fields), so apply and rebuild write
-			// byte-identical values.
-			s.PutAccount(key, &commonpb.AccountState{})
-
-			matched := accounttype.FindMatchingType(account, compiled)
-			if matched == nil {
-				continue
-			}
-
-			defaults := matched.GetDefaultMetadata()
-			if len(defaults) == 0 {
-				continue
-			}
-
-			// accountMetadata[account] may alias the order's own MetadataMap proto
-			// (the caller fills it from order.GetAccountMetadata()). Clone it before
-			// merging default keys so we never mutate the caller's input in place
-			// (CloneVT discipline); a map we freshly allocate here is already ours.
-			mm := accountMetadata[account]
-			owned := mm == nil
-
-			for defKey, defValue := range defaults {
-				// Explicit script/order metadata for the same key always wins.
-				if _, set := mm.GetValues()[defKey]; set {
-					continue
-				}
-
-				switch {
-				case mm == nil:
-					mm = &commonpb.MetadataMap{Values: make(map[string]*commonpb.MetadataValue)}
-
-					if accountMetadata == nil {
-						accountMetadata = make(map[string]*commonpb.MetadataMap)
-					}
-
-					accountMetadata[account] = mm
-					owned = true
-				case !owned:
-					mm = mm.CloneVT()
-
-					if mm.Values == nil {
-						mm.Values = make(map[string]*commonpb.MetadataValue)
-					}
-
-					accountMetadata[account] = mm
-					owned = true
-				}
-
-				mm.Values[defKey] = defValue
-			}
+			accountMetadata = mergeAccountDefaults(accountMetadata, account, defaults)
 		}
 	}
 
 	return accountMetadata, nil
+}
+
+// mergeAccountDefaults merges `defaults` into accountMetadata[account] for keys
+// not already set explicitly (explicit script/order metadata always wins). The
+// existing MetadataMap may alias the order's own proto, so it is cloned before
+// the first mutation (CloneVT discipline) — a map we freshly allocate here is
+// already ours. Returns accountMetadata (allocating it if defaults must be
+// written into a previously-nil map). A nil/empty `defaults` is a no-op.
+func mergeAccountDefaults(
+	accountMetadata map[string]*commonpb.MetadataMap,
+	account string,
+	defaults map[string]*commonpb.MetadataValue,
+) map[string]*commonpb.MetadataMap {
+	if len(defaults) == 0 {
+		return accountMetadata
+	}
+
+	mm := accountMetadata[account]
+	owned := mm == nil
+
+	for defKey, defValue := range defaults {
+		if _, set := mm.GetValues()[defKey]; set {
+			continue
+		}
+
+		switch {
+		case mm == nil:
+			mm = &commonpb.MetadataMap{Values: make(map[string]*commonpb.MetadataValue)}
+
+			if accountMetadata == nil {
+				accountMetadata = make(map[string]*commonpb.MetadataMap)
+			}
+
+			accountMetadata[account] = mm
+			owned = true
+		case !owned:
+			mm = mm.CloneVT()
+
+			if mm.Values == nil {
+				mm.Values = make(map[string]*commonpb.MetadataValue)
+			}
+
+			accountMetadata[account] = mm
+			owned = true
+		}
+
+		mm.Values[defKey] = defValue
+	}
+
+	return accountMetadata
 }
 
 // validatePostings checks that all account addresses and assets in the postings

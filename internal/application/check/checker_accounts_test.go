@@ -283,6 +283,40 @@ func TestCompareAccounts_EndToEnd_DefaultMetadataLedger(t *testing.T) {
 	require.Empty(t, errs, "customers:alice must be referenced by its live volume and marker must be present")
 }
 
+// TestCompareAccounts_EndToEnd_MetadataSetCreatesAccount verifies the
+// metadata-set creation path (EN-1276): a SaveMetadata order that first-creates
+// an account (no transaction, hence no volume) must have its existence marker
+// recorded by replay, so the checker accepts the live marker. Without replay
+// recording the SavedMetadata touch, the marker would be an orphan (no volume,
+// no replay touch) and the forward check would false-positive — so this is the
+// regression test for the replay SavedMetadata marker branch.
+func TestCompareAccounts_EndToEnd_MetadataSetCreatesAccount(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("payments"))
+
+	// Default-bearing account type on the fresh (zero-tx) ledger.
+	engine.processAndCommit(addAccountTypeWithDefaultMetadataOrder(
+		"payments", "customer", "customers:{id}",
+		map[string]string{"tier": "standard"},
+	))
+
+	// Metadata-set first-creates customers:alice — no transaction, so the account
+	// has no volume; its only audit reference is this SavedMetadata touch.
+	engine.processAndCommit(saveAccountMetadataOrder(
+		"payments", "customers:alice", map[string]string{"note": "vip"},
+	))
+
+	// Flush the marker the in-memory FSM wrote (testEngine does not flush account
+	// markers to Pebble; mirrors the real WriteSet.Merge).
+	writeAccountMarker(t, engine, "payments", "customers:alice")
+
+	errs := collectAccountMismatchErrors(t, engine)
+	require.Empty(t, errs, "metadata-set-created account: replay records the touch and the live marker satisfies both checks")
+}
+
 // addAccountTypeWithDefaultMetadataOrder is a helper (checker-test local) for
 // building AddAccountType orders with a DefaultMetadata map from a plain
 // string map.

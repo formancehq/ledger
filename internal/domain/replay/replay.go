@@ -129,6 +129,26 @@ func ReplayLedgerLog(
 
 		switch target := p.SavedMetadata.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
+			// EN-1276: a metadata-set is an account-creation path, so record the
+			// per-account existence marker (mirroring the FSM apply-path gate in
+			// processAddMetadata) when the ledger has default-bearing types — so
+			// the checker/rebuild reconstruct exactly the markers apply wrote. The
+			// default values themselves ride this log's Metadata and replay below.
+			// world is never marked. RecordAccount is idempotent, so recording a
+			// pre-existing account here is harmless.
+			//
+			// Follow-up: the mirror SavedMetadata handler (processMirrorSavedMetadata)
+			// does not yet write this marker, so a mirror ledger that declares
+			// default-bearing account types would see this replay record a marker
+			// the live FSM did not — same latent gap as mirror CreatedTransaction.
+			// Out of scope here (mirror ledgers do not declare local defaults today).
+			if target.Account.GetAddr() != "world" && compiledTypesHaveDefaults(ledgerAccountTypes[ledger]) {
+				key := domain.AccountKey{LedgerName: ledger, Account: target.Account.GetAddr()}
+				if err := w.RecordAccount(key.Bytes()); err != nil {
+					return fmt.Errorf("recording account marker for saved metadata: %w", err)
+				}
+			}
+
 			if len(p.SavedMetadata.GetMetadata()) > 0 {
 				for key, value := range p.SavedMetadata.GetMetadata() {
 					mk := domain.MetadataKey{

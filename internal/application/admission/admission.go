@@ -985,6 +985,12 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 						Key:        key,
 					}] = struct{}{}
 				}
+
+				// EN-1276: a metadata-set is an account-creation path, so the
+				// apply path reads/writes the per-account existence marker
+				// (processAddMetadata) — declare the need so that read is
+				// coverage-gated and preloaded.
+				addAccountNeed(p, ledgerName, target.Account.GetAddr())
 			}
 
 			if tx, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {

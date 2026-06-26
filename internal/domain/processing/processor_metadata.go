@@ -44,6 +44,11 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 		}
 	}
 
+	// Metadata to apply and log. For an account target this is widened with
+	// account-type defaults below when the metadata-set first creates the
+	// account; for a transaction target it is the order metadata verbatim.
+	loggedMetadata := order.GetMetadata()
+
 	// Stored values are immutable to background processes; the FSM stores what
 	// the client sent verbatim and reads return those bytes as-is — the
 	// declared type is an index hint, not an API contract. The indexer
@@ -52,11 +57,32 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 
 	switch target := order.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
-		for key, value := range order.GetMetadata() {
+		account := target.Account.GetAddr()
+
+		// EN-1276: a metadata-set is an account-creation path. When this is the
+		// first time the account is ever seen on a defaults-bearing ledger,
+		// record the existence marker and merge the account type's
+		// default_metadata for keys the caller did not set explicitly — so the
+		// account materialises with its defaults exactly as it would via a
+		// transaction. Explicit keys always win. The merged map is what we both
+		// apply and log, so replay/rebuild reconstruct the same metadata; the
+		// marker keeps the next touch from re-applying defaults.
+		if ledgerHasAccountTypeDefaults(info) {
+			compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info)
+
+			defaults, defErr := markNewAccountAndMatchDefaults(s, ledger, account, compiled)
+			if defErr != nil {
+				return nil, defErr
+			}
+
+			loggedMetadata = mergeFlatDefaults(loggedMetadata, defaults)
+		}
+
+		for key, value := range loggedMetadata {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
 					LedgerName: ledger,
-					Account:    target.Account.GetAddr(),
+					Account:    account,
 				},
 				Key: key,
 			}
@@ -98,10 +124,32 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 		Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 			SavedMetadata: &commonpb.SavedMetadata{
 				Target:   loggedTarget,
-				Metadata: order.GetMetadata(),
+				Metadata: loggedMetadata,
 			},
 		},
 	}, nil
+}
+
+// mergeFlatDefaults returns `explicit` widened with `defaults` for keys not
+// already present (explicit caller-supplied metadata always wins). explicit is
+// never mutated — it may alias the order's own proto, so a fresh map is
+// allocated (CloneVT discipline). A nil/empty `defaults` returns explicit
+// unchanged so the common no-defaults path allocates nothing.
+func mergeFlatDefaults(explicit, defaults map[string]*commonpb.MetadataValue) map[string]*commonpb.MetadataValue {
+	if len(defaults) == 0 {
+		return explicit
+	}
+
+	merged := make(map[string]*commonpb.MetadataValue, len(explicit)+len(defaults))
+	maps.Copy(merged, explicit)
+
+	for key, value := range defaults {
+		if _, set := merged[key]; !set {
+			merged[key] = value
+		}
+	}
+
+	return merged
 }
 
 func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
