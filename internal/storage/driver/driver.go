@@ -127,7 +127,7 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 		}).Errorf("INDEXED_METADATA_KEYS: index resolution failed, all keys fall back to @>: %s", err)
 	}
 
-	return store, ret, err
+	return store, ret, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {

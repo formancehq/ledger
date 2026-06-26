@@ -183,8 +183,12 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 			Where("n.nspname = ?", schema).
 			Where("c.relname = ?", "transactions").
 			Where("i.indexprs IS NOT NULL").
-			Where("pg_get_expr(i.indexprs, i.indrelid) LIKE ?", "%metadata ->> '"+key+"'%").
-			Where("(i.indpred IS NULL OR pg_get_expr(i.indpred, i.indrelid) LIKE ?)", "%ledger = '"+store.ledger.Name+"'%").
+			// Use position() rather than LIKE so that underscores and percent signs
+			// in key names or ledger names are treated as literals, not wildcards.
+			// Key names are validated as [a-zA-Z0-9_]+; ledger names are trusted
+			// internal values — both are safe to embed in the search strings below.
+			Where("position(? IN pg_get_expr(i.indexprs, i.indrelid)) > 0", "metadata ->> '"+key+"'").
+			Where("(i.indpred IS NULL OR position(? IN pg_get_expr(i.indpred, i.indrelid)) > 0)", "ledger = '"+store.ledger.Name+"'").
 			Scan(ctx, &count)
 		if err != nil {
 			return fmt.Errorf("checking pg_index for key %q: %w", key, err)
