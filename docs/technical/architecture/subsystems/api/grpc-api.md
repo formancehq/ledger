@@ -504,7 +504,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 - **Same key + same content**: Returns reference to original log
 - **Same key + different content**: Returns `idempotency key conflict` error
 
-See [Idempotency](../data-model/idempotency.md) for detailed documentation.
+See [Idempotency](../admission/idempotency.md) for detailed documentation.
 
 ## Error Handling
 
@@ -754,7 +754,7 @@ just generate-proto
 
 ## Next Steps
 
-- [HTTP API](./api.md) - REST API documentation
-- [Idempotency](../data-model/idempotency.md) - Safe request retries
-- [Architecture](../core/architecture.md) - System overview
-- [Data Flows](../data-model/data-flows.md) - Request processing flow
+- [HTTP API](http-api.md) - REST API documentation
+- [Idempotency](../admission/idempotency.md) - Safe request retries
+- [Architecture](../../overview.md) - System overview
+- [Data Flows](../../data-flows.md) - Request processing flow

@@ -93,7 +93,7 @@ Each attribute type has a single entry per canonical key (last-write-wins).
 
 > **Note:** `LedgerKey` (used for Ledger Info and Boundaries) uses the string-based ledger name, because those entries are looked up by name. All other ledger-scoped keys use the numeric `uint32` ledger ID (big-endian, 4 bytes) for compact encoding and to support future ledger renames without rewriting data.
 
-See [System Attributes](./attributes.md) and [Attribute Key Hashing](./attribute-key-hashing.md) for the caching model and U128 hash key system.
+See [System Attributes](../attributes/attributes.md) and [Attribute Key Hashing](../attributes/key-hashing.md) for the caching model and U128 hash key system.
 
 #### Cache zone (`0x02`)
 
@@ -169,7 +169,7 @@ Key:   [0x01][0x01][ledgerID BE 4B][account]\x00[asset_base][precision]
 Value: VolumePair protobuf (Input + Output as Uint256)
 ```
 
-Each write overwrites the previous value. The in-memory cache tracks two generations for eviction; see [Attribute Key Hashing](./attribute-key-hashing.md).
+Each write overwrites the previous value. The in-memory cache tracks two generations for eviction; see [Attribute Key Hashing](../attributes/key-hashing.md).
 
 ### Use Cases
 
@@ -323,6 +323,6 @@ The `Batch` (`internal/storage/dal/batch.go`) provides atomic write operations:
 
 ## See Also
 
-- [Storage and Persistence](./storage.md) - Overview of storage architecture
-- [Architecture](../core/architecture.md) - System architecture overview
-- [API Reference](../api/api.md) - API documentation
+- [Storage and Persistence](storage.md) - Overview of storage architecture
+- [Architecture](../../overview.md) - System architecture overview
+- [API Reference](../api/http-api.md) - API documentation

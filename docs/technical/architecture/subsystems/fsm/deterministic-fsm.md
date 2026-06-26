@@ -345,7 +345,7 @@ type CleanupToken struct {
 }
 ```
 
-> **Note:** Reversions do not use an `AttributeLoader` — they are stored as an in-memory `bitset.Bitset` (from `internal/pkg/bitset/bitset.go`) that is always authoritative. No preloading or Pebble lookups are needed. See [Attributes - Reversions](../storage/attributes.md#reversions) for details.
+> **Note:** Reversions do not use an `AttributeLoader` — they are stored as an in-memory `bitset.Bitset` (from `internal/pkg/bitset/bitset.go`) that is always authoritative. No preloading or Pebble lookups are needed. See [Attributes - Reversions](../attributes/attributes.md#reversions) for details.
 
 After the command is applied (success or error), `CleanupToken.Release()` removes the keys from their respective loaders. This is safe because:
 - On success: The FSM cache now has the values

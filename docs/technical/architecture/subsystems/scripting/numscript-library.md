@@ -216,7 +216,7 @@ The latest-version pointer is a simple string that tells the system which versio
 
 ### Attribute Caches
 
-Numscript data uses the same preloading pattern as other system attributes (see [Deterministic FSM](../core/deterministic-fsm.md)):
+Numscript data uses the same preloading pattern as other system attributes (see [Deterministic FSM](../fsm/deterministic-fsm.md)):
 
 | Cache | Key type | Value type | Purpose |
 |---|---|---|---|
@@ -359,7 +359,7 @@ WriteSet.Merge()
 
 ## Related Documentation
 
-- [Numscript Language](../../contributing/numscript.md) — DSL syntax, features, and usage in transactions
-- [Deterministic FSM](../core/deterministic-fsm.md) — Cache, preloading, and generation-based architecture
-- [System Attributes](../storage/attributes.md) — Attribute types, caching, and compaction
-- [API Comparison](../../contributing/api-comparison.md) — Feature parity tracking
+- [Numscript Language](../../../contributing/numscript.md) — DSL syntax, features, and usage in transactions
+- [Deterministic FSM](../fsm/deterministic-fsm.md) — Cache, preloading, and generation-based architecture
+- [System Attributes](../attributes/attributes.md) — Attribute types, caching, and compaction
+- [API Comparison](../../../contributing/api-comparison.md) — Feature parity tracking

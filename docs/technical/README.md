@@ -4,7 +4,7 @@ Technical reference for the Ledger v3 distributed ledger system.
 
 ## Reading Order
 
-1. **[Architecture Overview](architecture/core/architecture.md)** -- system components, Raft consensus, and how they fit together
+1. **[Architecture Overview](architecture/overview.md)** -- system components, Raft consensus, and how they fit together
 2. **[Architecture Deep Dives](architecture/)** -- 24 documents grouped by topic (core, storage, data model, API)
 3. **[Contributing](contributing/getting-started.md)** -- set up your dev environment, conventions, and testing
 
@@ -12,14 +12,14 @@ Technical reference for the Ledger v3 distributed ledger system.
 
 | Goal | Document |
 |------|----------|
-| Understand the system architecture | [architecture/core/architecture.md](architecture/core/architecture.md) |
-| Learn how Raft consensus works here | [architecture/core/raft-consensus.md](architecture/core/raft-consensus.md) |
-| Understand the deterministic FSM | [architecture/core/deterministic-fsm.md](architecture/core/deterministic-fsm.md) |
-| Learn about storage internals | [architecture/storage/storage.md](architecture/storage/storage.md) |
-| Understand ledgers and transactions | [architecture/data-model/buckets-ledgers.md](architecture/data-model/buckets-ledgers.md) |
-| See data flow diagrams | [architecture/data-model/data-flows.md](architecture/data-model/data-flows.md) |
-| Learn the gRPC API | [architecture/api/grpc-api.md](architecture/api/grpc-api.md) |
-| Learn the HTTP API | [architecture/api/api.md](architecture/api/api.md) |
+| Understand the system architecture | [architecture/core/architecture.md](architecture/overview.md) |
+| Learn how Raft consensus works here | [architecture/core/raft-consensus.md](architecture/subsystems/consensus/raft-consensus.md) |
+| Understand the deterministic FSM | [architecture/core/deterministic-fsm.md](architecture/subsystems/fsm/deterministic-fsm.md) |
+| Learn about storage internals | [architecture/storage/storage.md](architecture/subsystems/storage/storage.md) |
+| Understand ledgers and transactions | [architecture/data-model/buckets-ledgers.md](architecture/data-model.md) |
+| See data flow diagrams | [architecture/data-model/data-flows.md](architecture/data-flows.md) |
+| Learn the gRPC API | [architecture/api/grpc-api.md](architecture/subsystems/api/grpc-api.md) |
+| Learn the HTTP API | [architecture/api/api.md](architecture/subsystems/api/http-api.md) |
 | Set up the dev environment | [contributing/getting-started.md](contributing/getting-started.md) |
 | Understand code conventions | [contributing/conventions.md](contributing/conventions.md) |
 | Write and run tests | [contributing/testing.md](contributing/testing.md) |

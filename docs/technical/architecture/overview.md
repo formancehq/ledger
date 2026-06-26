@@ -175,7 +175,7 @@ message LedgerBoundaries {
 4. **Reduced Overhead**: No need to coordinate multiple Raft leaders
 5. **Cross-Ledger Atomicity**: Enables atomic bulk operations spanning multiple ledgers
 
-> **📋 Related**: See [Global Log Architecture](./global-log.md) for details on how the global log enables system-level atomic operations.
+> **📋 Related**: See [Global Log Architecture](subsystems/consensus/global-log.md) for details on how the global log enables system-level atomic operations.
 
 ```mermaid
 graph TB
@@ -370,9 +370,9 @@ The following metrics are available:
 
 To deepen your understanding:
 
-1. [Global Log Architecture](./global-log.md) - Two-level log architecture and atomic bulk operations
-2. [Raft Consensus](./raft-consensus.md) - Details on Raft implementation
-3. [Ledgers](../data-model/buckets-ledgers.md) - Data organization
-4. [API and Interfaces](../api/api.md) - API documentation
-5. [Storage and Persistence](../storage/storage.md) - Storage management
-6. [gRPC Connections](../api/grpc-connections.md) - Inter-node communication and reconnection strategies
+1. [Global Log Architecture](subsystems/consensus/global-log.md) - Two-level log architecture and atomic bulk operations
+2. [Raft Consensus](subsystems/consensus/raft-consensus.md) - Details on Raft implementation
+3. [Ledgers](data-model.md) - Data organization
+4. [API and Interfaces](subsystems/api/http-api.md) - API documentation
+5. [Storage and Persistence](subsystems/storage/storage.md) - Storage management
+6. [gRPC Connections](subsystems/api/grpc-connections.md) - Inter-node communication and reconnection strategies

@@ -7,7 +7,7 @@ Indexes accelerate read queries over per-ledger attributes (notably metadata-key
 - The **`Index` proto** is the cluster-wide definition stored in the `SubAttrIndex` registry — what an index is, when it was created, what its current cluster-wide forward-encoding version is. It is a *projection* of the underlying `CreateIndex` / `SetMetadataFieldType` / `RemovedMetadataFieldType` / `DropIndex` / `DeleteLedger` audit logs (which are the only hash-bound records) and is re-derivable by replaying them — see [Checker Coverage](#checker-coverage).
 - The **`IndexVersionState`** is the per-replica local view of the rewrite — which version is actually served by queries on this node.
 - The **index statistics** (cardinality, min/max, existence counts) are **not persisted**. They are recomputed on demand by scanning Pebble whenever a client calls the inspect API.
-- The **bloom filter counters** that show up in monitoring are *not* index statistics — they belong to the bloom layer described in [storage/attributes.md](../storage/attributes.md).
+- The **bloom filter counters** that show up in monitoring are *not* index statistics — they belong to the bloom layer described in [storage/attributes.md](../attributes/attributes.md).
 
 This page describes how the three layers fit together, and where the checker verifies them.
 
@@ -122,7 +122,7 @@ Source: `internal/storage/readstore/inspect.go:42-52`.
 
 Source: `internal/storage/readstore/inspect.go:228-296`.
 
-The scan is unbuffered — each call rereads the full prefix. This is fine because inspect is a low-frequency operator/UI tool, not a query-planner input: the v3 query path uses **prepared queries** ([prepared-queries draft](../../../drafts/prepared-queries.md)) rather than a cost-based planner over statistics.
+The scan is unbuffered — each call rereads the full prefix. This is fine because inspect is a low-frequency operator/UI tool, not a query-planner input: the v3 query path uses **prepared queries** ([prepared-queries draft](../../../../drafts/prepared-queries.md)) rather than a cost-based planner over statistics.
 
 ## API Surface
 
@@ -130,7 +130,7 @@ The scan is unbuffered — each call rereads the full prefix. This is fine becau
 |-------|-------------|
 | gRPC | `BucketService.InspectIndex` (and `GetIndexStatus` for the version-state view). |
 | HTTP | `GET /{ledger}/indexes/{metadataKey}` with `?mode=distinct-values|facets|summary`. |
-| CLI | `ledgerctl indexes inspect --ledger … --key … --mode summary` — see [ops/cli.md §indexes inspect](../../../ops/cli.md). |
+| CLI | `ledgerctl indexes inspect --ledger … --key … --mode summary` — see [ops/cli.md §indexes inspect](../../../../ops/cli.md). |
 
 The controller (`internal/application/ctrl/controller_default.go`) gates the inspect call on `state.CurrentVersion != 0` — a replica that has never built the index locally returns "not built locally" rather than scanning an empty keyspace.
 
@@ -145,7 +145,7 @@ Bloom filters are a separate optimisation that lives in front of the attribute c
 | `bloom.adds` | Insertions. |
 | `bloom.false_positives` | `MayContain` said maybe; Pebble said no. |
 
-These are **monitoring signals**, not persisted state and not visible through any inspect endpoint. See [storage/attributes.md](../storage/attributes.md) for the bloom layer.
+These are **monitoring signals**, not persisted state and not visible through any inspect endpoint. See [storage/attributes.md](../attributes/attributes.md) for the bloom layer.
 
 ## Checker Coverage
 

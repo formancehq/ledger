@@ -5,7 +5,7 @@
 Ledger v3 POC exposes two types of APIs:
 
 1. **HTTP REST API**: Public API for clients (documented here)
-2. **gRPC API**: Inter-node communication and programmatic API (see [gRPC API](./grpc-api.md))
+2. **gRPC API**: Inter-node communication and programmatic API (see [gRPC API](grpc-api.md))
 
 ## HTTP REST API
 
@@ -27,7 +27,7 @@ Both paths are equivalent and point to the same handlers. This allows for:
 
 ### Authentication
 
-The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../../ops/authentication.md) for configuration details.
+The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
 
 ### Response Format
 
@@ -382,7 +382,7 @@ The gRPC API provides a programmatic interface for interacting with the ledger c
 - Automatic request forwarding from followers to leader
 - Idempotency key support
 
-For detailed documentation, examples, and client code, see [gRPC API](./grpc-api.md).
+For detailed documentation, examples, and client code, see [gRPC API](grpc-api.md).
 
 ## Service Interfaces
 
@@ -460,7 +460,7 @@ npx @redocly/cli preview-docs openapi.yml
 
 To deepen your understanding:
 
-1. [gRPC API](./grpc-api.md) - Programmatic API for clients and CLI
-2. [General Architecture](../core/architecture.md) - How the APIs integrate
-3. [Data Flows](../data-model/data-flows.md) - Detailed flows of requests
-4. [Development](../../contributing/development.md) - Add new endpoints
+1. [gRPC API](grpc-api.md) - Programmatic API for clients and CLI
+2. [General Architecture](../../overview.md) - How the APIs integrate
+3. [Data Flows](../../data-flows.md) - Detailed flows of requests
+4. [Development](../../../contributing/development.md) - Add new endpoints

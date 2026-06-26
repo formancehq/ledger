@@ -383,7 +383,7 @@ Idempotency keys are stored in a dedicated Pebble zone (`0x05`) with an in-memor
 - Keyed by a 16-byte BLAKE3 truncation of the key string (system-wide, no ledger prefix)
 - Linked to the **global sequence number** of the resulting log and a content hash for conflict detection
 - Preloaded directly from Pebble during admission (no bloom filter, no dual-generation cache)
-- See [Idempotency](./idempotency.md) for detailed documentation
+- See [Idempotency](subsystems/admission/idempotency.md) for detailed documentation
 
 ### Benefits of System-Level Idempotency
 
@@ -449,6 +449,6 @@ Audit entries can be queried via:
 
 To deepen your understanding:
 
-1. [API and Interfaces](../api/api.md) - API documentation for ledgers
-2. [Storage and Persistence](../storage/storage.md) - How data is stored
-3. [Data Flows](./data-flows.md) - Detailed operation flows
+1. [API and Interfaces](subsystems/api/http-api.md) - API documentation for ledgers
+2. [Storage and Persistence](subsystems/storage/storage.md) - How data is stored
+3. [Data Flows](data-flows.md) - Detailed operation flows

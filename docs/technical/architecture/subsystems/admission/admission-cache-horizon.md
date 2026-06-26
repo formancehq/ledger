@@ -2,7 +2,7 @@
 
 **Status:** Implemented
 **Scope:** admission-side rejection of proposals whose cache prediction cannot be honored at FSM apply
-**Related:** [fsm-cache-layers.md](fsm-cache-layers.md), [deterministic-fsm.md](deterministic-fsm.md)
+**Related:** [../fsm/cache-layers.md](../fsm/cache-layers.md), [../fsm/deterministic-fsm.md](../fsm/deterministic-fsm.md)
 
 ## What it is
 

@@ -609,7 +609,7 @@ Potential enhancements under consideration:
 
 ## Related Documentation
 
-- [Architecture](../core/architecture.md) - Overall system architecture
-- [Raft Consensus](../core/raft-consensus.md) - Raft protocol details
-- [Deployment](../../../ops/deployment.md) - Kubernetes deployment configuration
-- [Metrics](../../../ops/monitoring.md) - Observability and monitoring
+- [Architecture](../../overview.md) - Overall system architecture
+- [Raft Consensus](../consensus/raft-consensus.md) - Raft protocol details
+- [Deployment](../../../../ops/deployment.md) - Kubernetes deployment configuration
+- [Metrics](../../../../ops/monitoring.md) - Observability and monitoring

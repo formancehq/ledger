@@ -702,5 +702,5 @@ jobs:
 To learn more:
 
 1. [Development](./development.md) - How to write testable code
-2. [Architecture](../architecture/core/architecture.md) - Understand the system to test
-3. [Data Flows](../architecture/data-model/data-flows.md) - Understand the flows to test
+2. [Architecture](../architecture/overview.md) - Understand the system to test
+3. [Data Flows](../architecture/data-flows.md) - Understand the flows to test

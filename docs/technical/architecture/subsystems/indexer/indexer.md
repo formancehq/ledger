@@ -254,7 +254,7 @@ The query API accepts a `min_log_sequence` in the request metadata. It is enforc
 - The controller calls `node.ReadIndexAndWait()` to confirm the FSM has applied at least that sequence (Raft linearizability barrier).
 - It then waits for `readStore.LastIndexedSequence() >= min_log_sequence` so the read store has caught up too.
 
-Important nuance: `min_log_sequence` **pins log application on this replica, not local rewrite completion**. A client that needs a value to be visible *under the new type tag* after a `SetMetadataFieldType` must wait for the corresponding atomic switch to land — there is no per-rewrite barrier on the wire today. See [api-comparison.md](../../contributing/api-comparison.md) for the contract.
+Important nuance: `min_log_sequence` **pins log application on this replica, not local rewrite completion**. A client that needs a value to be visible *under the new type tag* after a `SetMetadataFieldType` must wait for the corresponding atomic switch to land — there is no per-rewrite barrier on the wire today. See [api-comparison.md](../../../contributing/api-comparison.md) for the contract.
 
 ## No Cluster-Wide `IndexReady`
 
