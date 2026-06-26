@@ -146,10 +146,12 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		}
 	case common.MetadataRegex.Match([]byte(property)):
 		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
+		key := match[0][1]
 
-		return "metadata @> ?", []any{map[string]any{
-			match[0][1]: value,
-		}}, nil
+		if slices.Contains(h.store.ledger.GetIndexedMetadataKeys(), key) {
+			return "metadata ->> ? = ?", []any{key, value}, nil
+		}
+		return "metadata @> ?", []any{map[string]any{key: value}}, nil
 
 	case property == "metadata":
 		return "metadata -> ? is not null", []any{value}, nil

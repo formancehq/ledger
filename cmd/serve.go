@@ -42,6 +42,7 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/formancehq/ledger/internal/worker"
@@ -65,6 +66,22 @@ type ServeCommandConfig struct {
 	AuditAsyncEnabled       bool   `mapstructure:"audit-async-enabled"`
 	AuditAsyncQueueCapacity int    `mapstructure:"audit-async-queue-capacity"`
 	AuditAsyncWorkerCount   int    `mapstructure:"audit-async-worker-count"`
+
+	// TxListAdaptiveFallback enables the probe-then-retry strategy for the
+	// transactions-list SELECT. Default true. When triggered (SQLSTATE 57014
+	// from our own probe timeout, client still alive), the query is retried
+	// once with SET LOCAL enable_indexscan = off. Dense/fast wallets never
+	// reach the probe timeout and see no behaviour change beyond the explicit
+	// transaction wrapper. See ledgerstore.TransactionListConfig for details.
+	TxListAdaptiveFallback bool `mapstructure:"tx-list-adaptive-fallback"`
+
+	// TxListFirstAttemptTimeoutMs is the statement_timeout for the probe
+	// attempt (ms). Default 5000. Must leave headroom for the retry.
+	TxListFirstAttemptTimeoutMs int64 `mapstructure:"tx-list-first-attempt-timeout-ms"`
+
+	// TxListRetryTimeoutMs is the statement_timeout for the GIN-override retry
+	// attempt (ms). Default 40000.
+	TxListRetryTimeoutMs int64 `mapstructure:"tx-list-retry-timeout-ms"`
 }
 
 const (
@@ -84,6 +101,13 @@ const (
 	AuditAsyncEnabledFlag       = "audit-async-enabled"
 	AuditAsyncQueueCapacityFlag = "audit-async-queue-capacity"
 	AuditAsyncWorkerCountFlag   = "audit-async-worker-count"
+
+	// TxListAdaptiveFallbackFlag enables the probe-then-retry strategy.
+	TxListAdaptiveFallbackFlag = "tx-list-adaptive-fallback"
+	// TxListFirstAttemptTimeoutMsFlag sets the probe statement_timeout (ms).
+	TxListFirstAttemptTimeoutMsFlag = "tx-list-first-attempt-timeout-ms"
+	// TxListRetryTimeoutMsFlag sets the retry statement_timeout (ms).
+	TxListRetryTimeoutMsFlag = "tx-list-retry-timeout-ms"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -115,6 +139,11 @@ func NewServeCommand() *cobra.Command {
 				storagefx.BunConnectModule(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
 					AutoUpgrade: cfg.AutoUpgrade,
+					TransactionListConfig: ledgerstore.TransactionListConfig{
+						EnableAdaptiveFallback: cfg.TxListAdaptiveFallback,
+						FirstAttemptTimeoutMs:  cfg.TxListFirstAttemptTimeoutMs,
+						RetryTimeoutMs:         cfg.TxListRetryTimeoutMs,
+					},
 				}),
 				drivers.NewFXModule(),
 				fx.Invoke(alldrivers.Register),
@@ -216,6 +245,17 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(AuditAsyncEnabledFlag, true, "Publish HTTP audit events asynchronously")
 	cmd.Flags().Int(AuditAsyncQueueCapacityFlag, api.DefaultAuditAsyncQueueCapacity, "HTTP audit async publish queue capacity")
 	cmd.Flags().Int(AuditAsyncWorkerCountFlag, api.DefaultAuditAsyncWorkerCount, "HTTP audit async publish worker count")
+	cmd.Flags().Bool(TxListAdaptiveFallbackFlag, true,
+		"Enable the adaptive probe-then-retry fallback for the transactions-list SELECT. "+
+			"When enabled (default), the first attempt runs with --tx-list-first-attempt-timeout-ms; "+
+			"if Postgres cancels with SQLSTATE 57014 and the client is still waiting, "+
+			"the query is retried once with SET LOCAL enable_indexscan = off. "+
+			"Dense/fast wallets never hit the probe timeout and see no behaviour change.")
+	cmd.Flags().Int64(TxListFirstAttemptTimeoutMsFlag, 5_000,
+		"Statement timeout in ms for the probe (first) attempt of the transactions-list SELECT. "+
+			"Must leave headroom for the retry before the upstream client disconnects.")
+	cmd.Flags().Int64(TxListRetryTimeoutMsFlag, 40_000,
+		"Statement timeout in ms for the GIN-override retry attempt of the transactions-list SELECT.")
 
 	addWorkerFlags(cmd)
 	connect.AddFlags(cmd.Flags())

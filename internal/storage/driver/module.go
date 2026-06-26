@@ -16,7 +16,13 @@ import (
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
-func NewFXModule() fx.Option {
+// ModuleConfig carries per-module configuration forwarded to the ledger store
+// factory. Add fields here rather than growing NewFXModule's parameter list.
+type ModuleConfig struct {
+	TransactionListConfig ledgerstore.TransactionListConfig
+}
+
+func NewFXModule(cfg ModuleConfig) fx.Option {
 	return fx.Options(
 		fx.Provide(fx.Annotate(func(tracerProvider trace.TracerProvider) bucket.Factory {
 			return bucket.NewDefaultFactory(bucket.WithTracer(tracerProvider.Tracer("store")))
@@ -44,6 +50,7 @@ func NewFXModule() fx.Option {
 			if params.MeterProvider != nil {
 				options = append(options, ledgerstore.WithMeter(params.MeterProvider.Meter("store")))
 			}
+			options = append(options, ledgerstore.WithTransactionListConfig(cfg.TransactionListConfig))
 			return ledgerstore.NewFactory(params.DB, options...)
 		}),
 		fx.Provide(func(

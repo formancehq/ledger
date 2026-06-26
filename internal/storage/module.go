@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/service/health"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 )
@@ -20,6 +21,11 @@ const HealthCheckName = `storage-driver-up-to-date`
 
 type ModuleConfig struct {
 	AutoUpgrade bool
+
+	// TransactionListConfig carries the optional planner overrides for the
+	// transactions-list SELECT path. Forwarded to each ledger Store via the
+	// driver factory. See ledgerstore.TransactionListConfig for full context.
+	TransactionListConfig ledgerstore.TransactionListConfig
 }
 
 func NewFXModule(config ModuleConfig) fx.Option {
@@ -28,7 +34,9 @@ func NewFXModule(config ModuleConfig) fx.Option {
 		fx.Provide(func(store *systemstore.DefaultStore) driver.SystemStore {
 			return store
 		}),
-		driver.NewFXModule(),
+		driver.NewFXModule(driver.ModuleConfig{
+			TransactionListConfig: config.TransactionListConfig,
+		}),
 		servicefx.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
 			hasReachedMinimalVersion := false
 			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {

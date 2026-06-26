@@ -23,6 +23,12 @@ const (
 	FeatureAccountMetadataHistory = "ACCOUNT_METADATA_HISTORY"
 	// FeatureTransactionMetadataHistory is used to defined it the transaction metadata must be historized.
 	FeatureTransactionMetadataHistory = "TRANSACTION_METADATA_HISTORY"
+	// FeatureIndexedMetadataKeys is a comma-separated list of metadata keys for which the query builder
+	// emits a functional-index-compatible predicate (metadata ->> 'key' = 'value') instead of the default
+	// JSONB containment form (metadata @> '{"key":"value"}'). A matching partial functional index must
+	// exist on the ledger's transactions table for the rewrite to actually speed up the query.
+	// Value: comma-separated key names, e.g. "source_wallet_id,destination_wallet_id". Empty = disabled.
+	FeatureIndexedMetadataKeys = "INDEXED_METADATA_KEYS"
 )
 
 var (
@@ -47,6 +53,7 @@ var (
 		FeatureHashLogs:                               {"SYNC", "ASYNC", "DISABLED"},
 		FeatureAccountMetadataHistory:                 {"SYNC", "DISABLED"},
 		FeatureTransactionMetadataHistory:             {"SYNC", "DISABLED"},
+		FeatureIndexedMetadataKeys:                    nil, // nil = any comma-separated list of key names is valid
 	}
 )
 
@@ -55,7 +62,8 @@ func ValidateFeatureWithValue(feature, value string) error {
 	if !ok {
 		return fmt.Errorf("feature %q not exists", feature)
 	}
-	if !slices.Contains(possibleConfigurations, value) {
+	// nil/empty set means any value is accepted (open-ended feature, e.g. INDEXED_METADATA_KEYS).
+	if len(possibleConfigurations) > 0 && !slices.Contains(possibleConfigurations, value) {
 		return fmt.Errorf("configuration %s it not possible for feature %s", value, feature)
 	}
 
