@@ -6,7 +6,7 @@ package commonpb
 import (
 	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	sort "sort"
+	slices "slices"
 	sync "sync"
 )
 
@@ -80,7 +80,7 @@ func (m *MetadataMap) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		for k := range m.Values {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Values[k]
 			baseI := i
@@ -213,7 +213,7 @@ func (m *Transaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		for k := range m.Metadata {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
@@ -278,7 +278,7 @@ func (m *Script) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		for k := range m.Vars {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Vars[k]
 			baseI := i
@@ -356,7 +356,7 @@ func (m *VolumesByAssets) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 		for k := range m.Volumes {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Volumes[k]
 			baseI := i
@@ -405,7 +405,7 @@ func (m *PostCommitVolumes) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		for k := range m.VolumesByAccount {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.VolumesByAccount[k]
 			baseI := i
@@ -454,7 +454,7 @@ func (m *Account) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 		for k := range m.Volumes {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Volumes[k]
 			baseI := i
@@ -502,7 +502,7 @@ func (m *Account) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 		for k := range m.Metadata {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
@@ -591,7 +591,7 @@ func (m *MetadataSchema) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 		for k := range m.LedgerFields {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.LedgerFields[k]
 			baseI := i
@@ -618,7 +618,7 @@ func (m *MetadataSchema) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 		for k := range m.TransactionFields {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.TransactionFields[k]
 			baseI := i
@@ -645,7 +645,7 @@ func (m *MetadataSchema) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 		for k := range m.AccountFields {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.AccountFields[k]
 			baseI := i
@@ -1249,7 +1249,7 @@ func (m *SavedLedgerMetadataLog) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		for k := range m.Metadata {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
@@ -1502,7 +1502,7 @@ func (m *CreatedLedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		for k := range m.AccountTypes {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.AccountTypes[k]
 			baseI := i
@@ -1859,7 +1859,7 @@ func (m *CreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		for k := range m.AccountMetadata {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.AccountMetadata[k]
 			baseI := i
@@ -1957,7 +1957,7 @@ func (m *SavedMetadata) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, e
 		for k := range m.Metadata {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
@@ -2172,7 +2172,7 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		for k := range m.Metadata {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
@@ -2204,7 +2204,7 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		for k := range m.AccountTypes {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.AccountTypes[k]
 			baseI := i
@@ -2300,7 +2300,7 @@ func (m *SaveMetadataCommand) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 		for k := range m.Metadata {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
@@ -2374,7 +2374,7 @@ func (m *TransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		for k := range m.Metadata {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
@@ -2493,7 +2493,7 @@ func (m *IdempotencyFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		for k := range m.Metadata {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
@@ -2620,7 +2620,7 @@ func (m *AccountType) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		for k := range m.SegmentTypes {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.SegmentTypes[k]
 			baseI := i

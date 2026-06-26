@@ -6,7 +6,7 @@ package auditpb
 import (
 	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	sort "sort"
+	slices "slices"
 	sync "sync"
 )
 
@@ -184,7 +184,7 @@ func (m *AuditFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		for k := range m.Context {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.Context[k]
 			baseI := i

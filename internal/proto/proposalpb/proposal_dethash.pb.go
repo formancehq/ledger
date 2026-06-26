@@ -6,7 +6,7 @@ package proposalpb
 import (
 	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	sort "sort"
+	slices "slices"
 	sync "sync"
 )
 
@@ -47,7 +47,7 @@ func (m *AppliedProposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 		for k := range m.TransientVolumes {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		slices.Sort(keys)
 		for _, k := range keys {
 			v := m.TransientVolumes[k]
 			baseI := i
