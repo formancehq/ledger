@@ -3156,6 +3156,20 @@ components:
         dsn:
           type: string
           description: PostgreSQL connection string (required for PostgreSQL source)
+        awsIamAuth:
+          type: object
+          description: |
+            When set, enables AWS RDS IAM authentication for the PostgreSQL
+            source. The DSN password is overridden by a freshly minted IAM
+            token on every new pool connection (15-minute TTL). Credentials
+            are taken from the ambient AWS chain (IRSA, instance profile,
+            env vars, profile).
+          required:
+            - region
+          properties:
+            region:
+              type: string
+              description: AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing.
         batchSize:
           type: integer
           minimum: 0

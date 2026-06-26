@@ -793,6 +793,16 @@ message OAuth2ClientCredentials {
 
 message PostgresMirrorSourceConfig {
   string dsn = 1;  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
+  // When set, the DSN password is overridden by a freshly minted AWS RDS IAM
+  // authentication token on every new pool connection. Ambient AWS credentials
+  // (IRSA, instance profile, env vars, profile) are loaded via the default
+  // AWS SDK chain; this message only carries the region needed to sign the
+  // token, which must match the RDS instance's region.
+  PostgresAwsIamAuth aws_iam_auth = 2;
+}
+
+message PostgresAwsIamAuth {
+  string region = 1;  // AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing
 }
 
 message MirrorSyncError {

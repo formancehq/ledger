@@ -19,15 +19,21 @@ type createLedgerBody struct {
 
 // mirrorSourceBody holds the mirror source configuration.
 type mirrorSourceBody struct {
-	LedgerName          string   `json:"ledgerName"`
-	Type                string   `json:"type"`                          // "http" (default) or "postgres"
-	BaseURL             string   `json:"baseUrl,omitempty"`             // HTTP source
-	OAuth2ClientID      string   `json:"oauth2ClientId,omitempty"`      // HTTP source OAuth2
-	OAuth2ClientSecret  string   `json:"oauth2ClientSecret,omitempty"`  // HTTP source OAuth2
-	OAuth2TokenEndpoint string   `json:"oauth2TokenEndpoint,omitempty"` // HTTP source OAuth2
-	OAuth2Scopes        []string `json:"oauth2Scopes,omitempty"`        // HTTP source OAuth2
-	DSN                 string   `json:"dsn,omitempty"`                 // Postgres source
-	BatchSize           uint32   `json:"batchSize,omitempty"`           // Max logs per batch (0 = default 100)
+	LedgerName          string                  `json:"ledgerName"`
+	Type                string                  `json:"type"`                          // "http" (default) or "postgres"
+	BaseURL             string                  `json:"baseUrl,omitempty"`             // HTTP source
+	OAuth2ClientID      string                  `json:"oauth2ClientId,omitempty"`      // HTTP source OAuth2
+	OAuth2ClientSecret  string                  `json:"oauth2ClientSecret,omitempty"`  // HTTP source OAuth2
+	OAuth2TokenEndpoint string                  `json:"oauth2TokenEndpoint,omitempty"` // HTTP source OAuth2
+	OAuth2Scopes        []string                `json:"oauth2Scopes,omitempty"`        // HTTP source OAuth2
+	DSN                 string                  `json:"dsn,omitempty"`                 // Postgres source
+	AwsIamAuth          *postgresAwsIamAuthBody `json:"awsIamAuth,omitempty"`          // Postgres source: enable AWS RDS IAM auth
+	BatchSize           uint32                  `json:"batchSize,omitempty"`           // Max logs per batch (0 = default 100)
+}
+
+// postgresAwsIamAuthBody mirrors commonpb.PostgresAwsIamAuth on the HTTP wire.
+type postgresAwsIamAuthBody struct {
+	Region string `json:"region"`
 }
 
 // handleCreateLedger handles POST /{ledgerName} to create a new ledger.
@@ -129,10 +135,19 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 			Http: httpCfg,
 		}
 	case "postgres":
+		pgCfg := &commonpb.PostgresMirrorSourceConfig{
+			Dsn: body.DSN,
+		}
+		if body.AwsIamAuth != nil {
+			if body.AwsIamAuth.Region == "" {
+				return nil, errors.New("mirrorSource.awsIamAuth.region is required when awsIamAuth is set")
+			}
+			pgCfg.AwsIamAuth = &commonpb.PostgresAwsIamAuth{
+				Region: body.AwsIamAuth.Region,
+			}
+		}
 		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{
-			Postgres: &commonpb.PostgresMirrorSourceConfig{
-				Dsn: body.DSN,
-			},
+			Postgres: pgCfg,
 		}
 	default:
 		return nil, fmt.Errorf("unsupported mirror source type: %q", body.Type)

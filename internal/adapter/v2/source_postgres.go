@@ -3,11 +3,17 @@ package v2
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // PostgresSource is a Source that reads logs directly from a v2 ledger's
@@ -22,8 +28,16 @@ type PostgresSource struct {
 
 // NewPostgresSource creates a new PostgreSQL-based v2 log source.
 // It looks up the bucket (schema) for the given ledger from _system.ledgers.
-func NewPostgresSource(ctx context.Context, dsn, ledgerName string) (*PostgresSource, error) {
-	pool, err := pgxpool.New(ctx, encodeDSNPassword(dsn))
+// When cfg.AwsIamAuth is set, the pool refreshes an AWS RDS IAM token on every
+// new connection; ambient AWS credentials (IRSA, instance profile, env, profile)
+// are loaded via the default AWS SDK chain.
+func NewPostgresSource(ctx context.Context, cfg *commonpb.PostgresMirrorSourceConfig, ledgerName string) (*PostgresSource, error) {
+	poolCfg, err := buildPgxPoolConfig(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating pgx pool: %w", err)
 	}
@@ -116,6 +130,29 @@ func (s *PostgresSource) Close() error {
 	s.pool.Close()
 
 	return nil
+}
+
+// buildPgxPoolConfig parses the source DSN and, when AWS IAM auth is enabled,
+// wires a BeforeConnect hook that refreshes a fresh RDS IAM token per new
+// pool connection (token TTL is 15 minutes).
+func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceConfig) (*pgxpool.Config, error) {
+	var opts []connect.PgxPoolOption
+
+	if iam := cfg.GetAwsIamAuth(); iam != nil {
+		region := iam.GetRegion()
+		if region == "" {
+			return nil, errors.New("aws_iam_auth.region is required when AWS IAM auth is enabled")
+		}
+
+		awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+		if err != nil {
+			return nil, fmt.Errorf("loading AWS config for IAM auth: %w", err)
+		}
+
+		opts = append(opts, connect.WithPgxPoolIAMAuth(awsCfg))
+	}
+
+	return connect.BuildPgxPoolConfig(ctx, encodeDSNPassword(cfg.GetDsn()), opts...)
 }
 
 // encodeDSNPassword ensures that passwords containing URL-special characters

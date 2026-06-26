@@ -45,6 +45,7 @@ func NewCreateCommand() *cobra.Command {
 	cmd.Flags().String("mirror-oauth2-token-endpoint", "", "OAuth2 token endpoint URL (for http source)")
 	cmd.Flags().StringArray("mirror-oauth2-scopes", nil, "OAuth2 scopes (for http source, can be repeated)")
 	cmd.Flags().String("mirror-dsn", "", "PostgreSQL DSN (for postgres source)")
+	cmd.Flags().String("mirror-aws-iam-region", "", "Enable AWS RDS IAM authentication using the given region (for postgres source); credentials are taken from the ambient AWS chain (IRSA, instance profile, env)")
 	cmd.Flags().Uint32("mirror-batch-size", 0, "Max logs per batch (0 = default 100)")
 
 	return cmd

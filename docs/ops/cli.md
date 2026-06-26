@@ -211,6 +211,7 @@ ledgerctl ledgers create [flags]
 | `--mirror-oauth2-token-endpoint` | | OAuth2 token endpoint URL (for `http` source) |
 | `--mirror-oauth2-scopes` | | OAuth2 scopes (for `http` source, repeatable) |
 | `--mirror-dsn` | | PostgreSQL DSN (required for `postgres` source) |
+| `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -247,6 +248,13 @@ ledgerctl ledgers create --name my-mirror \
   --mode mirror \
   --mirror-source-type postgres \
   --mirror-dsn "postgres://user:pass@host:5432/ledger?sslmode=disable"
+
+# Create a mirror ledger from an AWS RDS v2 source using IAM authentication
+ledgerctl ledgers create --name my-mirror \
+  --mode mirror \
+  --mirror-source-type postgres \
+  --mirror-dsn "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require" \
+  --mirror-aws-iam-region eu-west-1
 
 # Mirror with a different source ledger name
 ledgerctl ledgers create --name my-mirror \
