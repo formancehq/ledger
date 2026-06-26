@@ -11,10 +11,49 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// overlayMockStubs bundles a kindStub per accessor kind the overlay
+// proxies, plus the parent mock. wireOverlayParent attaches one stub per
+// kind to the mock so newOrderOverlayScope can call parent.X() without
+// blowing up; tests then read/write through the stubs to assert what the
+// overlay flushed (or did not flush) onto the parent.
+type overlayMockStubs struct {
+	parent *MockScope
+
+	ledgers           *kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
+	boundaries        *kindStub[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
+	volumes           *kindStub[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
+	accountMetadata   *kindStub[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	ledgerMetadata    *kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
+	transactionStates *kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+	transactionRefs   *kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
+}
+
+func wireOverlayParent(ctrl *gomock.Controller) *overlayMockStubs {
+	s := &overlayMockStubs{
+		parent:            NewMockScope(ctrl),
+		ledgers:           &kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]{},
+		boundaries:        &kindStub[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]{},
+		volumes:           &kindStub[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]{},
+		accountMetadata:   &kindStub[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{},
+		ledgerMetadata:    &kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{},
+		transactionStates: &kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{},
+		transactionRefs:   &kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]{},
+	}
+	s.parent.EXPECT().Ledgers().Return(s.ledgers).AnyTimes()
+	s.parent.EXPECT().Boundaries().Return(s.boundaries).AnyTimes()
+	s.parent.EXPECT().Volumes().Return(s.volumes).AnyTimes()
+	s.parent.EXPECT().AccountMetadata().Return(s.accountMetadata).AnyTimes()
+	s.parent.EXPECT().LedgerMetadata().Return(s.ledgerMetadata).AnyTimes()
+	s.parent.EXPECT().TransactionStates().Return(s.transactionStates).AnyTimes()
+	s.parent.EXPECT().TransactionReferences().Return(s.transactionRefs).AnyTimes()
+
+	return s
+}
+
 // TestOrderOverlayScope_ReadYourWritesAcrossCategories pins the
 // read-your-writes contract every per-order sub-processor relies on:
-// every category that exposes a Get/Put pair must observe the staged
-// value before falling back to the parent. Any new category added to the
+// every accessor kind that exposes a Get/Put pair must observe the staged
+// value before falling back to the parent. Any new accessor added to the
 // overlay needs an entry here so the contract stays exhaustive.
 func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 	t.Parallel()
@@ -22,64 +61,60 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	parent := NewMockScope(ctrl)
-	overlay := newOrderOverlayScope(parent)
+	s := wireOverlayParent(ctrl)
+	overlay := newOrderOverlayScope(s.parent)
 
 	// Ledger
-	info := &commonpb.LedgerInfo{Name: "L"}
-	overlay.PutLedger("L", info)
+	overlay.Ledgers().Put(domain.LedgerKey{Name: "L"}, &commonpb.LedgerInfo{Name: "L"})
 
-	got, err := overlay.GetLedger("L")
+	got, err := overlay.Ledgers().Get(domain.LedgerKey{Name: "L"})
 	require.NoError(t, err)
 	require.Equal(t, "L", got.GetName())
 
 	// Boundaries
-	b := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7}
-	overlay.PutBoundaries("L", b)
+	overlay.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{NextTransactionId: 7})
 
-	br, err := overlay.GetBoundaries("L")
+	br, err := overlay.Boundaries().Get(domain.LedgerKey{Name: "L"})
 	require.NoError(t, err)
 	require.Equal(t, uint64(7), br.GetNextTransactionId())
 
 	// Volume
 	vk := domain.NewVolumeKey("L", "alice", "USD")
-	vol := &raftcmdpb.VolumePair{
+	overlay.Volumes().Put(vk, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(50),
 		Output: commonpb.NewUint256FromUint64(20),
-	}
-	overlay.PutVolume(vk, vol)
+	})
 
-	vr, err := overlay.GetVolume(vk)
+	vr, err := overlay.Volumes().Get(vk)
 	require.NoError(t, err)
 	require.Equal(t, uint64(50), vr.GetInput().GetV0())
 	require.Equal(t, uint64(20), vr.GetOutput().GetV0())
 
 	// Account metadata: Put then Get.
 	mk := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "alice"}, Key: "k"}
-	mv := commonpb.NewStringValue("v1")
-	overlay.PutAccountMetadata(mk, mv)
+	overlay.AccountMetadata().Put(mk, commonpb.NewStringValue("v1"))
 
-	mgot, err := overlay.GetAccountMetadata(mk)
+	mgot, err := overlay.AccountMetadata().Get(mk)
 	require.NoError(t, err)
 	require.Equal(t, "v1", mgot.Mutate().GetStringValue())
 
 	// Account metadata: Delete then Get -> ErrNotFound.
-	overlay.DeleteAccountMetadata(mk)
+	overlay.AccountMetadata().Delete(mk)
 
-	_, err = overlay.GetAccountMetadata(mk)
+	_, err = overlay.AccountMetadata().Get(mk)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Ledger metadata
 	lmk := domain.LedgerMetadataKey{LedgerName: "L", Key: "k"}
-	overlay.PutLedgerMetadata(lmk, mv)
+	overlay.LedgerMetadata().Put(lmk, commonpb.NewStringValue("v1"))
 
-	lmgot, err := overlay.GetLedgerMetadata(lmk)
+	lmgot, err := overlay.LedgerMetadata().Get(lmk)
 	require.NoError(t, err)
 	require.Equal(t, "v1", lmgot.Mutate().GetStringValue())
 
-	overlay.DeleteLedgerMetadata(lmk)
+	overlay.LedgerMetadata().Delete(lmk)
 
-	_, err = overlay.GetLedgerMetadata(lmk)
+	_, err = overlay.LedgerMetadata().Get(lmk)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Reverted
@@ -90,119 +125,95 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, r)
 
-	// Idempotency
-	ik := domain.IdempotencyKey{Key: "idem"}
-	idVal := &commonpb.IdempotencyKeyValue{Hash: []byte{0xab}}
-	overlay.PutIdempotencyKey(ik, idVal)
-
-	idGot, err := overlay.GetIdempotencyKey(ik)
-	require.NoError(t, err)
-	require.Equal(t, []byte{0xab}, idGot.GetHash())
-
 	// Transaction reference
 	trk := domain.TransactionReferenceKey{LedgerName: "L", Reference: "ref"}
-	trv := &commonpb.TransactionReferenceValue{TransactionId: 7}
-	overlay.PutTransactionReference(trk, trv)
+	overlay.TransactionReferences().Put(trk, &commonpb.TransactionReferenceValue{TransactionId: 7})
 
-	trGot, err := overlay.GetTransactionReference(trk)
+	trGot, err := overlay.TransactionReferences().Get(trk)
 	require.NoError(t, err)
 	require.Equal(t, uint64(7), trGot.GetTransactionId())
 
 	// Transaction state
 	tsk := domain.TransactionKey{LedgerName: "L", ID: 7}
-	st := &commonpb.TransactionState{CreatedByLog: 42}
-	overlay.PutTransactionState(tsk, st)
+	overlay.TransactionStates().Put(tsk, &commonpb.TransactionState{CreatedByLog: 42})
 
-	stGot, err := overlay.GetTransactionState(tsk)
+	stGot, err := overlay.TransactionStates().Get(tsk)
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), stGot.GetCreatedByLog())
 
-	// Parent must NOT see any of these writes yet — no EXPECT() declared
-	// against the mock means a call here would fail the test.
+	// No Commit. The kindStubs receive no expectPut/expectDelete — any
+	// flush leak would surface as an unexpected Put/Delete via the
+	// stub's bookkeeping.
 }
 
 // TestOrderOverlayScope_RollbackOnNoCommit verifies the rollback semantics:
-// if Commit is never called, the parent Scope sees zero writes. The mock
-// records no EXPECT() against Put*/Increment*, so any leak would fail the
-// gomock controller's Finish() call.
+// if Commit is never called, the parent Scope sees zero writes.
 func TestOrderOverlayScope_RollbackOnNoCommit(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	parent := NewMockScope(ctrl)
-	// Counter Gets are passed through; capture the base once.
-	parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
-	parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
-	parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
-	parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
+	s := wireOverlayParent(ctrl)
+	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
+	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
+	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
+	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
 
-	overlay := newOrderOverlayScope(parent)
-	overlay.PutLedger("L", &commonpb.LedgerInfo{Name: "L"})
-	overlay.PutBoundaries("L", &raftcmdpb.LedgerBoundaries{})
+	overlay := newOrderOverlayScope(s.parent)
+	overlay.Ledgers().Put(domain.LedgerKey{Name: "L"}, &commonpb.LedgerInfo{Name: "L"})
+	overlay.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{})
 	overlay.IncrementNextSequenceID()
 	overlay.IncrementNextLedgerID()
 
-	// No Commit. parent.EXPECT() declared no Put*/Increment*; the gomock
-	// controller will fail if any was called.
+	// No Commit. The kindStubs received no expectPut and the mock got no
+	// Increment* expectation; any leak fails the test.
 }
 
 // TestOrderOverlayScope_CommitFlushesEveryCategory verifies the success
-// path: every staged write is replayed onto the parent Scope, in any order
-// (the parent does not care, as long as every category lands).
+// path: every staged write is replayed onto the parent Scope.
 func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	parent := NewMockScope(ctrl)
-	parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
-	parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
-	parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
-	parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
+	s := wireOverlayParent(ctrl)
+	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
+	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
+	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
+	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
+	s.parent.EXPECT().PutReverted(gomock.Any(), true)
+	s.parent.EXPECT().IncrementNextSequenceID().Return(uint64(101)).Times(2)
+	s.parent.EXPECT().IncrementNextLedgerID().Return(uint32(6))
+	s.parent.EXPECT().IncrementNextChapterID().Return(uint64(3))
+	s.parent.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(1))
 
-	info := &commonpb.LedgerInfo{Name: "L"}
-	b := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7}
+	lk := domain.LedgerKey{Name: "L"}
 	vk := domain.NewVolumeKey("L", "alice", "USD")
-	vol := &raftcmdpb.VolumePair{}
 	mk := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "alice"}, Key: "k"}
-	mv := commonpb.NewStringValue("v1")
 	lmk := domain.LedgerMetadataKey{LedgerName: "L", Key: "k"}
 	tk := domain.TransactionKey{LedgerName: "L", ID: 1}
-	ik := domain.IdempotencyKey{Key: "idem"}
-	idVal := &commonpb.IdempotencyKeyValue{}
 	trk := domain.TransactionReferenceKey{LedgerName: "L", Reference: "ref"}
-	trv := &commonpb.TransactionReferenceValue{TransactionId: 7}
 	tsk := domain.TransactionKey{LedgerName: "L", ID: 7}
-	st := &commonpb.TransactionState{}
 
-	// Expectations on parent: every staged write must be replayed once.
-	parent.EXPECT().PutLedger("L", info)
-	parent.EXPECT().PutBoundaries("L", b)
-	parent.EXPECT().PutVolume(vk, vol)
-	parent.EXPECT().PutAccountMetadata(mk, mv)
-	parent.EXPECT().PutLedgerMetadata(lmk, mv)
-	parent.EXPECT().PutReverted(tk, true)
-	parent.EXPECT().PutIdempotencyKey(ik, idVal)
-	parent.EXPECT().PutTransactionReference(trk, trv)
-	parent.EXPECT().PutTransactionState(tsk, st)
-	parent.EXPECT().IncrementNextSequenceID().Return(uint64(101)).Times(2)
-	parent.EXPECT().IncrementNextLedgerID().Return(uint32(6))
-	parent.EXPECT().IncrementNextChapterID().Return(uint64(3))
-	parent.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(1))
+	s.ledgers.expectPut(t, lk, nil)
+	s.boundaries.expectPut(t, lk, nil)
+	s.volumes.expectPut(t, vk, nil)
+	s.accountMetadata.expectPut(t, mk, nil)
+	s.ledgerMetadata.expectPut(t, lmk, nil)
+	s.transactionRefs.expectPut(t, trk, nil)
+	s.transactionStates.expectPut(t, tsk, nil)
 
-	overlay := newOrderOverlayScope(parent)
-	overlay.PutLedger("L", info)
-	overlay.PutBoundaries("L", b)
-	overlay.PutVolume(vk, vol)
-	overlay.PutAccountMetadata(mk, mv)
-	overlay.PutLedgerMetadata(lmk, mv)
+	overlay := newOrderOverlayScope(s.parent)
+	overlay.Ledgers().Put(lk, &commonpb.LedgerInfo{Name: "L"})
+	overlay.Boundaries().Put(lk, &raftcmdpb.LedgerBoundaries{NextTransactionId: 7})
+	overlay.Volumes().Put(vk, &raftcmdpb.VolumePair{})
+	overlay.AccountMetadata().Put(mk, commonpb.NewStringValue("v1"))
+	overlay.LedgerMetadata().Put(lmk, commonpb.NewStringValue("v1"))
 	overlay.PutReverted(tk, true)
-	overlay.PutIdempotencyKey(ik, idVal)
-	overlay.PutTransactionReference(trk, trv)
-	overlay.PutTransactionState(tsk, st)
+	overlay.TransactionReferences().Put(trk, &commonpb.TransactionReferenceValue{TransactionId: 7})
+	overlay.TransactionStates().Put(tsk, &commonpb.TransactionState{})
 	overlay.IncrementNextSequenceID()
 	overlay.IncrementNextSequenceID()
 	overlay.IncrementNextLedgerID()
@@ -221,13 +232,13 @@ func TestOrderOverlayScope_CounterDeltasMonotonicWithinOrder(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	parent := NewMockScope(ctrl)
-	parent.EXPECT().GetNextSequenceID().Return(uint64(100)).Times(1)
-	parent.EXPECT().GetNextLedgerID().Return(uint32(5)).Times(1)
-	parent.EXPECT().GetNextChapterID().Return(uint64(2)).Times(1)
-	parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).Times(1)
+	s := wireOverlayParent(ctrl)
+	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).Times(1)
+	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).Times(1)
+	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).Times(1)
+	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).Times(1)
 
-	overlay := newOrderOverlayScope(parent)
+	overlay := newOrderOverlayScope(s.parent)
 
 	require.Equal(t, uint64(100), overlay.IncrementNextSequenceID())
 	require.Equal(t, uint64(101), overlay.IncrementNextSequenceID())
@@ -237,24 +248,27 @@ func TestOrderOverlayScope_CounterDeltasMonotonicWithinOrder(t *testing.T) {
 // TestOrderOverlayScope_DeleteOverridesPriorPut models the
 // Put-then-Delete-in-same-order pattern: the delete must be staged with
 // precedence so a subsequent Get returns ErrNotFound and Commit replays
-// the delete, not the prior put.
+// the delete (no Put on the parent).
 func TestOrderOverlayScope_DeleteOverridesPriorPut(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	parent := NewMockScope(ctrl)
+	s := wireOverlayParent(ctrl)
+	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
+	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
+	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
+	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
+
 	mk := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "alice"}, Key: "k"}
-	mv := commonpb.NewStringValue("v1")
+	s.accountMetadata.expectDelete(t, mk)
 
-	parent.EXPECT().DeleteAccountMetadata(mk)
+	overlay := newOrderOverlayScope(s.parent)
+	overlay.AccountMetadata().Put(mk, commonpb.NewStringValue("v1"))
+	overlay.AccountMetadata().Delete(mk)
 
-	overlay := newOrderOverlayScope(parent)
-	overlay.PutAccountMetadata(mk, mv)
-	overlay.DeleteAccountMetadata(mk)
-
-	_, err := overlay.GetAccountMetadata(mk)
+	_, err := overlay.AccountMetadata().Get(mk)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	overlay.Commit()

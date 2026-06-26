@@ -131,13 +131,13 @@ func TestAssignSkipLogIDAndDate_AllocatesLogIDAndDateOnParent(t *testing.T) {
 
 	parent := NewMockScope(ctrl)
 
-	base := &raftcmdpb.LedgerBoundaries{NextLogId: 42}
-	parent.EXPECT().GetBoundaries("L").Return(base.AsReader(), nil)
-	parent.EXPECT().PutBoundaries("L", gomock.AssignableToTypeOf(&raftcmdpb.LedgerBoundaries{})).
-		Do(func(_ string, b *raftcmdpb.LedgerBoundaries) {
-			require.Equal(t, uint64(43), b.GetNextLogId())
-		})
-	parent.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1700})
+	boundaries := &kindStub[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]{}
+	boundaries.expectGet(domain.LedgerKey{Name: "L"}, (&raftcmdpb.LedgerBoundaries{NextLogId: 42}).AsReader(), nil)
+	boundaries.expectPut(t, domain.LedgerKey{Name: "L"}, func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) {
+		require.Equal(t, uint64(43), b.GetNextLogId())
+	})
+	parent.EXPECT().Boundaries().Return(boundaries).AnyTimes()
+	parent.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1700}).AsReader())
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -191,7 +191,9 @@ func TestAssignSkipLogIDAndDate_RefusesUnknownLedger(t *testing.T) {
 	defer ctrl.Finish()
 
 	parent := NewMockScope(ctrl)
-	parent.EXPECT().GetBoundaries("L").Return(nil, domain.ErrNotFound)
+	boundaries := &kindStub[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]{}
+	boundaries.expectGet(domain.LedgerKey{Name: "L"}, nil, domain.ErrNotFound)
+	parent.EXPECT().Boundaries().Return(boundaries).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
