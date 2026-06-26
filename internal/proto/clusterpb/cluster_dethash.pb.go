@@ -6,8 +6,20 @@ package clusterpb
 import (
 	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	maps "maps"
 	slices "slices"
+	sync "sync"
+)
+
+// Map-key scratch pools. Each MarshalToSizedBufferDeterministicVT that
+// encodes a map<K, V> grabs a *[]K from the matching pool, fills it,
+// sorts it in place, and returns it. Steady-state allocations are zero:
+// the pool reuses the slice across marshal calls. The first marshal of
+// a given kind warms the pool with a 16-cap slice; larger maps grow it
+// once and the grown capacity persists.
+var (
+	_dethashKeyPoolUint64 = sync.Pool{
+		New: func() any { s := make([]uint64, 0, 16); return &s },
+	}
 )
 
 func (m *GetClusterStateRequest) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -69,7 +81,13 @@ func (m *RaftStatus) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		dAtA[i] = 0x49
 	}
 	if len(m.Progress) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Progress)) {
+		keysPtr := _dethashKeyPoolUint64.Get().(*[]uint64)
+		keys := (*keysPtr)[:0]
+		for k := range m.Progress {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Progress[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
@@ -84,6 +102,8 @@ func (m *RaftStatus) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x42
 		}
+		*keysPtr = keys
+		_dethashKeyPoolUint64.Put(keysPtr)
 	}
 	if m.Vote != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Vote))

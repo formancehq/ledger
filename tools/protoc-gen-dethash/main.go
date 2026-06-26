@@ -18,11 +18,40 @@ import (
 
 var (
 	slicesPkg       = protogen.GoImportPath("slices")
-	mapsPkg         = protogen.GoImportPath("maps")
+	sortPkg         = protogen.GoImportPath("sort")
+	syncPkg         = protogen.GoImportPath("sync")
 	protohelpersPkg = protogen.GoImportPath("github.com/planetscale/vtprotobuf/protohelpers")
 	binaryPkg       = protogen.GoImportPath("encoding/binary")
 	mathPkg         = protogen.GoImportPath("math")
 )
+
+// keyKindInfo describes how to declare a sync.Pool of sorted keys for a
+// supported map-key kind. The generated marshaler grabs a *[]K from the pool,
+// fills it, sorts it in place, and returns it to the pool after the map has
+// been encoded — replacing the previous `slices.Sorted(maps.Keys(...))` call
+// that allocated a fresh slice on every marshal.
+type keyKindInfo struct {
+	// goType is the Go literal for the key slice element (e.g. "string",
+	// "int64").
+	goType string
+	// pkgVar is the unique package-level variable name for this kind's pool,
+	// e.g. "_dethashKeyPoolString".
+	pkgVar string
+	// sortCall is the sort statement applied to a `keys` slice of this type.
+	// Generated as `<package>.<call>(keys)` so the import is tracked.
+	sortPkg  protogen.GoImportPath
+	sortFunc string
+}
+
+// supportedKeyKinds maps every map-key kind the plugin accepts to its
+// pool/sort recipe. The kinds match the panic guard in genMapMarshal.
+var supportedKeyKinds = map[protoreflect.Kind]keyKindInfo{
+	protoreflect.StringKind: {goType: "string", pkgVar: "_dethashKeyPoolString", sortPkg: sortPkg, sortFunc: "Strings"},
+	protoreflect.Int32Kind:  {goType: "int32", pkgVar: "_dethashKeyPoolInt32", sortPkg: slicesPkg, sortFunc: "Sort"},
+	protoreflect.Uint32Kind: {goType: "uint32", pkgVar: "_dethashKeyPoolUint32", sortPkg: slicesPkg, sortFunc: "Sort"},
+	protoreflect.Int64Kind:  {goType: "int64", pkgVar: "_dethashKeyPoolInt64", sortPkg: slicesPkg, sortFunc: "Sort"},
+	protoreflect.Uint64Kind: {goType: "uint64", pkgVar: "_dethashKeyPoolUint64", sortPkg: slicesPkg, sortFunc: "Sort"},
+}
 
 func main() {
 	protogen.Options{}.Run(func(gen *protogen.Plugin) error {
@@ -81,9 +110,86 @@ func generateFile(gen *protogen.Plugin, file *protogen.File, hasMap map[string]b
 	g.P()
 	g.P("package ", file.GoPackageName)
 
+	// First, find every map-key kind used in this file so we can emit one
+	// sync.Pool per kind. The pool reuses the sorted-keys slice across
+	// marshal calls, replacing the per-call `slices.Sorted(maps.Keys(m))`
+	// allocation. The pool is package-private so it does not leak into
+	// the public API.
+	usedKeyKinds := map[protoreflect.Kind]bool{}
+	for _, msg := range file.Messages {
+		collectMapKeyKinds(msg, usedKeyKinds)
+	}
+
+	emitKeyPools(g, usedKeyKinds)
+
 	for _, msg := range file.Messages {
 		walkMessages(g, msg, hasMap)
 	}
+}
+
+// collectMapKeyKinds walks msg + every nested message and records the kind
+// of every map<K, V> field's key. Limited to the kinds supported by
+// genMapMarshal — anything else would have panicked the plugin elsewhere.
+func collectMapKeyKinds(msg *protogen.Message, out map[protoreflect.Kind]bool) {
+	if msg.Desc.IsMapEntry() {
+		return
+	}
+
+	for _, f := range msg.Fields {
+		if f.Desc.IsMap() {
+			keyKind := f.Message.Fields[0].Desc.Kind()
+			if _, ok := supportedKeyKinds[keyKind]; ok {
+				out[keyKind] = true
+			}
+		}
+	}
+
+	for _, nested := range msg.Messages {
+		collectMapKeyKinds(nested, out)
+	}
+}
+
+// emitKeyPools writes one sync.Pool per used map-key kind, plus a small
+// initial slice capacity tuned for the typical metadata-style map (~16
+// entries — beyond that the pool's slice grows once and stays grown,
+// which is exactly the behaviour we want).
+func emitKeyPools(g *protogen.GeneratedFile, used map[protoreflect.Kind]bool) {
+	if len(used) == 0 {
+		return
+	}
+
+	// Iterate in a deterministic order so the generated file is stable
+	// across plugin runs (map iteration would otherwise reshuffle the
+	// declarations, producing useless diffs).
+	ordered := []protoreflect.Kind{
+		protoreflect.StringKind,
+		protoreflect.Int32Kind,
+		protoreflect.Uint32Kind,
+		protoreflect.Int64Kind,
+		protoreflect.Uint64Kind,
+	}
+
+	g.P()
+	g.P("// Map-key scratch pools. Each MarshalToSizedBufferDeterministicVT that")
+	g.P("// encodes a map<K, V> grabs a *[]K from the matching pool, fills it,")
+	g.P("// sorts it in place, and returns it. Steady-state allocations are zero:")
+	g.P("// the pool reuses the slice across marshal calls. The first marshal of")
+	g.P("// a given kind warms the pool with a 16-cap slice; larger maps grow it")
+	g.P("// once and the grown capacity persists.")
+	g.P("var (")
+
+	for _, kind := range ordered {
+		if !used[kind] {
+			continue
+		}
+
+		info := supportedKeyKinds[kind]
+		g.P("  ", info.pkgVar, " = ", syncPkg.Ident("Pool"), "{")
+		g.P("    New: func() any { s := make([]", info.goType, ", 0, 16); return &s },")
+		g.P("  }")
+	}
+
+	g.P(")")
 }
 
 func walkMessages(g *protogen.GeneratedFile, msg *protogen.Message, hasMap map[string]bool) {
@@ -264,9 +370,24 @@ func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[stri
 	valField := f.Message.Fields[1]
 	fieldNum := f.Desc.Number()
 	tag := encodeTag(fieldNum, 2)
+	keyField := f.Message.Fields[0]
+	keyKind := keyField.Desc.Kind()
 
+	info, ok := supportedKeyKinds[keyKind]
+	if !ok {
+		panic(fmt.Sprintf("protoc-gen-dethash: unsupported map key type %s in field %s", keyKind, f.Desc.FullName()))
+	}
+
+	// Borrow a sorted-keys scratch slice from the file-scoped pool, fill it,
+	// sort it in place, and return it after the loop. Steady-state zero alloc.
 	g.P("  if len(m.", goName, ") > 0 {")
-	g.P("    for _, k := range ", slicesPkg.Ident("Sorted"), "(", mapsPkg.Ident("Keys"), "(m.", goName, ")) {")
+	g.P("    keysPtr := ", info.pkgVar, ".Get().(*[]", info.goType, ")")
+	g.P("    keys := (*keysPtr)[:0]")
+	g.P("    for k := range m.", goName, " {")
+	g.P("      keys = append(keys, k)")
+	g.P("    }")
+	g.P("    ", info.sortPkg.Ident(info.sortFunc), "(keys)")
+	g.P("    for _, k := range keys {")
 	g.P("      v := m.", goName, "[k]")
 	g.P("      baseI := i")
 
@@ -298,8 +419,7 @@ func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[stri
 	}
 
 	// Write key (field 1)
-	keyField := f.Message.Fields[0]
-	switch keyField.Desc.Kind() {
+	switch keyKind {
 	case protoreflect.StringKind:
 		g.P("      i -= len(k)")
 		g.P("      copy(dAtA[i:], k)")
@@ -311,7 +431,7 @@ func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[stri
 		g.P("      i--")
 		g.P("      dAtA[i] = 0x8") // field 1, wire type varint
 	default:
-		panic(fmt.Sprintf("protoc-gen-dethash: unsupported map key type %s in field %s", keyField.Desc.Kind(), f.Desc.FullName()))
+		panic(fmt.Sprintf("protoc-gen-dethash: unsupported map key type %s in field %s", keyKind, f.Desc.FullName()))
 	}
 
 	// Write entry length + outer tag
@@ -319,6 +439,11 @@ func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[stri
 	writeTag(g, tag)
 
 	g.P("    }")
+	// Return the (possibly grown) scratch slice to the pool. The pool keeps
+	// the underlying capacity, so the next marshal that needs at most that
+	// many keys hits zero allocation.
+	g.P("    *keysPtr = keys")
+	g.P("    ", info.pkgVar, ".Put(keysPtr)")
 	g.P("  }")
 }
 

@@ -6,8 +6,20 @@ package proposalpb
 import (
 	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	maps "maps"
-	slices "slices"
+	sort "sort"
+	sync "sync"
+)
+
+// Map-key scratch pools. Each MarshalToSizedBufferDeterministicVT that
+// encodes a map<K, V> grabs a *[]K from the matching pool, fills it,
+// sorts it in place, and returns it. Steady-state allocations are zero:
+// the pool reuses the slice across marshal calls. The first marshal of
+// a given kind warms the pool with a 16-cap slice; larger maps grow it
+// once and the grown capacity persists.
+var (
+	_dethashKeyPoolString = sync.Pool{
+		New: func() any { s := make([]string, 0, 16); return &s },
+	}
 )
 
 func (m *AppliedProposal) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -30,7 +42,13 @@ func (m *AppliedProposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.TransientVolumes) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.TransientVolumes)) {
+		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.TransientVolumes {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
 			v := m.TransientVolumes[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
@@ -47,6 +65,8 @@ func (m *AppliedProposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 			i--
 			dAtA[i] = 0x22
 		}
+		*keysPtr = keys
+		_dethashKeyPoolString.Put(keysPtr)
 	}
 	if m.MaxLogSequence != 0 {
 		i -= 8
