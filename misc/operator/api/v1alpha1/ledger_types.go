@@ -197,6 +197,25 @@ type LedgerServiceSpec struct {
 	// +optional
 	UnsafeSkipConfigValidation *bool `json:"unsafeSkipConfigValidation,omitempty"`
 
+	// FSMDeterminismEnabled opts the cluster into deterministic FSM byte
+	// encoding and the cross-node rolling digest under SubGlobFSMDigest.
+	// Designed as an observability/diagnostic safety net for the first
+	// production deployments: peers can exchange a digest via the
+	// GetFSMDigest RPC and detect FSM divergence.
+	//
+	// IMMUTABLE post-bootstrap: set once at first boot, validated on every
+	// subsequent boot. A mismatch is fatal and NOT bypassable by
+	// UnsafeSkipConfigValidation — flipping the flag would either re-encode
+	// existing entries non-deterministically (ON→OFF) or compare new
+	// deterministic entries against pre-existing non-deterministic ones
+	// (OFF→ON), tripping the very digest it powers. To change it on an
+	// existing cluster, the data directory must be wiped first.
+	//
+	// The audit hash chain remains the only source of cryptographic
+	// authenticity; the digest is a diagnostic signal.
+	// +optional
+	FSMDeterminismEnabled *bool `json:"fsmDeterminismEnabled,omitempty"`
+
 	// Snapshot sync configuration for Raft snapshot transfers.
 	// +optional
 	Snapshot *SnapshotConfig `json:"snapshot,omitempty"`

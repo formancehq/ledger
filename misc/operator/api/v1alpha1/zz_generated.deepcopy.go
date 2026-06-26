@@ -1206,6 +1206,11 @@ func (in *LedgerServiceSpec) DeepCopyInto(out *LedgerServiceSpec) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.FSMDeterminismEnabled != nil {
+		in, out := &in.FSMDeterminismEnabled, &out.FSMDeterminismEnabled
+		*out = new(bool)
+		**out = **in
+	}
 	if in.Snapshot != nil {
 		in, out := &in.Snapshot, &out.Snapshot
 		*out = new(SnapshotConfig)
