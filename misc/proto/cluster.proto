@@ -117,11 +117,12 @@ message RaftStatus {
   string state = 1;             // Current Raft state (Leader, Follower, Candidate, PreCandidate)
   fixed64 term = 2;              // Current term
   uint64 leader = 3;            // ID of the current leader (0 if no leader)
-  fixed64 applied = 4;           // Index of the last applied entry
+  fixed64 applied = 4;           // Raft-layer cursor: bumped by rawNode.Advance on the orchestrate goroutine. NOT a "Pebble has the data" signal — the async apply pipeline (applier + committer) can still be in flight when this advances.
   fixed64 commit = 5;            // Index of the last committed entry
   fixed64 last_index = 6;        // Index of the last entry in the log
   uint64 vote = 7;              // ID of the node that received the vote (0 if no vote)
   map<uint64, ProgressInfo> progress = 8;  // Progress information for each node
+  fixed64 last_persisted_index = 9; // FSM-layer durable cursor: bumped by Machine.publishApplied on the committer goroutine, after pb.batch.Commit() returns. Any read served from Pebble (stale-consistency GetAccount, cross-node identity oracles, audit reads) MUST gate on this — not on `applied` — to see entries up to a given index. NOTE: `applied` and `last_persisted_index` are advanced on independent goroutines (orchestrate vs committer) with no enforced ordering, so either can transiently exceed the other in a single GetClusterState snapshot. Pick the cursor by intent (Raft-acknowledged ⇒ applied; durable in Pebble ⇒ last_persisted_index), do not assume a relationship between them.
 }
 
 // ClusterState represents the state of the Raft cluster

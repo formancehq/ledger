@@ -1782,12 +1782,31 @@ func (node *Node) LastPersistedIndex() uint64 {
 
 // GetClusterState returns the current state of the Raft cluster.
 // The rawNode.Status() call is dispatched to the orchestrate goroutine
-// because rawNode is not thread-safe.
+// because rawNode is not thread-safe. lastPersistedIndex is sampled in the
+// SAME closure to eliminate the OUTER temporal race: without it, status was
+// captured on the orchestrate goroutine and LastPersistedIndex was loaded
+// much later on the caller goroutine, with arbitrary cross-goroutine work
+// (further Ready cycles, commits) interleaving — leading to an exaggerated
+// skew between the two reported cursors.
+//
+// The same-closure capture does NOT make the pair monotonically related.
+// `status.Applied` is bumped by rawNode.Advance on the orchestrate goroutine
+// (after `readyTerminated`); `LastPersistedIndex` is bumped by
+// Machine.publishApplied on the committer goroutine (after pb.batch.Commit()
+// returns). Neither depends on the other, and the orchestrate select
+// services clusterCommandCh before draining readyTerminated, so this closure
+// can run between `publishApplied(I)` and `Advance(I)` — observing
+// lpi = I, Applied = I-1. Consumers must treat the two cursors as
+// independent (see clusterpb.RaftStatus.last_persisted_index).
 func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
-	var status raft.Status
+	var (
+		status             raft.Status
+		lastPersistedIndex uint64
+	)
 
 	err := node.execClusterCommand(ctx, func() error {
 		status = node.rawNode.Status()
+		lastPersistedIndex = node.fsm.LastPersistedIndex()
 
 		return nil
 	})
@@ -1865,16 +1884,32 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 		return nil, fmt.Errorf("getting last index: %w", err)
 	}
 
-	// Build complete Raft status
+	// Build complete Raft status.
+	//
+	// `Applied` is the Raft-layer cursor: bumped by rawNode.Advance on the
+	// orchestrate goroutine after `readyTerminated` is consumed.
+	// `LastPersistedIndex` is the durable FSM-side cursor: bumped by
+	// Machine.publishApplied on the committer goroutine after
+	// pb.batch.Commit() returns. The two advance independently on different
+	// goroutines (orchestrate vs committer), so a single snapshot can
+	// observe either cursor temporarily ahead of the other — do NOT assume
+	// LastPersistedIndex <= Applied.
+	//
+	// Anything that reads from Pebble (stale-consistency GetAccount, test
+	// oracles, cross-node identity comparisons) MUST gate on
+	// LastPersistedIndex — that is the only cursor that guarantees a Pebble
+	// read will see entries up to that index. Gating on Applied races the
+	// apply pipeline and returns stale data.
 	raftStatus := &clusterpb.RaftStatus{
-		State:     stateStr,
-		Term:      hardState.Term,
-		Leader:    leaderID,
-		Applied:   status.Applied,
-		Commit:    hardState.Commit,
-		LastIndex: lastIndex,
-		Vote:      hardState.Vote,
-		Progress:  progress,
+		State:              stateStr,
+		Term:               hardState.Term,
+		Leader:             leaderID,
+		Applied:            status.Applied,
+		Commit:             hardState.Commit,
+		LastIndex:          lastIndex,
+		Vote:               hardState.Vote,
+		Progress:           progress,
+		LastPersistedIndex: lastPersistedIndex,
 	}
 
 	clusterState := &clusterpb.ClusterState{

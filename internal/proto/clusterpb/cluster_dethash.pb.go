@@ -62,6 +62,12 @@ func (m *RaftStatus) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.LastPersistedIndex != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastPersistedIndex))
+		i--
+		dAtA[i] = 0x49
+	}
 	if len(m.Progress) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.Progress)) {
 			v := m.Progress[k]

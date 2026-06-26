@@ -299,6 +299,7 @@ type RaftStatusReader interface {
 	GetLastIndex() uint64
 	GetVote() uint64
 	GetProgress() RaftStatus_ProgressMapReader
+	GetLastPersistedIndex() uint64
 	Mutate() *RaftStatus
 }
 
@@ -334,6 +335,10 @@ func (r *raftStatusReadonly) GetVote() uint64 {
 
 func (r *raftStatusReadonly) GetProgress() RaftStatus_ProgressMapReader {
 	return raftStatus_progressMapReadonly(r.v.GetProgress())
+}
+
+func (r *raftStatusReadonly) GetLastPersistedIndex() uint64 {
+	return r.v.GetLastPersistedIndex()
 }
 
 func (r *raftStatusReadonly) Mutate() *RaftStatus {

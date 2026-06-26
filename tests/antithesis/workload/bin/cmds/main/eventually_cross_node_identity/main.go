@@ -212,9 +212,13 @@ func nodesAtExactIndex(ctx context.Context, conns internal.PerNodeConns, target 
 	return ready
 }
 
-// waitNodeAtIndex polls one node until applied == target and sync status is
-// "normal". Returns false if the node is unreachable, behind/syncing, or never
-// reaches target before the context deadline.
+// waitNodeAtIndex polls one node until its durable cursor
+// (last_persisted_index — the index whose FSM batch has been committed to
+// Pebble) equals target and sync status is "normal". Returns false if the
+// node is unreachable, behind/syncing, or never reaches target before the
+// context deadline. last_persisted_index — not Raft's `Applied` — is the
+// only signal that a Pebble read will reflect entries up to target, because
+// the apply pipeline is async.
 func waitNodeAtIndex(ctx context.Context, c *internal.PerNodeConn, target uint64) (readyNode, bool) {
 	// Without a resolved node ID we cannot poll this node's OWN applied index
 	// (GetClusterState{NodeId:0} routes to the leader), so the exact-index gate
@@ -238,7 +242,16 @@ func waitNodeAtIndex(ctx context.Context, c *internal.PerNodeConn, target uint64
 		}
 
 		status := state.GetSyncProgress().GetStatus()
-		applied := state.GetRaftStatus().GetApplied()
+		// Gate on the Pebble-durable cursor, not Raft's `Applied`. The async
+		// apply pipeline (node.processReady -> applier.Submit + rawNode.
+		// Advance) advances Raft's Applied immediately while the FSM is still
+		// flowing entries through PrepareEntries -> pb.batch.Commit() ->
+		// publishApplied. Until publishApplied fires, the entry is NOT yet
+		// readable in Pebble — so GetAccount returns data older than `target`
+		// even though Raft.Applied has reached it. last_persisted_index is
+		// exactly that "Pebble has it" cursor.
+		// See clusterpb.RaftStatus.last_persisted_index for the contract.
+		persisted := state.GetRaftStatus().GetLastPersistedIndex()
 
 		// Only "normal" nodes are caught up; syncing/out_of_sync/snapshotting
 		// nodes are legitimately behind and must not be compared.
@@ -248,14 +261,14 @@ func waitNodeAtIndex(ctx context.Context, c *internal.PerNodeConn, target uint64
 			return readyNode{}, false
 		}
 
-		if applied == target {
+		if persisted == target {
 			return readyNode{conn: c, isLearner: localIsLearner(state)}, true
 		}
 
-		if applied > target {
+		if persisted > target {
 			// Should not happen under proven quiescence; treat as a node that
 			// raced a late write — skip rather than compare at a mismatched index.
-			log.Printf("composer: node %s applied=%d > target=%d, skipping", c.Addr, applied, target)
+			log.Printf("composer: node %s lastPersistedIndex=%d > target=%d, skipping", c.Addr, persisted, target)
 
 			return readyNode{}, false
 		}

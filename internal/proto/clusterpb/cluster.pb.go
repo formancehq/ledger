@@ -271,17 +271,18 @@ func (x *ProgressInfo) GetIsLearner() bool {
 
 // RaftStatus represents the complete Raft status information
 type RaftStatus struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	State         string                   `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`                                                                                  // Current Raft state (Leader, Follower, Candidate, PreCandidate)
-	Term          uint64                   `protobuf:"fixed64,2,opt,name=term,proto3" json:"term,omitempty"`                                                                                  // Current term
-	Leader        uint64                   `protobuf:"varint,3,opt,name=leader,proto3" json:"leader,omitempty"`                                                                               // ID of the current leader (0 if no leader)
-	Applied       uint64                   `protobuf:"fixed64,4,opt,name=applied,proto3" json:"applied,omitempty"`                                                                            // Index of the last applied entry
-	Commit        uint64                   `protobuf:"fixed64,5,opt,name=commit,proto3" json:"commit,omitempty"`                                                                              // Index of the last committed entry
-	LastIndex     uint64                   `protobuf:"fixed64,6,opt,name=last_index,json=lastIndex,proto3" json:"last_index,omitempty"`                                                       // Index of the last entry in the log
-	Vote          uint64                   `protobuf:"varint,7,opt,name=vote,proto3" json:"vote,omitempty"`                                                                                   // ID of the node that received the vote (0 if no vote)
-	Progress      map[uint64]*ProgressInfo `protobuf:"bytes,8,rep,name=progress,proto3" json:"progress,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Progress information for each node
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState   `protogen:"open.v1"`
+	State              string                   `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`                                                                                  // Current Raft state (Leader, Follower, Candidate, PreCandidate)
+	Term               uint64                   `protobuf:"fixed64,2,opt,name=term,proto3" json:"term,omitempty"`                                                                                  // Current term
+	Leader             uint64                   `protobuf:"varint,3,opt,name=leader,proto3" json:"leader,omitempty"`                                                                               // ID of the current leader (0 if no leader)
+	Applied            uint64                   `protobuf:"fixed64,4,opt,name=applied,proto3" json:"applied,omitempty"`                                                                            // Raft-layer cursor: bumped by rawNode.Advance on the orchestrate goroutine. NOT a "Pebble has the data" signal — the async apply pipeline (applier + committer) can still be in flight when this advances.
+	Commit             uint64                   `protobuf:"fixed64,5,opt,name=commit,proto3" json:"commit,omitempty"`                                                                              // Index of the last committed entry
+	LastIndex          uint64                   `protobuf:"fixed64,6,opt,name=last_index,json=lastIndex,proto3" json:"last_index,omitempty"`                                                       // Index of the last entry in the log
+	Vote               uint64                   `protobuf:"varint,7,opt,name=vote,proto3" json:"vote,omitempty"`                                                                                   // ID of the node that received the vote (0 if no vote)
+	Progress           map[uint64]*ProgressInfo `protobuf:"bytes,8,rep,name=progress,proto3" json:"progress,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Progress information for each node
+	LastPersistedIndex uint64                   `protobuf:"fixed64,9,opt,name=last_persisted_index,json=lastPersistedIndex,proto3" json:"last_persisted_index,omitempty"`                          // FSM-layer durable cursor: bumped by Machine.publishApplied on the committer goroutine, after pb.batch.Commit() returns. Any read served from Pebble (stale-consistency GetAccount, cross-node identity oracles, audit reads) MUST gate on this — not on `applied` — to see entries up to a given index. NOTE: `applied` and `last_persisted_index` are advanced on independent goroutines (orchestrate vs committer) with no enforced ordering, so either can transiently exceed the other in a single GetClusterState snapshot. Pick the cursor by intent (Raft-acknowledged ⇒ applied; durable in Pebble ⇒ last_persisted_index), do not assume a relationship between them.
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *RaftStatus) Reset() {
@@ -368,6 +369,13 @@ func (x *RaftStatus) GetProgress() map[uint64]*ProgressInfo {
 		return x.Progress
 	}
 	return nil
+}
+
+func (x *RaftStatus) GetLastPersistedIndex() uint64 {
+	if x != nil {
+		return x.LastPersistedIndex
+	}
+	return 0
 }
 
 // ClusterState represents the state of the Raft cluster
@@ -2201,7 +2209,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x13msg_app_flow_paused\x18\x06 \x01(\bR\x10msgAppFlowPaused\x12\x1b\n" +
 	"\tis_paused\x18\a \x01(\bR\bisPaused\x12\x1d\n" +
 	"\n" +
-	"is_learner\x18\b \x01(\bR\tisLearner\"\xc6\x02\n" +
+	"is_learner\x18\b \x01(\bR\tisLearner\"\xf8\x02\n" +
 	"\n" +
 	"RaftStatus\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x12\n" +
@@ -2212,7 +2220,8 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"last_index\x18\x06 \x01(\x06R\tlastIndex\x12\x12\n" +
 	"\x04vote\x18\a \x01(\x04R\x04vote\x12=\n" +
-	"\bprogress\x18\b \x03(\v2!.cluster.RaftStatus.ProgressEntryR\bprogress\x1aR\n" +
+	"\bprogress\x18\b \x03(\v2!.cluster.RaftStatus.ProgressEntryR\bprogress\x120\n" +
+	"\x14last_persisted_index\x18\t \x01(\x06R\x12lastPersistedIndex\x1aR\n" +
 	"\rProgressEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\xc1\x03\n" +

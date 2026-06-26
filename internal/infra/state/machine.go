@@ -273,10 +273,25 @@ func (fsm *Machine) LastPersistedIndex() uint64 {
 	return fsm.lastPersistedIndex.Load()
 }
 
-// LastAppliedIndex returns the last applied Raft index as read from the data
-// store at construction time. It is NOT updated during Apply — use
-// LastPersistedIndex for the live value. This is intended for raft.Config.Applied
-// so that the first Ready does not re-emit already-applied entries.
+// LastAppliedIndex returns the FSM's in-memory "currently being applied"
+// cursor. It is seeded from Pebble in RecoverState at boot and advanced by
+// `fsm.State.LastAppliedIndex++` during PrepareEntries (under fsm.mu),
+// BEFORE the matching pb.batch.Commit() persists the increment. It serves
+// three internal roles, all on the apply hot path: as the dedup watermark
+// (`entry.Index <= LastAppliedIndex → skip`), as the gap detector
+// (`entry.Index > LastAppliedIndex+1 → error`), and as the value
+// SetAppliedIndex writes into the apply batch so the next boot reads it
+// back from Pebble.
+//
+// This exported getter has a SINGLE production caller: node.Run's startup
+// path, which reads it once (before node.Run starts) to seed
+// raft.Config.Applied so etcd-raft does not re-emit already-applied
+// entries on the first Ready. Other callers should prefer
+// LastPersistedIndex (the post-commit durable cursor) — there is exactly
+// one apply-cycle window during which LastPersistedIndex < LastAppliedIndex
+// (between PrepareEntries bumping the in-memory value and publishApplied
+// firing after Commit), so the two are NOT interchangeable for live
+// "is this index durable?" checks.
 func (fsm *Machine) LastAppliedIndex() uint64 {
 	return fsm.State.LastAppliedIndex
 }
