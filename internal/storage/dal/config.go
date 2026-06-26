@@ -82,6 +82,13 @@ type Config struct {
 
 	// ValueSeparation controls Pebble's value separation (blob files) feature.
 	ValueSeparation ValueSeparationConfig `yaml:"valueSeparation"`
+
+	// DeterministicEncoding routes every WriteSession proto marshal through
+	// MarshalDeterministicVT (map keys sorted) instead of the default
+	// MarshalToSizedBufferVT. Set by the bootstrap layer from the immutable
+	// PersistedConfig.fsm_determinism_enabled flag. The store records the
+	// value at NewStore time; every OpenWriteSession inherits it.
+	DeterministicEncoding bool `yaml:"-"`
 }
 
 // DefaultConfig returns the default Pebble configuration.

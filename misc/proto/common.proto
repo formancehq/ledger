@@ -1238,6 +1238,18 @@ message PersistedConfig {
   string cluster_id = 2;
   uint64 idempotency_ttl_seconds = 3;
   uint32 storage_schema_version = 4;
+  // fsm_determinism_enabled opts the cluster into deterministic FSM byte
+  // encoding and the cross-node digest health-check. Set once at first
+  // bootstrap, validated on every subsequent boot. A mismatch is fatal and
+  // CANNOT be bypassed with --unsafe-skip-config-validation: flipping the flag
+  // post-bootstrap would either re-encode existing entries non-deterministically
+  // (ON→OFF) or compare new deterministic entries against pre-existing
+  // non-deterministic ones (OFF→ON), tripping the very digest it powers.
+  // When ON, every persisted byte uses MarshalDeterministicVT and a rolling
+  // XXH3-128 digest is maintained under SubGlobFSMDigest so peers can detect
+  // FSM divergence. The audit hash chain remains the only source of
+  // cryptographic authenticity; the digest is a diagnostic signal.
+  bool fsm_determinism_enabled = 5;
 }
 
 // CallerIdentity uniquely identifies an authenticated caller. It is

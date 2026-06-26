@@ -1780,6 +1780,20 @@ func (node *Node) LastPersistedIndex() uint64 {
 	return node.fsm.LastPersistedIndex()
 }
 
+// FSMDigestSnapshot returns the cross-node FSM digest at the current
+// applied index. Returns (0, 0, nil) when the cluster was bootstrapped
+// with fsm_determinism_enabled=false. See state.Machine.FSMDigestSnapshot
+// for the lock discipline that keeps the triplet coherent.
+func (node *Node) FSMDigestSnapshot() (appliedIndex, snapshotIndex uint64, digest []byte) {
+	return node.fsm.FSMDigestSnapshot()
+}
+
+// WaitForApplied delegates to the FSM. Used by the GetFSMDigest gRPC
+// handler when the caller pins a target index for cross-node comparison.
+func (node *Node) WaitForApplied(ctx context.Context, target uint64) error {
+	return node.fsm.WaitForApplied(ctx, target)
+}
+
 // GetClusterState returns the current state of the Raft cluster.
 // The rawNode.Status() call is dispatched to the orchestrate goroutine
 // because rawNode is not thread-safe. lastPersistedIndex is sampled in the

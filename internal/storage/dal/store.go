@@ -89,17 +89,25 @@ func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err er
 // Store is a Pebble implementation of dal.Store
 // It stores balances and account metadata.
 type Store struct {
-	dbMu              sync.RWMutex // protects DB lifecycle (RestoreCheckpoint, Close)
-	snapshotMu        sync.Mutex   // serializes checkpoint creation (currentCheckPoint counter)
-	db                *pebble.DB
-	opts              *pebble.Options
-	logger            logging.Logger
-	dataDir           string
-	currentCheckPoint uint64
-	oldestCheckpoint  uint64
-	maxCheckpoints    int
-	stallState        *WriteStallState
-	iopsCounters      *IOPSCounters
+	dbMu                  sync.RWMutex // protects DB lifecycle (RestoreCheckpoint, Close)
+	snapshotMu            sync.Mutex   // serializes checkpoint creation (currentCheckPoint counter)
+	db                    *pebble.DB
+	opts                  *pebble.Options
+	logger                logging.Logger
+	dataDir               string
+	currentCheckPoint     uint64
+	oldestCheckpoint      uint64
+	maxCheckpoints        int
+	stallState            *WriteStallState
+	iopsCounters          *IOPSCounters
+	deterministicEncoding bool // captured from Config.DeterministicEncoding at NewStore time
+}
+
+// DeterministicEncoding reports whether this store routes WriteSession proto
+// marshals through MarshalDeterministicVT (map keys sorted) so two nodes
+// at the same applied index persist byte-identical KV state.
+func (s *Store) DeterministicEncoding() bool {
+	return s.deterministicEncoding
 }
 
 // getDB returns the current pebble.DB.
@@ -239,6 +247,15 @@ const (
 	SubGlobClusterConfig           byte = 0x11
 	SubGlobBloom                   byte = 0x12
 	SubGlobNextLedgerID            byte = 0x13
+	// SubGlobFSMDigest holds the rolling cross-node FSM digest (when the
+	// immutable PersistedConfig.fsm_determinism_enabled flag is ON).
+	// Value layout: [appliedIndex BE 8][snapshotIndex BE 8][digest N].
+	// Single key, overwritten on every CommitPreparedBatch; embedded in
+	// Pebble checkpoints so a follower restored from a leader checkpoint
+	// continues the chain seamlessly. The digest is a diagnostic signal,
+	// not a source of authenticity (cf. invariant 8): the audit hash chain
+	// remains the only cryptographically-bound dataset.
+	SubGlobFSMDigest byte = 0x14
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).
@@ -463,14 +480,15 @@ func NewStore(
 	}
 
 	store := &Store{
-		opts:              opts,
-		logger:            logger.WithField("cmp", "pebble"),
-		dataDir:           dataDir,
-		currentCheckPoint: latestCheckpointID,
-		oldestCheckpoint:  oldestCheckpoint,
-		maxCheckpoints:    cfg.MaxCheckpoints,
-		stallState:        stallState,
-		iopsCounters:      iopsCounters,
+		opts:                  opts,
+		logger:                logger.WithField("cmp", "pebble"),
+		dataDir:               dataDir,
+		currentCheckPoint:     latestCheckpointID,
+		oldestCheckpoint:      oldestCheckpoint,
+		maxCheckpoints:        cfg.MaxCheckpoints,
+		stallState:            stallState,
+		iopsCounters:          iopsCounters,
+		deterministicEncoding: cfg.DeterministicEncoding,
 	}
 
 	if _, err = iopsCounters.RegisterMetrics(meter); err != nil {

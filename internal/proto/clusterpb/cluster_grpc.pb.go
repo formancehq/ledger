@@ -36,6 +36,7 @@ const (
 	ClusterService_ListQueryCheckpoints_FullMethodName       = "/cluster.ClusterService/ListQueryCheckpoints"
 	ClusterService_GetQueryCheckpointInfo_FullMethodName     = "/cluster.ClusterService/GetQueryCheckpointInfo"
 	ClusterService_GetQueryCheckpointSchedule_FullMethodName = "/cluster.ClusterService/GetQueryCheckpointSchedule"
+	ClusterService_GetFSMDigest_FullMethodName               = "/cluster.ClusterService/GetFSMDigest"
 )
 
 // ClusterServiceClient is the client API for ClusterService service.
@@ -93,6 +94,16 @@ type ClusterServiceClient interface {
 	// GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
 	// Reads from replicated Pebble state (available on any node).
 	GetQueryCheckpointSchedule(ctx context.Context, in *GetQueryCheckpointScheduleRequest, opts ...grpc.CallOption) (*GetQueryCheckpointScheduleResponse, error)
+	// GetFSMDigest returns the cross-node FSM digest at the requested applied
+	// index. Used by Antithesis assertions, the live health-check, and the
+	// ledgerctl digest CLI to detect FSM divergence between peers.
+	//
+	// Returns FAILED_PRECONDITION when the cluster was bootstrapped with
+	// fsm_determinism_enabled=false (no rolling digest is maintained). When
+	// index > 0, the server waits up to wait_ms for its FSM to reach that
+	// index and returns DEADLINE_EXCEEDED if it does not. Node-local read
+	// (honors x-consistency: stale).
+	GetFSMDigest(ctx context.Context, in *GetFSMDigestRequest, opts ...grpc.CallOption) (*FSMDigest, error)
 }
 
 type clusterServiceClient struct {
@@ -273,6 +284,16 @@ func (c *clusterServiceClient) GetQueryCheckpointSchedule(ctx context.Context, i
 	return out, nil
 }
 
+func (c *clusterServiceClient) GetFSMDigest(ctx context.Context, in *GetFSMDigestRequest, opts ...grpc.CallOption) (*FSMDigest, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FSMDigest)
+	err := c.cc.Invoke(ctx, ClusterService_GetFSMDigest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility.
@@ -328,6 +349,16 @@ type ClusterServiceServer interface {
 	// GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
 	// Reads from replicated Pebble state (available on any node).
 	GetQueryCheckpointSchedule(context.Context, *GetQueryCheckpointScheduleRequest) (*GetQueryCheckpointScheduleResponse, error)
+	// GetFSMDigest returns the cross-node FSM digest at the requested applied
+	// index. Used by Antithesis assertions, the live health-check, and the
+	// ledgerctl digest CLI to detect FSM divergence between peers.
+	//
+	// Returns FAILED_PRECONDITION when the cluster was bootstrapped with
+	// fsm_determinism_enabled=false (no rolling digest is maintained). When
+	// index > 0, the server waits up to wait_ms for its FSM to reach that
+	// index and returns DEADLINE_EXCEEDED if it does not. Node-local read
+	// (honors x-consistency: stale).
+	GetFSMDigest(context.Context, *GetFSMDigestRequest) (*FSMDigest, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -388,6 +419,9 @@ func (UnimplementedClusterServiceServer) GetQueryCheckpointInfo(context.Context,
 }
 func (UnimplementedClusterServiceServer) GetQueryCheckpointSchedule(context.Context, *GetQueryCheckpointScheduleRequest) (*GetQueryCheckpointScheduleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQueryCheckpointSchedule not implemented")
+}
+func (UnimplementedClusterServiceServer) GetFSMDigest(context.Context, *GetFSMDigestRequest) (*FSMDigest, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetFSMDigest not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 func (UnimplementedClusterServiceServer) testEmbeddedByValue()                        {}
@@ -716,6 +750,24 @@ func _ClusterService_GetQueryCheckpointSchedule_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_GetFSMDigest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetFSMDigestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).GetFSMDigest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_GetFSMDigest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).GetFSMDigest(ctx, req.(*GetFSMDigestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -790,6 +842,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQueryCheckpointSchedule",
 			Handler:    _ClusterService_GetQueryCheckpointSchedule_Handler,
+		},
+		{
+			MethodName: "GetFSMDigest",
+			Handler:    _ClusterService_GetFSMDigest_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	ggrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -298,6 +300,69 @@ func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *cluste
 
 	return &clusterpb.NodeTime{
 		TimestampUs: uint64(time.Now().UnixMicro()),
+	}, nil
+}
+
+// GetFSMDigest returns the cross-node FSM digest captured by the local
+// node at the requested applied index. Node-local read (never forwarded
+// to the leader): the whole point of the RPC is to compare per-node
+// snapshots so callers MUST hit each peer directly.
+func (impl *ClusterServiceServerImpl) GetFSMDigest(ctx context.Context, req *clusterpb.GetFSMDigestRequest) (*clusterpb.FSMDigest, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
+		return nil, err
+	}
+
+	// Refuse the call when the cluster was bootstrapped with the flag OFF:
+	// the FSM does not maintain a rolling digest in that mode, so returning
+	// any value would be misleading. Callers (CLI, health-check, Antithesis)
+	// must treat FAILED_PRECONDITION as "feature disabled for this cluster".
+	if !impl.store.DeterministicEncoding() {
+		return nil, status.Error(codes.FailedPrecondition,
+			"fsm digest is unavailable: cluster bootstrapped with fsm_determinism_enabled=false")
+	}
+
+	// Optional wait: caller pins a target applied index so peer responses
+	// align on the same commit. wait_ms upper-bounds the wait so a stuck
+	// follower cannot pin the caller indefinitely.
+	if req.GetIndex() > 0 {
+		waitCtx := ctx
+
+		if req.GetWaitMs() > 0 {
+			var cancel context.CancelFunc
+
+			waitCtx, cancel = context.WithTimeout(ctx, time.Duration(req.GetWaitMs())*time.Millisecond)
+			defer cancel()
+		}
+
+		if err := impl.node.WaitForApplied(waitCtx, req.GetIndex()); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, status.Errorf(codes.DeadlineExceeded,
+					"node did not reach applied index %d within wait_ms=%d", req.GetIndex(), req.GetWaitMs())
+			}
+
+			return nil, status.Errorf(codes.Internal, "waiting for applied index: %v", err)
+		}
+	}
+
+	appliedIndex, snapshotIndex, digest := impl.node.FSMDigestSnapshot()
+	if digest == nil {
+		return nil, status.Error(codes.Unavailable,
+			"fsm digest not yet computed: no apply has committed since boot")
+	}
+
+	clusterState, _ := query.ReadClusterState(impl.store)
+	hashVersion := uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3)
+
+	if clusterState != nil {
+		hashVersion = uint32(clusterState.GetConfig().GetHashAlgorithm())
+	}
+
+	return &clusterpb.FSMDigest{
+		AppliedIndex:  appliedIndex,
+		SnapshotIndex: snapshotIndex,
+		Digest:        digest,
+		NodeId:        uint32(impl.node.GetNodeID()),
+		HashVersion:   hashVersion,
 	}, nil
 }
 

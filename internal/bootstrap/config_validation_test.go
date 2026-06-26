@@ -280,3 +280,56 @@ func TestValidateOrPersistConfig_SchemaVersionTooOld(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+func TestValidateOrPersistConfig_FSMDeterminismMismatch(t *testing.T) {
+	t.Parallel()
+
+	type tc struct {
+		name          string
+		firstBootFlag bool
+		secondFlag    bool
+		wantMismatch  bool
+	}
+
+	cases := []tc{
+		{"both-off", false, false, false},
+		{"both-on", true, true, false},
+		{"off-to-on", false, true, true},
+		{"on-to-off", true, false, true},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			store := newTestStore(t)
+			logger := logging.Testing()
+
+			cfg := Config{
+				RaftConfig:            node.NodeConfig{NodeID: 1},
+				ClusterID:             "test-cluster",
+				FSMDeterminismEnabled: c.firstBootFlag,
+			}
+			require.NoError(t, ValidateOrPersistConfig(store, cfg, logger, false))
+
+			cfg.FSMDeterminismEnabled = c.secondFlag
+			err := ValidateOrPersistConfig(store, cfg, logger, false)
+
+			if !c.wantMismatch {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.Error(t, err)
+			var mismatchErr *FSMDeterminismMismatchError
+			require.ErrorAs(t, err, &mismatchErr)
+			require.Equal(t, c.firstBootFlag, mismatchErr.Persisted)
+			require.Equal(t, c.secondFlag, mismatchErr.Current)
+
+			// Force flag must NOT bypass FSM determinism errors.
+			err = ValidateOrPersistConfig(store, cfg, logger, true)
+			require.Error(t, err)
+			require.ErrorAs(t, err, &mismatchErr)
+		})
+	}
+}

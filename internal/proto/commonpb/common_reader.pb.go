@@ -10335,6 +10335,7 @@ type PersistedConfigReader interface {
 	GetClusterId() string
 	GetIdempotencyTtlSeconds() uint64
 	GetStorageSchemaVersion() uint32
+	GetFsmDeterminismEnabled() bool
 	Mutate() *PersistedConfig
 }
 
@@ -10354,6 +10355,10 @@ func (r *persistedConfigReadonly) GetIdempotencyTtlSeconds() uint64 {
 
 func (r *persistedConfigReadonly) GetStorageSchemaVersion() uint32 {
 	return r.v.GetStorageSchemaVersion()
+}
+
+func (r *persistedConfigReadonly) GetFsmDeterminismEnabled() bool {
+	return r.v.GetFsmDeterminismEnabled()
 }
 
 func (r *persistedConfigReadonly) Mutate() *PersistedConfig {

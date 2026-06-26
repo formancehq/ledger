@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/batchrepr"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -35,21 +36,56 @@ type vtDeterministicMarshaler interface {
 // Cancel must be called if the session is not committed, to release the
 // underlying batch resources.
 type WriteSession struct {
-	store          *Store
-	batch          *pebble.Batch
-	KeyBuilder     *KeyBuilder
-	protoBuffer    []byte
-	CacheBuffer    []byte // reusable buffer for 0xFF cache zone writes (tag+value)
-	committed      bool
-	marshalOptions proto.MarshalOptions
+	store                 *Store
+	batch                 *pebble.Batch
+	KeyBuilder            *KeyBuilder
+	protoBuffer           []byte
+	CacheBuffer           []byte // reusable buffer for 0xFF cache zone writes (tag+value)
+	committed             bool
+	marshalOptions        proto.MarshalOptions
+	deterministicEncoding bool // captured from the store at OpenWriteSession time
+}
+
+// DeterministicEncoding reports whether this session marshals proto messages
+// via MarshalDeterministicVT (map keys sorted) instead of the default
+// MarshalToSizedBufferVT. The value is captured from the parent Store at
+// session creation; the cluster-wide flag fsm_determinism_enabled (immutable
+// post-bootstrap) controls it.
+func (b *WriteSession) DeterministicEncoding() bool {
+	return b.deterministicEncoding
 }
 
 // MarshalProto marshals a proto message using vtprotobuf when available,
 // falling back to standard MarshalAppend otherwise.
 //
-// Calls SizeVT once and uses MarshalToSizedBufferVT directly, avoiding the
-// double SizeVT that MarshalToVT would do internally.
+// When the parent store has DeterministicEncoding=true, the marshal path
+// routes through MarshalDeterministicVT (map keys sorted) so two nodes
+// at the same applied index produce byte-identical KV values. Otherwise,
+// it uses MarshalToSizedBufferVT — the historical default that is faster
+// but order-sensitive on map fields.
+//
+// Calls SizeVT once and uses MarshalToSizedBufferVT / MarshalDeterministicVT
+// directly, avoiding the double SizeVT that MarshalToVT would do internally.
 func (b *WriteSession) MarshalProto(msg proto.Message) ([]byte, error) {
+	if b.deterministicEncoding {
+		if m, ok := msg.(vtDeterministicMarshaler); ok {
+			size := m.SizeVT()
+			if cap(b.protoBuffer) < size {
+				b.protoBuffer = make([]byte, 0, size)
+			}
+
+			b.protoBuffer = m.MarshalDeterministicVT(b.protoBuffer[:0])
+
+			return b.protoBuffer, nil
+		}
+
+		// Fallback for non-vt messages: use protobuf's deterministic option.
+		opts := b.marshalOptions
+		opts.Deterministic = true
+
+		return opts.MarshalAppend(b.protoBuffer[:0], msg)
+	}
+
 	if m, ok := msg.(vtSizedBufferMarshaler); ok {
 		size := m.SizeVT()
 		if cap(b.protoBuffer) >= size {
@@ -72,17 +108,20 @@ func (b *WriteSession) MarshalProto(msg proto.Message) ([]byte, error) {
 // hot path. It has no read methods by design.
 func (s *Store) OpenWriteSession() *WriteSession {
 	return &WriteSession{
-		store:       s,
-		batch:       s.getDB().NewBatch(),
-		KeyBuilder:  NewKeyBuilder(),
-		protoBuffer: make([]byte, 0, 1024),
-		CacheBuffer: make([]byte, 0, 128),
+		store:                 s,
+		batch:                 s.getDB().NewBatch(),
+		KeyBuilder:            NewKeyBuilder(),
+		protoBuffer:           make([]byte, 0, 1024),
+		CacheBuffer:           make([]byte, 0, 128),
+		deterministicEncoding: s.deterministicEncoding,
 	}
 }
 
 // NewWriteSessionFromDB creates a write-only session backed by the given Pebble
 // DB without a Store. Used by subsystems (e.g. readstore) that manage their own
-// Pebble instance.
+// Pebble instance. Sessions opened via this constructor do NOT use deterministic
+// encoding — they are not part of the FSM hot path and do not feed the
+// cross-node digest.
 func NewWriteSessionFromDB(db *pebble.DB) *WriteSession {
 	return &WriteSession{
 		batch:       db.NewBatch(),
@@ -209,4 +248,43 @@ func (b *WriteSession) DeleteRangeNoSync(start, end []byte) error {
 	}
 
 	return b.batch.DeleteRange(start, end, pebble.NoSync)
+}
+
+// IterateBufferedOps walks every operation already accumulated in the
+// underlying in-memory pebble.Batch and invokes fn for each. The callback
+// receives the InternalKeyKind code (Pebble's uint8 op kind: Set=1,
+// Delete=2, SingleDelete=7, DeleteRange=4, etc.), the key, and the value
+// (nil for delete-shaped ops). Iteration aborts as soon as fn returns a
+// non-nil error, and that error is returned verbatim.
+//
+// Reads from the in-flight batch buffer ONLY — does not consult Pebble.
+// This preserves the "no Pebble reads on the FSM hot path" invariant:
+// callers cannot observe any state they did not themselves write into
+// this same session. Used by the cross-node FSM digest to derive a
+// canonical byte stream from the batch before Commit (it sorts the
+// ops by (key, kind) outside this helper, since the batch is
+// insertion-ordered).
+//
+// Returns an error if the session is already committed.
+func (b *WriteSession) IterateBufferedOps(fn func(kind uint8, key, value []byte) error) error {
+	if b.committed {
+		return errors.New("write session already committed")
+	}
+
+	reader := batchrepr.Read(b.batch.Repr())
+
+	for {
+		kind, key, value, ok, err := reader.Next()
+		if err != nil {
+			return fmt.Errorf("reading batch op: %w", err)
+		}
+
+		if !ok {
+			return nil
+		}
+
+		if err := fn(uint8(kind), key, value); err != nil {
+			return err
+		}
+	}
 }

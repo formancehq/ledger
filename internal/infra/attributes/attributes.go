@@ -67,6 +67,15 @@ type vtSizedMarshaler interface {
 	MarshalToVT([]byte) (int, error)
 }
 
+// vtDeterministicMarshaler is implemented by messages that have a
+// protoc-gen-dethash generated MarshalDeterministicVT method (map keys sorted).
+// Used when the parent WriteSession is in deterministic mode so attribute
+// values written into Pebble are byte-identical across nodes.
+type vtDeterministicMarshaler interface {
+	SizeVT() int
+	MarshalDeterministicVT(dAtA []byte) []byte
+}
+
 // vtUnmarshaler is implemented by vtprotobuf-generated messages.
 type vtUnmarshaler interface {
 	UnmarshalVT([]byte) error
@@ -76,7 +85,25 @@ type vtUnmarshaler interface {
 // falling back to standard proto.MarshalOptions otherwise.
 // The provided buf is reused when large enough; the returned slice may be a
 // different backing array.
-func marshalProto(buf []byte, msg proto.Message) ([]byte, error) {
+//
+// When deterministic=true, the marshal path routes through
+// MarshalDeterministicVT so two nodes at the same applied index produce
+// byte-identical attribute values; the cluster-wide fsm_determinism_enabled
+// flag controls it via WriteSession.DeterministicEncoding().
+func marshalProto(buf []byte, msg proto.Message, deterministic bool) ([]byte, error) {
+	if deterministic {
+		if m, ok := msg.(vtDeterministicMarshaler); ok {
+			size := m.SizeVT()
+			if cap(buf) < size {
+				buf = make([]byte, 0, size)
+			}
+
+			return m.MarshalDeterministicVT(buf[:0]), nil
+		}
+
+		return proto.MarshalOptions{Deterministic: true}.MarshalAppend(buf[:0], msg)
+	}
+
 	if m, ok := msg.(vtSizedMarshaler); ok {
 		size := m.SizeVT()
 		if cap(buf) >= size {
@@ -113,7 +140,7 @@ func (a *Attribute[V]) Set(batch *dal.WriteSession, canonicalKey []byte, value V
 	a.ensureKeyBuf(pLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
 
-	valueBytes, err := marshalProto(a.protoBuffer, value)
+	valueBytes, err := marshalProto(a.protoBuffer, value, batch.DeterministicEncoding())
 	if err != nil {
 		return nil, fmt.Errorf("marshaling value: %w", err)
 	}

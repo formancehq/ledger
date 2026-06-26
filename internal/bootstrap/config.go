@@ -188,6 +188,12 @@ type Config struct {
 	IdempotencyTTL              time.Duration
 	IdempotencyEvictionInterval time.Duration
 	SnapshotSyncConfig          SnapshotSyncConfig
+	// FSMDeterminismEnabled opts the cluster into deterministic FSM byte
+	// encoding and the cross-node digest health-check (Volet 1 + Volet 2).
+	// Set once at first bootstrap; subsequent boots validate against the
+	// persisted value and refuse to start on mismatch (never bypassable by
+	// UnsafeSkipConfigValidation). See PersistedConfig.fsm_determinism_enabled.
+	FSMDeterminismEnabled bool
 }
 
 // EffectiveRestoreListen returns the bind host for restore mode, falling

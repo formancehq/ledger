@@ -64,6 +64,14 @@ type Machine struct {
 
 	mu sync.Mutex
 
+	// Cross-node FSM digest scratch buffers. Reused across commits to keep
+	// the digest path allocation-free in steady state. Owned by the FSM
+	// hot path (mutated only inside CommitPreparedBatch under fsm.mu).
+	digestPayloadBuf []byte
+	digestOpsBuf     []bufferedOp
+	digestHashBuf    []byte
+	digestValueBuf   []byte
+
 	// Composed subsystems
 	Registry *StateRegistry  // KeyStores + Cache + Attrs
 	Chapters *ChapterTracker // Chapter lifecycle
@@ -271,6 +279,29 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 
 func (fsm *Machine) LastPersistedIndex() uint64 {
 	return fsm.lastPersistedIndex.Load()
+}
+
+// FSMDigestSnapshot returns a coherent snapshot of the cross-node FSM
+// digest: (appliedIndex, snapshotIndex, digest copy). The three values are
+// captured under fsm.appliedMu so a reader cannot observe an applied index
+// that mismatches the digest it returns — see CommitPreparedBatch for the
+// matching write-side ordering. Returns (0, 0, nil) when the cluster was
+// bootstrapped with fsm_determinism_enabled=false (LastFSMDigest stays nil)
+// or before the first apply has committed.
+//
+// The digest is COPIED before release so callers may inspect or transmit
+// it across goroutines / RPC boundaries without holding the lock.
+func (fsm *Machine) FSMDigestSnapshot() (appliedIndex, snapshotIndex uint64, digest []byte) {
+	fsm.appliedMu.Lock()
+	defer fsm.appliedMu.Unlock()
+
+	if len(fsm.State.LastFSMDigest) == 0 {
+		return 0, 0, nil
+	}
+
+	return fsm.lastPersistedIndex.Load(),
+		fsm.State.SnapshotIndex,
+		append([]byte(nil), fsm.State.LastFSMDigest...)
 }
 
 // LastAppliedIndex returns the FSM's in-memory "currently being applied"
@@ -734,12 +765,58 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) error {
 	commitStart := time.Now()
 
+	// Compute and persist the cross-node FSM digest under SubGlobFSMDigest,
+	// inside the same batch so it is atomic with the data it summarises.
+	// Only runs when the cluster-wide fsm_determinism_enabled flag is ON
+	// (carried by the WriteSession from the parent Store). Must precede
+	// pb.batch.Commit() — the digest covers the writes accumulated so far
+	// and we want IterateBufferedOps to skip the digest key itself, which
+	// only gets added after the canonical payload is built.
+	var newDigest []byte
+
+	if pb.batch.DeterministicEncoding() {
+		payload, ops, payloadErr := canonicalBatchPayload(fsm.digestPayloadBuf, fsm.digestOpsBuf, pb.batch)
+		if payloadErr != nil {
+			return fmt.Errorf("building digest canonical payload: %w", payloadErr)
+		}
+
+		fsm.digestPayloadBuf = payload
+		fsm.digestOpsBuf = ops
+
+		fsm.digestHashBuf, newDigest = chainFSMDigest(
+			fsm.State.HashGenerator,
+			fsm.digestHashBuf,
+			fsm.State.LastFSMDigest,
+			fsm.State.SnapshotIndex,
+			pb.lastAppliedIndex,
+			payload,
+		)
+
+		fsm.digestValueBuf = encodeFSMDigestValue(fsm.digestValueBuf, pb.lastAppliedIndex, fsm.State.SnapshotIndex, newDigest)
+
+		if err := pb.batch.SetBytes(fsmDigestKey, fsm.digestValueBuf); err != nil {
+			return fmt.Errorf("persisting fsm digest: %w", err)
+		}
+	}
+
 	err := pb.batch.Commit()
 	if err != nil {
 		return fmt.Errorf("committing batch: %w", err)
 	}
 
 	pb.batch = nil // committed, prevent double-close
+
+	// Publish the digest into FSMState AFTER a successful commit so a
+	// commit failure leaves LastFSMDigest unchanged (it will be re-derived
+	// on the next batch from the same previous value). The assignment must
+	// happen BEFORE publishApplied so a concurrent GetFSMDigest reader
+	// observing the new lastPersistedIndex sees the matching digest — see
+	// FSMDigestSnapshot for the read-side lock discipline.
+	if newDigest != nil {
+		fsm.appliedMu.Lock()
+		fsm.State.LastFSMDigest = append(fsm.State.LastFSMDigest[:0], newDigest...)
+		fsm.appliedMu.Unlock()
+	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Microseconds())
 

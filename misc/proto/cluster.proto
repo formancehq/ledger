@@ -77,6 +77,38 @@ service ClusterService {
   // GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
   // Reads from replicated Pebble state (available on any node).
   rpc GetQueryCheckpointSchedule(GetQueryCheckpointScheduleRequest) returns (GetQueryCheckpointScheduleResponse);
+
+  // GetFSMDigest returns the cross-node FSM digest at the requested applied
+  // index. Used by Antithesis assertions, the live health-check, and the
+  // ledgerctl digest CLI to detect FSM divergence between peers.
+  //
+  // Returns FAILED_PRECONDITION when the cluster was bootstrapped with
+  // fsm_determinism_enabled=false (no rolling digest is maintained). When
+  // index > 0, the server waits up to wait_ms for its FSM to reach that
+  // index and returns DEADLINE_EXCEEDED if it does not. Node-local read
+  // (honors x-consistency: stale).
+  rpc GetFSMDigest(GetFSMDigestRequest) returns (FSMDigest);
+}
+
+// ============================================================================
+// FSM Digest Messages
+// ============================================================================
+
+message GetFSMDigestRequest {
+  // index pins the target applied Raft index for cross-node comparison.
+  // 0 means "whatever the node has applied right now" (snapshot read).
+  fixed64 index = 1;
+  // wait_ms upper-bounds how long the server waits for its FSM to reach
+  // the requested index. Ignored when index = 0.
+  uint64 wait_ms = 2;
+}
+
+message FSMDigest {
+  fixed64 applied_index = 1;   // FSM-layer durable cursor at the time the digest was captured
+  fixed64 snapshot_index = 2;  // Chain re-anchor (last snapshot install index)
+  bytes  digest = 3;           // Per-cluster keyed XXH3/BLAKE3 hash of every persisted byte
+  uint32 node_id = 4;          // Reporting node ID
+  uint32 hash_version = 5;     // common.HashAlgorithm — same value stamped on AuditEntry
 }
 
 message GetClusterStateRequest {
