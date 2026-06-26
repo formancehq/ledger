@@ -1,9 +1,18 @@
 package processing
 
 import (
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+// noopSink drops every absorbed (order, log) pair. Used by
+// ProcessOrders tests that don't care about the cross-order signal side
+// of the contract — the per-log dispatch is tested separately in
+// internal/infra/state/write_set_absorb_test.go.
+type noopSink struct{}
+
+func (noopSink) Absorb(_ *raftcmdpb.Order, _ *commonpb.Log) {}
 
 // requestToOrder converts a servicepb.Request to a raftcmdpb.Order for test purposes.
 func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {

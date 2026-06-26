@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	cfg := order.GetConfig()
 
 	if cfg.GetBatchSize() > domain.MaxSinkBatchSize {
@@ -17,7 +17,7 @@ func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOr
 		}
 	}
 
-	existing, err := s.GetSinkConfig(cfg.GetName())
+	existing, err := ctx.Scope.GetSinkConfig(cfg.GetName())
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "checking existing sink " + cfg.GetName(), Cause: err}
 	}
@@ -25,8 +25,6 @@ func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOr
 	if existing != nil {
 		return nil, &domain.ErrSinkAlreadyExists{Name: cfg.GetName()}
 	}
-
-	s.AddSinkConfig(cfg)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_AddedEventsSink{
@@ -37,8 +35,8 @@ func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOr
 	}, nil
 }
 
-func (p *RequestProcessor) processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
-	existing, err := s.GetSinkConfig(order.GetName())
+func processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	existing, err := ctx.Scope.GetSinkConfig(order.GetName())
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "checking existing sink " + order.GetName(), Cause: err}
 	}
@@ -46,8 +44,6 @@ func (p *RequestProcessor) processRemoveEventsSink(order *raftcmdpb.RemoveEvents
 	if existing == nil {
 		return nil, &domain.ErrSinkNotFound{Name: order.GetName()}
 	}
-
-	s.RemoveSinkConfig(order.GetName())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_RemovedEventsSink{

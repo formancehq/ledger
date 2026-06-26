@@ -24,8 +24,6 @@ func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
 	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
@@ -44,7 +42,7 @@ func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 	})
 
 	order := &raftcmdpb.CreateIndexOrder{Id: indexID}
-	payload, derr := processor.processCreateIndex("test-ledger", order, mockStore)
+	payload, derr := processCreateIndex("test-ledger", order, &Context{Scope: mockStore})
 	require.Nil(t, derr)
 	require.NotNil(t, payload)
 
@@ -65,8 +63,6 @@ func TestProcessCreateIndex_ShortCircuitOnReady(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
 	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
@@ -78,7 +74,7 @@ func TestProcessCreateIndex_ShortCircuitOnReady(t *testing.T) {
 	)
 
 	// No PutIndex / GetDate expected on the short-circuit path.
-	payload, derr := processor.processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, mockStore)
+	payload, derr := processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, &Context{Scope: mockStore})
 	require.Nil(t, derr)
 	require.NotNil(t, payload)
 }
@@ -92,8 +88,6 @@ func TestProcessDropIndex_DeletesByRegistryKey(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 3}
 	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color")
@@ -101,7 +95,7 @@ func TestProcessDropIndex_DeletesByRegistryKey(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo.AsReader(), nil)
 	mockStore.EXPECT().DeleteIndex(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)})
 
-	payload, derr := processor.processDropIndex("test-ledger", &raftcmdpb.DropIndexOrder{Id: indexID}, mockStore)
+	payload, derr := processDropIndex("test-ledger", &raftcmdpb.DropIndexOrder{Id: indexID}, &Context{Scope: mockStore})
 	require.Nil(t, derr)
 	require.NotNil(t, payload)
 }
@@ -113,6 +107,12 @@ func TestProcessDropIndex_DeletesByRegistryKey(t *testing.T) {
 // any same-batch reader. An in-batch cache-iteration drop would bypass the
 // coverage gate (no preload exists for the ledger's index set), so we
 // deliberately keep the loop out of the FSM hot path.
+//
+// On this branch the cleanup signal is no longer requested explicitly by
+// the processor: the WriteSet sink absorbs the DeletedLedgerLog payload
+// and queues the Pebble range-delete at Merge time. The test therefore
+// only pins what the processor itself touches (load + PutLedger with
+// DeletedAt set).
 func TestProcessDeleteLedger_DoesNotTouchIndexRegistry(t *testing.T) {
 	t.Parallel()
 
@@ -120,17 +120,15 @@ func TestProcessDeleteLedger_DoesNotTouchIndexRegistry(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	mockStore.EXPECT().GetLedger("test-ledger").Return((&commonpb.LedgerInfo{Name: "test-ledger", Id: 4}).AsReader(), nil)
-	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1})
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
-	mockStore.EXPECT().MarkLedgerForCleanup("test-ledger")
-	// No DeleteIndex / RangeIndexes — the deferred Pebble range delete via
-	// MarkLedgerForCleanup is the only legitimate purge path.
+	// No DeleteIndex / RangeIndexes — the deferred Pebble range delete is
+	// derived from the DeletedLedgerLog by the WriteSet sink via Absorb at
+	// commit time, not requested directly by the processor.
 
-	payload, derr := processor.processDeleteLedger("test-ledger", mockStore)
+	payload, derr := processDeleteLedger("test-ledger", &Context{Scope: mockStore})
 	require.Nil(t, derr)
 	require.NotNil(t, payload)
 }

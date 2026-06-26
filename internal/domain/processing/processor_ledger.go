@@ -9,7 +9,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	existing, err := s.GetLedger(ledger)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: err}
@@ -50,6 +51,10 @@ func (p *RequestProcessor) processCreateLedger(ledger string, order *raftcmdpb.C
 		NextLogId:         1,
 	})
 
+	// The MirrorConfigChange signal (post-commit mirror worker
+	// reconciliation) is derived from CreatedLedgerLog.Mode == MIRROR by
+	// deriveSignals — see processor.go.
+
 	// Build the log from the order — NOT from `info` which is the mutable
 	// store object. MetadataSchema and AccountTypes are cloned to avoid
 	// sharing mutable maps/pointers between the store and the immutable
@@ -78,7 +83,8 @@ func (p *RequestProcessor) processCreateLedger(ledger string, order *raftcmdpb.C
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteLedger(ledger string, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	l, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -87,7 +93,8 @@ func (p *RequestProcessor) processDeleteLedger(ledger string, s Scope) (*commonp
 	l.DeletedAt = s.GetDate().Mutate()
 
 	s.PutLedger(ledger, l)
-	s.MarkLedgerForCleanup(ledger)
+	// The LedgerCleanup signal (cleanup queue + boundary overlay drop) is
+	// derived from DeletedLedgerLog by deriveSignals.
 
 	// Index registry entries scoped to this ledger are NOT cleared here:
 	//   - processApply rejects every same-batch Apply order with

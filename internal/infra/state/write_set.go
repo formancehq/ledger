@@ -45,13 +45,13 @@ type WriteSet struct {
 	NextLedgerID          uint32
 	NextQueryCheckpointID uint64
 
-	Derived                              *DerivedRegistry
-	pendingSigningKeyUpdates             []signingKeyUpdate
-	pendingSigningConfigUpdate           *signingConfigUpdate
-	pendingMaintenanceModeUpdate         *maintenanceModeUpdate
-	pendingChapterScheduleUpdate         *string
-	pendingQueryCheckpointScheduleUpdate *string
-	sinkConfigChanged                    bool
+	Derived                       *DerivedRegistry
+	pendingSigningKeyUpdates      []signingKeyUpdate
+	pendingSigningConfigUpdate    *signingConfigUpdate
+	pendingMaintenanceModeUpdate  *maintenanceModeUpdate
+	chapterScheduleUpdate         *string
+	queryCheckpointScheduleUpdate *string
+	sinkConfigChanged             bool
 	// chapters is a lazy clone of fsm.Chapters, created on first chapter access.
 	// Nil means no chapter method was called — Merge() skips chapter propagation.
 	// Chapter orders (CloseChapter, SealChapter, etc.) read chapter protos and mutate
@@ -61,7 +61,7 @@ type WriteSet struct {
 	chapters        *ChapterTracker
 	changedChapters []*commonpb.Chapter
 	purgeRanges     []purgeRange
-	pendingArchives []ArchiveRequest
+	archiveRequests []ArchiveRequest
 
 	// pendingMirrorSyncs queues mirror cursor / source-head / status
 	// writes produced by applyMirrorSyncUpdate. They are drained into
@@ -74,8 +74,8 @@ type WriteSet struct {
 	// logs on the next batch).
 	pendingMirrorSyncs []MirrorSyncWrite
 
-	// pendingLedgerDeletions holds ledger names scheduled for data cleanup during Merge.
-	pendingLedgerDeletions []string
+	// deletedLedgers holds ledger names scheduled for data cleanup during Merge.
+	deletedLedgers []string
 
 	// allVolumeUpdates includes kept + purged updates (for delta/posting cross-check).
 	allVolumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
@@ -123,6 +123,28 @@ type WriteSet struct {
 	// Pending query checkpoint changes for Merge.
 	pendingQueryCheckpointSaves   []*raftcmdpb.QueryCheckpointState
 	pendingQueryCheckpointDeletes []uint64
+
+	// chapterClosing is true when a processor emitted at least one
+	// CloseChapter intent during this proposal. applyProposal reads it
+	// (via ChapterClosing) AFTER the audit entry is written so the
+	// LastAuditHash carry to ChapterTracker.LatestClosingChapter happens
+	// in O(1) instead of by walking the log slice.
+	chapterClosing bool
+
+	// mirrorConfigChanged is true when a processor emitted a mirror-config
+	// change (CreateLedger Mirror or PromoteLedger). Read by applyProposal
+	// to populate ApplyResult.MirrorConfigChanged in O(1) instead of by
+	// walking proposal.GetOrders().
+	mirrorConfigChanged bool
+
+	// queryCheckpointCreated / queryCheckpointDeleted hold the id of the
+	// query checkpoint the proposal created / deleted (zero when none).
+	// Absorb sets them from the CreatedQueryCheckpoint / DeletedQueryCheckpoint
+	// log payloads, applyProposal reads them in O(1) to populate
+	// ApplyResult.QueryCheckpointCreated / Deleted instead of walking
+	// pendingQueryCheckpointSaves and proposal.GetOrders() respectively.
+	queryCheckpointCreated uint64
+	queryCheckpointDeleted uint64
 }
 
 // purgeRange identifies a chapter's sequence ranges to delete from Pebble during Merge().
@@ -193,7 +215,7 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 //     ChapterSchedule (0D) → QueryCheckpoint (0E) → NextQueryCheckpointID
 //     (0F) → QueryCheckpointSchedule (10) → NextLedgerID (13).
 //  4. Range purges and in-memory FSM state finalisation — executePurge and
-//     pendingLedgerDeletions use DeleteRange (range tombstones live in a
+//     deletedLedgers use DeleteRange (range tombstones live in a
 //     separate skiplist and do not affect point-write monotonicity).
 //
 // Any new write site must respect this ordering. If a new write would land
@@ -410,8 +432,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// actual PerLedger writes happen in phase 4 (after the Global drain)
 	// because they require createdLogs to be finalised first.
 	var deleteSequences map[string]uint64
-	if len(b.pendingLedgerDeletions) > 0 {
-		deleteSequences = make(map[string]uint64, len(b.pendingLedgerDeletions))
+	if len(b.deletedLedgers) > 0 {
+		deleteSequences = make(map[string]uint64, len(b.deletedLedgers))
 
 		for _, log := range createdLogs {
 			if dl := log.GetPayload().GetDeleteLedger(); dl != nil {
@@ -637,20 +659,20 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 
 	// SubGlobChapterSchedule (0x0D)
-	if b.pendingChapterScheduleUpdate != nil {
-		if *b.pendingChapterScheduleUpdate == "" {
+	if b.chapterScheduleUpdate != nil {
+		if *b.chapterScheduleUpdate == "" {
 			err := batchDeleteChapterSchedule(batch)
 			if err != nil {
 				return fmt.Errorf("deleting chapter schedule: %w", err)
 			}
 		} else {
-			err := SaveChapterSchedule(batch, *b.pendingChapterScheduleUpdate)
+			err := SaveChapterSchedule(batch, *b.chapterScheduleUpdate)
 			if err != nil {
 				return fmt.Errorf("saving chapter schedule: %w", err)
 			}
 		}
 
-		b.fsm.Chapters.SetSchedule(*b.pendingChapterScheduleUpdate)
+		b.fsm.Chapters.SetSchedule(*b.chapterScheduleUpdate)
 	}
 
 	// SubGlobQueryCheckpoint (0x0E) — saves then deletes, both on the same
@@ -676,20 +698,20 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 
 	// SubGlobQueryCheckpointSchedule (0x10)
-	if b.pendingQueryCheckpointScheduleUpdate != nil {
-		if *b.pendingQueryCheckpointScheduleUpdate == "" {
+	if b.queryCheckpointScheduleUpdate != nil {
+		if *b.queryCheckpointScheduleUpdate == "" {
 			err := batchDeleteQueryCheckpointSchedule(batch)
 			if err != nil {
 				return fmt.Errorf("deleting query checkpoint schedule: %w", err)
 			}
 		} else {
-			err := SaveQueryCheckpointSchedule(batch, *b.pendingQueryCheckpointScheduleUpdate)
+			err := SaveQueryCheckpointSchedule(batch, *b.queryCheckpointScheduleUpdate)
 			if err != nil {
 				return fmt.Errorf("saving query checkpoint schedule: %w", err)
 			}
 		}
 
-		b.fsm.setQueryCheckpointSchedule(*b.pendingQueryCheckpointScheduleUpdate)
+		b.fsm.setQueryCheckpointSchedule(*b.queryCheckpointScheduleUpdate)
 	}
 
 	// SubGlobNextLedgerID (0x13)
@@ -701,7 +723,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// === Phase 4: range purges + FSM state finalisation =======================
 	//
-	// executePurge and the pendingLedgerDeletions block emit DeleteRange calls
+	// executePurge and the deletedLedgers block emit DeleteRange calls
 	// (range tombstones) on ZoneCold and ZonePerLedger, plus a handful of
 	// point writes/deletes (savePendingLedgerCleanup,
 	// deletePendingLedgerCleanup, deleteLedgerData). Range tombstones live in
@@ -722,7 +744,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// Register pending ledger data cleanups (deferred to purge time). Boundary
 	// deletion is handled by MarkLedgerForCleanup adding a Delete to the
 	// Derived.Boundaries overlay (flushed in phase 3 above).
-	for _, ledgerName := range b.pendingLedgerDeletions {
+	for _, ledgerName := range b.deletedLedgers {
 		seq := deleteSequences[ledgerName]
 
 		if _, err := b.getLedgerData(ledgerName); err != nil {
@@ -799,15 +821,15 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.pendingSigningKeyUpdates = b.pendingSigningKeyUpdates[:0]
 	b.pendingSigningConfigUpdate = nil
 	b.pendingMaintenanceModeUpdate = nil
-	b.pendingChapterScheduleUpdate = nil
-	b.pendingQueryCheckpointScheduleUpdate = nil
+	b.chapterScheduleUpdate = nil
+	b.queryCheckpointScheduleUpdate = nil
 	b.sinkConfigChanged = false
 	b.chapters = nil
 	b.changedChapters = b.changedChapters[:0]
 	b.purgeRanges = b.purgeRanges[:0]
-	b.pendingArchives = b.pendingArchives[:0]
+	b.archiveRequests = b.archiveRequests[:0]
 	b.pendingMirrorSyncs = b.pendingMirrorSyncs[:0]
-	b.pendingLedgerDeletions = b.pendingLedgerDeletions[:0]
+	b.deletedLedgers = b.deletedLedgers[:0]
 	b.allVolumeUpdates = b.allVolumeUpdates[:0]
 	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
 	b.transientVolumes = nil
@@ -823,6 +845,126 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.bloomUpdates.Reset()
 	b.pendingQueryCheckpointSaves = b.pendingQueryCheckpointSaves[:0]
 	b.pendingQueryCheckpointDeletes = b.pendingQueryCheckpointDeletes[:0]
+	b.chapterClosing = false
+	b.mirrorConfigChanged = false
+	b.queryCheckpointCreated = 0
+	b.queryCheckpointDeleted = 0
+}
+
+// Absorb implements processing.SignalSink. It maps the log payload a
+// processor just produced onto the WriteSet's cross-order accumulators
+// (archive queue, purge ranges, sink-config tracking, lifecycle flags,
+// schedule updates, ledger cleanup). Called by ProcessOrders right
+// after each (order, log) pair is produced; the log IS the source of
+// truth for what the framework should signal — there is no second
+// vocabulary to keep in sync. Payload types not listed here have no
+// cross-order signal (Apply, SaveLedgerMetadata, SealChapter, signing,
+// maintenance, …) — their state changes flow through the Scope
+// mutations the processor already did.
+//
+// Hot-path note: zero allocation per signal; the (order, log) pointers
+// already exist and the dispatch is a single type switch.
+func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
+	switch p := log.GetPayload().GetType().(type) {
+	case *commonpb.LogPayload_ArchiveChapter:
+		c := p.ArchiveChapter.GetChapter()
+		b.archiveRequests = append(b.archiveRequests, ArchiveRequest{
+			ChapterID:          c.GetId(),
+			StartSequence:      c.GetStartSequence(),
+			CloseSequence:      c.GetCloseSequence(),
+			StartAuditSequence: c.GetStartAuditSequence(),
+			CloseAuditSequence: c.GetCloseAuditSequence(),
+		})
+	case *commonpb.LogPayload_ConfirmArchiveChapter:
+		c := p.ConfirmArchiveChapter.GetChapter()
+		b.purgeRanges = append(b.purgeRanges, purgeRange{
+			chapterID:          c.GetId(),
+			startSequence:      c.GetStartSequence(),
+			closeSequence:      c.GetCloseSequence(),
+			startAuditSequence: c.GetStartAuditSequence(),
+			closeAuditSequence: c.GetCloseAuditSequence(),
+		})
+	case *commonpb.LogPayload_AddedEventsSink:
+		cfg := p.AddedEventsSink.GetConfig()
+		b.Derived.SinkConfigs.Put(domain.SinkConfigKey{Name: cfg.GetName()}, cfg)
+		b.sinkConfigChanged = true
+	case *commonpb.LogPayload_RemovedEventsSink:
+		b.Derived.SinkConfigs.Delete(domain.SinkConfigKey{Name: p.RemovedEventsSink.GetName()})
+		b.sinkConfigChanged = true
+	case *commonpb.LogPayload_SetChapterSchedule:
+		cron := p.SetChapterSchedule.GetCron()
+		b.chapterScheduleUpdate = &cron
+	case *commonpb.LogPayload_DeleteChapterSchedule:
+		empty := ""
+		b.chapterScheduleUpdate = &empty
+	case *commonpb.LogPayload_SetQueryCheckpointSchedule:
+		cron := p.SetQueryCheckpointSchedule.GetCron()
+		b.queryCheckpointScheduleUpdate = &cron
+	case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
+		empty := ""
+		b.queryCheckpointScheduleUpdate = &empty
+	case *commonpb.LogPayload_DeleteLedger:
+		ledger := p.DeleteLedger.GetName()
+		b.deletedLedgers = append(b.deletedLedgers, ledger)
+		// Remove boundary from the in-memory overlay so that subsequent
+		// GetBoundaries calls return domain.ErrNotFound — both within
+		// this proposal and in future ones after Merge propagates the
+		// deletion.
+		b.Derived.Boundaries.Delete(domain.LedgerKey{Name: ledger})
+	case *commonpb.LogPayload_CloseChapter:
+		// Admission + FSM (ClassifyCheckpointOrderPosition) guarantee
+		// CloseChapter is the last order of its proposal, so at most one
+		// flip per proposal. applyProposal reads ChapterClosing
+		// after writeAuditEntry to carry preAuditHash onto
+		// LatestClosingChapter — same effect as the legacy log walk.
+		b.chapterClosing = true
+	case *commonpb.LogPayload_CreateLedger:
+		// Only mirror creations reshape the mirror worker set. Reading
+		// order.Mode matches the legacy hasMirrorConfigChange walk and
+		// is robust to future log-shape changes.
+		if ls := order.GetLedgerScoped(); ls != nil {
+			if cl, ok := ls.GetPayload().(*raftcmdpb.LedgerScopedOrder_CreateLedger); ok &&
+				cl.CreateLedger.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+				b.mirrorConfigChanged = true
+			}
+		}
+	case *commonpb.LogPayload_PromoteLedger:
+		// Promoting a mirror to normal reshapes the mirror worker set
+		// the same way a fresh mirror creation does.
+		b.mirrorConfigChanged = true
+	case *commonpb.LogPayload_CreatedQueryCheckpoint:
+		// CreateQueryCheckpoint is also a checkpoint-trigger order, so
+		// at most one per proposal — the assignment matches the legacy
+		// walk that iterated pendingQueryCheckpointSaves and took the
+		// last seen id.
+		b.queryCheckpointCreated = p.CreatedQueryCheckpoint.GetCheckpointId()
+	case *commonpb.LogPayload_DeletedQueryCheckpoint:
+		b.queryCheckpointDeleted = p.DeletedQueryCheckpoint.GetCheckpointId()
+	}
+}
+
+// ChapterClosing reports whether the CloseChapter intent was
+// absorbed during this proposal.
+func (b *WriteSet) ChapterClosing() bool {
+	return b.chapterClosing
+}
+
+// MirrorConfigChanged reports whether a mirror-config change (mirror
+// CreateLedger or PromoteLedger) was absorbed during this proposal.
+func (b *WriteSet) MirrorConfigChanged() bool {
+	return b.mirrorConfigChanged
+}
+
+// QueryCheckpointCreated returns the id of the query checkpoint
+// created during this proposal (zero when none).
+func (b *WriteSet) QueryCheckpointCreated() uint64 {
+	return b.queryCheckpointCreated
+}
+
+// QueryCheckpointDeleted returns the id of the query checkpoint
+// deleted during this proposal (zero when none).
+func (b *WriteSet) QueryCheckpointDeleted() uint64 {
+	return b.queryCheckpointDeleted
 }
 
 // Engine surface: the read/write/counter/chapter methods that gatedScope
@@ -860,14 +1002,6 @@ func (b *WriteSet) getLedgerData(name string) (*commonpb.LedgerInfo, error) {
 
 func (b *WriteSet) PutLedger(name string, info *commonpb.LedgerInfo) {
 	b.Derived.Ledgers.Put(domain.LedgerKey{Name: name}, info)
-}
-
-func (b *WriteSet) MarkLedgerForCleanup(ledger string) {
-	b.pendingLedgerDeletions = append(b.pendingLedgerDeletions, ledger)
-	// Remove boundary from the in-memory overlay so that subsequent
-	// GetBoundaries calls return domain.ErrNotFound — both within this
-	// proposal and in future proposals after Merge propagates the deletion.
-	b.Derived.Boundaries.Delete(domain.LedgerKey{Name: ledger})
 }
 
 func (b *WriteSet) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, error) {
@@ -1150,24 +1284,6 @@ func (b *WriteSet) SetMaintenanceMode(enabled bool) {
 	}
 }
 
-func (b *WriteSet) SetChapterSchedule(cronExpr string) {
-	b.pendingChapterScheduleUpdate = &cronExpr
-}
-
-func (b *WriteSet) DeleteChapterSchedule() {
-	empty := ""
-	b.pendingChapterScheduleUpdate = &empty
-}
-
-func (b *WriteSet) SetQueryCheckpointSchedule(cronExpr string) {
-	b.pendingQueryCheckpointScheduleUpdate = &cronExpr
-}
-
-func (b *WriteSet) DeleteQueryCheckpointSchedule() {
-	empty := ""
-	b.pendingQueryCheckpointScheduleUpdate = &empty
-}
-
 func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
 	cfg, err := b.Derived.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
 	if err != nil || cfg == nil {
@@ -1177,17 +1293,7 @@ func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error)
 	return cfg.AsReader(), nil
 }
 
-func (b *WriteSet) AddSinkConfig(config *commonpb.SinkConfig) {
-	b.Derived.SinkConfigs.Put(domain.SinkConfigKey{Name: config.GetName()}, config)
-	b.sinkConfigChanged = true
-}
-
-func (b *WriteSet) RemoveSinkConfig(name string) {
-	b.Derived.SinkConfigs.Delete(domain.SinkConfigKey{Name: name})
-	b.sinkConfigChanged = true
-}
-
-func (b *WriteSet) HasPendingSinkChanges() bool {
+func (b *WriteSet) SinkConfigChanged() bool {
 	return b.sinkConfigChanged
 }
 
@@ -1448,32 +1554,6 @@ func (b *WriteSet) UpdateChapter(chapter *commonpb.Chapter) {
 	b.changedChapters = append(b.changedChapters, chapter)
 }
 
-// SetPurgeRange records sequence ranges to be purged during Merge().
-// Log and audit entries have independent sequence counters (audit advances
-// slower due to batching), so both ranges are needed for correct purging.
-func (b *WriteSet) SetPurgeRange(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
-	b.purgeRanges = append(b.purgeRanges, purgeRange{
-		chapterID:          chapterID,
-		startSequence:      startSequence,
-		closeSequence:      closeSequence,
-		startAuditSequence: startAuditSequence,
-		closeAuditSequence: closeAuditSequence,
-	})
-}
-
-// SetPendingArchive records a chapter that needs archiving after the batch is committed.
-// The Machine reads this after Merge() to construct and send the ArchiveRequest.
-// Can be called multiple times to archive multiple chapters in the same batch.
-func (b *WriteSet) SetPendingArchive(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
-	b.pendingArchives = append(b.pendingArchives, ArchiveRequest{
-		ChapterID:          chapterID,
-		StartSequence:      startSequence,
-		CloseSequence:      closeSequence,
-		StartAuditSequence: startAuditSequence,
-		CloseAuditSequence: closeAuditSequence,
-	})
-}
-
 // executePurge deletes cold-storable data for a single purge range.
 // It also cleans up per-ledger data for any deleted ledgers whose
 // DeleteLedger log falls within the purge range.
@@ -1536,11 +1616,6 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 	}
 
 	return nil
-}
-
-// HasPurges returns true if the buffer contains any pending purge ranges.
-func (b *WriteSet) HasPurges() bool {
-	return len(b.purgeRanges) > 0
 }
 
 func (b *WriteSet) GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error) {

@@ -446,7 +446,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 	ret := &ApplyEntriesResult{
 		Results: make([]ApplyResult, 0, len(entries)),
 	}
-	eventsConfigChanged := false
+	sinkConfigChanged := false
 	mirrorConfigChanged := false
 	needsArchiveDispatch := false
 	needsColdCompaction := false
@@ -583,19 +583,19 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 			}
 		}
 
-		if result.ConfigChanged {
-			eventsConfigChanged = true
+		if result.SinkConfigChanged {
+			sinkConfigChanged = true
 		}
 
 		if result.MirrorConfigChanged {
 			mirrorConfigChanged = true
 		}
 
-		if result.HasArchiveRequests {
+		if result.ArchiveRequested {
 			needsArchiveDispatch = true
 		}
 
-		if result.HasPurges {
+		if result.ChaptersPurged {
 			needsColdCompaction = true
 		}
 
@@ -672,7 +672,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		lastSequenceID:       fsm.State.NextSequenceID - 1,
 		needsArchiveDispatch: needsArchiveDispatch,
 		needsColdCompaction:  needsColdCompaction,
-		eventsConfigChanged:  eventsConfigChanged,
+		sinkConfigChanged:    sinkConfigChanged,
 		mirrorConfigChanged:  mirrorConfigChanged,
 		entryCount:           len(entries),
 	}
@@ -815,7 +815,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	fsm.notifier.NotifyLogsCommitted(pb.lastSequenceID)
 
-	if pb.eventsConfigChanged || pb.mirrorConfigChanged {
+	if pb.sinkConfigChanged || pb.mirrorConfigChanged {
 		fsm.notifier.NotifyConfigChanged()
 	}
 
@@ -1281,9 +1281,18 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Process the proposal unless the dedup gate rejected it as a conflict
-	// (err set). Handlers see only the gated Scope facade.
+	// (err set). Handlers see the gated Scope facade for state reads/writes;
+	// cross-order signals (purge, archive, schedule, sink config, cleanup,
+	// chapter closing, ...) are derived from the per-order log payloads via
+	// WriteSet.Absorb. OrdersResult carries the per-order log slice plus the
+	// derivations (createdLogs filter, min/max sequence) so applyProposal
+	// never re-walks `logs` to rebuild them.
+	var ordersResult *processing.OrdersResult
 	if err == nil {
-		logs, err = fsm.processor.ProcessOrders(orders, scopeFactory)
+		ordersResult, err = fsm.processor.ProcessOrders(orders, scopeFactory, buffer)
+		if ordersResult != nil {
+			logs = ordersResult.Logs
+		}
 	}
 
 	// Pre-marshal each order once. The same byte slices are (a) bound in
@@ -1464,10 +1473,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
-	configChanged := buffer.HasPendingSinkChanges()
-	mirrorConfigChanged := hasMirrorConfigChange(proposal)
-	hasArchiveRequests := len(buffer.pendingArchives) > 0
-	hasPurges := buffer.HasPurges()
+	sinkConfigChanged := buffer.SinkConfigChanged()
+	mirrorConfigChanged := buffer.MirrorConfigChanged()
+	archiveRequested := len(buffer.archiveRequests) > 0
+	chaptersPurged := len(buffer.purgeRanges) > 0
 
 	// Merge consumes the per-order log slice (CreatedLog or ReferenceSequence)
 	// so it can inject Log.purged_volumes using per-order tracking before
@@ -1476,15 +1485,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, err
 	}
 
-	// Extract created logs for downstream checks (verifyVolumeDeltasMatchPostings,
-	// audit emission). Reference sequences are idempotent responses that did not
-	// produce a fresh log.
-	var createdLogs []*commonpb.Log
-	for _, logOrRef := range logs {
-		if created := logOrRef.GetCreatedLog(); created != nil {
-			createdLogs = append(createdLogs, created)
-		}
-	}
+	// CreatedLogs is accumulated during ProcessOrders' single pass — no
+	// second walk over `logs` is needed.
+	createdLogs := ordersResult.CreatedLogs
 
 	// Freeze the proposal's success outcome under its idempotency key so a
 	// duplicate replays the same committed logs instead of re-executing.
@@ -1528,8 +1531,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	preAuditHash := make([]byte, len(fsm.State.LastAuditHash))
 	copy(preAuditHash, fsm.State.LastAuditHash)
 
-	// SUCCESS: emit batch-level side effects.
-	minLogSeq, maxLogSeq := extractLogSequenceRange(logs)
+	// SUCCESS: emit batch-level side effects. The min/max sequence range
+	// was accumulated during ProcessOrders — no second walk over `logs`.
+	minLogSeq, maxLogSeq := ordersResult.MinLogSequence, ordersResult.MaxLogSequence
 
 	auditSuccess := &auditpb.AuditSuccess{
 		MinLogSequence: minLogSeq,
@@ -1581,40 +1585,30 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Update closing chapter's LastAuditHash if this batch contains a CloseChapter.
 	// We use preAuditHash (the hash before this proposal's audit entry) so the
 	// checker can use it as the chain input when verifying the first non-purged
-	// audit entry after archive.
-	for _, logOrRef := range logs {
-		if created := logOrRef.GetCreatedLog(); created != nil {
-			if cp := created.GetPayload().GetCloseChapter(); cp != nil {
-				if closingChapter := fsm.Chapters.LatestClosingChapter(); closingChapter != nil {
-					closingChapter.LastAuditHash = preAuditHash
-				}
-			}
+	// audit entry after archive. The CloseChapter processor flips an O(1) flag
+	// on the buffer; previously this was reconstructed by walking the log slice.
+	if buffer.ChapterClosing() {
+		if closingChapter := fsm.Chapters.LatestClosingChapter(); closingChapter != nil {
+			closingChapter.LastAuditHash = preAuditHash
 		}
 	}
 
 	fsm.logsAppendedCounter.Add(ctx, int64(len(createdLogs)))
 
 	// Detect query checkpoint create/delete for gating.
-	// The checkpoint ID is assigned by the processor, so read from pending saves.
-	var queryCheckpointCreated, queryCheckpointDeleted uint64
-
-	for _, cp := range buffer.pendingQueryCheckpointSaves {
-		queryCheckpointCreated = cp.GetCheckpointId()
-	}
-
-	for _, order := range proposal.GetOrders() {
-		if cp := order.GetSystemScoped().GetDeleteQueryCheckpoint(); cp != nil {
-			queryCheckpointDeleted = cp.GetCheckpointId()
-		}
-	}
+	// The processor that created / deleted the checkpoint also emits the id;
+	// previously this was reconstructed by walking pendingQueryCheckpointSaves
+	// and proposal.GetOrders().
+	queryCheckpointCreated := buffer.QueryCheckpointCreated()
+	queryCheckpointDeleted := buffer.QueryCheckpointDeleted()
 
 	return &ApplyResult{
 		ProposalID:             proposal.GetId(),
 		Logs:                   logs,
-		ConfigChanged:          configChanged,
+		SinkConfigChanged:      sinkConfigChanged,
 		MirrorConfigChanged:    mirrorConfigChanged,
-		HasArchiveRequests:     hasArchiveRequests,
-		HasPurges:              hasPurges,
+		ArchiveRequested:       archiveRequested,
+		ChaptersPurged:         chaptersPurged,
 		QueryCheckpointCreated: queryCheckpointCreated,
 		QueryCheckpointDeleted: queryCheckpointDeleted,
 		volumeUpdates:          buffer.KeptVolumeUpdates(),
@@ -1622,27 +1616,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		createdLogs:            createdLogs,
 		ledgerNames:            ledgerNames,
 	}, nil
-}
-
-// hasMirrorConfigChange returns true if any order in the proposal creates or promotes a mirror ledger.
-func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
-	for _, order := range proposal.GetOrders() {
-		ls := order.GetLedgerScoped()
-		if ls == nil {
-			continue
-		}
-
-		switch payload := ls.GetPayload().(type) {
-		case *raftcmdpb.LedgerScopedOrder_CreateLedger:
-			if payload.CreateLedger.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-				return true
-			}
-		case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
-			return true
-		}
-	}
-
-	return false
 }
 
 // recordIdempotencyFailure freezes a definitive business rejection against the
@@ -1944,7 +1917,7 @@ type PreparedBatch struct {
 	lastSequenceID       uint64
 	needsArchiveDispatch bool
 	needsColdCompaction  bool
-	eventsConfigChanged  bool
+	sinkConfigChanged    bool
 	mirrorConfigChanged  bool
 	checkpointDeletes    []uint64
 
@@ -1976,10 +1949,10 @@ type ApplyResult struct {
 	Logs                []*raftcmdpb.CreatedLogOrReference
 	Error               error
 	CheckpointPath      string // Set by Node after checkpoint creation (CloseChapter proposals)
-	ConfigChanged       bool   // True when sink configuration changed
+	SinkConfigChanged   bool   // True when events sink configuration changed
 	MirrorConfigChanged bool   // True when mirror ledger configuration changed
-	HasArchiveRequests  bool   // True when there are pending archive requests
-	HasPurges           bool   // True when cold zone data was purged (triggers cold compaction)
+	ArchiveRequested    bool   // True when at least one chapter archive was requested
+	ChaptersPurged      bool   // True when cold zone data was purged (triggers cold compaction)
 
 	// QueryCheckpointCreated holds the checkpoint ID when a CreateQueryCheckpoint
 	// order was processed. Signals ApplyEntries to split the batch and create

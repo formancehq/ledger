@@ -112,12 +112,12 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore))
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore), noopSink{})
 	require.NoError(t, err)
 	require.NotNil(t, response)
-	require.Len(t, response, 1)
+	require.Len(t, response.Logs, 1)
 
-	createdLog := response[0].GetCreatedLog()
+	createdLog := response.Logs[0].GetCreatedLog()
 	require.NotNil(t, createdLog)
 	require.Equal(t, uint64(100), createdLog.GetSequence())
 }
@@ -218,21 +218,105 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 		}},
 	}
 
-	response, err := processor.ProcessOrders(orders, mockFactory(mockStore))
+	response, err := processor.ProcessOrders(orders, mockFactory(mockStore), noopSink{})
 	require.NoError(t, err)
-	require.Len(t, response, 2)
+	require.Len(t, response.Logs, 2)
 
 	// Verify order 1: CreateLedger log with Id=1.
-	createLog := response[0].GetCreatedLog()
+	createLog := response.Logs[0].GetCreatedLog()
 	require.NotNil(t, createLog)
 	require.Equal(t, uint32(1), createLog.GetPayload().GetCreateLedger().GetId())
 
 	// Verify order 2: CreateTransaction succeeded.
-	txLog := response[1].GetCreatedLog()
+	txLog := response.Logs[1].GetCreatedLog()
 	require.NotNil(t, txLog)
 	applyLog := txLog.GetPayload().GetApply()
 	require.NotNil(t, applyLog)
 	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
 	require.Equal(t, uint64(1), createdTx.GetTransaction().GetId())
+}
+
+// TestProcessOrders_OrdersResultAccumulator pins the invariant that
+// OrdersResult.{MinLogSequence,MaxLogSequence,CreatedLogs} are populated
+// during the single per-order pass (no second walk needed in
+// applyProposal). Previously these were re-derived from the Logs slice
+// by extractLogSequenceRange (sequence range) and an inline filter
+// (createdLogs rebuild) — both helpers are gone.
+func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1}
+
+	// Two CreateLedger orders. Sequences assigned by IncrementNextSequenceID
+	// are 100 and 110 — chosen non-contiguous so the test catches a min/max
+	// confusion (an off-by-one or last-wins bug on min would still match if
+	// the sequences were consecutive).
+	mockStore.EXPECT().GetLedger("ledger-a").Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
+	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().PutLedger("ledger-a", gomock.Any())
+	mockStore.EXPECT().PutBoundaries("ledger-a", gomock.Any())
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
+
+	mockStore.EXPECT().GetLedger("ledger-b").Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(2))
+	mockStore.EXPECT().PutLedger("ledger-b", gomock.Any())
+	mockStore.EXPECT().PutBoundaries("ledger-b", gomock.Any())
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(110))
+
+	orders := []*raftcmdpb.Order{
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger:  "ledger-a",
+			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+		}}},
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Ledger:  "ledger-b",
+			Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+		}}},
+	}
+
+	response, err := processor.ProcessOrders(orders, mockFactory(mockStore), noopSink{})
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Len(t, response.Logs, 2)
+
+	// CreatedLogs accumulated alongside Logs in the same pass.
+	require.Len(t, response.CreatedLogs, 2)
+	require.Equal(t, uint64(100), response.CreatedLogs[0].GetSequence())
+	require.Equal(t, uint64(110), response.CreatedLogs[1].GetSequence())
+
+	// Min/Max accumulated alongside Logs in the same pass.
+	require.Equal(t, uint64(100), response.MinLogSequence)
+	require.Equal(t, uint64(110), response.MaxLogSequence)
+}
+
+// TestProcessOrders_OrdersResultEmpty asserts the empty-batch sentinel:
+// no orders → empty CreatedLogs, MinLogSequence == MaxLogSequence == 0.
+// The AppliedProposal sync skips entries with MaxLogSequence == 0
+// (cf. appliedProposalSync.advance), so the zero value is load-bearing.
+func TestProcessOrders_OrdersResultEmpty(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	response, err := processor.ProcessOrders(nil, mockFactory(mockStore), noopSink{})
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Empty(t, response.Logs)
+	require.Empty(t, response.CreatedLogs)
+	require.Equal(t, uint64(0), response.MinLogSequence)
+	require.Equal(t, uint64(0), response.MaxLogSequence)
 }

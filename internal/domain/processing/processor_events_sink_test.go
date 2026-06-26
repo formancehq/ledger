@@ -33,7 +33,6 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(nil, nil)
-	mockStore.EXPECT().AddSinkConfig(sinkConfig)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{
@@ -109,7 +108,6 @@ func TestProcessAddEventsSink_BatchSizeAtMaxAccepted(t *testing.T) {
 		BatchSize: domain.MaxSinkBatchSize,
 	}
 	mockStore.EXPECT().GetSinkConfig("max-sink").Return(nil, nil)
-	mockStore.EXPECT().AddSinkConfig(cfg)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{
@@ -176,7 +174,6 @@ func TestProcessRemoveEventsSink_Success(t *testing.T) {
 
 	existingConfig := &commonpb.SinkConfig{Name: "my-nats-sink"}
 	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(existingConfig.AsReader(), nil)
-	mockStore.EXPECT().RemoveSinkConfig("my-nats-sink")
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{

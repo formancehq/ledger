@@ -18,12 +18,10 @@ import (
 // If an index covers this field, its BuildStatus is flipped to BUILDING so
 // the indexer schedules a rewrite to re-encode forward entries under the
 // new declared_type.
-func (p *RequestProcessor) processSetMetadataFieldType(
-	ledgerName string,
-	order *raftcmdpb.SetMetadataFieldTypeOrder,
-	s Scope,
-) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, loadErr := loadLedger(s, ledgerName)
+func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	s := ctx.Scope
+
+	info, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -57,7 +55,7 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 		info.MetadataSchema.LedgerFields[order.GetKey()] = field
 	}
 
-	s.PutLedger(ledgerName, info)
+	s.PutLedger(ledger, info)
 
 	// If an index covers this field, flip it back to BUILDING (informational
 	// since EN-1323) and bump its forward_encoding_version. The version bump
@@ -96,12 +94,10 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 // O(1) on the apply path: the field is removed from the schema and any index
 // attached to it is dropped. Existing stored values are untouched (they remain
 // in their original type; reads no longer coerce them).
-func (p *RequestProcessor) processRemoveMetadataFieldType(
-	ledgerName string,
-	order *raftcmdpb.RemoveMetadataFieldTypeOrder,
-	s Scope,
-) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, loadErr := loadLedger(s, ledgerName)
+func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	s := ctx.Scope
+
+	info, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -121,7 +117,7 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 		delete(info.GetMetadataSchema().GetLedgerFields(), order.GetKey())
 	}
 
-	s.PutLedger(ledgerName, info)
+	s.PutLedger(ledger, info)
 
 	// Cascade: removing a schema field drops any index attached to it. The
 	// dropped IndexID is carried in the log so the indexbuilder can purge

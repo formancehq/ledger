@@ -11,8 +11,14 @@ import (
 
 // processMirrorIngest processes a single MirrorIngestOrder.
 // It handles one v2 log entry: fill gaps, create transactions, save/delete metadata, reverts.
-// The ledger must be in MIRROR mode.
-func (p *RequestProcessor) processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+// The ledger must be in MIRROR mode. As an orchestrator it populates
+// ctx.Boundaries (and ctx.LedgerInfo) before dispatching to apply-child
+// handlers so children consume everything through a single uniform Context.
+// Mirror replays do NOT re-run account-type validation: they are
+// exactly what the source ledger committed (parity > re-checking).
+func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
+
 	info, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -33,6 +39,10 @@ func (p *RequestProcessor) processMirrorIngest(ledger string, order *raftcmdpb.M
 
 	boundaries := boundariesReader.Mutate()
 
+	// Stage per-apply context fields for child handlers.
+	ctx.Boundaries = boundaries
+	ctx.LedgerInfo = info
+
 	entry := order.GetEntry()
 	if entry == nil {
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
@@ -42,12 +52,12 @@ func (p *RequestProcessor) processMirrorIngest(ledger string, order *raftcmdpb.M
 
 	switch data := entry.GetData().(type) {
 	case *raftcmdpb.MirrorLogEntry_FillGap:
-		logPayload = p.processMirrorFillGap(ledger, boundaries, data.FillGap, entry.GetV2LogId(), s)
+		logPayload = processMirrorFillGap(data.FillGap, entry.GetV2LogId(), ctx)
 
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
 		var err domain.Describable
 
-		logPayload, err = p.processMirrorCreatedTransaction(ledger, boundaries, data.CreatedTransaction, s)
+		logPayload, err = processMirrorCreatedTransaction(ledger, data.CreatedTransaction, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +65,7 @@ func (p *RequestProcessor) processMirrorIngest(ledger string, order *raftcmdpb.M
 	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
 		var err domain.Describable
 
-		logPayload, err = p.processMirrorSavedMetadata(ledger, data.SavedMetadata, s)
+		logPayload, err = processMirrorSavedMetadata(ledger, data.SavedMetadata, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +73,7 @@ func (p *RequestProcessor) processMirrorIngest(ledger string, order *raftcmdpb.M
 	case *raftcmdpb.MirrorLogEntry_DeletedMetadata:
 		var err domain.Describable
 
-		logPayload, err = p.processMirrorDeletedMetadata(ledger, data.DeletedMetadata, s)
+		logPayload, err = processMirrorDeletedMetadata(ledger, data.DeletedMetadata, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +81,7 @@ func (p *RequestProcessor) processMirrorIngest(ledger string, order *raftcmdpb.M
 	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
 		var err domain.Describable
 
-		logPayload, err = p.processMirrorRevertedTransaction(ledger, boundaries, data.RevertedTransaction, s)
+		logPayload, err = processMirrorRevertedTransaction(ledger, data.RevertedTransaction, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -101,10 +111,14 @@ func (p *RequestProcessor) processMirrorIngest(ledger string, order *raftcmdpb.M
 
 // processMirrorFillGap creates a FilledGapLog for a v2 log that has no v3 equivalent.
 // It also advances NextTransactionId for any skipped transaction IDs.
-func (p *RequestProcessor) processMirrorFillGap(ledger string, boundaries *raftcmdpb.LedgerBoundaries, gap *raftcmdpb.MirrorFillGap, v2LogID uint64, s Scope) *commonpb.LedgerLogPayload {
+//
+// Signature deviates from the uniform `(order, ctx)` shape because the
+// v2LogID belongs to the wrapping MirrorLogEntry, not the FillGap message
+// itself — passing it as an extra arg avoids reaching back into the entry.
+func processMirrorFillGap(gap *raftcmdpb.MirrorFillGap, v2LogID uint64, ctx *Context) *commonpb.LedgerLogPayload {
 	// Advance NextTransactionId for each skipped transaction
 	for range gap.GetSkippedTransactionIds() {
-		boundaries.NextTransactionId++
+		ctx.Boundaries.NextTransactionId++
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -119,10 +133,13 @@ func (p *RequestProcessor) processMirrorFillGap(ledger string, boundaries *raftc
 // processMirrorCreatedTransaction creates a transaction from mirror data.
 // It applies postings with force=true (no balance checks) and assigns the exact transaction ID from v2.
 // Missing volumes are auto-initialized to zero so postings are never silently skipped.
-func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, ct *raftcmdpb.MirrorCreatedTransaction, s Scope) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedTransaction, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	boundaries := ctx.Boundaries
+	s := ctx.Scope
+
 	// Apply each posting with force=true (skip balance checks, auto-init missing volumes)
 	for _, posting := range ct.GetPostings() {
-		if err := applyPosting(s, ledgerName, posting, true, p.assetCache); err != nil {
+		if err := applyPosting(s, ledger, posting, true, ctx.AssetCache); err != nil {
 			// applyPosting already returns a Describable (ErrBalanceNotPreloaded,
 			// ErrInsufficientFunds, ErrVolumeOverflow); propagate verbatim.
 			return nil, err
@@ -142,7 +159,7 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 	}
 
 	// Record transaction state (include metadata from the mirrored transaction)
-	s.PutTransactionState(domain.TransactionKey{LedgerName: ledgerName, ID: txID}, &commonpb.TransactionState{
+	s.PutTransactionState(domain.TransactionKey{LedgerName: ledger, ID: txID}, &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     ct.GetMetadata(),
 		Timestamp:    timestamp,
@@ -151,7 +168,7 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 	// Store reference if provided
 	if ct.GetReference() != "" {
 		s.PutTransactionReference(
-			domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: ct.GetReference()},
+			domain.TransactionReferenceKey{LedgerName: ledger, Reference: ct.GetReference()},
 			&commonpb.TransactionReferenceValue{TransactionId: txID},
 		)
 	}
@@ -165,7 +182,7 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 		for account, mm := range ct.GetAccountMetadata() {
 			for key, value := range mm.GetValues() {
 				metaKey := domain.MetadataKey{
-					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+					AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
 					Key:        key,
 				}
 
@@ -202,20 +219,22 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledgerName string, bo
 //
 // Previous values are no longer captured into the log: the indexer
 // resolves prior encoded values via the reverse map on apply.
-func (p *RequestProcessor) processMirrorSavedMetadata(ledgerName string, sm *raftcmdpb.MirrorSavedMetadata, s Scope) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processMirrorSavedMetadata(ledger string, sm *raftcmdpb.MirrorSavedMetadata, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	s := ctx.Scope
+
 	if sm.GetTarget() != nil {
 		switch target := sm.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
 			for key, value := range sm.GetMetadata() {
 				metaKey := domain.MetadataKey{
-					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
+					AccountKey: domain.AccountKey{LedgerName: ledger, Account: target.Account.GetAddr()},
 					Key:        key,
 				}
 				s.PutAccountMetadata(metaKey, value)
 			}
 		case *commonpb.Target_TransactionId:
 			if len(sm.GetMetadata()) > 0 {
-				txKey := domain.TransactionKey{LedgerName: ledgerName, ID: target.TransactionId}
+				txKey := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}
 
 				stateReader, err := s.GetTransactionState(txKey)
 				if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -251,17 +270,19 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledgerName string, sm *raf
 //
 // Previous values are no longer captured into the log: the indexer
 // resolves prior encoded values via the reverse map on apply.
-func (p *RequestProcessor) processMirrorDeletedMetadata(ledgerName string, dm *raftcmdpb.MirrorDeletedMetadata, s Scope) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processMirrorDeletedMetadata(ledger string, dm *raftcmdpb.MirrorDeletedMetadata, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	s := ctx.Scope
+
 	if dm.GetTarget() != nil {
 		switch target := dm.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
 			metaKey := domain.MetadataKey{
-				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
+				AccountKey: domain.AccountKey{LedgerName: ledger, Account: target.Account.GetAddr()},
 				Key:        dm.GetKey(),
 			}
 			s.DeleteAccountMetadata(metaKey)
 		case *commonpb.Target_TransactionId:
-			txKey := domain.TransactionKey{LedgerName: ledgerName, ID: target.TransactionId}
+			txKey := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}
 
 			stateReader, err := s.GetTransactionState(txKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -290,16 +311,19 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledgerName string, dm *r
 
 // processMirrorRevertedTransaction processes a v2 REVERTED_TRANSACTION log.
 // Missing volumes are auto-initialized to zero so reverse postings are never silently skipped.
-func (p *RequestProcessor) processMirrorRevertedTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, rt *raftcmdpb.MirrorRevertedTransaction, s Scope) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorRevertedTransaction, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	boundaries := ctx.Boundaries
+	s := ctx.Scope
+
 	// Apply reversed postings with force=true (auto-init missing volumes)
 	for _, posting := range rt.GetReversePostings() {
-		if err := applyPosting(s, ledgerName, posting, true, p.assetCache); err != nil {
+		if err := applyPosting(s, ledger, posting, true, ctx.AssetCache); err != nil {
 			return nil, err
 		}
 	}
 
 	// Mark original transaction as reverted
-	s.PutReverted(domain.TransactionKey{LedgerName: ledgerName, ID: rt.GetRevertedTransactionId()}, true)
+	s.PutReverted(domain.TransactionKey{LedgerName: ledger, ID: rt.GetRevertedTransactionId()}, true)
 
 	revertTxID := rt.GetNewTransactionId()
 	// Ensure NextTransactionId is past this ID
@@ -310,7 +334,7 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledgerName string, b
 	boundaries.RevertCount++
 
 	// Update the original transaction's state to record the reversion
-	origKey := domain.TransactionKey{LedgerName: ledgerName, ID: rt.GetRevertedTransactionId()}
+	origKey := domain.TransactionKey{LedgerName: ledger, ID: rt.GetRevertedTransactionId()}
 
 	origReader, err := s.GetTransactionState(origKey)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -329,7 +353,7 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledgerName string, b
 	}
 
 	// Store the revert transaction's state (include metadata from the mirror revert)
-	s.PutTransactionState(domain.TransactionKey{LedgerName: ledgerName, ID: revertTxID}, &commonpb.TransactionState{
+	s.PutTransactionState(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     rt.GetMetadata(),
 		Timestamp:    timestamp,
@@ -352,8 +376,12 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledgerName string, b
 	}, nil
 }
 
-// processPromoteLedger promotes a mirror ledger to normal mode.
-func (p *RequestProcessor) processPromoteLedger(ledger string, s Scope) (*commonpb.LogPayload, domain.Describable) {
+// processPromoteLedger promotes a mirror ledger to normal mode. The
+// MirrorConfigChange signal (post-commit mirror worker reconciliation)
+// is derived from the PromotedLedgerLog by deriveSignals.
+func processPromoteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
+
 	info, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr

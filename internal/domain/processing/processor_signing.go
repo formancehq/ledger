@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	if err := domain.ValidateSigningKeyID(order.GetKeyId()); err != nil {
 		return nil, err
 	}
@@ -19,7 +19,7 @@ func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSi
 		}
 	}
 
-	s.AddSigningKey(order.GetKeyId(), order.GetPublicKey(), order.GetParentKeyId())
+	ctx.Scope.AddSigningKey(order.GetKeyId(), order.GetPublicKey(), order.GetParentKeyId())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_RegisterSigningKey{
@@ -32,7 +32,8 @@ func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSi
 	}, nil
 }
 
-func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	if err := domain.ValidateSigningKeyID(order.GetKeyId()); err != nil {
 		return nil, err
 	}
@@ -68,8 +69,8 @@ func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSignin
 	}, nil
 }
 
-func (p *RequestProcessor) processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
-	s.SetRequireSignatures(order.GetRequireSignatures())
+func processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	ctx.Scope.SetRequireSignatures(order.GetRequireSignatures())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SetSigningConfig{

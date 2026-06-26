@@ -7,16 +7,15 @@ import (
 )
 
 // processSetQueryCheckpointSchedule handles the SetQueryCheckpointSchedule order.
-// It validates the cron expression and stores it in the FSM state.
-func (p *RequestProcessor) processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointScheduleOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+// It validates the cron expression; the schedule-set signal is derived
+// from the produced log by deriveSignals.
+func processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointScheduleOrder, _ *Context) (*commonpb.LogPayload, domain.Describable) {
 	if _, err := CronParser.Parse(order.GetCron()); err != nil {
 		return nil, &domain.ErrInvalidCronExpression{
 			Expression: order.GetCron(),
 			Details:    err.Error(),
 		}
 	}
-
-	s.SetQueryCheckpointSchedule(order.GetCron())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SetQueryCheckpointSchedule{
@@ -28,10 +27,8 @@ func (p *RequestProcessor) processSetQueryCheckpointSchedule(order *raftcmdpb.Se
 }
 
 // processDeleteQueryCheckpointSchedule handles the DeleteQueryCheckpointSchedule order.
-// It removes the query checkpoint schedule from the FSM state.
-func (p *RequestProcessor) processDeleteQueryCheckpointSchedule(s Scope) (*commonpb.LogPayload, domain.Describable) {
-	s.DeleteQueryCheckpointSchedule()
-
+// The framework derives the schedule-deleted signal from the log.
+func processDeleteQueryCheckpointSchedule(_ *Context) (*commonpb.LogPayload, domain.Describable) {
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{
 			DeleteQueryCheckpointSchedule: &commonpb.DeletedQueryCheckpointScheduleLog{},

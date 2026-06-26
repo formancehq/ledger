@@ -172,42 +172,6 @@ func (c *MockScopeAddSigningKeyCall) DoAndReturn(f func(string, []byte, string))
 	return c
 }
 
-// AddSinkConfig mocks base method.
-func (m *MockScope) AddSinkConfig(config *commonpb.SinkConfig) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AddSinkConfig", config)
-}
-
-// AddSinkConfig indicates an expected call of AddSinkConfig.
-func (mr *MockScopeMockRecorder) AddSinkConfig(config any) *MockScopeAddSinkConfigCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSinkConfig", reflect.TypeOf((*MockScope)(nil).AddSinkConfig), config)
-	return &MockScopeAddSinkConfigCall{Call: call}
-}
-
-// MockScopeAddSinkConfigCall wrap *gomock.Call
-type MockScopeAddSinkConfigCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeAddSinkConfigCall) Return() *MockScopeAddSinkConfigCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeAddSinkConfigCall) Do(f func(*commonpb.SinkConfig)) *MockScopeAddSinkConfigCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeAddSinkConfigCall) DoAndReturn(f func(*commonpb.SinkConfig)) *MockScopeAddSinkConfigCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // CheckCoverage mocks base method.
 func (m *MockScope) CheckCoverage(kind byte, canonical []byte) error {
 	m.ctrl.T.Helper()
@@ -278,42 +242,6 @@ func (c *MockScopeDeleteAccountMetadataCall) Do(f func(domain.MetadataKey)) *Moc
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeDeleteAccountMetadataCall) DoAndReturn(f func(domain.MetadataKey)) *MockScopeDeleteAccountMetadataCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// DeleteChapterSchedule mocks base method.
-func (m *MockScope) DeleteChapterSchedule() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteChapterSchedule")
-}
-
-// DeleteChapterSchedule indicates an expected call of DeleteChapterSchedule.
-func (mr *MockScopeMockRecorder) DeleteChapterSchedule() *MockScopeDeleteChapterScheduleCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChapterSchedule", reflect.TypeOf((*MockScope)(nil).DeleteChapterSchedule))
-	return &MockScopeDeleteChapterScheduleCall{Call: call}
-}
-
-// MockScopeDeleteChapterScheduleCall wrap *gomock.Call
-type MockScopeDeleteChapterScheduleCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeDeleteChapterScheduleCall) Return() *MockScopeDeleteChapterScheduleCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeDeleteChapterScheduleCall) Do(f func()) *MockScopeDeleteChapterScheduleCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeDeleteChapterScheduleCall) DoAndReturn(f func()) *MockScopeDeleteChapterScheduleCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -494,42 +422,6 @@ func (c *MockScopeDeleteQueryCheckpointCall) Do(f func(uint64)) *MockScopeDelete
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeDeleteQueryCheckpointCall) DoAndReturn(f func(uint64)) *MockScopeDeleteQueryCheckpointCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// DeleteQueryCheckpointSchedule mocks base method.
-func (m *MockScope) DeleteQueryCheckpointSchedule() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteQueryCheckpointSchedule")
-}
-
-// DeleteQueryCheckpointSchedule indicates an expected call of DeleteQueryCheckpointSchedule.
-func (mr *MockScopeMockRecorder) DeleteQueryCheckpointSchedule() *MockScopeDeleteQueryCheckpointScheduleCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteQueryCheckpointSchedule", reflect.TypeOf((*MockScope)(nil).DeleteQueryCheckpointSchedule))
-	return &MockScopeDeleteQueryCheckpointScheduleCall{Call: call}
-}
-
-// MockScopeDeleteQueryCheckpointScheduleCall wrap *gomock.Call
-type MockScopeDeleteQueryCheckpointScheduleCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeDeleteQueryCheckpointScheduleCall) Return() *MockScopeDeleteQueryCheckpointScheduleCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeDeleteQueryCheckpointScheduleCall) Do(f func()) *MockScopeDeleteQueryCheckpointScheduleCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeDeleteQueryCheckpointScheduleCall) DoAndReturn(f func()) *MockScopeDeleteQueryCheckpointScheduleCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1614,42 +1506,6 @@ func (c *MockScopeIncrementNextSequenceIDCall) DoAndReturn(f func() uint64) *Moc
 	return c
 }
 
-// MarkLedgerForCleanup mocks base method.
-func (m *MockScope) MarkLedgerForCleanup(ledger string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "MarkLedgerForCleanup", ledger)
-}
-
-// MarkLedgerForCleanup indicates an expected call of MarkLedgerForCleanup.
-func (mr *MockScopeMockRecorder) MarkLedgerForCleanup(ledger any) *MockScopeMarkLedgerForCleanupCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkLedgerForCleanup", reflect.TypeOf((*MockScope)(nil).MarkLedgerForCleanup), ledger)
-	return &MockScopeMarkLedgerForCleanupCall{Call: call}
-}
-
-// MockScopeMarkLedgerForCleanupCall wrap *gomock.Call
-type MockScopeMarkLedgerForCleanupCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeMarkLedgerForCleanupCall) Return() *MockScopeMarkLedgerForCleanupCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeMarkLedgerForCleanupCall) Do(f func(string)) *MockScopeMarkLedgerForCleanupCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeMarkLedgerForCleanupCall) DoAndReturn(f func(string)) *MockScopeMarkLedgerForCleanupCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // NumscriptVersionExists mocks base method.
 func (m *MockScope) NumscriptVersionExists(ledgerName, name, version string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -2193,42 +2049,6 @@ func (c *MockScopeRemoveSigningKeyCall) DoAndReturn(f func(string)) *MockScopeRe
 	return c
 }
 
-// RemoveSinkConfig mocks base method.
-func (m *MockScope) RemoveSinkConfig(name string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RemoveSinkConfig", name)
-}
-
-// RemoveSinkConfig indicates an expected call of RemoveSinkConfig.
-func (mr *MockScopeMockRecorder) RemoveSinkConfig(name any) *MockScopeRemoveSinkConfigCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveSinkConfig", reflect.TypeOf((*MockScope)(nil).RemoveSinkConfig), name)
-	return &MockScopeRemoveSinkConfigCall{Call: call}
-}
-
-// MockScopeRemoveSinkConfigCall wrap *gomock.Call
-type MockScopeRemoveSinkConfigCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeRemoveSinkConfigCall) Return() *MockScopeRemoveSinkConfigCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeRemoveSinkConfigCall) Do(f func(string)) *MockScopeRemoveSinkConfigCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeRemoveSinkConfigCall) DoAndReturn(f func(string)) *MockScopeRemoveSinkConfigCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // ResolveNumscriptContent mocks base method.
 func (m *MockScope) ResolveNumscriptContent(ledgerName, name, version string) (commonpb.NumscriptInfoReader, error) {
 	m.ctrl.T.Helper()
@@ -2304,42 +2124,6 @@ func (c *MockScopeSaveQueryCheckpointCall) DoAndReturn(f func(*raftcmdpb.QueryCh
 	return c
 }
 
-// SetChapterSchedule mocks base method.
-func (m *MockScope) SetChapterSchedule(cron string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetChapterSchedule", cron)
-}
-
-// SetChapterSchedule indicates an expected call of SetChapterSchedule.
-func (mr *MockScopeMockRecorder) SetChapterSchedule(cron any) *MockScopeSetChapterScheduleCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetChapterSchedule", reflect.TypeOf((*MockScope)(nil).SetChapterSchedule), cron)
-	return &MockScopeSetChapterScheduleCall{Call: call}
-}
-
-// MockScopeSetChapterScheduleCall wrap *gomock.Call
-type MockScopeSetChapterScheduleCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeSetChapterScheduleCall) Return() *MockScopeSetChapterScheduleCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeSetChapterScheduleCall) Do(f func(string)) *MockScopeSetChapterScheduleCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeSetChapterScheduleCall) DoAndReturn(f func(string)) *MockScopeSetChapterScheduleCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // SetCurrentOpenChapter mocks base method.
 func (m *MockScope) SetCurrentOpenChapter(chapter *commonpb.Chapter) {
 	m.ctrl.T.Helper()
@@ -2408,114 +2192,6 @@ func (c *MockScopeSetMaintenanceModeCall) Do(f func(bool)) *MockScopeSetMaintena
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeSetMaintenanceModeCall) DoAndReturn(f func(bool)) *MockScopeSetMaintenanceModeCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// SetPendingArchive mocks base method.
-func (m *MockScope) SetPendingArchive(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetPendingArchive", chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence)
-}
-
-// SetPendingArchive indicates an expected call of SetPendingArchive.
-func (mr *MockScopeMockRecorder) SetPendingArchive(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence any) *MockScopeSetPendingArchiveCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPendingArchive", reflect.TypeOf((*MockScope)(nil).SetPendingArchive), chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence)
-	return &MockScopeSetPendingArchiveCall{Call: call}
-}
-
-// MockScopeSetPendingArchiveCall wrap *gomock.Call
-type MockScopeSetPendingArchiveCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeSetPendingArchiveCall) Return() *MockScopeSetPendingArchiveCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeSetPendingArchiveCall) Do(f func(uint64, uint64, uint64, uint64, uint64)) *MockScopeSetPendingArchiveCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeSetPendingArchiveCall) DoAndReturn(f func(uint64, uint64, uint64, uint64, uint64)) *MockScopeSetPendingArchiveCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// SetPurgeRange mocks base method.
-func (m *MockScope) SetPurgeRange(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetPurgeRange", chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence)
-}
-
-// SetPurgeRange indicates an expected call of SetPurgeRange.
-func (mr *MockScopeMockRecorder) SetPurgeRange(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence any) *MockScopeSetPurgeRangeCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPurgeRange", reflect.TypeOf((*MockScope)(nil).SetPurgeRange), chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence)
-	return &MockScopeSetPurgeRangeCall{Call: call}
-}
-
-// MockScopeSetPurgeRangeCall wrap *gomock.Call
-type MockScopeSetPurgeRangeCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeSetPurgeRangeCall) Return() *MockScopeSetPurgeRangeCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeSetPurgeRangeCall) Do(f func(uint64, uint64, uint64, uint64, uint64)) *MockScopeSetPurgeRangeCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeSetPurgeRangeCall) DoAndReturn(f func(uint64, uint64, uint64, uint64, uint64)) *MockScopeSetPurgeRangeCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// SetQueryCheckpointSchedule mocks base method.
-func (m *MockScope) SetQueryCheckpointSchedule(cron string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetQueryCheckpointSchedule", cron)
-}
-
-// SetQueryCheckpointSchedule indicates an expected call of SetQueryCheckpointSchedule.
-func (mr *MockScopeMockRecorder) SetQueryCheckpointSchedule(cron any) *MockScopeSetQueryCheckpointScheduleCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetQueryCheckpointSchedule", reflect.TypeOf((*MockScope)(nil).SetQueryCheckpointSchedule), cron)
-	return &MockScopeSetQueryCheckpointScheduleCall{Call: call}
-}
-
-// MockScopeSetQueryCheckpointScheduleCall wrap *gomock.Call
-type MockScopeSetQueryCheckpointScheduleCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeSetQueryCheckpointScheduleCall) Return() *MockScopeSetQueryCheckpointScheduleCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeSetQueryCheckpointScheduleCall) Do(f func(string)) *MockScopeSetQueryCheckpointScheduleCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeSetQueryCheckpointScheduleCall) DoAndReturn(f func(string)) *MockScopeSetQueryCheckpointScheduleCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -2690,6 +2366,66 @@ func (c *MockScopeFactoryNewScopeCall) Do(f func([]byte) (Scope, error)) *MockSc
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeFactoryNewScopeCall) DoAndReturn(f func([]byte) (Scope, error)) *MockScopeFactoryNewScopeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// MockSignalSink is a mock of SignalSink interface.
+type MockSignalSink struct {
+	ctrl     *gomock.Controller
+	recorder *MockSignalSinkMockRecorder
+	isgomock struct{}
+}
+
+// MockSignalSinkMockRecorder is the mock recorder for MockSignalSink.
+type MockSignalSinkMockRecorder struct {
+	mock *MockSignalSink
+}
+
+// NewMockSignalSink creates a new mock instance.
+func NewMockSignalSink(ctrl *gomock.Controller) *MockSignalSink {
+	mock := &MockSignalSink{ctrl: ctrl}
+	mock.recorder = &MockSignalSinkMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSignalSink) EXPECT() *MockSignalSinkMockRecorder {
+	return m.recorder
+}
+
+// Absorb mocks base method.
+func (m *MockSignalSink) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Absorb", order, log)
+}
+
+// Absorb indicates an expected call of Absorb.
+func (mr *MockSignalSinkMockRecorder) Absorb(order, log any) *MockSignalSinkAbsorbCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Absorb", reflect.TypeOf((*MockSignalSink)(nil).Absorb), order, log)
+	return &MockSignalSinkAbsorbCall{Call: call}
+}
+
+// MockSignalSinkAbsorbCall wrap *gomock.Call
+type MockSignalSinkAbsorbCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockSignalSinkAbsorbCall) Return() *MockSignalSinkAbsorbCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockSignalSinkAbsorbCall) Do(f func(*raftcmdpb.Order, *commonpb.Log)) *MockSignalSinkAbsorbCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockSignalSinkAbsorbCall) DoAndReturn(f func(*raftcmdpb.Order, *commonpb.Log)) *MockSignalSinkAbsorbCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -7,12 +7,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateIndex(
-	ledgerName string,
-	order *raftcmdpb.CreateIndexOrder,
-	s Scope,
-) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, loadErr := loadLedger(s, ledgerName)
+func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -29,7 +25,7 @@ func (p *RequestProcessor) processCreateIndex(
 	// handleCreatedIndexLog must then guard against re-scheduling a backfill
 	// by consulting the registry (cfg.byCanonical alone can lag behind the
 	// applied READY state).
-	existing, findErr := indexes.Find(s, info.GetName(), id)
+	existing, findErr := indexes.Find(ctx.Scope, info.GetName(), id)
 	if findErr != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "looking up existing index", Cause: findErr}
 	}
@@ -38,11 +34,11 @@ func (p *RequestProcessor) processCreateIndex(
 		return buildCreatedIndexLogPayload(id), nil
 	}
 
-	indexes.Put(s, info.GetName(), &commonpb.Index{
+	indexes.Put(ctx.Scope, info.GetName(), &commonpb.Index{
 		Id:          id,
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-		CreatedAt:   s.GetDate().Mutate(),
-		Ledger:      ledgerName,
+		CreatedAt:   ctx.Scope.GetDate().Mutate(),
+		Ledger:      ledger,
 		// First version each replica will build into when the initial
 		// backfill runs (cf. EN-1323 per-replica versioning).
 		ForwardEncodingVersion: 1,
@@ -51,18 +47,14 @@ func (p *RequestProcessor) processCreateIndex(
 	return buildCreatedIndexLogPayload(id), nil
 }
 
-func (p *RequestProcessor) processDropIndex(
-	ledgerName string,
-	order *raftcmdpb.DropIndexOrder,
-	s Scope,
-) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, loadErr := loadLedger(s, ledgerName)
+func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
 
 	id := order.GetId()
-	indexes.Remove(s, info.GetName(), id)
+	indexes.Remove(ctx.Scope, info.GetName(), id)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DropIndex{

@@ -8,12 +8,8 @@ import (
 )
 
 // processAddAccountType adds a new account type to a ledger.
-func (p *RequestProcessor) processAddAccountType(
-	ledgerName string,
-	order *raftcmdpb.AddAccountTypeOrder,
-	s Scope,
-) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, loadErr := loadLedger(s, ledgerName)
+func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -59,8 +55,8 @@ func (p *RequestProcessor) processAddAccountType(
 	}
 
 	info.AccountTypes[at.GetName()] = at
-	s.PutLedger(ledgerName, info)
-	p.invalidateCompiledTypes(ledgerName)
+	ctx.Scope.PutLedger(ledger, info)
+	invalidateCompiledTypes(ctx.CompiledTypes, ledger)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_AddedAccountType{
@@ -72,12 +68,8 @@ func (p *RequestProcessor) processAddAccountType(
 }
 
 // processRemoveAccountType removes an account type from a ledger.
-func (p *RequestProcessor) processRemoveAccountType(
-	ledgerName string,
-	order *raftcmdpb.RemoveAccountTypeOrder,
-	s Scope,
-) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, loadErr := loadLedger(s, ledgerName)
+func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -89,8 +81,8 @@ func (p *RequestProcessor) processRemoveAccountType(
 	}
 
 	delete(info.GetAccountTypes(), order.GetName())
-	s.PutLedger(ledgerName, info)
-	p.invalidateCompiledTypes(ledgerName)
+	ctx.Scope.PutLedger(ledger, info)
+	invalidateCompiledTypes(ctx.CompiledTypes, ledger)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RemovedAccountType{
@@ -162,12 +154,8 @@ func validateAccountAgainstAccountTypes(
 }
 
 // processUpdateDefaultEnforcementMode updates the ledger's default enforcement mode.
-func (p *RequestProcessor) processUpdateDefaultEnforcementMode(
-	ledgerName string,
-	order *raftcmdpb.UpdateDefaultEnforcementModeOrder,
-	s Scope,
-) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, loadErr := loadLedger(s, ledgerName)
+func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateDefaultEnforcementModeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -175,7 +163,7 @@ func (p *RequestProcessor) processUpdateDefaultEnforcementMode(
 	info = info.CloneVT()
 
 	info.DefaultEnforcementMode = order.GetEnforcementMode()
-	s.PutLedger(ledgerName, info)
+	ctx.Scope.PutLedger(ledger, info)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{

@@ -6,7 +6,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQueryOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	// Validate payload BEFORE loading the ledger. After moving `ledger` off
 	// `PreparedQuery` onto the surrounding request (PR #522), a malformed
 	// request with a valid top-level ledger but a nil/empty `query` would
@@ -22,14 +23,11 @@ func (p *RequestProcessor) processCreatePreparedQuery(ledger string, order *raft
 		return nil, err
 	}
 
-	info, loadErr := loadLedger(s, ledger)
-	if loadErr != nil {
+	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
-	ledgerName := info.GetName()
-
-	existing, err := s.GetPreparedQuery(ledgerName, q.GetName())
+	existing, err := s.GetPreparedQuery(ledger, q.GetName())
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
 	}
@@ -41,7 +39,7 @@ func (p *RequestProcessor) processCreatePreparedQuery(ledger string, order *raft
 		}
 	}
 
-	s.PutPreparedQuery(ledgerName, q)
+	s.PutPreparedQuery(ledger, q)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreatedPreparedQuery{
@@ -53,19 +51,17 @@ func (p *RequestProcessor) processCreatePreparedQuery(ledger string, order *raft
 	}, nil
 }
 
-func (p *RequestProcessor) processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQueryOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	if err := domain.ValidatePreparedQueryName(order.GetName()); err != nil {
 		return nil, err
 	}
 
-	info, loadErr := loadLedger(s, ledger)
-	if loadErr != nil {
+	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
-	ledgerName := info.GetName()
-
-	existing, err := s.GetPreparedQuery(ledgerName, order.GetName())
+	existing, err := s.GetPreparedQuery(ledger, order.GetName())
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
 	}
@@ -80,7 +76,7 @@ func (p *RequestProcessor) processUpdatePreparedQuery(ledger string, order *raft
 	updated := existing.Mutate()
 	previousFilter := updated.GetFilter().CloneVT()
 	updated.Filter = order.GetFilter()
-	s.PutPreparedQuery(ledgerName, updated)
+	s.PutPreparedQuery(ledger, updated)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_UpdatedPreparedQuery{
@@ -94,19 +90,17 @@ func (p *RequestProcessor) processUpdatePreparedQuery(ledger string, order *raft
 	}, nil
 }
 
-func (p *RequestProcessor) processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQueryOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQueryOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	if err := domain.ValidatePreparedQueryName(order.GetName()); err != nil {
 		return nil, err
 	}
 
-	info, loadErr := loadLedger(s, ledger)
-	if loadErr != nil {
+	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
-	ledgerName := info.GetName()
-
-	existing, err := s.GetPreparedQuery(ledgerName, order.GetName())
+	existing, err := s.GetPreparedQuery(ledger, order.GetName())
 	if err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
 	}
@@ -118,7 +112,7 @@ func (p *RequestProcessor) processDeletePreparedQuery(ledger string, order *raft
 		}
 	}
 
-	s.DeletePreparedQuery(ledgerName, order.GetName())
+	s.DeletePreparedQuery(ledger, order.GetName())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedPreparedQuery{

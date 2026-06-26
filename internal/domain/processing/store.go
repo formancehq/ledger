@@ -95,14 +95,8 @@ type Scope interface {
 	// Maintenance mode operations
 	SetMaintenanceMode(enabled bool)
 
-	// Chapter schedule operations
-	SetChapterSchedule(cron string)
-	DeleteChapterSchedule()
-
-	// Events sink operations
+	// Events sink reads (writes moved to the WriteSet sink via Absorb).
 	GetSinkConfig(name string) (commonpb.SinkConfigReader, error)
-	AddSinkConfig(config *commonpb.SinkConfig)
-	RemoveSinkConfig(name string)
 
 	// Counters and timestamps
 	GetNextSequenceID() uint64
@@ -122,11 +116,9 @@ type Scope interface {
 	GetNextChapterID() uint64
 	IncrementNextChapterID() uint64
 
-	// Archive chapter operations
+	// Archive chapter operations (purge range / archive request moved to the WriteSet sink via Absorb).
 	GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool)
 	UpdateChapter(chapter *commonpb.Chapter)
-	SetPurgeRange(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
-	SetPendingArchive(chapterID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
 
 	// Prepared query operations
 	GetPreparedQuery(ledgerName string, name string) (commonpb.PreparedQueryReader, error)
@@ -144,13 +136,6 @@ type Scope interface {
 	IncrementNextQueryCheckpointID() uint64
 	SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState)
 	DeleteQueryCheckpoint(checkpointID uint64)
-
-	// Query checkpoint schedule operations
-	SetQueryCheckpointSchedule(cron string)
-	DeleteQueryCheckpointSchedule()
-
-	// Ledger cleanup
-	MarkLedgerForCleanup(ledger string)
 
 	// Index registry operations (bucket-scoped, keyed by IndexKey{LedgerID, Canonical}).
 	// LedgerID == 0 reserves the slot for bucket-scoped indexes (audit).
@@ -208,4 +193,26 @@ type ScopeFactory interface {
 	// caller passing empty bits (no declared needs) does not silently
 	// inherit coverage from other orders' plans in the same proposal.
 	NewProposalScope() (Scope, error)
+}
+
+// SignalSink absorbs the per-order (order, log) pair right after a
+// processor returns its log. The sink interprets the log payload itself
+// and applies whatever cross-order accumulator the framework needs
+// (archive queue, purge ranges, sink-config tracking, lifecycle flags
+// consumed by applyProposal, …). Processors NEVER receive a
+// SignalSink — only ProcessOrders holds the reference. Folding the
+// "what to signal" decision into log production guarantees the two
+// can never desync.
+//
+// One method, one dispatch site: the log is the source of truth (it is
+// what the audit chain hashes), and signals are strictly derivative.
+// Maintaining a separate signal vocabulary would duplicate the log
+// schema; the implementer's type switch on log.GetPayload() is the
+// authoritative mapping.
+//
+// On the hot path this avoids both the per-signal allocation of a sum
+// type and the 13 virtual calls of a per-signal interface — Absorb
+// passes pointers and dispatches once.
+type SignalSink interface {
+	Absorb(order *raftcmdpb.Order, log *commonpb.Log)
 }

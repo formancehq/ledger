@@ -6,9 +6,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// processCloseChapter handles the CloseChapter order.
-// It transitions the current OPEN chapter to CLOSING and creates a new OPEN chapter.
-func (p *RequestProcessor) processCloseChapter(_ *raftcmdpb.CloseChapterOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+// processCloseChapter handles the CloseChapter order. It transitions the
+// current OPEN chapter to CLOSING and creates a new OPEN chapter. The
+// CloseChapter intent (LastAuditHash carry after the audit entry hashes)
+// is derived from the ClosedChapterLog by deriveSignals — the processor
+// only mutates state and returns the log.
+func processCloseChapter(_ *raftcmdpb.CloseChapterOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	currentReader, ok := s.GetCurrentOpenChapter()
 	if !ok {
 		return nil, domain.ErrNoChapterOpen
@@ -56,7 +60,8 @@ func (p *RequestProcessor) processCloseChapter(_ *raftcmdpb.CloseChapterOrder, s
 
 // processSealChapter handles the SealChapter order.
 // It transitions a CLOSING chapter to CLOSED and sets the sealing hash.
-func (p *RequestProcessor) processSealChapter(order *raftcmdpb.SealChapterOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processSealChapter(order *raftcmdpb.SealChapterOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	closingReader, ok := s.GetClosingChapterByID(order.GetChapterId())
 	if !ok {
 		return nil, &domain.ErrChapterNotFound{ChapterID: order.GetChapterId()}
@@ -88,10 +93,12 @@ func (p *RequestProcessor) processSealChapter(order *raftcmdpb.SealChapterOrder,
 	}, nil
 }
 
-// processArchiveChapter handles the ArchiveChapter order.
-// It transitions the chapter from CLOSED → ARCHIVING and returns an ArchivedChapterLog
-// to signal the background Archiver (leader-only dispatch happens in Node).
-func (p *RequestProcessor) processArchiveChapter(order *raftcmdpb.ArchiveChapterOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+// processArchiveChapter handles the ArchiveChapter order. It transitions
+// the chapter CLOSED → ARCHIVING. The archive worker request is derived
+// from the ArchivedChapterLog by deriveSignals (Chapter carries every
+// sequence range the worker needs).
+func processArchiveChapter(order *raftcmdpb.ArchiveChapterOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	chapterReader, ok := s.GetChapterByID(order.GetChapterId())
 	if !ok {
 		return nil, &domain.ErrChapterNotFound{ChapterID: order.GetChapterId()}
@@ -107,9 +114,6 @@ func (p *RequestProcessor) processArchiveChapter(order *raftcmdpb.ArchiveChapter
 	chapter.Status = commonpb.ChapterStatus_CHAPTER_ARCHIVING
 	s.UpdateChapter(chapter)
 
-	// Signal the Machine to send an archive request after batch commit
-	s.SetPendingArchive(chapter.GetId(), chapter.GetStartSequence(), chapter.GetCloseSequence(), chapter.GetStartAuditSequence(), chapter.GetCloseAuditSequence())
-
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ArchiveChapter{
 			ArchiveChapter: &commonpb.ArchivedChapterLog{
@@ -119,9 +123,11 @@ func (p *RequestProcessor) processArchiveChapter(order *raftcmdpb.ArchiveChapter
 	}, nil
 }
 
-// processConfirmArchiveChapter handles the ConfirmArchiveChapter order.
-// It transitions an ARCHIVING chapter to ARCHIVED and signals a purge of logs and audit entries.
-func (p *RequestProcessor) processConfirmArchiveChapter(order *raftcmdpb.ConfirmArchiveChapterOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+// processConfirmArchiveChapter handles the ConfirmArchiveChapter order. It
+// transitions an ARCHIVING chapter to ARCHIVED. The purge range is derived
+// from the ConfirmedArchiveChapterLog by deriveSignals.
+func processConfirmArchiveChapter(order *raftcmdpb.ConfirmArchiveChapterOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	chapterReader, ok := s.GetChapterByID(order.GetChapterId())
 	if !ok {
 		return nil, &domain.ErrChapterNotFound{ChapterID: order.GetChapterId()}
@@ -135,11 +141,6 @@ func (p *RequestProcessor) processConfirmArchiveChapter(order *raftcmdpb.Confirm
 
 	chapter.Status = commonpb.ChapterStatus_CHAPTER_ARCHIVED
 	s.UpdateChapter(chapter)
-
-	// Signal the FSM to purge logs and audit entries for this chapter's sequence ranges.
-	// Logs and audit entries have independent sequence counters, so both ranges are needed.
-	s.SetPurgeRange(chapter.GetId(), chapter.GetStartSequence(), chapter.GetCloseSequence(),
-		chapter.GetStartAuditSequence(), chapter.GetCloseAuditSequence())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ConfirmArchiveChapter{

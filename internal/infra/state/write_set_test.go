@@ -227,15 +227,19 @@ func TestWriteSetSetDeleteChapterSchedule(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	require.Nil(t, buf.pendingChapterScheduleUpdate)
+	require.Nil(t, buf.chapterScheduleUpdate)
 
-	buf.SetChapterSchedule("*/5 * * * *")
-	require.NotNil(t, buf.pendingChapterScheduleUpdate)
-	require.Equal(t, "*/5 * * * *", *buf.pendingChapterScheduleUpdate)
+	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SetChapterSchedule{SetChapterSchedule: &commonpb.SetChapterScheduleLog{Cron: "*/5 * * * *"}},
+	}})
+	require.NotNil(t, buf.chapterScheduleUpdate)
+	require.Equal(t, "*/5 * * * *", *buf.chapterScheduleUpdate)
 
-	buf.DeleteChapterSchedule()
-	require.NotNil(t, buf.pendingChapterScheduleUpdate)
-	require.Empty(t, *buf.pendingChapterScheduleUpdate)
+	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_DeleteChapterSchedule{DeleteChapterSchedule: &commonpb.DeletedChapterScheduleLog{}},
+	}})
+	require.NotNil(t, buf.chapterScheduleUpdate)
+	require.Empty(t, *buf.chapterScheduleUpdate)
 }
 
 func TestWriteSetSinkConfigOperations(t *testing.T) {
@@ -243,25 +247,29 @@ func TestWriteSetSinkConfigOperations(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	// Initially no pending changes
-	require.False(t, buf.HasPendingSinkChanges())
+	require.False(t, buf.SinkConfigChanged())
 
 	// Get non-existent
 	cfg, err := buf.GetSinkConfig("none")
 	require.NoError(t, err)
 	require.Nil(t, cfg)
 
-	// Add a config
-	buf.AddSinkConfig(&commonpb.SinkConfig{Name: "my-sink"})
-	require.True(t, buf.HasPendingSinkChanges())
+	// Add a config via its log payload.
+	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_AddedEventsSink{AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: &commonpb.SinkConfig{Name: "my-sink"}}},
+	}})
+	require.True(t, buf.SinkConfigChanged())
 
 	cfg, err = buf.GetSinkConfig("my-sink")
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	require.Equal(t, "my-sink", cfg.GetName())
 
-	// Remove it
-	buf.RemoveSinkConfig("my-sink")
-	require.True(t, buf.HasPendingSinkChanges())
+	// Remove it.
+	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_RemovedEventsSink{RemovedEventsSink: &commonpb.RemovedEventsSinkLog{Name: "my-sink"}},
+	}})
+	require.True(t, buf.SinkConfigChanged())
 }
 
 func TestWriteSetSequenceIDOperations(t *testing.T) {
@@ -413,35 +421,63 @@ func TestWriteSetUpdateChapter(t *testing.T) {
 	require.Equal(t, uint64(5), buf.changedChapters[0].GetId())
 }
 
+func confirmArchiveLog(id, startSeq, closeSeq, startAudit, closeAudit uint64) *commonpb.Log {
+	return &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_ConfirmArchiveChapter{ConfirmArchiveChapter: &commonpb.ConfirmedArchiveChapterLog{
+			Chapter: &commonpb.Chapter{
+				Id:                 id,
+				StartSequence:      startSeq,
+				CloseSequence:      closeSeq,
+				StartAuditSequence: startAudit,
+				CloseAuditSequence: closeAudit,
+			},
+		}},
+	}}
+}
+
+func archiveChapterLog(id, startSeq, closeSeq, startAudit, closeAudit uint64) *commonpb.Log {
+	return &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_ArchiveChapter{ArchiveChapter: &commonpb.ArchivedChapterLog{
+			Chapter: &commonpb.Chapter{
+				Id:                 id,
+				StartSequence:      startSeq,
+				CloseSequence:      closeSeq,
+				StartAuditSequence: startAudit,
+				CloseAuditSequence: closeAudit,
+			},
+		}},
+	}}
+}
+
 func TestWriteSetSetPurgeRange(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
 	require.Empty(t, buf.purgeRanges)
-	require.False(t, buf.HasPurges())
+	require.False(t, (len(buf.purgeRanges) > 0))
 
-	buf.SetPurgeRange(1, 10, 50, 5, 25)
-	require.True(t, buf.HasPurges())
+	buf.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(1, 10, 50, 5, 25))
+	require.True(t, (len(buf.purgeRanges) > 0))
 
-	buf.SetPurgeRange(2, 51, 100, 26, 50)
+	buf.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(2, 51, 100, 26, 50))
 	require.Len(t, buf.purgeRanges, 2)
 	require.Equal(t, uint64(10), buf.purgeRanges[0].startSequence)
 	require.Equal(t, uint64(51), buf.purgeRanges[1].startSequence)
-	require.True(t, buf.HasPurges())
+	require.True(t, (len(buf.purgeRanges) > 0))
 }
 
 func TestWriteSetSetPendingArchive(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	require.Empty(t, buf.pendingArchives)
-	buf.SetPendingArchive(1, 10, 50, 5, 25)
-	require.Len(t, buf.pendingArchives, 1)
-	require.Equal(t, uint64(1), buf.pendingArchives[0].ChapterID)
-	require.Equal(t, uint64(10), buf.pendingArchives[0].StartSequence)
-	require.Equal(t, uint64(50), buf.pendingArchives[0].CloseSequence)
-	require.Equal(t, uint64(5), buf.pendingArchives[0].StartAuditSequence)
-	require.Equal(t, uint64(25), buf.pendingArchives[0].CloseAuditSequence)
+	require.Empty(t, buf.archiveRequests)
+	buf.Absorb(&raftcmdpb.Order{}, archiveChapterLog(1, 10, 50, 5, 25))
+	require.Len(t, buf.archiveRequests, 1)
+	require.Equal(t, uint64(1), buf.archiveRequests[0].ChapterID)
+	require.Equal(t, uint64(10), buf.archiveRequests[0].StartSequence)
+	require.Equal(t, uint64(50), buf.archiveRequests[0].CloseSequence)
+	require.Equal(t, uint64(5), buf.archiveRequests[0].StartAuditSequence)
+	require.Equal(t, uint64(25), buf.archiveRequests[0].CloseAuditSequence)
 }
 
 // TestWriteSetResetIsolation verifies that data written during proposal N is
@@ -472,19 +508,21 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.AddSigningKey("key-leak", []byte("pub"), "")
 	buf.SetMaintenanceMode(true)
 	buf.SetRequireSignatures(true)
-	buf.SetChapterSchedule("*/5 * * * *")
-	buf.SetPurgeRange(1, 10, 50, 5, 25)
-	buf.SetPendingArchive(1, 10, 50, 5, 25)
+	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SetChapterSchedule{SetChapterSchedule: &commonpb.SetChapterScheduleLog{Cron: "*/5 * * * *"}},
+	}})
+	buf.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(1, 10, 50, 5, 25))
+	buf.Absorb(&raftcmdpb.Order{}, archiveChapterLog(1, 10, 50, 5, 25))
 	buf.QueueMirrorSync(MirrorSyncWrite{LedgerName: "leaked", Cursor: 42, ClearError: true})
 
 	// Verify data is present before Reset
 	_, err := buf.GetLedger("leaked")
 	require.NoError(t, err, "ledger should exist before Reset")
-	require.True(t, buf.HasPurges(), "purges should exist before Reset")
+	require.True(t, (len(buf.purgeRanges) > 0), "purges should exist before Reset")
 	require.Len(t, buf.pendingSigningKeyUpdates, 1)
 	require.NotNil(t, buf.pendingMaintenanceModeUpdate)
 	require.NotNil(t, buf.pendingSigningConfigUpdate)
-	require.NotNil(t, buf.pendingChapterScheduleUpdate)
+	require.NotNil(t, buf.chapterScheduleUpdate)
 	require.Len(t, buf.pendingMirrorSyncs, 1)
 
 	// --- Reset for proposal N+1 ---
@@ -512,9 +550,9 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	require.Empty(t, buf.pendingSigningKeyUpdates, "signing key updates must be cleared after Reset")
 	require.Nil(t, buf.pendingMaintenanceModeUpdate, "maintenance mode update must be nil after Reset")
 	require.Nil(t, buf.pendingSigningConfigUpdate, "signing config update must be nil after Reset")
-	require.Nil(t, buf.pendingChapterScheduleUpdate, "chapter schedule update must be nil after Reset")
-	require.False(t, buf.HasPurges(), "purges must be cleared after Reset")
-	require.Empty(t, buf.pendingArchives, "archives must be cleared after Reset")
+	require.Nil(t, buf.chapterScheduleUpdate, "chapter schedule update must be nil after Reset")
+	require.False(t, (len(buf.purgeRanges) > 0), "purges must be cleared after Reset")
+	require.Empty(t, buf.archiveRequests, "archives must be cleared after Reset")
 	require.Empty(t, buf.pendingMirrorSyncs, "mirror syncs must be cleared after Reset")
 
 	// Scalar state must be refreshed

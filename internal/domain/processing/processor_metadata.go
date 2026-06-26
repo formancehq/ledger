@@ -24,7 +24,11 @@ func validateTransactionTarget(txID uint64, boundaries *raftcmdpb.LedgerBoundari
 	return nil
 }
 
-func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s Scope, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	boundaries := ctx.Boundaries
+	s := ctx.Scope
+	info := ctx.LedgerInfo
+
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
@@ -33,7 +37,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 
 	// Validate account address against account types.
 	if acct, isAcct := order.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
-		if compiled := p.getCompiledTypes(ledgerName, info); len(compiled) > 0 {
+		if compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info); len(compiled) > 0 {
 			if typeErr := validateAccountAgainstAccountTypes(acct.Account.GetAddr(), compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 				return nil, typeErr
 			}
@@ -51,7 +55,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 		for key, value := range order.GetMetadata() {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
-					LedgerName: ledgerName,
+					LedgerName: ledger,
 					Account:    target.Account.GetAddr(),
 				},
 				Key: key,
@@ -65,7 +69,7 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 			return nil, resolveErr
 		}
 
-		txKey := domain.TransactionKey{LedgerName: ledgerName, ID: txID}
+		txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
 
 		stateReader, err := s.GetTransactionState(txKey)
 		if err != nil {
@@ -100,7 +104,10 @@ func (p *RequestProcessor) processAddMetadata(ledgerName string, boundaries *raf
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s Scope) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	boundaries := ctx.Boundaries
+	s := ctx.Scope
+
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
@@ -115,7 +122,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 	case *commonpb.Target_Account:
 		metaKey := domain.MetadataKey{
 			AccountKey: domain.AccountKey{
-				LedgerName: ledgerName,
+				LedgerName: ledger,
 				Account:    target.Account.GetAddr(),
 			},
 			Key: order.GetKey(),
@@ -142,7 +149,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledgerName string, boundaries *
 			return nil, resolveErr
 		}
 
-		txKey := domain.TransactionKey{LedgerName: ledgerName, ID: txID}
+		txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
 
 		stateReader, err := s.GetTransactionState(txKey)
 		if err != nil {

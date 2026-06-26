@@ -10,10 +10,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s Scope, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	boundaries := ctx.Boundaries
+	s := ctx.Scope
+	info := ctx.LedgerInfo
+
 	// Check transaction reference uniqueness if reference is provided
 	if order.GetReference() != "" {
-		refKey := domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: order.GetReference()}
+		refKey := domain.TransactionReferenceKey{LedgerName: ledger, Reference: order.GetReference()}
 
 		existingRef, err := s.GetTransactionReference(refKey)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -22,7 +26,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 
 		if existingRef != nil {
 			return nil, &domain.ErrTransactionReferenceConflict{
-				Ledger:    ledgerName,
+				Ledger:    ledger,
 				Reference: order.GetReference(),
 			}
 		}
@@ -31,7 +35,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	// Resolve script reference: load content from preloaded cache.
 	var script *commonpb.Script
 	if ref := order.GetNumscriptReference(); ref != nil {
-		info, err := s.ResolveNumscriptContent(ledgerName, ref.GetName(), ref.GetVersion())
+		info, err := s.ResolveNumscriptContent(ledger, ref.GetName(), ref.GetVersion())
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{
 				Operation: fmt.Sprintf("resolving numscript %q v%s", ref.GetName(), ref.GetVersion()),
@@ -55,13 +59,13 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	var producer postingProducer
 	isNumscript := script != nil && script.GetPlain() != ""
 	if isNumscript {
-		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledgerName: ledgerName, assetCache: p.assetCache}
+		producer = &numscriptPostingProducer{cache: ctx.NumscriptCache, ledgerName: ledger, assetCache: ctx.AssetCache}
 	} else {
-		producer = &stdPostingProducer{assetCache: p.assetCache}
+		producer = &stdPostingProducer{assetCache: ctx.AssetCache}
 	}
 
 	// Produce postings (handles balance checks and buffer updates)
-	result, err := producer.produce(s, ledgerName, order, script)
+	result, err := producer.produce(s, ledger, order, script)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +96,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 		timestamp = s.GetDate().Mutate()
 	}
 
-	txKey := domain.TransactionKey{LedgerName: ledgerName, ID: nextTransactionID}
+	txKey := domain.TransactionKey{LedgerName: ledger, ID: nextTransactionID}
 	txState := &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Timestamp:    timestamp,
@@ -104,7 +108,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	}
 
 	// Validate postings against account types.
-	if compiled := p.getCompiledTypes(ledgerName, info); len(compiled) > 0 {
+	if compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info); len(compiled) > 0 {
 		if typeErr := validatePostingsAgainstAccountTypes(result.Postings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 			return nil, typeErr
 		}
@@ -167,7 +171,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 
 		for key, value := range mm.GetValues() {
 			metaKey := domain.MetadataKey{
-				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+				AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
 				Key:        key,
 			}
 
@@ -178,7 +182,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	// Store transaction reference if provided
 	if order.GetReference() != "" {
 		s.PutTransactionReference(
-			domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: order.GetReference()},
+			domain.TransactionReferenceKey{LedgerName: ledger, Reference: order.GetReference()},
 			&commonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
 		)
 	}
@@ -186,7 +190,7 @@ func (p *RequestProcessor) processCreateTransaction(ledgerName string, boundarie
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		postCommitVolumes = buildPostCommitVolumes(s, ledgerName, result.Postings)
+		postCommitVolumes = buildPostCommitVolumes(s, ledger, result.Postings)
 	}
 
 	// Get the current open chapter ID for the receipt
@@ -245,17 +249,17 @@ type produceResult struct {
 }
 
 type postingProducer interface {
-	produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable)
+	produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable)
 }
 
 type stdPostingProducer struct {
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *stdPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, domain.Describable) {
+func (p *stdPostingProducer) produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, domain.Describable) {
 	for _, posting := range order.GetPostings() {
 		// Skip balance check when Force is true
-		err := applyPosting(s, ledgerName, posting, order.GetForce(), p.assetCache)
+		err := applyPosting(s, ledger, posting, order.GetForce(), p.assetCache)
 		if err != nil {
 			return nil, err
 		}

@@ -14,16 +14,15 @@ import (
 var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 
 // processSetChapterSchedule handles the SetChapterSchedule order.
-// It validates the cron expression and stores it in the FSM state.
-func (p *RequestProcessor) processSetChapterSchedule(order *raftcmdpb.SetChapterScheduleOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+// It validates the cron expression and returns the log; deriveSignals
+// turns the log into the EmitChapterScheduleSet signal.
+func processSetChapterSchedule(order *raftcmdpb.SetChapterScheduleOrder, _ *Context) (*commonpb.LogPayload, domain.Describable) {
 	if _, err := CronParser.Parse(order.GetCron()); err != nil {
 		return nil, &domain.ErrInvalidCronExpression{
 			Expression: order.GetCron(),
 			Details:    err.Error(),
 		}
 	}
-
-	s.SetChapterSchedule(order.GetCron())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SetChapterSchedule{
@@ -35,10 +34,8 @@ func (p *RequestProcessor) processSetChapterSchedule(order *raftcmdpb.SetChapter
 }
 
 // processDeleteChapterSchedule handles the DeleteChapterSchedule order.
-// It removes the chapter schedule from the FSM state.
-func (p *RequestProcessor) processDeleteChapterSchedule(s Scope) (*commonpb.LogPayload, domain.Describable) {
-	s.DeleteChapterSchedule()
-
+// The framework derives the schedule-deleted signal from the log.
+func processDeleteChapterSchedule(_ *Context) (*commonpb.LogPayload, domain.Describable) {
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteChapterSchedule{
 			DeleteChapterSchedule: &commonpb.DeletedChapterScheduleLog{},

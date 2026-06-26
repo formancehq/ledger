@@ -6,9 +6,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s Scope, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+	boundaries := ctx.Boundaries
+	s := ctx.Scope
+	info := ctx.LedgerInfo
+
 	txKey := domain.TransactionKey{
-		LedgerName: ledgerName,
+		LedgerName: ledger,
 		ID:         order.GetTransactionId(),
 	}
 
@@ -41,7 +45,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 	}
 
 	// Validate reversed postings against account types.
-	if compiled := p.getCompiledTypes(ledgerName, info); len(compiled) > 0 {
+	if compiled := compiledTypesFor(ctx.CompiledTypes, ledger, info); len(compiled) > 0 {
 		if typeErr := validatePostingsAgainstAccountTypes(revertPostings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 			return nil, typeErr
 		}
@@ -49,7 +53,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 
 	for _, posting := range revertPostings {
 		// Apply the reversed posting (skip balance check if force is set)
-		err := applyPosting(s, ledgerName, posting, order.GetForce(), p.assetCache)
+		err := applyPosting(s, ledger, posting, order.GetForce(), ctx.AssetCache)
 		if err != nil {
 			return nil, err
 		}
@@ -93,7 +97,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 	}
 
 	// Store the revert transaction's state (include metadata from the revert order)
-	s.PutTransactionState(domain.TransactionKey{LedgerName: ledgerName, ID: revertTxID}, &commonpb.TransactionState{
+	s.PutTransactionState(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     order.GetMetadata(),
 		Timestamp:    revertTimestamp,
@@ -102,7 +106,7 @@ func (p *RequestProcessor) processRevertTransaction(ledgerName string, boundarie
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		postCommitVolumes = buildPostCommitVolumes(s, ledgerName, revertPostings)
+		postCommitVolumes = buildPostCommitVolumes(s, ledger, revertPostings)
 	}
 
 	return &commonpb.LedgerLogPayload{

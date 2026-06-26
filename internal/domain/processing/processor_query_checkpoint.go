@@ -6,7 +6,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
 	checkpointID := s.IncrementNextQueryCheckpointID()
 
 	cp := &raftcmdpb.QueryCheckpointState{
@@ -16,6 +17,8 @@ func (p *RequestProcessor) processCreateQueryCheckpoint(order *raftcmdpb.CreateQ
 	}
 
 	s.SaveQueryCheckpoint(cp)
+	// QueryCheckpointSaved (post-commit checkpoint scheduler gating) is
+	// derived from CreatedQueryCheckpointLog by deriveSignals.
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
@@ -27,12 +30,14 @@ func (p *RequestProcessor) processCreateQueryCheckpoint(order *raftcmdpb.CreateQ
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	if order.GetCheckpointId() == 0 {
 		return nil, domain.ErrCheckpointIDRequired
 	}
 
-	s.DeleteQueryCheckpoint(order.GetCheckpointId())
+	ctx.Scope.DeleteQueryCheckpoint(order.GetCheckpointId())
+	// QueryCheckpointDeleted is derived from DeletedQueryCheckpointLog by
+	// deriveSignals.
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedQueryCheckpoint{

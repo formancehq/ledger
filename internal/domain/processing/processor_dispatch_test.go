@@ -294,7 +294,7 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_DeleteChapterSchedule{
 				DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{},
 			}},
-			setup: func(m *MockScope) { m.EXPECT().DeleteChapterSchedule() },
+			setup: func(_ *MockScope) {},
 			check: func(t *testing.T, got error) { t.Helper(); require.NoError(t, got) },
 		},
 		{
@@ -309,7 +309,7 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule{
 				DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{},
 			}},
-			setup: func(m *MockScope) { m.EXPECT().DeleteQueryCheckpointSchedule() },
+			setup: func(_ *MockScope) {},
 			check: func(t *testing.T, got error) { t.Helper(); require.NoError(t, got) },
 		},
 	}

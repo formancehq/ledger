@@ -22,6 +22,39 @@ type RequestProcessor struct {
 	assetCache         map[string]cachedAssetPrecision // per-batch cache for ParseAssetPrecision
 }
 
+// Context bundles per-batch shared state (caches, ledger metadata) and
+// per-order/per-apply state (Scope, Boundaries, LedgerInfo) that every
+// handler receives uniformly. The dispatcher (RequestProcessor) is the
+// only producer; handlers read what they need from ctx and nothing else.
+//
+// The wrapper-level ledger name is NOT stored on Context: ledger-scoped
+// processors take it as an explicit first parameter, system-scoped
+// processors don't take it at all. Keeping it out of Context avoids a
+// per-order field that is always empty for half the dispatch table.
+//
+// Per-order fields (Scope) are set by ProcessOrder before invoking the
+// dispatcher; per-apply fields (Boundaries, LedgerInfo) are set by
+// processApply / processMirrorIngest before dispatching to their
+// apply-child handlers. Per-batch fields (caches) are owned by the
+// *RequestProcessor and live for the lifetime of a ProcessOrders call.
+type Context struct {
+	// Per-order — set by the dispatcher before calling the handler.
+	Scope Scope
+
+	// Per-apply — set by processApply / processMirrorIngest before
+	// dispatching to apply-child handlers; nil/empty otherwise.
+	Boundaries *raftcmdpb.LedgerBoundaries
+	LedgerInfo *commonpb.LedgerInfo
+
+	// Per-batch — owned by *RequestProcessor; passed by reference so
+	// handlers see the same cache across orders. NumscriptCache lives
+	// for the lifetime of the processor; CompiledTypes and AssetCache
+	// are cleared at each ProcessOrders call.
+	NumscriptCache *numscript.NumscriptCache
+	CompiledTypes  map[string][]accounttype.CompiledType
+	AssetCache     map[string]cachedAssetPrecision
+}
+
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
 // If meter is nil, a noop meter is used. numscriptCacheSize controls the
 // maximum number of parsed scripts kept in the LRU cache (0 = default 1024).
@@ -45,43 +78,86 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 	}, nil
 }
 
-// getCompiledTypes returns compiled account types for the given ledger,
-// using a per-batch cache to avoid redundant ParsePattern calls across orders.
-func (p *RequestProcessor) getCompiledTypes(ledger string, info *commonpb.LedgerInfo) []accounttype.CompiledType {
+// compiledTypesFor returns compiled account types for the given ledger,
+// using the per-batch cache to avoid redundant ParsePattern calls
+// across orders. The cache map is mutated in place. Free function (not
+// a method on RequestProcessor) so handlers reach for it via explicit
+// parameter — see the isolation goal of the processor refactor.
+func compiledTypesFor(cache map[string][]accounttype.CompiledType, ledger string, info *commonpb.LedgerInfo) []accounttype.CompiledType {
 	if info == nil || len(info.GetAccountTypes()) == 0 {
 		return nil
 	}
 
-	if cached, ok := p.compiledTypesCache[ledger]; ok {
+	if cached, ok := cache[ledger]; ok {
 		return cached
 	}
 
 	compiled := accounttype.CompileTypes(info.GetAccountTypes())
-	p.compiledTypesCache[ledger] = compiled
+	cache[ledger] = compiled
 
 	return compiled
 }
 
-// invalidateCompiledTypes removes the cached compiled types for a ledger,
-// forcing recompilation on the next access.
-func (p *RequestProcessor) invalidateCompiledTypes(ledger string) {
-	delete(p.compiledTypesCache, ledger)
+// invalidateCompiledTypes drops the cached entry for ledger so the next
+// compiledTypesFor recompiles. Free function for the same reason as
+// compiledTypesFor above.
+func invalidateCompiledTypes(cache map[string][]accounttype.CompiledType, ledger string) {
+	delete(cache, ledger)
 }
 
-// ProcessOrders processes a list of orders and returns the resulting logs.
-// scopeFactory is invoked once per order to build an independent gatedScope
-// whose coverage map is the union of:
+// OrdersResult bundles the per-order log slice and the derived values
+// applyProposal would otherwise rebuild by walking it again
+// (extractLogSequenceRange, the createdLogs filter). Accumulating these
+// during ProcessOrders' single pass eliminates the redundant post-orders
+// walks on the FSM hot path.
+type OrdersResult struct {
+	// Logs has one entry per input order. Today every entry is a
+	// CreatedLog: per-batch idempotency moved out of ProcessOrders into
+	// the FSM apply path (which short-circuits replays before calling
+	// the processor), so ReferenceSequence entries are no longer produced
+	// here. The slice type is kept for proto compatibility.
+	Logs []*raftcmdpb.CreatedLogOrReference
+
+	// CreatedLogs is the parallel slice of just the created logs in
+	// payload form. With idempotency out of ProcessOrders this is a
+	// trivial fold over Logs, but exposing it as a field lets
+	// applyProposal skip the rebuild walk.
+	CreatedLogs []*commonpb.Log
+
+	// MinLogSequence / MaxLogSequence are the min/max sequence among
+	// CreatedLogs. Both are 0 when CreatedLogs is empty.
+	MinLogSequence uint64
+	MaxLogSequence uint64
+}
+
+// ProcessOrders processes a list of orders and returns the resulting logs
+// plus the derived accumulators applyProposal needs (created-log filter,
+// min/max sequence range). scopeFactory is invoked once per order to
+// build an independent gatedScope whose coverage map is the union of:
 //   - the AttributePlans flagged by order.coverage_bits, and
 //   - the resolved Productions flagged by order.production_bits.
 //
 // Successive calls return independent scopes — the previous scope's
 // coverage map is never mutated. Per-order isolation is therefore
 // structural: order N's scope cannot read keys declared by order M.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory) ([]*raftcmdpb.CreatedLogOrReference, domain.Describable) {
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory ScopeFactory, sink SignalSink) (*OrdersResult, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
-	logs := make([]*raftcmdpb.CreatedLogOrReference, len(orders))
+	// Build the per-call Context once with the persistent caches. Per-order
+	// fields (Scope, Ledger) are reset by ProcessOrder before dispatch;
+	// per-apply fields (Boundaries, LedgerInfo) are populated by the apply
+	// orchestrators.
+	ctx := &Context{
+		NumscriptCache: p.numscriptCache,
+		CompiledTypes:  p.compiledTypesCache,
+		AssetCache:     p.assetCache,
+	}
+
+	result := &OrdersResult{
+		Logs: make([]*raftcmdpb.CreatedLogOrReference, len(orders)),
+	}
+	logs := result.Logs
 
 	for i, order := range orders {
 		orderScope, scopeErr := scopeFactory.NewScope(order.GetCoverageBits())
@@ -109,22 +185,44 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			tagger.BeginOrder(i)
 		}
 
-		payload, err := p.ProcessOrder(order, orderScope)
+		payload, err := p.processOrder(order, orderScope, ctx)
 		if err != nil {
 			return nil, err
 		}
 
+		nextSequenceID := orderScope.IncrementNextSequenceID()
+		log := &commonpb.Log{
+			Sequence: nextSequenceID,
+			Payload:  payload,
+		}
+
 		logs[i] = &raftcmdpb.CreatedLogOrReference{
 			Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
-				CreatedLog: &commonpb.Log{
-					Sequence: orderScope.IncrementNextSequenceID(),
-					Payload:  payload,
-				},
+				CreatedLog: log,
 			},
+		}
+
+		// Absorb the (order, log) pair into the sink in the same
+		// per-order pass that produced the log — no second walk over
+		// `logs`. Processors stay focused on (a) mutating state via
+		// Scope and (b) returning the log; the sink interprets the
+		// log payload and updates whatever cross-order accumulator
+		// the framework needs.
+		sink.Absorb(order, log)
+
+		// Accumulate the derivations applyProposal previously rebuilt
+		// by walking the log slice again (createdLogs filter +
+		// extractLogSequenceRange).
+		result.CreatedLogs = append(result.CreatedLogs, log)
+		if result.MinLogSequence == 0 || nextSequenceID < result.MinLogSequence {
+			result.MinLogSequence = nextSequenceID
+		}
+		if nextSequenceID > result.MaxLogSequence {
+			result.MaxLogSequence = nextSequenceID
 		}
 	}
 
-	return logs, nil
+	return result, nil
 }
 
 // HashProposal returns the idempotency hash of a proposal: a blake3 digest over
@@ -186,47 +284,71 @@ func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte
 // then the payload inside the wrapper. The wrapper-level split is the
 // structural invariant that lets the audit log attribute each entry to a
 // ledger via a single accessor.
+//
+// This entry point is kept for callers that don't already hold a Context
+// (tests, recovery flows). It allocates a transient Context wrapping the
+// processor's per-batch caches and forwards to processOrder.
 func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.Describable) {
+	ctx := &Context{
+		NumscriptCache: p.numscriptCache,
+		CompiledTypes:  p.compiledTypesCache,
+		AssetCache:     p.assetCache,
+	}
+
+	return p.processOrder(order, s, ctx)
+}
+
+// processOrder is the internal dispatcher: it stages per-order ctx.Scope
+// (and clears per-apply fields) before delegating to a wrapper-level
+// dispatcher. The ledger name is passed explicitly to ledger-scoped
+// handlers; system-scoped handlers don't receive it.
+func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	ctx.Scope = s
+	// Reset per-apply fields — only processApply/processMirrorIngest set them.
+	ctx.Boundaries = nil
+	ctx.LedgerInfo = nil
+
 	switch orderType := order.GetType().(type) {
 	case *raftcmdpb.Order_LedgerScoped:
-		return p.processLedgerScoped(orderType.LedgerScoped, s)
+		return processLedgerScoped(orderType.LedgerScoped, ctx)
 	case *raftcmdpb.Order_SystemScoped:
-		return p.processSystemScoped(orderType.SystemScoped, s)
+		return processSystemScoped(orderType.SystemScoped, ctx)
 	default:
 		return nil, &domain.ErrInvalidOrderType{TypeName: fmt.Sprintf("%T", order.GetType())}
 	}
 }
 
-// processLedgerScoped dispatches a ledger-scoped order payload, threading the
-// wrapper-level ledger name down to each processor (the sub-messages no
-// longer carry it themselves).
-func (p *RequestProcessor) processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+// processLedgerScoped dispatches a ledger-scoped order payload. It
+// extracts the wrapper-level ledger name once and passes it explicitly
+// to each handler — keeping ctx free of an "always present for half the
+// dispatch table" field.
+func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	ledger := ls.GetLedger()
 	switch payload := ls.GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_Apply:
-		return p.processApply(ledger, payload.Apply, s)
+		return processApply(ledger, payload.Apply, ctx)
 	case *raftcmdpb.LedgerScopedOrder_CreateLedger:
-		return p.processCreateLedger(ledger, payload.CreateLedger, s)
+		return processCreateLedger(ledger, payload.CreateLedger, ctx)
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedger:
-		return p.processDeleteLedger(ledger, s)
+		return processDeleteLedger(ledger, ctx)
 	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
-		return p.processMirrorIngest(ledger, payload.MirrorIngest, s)
+		return processMirrorIngest(ledger, payload.MirrorIngest, ctx)
 	case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
-		return p.processPromoteLedger(ledger, s)
+		return processPromoteLedger(ledger, ctx)
 	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
-		return p.processAddLedgerMetadata(ledger, payload.SaveLedgerMetadata, s)
+		return processAddLedgerMetadata(ledger, payload.SaveLedgerMetadata, ctx)
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
-		return p.processDeleteLedgerMetadata(ledger, payload.DeleteLedgerMetadata, s)
+		return processDeleteLedgerMetadata(ledger, payload.DeleteLedgerMetadata, ctx)
 	case *raftcmdpb.LedgerScopedOrder_SaveNumscript:
-		return p.processSaveNumscript(ledger, payload.SaveNumscript, s)
+		return processSaveNumscript(ledger, payload.SaveNumscript, ctx)
 	case *raftcmdpb.LedgerScopedOrder_DeleteNumscript:
-		return p.processDeleteNumscript(ledger, payload.DeleteNumscript, s)
+		return processDeleteNumscript(ledger, payload.DeleteNumscript, ctx)
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
-		return p.processCreatePreparedQuery(ledger, payload.CreatePreparedQuery, s)
+		return processCreatePreparedQuery(ledger, payload.CreatePreparedQuery, ctx)
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
-		return p.processUpdatePreparedQuery(ledger, payload.UpdatePreparedQuery, s)
+		return processUpdatePreparedQuery(ledger, payload.UpdatePreparedQuery, ctx)
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
-		return p.processDeletePreparedQuery(ledger, payload.DeletePreparedQuery, s)
+		return processDeletePreparedQuery(ledger, payload.DeletePreparedQuery, ctx)
 	default:
 		return nil, &domain.ErrInvalidOrderType{TypeName: fmt.Sprintf("%T", ls.GetPayload())}
 	}
@@ -234,40 +356,40 @@ func (p *RequestProcessor) processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, 
 
 // processSystemScoped dispatches a system-scoped order payload. These commands
 // affect cluster or global state and are never attributed to a single ledger.
-func (p *RequestProcessor) processSystemScoped(ss *raftcmdpb.SystemScopedOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+func processSystemScoped(ss *raftcmdpb.SystemScopedOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	switch payload := ss.GetPayload().(type) {
 	case *raftcmdpb.SystemScopedOrder_RegisterSigningKey:
-		return p.processRegisterSigningKey(payload.RegisterSigningKey, s)
+		return processRegisterSigningKey(payload.RegisterSigningKey, ctx)
 	case *raftcmdpb.SystemScopedOrder_RevokeSigningKey:
-		return p.processRevokeSigningKey(payload.RevokeSigningKey, s)
+		return processRevokeSigningKey(payload.RevokeSigningKey, ctx)
 	case *raftcmdpb.SystemScopedOrder_SetSigningConfig:
-		return p.processSetSigningConfig(payload.SetSigningConfig, s)
+		return processSetSigningConfig(payload.SetSigningConfig, ctx)
 	case *raftcmdpb.SystemScopedOrder_SetMaintenanceMode:
-		return p.processSetMaintenanceMode(payload.SetMaintenanceMode, s)
+		return processSetMaintenanceMode(payload.SetMaintenanceMode, ctx)
 	case *raftcmdpb.SystemScopedOrder_AddEventsSink:
-		return p.processAddEventsSink(payload.AddEventsSink, s)
+		return processAddEventsSink(payload.AddEventsSink, ctx)
 	case *raftcmdpb.SystemScopedOrder_RemoveEventsSink:
-		return p.processRemoveEventsSink(payload.RemoveEventsSink, s)
+		return processRemoveEventsSink(payload.RemoveEventsSink, ctx)
 	case *raftcmdpb.SystemScopedOrder_CloseChapter:
-		return p.processCloseChapter(payload.CloseChapter, s)
+		return processCloseChapter(payload.CloseChapter, ctx)
 	case *raftcmdpb.SystemScopedOrder_SealChapter:
-		return p.processSealChapter(payload.SealChapter, s)
+		return processSealChapter(payload.SealChapter, ctx)
 	case *raftcmdpb.SystemScopedOrder_ArchiveChapter:
-		return p.processArchiveChapter(payload.ArchiveChapter, s)
+		return processArchiveChapter(payload.ArchiveChapter, ctx)
 	case *raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter:
-		return p.processConfirmArchiveChapter(payload.ConfirmArchiveChapter, s)
+		return processConfirmArchiveChapter(payload.ConfirmArchiveChapter, ctx)
 	case *raftcmdpb.SystemScopedOrder_SetChapterSchedule:
-		return p.processSetChapterSchedule(payload.SetChapterSchedule, s)
+		return processSetChapterSchedule(payload.SetChapterSchedule, ctx)
 	case *raftcmdpb.SystemScopedOrder_DeleteChapterSchedule:
-		return p.processDeleteChapterSchedule(s)
+		return processDeleteChapterSchedule(ctx)
 	case *raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint:
-		return p.processCreateQueryCheckpoint(payload.CreateQueryCheckpoint, s)
+		return processCreateQueryCheckpoint(payload.CreateQueryCheckpoint, ctx)
 	case *raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint:
-		return p.processDeleteQueryCheckpoint(payload.DeleteQueryCheckpoint, s)
+		return processDeleteQueryCheckpoint(payload.DeleteQueryCheckpoint, ctx)
 	case *raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule:
-		return p.processSetQueryCheckpointSchedule(payload.SetQueryCheckpointSchedule, s)
+		return processSetQueryCheckpointSchedule(payload.SetQueryCheckpointSchedule, ctx)
 	case *raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule:
-		return p.processDeleteQueryCheckpointSchedule(s)
+		return processDeleteQueryCheckpointSchedule(ctx)
 	default:
 		return nil, &domain.ErrInvalidOrderType{TypeName: fmt.Sprintf("%T", ss.GetPayload())}
 	}

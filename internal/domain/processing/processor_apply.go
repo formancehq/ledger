@@ -9,7 +9,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, s Scope) (*commonpb.LogPayload, domain.Describable) {
+// processApply is the orchestrator for ledger-scoped apply variants. It
+// populates ctx.Boundaries and ctx.LedgerInfo before dispatching to apply-
+// child handlers so children receive everything through a single uniform
+// Context.
+func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+	s := ctx.Scope
+
 	// Check deletion status before boundaries: MarkLedgerForCleanup removes
 	// boundaries on delete, so loadBoundaries would surface ErrLedgerNotFound
 	// even though the ledger is just deleted.
@@ -36,11 +42,16 @@ func (p *RequestProcessor) processApply(ledger string, apply *raftcmdpb.LedgerAp
 	}
 
 	// Mutate() once at the boundary so sub-processors keep receiving
-	// *LedgerInfo. The clone cost is bounded (one CloneVT per apply).
+	// *LedgerInfo via the per-apply context. The clone cost is bounded
+	// (one CloneVT per apply).
 	var ledgerInfo *commonpb.LedgerInfo
 	if infoOk {
 		ledgerInfo = ledgerInfoReader.Mutate()
 	}
+
+	// Stage per-apply context fields for child handlers.
+	ctx.Boundaries = boundaries
+	ctx.LedgerInfo = ledgerInfo
 
 	var (
 		logPayload *commonpb.LedgerLogPayload
@@ -49,27 +60,27 @@ func (p *RequestProcessor) processApply(ledger string, apply *raftcmdpb.LedgerAp
 
 	switch applyData := apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-		logPayload, err = p.processAddMetadata(ledger, boundaries, applyData.AddMetadata, s, ledgerInfo)
+		logPayload, err = processAddMetadata(ledger, applyData.AddMetadata, ctx)
 	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-		logPayload, err = p.processDeleteMetadata(ledger, boundaries, applyData.DeleteMetadata, s)
+		logPayload, err = processDeleteMetadata(ledger, applyData.DeleteMetadata, ctx)
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-		logPayload, err = p.processCreateTransaction(ledger, boundaries, applyData.CreateTransaction, s, ledgerInfo)
+		logPayload, err = processCreateTransaction(ledger, applyData.CreateTransaction, ctx)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-		logPayload, err = p.processRevertTransaction(ledger, boundaries, applyData.RevertTransaction, s, ledgerInfo)
+		logPayload, err = processRevertTransaction(ledger, applyData.RevertTransaction, ctx)
 	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
-		logPayload, err = p.processSetMetadataFieldType(ledger, applyData.SetMetadataFieldType, s)
+		logPayload, err = processSetMetadataFieldType(ledger, applyData.SetMetadataFieldType, ctx)
 	case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
-		logPayload, err = p.processRemoveMetadataFieldType(ledger, applyData.RemoveMetadataFieldType, s)
+		logPayload, err = processRemoveMetadataFieldType(ledger, applyData.RemoveMetadataFieldType, ctx)
 	case *raftcmdpb.LedgerApplyOrder_CreateIndex:
-		logPayload, err = p.processCreateIndex(ledger, applyData.CreateIndex, s)
+		logPayload, err = processCreateIndex(ledger, applyData.CreateIndex, ctx)
 	case *raftcmdpb.LedgerApplyOrder_DropIndex:
-		logPayload, err = p.processDropIndex(ledger, applyData.DropIndex, s)
+		logPayload, err = processDropIndex(ledger, applyData.DropIndex, ctx)
 	case *raftcmdpb.LedgerApplyOrder_AddAccountType:
-		logPayload, err = p.processAddAccountType(ledger, applyData.AddAccountType, s)
+		logPayload, err = processAddAccountType(ledger, applyData.AddAccountType, ctx)
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
-		logPayload, err = p.processRemoveAccountType(ledger, applyData.RemoveAccountType, s)
+		logPayload, err = processRemoveAccountType(ledger, applyData.RemoveAccountType, ctx)
 	case *raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode:
-		logPayload, err = p.processUpdateDefaultEnforcementMode(ledger, applyData.UpdateDefaultEnforcementMode, s)
+		logPayload, err = processUpdateDefaultEnforcementMode(ledger, applyData.UpdateDefaultEnforcementMode, ctx)
 	default:
 		return nil, &domain.ErrInvalidApplyType{TypeName: fmt.Sprintf("%T", apply.GetData())}
 	}

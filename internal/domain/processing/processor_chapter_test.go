@@ -18,8 +18,6 @@ func TestProcessCloseChapter_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1700000000}
 	openChapter := &commonpb.Chapter{
@@ -46,7 +44,7 @@ func TestProcessCloseChapter_Success(t *testing.T) {
 		require.Equal(t, uint64(10), chapter.GetStartAuditSequence()) // nextAuditSeq
 	})
 
-	payload, err := processor.processCloseChapter(&raftcmdpb.CloseChapterOrder{}, mockStore)
+	payload, err := processCloseChapter(&raftcmdpb.CloseChapterOrder{}, &Context{Scope: mockStore})
 	require.NoError(t, err)
 	require.NotNil(t, payload)
 
@@ -65,12 +63,10 @@ func TestProcessCloseChapter_NoChapterOpen(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 
-	payload, err := processor.processCloseChapter(&raftcmdpb.CloseChapterOrder{}, mockStore)
+	payload, err := processCloseChapter(&raftcmdpb.CloseChapterOrder{}, &Context{Scope: mockStore})
 	require.ErrorIs(t, err, domain.ErrNoChapterOpen)
 	require.Nil(t, payload)
 }
@@ -82,8 +78,6 @@ func TestProcessCloseChapter_SucceedsWhileAnotherChapterIsClosing(t *testing.T) 
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1700000000}
 	openChapter := &commonpb.Chapter{
@@ -107,7 +101,7 @@ func TestProcessCloseChapter_SucceedsWhileAnotherChapterIsClosing(t *testing.T) 
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_OPEN, chapter.GetStatus())
 	})
 
-	payload, err := processor.processCloseChapter(&raftcmdpb.CloseChapterOrder{}, mockStore)
+	payload, err := processCloseChapter(&raftcmdpb.CloseChapterOrder{}, &Context{Scope: mockStore})
 	require.NoError(t, err)
 	require.NotNil(t, payload)
 
@@ -124,8 +118,6 @@ func TestProcessSealChapter_SealsOneWhileOthersRemain(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	// Two chapters are closing; we seal the first one
 	targetChapter := &commonpb.Chapter{
@@ -144,7 +136,7 @@ func TestProcessSealChapter_SealsOneWhileOthersRemain(t *testing.T) {
 		StateHash:   []byte("state-hash-1"),
 	}
 
-	payload, err := processor.processSealChapter(order, mockStore)
+	payload, err := processSealChapter(order, &Context{Scope: mockStore})
 	require.NoError(t, err)
 	require.NotNil(t, payload)
 
@@ -161,8 +153,6 @@ func TestProcessSealChapter_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	closingChapter := &commonpb.Chapter{
 		Id:            1,
@@ -179,7 +169,7 @@ func TestProcessSealChapter_Success(t *testing.T) {
 		SealingHash: []byte("seal-hash"),
 	}
 
-	payload, err := processor.processSealChapter(order, mockStore)
+	payload, err := processSealChapter(order, &Context{Scope: mockStore})
 	require.NoError(t, err)
 	require.NotNil(t, payload)
 
@@ -197,8 +187,6 @@ func TestProcessSealChapter_ChapterNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	// No closing chapter with this ID
 	mockStore.EXPECT().GetClosingChapterByID(uint64(99)).Return(nil, false)
@@ -208,7 +196,7 @@ func TestProcessSealChapter_ChapterNotFound(t *testing.T) {
 		SealingHash: []byte("seal-hash"),
 	}
 
-	payload, err := processor.processSealChapter(order, mockStore)
+	payload, err := processSealChapter(order, &Context{Scope: mockStore})
 	require.Error(t, err)
 	require.Nil(t, payload)
 
@@ -224,8 +212,6 @@ func TestProcessSealChapter_ChapterNotClosing(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	// The closing chapter exists but has wrong ID — use GetClosingChapterByID which returns not found
 	mockStore.EXPECT().GetClosingChapterByID(uint64(1)).Return(nil, false)
@@ -235,7 +221,7 @@ func TestProcessSealChapter_ChapterNotClosing(t *testing.T) {
 		SealingHash: []byte("seal-hash"),
 	}
 
-	payload, err := processor.processSealChapter(order, mockStore)
+	payload, err := processSealChapter(order, &Context{Scope: mockStore})
 	require.Error(t, err)
 	require.Nil(t, payload)
 
@@ -251,8 +237,6 @@ func TestProcessArchiveChapter_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	closedChapter := &commonpb.Chapter{
 		Id:                 1,
@@ -268,9 +252,8 @@ func TestProcessArchiveChapter_Success(t *testing.T) {
 	mockStore.EXPECT().UpdateChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVING, chapter.GetStatus())
 	})
-	mockStore.EXPECT().SetPendingArchive(uint64(1), uint64(1), uint64(42), uint64(3), uint64(17))
 
-	payload, err := processor.processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: 1}, mockStore)
+	payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: 1}, &Context{Scope: mockStore})
 	require.NoError(t, err)
 	require.NotNil(t, payload)
 
@@ -287,12 +270,10 @@ func TestProcessArchiveChapter_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	mockStore.EXPECT().GetChapterByID(uint64(99)).Return(nil, false)
 
-	payload, err := processor.processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: 99}, mockStore)
+	payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: 99}, &Context{Scope: mockStore})
 	require.Error(t, err)
 	require.Nil(t, payload)
 
@@ -308,8 +289,6 @@ func TestProcessArchiveChapter_NotClosed(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	openChapter := &commonpb.Chapter{
 		Id:     1,
@@ -318,7 +297,7 @@ func TestProcessArchiveChapter_NotClosed(t *testing.T) {
 
 	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(openChapter.AsReader(), true)
 
-	payload, err := processor.processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: 1}, mockStore)
+	payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: 1}, &Context{Scope: mockStore})
 	require.Error(t, err)
 	require.Nil(t, payload)
 
@@ -334,8 +313,6 @@ func TestProcessConfirmArchiveChapter_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	archivingChapter := &commonpb.Chapter{
 		Id:            1,
@@ -349,9 +326,8 @@ func TestProcessConfirmArchiveChapter_Success(t *testing.T) {
 	mockStore.EXPECT().UpdateChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVED, chapter.GetStatus())
 	})
-	mockStore.EXPECT().SetPurgeRange(uint64(1), uint64(1), uint64(42), gomock.Any(), gomock.Any())
 
-	payload, err := processor.processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 1}, mockStore)
+	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 1}, &Context{Scope: mockStore})
 	require.NoError(t, err)
 	require.NotNil(t, payload)
 
@@ -368,12 +344,10 @@ func TestProcessConfirmArchiveChapter_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	mockStore.EXPECT().GetChapterByID(uint64(99)).Return(nil, false)
 
-	payload, err := processor.processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 99}, mockStore)
+	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 99}, &Context{Scope: mockStore})
 	require.Error(t, err)
 	require.Nil(t, payload)
 
@@ -389,8 +363,6 @@ func TestProcessConfirmArchiveChapter_NotArchiving(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
 
 	archivedChapter := &commonpb.Chapter{
 		Id:     1,
@@ -399,7 +371,7 @@ func TestProcessConfirmArchiveChapter_NotArchiving(t *testing.T) {
 
 	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(archivedChapter.AsReader(), true)
 
-	payload, err := processor.processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 1}, mockStore)
+	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 1}, &Context{Scope: mockStore})
 	require.Error(t, err)
 	require.Nil(t, payload)
 

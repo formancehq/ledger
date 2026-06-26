@@ -20,8 +20,6 @@ func TestProcessSetQueryCheckpointSchedule_ValidCron(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	mockStore.EXPECT().SetQueryCheckpointSchedule("0 0 1 * *")
-
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{
 			SystemScoped: &raftcmdpb.SystemScopedOrder{
@@ -83,8 +81,6 @@ func TestProcessDeleteQueryCheckpointSchedule(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
-
-	mockStore.EXPECT().DeleteQueryCheckpointSchedule()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_SystemScoped{

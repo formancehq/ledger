@@ -126,17 +126,11 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		modifiedTxStates: modifiedTxStates,
 		reverted:         make(map[string]bool),
 	}
-	resp, procErr := e.processor.ProcessOrders(proposal.GetOrders(), constantCheckScopeFactory{scope: store})
+	resp, procErr := e.processor.ProcessOrders(proposal.GetOrders(), constantCheckScopeFactory{scope: store}, &emitterImpl{engine: e})
 	require.NoError(e.t, procErr)
 
-	// Collect actual logs from the response
-	var logs []*commonpb.Log
-
-	for _, logOrRef := range resp {
-		if t, ok := logOrRef.GetType().(*raftcmdpb.CreatedLogOrReference_CreatedLog); ok {
-			logs = append(logs, t.CreatedLog)
-		}
-	}
+	// CreatedLogs is pre-filtered by ProcessOrders.
+	logs := resp.CreatedLogs
 
 	// Write logs and attributes to the store (mimicking WriteSet.Merge)
 	batch := e.store.OpenWriteSession()
@@ -146,7 +140,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	err := state.AppendLogs(batch, logs)
 	require.NoError(e.t, err)
 
-	e.appendAuditEntry(batch, proposal, resp)
+	e.appendAuditEntry(batch, proposal, resp.Logs)
 
 	// Write only modified volume attributes.
 	// Values are always stored as Input/Output.
@@ -489,11 +483,7 @@ func (s *scopeImpl) RemoveSigningKey(_ string)                                 {
 func (s *scopeImpl) GetSigningKeyChildren(_ string) []string                   { return nil }
 func (s *scopeImpl) SetRequireSignatures(_ bool)                               {}
 func (s *scopeImpl) SetMaintenanceMode(_ bool)                                 {}
-func (s *scopeImpl) SetChapterSchedule(_ string)                               {}
-func (s *scopeImpl) DeleteChapterSchedule()                                    {}
 func (s *scopeImpl) GetSinkConfig(_ string) (commonpb.SinkConfigReader, error) { return nil, nil }
-func (s *scopeImpl) AddSinkConfig(_ *commonpb.SinkConfig)                      {}
-func (s *scopeImpl) RemoveSinkConfig(_ string)                                 {}
 
 func (s *scopeImpl) GetLastLogHash() []byte {
 	return s.engine.lastLogHash
@@ -601,10 +591,6 @@ func (s *scopeImpl) GetNextAuditSequenceID() uint64 { return 0 }
 
 func (s *scopeImpl) UpdateChapter(_ *commonpb.Chapter) {}
 
-func (s *scopeImpl) SetPurgeRange(_, _, _, _, _ uint64) {}
-
-func (s *scopeImpl) SetPendingArchive(_, _, _, _, _ uint64) {}
-
 func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (commonpb.PreparedQueryReader, error) {
 	return nil, nil
 }
@@ -620,11 +606,6 @@ func (s *scopeImpl) GetNextQueryCheckpointID() uint64                      { ret
 func (s *scopeImpl) IncrementNextQueryCheckpointID() uint64                { return 1 }
 func (s *scopeImpl) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
 func (s *scopeImpl) DeleteQueryCheckpoint(_ uint64)                        {}
-func (s *scopeImpl) SetQueryCheckpointSchedule(_ string)                   {}
-func (s *scopeImpl) DeleteQueryCheckpointSchedule()                        {}
-func (s *scopeImpl) MarkLedgerForCleanup(ledger string) {
-	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
-}
 func (s *scopeImpl) ResolveNumscriptContent(_ string, _, _ string) (commonpb.NumscriptInfoReader, error) {
 	return nil, nil
 }
@@ -637,6 +618,19 @@ func (s *scopeImpl) GetIndex(_ domain.IndexKey) (commonpb.IndexReader, error) {
 }
 func (s *scopeImpl) PutIndex(_ domain.IndexKey, _ *commonpb.Index) {}
 func (s *scopeImpl) DeleteIndex(_ domain.IndexKey)                 {}
+
+// emitterImpl satisfies processing.SignalSink for replay tests. Only
+// the DeleteLedger payload has observable state
+// (engine.pendingLedgerDeletions); every other log payload is a no-op
+// because the checker reconstructs persisted projections from Pebble,
+// not from in-memory signal accumulation.
+type emitterImpl struct{ engine *testEngine }
+
+func (e *emitterImpl) Absorb(_ *raftcmdpb.Order, log *commonpb.Log) {
+	if p, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
+		e.engine.pendingLedgerDeletions = append(e.engine.pendingLedgerDeletions, p.DeleteLedger.GetName())
+	}
+}
 
 // Helper functions for building orders
 
