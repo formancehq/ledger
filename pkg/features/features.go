@@ -2,11 +2,16 @@ package features
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 )
+
+// indexedMetadataKeyRe matches valid key names for INDEXED_METADATA_KEYS.
+// Keys are embedded as SQL literals, so only alphanumeric + underscore are allowed.
+var indexedMetadataKeyRe = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 const (
 	// FeatureMovesHistory is used to define if the ledger has to save funds movements history.
@@ -62,9 +67,17 @@ func ValidateFeatureWithValue(feature, value string) error {
 	if !ok {
 		return fmt.Errorf("feature %q not exists", feature)
 	}
-	// nil/empty set means any value is accepted (open-ended feature, e.g. INDEXED_METADATA_KEYS).
+	// nil/empty set means the value is open-ended; apply feature-specific validation.
 	if len(possibleConfigurations) > 0 && !slices.Contains(possibleConfigurations, value) {
 		return fmt.Errorf("configuration %s it not possible for feature %s", value, feature)
+	}
+
+	if feature == FeatureIndexedMetadataKeys && value != "" {
+		for _, key := range strings.Split(value, ",") {
+			if !indexedMetadataKeyRe.MatchString(key) {
+				return fmt.Errorf("INDEXED_METADATA_KEYS: key %q is invalid (only [a-zA-Z0-9_] allowed)", key)
+			}
+		}
 	}
 
 	return nil

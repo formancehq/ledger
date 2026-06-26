@@ -121,6 +121,13 @@ type Store struct {
 	// inject artificial latency (e.g. SELECT pg_sleep(0.005)) so that
 	// statement_timeout fires deterministically regardless of query execution speed.
 	testHookBeforePaginateSelect func(context.Context, bun.Tx) error
+
+	// indexedMetadataKeys is the subset of INDEXED_METADATA_KEYS that have been
+	// confirmed to have a matching functional index in pg_indexes. Set by
+	// ResolveIndexedMetadataKeys; nil means unresolved (falls back to the full
+	// feature-flag list, which is the behaviour for direct test store construction).
+	indexedMetadataKeys []string
+	indexedKeysResolved bool
 }
 
 func (store *Store) Volumes() common.PaginatedResource[
@@ -418,6 +425,59 @@ func (store *Store) Rollback(ctx context.Context) error {
 
 func (store *Store) GetLedger() ledger.Ledger {
 	return store.ledger
+}
+
+// IndexedMetadataKeys returns the set of metadata keys for which the query
+// builder should use the functional-index rewrite (metadata ->> 'key' = ?).
+// After ResolveIndexedMetadataKeys has been called this is the pg_indexes-
+// confirmed subset; before that call it falls back to the raw feature flag
+// list (used in direct test construction where no driver is involved).
+func (store *Store) IndexedMetadataKeys() []string {
+	if store.indexedKeysResolved {
+		return store.indexedMetadataKeys
+	}
+	return store.ledger.GetIndexedMetadataKeys()
+}
+
+// ResolveIndexedMetadataKeys validates each key listed in the ledger's
+// INDEXED_METADATA_KEYS feature against pg_indexes and retains only those that
+// have a matching functional index. Keys without an index fall back silently to
+// the @> containment predicate; a warning is logged for each missing index.
+// Call this once after the store is created (the driver does this automatically).
+func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
+	store.indexedKeysResolved = true
+	requested := store.ledger.GetIndexedMetadataKeys()
+	if len(requested) == 0 {
+		return nil
+	}
+
+	schema := store.ledger.Bucket
+	confirmed := make([]string, 0, len(requested))
+	for _, key := range requested {
+		var count int
+		// Check pg_indexes for an index whose definition contains the functional
+		// expression for this key. Key names are validated as [a-zA-Z0-9_]+.
+		err := store.db.NewSelect().
+			TableExpr("pg_indexes").
+			ColumnExpr("COUNT(*)").
+			Where("schemaname = ?", schema).
+			Where("tablename = ?", "transactions").
+			Where("indexdef LIKE ?", "%metadata ->> '"+key+"'%").
+			Scan(ctx, &count)
+		if err != nil {
+			return fmt.Errorf("checking pg_indexes for key %q: %w", key, err)
+		}
+		if count > 0 {
+			confirmed = append(confirmed, key)
+		} else {
+			logging.FromContext(ctx).WithFields(map[string]any{
+				"key":    key,
+				"ledger": store.ledger.Name,
+			}).Infof("INDEXED_METADATA_KEYS: no functional index found for key — rewrite disabled, falling back to @>")
+		}
+	}
+	store.indexedMetadataKeys = confirmed
+	return nil
 }
 
 func (store *Store) GetDB() bun.IDB {

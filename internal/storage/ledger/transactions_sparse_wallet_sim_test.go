@@ -160,9 +160,10 @@ func rebuildGINIndex(t *testing.T, store *ledgerstore.Store) {
 	t.Logf("rebuilt GIN index with statistics-boosted ANALYZE on %q", schema)
 }
 
-// createFunctionalIndex creates a partial functional index scoped to the test
-// ledger name, making the test self-contained without relying on any pre-existing
-// migration.
+// createFunctionalIndex creates a composite partial functional index scoped to
+// the test ledger name.  The composite form ((metadata->>'source_wallet_id'), id DESC)
+// covers both the equality filter and the ORDER BY id DESC in a single index scan,
+// eliminating the sort step for sparse-wallet queries.
 func createFunctionalIndex(t *testing.T, store *ledgerstore.Store) {
 	t.Helper()
 	ctx := logging.TestingContext()
@@ -174,11 +175,11 @@ func createFunctionalIndex(t *testing.T, store *ledgerstore.Store) {
 	// ledgerName is alphanumeric/dash/underscore, safe to embed as a literal.
 	_, err := store.GetDB().ExecContext(ctx, fmt.Sprintf(`
 		CREATE INDEX IF NOT EXISTS %q
-		ON %q.transactions ((metadata->>'source_wallet_id'))
+		ON %q.transactions ((metadata->>'source_wallet_id'), id DESC)
 		WHERE ledger = '%s'
 	`, idxName, schema, ledgerName))
 	require.NoError(t, err)
-	t.Logf("created functional index %q for ledger %q", idxName, ledgerName)
+	t.Logf("created composite functional index %q for ledger %q", idxName, ledgerName)
 }
 
 // explainAnalyze runs EXPLAIN (FORMAT TEXT) on the paginate query and returns
