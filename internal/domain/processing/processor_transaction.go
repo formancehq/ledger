@@ -317,22 +317,43 @@ func applyDefaultMetadataToNewAccounts(
 	compiled []accounttype.CompiledType,
 	accountMetadata map[string]*commonpb.MetadataMap,
 ) (map[string]*commonpb.MetadataMap, domain.Describable) {
-	seen := make(map[string]struct{}, len(postings)*2)
+	seen := make(map[string]struct{}, len(postings)*2+len(accountMetadata))
+
+	mark := func(account string) domain.Describable {
+		if _, dup := seen[account]; dup {
+			return nil
+		}
+
+		seen[account] = struct{}{}
+
+		defaults, err := markNewAccountAndMatchDefaults(s, ledgerName, account, compiled)
+		if err != nil {
+			return err
+		}
+
+		accountMetadata = mergeAccountDefaults(accountMetadata, account, defaults)
+
+		return nil
+	}
 
 	for _, posting := range postings {
 		for _, account := range [2]string{posting.GetSource(), posting.GetDestination()} {
-			if _, dup := seen[account]; dup {
-				continue
-			}
-
-			seen[account] = struct{}{}
-
-			defaults, err := markNewAccountAndMatchDefaults(s, ledgerName, account, compiled)
-			if err != nil {
+			if err := mark(account); err != nil {
 				return accountMetadata, err
 			}
+		}
+	}
 
-			accountMetadata = mergeAccountDefaults(accountMetadata, account, defaults)
+	// Metadata-only accounts: an account can appear solely in accountMetadata
+	// (e.g. a Numscript set_account_meta targeting an account with no posting).
+	// It is still a first-time account creation, so mark it and merge its
+	// defaults — otherwise a later posting would see ErrNotFound and re-apply
+	// defaults late. Admission declares the matching account need so this read
+	// is coverage-gated (invariants #6/#9). Iteration order is irrelevant: the
+	// set of marked accounts and merged keys is order-independent.
+	for account := range accountMetadata {
+		if err := mark(account); err != nil {
+			return accountMetadata, err
 		}
 	}
 

@@ -947,6 +947,13 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 						Key:        key,
 					}] = struct{}{}
 				}
+
+				// EN-1276: a metadata-only account (present in accountMetadata
+				// but in no posting) is still an account-creation path — the
+				// apply path reads/writes its per-account existence marker — so
+				// declare the account need or that read is a coverage-gate miss
+				// (invariants #6/#9).
+				addAccountNeed(p, ledgerName, account)
 			}
 
 			// Volumes for script-based orders are discovered in a separate
@@ -1214,6 +1221,12 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			for key := range discovered.WrittenMetadata {
 				p.Metadata[key] = struct{}{}
 				orderNeeds.Metadata[key] = struct{}{}
+
+				// EN-1276: set_account_meta can target an account with no
+				// posting; its per-account existence marker is read/written at
+				// apply, so declare the account need too (invariants #6/#9).
+				addAccountNeed(p, key.LedgerName, key.Account)
+				addAccountNeed(orderNeeds, key.LedgerName, key.Account)
 			}
 		}
 

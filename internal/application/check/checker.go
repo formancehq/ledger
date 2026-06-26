@@ -155,6 +155,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// State tracked during log replay
 	var (
 		knownLedgers = make(map[string]struct{}) // set of ledger names
+		// mirrorLedgers tracks each ledger's mode AT THE CURRENT replay point
+		// (EN-1276). Mirror apply handlers write no per-account existence
+		// marker, so replay must not record one for a mirror-applied log or the
+		// reverse check in compareAccounts false-positives. Per-log, not
+		// per-ledger: flipped to false when a PromoteLedger log is replayed.
+		mirrorLedgers = make(map[string]bool)
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
 		ledgerKnownTxIDs    = make(map[string]*bitset.Bitset)
 		ledgerRevertedTxIDs = make(map[string]*bitset.Bitset)
@@ -246,6 +252,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		for _, info := range ledgers {
 			if info.GetDeletedAt() == nil {
 				knownLedgers[info.GetName()] = struct{}{}
+				// The CreateLedger/PromoteLedger logs were purged with the
+				// archived chapters, so seed mirror mode from the live
+				// LedgerInfo (which reflects the current mode after any
+				// promotion). Logs replayed in the current window are applied
+				// under this mode.
+				mirrorLedgers[info.GetName()] = info.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR
 
 				if types := info.GetAccountTypes(); len(types) > 0 {
 					rawLedgerTypes[info.GetName()] = types
@@ -346,11 +358,20 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			case *commonpb.LogPayload_CreateLedger:
 				if payload.CreateLedger != nil {
 					knownLedgers[payload.CreateLedger.GetName()] = struct{}{}
+					mirrorLedgers[payload.CreateLedger.GetName()] =
+						payload.CreateLedger.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR
+				}
+			case *commonpb.LogPayload_PromoteLedger:
+				if payload.PromoteLedger != nil {
+					// A promoted mirror becomes normal: from this log onward the
+					// FSM writes per-account markers, so replay must record them.
+					mirrorLedgers[payload.PromoteLedger.GetName()] = false
 				}
 			case *commonpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
+					delete(mirrorLedgers, name)
 					deletedInReplay[name] = struct{}{}
 
 					// DeleteLedger purges every SubAttrIndex entry scoped to
@@ -378,7 +399,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetDate(), payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						if err := domainreplay.ReplayLedgerLog(ledgerName, mirrorLedgers[ledgerName], seq, payload.Apply.GetLog().GetDate(), payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 

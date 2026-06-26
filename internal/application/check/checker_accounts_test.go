@@ -346,3 +346,115 @@ func addAccountTypeWithDefaultMetadataOrder(ledger, name, pattern string, defaul
 		},
 	}
 }
+
+// createMirrorLedgerOrder builds a CreateLedger order in MIRROR mode.
+func createMirrorLedgerOrder(name string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: name,
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+					},
+				},
+			},
+		},
+	}
+}
+
+// mirrorIngestCreatedTxOrder builds a MirrorIngest order carrying a v2
+// CreatedTransaction, the path a mirror ledger ingests decided logs through.
+func mirrorIngestCreatedTxOrder(ledger string, v2LogID, txID uint64, postings ...*commonpb.Posting) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: v2LogID,
+						Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+							CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+								TransactionId: txID,
+								Postings:      postings,
+								Timestamp:     &commonpb.Timestamp{Data: 1700000000},
+							},
+						},
+					}},
+				},
+			},
+		},
+	}
+}
+
+// TestCompareAccounts_MirrorLedger_NoReverseFalsePositive is the regression test
+// for PR #564 finding [2]. Mirror apply handlers (processMirrorCreatedTransaction)
+// deliberately write NO per-account existence marker — mirror ledgers ingest
+// already-decided logs and never derive defaults locally — so replay/rebuild
+// must not record a marker touch for a mirror-applied log either. Before the fix
+// the reverse check (every replay-touched account must have a live marker) fired
+// a spurious ACCOUNT_MISMATCH for every account on a healthy mirror ledger,
+// because replay recorded touches the live FSM never marked.
+func TestCompareAccounts_MirrorLedger_NoReverseFalsePositive(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createMirrorLedgerOrder("mirror"))
+	engine.processAndCommit(mirrorIngestCreatedTxOrder("mirror", 1, 42,
+		newPosting("world", "users:001", "USD", 500),
+	))
+
+	errs := collectAccountMismatchErrors(t, engine)
+	require.Empty(t, errs, "mirror-ingested accounts carry no live marker by design; replay must not record a touch for them")
+}
+
+// TestCompareAccounts_EndToEnd_MetadataOnlyAccountInTransaction is the
+// regression test for PR #564 finding [1]. An account that appears only in a
+// CreateTransaction's accountMetadata (no posting — reachable via Numscript
+// set_account_meta) is still first-created at apply: the FSM must mark it and
+// merge its type defaults. Before the fix the apply path iterated postings only,
+// so the metadata-only account got no marker and no defaults, and replay never
+// recorded it — leaving a later posting to re-apply defaults late. This verifies
+// the marker is written, the type default is merged (without clobbering the
+// explicit value), and the checker stays clean (replay records the touch).
+func TestCompareAccounts_EndToEnd_MetadataOnlyAccountInTransaction(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("payments"))
+	engine.processAndCommit(addAccountTypeWithDefaultMetadataOrder(
+		"payments", "vendor", "vendors:{id}",
+		map[string]string{"kind": "supplier"},
+	))
+
+	// Posting touches vendors:paid; accountMetadata targets vendors:acme, which
+	// appears in NO posting. Both match the default-bearing vendor type (the
+	// ledger enforces that every non-world account matches a type).
+	engine.processAndCommit(createTransactionWithMetadataOrder("payments", true,
+		nil,
+		map[string]*commonpb.MetadataMap{
+			"vendors:acme": {Values: map[string]*commonpb.MetadataValue{
+				"note": commonpb.NewStringValue("first"),
+			}},
+		},
+		newPosting("world", "vendors:paid", "USD", 100),
+	))
+
+	// The metadata-only account must have been marked at apply.
+	_, ok := engine.accounts[string(domain.AccountKey{LedgerName: "payments", Account: "vendors:acme"}.Bytes())]
+	require.True(t, ok, "metadata-only account vendors:acme must be marked at apply (finding [1])")
+
+	// Its type default must have merged, without clobbering the explicit note.
+	defKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "payments", Account: "vendors:acme"},
+		Key:        "kind",
+	}
+	def, ok := engine.metadata[string(defKey.Bytes())]
+	require.True(t, ok, "default metadata 'kind' must be applied to the metadata-only account")
+	require.Equal(t, "supplier", def.GetStringValue())
+
+	errs := collectAccountMismatchErrors(t, engine)
+	require.Empty(t, errs, "metadata-only account is marked at apply and recorded by replay; checker must be clean")
+}
