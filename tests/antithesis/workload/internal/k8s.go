@@ -64,8 +64,27 @@ func NewKubeClientset() (kubernetes.Interface, error) {
 }
 
 // LedgerServiceName is the LedgerService CR name used in the Antithesis k8s
-// manifests. Drives the StatefulSet and pod naming (ledger-0, ledger-1, ...).
+// manifests (tests/antithesis/k8s/ledgerservice.yaml). It is also the value of
+// the app.kubernetes.io/instance label the operator stamps on owned resources.
+//
+// The operator-created StatefulSet, pods, and other resources are NOT named
+// after the CR directly — the operator prefixes them with "ledger-" (see
+// misc/operator/internal/controller/names.go). Use LedgerStatefulSetName /
+// LedgerPodName when addressing those resources by name.
 const LedgerServiceName = "ledger"
+
+// resourcePrefix mirrors misc/operator/internal/controller/names.go: the
+// operator prepends this string to every Kubernetes resource it creates so
+// they cannot collide with same-named resources from other products in the
+// same namespace. Test helpers that look up operator-created resources by
+// name must apply the same prefix.
+const resourcePrefix = "ledger-"
+
+// LedgerStatefulSetName returns the StatefulSet name the operator creates for
+// the LedgerService CR. It is also the prefix every pod and PVC name shares.
+func LedgerStatefulSetName() string {
+	return resourcePrefix + LedgerServiceName
+}
 
 // LedgerServiceNamespace returns the namespace to use, from POD_NAMESPACE env or "default".
 func LedgerServiceNamespace() string {
@@ -194,15 +213,17 @@ func nestedField(obj map[string]any, fields ...string) (any, bool, error) {
 	return current, true, nil
 }
 
-// LedgerPodName returns the StatefulSet pod name for the given ordinal.
+// LedgerPodName returns the StatefulSet pod name for the given ordinal —
+// e.g. ordinal 0 → "ledger-ledger-0". Matches the naming the operator emits
+// (StatefulSet name + "-" + ordinal).
 func LedgerPodName(ordinal int) string {
-	return fmt.Sprintf("%s-%d", LedgerServiceName, ordinal)
+	return fmt.Sprintf("%s-%d", LedgerStatefulSetName(), ordinal)
 }
 
-// PodOrdinal extracts the ordinal from a pod name (e.g. "ledger-2" -> 2).
-// Returns -1 if the name does not match.
+// PodOrdinal extracts the ordinal from a pod name (e.g. "ledger-ledger-2" -> 2).
+// Returns -1 if the name does not match the StatefulSet prefix.
 func PodOrdinal(podName string) int {
-	prefix := LedgerServiceName + "-"
+	prefix := LedgerStatefulSetName() + "-"
 	if !strings.HasPrefix(podName, prefix) {
 		return -1
 	}
@@ -289,8 +310,16 @@ func WaitForPodReady(ctx context.Context, clientset kubernetes.Interface, name s
 
 // WaitForStatefulSetReady polls until the StatefulSet reports the expected
 // ready replica count.
+//
+// A NotFound on the first poll means the caller passed a wrong name — return
+// immediately so a regression surfaces in seconds instead of after the
+// configured timeout (the original silent retry hid an 8-minute hang in
+// EN-1319 when the operator-created StatefulSet name diverged from the CR
+// name). Transient API errors and post-creation NotFound (the STS was
+// deleted while we wait) keep retrying until the deadline.
 func WaitForStatefulSetReady(ctx context.Context, clientset kubernetes.Interface, name string, expected int32, timeout time.Duration) bool {
 	deadline := time.After(timeout)
+	seen := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -301,8 +330,16 @@ func WaitForStatefulSetReady(ctx context.Context, clientset kubernetes.Interface
 		}
 		sts, err := clientset.AppsV1().StatefulSets(LedgerServiceNamespace()).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
+			if apierrors.IsNotFound(err) && !seen {
+				log.Printf("WaitForStatefulSetReady: StatefulSet %q not found in namespace %q — wrong name?",
+					name, LedgerServiceNamespace())
+
+				return false
+			}
+
 			continue
 		}
+		seen = true
 		if sts.Status.ReadyReplicas == expected && sts.Status.CurrentRevision == sts.Status.UpdateRevision {
 			return true
 		}

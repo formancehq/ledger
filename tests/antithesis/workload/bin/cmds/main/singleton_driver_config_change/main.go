@@ -135,7 +135,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		log.Printf("config-change: cannot read current replicas: %s", err)
 		return
 	}
-	ready := internal.WaitForStatefulSetReady(ctx, clientset, internal.LedgerServiceName, int32(currentReplicas), ccStsReadyWait)
+	ready := internal.WaitForStatefulSetReady(ctx, clientset, internal.LedgerStatefulSetName(), int32(currentReplicas), ccStsReadyWait)
 	assert.Sometimes(ready, "StatefulSet should reach Ready after a config patch", details)
 	if !ready {
 		return
