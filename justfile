@@ -43,6 +43,11 @@ all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"
 # `formancehq/ledger` published image.
 image_repository := env_var_or_default("IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger")
 
+# Operator Docker image repository (registry + name). Override via env var
+# to push to a different GHCR location. Default targets the canonical
+# `formancehq/ledger-operator` published image.
+operator_image_repository := env_var_or_default("OPERATOR_IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger-operator")
+
 # Build the server application (light: no optional deps)
 build:
     go build -o ./build/ledger-server .
@@ -362,7 +367,7 @@ operator-pre-commit: operator-generate
 operator-docker-build tag='':
     #!/bin/bash
     set -euo pipefail
-    image=ghcr.io/formancehq/ledger-operator
+    image='{{ operator_image_repository }}'
     if [ -n "{{ tag }}" ]; then
         docker buildx build -t "${image}:{{ tag }}" -t "${image}:latest" \
             --platform linux/amd64,linux/arm64 --push misc/operator
