@@ -178,7 +178,11 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			Dsn: dsn,
 		}
 
-		if iamRegion, _ := cmd.Flags().GetString("mirror-aws-iam-region"); iamRegion != "" {
+		if cmd.Flags().Changed("mirror-aws-iam-region") {
+			iamRegion, _ := cmd.Flags().GetString("mirror-aws-iam-region")
+			if iamRegion == "" {
+				return 0, nil, errors.New("--mirror-aws-iam-region must be a non-empty region when set (got empty value)")
+			}
 			pgCfg.AwsIamAuth = &commonpb.PostgresAwsIamAuth{
 				Region: iamRegion,
 			}
