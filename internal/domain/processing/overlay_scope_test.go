@@ -31,7 +31,7 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 
 	got, err := overlay.GetLedger("L")
 	require.NoError(t, err)
-	require.Same(t, info, got)
+	require.Equal(t, "L", got.GetName())
 
 	// Boundaries
 	b := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7}
@@ -61,7 +61,7 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 
 	mgot, err := overlay.GetAccountMetadata(mk)
 	require.NoError(t, err)
-	require.Same(t, mv, mgot)
+	require.Equal(t, "v1", mgot.Mutate().GetStringValue())
 
 	// Account metadata: Delete then Get -> ErrNotFound.
 	overlay.DeleteAccountMetadata(mk)
@@ -75,7 +75,7 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 
 	lmgot, err := overlay.GetLedgerMetadata(lmk)
 	require.NoError(t, err)
-	require.Same(t, mv, lmgot)
+	require.Equal(t, "v1", lmgot.Mutate().GetStringValue())
 
 	overlay.DeleteLedgerMetadata(lmk)
 
@@ -92,12 +92,12 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 
 	// Idempotency
 	ik := domain.IdempotencyKey{Key: "idem"}
-	idVal := &commonpb.IdempotencyKeyValue{}
+	idVal := &commonpb.IdempotencyKeyValue{Hash: []byte{0xab}}
 	overlay.PutIdempotencyKey(ik, idVal)
 
 	idGot, err := overlay.GetIdempotencyKey(ik)
 	require.NoError(t, err)
-	require.Same(t, idVal, idGot)
+	require.Equal(t, []byte{0xab}, idGot.GetHash())
 
 	// Transaction reference
 	trk := domain.TransactionReferenceKey{LedgerName: "L", Reference: "ref"}
@@ -106,16 +106,16 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 
 	trGot, err := overlay.GetTransactionReference(trk)
 	require.NoError(t, err)
-	require.Same(t, trv, trGot)
+	require.Equal(t, uint64(7), trGot.GetTransactionId())
 
 	// Transaction state
 	tsk := domain.TransactionKey{LedgerName: "L", ID: 7}
-	st := &commonpb.TransactionState{}
+	st := &commonpb.TransactionState{CreatedByLog: 42}
 	overlay.PutTransactionState(tsk, st)
 
 	stGot, err := overlay.GetTransactionState(tsk)
 	require.NoError(t, err)
-	require.Same(t, stGot, st)
+	require.Equal(t, uint64(42), stGot.GetCreatedByLog())
 
 	// Parent must NOT see any of these writes yet — no EXPECT() declared
 	// against the mock means a call here would fail the test.

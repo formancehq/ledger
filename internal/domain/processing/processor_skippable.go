@@ -144,7 +144,7 @@ func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *commo
 	parent.PutBoundaries(ledger, boundaries)
 
 	apply.Log.Id = nextLogID
-	apply.Log.Date = parent.GetDate()
+	apply.Log.Date = parent.GetDate().Mutate()
 
 	return nil
 }
