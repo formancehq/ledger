@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-27 architecture documents organized into four topic areas.
+25 architecture documents organized into four topic areas.
 
 ## Core
 

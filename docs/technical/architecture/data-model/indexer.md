@@ -78,7 +78,7 @@ flowchart TB
 
 | Log type | Handler | What it writes |
 |----------|---------|---------------|
-| `CreatedTransaction` | `indexCreatedTransaction` | Transaction existence keys, account-postings mapping (source/destination), reference index, timestamp index, per-posting account existence, transaction metadata via `dualWriteMetadataIndex`. |
+| `CreatedTransaction` | `indexCreatedTransaction` | Postings-address mappings (any / source / destination via `WriteAccountTxMapping` + `WriteSourceAccountTxMapping` + `WriteDestAccountTxMapping`), reference / timestamp / inserted-at builtin indexes, account-metadata via `dualWriteMetadataIndex`, transaction-metadata via `dualWriteMetadataIndex`. Existence rows are written by `dualWriteMetadataIndex` *only* for entities that carry an indexed metadata key — there is no standalone transaction-existence or account-existence write. |
 | `RevertedTransaction` | `indexRevertedTransaction` | Inverse adjustments to the postings mappings; the revert link is kept (not deleted) so revert lookups stay queryable. |
 | `SavedMetadata` | `indexSavedMetadata` → `dualWriteMetadataIndex` | New `(value, entity)` row in the metadata index, plus a reverse-map row for later schema rewrites. |
 | `DeletedMetadata` | `indexDeletedMetadata` → `dualDeleteMetadataEntry` | Removes the metadata index row and the reverse-map row. |
@@ -141,7 +141,7 @@ Two adjacent versions share the same prefix up to the `version` field, so a sing
 | `I` | int64 | XOR-flipped sign bit so byte-order matches numeric order |
 | `U` | uint64 | big-endian |
 | `B` | bool | one byte |
-| `N` | null | empty payload |
+| `N` | null | original raw string + `\x00` terminator — preserved so a re-encoded null row keeps its source value visible through `NullValue.Original` (`encoding.go:73-81`) |
 
 `DecodeValue` reads the tag and dispatches. The `SetMetadataFieldType` rewrite path is the *only* place where two different tags coexist for the same `(entity, metadataKey)` — and only briefly, across `v_current` / `v_pending`.
 
@@ -165,7 +165,9 @@ Two distinct backfill paths share the same atomic-switch primitive:
 | Index backfill | `CreateIndex` for a new index, or a fresh replica catching up | A log-sequence cursor (replay history from 0 to head). |
 | Schema rewrite | `SetMetadataFieldType` for an existing index | A reverse-map cursor (iterate live entities, re-encode under the new type tag). |
 
-In both paths, every dispatched write lands in `v_pending`, while `v_current` continues to serve live reads and continues to receive dual-writes from incoming logs.
+**Index backfill** (initial `CreateIndex`): `IndexVersionState = {Current: 0, Pending: 1}` and queries return `ErrIndexBuilding` until the switch — there is no served `v_current` yet. `effectiveCurrentVersion` promotes `0 → 1` for live writes, so the dual-write call site degenerates to a single write at `v=1` (the pending version), which is also where the backfill replays history. No real dual-write occurs.
+
+**Schema rewrite** (`SetMetadataFieldType` on an already-built index): `IndexVersionState = {Current: N, Pending: N+1}` with `N ≥ 1`. Queries continue to serve `v_current = N` while live writes are dual-written to both `v_current` and `v_pending` (see [Dual-write while a rewrite is in flight](#dual-write-while-a-rewrite-is-in-flight)), and the rewrite scan re-encodes pre-existing rows into `v_pending`.
 
 ### `completeBackfill` — the switch
 
