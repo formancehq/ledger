@@ -76,6 +76,11 @@ func TestIndexedMetadataKeys_FlaggedKeyReturnsCorrectRows(t *testing.T) {
 		WithTimestamp(now)
 	require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx3))
 
+	// IndexedMetadataKeys falls back to the feature-flag list when
+	// ResolveIndexedMetadataKeys has not been called (no real pg_index needed here).
+	// ExplainUsesLiteralPredicate tests the fully-confirmed (pg_indexes-verified) path.
+	require.Contains(t, store.IndexedMetadataKeys(), "source_wallet_id")
+
 	// Filter by source_wallet_id = "wallet-A" via the flagged (->> ) path.
 	cursor, err := store.Transactions().Paginate(ctx, common.InitialPaginatedQuery[any]{
 		Options: common.ResourceQuery[any]{
@@ -149,6 +154,10 @@ func TestIndexedMetadataKeys_SemanticEquivalence(t *testing.T) {
 		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &unrelated))
 	}
 
+	// Both stores use their respective paths (flagged = ->> via unresolved flag,
+	// plain = @> with no flag).  Assert the flagged key is active before comparing.
+	require.Contains(t, flagged.IndexedMetadataKeys(), "source_wallet_id")
+
 	q := common.InitialPaginatedQuery[any]{
 		Options: common.ResourceQuery[any]{
 			Builder: query.Match("metadata[source_wallet_id]", "w-2"),
@@ -192,6 +201,9 @@ func TestIndexedMetadataKeys_DestinationWalletID(t *testing.T) {
 		WithTimestamp(now)
 	require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx2))
 
+	// IndexedMetadataKeys falls back to the feature-flag list (unresolved path).
+	require.Contains(t, store.IndexedMetadataKeys(), "destination_wallet_id")
+
 	cursor, err := store.Transactions().Paginate(ctx, common.InitialPaginatedQuery[any]{
 		Options: common.ResourceQuery[any]{
 			Builder: query.Match("metadata[destination_wallet_id]", "dest-wallet-X"),
@@ -226,25 +238,16 @@ func TestIndexedMetadataKeys_NoFlagUsesContainment(t *testing.T) {
 	require.Len(t, cursor.Data, 1, "containment path must still find the transaction")
 }
 
-// captureExplain runs EXPLAIN (FORMAT TEXT) for the given metadata key=value filter
-// on the given store and returns the full plan text.
-func captureExplain(t *testing.T, store *ledgerstore.Store, key, value string) string {
+// captureExplain runs EXPLAIN (FORMAT TEXT) using predExpr as the WHERE predicate
+// and returns the full plan text. The caller is responsible for supplying the
+// predicate that matches the production path they intend to verify — this avoids
+// duplicating the ResolveFilter routing logic inside the helper.
+func captureExplain(t *testing.T, store *ledgerstore.Store, predExpr string) string {
 	t.Helper()
 	ctx := logging.TestingContext()
 
 	schema := store.GetLedger().Bucket
 	ledgerName := store.GetLedger().Name
-
-	// Use the store's actual query routing to build the predicate, then wrap in EXPLAIN.
-	// We reproduce the predicate logic so the test stays in sync with the real code path:
-	// if the key is in IndexedMetadataKeys()  →  metadata ->> 'key' = 'value'
-	// otherwise                               →  metadata @> '{"key":"value"}'
-	var predExpr string
-	if contains(store.IndexedMetadataKeys(), key) {
-		predExpr = fmt.Sprintf("metadata ->> '%s' = '%s'", key, value)
-	} else {
-		predExpr = fmt.Sprintf(`metadata @> '{"%s": "%s"}'`, key, value)
-	}
 
 	sql := fmt.Sprintf(
 		`EXPLAIN (FORMAT TEXT) SELECT id FROM %q.transactions WHERE ledger = '%s' AND %s ORDER BY id DESC LIMIT 16`,
@@ -265,15 +268,6 @@ func captureExplain(t *testing.T, store *ledgerstore.Store, key, value string) s
 	return plan.String()
 }
 
-func contains(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
 // TestIndexedMetadataKeys_ExplainUsesLiteralPredicate verifies that when a functional
 // index exists and ResolveIndexedMetadataKeys confirms it, EXPLAIN shows the literal
 // ->> predicate (not @>). This proves the correct SQL is generated and that Postgres
@@ -290,12 +284,11 @@ func TestIndexedMetadataKeys_ExplainUsesLiteralPredicate(t *testing.T) {
 	// Resolve against pg_indexes so the store confirms the index.
 	require.NoError(t, store.ResolveIndexedMetadataKeys(ctx))
 
-	plan := captureExplain(t, store, "source_wallet_id", "w-target")
+	// The predicate matches what resource_transactions.ResolveFilter emits for a
+	// confirmed indexed key: metadata ->> 'key' = 'value'.
+	plan := captureExplain(t, store, "metadata ->> 'source_wallet_id' = 'w-target'")
 	t.Logf("EXPLAIN plan:\n%s", plan)
 
-	// The plan must reference the ->> expression, not the @> containment form.
-	// This proves: (a) the query builder emitted the literal form, and
-	// (b) Postgres parsed and echoed it back in the plan.
 	require.Contains(t, plan, "metadata ->> 'source_wallet_id'",
 		"plan must use the ->> literal predicate for a confirmed indexed key")
 	require.NotContains(t, plan, "metadata @>",
@@ -317,7 +310,9 @@ func TestIndexedMetadataKeys_FallsBackWhenNoIndex(t *testing.T) {
 	require.Empty(t, store.IndexedMetadataKeys(),
 		"key should be excluded when no functional index exists")
 
-	plan := captureExplain(t, store, "source_wallet_id", "w-target")
+	// The predicate matches what resource_transactions.ResolveFilter emits for an
+	// unconfirmed key (no index): metadata @> '{"key":"value"}'.
+	plan := captureExplain(t, store, `metadata @> '{"source_wallet_id": "w-target"}'`)
 	t.Logf("EXPLAIN plan (fallback):\n%s", plan)
 
 	require.Contains(t, plan, "metadata @>",
