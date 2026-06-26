@@ -152,7 +152,11 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 			// Key is validated to match [a-zA-Z0-9_]+ so it is safe to embed as a literal.
 			// The literal form is required: Postgres matches functional indexes by exact expression
 			// equality, so `metadata ->> 'key'` matches the index but `metadata ->> ?` does not.
-			return fmt.Sprintf("metadata ->> '%s' = ?", key), []any{value}, nil
+			//
+			// We always prepend ledger = ? even when newScopedSelect already adds it (alone-in-bucket
+			// optimisation omits the predicate). The partial index is defined as
+			// WHERE ledger = '...'; without the predicate in the query Postgres cannot use it.
+			return fmt.Sprintf("ledger = ? AND metadata ->> '%s' = ?", key), []any{h.store.GetLedger().Name, value}, nil
 		}
 		return "metadata @> ?", []any{map[string]any{key: value}}, nil
 

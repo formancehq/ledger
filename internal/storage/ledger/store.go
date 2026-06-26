@@ -164,9 +164,16 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 	schema := store.ledger.Bucket
 	confirmed := make([]string, 0, len(requested))
 	for _, key := range requested {
-		// Use pg_get_expr(indexprs, indrelid) so we match the exact index expression
-		// rather than substring-matching the full CREATE INDEX text in pg_indexes.indexdef.
-		// Key names are validated as [a-zA-Z0-9_]+, so embedding in the LIKE pattern is safe.
+		// Use pg_get_expr so we match the exact functional expression rather than
+		// substring-matching the full CREATE INDEX text.  Key names are validated
+		// as [a-zA-Z0-9_]+, so embedding in the LIKE pattern is safe.
+		//
+		// The partial-predicate filter ensures we only confirm indexes usable by
+		// this ledger: either a non-partial index (indpred IS NULL, covers all rows)
+		// or a partial index whose WHERE clause mentions the current ledger name.
+		// Without this check, a partial index created for ledger A would be confirmed
+		// for ledger B, yet ledger B's queries cannot satisfy ledger A's partial
+		// predicate — causing a sequential scan instead of an index scan.
 		var count int
 		err := store.db.NewSelect().
 			TableExpr("pg_index i").
@@ -177,6 +184,7 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 			Where("c.relname = ?", "transactions").
 			Where("i.indexprs IS NOT NULL").
 			Where("pg_get_expr(i.indexprs, i.indrelid) LIKE ?", "%metadata ->> '"+key+"'%").
+			Where("(i.indpred IS NULL OR pg_get_expr(i.indpred, i.indrelid) LIKE ?)", "%ledger = '"+store.ledger.Name+"'%").
 			Scan(ctx, &count)
 		if err != nil {
 			return fmt.Errorf("checking pg_index for key %q: %w", key, err)
