@@ -12,7 +12,7 @@ ledger_image_name := env_var_or_default("LEDGER_IMAGE_NAME", "ledger")
 # --- Docker Compose mode (legacy) ---
 
 run duration description='ledger-v3 manual run' *ARGS:
-    just push-images {{ARGS}}
+    just tag={{tag}} push-images {{ARGS}}
     curl --fail \
         --user "formance:$ANTITHESIS_PASSWORD" \
         -X POST https://formance.antithesis.com/api/v1/launch/basic_test -d '{ \
@@ -40,9 +40,9 @@ build-images:
         ../../
 
 push-images *ARGS:
-    just build-images
-    just --justfile config/Justfile -d config push {{ARGS}}
-    just --justfile workload/Justfile -d workload push
+    just tag={{tag}} build-images
+    just --justfile config/Justfile -d config tag={{tag}} push {{ARGS}}
+    just --justfile workload/Justfile -d workload tag={{tag}} push
     docker push $ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}
     docker push $ANTITHESIS_REPOSITORY/etcd:v3.5.9
 
@@ -63,7 +63,7 @@ deploy-local: build-images
 # Launch a test run on Antithesis using the k8s environment.
 # Duration is in hours (converted to minutes for the Antithesis API).
 k8s-run duration_hours description='ledger-v3 k8s run' *ARGS:
-    just k8s-push-images {{ARGS}}
+    just tag={{tag}} k8s-push-images {{ARGS}}
     curl --fail \
         --user "formance:$ANTITHESIS_PASSWORD" \
         -X POST https://formance.antithesis.com/api/v1/launch/basic_k8s_test -d '{ \
@@ -94,8 +94,8 @@ k8s-build-images:
 
 # Push all images for k8s mode.
 k8s-push-images *ARGS:
-    just k8s-build-images
-    just --justfile k8s/Justfile -d k8s push {{ARGS}}
-    just --justfile workload/Justfile -d workload push
+    just tag={{tag}} k8s-build-images
+    just --justfile k8s/Justfile -d k8s tag={{tag}} push {{ARGS}}
+    just --justfile workload/Justfile -d workload tag={{tag}} push
     docker push $ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}
     docker push $ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}
