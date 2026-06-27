@@ -24,7 +24,8 @@ Run from the repo root (`git rev-parse --show-toplevel`). Verify:
 - `tests/antithesis/Justfile` exists. If not, abort — wrong repo.
 - These environment variables are set in the shell: `ANTITHESIS_PASSWORD`, `ANTITHESIS_REPOSITORY`, `ANTITHESIS_REPORT_RECIPIENT`. The `tests/antithesis/Justfile` does not load `.env`, so they must come from the user's shell (typically via direnv or an exported profile). If any are missing, list which and abort.
 - `docker info` succeeds (daemon reachable). If not, abort.
-- `aws sts get-caller-identity` succeeds (AWS auth required for ECR push). If not, abort with a hint to `aws sso login`.
+
+Note: images are pushed to `$ANTITHESIS_REPOSITORY` (the registry Antithesis provides for this tenant) — there is no AWS / ECR step. Auth to that registry is set up once by the user via `docker login`; this skill does not re-do it.
 
 ### 2. Detect git state
 
@@ -95,7 +96,7 @@ The launch API does not return a run URL in the response, so do not invent one. 
 
 - `401` from the launch API → `ANTITHESIS_PASSWORD` is wrong.
 - `400` with `unknown image` → image push silently failed earlier (check the build/push step output).
-- `docker push` fails with `no basic auth credentials` → ECR token expired; run `aws ecr get-login-password ... | docker login ...`.
+- `docker push` fails with `no basic auth credentials` / `denied` → not logged in to `$ANTITHESIS_REPOSITORY`; user needs to `docker login <registry>` with the credentials Antithesis provided.
 - Build fails with a Go toolchain mismatch → retry with `GOROOT=` in the environment, same as the `develop` skill.
 
 ## Out of scope
