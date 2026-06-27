@@ -303,27 +303,36 @@ func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *cluste
 	}, nil
 }
 
-// GetFSMDigest returns the cross-node FSM digest captured by the local
-// node at the requested applied index. Node-local read (never forwarded
-// to the leader): the whole point of the RPC is to compare per-node
-// snapshots so callers MUST hit each peer directly.
+// GetFSMDigest returns the rolling cross-node FSM digest persisted under
+// dal.SubGlobFSMDigest. Node-local read (never forwarded to the leader):
+// the whole point of the RPC is to compare per-node values so callers
+// MUST hit each peer directly.
+//
+// Strategy (live rolling digest, persisted per batch):
+//
+//  1. Optionally wait for LastPersistedIndex >= req.Index so the persisted
+//     digest reflects state up to a known applied index.
+//  2. Read the single key SubGlobFSMDigest, which carries a
+//     [appliedIndex BE 8][digest 16] record updated atomically with every
+//     FSM batch commit. The returned (appliedIndex, hash) is the chain
+//     state at the moment that batch was committed — no snapshot scan,
+//     no concurrency race between the index and the bytes.
+//
+// All peers applying the same Raft entries (regardless of how they were
+// grouped into MsgApp batches) advance the chain by the same number of
+// links with the same per-entry inputs, so the persisted hash matches
+// cross-node at the same applied index. Any difference is exactly the
+// FSM divergence this oracle exists to detect.
 func (impl *ClusterServiceServerImpl) GetFSMDigest(ctx context.Context, req *clusterpb.GetFSMDigestRequest) (*clusterpb.FSMDigest, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
 		return nil, err
 	}
 
-	// Refuse the call when the cluster was bootstrapped with the flag OFF:
-	// the FSM does not maintain a rolling digest in that mode, so returning
-	// any value would be misleading. Callers (CLI, health-check, Antithesis)
-	// must treat FAILED_PRECONDITION as "feature disabled for this cluster".
 	if !impl.store.DeterministicEncoding() {
 		return nil, status.Error(codes.FailedPrecondition,
 			"fsm digest is unavailable: cluster bootstrapped with fsm_determinism_enabled=false")
 	}
 
-	// Optional wait: caller pins a target applied index so peer responses
-	// align on the same commit. wait_ms upper-bounds the wait so a stuck
-	// follower cannot pin the caller indefinitely.
 	if req.GetIndex() > 0 {
 		waitCtx := ctx
 
@@ -344,25 +353,23 @@ func (impl *ClusterServiceServerImpl) GetFSMDigest(ctx context.Context, req *clu
 		}
 	}
 
-	appliedIndex, snapshotIndex, digest := impl.node.FSMDigestSnapshot()
-	if digest == nil {
-		return nil, status.Error(codes.Unavailable,
-			"fsm digest not yet computed: no apply has committed since boot")
+	handle, err := impl.store.NewReadHandle()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "opening snapshot: %v", err)
 	}
 
-	clusterState, _ := query.ReadClusterState(impl.store)
-	hashVersion := uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3)
+	defer func() { _ = handle.Close() }()
 
-	if clusterState != nil {
-		hashVersion = uint32(clusterState.GetConfig().GetHashAlgorithm())
+	appliedIndex, digest, err := dal.LoadFSMDigest(handle)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "reading rolling fsm digest: %v", err)
 	}
 
 	return &clusterpb.FSMDigest{
-		AppliedIndex:  appliedIndex,
-		SnapshotIndex: snapshotIndex,
-		Digest:        digest,
-		NodeId:        uint32(impl.node.GetNodeID()),
-		HashVersion:   hashVersion,
+		AppliedIndex: appliedIndex,
+		Digest:       digest,
+		NodeId:       uint32(impl.node.GetNodeID()),
+		HashVersion:  uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3),
 	}, nil
 }
 

@@ -101,6 +101,15 @@ type Store struct {
 	stallState            *WriteStallState
 	iopsCounters          *IOPSCounters
 	deterministicEncoding bool // captured from Config.DeterministicEncoding at NewStore time
+
+	// rollingDigestMu guards rollingDigest. The rolling FSM digest is read
+	// at WriteSession open time (FSM hot path) and updated after each batch
+	// commit; both happen sequentially through the FSM, but Get/Set from
+	// non-FSM code (server_cluster.GetFSMDigest, tests) make a mutex the
+	// safer choice over atomic.Pointer with copy semantics.
+	rollingDigestMu      sync.Mutex
+	rollingDigest        []byte // FSMDigestSize bytes; loaded at boot + after RestoreCheckpoint
+	rollingDigestApplied uint64 // appliedIndex of the loaded/cached digest
 }
 
 // DeterministicEncoding reports whether this store routes WriteSession proto
@@ -249,12 +258,21 @@ const (
 	SubGlobNextLedgerID            byte = 0x13
 	// SubGlobFSMDigest holds the rolling cross-node FSM digest (when the
 	// immutable PersistedConfig.fsm_determinism_enabled flag is ON).
-	// Value layout: [appliedIndex BE 8][snapshotIndex BE 8][digest N].
-	// Single key, overwritten on every CommitPreparedBatch; embedded in
-	// Pebble checkpoints so a follower restored from a leader checkpoint
-	// continues the chain seamlessly. The digest is a diagnostic signal,
-	// not a source of authenticity (cf. invariant 8): the audit hash chain
-	// remains the only cryptographically-bound dataset.
+	//
+	// Value layout: [appliedIndex BE 8][digest 16] = 24 bytes (XXH3-128).
+	//
+	// Chained per ENTRY (not per batch) — AdvanceDigest is called once per
+	// FSM-applied Raft entry. Two nodes applying the same N entries produce
+	// the same N chain links regardless of how Raft groups entries into
+	// MsgApp batches, so the persisted hash matches cross-node at the same
+	// applied index. See WriteSession.AdvanceDigest and
+	// CommitWithRollingDigest.
+	//
+	// Single key, overwritten on every batch commit; embedded in Pebble
+	// checkpoints so a follower restored from a leader checkpoint continues
+	// the chain seamlessly. The digest is a diagnostic signal, not a source
+	// of authenticity (cf. invariant 8): the audit hash chain remains the
+	// only cryptographically-bound dataset.
 	SubGlobFSMDigest byte = 0x14
 )
 
@@ -498,6 +516,15 @@ func NewStore(
 	}
 	store.db = db
 
+	// Seed the in-memory rolling FSM digest from the freshly opened DB so
+	// the next WriteSession on the FSM hot path can chain from it without
+	// touching Pebble (invariant: no reads from the apply path).
+	if err := store.reloadRollingDigest(); err != nil {
+		_ = db.Close()
+
+		return nil, fmt.Errorf("loading rolling fsm digest: %w", err)
+	}
+
 	// Clean up any orphaned backup checkpoints from a previous crash
 	store.cleanupTemporaryCheckpoints()
 
@@ -505,6 +532,51 @@ func NewStore(
 	store.cleanupIncomingRestore()
 
 	return store, nil
+}
+
+// reloadRollingDigest reads SubGlobFSMDigest from the live DB and refreshes
+// the in-memory cache. Called at NewStore and after RestoreCheckpoint
+// (because the new live database has a different digest baked in).
+func (s *Store) reloadRollingDigest() error {
+	db := s.getDB()
+	if db == nil {
+		return ErrStoreClosed
+	}
+
+	appliedIndex, hash, err := LoadFSMDigest(db)
+	if err != nil {
+		return err
+	}
+
+	s.rollingDigestMu.Lock()
+	s.rollingDigest = hash
+	s.rollingDigestApplied = appliedIndex
+	s.rollingDigestMu.Unlock()
+
+	return nil
+}
+
+// RollingDigest returns a copy of the current in-memory rolling FSM digest
+// and the applied index it was captured at. The returned slice is owned by
+// the caller; modifying it does not affect Store state.
+func (s *Store) RollingDigest() (appliedIndex uint64, hash []byte) {
+	s.rollingDigestMu.Lock()
+	defer s.rollingDigestMu.Unlock()
+
+	return s.rollingDigestApplied, append([]byte(nil), s.rollingDigest...)
+}
+
+// SetRollingDigest updates the in-memory cache after a successful Pebble
+// commit. The caller MUST have already persisted the same (appliedIndex,
+// hash) tuple via WriteSession.CommitWithRollingDigest — this method only
+// keeps the in-memory copy in sync. The hash slice is copied.
+func (s *Store) SetRollingDigest(appliedIndex uint64, hash []byte) {
+	cp := append([]byte(nil), hash...)
+
+	s.rollingDigestMu.Lock()
+	s.rollingDigest = cp
+	s.rollingDigestApplied = appliedIndex
+	s.rollingDigestMu.Unlock()
 }
 
 // DataDir returns the base data directory path for this store.
@@ -1342,6 +1414,19 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// Update internal state
 	s.currentCheckPoint = checkpointID
 	s.oldestCheckpoint = checkpointID
+
+	// Re-seed the in-memory rolling FSM digest from the freshly published
+	// live database — the checkpoint we just restored carries the leader's
+	// digest at the checkpoint's applied index, which is now ours too.
+	// Failure here is non-fatal: the FSM hot path will read a stale cached
+	// value once and surface it as a digest mismatch on the next compare,
+	// which is the right signal to investigate. We log loudly so the
+	// failure is not silent.
+	if err := s.reloadRollingDigest(); err != nil {
+		s.logger.WithFields(map[string]any{
+			"error": err,
+		}).Errorf("Failed to reload rolling FSM digest after checkpoint restore")
+	}
 
 	s.logger.WithFields(map[string]any{
 		"checkpointId": checkpointID,

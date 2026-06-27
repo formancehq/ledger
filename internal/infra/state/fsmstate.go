@@ -53,15 +53,6 @@ type FSMState struct {
 	// rebuilds of HashGenerator (after a ClusterConfig change) have it at
 	// hand without having to plumb it from elsewhere.
 	ClusterID string
-
-	// LastFSMDigest is the rolling cross-node FSM digest of every persisted
-	// byte up to LastAppliedIndex (when fsm_determinism_enabled is ON).
-	// Empty when the flag is OFF or when no digest has been computed yet
-	// (pre-feature cluster, first apply post-restore). Persisted under
-	// [ZoneGlobal][SubGlobFSMDigest] with the same atomicity as the rest
-	// of the batch — Pebble's batch commit is the recovery boundary, so
-	// LastFSMDigest is always consistent with LastAppliedIndex.
-	LastFSMDigest []byte
 }
 
 // NewFSMState builds a fresh FSMState. Counters start at their canonical
@@ -204,17 +195,6 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 		s.HashGenerator = processing.NewHashGenerator(clusterState.GetConfig().GetHashAlgorithm(), clusterID)
 		s.CacheEpoch = clusterState.GetCacheEpoch()
 	}
-
-	// LastFSMDigest is the rolling cross-node FSM digest persisted under
-	// SubGlobFSMDigest. Absent when fsm_determinism_enabled is OFF or on
-	// pre-feature clusters; either way, the apply path treats nil as
-	// "chain starts from the snapshotIndex anchor".
-	_, _, digest, err := query.ReadFSMDigest(reader)
-	if err != nil {
-		return nil, fmt.Errorf("reading fsm digest: %w", err)
-	}
-
-	s.LastFSMDigest = digest
 
 	return s, nil
 }

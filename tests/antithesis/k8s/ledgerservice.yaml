@@ -14,6 +14,13 @@ spec:
   debug: true
   sentinelMode: true
 
+  # Cross-node FSM digest oracle (immutable post-bootstrap): forces every
+  # WriteSession through MarshalDeterministicVT so all peers persist
+  # byte-identical KV state, and maintains a rolling digest under
+  # SubGlobFSMDigest. The eventually_fsm_digest_matches assertion compares
+  # the digest across peers at a common applied index.
+  fsmDeterminismEnabled: true
+
   # Chaos-tuned: lower thresholds to exercise more code paths under fault injection.
   raft:
     compactionMargin: 200
