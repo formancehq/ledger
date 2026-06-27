@@ -293,6 +293,68 @@ func TestStore_CleanupOldCheckpoints(t *testing.T) {
 	require.LessOrEqual(t, len(entries), 4, "should have at most 4 checkpoint dirs")
 }
 
+// TestStore_CleanupOldCheckpoints_RemovesOrphansBelowTracker is the
+// EN-1409 regression test. Before the fix, cleanupOldCheckpoints iterated
+// from an in-memory tracker initialised at boot via arithmetic
+// (latestID - maxCheckpoints + 1), so any checkpoint dir whose ID was
+// below that floor at boot time -- left there by a previous non-graceful
+// exit -- was permanently unreachable to cleanup and leaked
+// `maxCheckpoints * checkpoint_size` per crash forever.
+//
+// The fix scans the checkpoints directory on every cleanup and removes
+// any numeric dir below `oldestToKeep`, regardless of the tracker, so
+// orphans are reclaimed on the first snapshot after restart.
+func TestStore_CleanupOldCheckpoints_RemovesOrphansBelowTracker(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dataDir := t.TempDir()
+	checkpointsPath := filepath.Join(dataDir, "checkpoints")
+
+	// Simulate fossil pairs left by previous crashes plus the live pair
+	// that survived the most recent crash. With maxCheckpoints=2 and
+	// latestID=101, the buggy init would compute oldestCheckpoint=100,
+	// leaving {5, 6} permanently unreachable.
+	for _, id := range []string{"5", "6", "100", "101"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(checkpointsPath, id), 0o755))
+	}
+
+	cfg := DefaultConfig()
+	cfg.MaxCheckpoints = 2
+
+	s, err := NewStore(dataDir, logger, meter, cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	// One snapshot is enough to fire the new scan-based cleanup.
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("k"), []byte("v")))
+	require.NoError(t, batch.Commit())
+
+	_, err = s.CreateSnapshot()
+	require.NoError(t, err)
+
+	// After cleanup, only the last maxCheckpoints (=2) checkpoints should
+	// remain on disk: the just-created 102 and the previous 101. The
+	// fossil pair {5, 6} and the now-aged 100 must be gone.
+	entries, err := os.ReadDir(checkpointsPath)
+	require.NoError(t, err)
+
+	remaining := map[string]bool{}
+	for _, e := range entries {
+		remaining[e.Name()] = true
+	}
+
+	require.NotContains(t, remaining, "5", "fossil orphan 5 must be reclaimed")
+	require.NotContains(t, remaining, "6", "fossil orphan 6 must be reclaimed")
+	require.NotContains(t, remaining, "100", "aged-out 100 must be reclaimed")
+	require.Contains(t, remaining, "101", "previous-live 101 must be kept")
+	require.Contains(t, remaining, "102", "newly-created 102 must be kept")
+}
+
 func TestStore_IterateColdKVPairs(t *testing.T) {
 	t.Parallel()
 

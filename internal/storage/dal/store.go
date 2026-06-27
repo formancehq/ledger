@@ -720,32 +720,58 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 	return newCheckpointID, nil
 }
 
-// cleanupOldCheckpoints removes checkpoints older than the configured maximum.
-// It keeps the most recent maxCheckpoints checkpoints.
+// cleanupOldCheckpoints removes every checkpoint dir whose ID falls below
+// (currentCheckPoint + 1) - maxCheckpoints + 1. It scans the checkpoints
+// directory on disk rather than iterating from an in-memory tracker so it
+// also reclaims fossil checkpoints left by a previous crash that fall
+// outside the running tracker's window (see EN-1409). Each non-graceful
+// exit otherwise preserves the live checkpoint set as untouchable orphans,
+// permanently leaking `maxCheckpoints * checkpoint_size` per crash.
+//
+// Non-numeric child dirs (e.g. "incoming" used by follower sync) are
+// skipped; only positive-integer dirs are considered checkpoints.
 func (s *Store) cleanupOldCheckpoints() error {
 	newCheckpoint := s.currentCheckPoint + 1
 
-	// Calculate the oldest checkpoint to keep
-	// If newCheckpoint is 15 and maxCheckpoints is 10, we keep checkpoints 6-15
-	// So we delete anything older than (newCheckpoint - maxCheckpoints + 1)
+	// If we haven't reached maxCheckpoints yet there's nothing to keep
+	// below 0; skip the scan.
 	if newCheckpoint < uint64(s.maxCheckpoints) {
-		// Not enough checkpoints yet, nothing to delete
 		return nil
 	}
 
 	oldestToKeep := newCheckpoint - uint64(s.maxCheckpoints) + 1
+	checkpointsPath := filepath.Join(s.dataDir, checkpointsDir)
 
-	// Delete checkpoints from oldestCheckpoint up to (but not including) oldestToKeep
-	for i := s.oldestCheckpoint; i < oldestToKeep; i++ {
-		checkpointPath := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(i, 10))
+	entries, err := os.ReadDir(checkpointsPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 
-		err := os.RemoveAll(checkpointPath)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("removing old checkpoint %d: %w", i, err)
+		return fmt.Errorf("listing checkpoints directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		id, err := strconv.ParseUint(entry.Name(), 10, 64)
+		if err != nil {
+			continue // skip non-numeric children (e.g. "incoming")
+		}
+
+		if id >= oldestToKeep {
+			continue
+		}
+
+		if err := os.RemoveAll(filepath.Join(checkpointsPath, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("removing old checkpoint %d: %w", id, err)
 		}
 	}
 
-	// Update the oldest checkpoint tracker
+	// Tracker is informational only after this change, but keep it
+	// consistent with the new floor so external readers don't drift.
 	s.oldestCheckpoint = oldestToKeep
 
 	return nil
