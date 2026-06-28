@@ -539,7 +539,16 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 		trace.WithAttributes(attribute.String("ledger", name)))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, name)
+	// The response stitches together the LedgerInfo (account types), optional mirror
+	// sync progress, and ledger metadata. Must all be read from the same handle.
+	handle, handleErr := ctrl.store.NewReadHandle()
+	if handleErr != nil {
+		return nil, fmt.Errorf("creating read handle: %w", handleErr)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, name)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", name)
@@ -548,9 +557,8 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 		return nil, err
 	}
 
-	// Enrich mirror ledgers with sync progress computed from Pebble state
 	if ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-		progress, err := query.ReadMirrorSyncProgress(ctx, ctrl.store, name)
+		progress, err := query.ReadMirrorSyncProgress(ctx, handle, name)
 		if err != nil {
 			return nil, fmt.Errorf("reading mirror sync progress: %w", err)
 		}
@@ -558,17 +566,8 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 		ledgerInfo.MirrorSyncProgress = progress
 	}
 
-	// Enrich with ledger metadata from separate attribute store
-	metaHandle, handleErr := ctrl.store.NewDirectReadHandle()
-	if handleErr != nil {
-		return nil, fmt.Errorf("creating read handle: %w", handleErr)
-	}
-
-	enrichErr := query.EnrichLedgerMetadata(metaHandle, ctrl.attrs, ledgerInfo)
-	_ = metaHandle.Close()
-
-	if enrichErr != nil {
-		return nil, fmt.Errorf("enriching ledger metadata: %w", enrichErr)
+	if err := query.EnrichLedgerMetadata(handle, ctrl.attrs, ledgerInfo); err != nil {
+		return nil, fmt.Errorf("enriching ledger metadata: %w", err)
 	}
 
 	return ledgerInfo, nil
