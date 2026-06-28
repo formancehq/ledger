@@ -1,0 +1,197 @@
+# Audit Hash Chain
+
+## Overview
+
+The audit hash chain is the **only cryptographically-bound dataset** in the system. Every other persisted dataset — volumes, metadata, transaction state, idempotency outcomes, applied-proposal records, the index registry, chapter sealing hashes, the read-side inverted index — is a *projection* of orders that already live in the audit chain, and is verified on demand by the [checker](checker.md).
+
+The chain serves two purposes:
+
+1. **Tamper-evidence**: any post-commit mutation of an audit entry (or of an `AuditItem` belonging to it) breaks the chain at that point. The break is detectable by recomputing the hashes forward; an attacker that rewrites entry *N* would have to recompute every entry from *N+1* onwards — and cannot, because the chain key is derived from the immutable `ClusterID`.
+2. **A canonical derivation source**: because the orders that produced every projection are bound by the chain, every projection becomes verifiable by replaying those orders.
+
+Hash primitive: BLAKE3, **keyed** with a per-cluster key derived from the `ClusterID` (so two distinct clusters cannot forge each other's chains, and the chain cannot be replayed offline without the key).
+
+## What is hash-bound
+
+The hash of an `AuditEntry` covers two payloads, concatenated in a fixed order before being fed to `HashGenerator.Compute(prevHash, ...)`:
+
+### Header payload
+
+Built by `state.BuildHashedHeaderPayload(entry)` (`internal/infra/state/audit_envelope.go:100-147`). Canonical encoding (big-endian, zero-padded, length-prefixed where variable):
+
+| Field | Encoding |
+|-------|----------|
+| `Sequence` | `uint64` BE |
+| `Timestamp` | `uint64` BE |
+| `ProposalId` | `uint64` BE |
+| `OrderCount` | `uint32` BE |
+| `HashVersion` | `uint32` BE |
+| `Ledgers` | length-prefixed, sorted ledger names |
+| `Outcome` | tagged Success or Failure with its payload |
+| `CallerSnapshot` | length-prefixed bytes |
+| `IdempotencyKey` | length-prefixed bytes |
+| `Signature` | length-prefixed bytes (Ed25519 from the originator) |
+
+Every field is hashed — none is "informational and excluded".
+
+### Per-item payloads
+
+Each `AuditItem` (one per order in the proposal) is encoded by `state.BuildPerItemPayload(item)` (`audit_envelope.go:246-254`):
+
+| Field | Encoding |
+|-------|----------|
+| `OrderIndex` | `uint32` BE |
+| `LogSequence` | `uint64` BE |
+| `SerializedOrder` | length-prefixed (the order's canonical vtprotobuf bytes) |
+
+Items are concatenated in `OrderIndex` order before being fed into the hash. A single byte changed in any order, or any reordering, invalidates the hash.
+
+### Chain link
+
+`HashGenerator.Compute(prevHash, slices...)` (`internal/domain/processing/hash.go:54-77`) feeds `prevHash || header || items` into the BLAKE3 keyed hash. The resulting `hash` is stored on the `AuditEntry`; the *next* entry then consumes this as `prevHash`. Genesis (`Sequence = 0`) hashes `nil || header || items` — no external seed is required because the cluster-specific BLAKE3 key already domain-separates two distinct clusters.
+
+## `AuditEntry` proto and persistence
+
+`misc/proto/audit.proto:14-77` — hashed fields plus the chained `hash` itself:
+
+```
+message AuditEntry {
+  uint64 sequence       = 1;   // hashed
+  uint64 timestamp      = 2;   // hashed
+  uint64 proposal_id    = 3;   // hashed
+  oneof outcome { ... }        // hashed (Success | Failure)
+  uint32 order_count    = 5;   // hashed
+  repeated string ledgers = 6; // hashed (sorted)
+  repeated AuditItem items = 7;// per-item payloads enter the hash via order_index
+  uint32 hash_version   = 8;   // hashed
+  bytes  hash           = 9;   // BLAKE3 output, chained
+  bytes  caller_snapshot = 10; // hashed
+  bytes  idempotency    = 11;  // hashed
+  bytes  signature      = 12;  // hashed
+}
+```
+
+Persistence layout:
+
+- The entry itself lives under zone `Cold`, sub `Audit` (the `AuditEntry` row), with `items` **intentionally set to nil on disk** (`internal/infra/state/machine.go:1403`). Items live under their own keys (zone `Cold`, sub `AuditItem`), keyed by `(audit_sequence, order_index)`. This split prevents a `ListAuditEntries` reader from receiving items that have never been hash-checked against the chain.
+- Reads that need item bodies join through the per-item keys; the checker uses `BuildPerItemPayload` to recompute the same byte sequence the writer used.
+
+## When the hash is computed
+
+Inside FSM apply, **before** the Pebble batch commit:
+
+```mermaid
+sequenceDiagram
+    participant FSM as machine.applyProposal
+    participant HG as HashGenerator
+    participant Batch as Pebble batch
+
+    FSM->>FSM: Process orders, build AuditEntry sans hash
+    FSM->>FSM: BuildHashedHeaderPayload + BuildPerItemPayload(s)
+    FSM->>HG: Compute(LastAuditHash, slices...)
+    HG-->>FSM: new hash
+    FSM->>FSM: entry.Hash ← new hash
+    FSM->>Batch: appendAuditEntries(entry, items)
+    Batch->>Batch: Commit() — atomic with all other writes
+    FSM->>FSM: State.LastAuditHash ← new hash
+```
+
+Reference: `internal/infra/state/machine.go:1370-1384`. The hash is bound to the entry *before* any byte hits the disk, and the same batch commits the entry plus every projection write produced by the proposal — so a crash mid-commit either rolls back the whole proposal or persists the entry already chained.
+
+## What's in the chain — orders and logs
+
+**Exactly one `AuditEntry` per Raft proposal.** The outcome is either `Success` (with `order_count` items and the resulting log range) or `Failure` (with a reason and message; zero items). Both outcomes are bound by the hash chain — a rejected proposal is just as auditable as an accepted one.
+
+Each successful order produces a `Log` (`internal/proto/commonpb/common.proto`, `message Log { LogPayload payload = …; }`). The audit chain binds the orders via `AuditItem.SerializedOrder` (the order's canonical vtprotobuf bytes); the resulting `Log` rows are addressable separately by `LogSequence` and bound transitively through the items.
+
+The log surface has **two levels**:
+
+### Top-level `LogPayload` (~28 variants)
+
+Covers everything a Raft proposal can produce, system-wide and ledger-management. Notably:
+
+| Variant family | Examples |
+|----------------|----------|
+| Ledger lifecycle | `create_ledger`, `delete_ledger`, `promote_ledger` |
+| Ledger apply | `apply` — wraps a `LedgerLogPayload` (see below) |
+| Signing | `register_signing_key`, `revoke_signing_key`, `set_signing_config` |
+| Event sinks | `added_events_sink`, `removed_events_sink` |
+| Chapters | `close_chapter`, `seal_chapter`, `archive_chapter`, `confirm_archive_chapter`, `set_chapter_schedule`, `delete_chapter_schedule` |
+| Maintenance | `set_maintenance_mode` |
+| Prepared queries | `created_prepared_query`, `updated_prepared_query`, `deleted_prepared_query` |
+| Numscript library | `saved_numscript`, `deleted_numscript` |
+| Query checkpoints | `created_query_checkpoint`, `deleted_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` |
+| Ledger metadata | `saved_ledger_metadata`, `deleted_ledger_metadata` |
+
+Every one of these is hashed via the corresponding `AuditItem.SerializedOrder`.
+
+### Inner `LedgerLogPayload` (12 variants)
+
+Only valid inside an `apply` (`ApplyLedgerLog`) wrapper. These are the *ledger-internal* mutations:
+
+| Variant | Triggering order |
+|---------|------------------|
+| `created_transaction` | `CreateTransaction` |
+| `reverted_transaction` | `RevertTransaction` |
+| `saved_metadata` | `SaveMetadata` |
+| `deleted_metadata` | `DeleteMetadata` |
+| `set_metadata_field_type` | `SetMetadataFieldType` |
+| `removed_metadata_field_type` | `RemovedMetadataFieldType` |
+| `fill_gap` | (system) `FillGap` |
+| `create_index` | `CreateIndex` |
+| `drop_index` | `DropIndex` |
+| `added_account_type` | `AddedAccountType` |
+| `removed_account_type` | `RemovedAccountType` |
+| `updated_default_enforcement_mode` | `UpdateDefaultEnforcementMode` |
+
+The two layers exist because ledger-internal mutations have a fundamentally different identity model (they target a specific ledger's state) than top-level operations (which target the cluster or a ledger's metadata). The hash chain doesn't care — every `AuditItem` carries the order's full serialized form regardless of where in the hierarchy its log variant lives.
+
+## Hash primitive
+
+Default: **BLAKE3 keyed** (`internal/domain/processing/hash_blake3.go:18-32`). The key is derived once at boot:
+
+```
+key = blake3.Sum256([]byte("audit-hash:blake3:v1:" + ClusterID))
+```
+
+The `ClusterID` is part of the persisted config validated on boot (`internal/bootstrap/config_validation.go`) and a `node-id`/`cluster-id` mismatch is fatal — see [CLAUDE.md / Configuration Safety Checks](../../../../../AGENTS.md#configuration-safety-checks). This makes the chain key effectively immutable for the lifetime of the cluster.
+
+A `HashVersion` field on every entry allows future rotation (an alternate algorithm like `HASH_ALGORITHM_XXH3` exists as a fallback, mapped to a different `HashGenerator` per entry).
+
+## Tampering model — what the chain detects
+
+| Attack | Detected because |
+|--------|-----------------|
+| Mutate a hashed field on entry *N* | Recomputed `hash[N]` ≠ stored `hash[N]` → `CHECK_STORE_ERROR_TYPE_HASH_MISMATCH` at `N`. |
+| Delete entry *N* | Sequence gap on read → `CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP`. |
+| Swap entries *N* and *M* | At least one of them has a `prev_hash` link that no longer matches → mismatch at the earliest violating slot. |
+| Rewrite `hash[N]` to match a forged payload | `hash[N+1]` was computed against the original `hash[N]`. Recomputing forward from the forged value produces `computed[N+1] ≠ stored[N+1]`. The attacker must rewrite every entry from *N* to the head, but cannot regenerate hashes without the per-cluster BLAKE3 key. |
+| Smuggle items into `entry.items` on disk | The on-disk row has `items = nil` by design (`machine.go:1403`); the checker flags `len(entry.Items) > 0` as tampering (`internal/application/check/checker.go:1523-1531`). |
+
+The chain does *not* defend against an attacker who has the cluster's BLAKE3 key — that key is local to the node and is the same secret that lets the node propose. Securing the key is part of the threat model the operator-level [Security](../../../../security/) and [Request Signing](../../../../ops/signing.md) docs cover.
+
+## Genesis
+
+The first entry (`Sequence = 0`) is computed with `lastHash = nil`. The per-cluster BLAKE3 key is the only secret needed; there is no external seed and no genesis ceremony.
+
+## Verification
+
+The chain is verified by `checker.verifyAuditHashChain` (`internal/application/check/checker.go:1449-1616`):
+
+1. Iterate non-archived `AuditEntry` rows in sequence order.
+2. For each entry, rebuild the header payload + every per-item payload (joining `AuditItem` rows by `(sequence, order_index)`).
+3. `HashGenerator.Compute(lastHash, ...)` with the version pinned by `entry.hash_version`.
+4. Compare to the stored `entry.hash`. Mismatch → emit `CHECK_STORE_ERROR_TYPE_HASH_MISMATCH` and **stop** (the chain is broken from this point; downstream verifications would be meaningless).
+5. Match → advance `lastHash`, continue.
+
+The walk also collects an `expectedIdempotency` map (which idempotency keys were committed under which outcome) that `compareIdempotencyOutcomes` consumes downstream.
+
+Archived chapters break the live chain by design: their entries have been exported to cold storage and their audit-entry range is closed by a `CloseAuditSequence` boundary on the chapter. The verification continues across the boundary using the chapter's sealed `last_audit_hash` as the new `lastHash`.
+
+## Derivability rule
+
+The chain's existence is what allows every other dataset in Pebble to be a *projection*:
+
+> If a dataset is derivable from the audit chain by replay, the checker re-derives it and compares. If a dataset is *not* derivable, it **must** be hash-bound.
+
+See `internal/application/check/checker.go:37-68` and `194-227` for the in-code formulation. The corollary is the rule in [`AGENTS.md` invariant #8](../../../../../AGENTS.md): adding a new persisted dataset without a matching `compare*` / `collect*` pass in the checker is the violation. Hash-binding is the escape hatch reserved for data that cannot be derived — and the audit chain is the only thing currently in that category.
