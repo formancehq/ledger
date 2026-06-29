@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -32,6 +34,11 @@ type Config struct {
 	Disabled bool
 }
 
+// TickInterval is the steady-state polling interval. The audit sequence
+// advances on every proposal (including failures, which emit no log), so a
+// ticker — not a log signal — is what guarantees pickup. Lag is eventual.
+const TickInterval = 200 * time.Millisecond
+
 // Indexer tails the Audit zone of the main store and maintains the readstore
 // audit secondary index. It runs on all nodes independently; progress is
 // per-replica (no Raft coordination).
@@ -40,8 +47,7 @@ type Indexer struct {
 	store     *dal.Store
 	readStore *readstore.Store
 	logger    logging.Logger
-	// meter is retained for future gauge metrics added in the background-loop task.
-	meter metric.Meter
+	meter     metric.Meter
 
 	batchSize int
 
@@ -49,6 +55,16 @@ type Indexer struct {
 	// readstore in this process lifetime. It is a snapshot hint — the
 	// authoritative value is always readStore.ReadAuditProgress().
 	lastIndexed atomic.Uint64
+
+	// auditLast holds the last known audit sequence in the main store.
+	// Updated on each tick by lastAuditSequence(); used only for metric gauges.
+	auditLast atomic.Uint64
+
+	// w manages the background goroutine lifecycle.
+	w worker.Worker
+
+	// reg is the OTEL metric registration; unregistered on Stop.
+	reg metric.Registration
 }
 
 // New constructs an Indexer. It does not start any background processing.
@@ -197,4 +213,99 @@ func (i *Indexer) processBatch(ctx context.Context, after uint64) (uint64, bool,
 	i.lastIndexed.Store(cursor)
 
 	return cursor, true, nil
+}
+
+// lastAuditSequence reads the highest audit sequence currently in the main
+// store. Returns 0 when the store is empty.
+func (i *Indexer) lastAuditSequence() (uint64, error) {
+	handle, err := i.store.NewDirectReadHandle()
+	if err != nil {
+		return 0, fmt.Errorf("opening read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	return query.ReadLastAuditSequence(handle)
+}
+
+// Start launches the background indexing loop (no-op if disabled).
+func (i *Indexer) Start() {
+	if i.cfg.Disabled {
+		i.logger.Infof("Audit indexer disabled")
+		return
+	}
+	if reg, err := i.registerMetrics(); err == nil {
+		i.reg = reg
+	}
+	i.w = worker.New()
+	i.w.RunCtx(i.loop)
+}
+
+// Stop halts the loop and unregisters metrics.
+func (i *Indexer) Stop() {
+	if i.cfg.Disabled {
+		return
+	}
+	i.w.Stop()
+	if i.reg != nil {
+		_ = i.reg.Unregister()
+	}
+}
+
+func (i *Indexer) loop(ctx context.Context) {
+	cursor, err := i.readStore.ReadAuditProgress()
+	if err != nil {
+		i.logger.Errorf("read audit cursor: %v", err)
+		return
+	}
+	if last, err := i.lastAuditSequence(); err == nil {
+		i.auditLast.Store(last)
+		if i.shouldRebuildOnBoot(cursor, last) {
+			i.logger.WithFields(map[string]any{"cursor": cursor, "last": last}).Infof("Audit index rebuild on boot")
+			if err := i.Rebuild(ctx); err != nil {
+				i.logger.Errorf("audit index boot rebuild: %v", err)
+			}
+		}
+	}
+
+	ticker := time.NewTicker(TickInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if last, err := i.lastAuditSequence(); err == nil {
+			i.auditLast.Store(last)
+		}
+		if _, err := i.ProcessOnce(ctx); err != nil {
+			i.logger.Errorf("audit indexing: %v", err)
+		}
+	}
+}
+
+func (i *Indexer) registerMetrics() (metric.Registration, error) {
+	indexed, err := i.meter.Int64ObservableGauge("audit_index.last_indexed_sequence",
+		metric.WithDescription("Last audit sequence indexed"))
+	if err != nil {
+		return nil, err
+	}
+	last, err := i.meter.Int64ObservableGauge("audit_index.audit_last_sequence",
+		metric.WithDescription("Last audit sequence in the store"))
+	if err != nil {
+		return nil, err
+	}
+	lag, err := i.meter.Int64ObservableGauge("audit_index.lag",
+		metric.WithDescription("Audit entries the index is behind"))
+	if err != nil {
+		return nil, err
+	}
+	return i.meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		idx := int64(i.lastIndexed.Load())
+		al := int64(i.auditLast.Load())
+		o.ObserveInt64(indexed, idx)
+		o.ObserveInt64(last, al)
+		o.ObserveInt64(lag, max(al-idx, 0))
+		return nil
+	}, indexed, last, lag)
 }

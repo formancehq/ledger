@@ -3,6 +3,7 @@ package auditindexer
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -153,4 +154,23 @@ func TestIndexerCatchUpAndResume(t *testing.T) {
 	seqs, err = rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
 	require.NoError(t, err)
 	require.Equal(t, []uint64{1, 2}, seqs)
+}
+
+func TestStartStopIndexes(t *testing.T) {
+	t.Parallel()
+	idx, mainStore, rs := newIndexerForTest(t)
+
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+
+	idx.Start()
+	t.Cleanup(idx.Stop)
+
+	require.Eventually(t, func() bool {
+		seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
+		return err == nil && len(seqs) == 1
+	}, 5*time.Second, 20*time.Millisecond)
 }
