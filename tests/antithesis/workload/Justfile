@@ -1,7 +1,11 @@
 tag := 'antithesis'
 
-build:
-	docker build --platform linux/amd64 --build-arg GOARCH=amd64 --build-arg GOOS=linux -f Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/workload-ledger-v3:{{tag}}" ../../../
+# include: optional comma-separated list of <template>/<driver> paths to ship
+# in the workload image (e.g. "main/parallel_driver_bulk,main/first_default_ledger").
+# Empty (default) ships every driver. Use the filtered mode for dev-loop runs
+# where the Antithesis composer should focus on a specific subset.
+build include='':
+	docker build --platform linux/amd64 --build-arg GOARCH=amd64 --build-arg GOOS=linux --build-arg INCLUDED_DRIVERS={{quote(include)}} -f Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/workload-ledger-v3:{{tag}}" ../../../
 
-push: build
+push include='': (build include)
 	docker push "$ANTITHESIS_REPOSITORY/workload-ledger-v3:{{tag}}"

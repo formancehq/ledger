@@ -11,8 +11,12 @@ ledger_image_name := env_var_or_default("LEDGER_IMAGE_NAME", "ledger")
 
 # --- Docker Compose mode (legacy) ---
 
-run duration description='ledger-v3 manual run' *ARGS:
-    just push-images {{ARGS}}
+# include: optional comma-separated list of <template>/<driver> paths to ship
+# in the workload image. Empty ships every driver (the default). Use the
+# filtered mode for dev-loop runs where the Antithesis composer should focus
+# on a specific subset (e.g. "main/parallel_driver_bulk,main/first_default_ledger").
+run duration description='ledger-v3 manual run' include='' *ARGS:
+    just push-images {{quote(include)}} {{ARGS}}
     curl --fail \
         --user "formance:$ANTITHESIS_PASSWORD" \
         -X POST https://formance.antithesis.com/api/v1/launch/basic_test -d '{ \
@@ -39,10 +43,10 @@ build-images:
         -t "$ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}" \
         ../../
 
-push-images *ARGS:
+push-images include='' *ARGS:
     just build-images
     just --justfile config/Justfile -d config push {{ARGS}}
-    just --justfile workload/Justfile -d workload push
+    just --justfile workload/Justfile -d workload push {{quote(include)}}
     docker push $ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}
     docker push $ANTITHESIS_REPOSITORY/etcd:v3.5.9
 
@@ -62,8 +66,12 @@ deploy-local: build-images
 
 # Launch a test run on Antithesis using the k8s environment.
 # Duration is in hours (converted to minutes for the Antithesis API).
-k8s-run duration_hours description='ledger-v3 k8s run' *ARGS:
-    just k8s-push-images {{ARGS}}
+# include: optional comma-separated list of <template>/<driver> paths to ship
+# in the workload image. Empty ships every driver. Use the filtered mode for
+# dev-loop runs where the composer should focus on a specific subset (e.g.
+# "main/parallel_driver_bulk,main/first_default_ledger").
+k8s-run duration_hours description='ledger-v3 k8s run' include='' *ARGS:
+    just k8s-push-images {{quote(include)}} {{ARGS}}
     curl --fail \
         --user "formance:$ANTITHESIS_PASSWORD" \
         -X POST https://formance.antithesis.com/api/v1/launch/basic_k8s_test -d '{ \
@@ -93,9 +101,9 @@ k8s-build-images:
         ../../misc/operator
 
 # Push all images for k8s mode.
-k8s-push-images *ARGS:
+k8s-push-images include='' *ARGS:
     just k8s-build-images
     just --justfile k8s/Justfile -d k8s push {{ARGS}}
-    just --justfile workload/Justfile -d workload push
+    just --justfile workload/Justfile -d workload push {{quote(include)}}
     docker push $ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}
     docker push $ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}
