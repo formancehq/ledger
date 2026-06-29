@@ -2139,18 +2139,23 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		cs := node.rawNode.ApplyConfChange(cc)
 		node.confState.Store(cs)
 
-		// EN-1413: drop the peer from Pebble too, otherwise the next boot
-		// would resurrect it from peerStore.LoadAll and the cluster would
-		// keep dialling the removed address.
-		if err := node.membership.Unregister(nodeID); err != nil {
-			return fmt.Errorf("removing peer after force-remove: %w", err)
-		}
-
-		// Persist the updated ConfState in the WAL snapshot so that restarts
-		// see the correct voter set.
+		// Order matters here. ForceRemoveNode bypasses the Raft log, so
+		// there is no EntryConfChange the FSM replay can re-apply on
+		// restart to reconcile a mismatch between WAL ConfState and the
+		// Pebble peer row. Persist the ConfState first so any crash
+		// between the two durable writes lands on the safe side: the
+		// restored cluster has the peer removed from its voter set,
+		// with a possibly-stale (harmless) Pebble row that LoadAll picks
+		// up but the raft state machine ignores. The opposite order
+		// would leave a configured voter with no dialable address.
+		// EN-1413.
 		err := node.wal.UpdateSnapshotConfState(cs)
 		if err != nil {
 			return fmt.Errorf("persisting confstate after force-remove: %w", err)
+		}
+
+		if err := node.membership.Unregister(nodeID); err != nil {
+			return fmt.Errorf("removing peer after force-remove: %w", err)
 		}
 
 		node.logger.WithFields(map[string]any{
