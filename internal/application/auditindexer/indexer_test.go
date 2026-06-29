@@ -174,3 +174,28 @@ func TestStartStopIndexes(t *testing.T) {
 		return err == nil && len(seqs) == 1
 	}, 5*time.Second, 20*time.Millisecond)
 }
+
+func TestIndexerKeepsUpUnderLoad(t *testing.T) {
+	t.Parallel()
+	idx, mainStore, rs := newIndexerForTest(t)
+	idx.Start()
+	t.Cleanup(idx.Stop)
+
+	const total = 200
+	for s := uint64(1); s <= total; s++ {
+		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Ledgers: []string{"main"},
+		})
+	}
+
+	require.Eventually(t, func() bool {
+		c, err := rs.ReadAuditProgress()
+		return err == nil && c == total
+	}, 10*time.Second, 50*time.Millisecond)
+
+	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
+	require.NoError(t, err)
+	require.Len(t, seqs, total)
+}
