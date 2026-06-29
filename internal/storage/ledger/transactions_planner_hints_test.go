@@ -28,6 +28,8 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 
@@ -150,11 +152,9 @@ func TestTransactionListAdaptive_FastPathUnchanged(t *testing.T) {
 // and the retry (with GIN override and a generous timeout) still returns the
 // correct rows.
 //
-// We use 200 rows so the 1 ms probe reliably fires SQLSTATE 57014 even on fast
-// CI runners.  We also record the wall-clock time spent: because the probe
-// timeout fires quickly and the retry (30 s budget) completes successfully, the
-// total duration must be < 30 s — proving we got a result from the retry rather
-// than an error.
+// The test hook forces SQLSTATE 57014 deterministically on the first
+// paginateInTx call (probe) and is a no-op on the second (retry). Hook call
+// count is asserted to prove the retry actually ran.
 func TestTransactionListAdaptive_FallbackTriggeredByTimeout(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()
@@ -168,8 +168,19 @@ func TestTransactionListAdaptive_FallbackTriggeredByTimeout(t *testing.T) {
 		RetryTimeoutMs:         30_000,
 	})
 
+	hookCalls := 0
+	adaptive.SetTestHookBeforePaginateSelect(func(_ context.Context, tx bun.Tx) error {
+		hookCalls++
+		if hookCalls == 1 {
+			_, err := tx.ExecContext(context.Background(), "SELECT pg_sleep(0.005)")
+			return err
+		}
+		return nil
+	})
+
 	cursor, err := adaptive.Transactions().Paginate(ctx, walletQuery(15))
 	require.NoError(t, err, "retry should succeed even when probe times out")
+	require.Equal(t, 2, hookCalls, "hook must be called exactly twice (probe + retry)")
 
 	// We asked for page size 15; there are 200 wallet rows so we expect a full
 	// page and a next-page cursor.
@@ -186,7 +197,7 @@ func TestTransactionListAdaptive_FallbackTriggeredByTimeout(t *testing.T) {
 // TestTransactionListAdaptive_FallbackRowsMatchBaseline confirms that the rows
 // returned after a fallback are identical to those from the plain store —
 // the GIN path and the index-scan path must agree on the result set.
-// We use enough rows to reliably trigger the 1 ms probe timeout.
+// A test hook forces the fallback deterministically; hook count is asserted.
 func TestTransactionListAdaptive_FallbackRowsMatchBaseline(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()
@@ -195,8 +206,18 @@ func TestTransactionListAdaptive_FallbackRowsMatchBaseline(t *testing.T) {
 
 	adaptive := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
 		EnableAdaptiveFallback: true,
-		FirstAttemptTimeoutMs:  1, // always triggers fallback with 200 rows
+		FirstAttemptTimeoutMs:  1,
 		RetryTimeoutMs:         30_000,
+	})
+
+	hookCalls := 0
+	adaptive.SetTestHookBeforePaginateSelect(func(_ context.Context, tx bun.Tx) error {
+		hookCalls++
+		if hookCalls == 1 {
+			_, err := tx.ExecContext(context.Background(), "SELECT pg_sleep(0.005)")
+			return err
+		}
+		return nil
 	})
 
 	q := walletQuery(15)
@@ -206,6 +227,7 @@ func TestTransactionListAdaptive_FallbackRowsMatchBaseline(t *testing.T) {
 
 	adaptiveCursor, err := adaptive.Transactions().Paginate(ctx, q)
 	require.NoError(t, err)
+	require.Equal(t, 2, hookCalls, "hook must be called exactly twice (probe + retry)")
 
 	require.Equal(t, len(baseCursor.Data), len(adaptiveCursor.Data))
 	for i := range baseCursor.Data {
@@ -247,6 +269,19 @@ func TestTransactionListAdaptive_NoLeakage(t *testing.T) {
 		}),
 	)
 
+	// Force fallback deterministically so SET LOCAL enable_indexscan = off
+	// is actually issued. Without this, a fast query on 3 rows may complete
+	// within the 1 ms probe and never exercise the fallback branch.
+	hookCalls := 0
+	pinnedStore.SetTestHookBeforePaginateSelect(func(_ context.Context, tx bun.Tx) error {
+		hookCalls++
+		if hookCalls == 1 {
+			_, err := tx.ExecContext(context.Background(), "SELECT pg_sleep(0.005)")
+			return err
+		}
+		return nil
+	})
+
 	// Baseline: Postgres defaults.
 	require.Equal(t, "on", showSetting(t, ctx, conn, "enable_indexscan"),
 		"enable_indexscan should be 'on' before Paginate")
@@ -255,6 +290,7 @@ func TestTransactionListAdaptive_NoLeakage(t *testing.T) {
 
 	_, err = pinnedStore.Transactions().Paginate(ctx, walletQuery(10))
 	require.NoError(t, err)
+	require.Equal(t, 2, hookCalls, "fallback must have triggered (probe + retry)")
 
 	// After the transaction commits, SET LOCAL must have been reverted.
 	require.Equal(t, "on", showSetting(t, ctx, conn, "enable_indexscan"),
@@ -331,7 +367,8 @@ func TestTransactionListAdaptive_ClientCancelNoRetry(t *testing.T) {
 
 // TestTransactionListAdaptive_DisabledFallback verifies that when
 // EnableAdaptiveFallback is false the plain code path is taken and the query
-// succeeds (no overhead from the probe/retry machinery).
+// succeeds (no overhead from the probe/retry machinery). A test hook that
+// would fail if called proves the adaptive wrapper is never invoked.
 func TestTransactionListAdaptive_DisabledFallback(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()
@@ -340,6 +377,11 @@ func TestTransactionListAdaptive_DisabledFallback(t *testing.T) {
 
 	noFallback := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
 		EnableAdaptiveFallback: false,
+	})
+
+	noFallback.SetTestHookBeforePaginateSelect(func(_ context.Context, _ bun.Tx) error {
+		t.Fatal("adaptive hook must not be called when EnableAdaptiveFallback is false")
+		return nil
 	})
 
 	cursor, err := noFallback.Transactions().Paginate(ctx, walletQuery(15))
@@ -563,11 +605,12 @@ func TestTransactionListAdaptive_CtxCancelAfterProbe(t *testing.T) {
 	require.Equal(t, 1, hookCalls, "hook must be called exactly once — no retry after ctx cancel")
 }
 
-// TestTransactionListAdaptive_ZeroTimeoutNoSetLocal verifies that
-// FirstAttemptTimeoutMs = 0 skips the SET LOCAL statement_timeout entirely so
-// the probe runs without a server-side timeout. Also exercises
-// DefaultTransactionListConfig() and field override.
-func TestTransactionListAdaptive_ZeroTimeoutNoSetLocal(t *testing.T) {
+// TestTransactionListAdaptive_ZeroTimeoutDisablesInherited verifies that
+// FirstAttemptTimeoutMs = 0 explicitly issues SET LOCAL statement_timeout = 0,
+// disabling any inherited session or role-level timeout. The probe runs
+// without a server-side timeout, so the fallback never fires.
+// Also exercises DefaultTransactionListConfig() and field override.
+func TestTransactionListAdaptive_ZeroTimeoutDisablesInherited(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()
 
@@ -575,10 +618,44 @@ func TestTransactionListAdaptive_ZeroTimeoutNoSetLocal(t *testing.T) {
 
 	// Start from the production defaults and only disable the probe timeout.
 	cfg := ledgerstore.DefaultTransactionListConfig()
-	cfg.FirstAttemptTimeoutMs = 0 // skip SET LOCAL statement_timeout for probe
+	cfg.FirstAttemptTimeoutMs = 0
 	adaptive := storeWithConfig(t, base, cfg)
 
 	cursor, err := adaptive.Transactions().Paginate(ctx, walletQuery(15))
 	require.NoError(t, err)
 	require.Len(t, cursor.Data, 4)
+}
+
+// TestTransactionListAdaptive_ServerSideCancelNoRetry verifies that a
+// server-side 57014 (e.g. from pg_cancel_backend) with a live Go context
+// is NOT misclassified as a retryable statement timeout.
+func TestTransactionListAdaptive_ServerSideCancelNoRetry(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	base := setupHintsTestData(t, 4, 2)
+
+	adaptive := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
+		EnableAdaptiveFallback: true,
+		FirstAttemptTimeoutMs:  60_000,
+		RetryTimeoutMs:         30_000,
+	})
+
+	hookCalls := 0
+	adaptive.SetTestHookBeforePaginateSelect(func(_ context.Context, _ bun.Tx) error {
+		hookCalls++
+		return &pgconn.PgError{
+			Code:    pgerrcode.QueryCanceled,
+			Message: "canceling statement due to user request",
+		}
+	})
+
+	_, err := adaptive.Transactions().Paginate(ctx, walletQuery(15))
+	require.Error(t, err, "server-side cancel must surface an error")
+	require.Equal(t, 1, hookCalls,
+		"must not retry after server-side cancel (not a statement timeout)")
+
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr)
+	require.Equal(t, pgerrcode.QueryCanceled, pgErr.Code)
 }

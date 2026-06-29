@@ -53,39 +53,40 @@ Wait for `CREATE INDEX` to complete before proceeding.
 
 ### 2. Enable the feature flag
 
+Set `INDEXED_METADATA_KEYS` in the ledger's feature configuration at creation
+time:
+
 ```
-PATCH /ledgers/<ledger>
+POST /v2/{ledger}
 Content-Type: application/json
 
-{"features": {"INDEXED_METADATA_KEYS": "source_wallet_id,destination_wallet_id"}}
+{
+  "features": {
+    "INDEXED_METADATA_KEYS": "source_wallet_id,destination_wallet_id"
+  }
+}
 ```
 
-Ledger validates that each named key has a corresponding functional index in
-`pg_indexes` and rejects the request if any index is missing.
+On startup, Ledger checks `pg_indexes` for each key and silently disables the
+rewrite for any key whose functional index is missing (falling back to the
+standard `@>` containment predicate). A warning is logged for each missing index.
 
-After the PATCH, new query plans will use the functional index. Existing
-connections pick up the change on their next query (no restart needed).
+Feature flags are immutable after ledger creation. To change the key list,
+recreate the ledger or update the configuration and restart.
 
 ### 3. Deactivation
 
-To deactivate, remove the key from the flag **before** dropping the index:
-
-```
-PATCH /ledgers/<ledger>
-{"features": {"INDEXED_METADATA_KEYS": ""}}
-```
-
-Once the flag is cleared, Ledger reverts to `@>` for all metadata filters and
-the index can be safely dropped.
+To deactivate, recreate the ledger without the key in the flag, or simply drop
+the index — Ledger's startup check detects the missing index and disables the
+rewrite automatically:
 
 ```sql
 DROP INDEX CONCURRENTLY IF EXISTS "<bucket>".transactions_metadata_<key>_<ledger>_idx;
 ```
 
-Dropping the index before clearing the flag is safe (Ledger's startup check
-detects the missing index and disables the rewrite automatically on next
-restart), but clearing the flag first avoids any window where the rewrite is
-attempted without an index.
+After dropping the index, restart Ledger (or wait for the next store open) so
+`ResolveIndexedMetadataKeys` re-checks `pg_indexes` and reverts to the `@>`
+containment predicate for that key.
 
 ---
 
@@ -102,6 +103,6 @@ the generated SQL to enable functional-index matching.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Flag accepted but queries still use `@>` | Index does not exist or has a different expression | Check `pg_indexes` for the exact index expression |
-| PATCH rejected with "index not found" | Index was not yet created, or the key name or partial condition does not match | Create the index first, then retry the PATCH |
-| Slow queries after dropping the index | Flag still references the dropped key | Clear the flag or restart Ledger to trigger the startup check |
+| Flag set but queries still use `@>` | Index does not exist or has a different expression | Check `pg_indexes` for the exact index expression; restart Ledger to re-run `ResolveIndexedMetadataKeys` |
+| Warning logged: "no functional index found for key" | Index was not yet created, or the expression/partial condition does not match | Create the index, then restart Ledger |
+| Slow queries after dropping the index | Flag still references the dropped key | Restart Ledger to trigger the startup check, which auto-disables the rewrite |

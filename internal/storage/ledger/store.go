@@ -68,11 +68,15 @@ type TransactionListConfig struct {
 }
 
 // isStatementTimeout returns true when err carries SQLSTATE 57014
-// (query_canceled due to statement_timeout). ResolveError leaves this code
-// untouched so errors.As still reaches the underlying *pgconn.PgError.
+// (query_canceled) AND the message confirms it was fired by statement_timeout.
+// PostgreSQL reuses 57014 for pg_cancel_backend ("user request"),
+// idle_in_transaction_session_timeout, and other operator-initiated
+// cancellations — those must NOT trigger the adaptive retry.
 func isStatementTimeout(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.QueryCanceled
+	return errors.As(err, &pgErr) &&
+		pgErr.Code == pgerrcode.QueryCanceled &&
+		strings.Contains(pgErr.Message, "statement timeout")
 }
 
 type Store struct {
@@ -121,7 +125,10 @@ type Store struct {
 	// is issued but before the main SELECT. Nil in production. Tests set this to
 	// inject artificial latency (e.g. SELECT pg_sleep(0.005)) so that
 	// statement_timeout fires deterministically regardless of query execution speed.
-	testHookBeforePaginateSelect func(context.Context, bun.Tx) error
+	// Stored as an atomic.Value to avoid a data race between
+	// SetTestHookBeforePaginateSelect and the read on the Paginate hot path.
+	// The underlying type, when non-nil, is paginateSelectHookWrapper.
+	testHookBeforePaginateSelect atomic.Value
 
 	// indexedMetadataKeys is the subset of INDEXED_METADATA_KEYS that have been
 	// confirmed to have a matching functional index in pg_indexes. Set by
@@ -167,13 +174,19 @@ func (store *Store) Transactions() common.PaginatedResource[ledger.Transaction, 
 	return &transactionsAdaptivePaginator{store: store}
 }
 
+// paginateSelectHookWrapper wraps a test hook function so it can be stored in
+// an atomic.Value (which requires a concrete type for the first Store).
+type paginateSelectHookWrapper struct {
+	fn func(context.Context, bun.Tx) error
+}
+
 // SetTestHookBeforePaginateSelect sets a hook invoked inside paginateInTx after
 // SET LOCAL statements but before the main SELECT, sharing the same transaction.
 // The hook is subject to the same statement_timeout as the SELECT, so setting it
 // to SELECT pg_sleep(0.005) guarantees SQLSTATE 57014 fires within 1 ms regardless
 // of actual query speed. For tests only; nil in production.
 func (store *Store) SetTestHookBeforePaginateSelect(hook func(context.Context, bun.Tx) error) {
-	store.testHookBeforePaginateSelect = hook
+	store.testHookBeforePaginateSelect.Store(paginateSelectHookWrapper{fn: hook})
 }
 
 // transactionsAdaptivePaginator is the heart of the sparse-wallet mitigation.
@@ -222,6 +235,12 @@ func (a *transactionsAdaptivePaginator) Paginate(
 
 	cfg := a.store.txListConfig
 
+	if cfg.FirstAttemptTimeoutMs <= 0 {
+		logging.FromContext(ctx).WithFields(map[string]any{
+			"first_attempt_timeout_ms": cfg.FirstAttemptTimeoutMs,
+		}).Infof("adaptive fallback enabled but FirstAttemptTimeoutMs <= 0; probe will never time out so fallback is effectively disabled")
+	}
+
 	// ── first attempt ──────────────────────────────────────────────────────
 	probeStart := time.Now()
 	cursor, err := a.paginateInTx(ctx, q, cfg.FirstAttemptTimeoutMs, false)
@@ -244,7 +263,7 @@ func (a *transactionsAdaptivePaginator) Paginate(
 	logging.FromContext(ctx).WithFields(map[string]any{
 		"probe_duration_ms":        probeMs,
 		"first_attempt_timeout_ms": cfg.FirstAttemptTimeoutMs,
-	}).Errorf("transactions list probe timed out; retrying with GIN plan override")
+	}).Infof("transactions list probe timed out; retrying with GIN plan override")
 
 	a.store.txListFallbackCounter.Add(ctx, 1)
 	a.store.txListFirstAttemptDurationMs.Record(ctx, probeMs)
@@ -311,8 +330,8 @@ func (a *transactionsAdaptivePaginator) paginateInTx(
 		// SELECT, so it is subject to the same SET LOCAL statement_timeout. In tests
 		// this is set to SELECT pg_sleep(N) to force SQLSTATE 57014 regardless of
 		// how fast the real query executes on the CI runner.
-		if a.store.testHookBeforePaginateSelect != nil {
-			if err := a.store.testHookBeforePaginateSelect(ctx, tx); err != nil {
+		if v := a.store.testHookBeforePaginateSelect.Load(); v != nil {
+			if err := v.(paginateSelectHookWrapper).fn(ctx, tx); err != nil {
 				return err
 			}
 		}
@@ -342,14 +361,13 @@ func (a *transactionsAdaptivePaginator) issueSetLocal(
 	timeoutMs int64,
 	planOverride bool,
 ) error {
-	// statement_timeout first so that even a surprisingly slow GIN scan is
-	// still bounded. Order doesn't affect correctness; this is logical sequencing.
-	if timeoutMs > 0 {
-		if _, err := tx.ExecContext(ctx,
-			fmt.Sprintf("SET LOCAL statement_timeout = %d", timeoutMs),
-		); err != nil {
-			return fmt.Errorf("SET LOCAL statement_timeout: %w", err)
-		}
+	// Always issue SET LOCAL statement_timeout so that any inherited session or
+	// role-level timeout is explicitly overridden. 0 = no timeout (disables
+	// any inherited value); positive values set the probe/retry budget in ms.
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf("SET LOCAL statement_timeout = %d", timeoutMs),
+	); err != nil {
+		return fmt.Errorf("SET LOCAL statement_timeout: %w", err)
 	}
 	if planOverride {
 		// Disabling index scans forces the planner off the Index Scan Backward
@@ -474,7 +492,7 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 			Where("schemaname = ?", schema).
 			Where("tablename = ?", "transactions").
 			Where("indexdef LIKE ? ESCAPE '\\'", "%metadata ->> '"+escapedKey+"'%").
-			Where("(indexdef NOT LIKE '%WHERE%' ESCAPE '\\' OR indexdef LIKE ? ESCAPE '\\')", "%"+escapedLedger+"%").
+			Where("(indexdef NOT LIKE '%WHERE%' ESCAPE '\\' OR indexdef LIKE ? ESCAPE '\\')", "%'"+escapedLedger+"'%").
 			Scan(ctx, &count)
 		if err != nil {
 			return fmt.Errorf("checking pg_indexes for key %q: %w", key, err)

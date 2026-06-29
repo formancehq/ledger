@@ -52,13 +52,17 @@ import (
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
-func getEnvInt(key string, defaultVal int) int {
-	if s := os.Getenv(key); s != "" {
-		if v, err := strconv.Atoi(s); err == nil {
-			return v
-		}
+func getEnvInt(t *testing.T, key string, defaultVal int) int {
+	t.Helper()
+	s := os.Getenv(key)
+	if s == "" {
+		return defaultVal
 	}
-	return defaultVal
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		t.Fatalf("invalid value for %s=%q: %v", key, s, err)
+	}
+	return v
 }
 
 // seedSparseData inserts directly into Postgres via generate_series, bypassing
@@ -191,26 +195,34 @@ func explainAnalyze(t *testing.T, store *ledgerstore.Store, filter string, value
 	schema := store.GetLedger().Bucket
 	ledgerName := store.GetLedger().Name
 
-	// Replicate what resource_transactions.ResolveFilter + BuildDataset produce.
-	// ledgerName and value are test-controlled alphanumeric strings, safe to embed.
-	var predicate string
+	// Replicate the exact predicate forms resource_transactions.ResolveFilter produces.
+	// Both forms use parameterized values (matching the runtime bind-parameter path)
+	// so EXPLAIN reflects the actual plan the planner would choose.
+	var sqlStr string
+	var args []any
 	if filter == "@>" {
-		// %q adds Go double-quotes; JSON string values need double-quotes, so this is correct.
-		predicate = fmt.Sprintf(`metadata @> '{"source_wallet_id": %q}'`, value)
+		sqlStr = fmt.Sprintf(`
+			EXPLAIN (FORMAT TEXT)
+			SELECT id FROM %q.transactions
+			WHERE ledger = $1
+			AND metadata @> $2
+			ORDER BY id DESC LIMIT 16
+		`, schema)
+		args = []any{ledgerName, fmt.Sprintf(`{"source_wallet_id": %q}`, value)}
 	} else {
-		// SQL string literals use single quotes.
-		predicate = fmt.Sprintf(`metadata ->> 'source_wallet_id' = '%s'`, value)
+		// The ->> key is inlined as a literal (matching the runtime form, which
+		// embeds the key to enable functional-index matching).
+		sqlStr = fmt.Sprintf(`
+			EXPLAIN (FORMAT TEXT)
+			SELECT id FROM %q.transactions
+			WHERE ledger = $1
+			AND metadata ->> 'source_wallet_id' = $2
+			ORDER BY id DESC LIMIT 16
+		`, schema)
+		args = []any{ledgerName, value}
 	}
 
-	sql := fmt.Sprintf(`
-		EXPLAIN (FORMAT TEXT)
-		SELECT id FROM %q.transactions
-		WHERE ledger = '%s'
-		AND %s
-		ORDER BY id DESC LIMIT 16
-	`, schema, ledgerName, predicate)
-
-	rows, err := store.GetDB().QueryContext(ctx, sql)
+	rows, err := store.GetDB().QueryContext(ctx, sqlStr, args...)
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
 
@@ -227,8 +239,16 @@ func explainAnalyze(t *testing.T, store *ledgerstore.Store, filter string, value
 func TestSparseWalletSimulation(t *testing.T) {
 	const walletID = "wallet-target"
 
-	totalRows := getEnvInt("SIM_ROWS", 1_000_000)
-	walletRows := getEnvInt("SIM_WALLET", 50)
+	totalRows := getEnvInt(t, "SIM_ROWS", 1_000_000)
+	walletRows := getEnvInt(t, "SIM_WALLET", 50)
+
+	const pageSize = 16
+	if walletRows < pageSize {
+		t.Fatalf("SIM_WALLET=%d must be >= page size %d", walletRows, pageSize)
+	}
+	if totalRows < walletRows {
+		t.Fatalf("SIM_ROWS=%d must be >= SIM_WALLET=%d", totalRows, walletRows)
+	}
 
 	t.Logf("simulation: %d total rows, %d wallet rows (%.4f%% selectivity)",
 		totalRows, walletRows, float64(walletRows)/float64(totalRows)*100)
@@ -261,7 +281,7 @@ func TestSparseWalletSimulation(t *testing.T) {
 		InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
 			Column:   "id",
 			Order:    &order,
-			PageSize: 16,
+			PageSize: pageSize,
 			Options: common.ResourceQuery[any]{
 				Builder: walletFilter,
 			},
