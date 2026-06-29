@@ -64,16 +64,14 @@ func TestAddAccountType_WithDefaultMetadata_PopulatedLedger(t *testing.T) {
 	const ledger = "test-ledger"
 	info := ledgerInfoWithID(ledger, 1)
 
-	// Only the outer processApply GetBoundaries fires (Times(1)); the create-only
-	// guard that read boundaries a second time is gone. Populated boundaries are
-	// irrelevant to the outcome now — adding defaults succeeds regardless.
-	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetBoundaries(ledger).
-		Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1, NextTransactionId: 5, MetadataCount: 3}).AsReader(), nil).
-		Times(1)
+	// The create-only guard that read boundaries a second time is gone. Populated
+	// boundaries are irrelevant to the outcome now — adding defaults succeeds regardless.
+	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, info.AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: ledger},
+		(&raftcmdpb.LedgerBoundaries{NextLogId: 1, NextTransactionId: 5, MetadataCount: 3}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
-	mockStore.EXPECT().PutBoundaries(ledger, gomock.Any())
-	mockStore.EXPECT().PutLedger(ledger, gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: ledger}, nil)
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: ledger}, nil)
 
 	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", map[string]*commonpb.MetadataValue{
 		"tier": commonpb.NewStringValue("standard"),
@@ -106,13 +104,13 @@ func TestAddAccountType_WithDefaultMetadata_FreshLedger(t *testing.T) {
 	info := ledgerInfoWithID(ledger, 1)
 
 	// processApply outer mocks.
-	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, info.AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: ledger}, (&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
-	mockStore.EXPECT().PutBoundaries(ledger, gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: ledger}, nil)
 
 	// processAddAccountType updates ledger info.
-	mockStore.EXPECT().PutLedger(ledger, gomock.Any())
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: ledger}, nil)
 
 	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", map[string]*commonpb.MetadataValue{
 		"tier": commonpb.NewStringValue("standard"),
@@ -149,8 +147,8 @@ func TestAddAccountType_DefaultMetadata_NullByteKeyRejected(t *testing.T) {
 
 	// validateDefaultMetadata fails before the inner loadBoundaries, so only the
 	// outer processApply GetBoundaries call fires and no Put* happens.
-	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil).Times(1)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, info.AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: ledger}, (&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 
 	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", map[string]*commonpb.MetadataValue{
@@ -180,8 +178,8 @@ func TestAddAccountType_DefaultMetadata_NullByteValueRejected(t *testing.T) {
 	const ledger = "test-ledger"
 	info := ledgerInfoWithID(ledger, 1)
 
-	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil).Times(1)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, info.AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: ledger}, (&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 
 	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", map[string]*commonpb.MetadataValue{
@@ -216,13 +214,13 @@ func TestAddAccountType_WithoutDefaultMetadata_PopulatedLedger(t *testing.T) {
 	const ledger = "test-ledger"
 	info := ledgerInfoWithID(ledger, 1)
 
-	// processApply outer mocks — exactly one GetBoundaries call (from processApply).
-	// If processAddAccountType calls GetBoundaries a second time the strict mock fails.
-	mockStore.EXPECT().GetLedger(ledger).Return(info.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetBoundaries(ledger).Return((&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil).Times(1)
+	// processApply outer mocks — processAddAccountType itself no longer reads
+	// boundaries (the create-only guard is gone), only processApply does.
+	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, info.AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: ledger}, (&raftcmdpb.LedgerBoundaries{NextLogId: 1}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
-	mockStore.EXPECT().PutBoundaries(ledger, gomock.Any())
-	mockStore.EXPECT().PutLedger(ledger, gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: ledger}, nil)
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: ledger}, nil)
 
 	// No DefaultMetadata — inner guard path is not taken.
 	order := addAccountTypeOrderWithDefaults(ledger, "user", "users:{id}", nil)

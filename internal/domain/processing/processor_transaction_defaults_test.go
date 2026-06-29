@@ -75,7 +75,8 @@ func ledgerWithNoAccountTypeDefaults() *commonpb.LedgerInfo {
 // expectWorldToAccountPostingMocks wires the volume reads/writes for a
 // world -> account posting of `amount` USD. world is the source so the balance
 // check is skipped.
-func expectWorldToAccountPostingMocks(mockStore *MockScope, account string) {
+func expectWorldToAccountPostingMocks(t *testing.T, mockStore *MockScope, account string) {
+	t.Helper()
 	worldKey := domain.NewVolumeKey("test-ledger", "world", "USD")
 	destKey := domain.NewVolumeKey("test-ledger", account, "USD")
 	zero := &raftcmdpb.VolumePair{
@@ -83,24 +84,25 @@ func expectWorldToAccountPostingMocks(mockStore *MockScope, account string) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(worldKey).Return(zero.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(worldKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destKey).Return(zero.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
+	expectGetVolume(mockStore, worldKey, zero.AsReader(), nil)
+	expectPutVolume(t, mockStore, worldKey, nil)
+	expectGetVolume(mockStore, destKey, zero.AsReader(), nil)
+	expectPutVolume(t, mockStore, destKey, nil)
 }
 
 // commonTxMocks wires the calls every processCreateTransaction makes that are
 // not specific to the default-metadata behaviour under test.
-func commonTxMocks(mockStore *MockScope, info *commonpb.LedgerInfo) {
+func commonTxMocks(t *testing.T, mockStore *MockScope, info *commonpb.LedgerInfo) {
+	t.Helper()
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(info.AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, info.AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
-	mockStore.EXPECT().PutTransactionState(gomock.Any(), gomock.Any())
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 }
 
 func worldToAccountRequest(account string, metadata map[string]*commonpb.MetadataMap) *servicepb.Request {
@@ -193,18 +195,15 @@ func TestProcessCreateTransaction_AppliesDefaultMetadataToNewAccount(t *testing.
 
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
-	commonTxMocks(mockStore, ledgerWithDefaults())
-	expectWorldToAccountPostingMocks(mockStore, "users:alice")
+	commonTxMocks(t, mockStore, ledgerWithDefaults())
+	expectWorldToAccountPostingMocks(t, mockStore, "users:alice")
 
 	// New account: marker absent.
 	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutAccount(acctKey, gomock.Any())
 
 	// The default key is written.
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "tier"},
-		commonpb.NewStringValue("standard"),
-	)
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "tier"}, nil)
 
 	result, err := processor.ProcessOrder(requestToOrder(worldToAccountRequest("users:alice", nil)), mockStore)
 	require.NoError(t, err)
@@ -229,17 +228,14 @@ func TestProcessCreateTransaction_ExplicitMetadataWinsOverDefault(t *testing.T) 
 
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
-	commonTxMocks(mockStore, ledgerWithDefaults())
-	expectWorldToAccountPostingMocks(mockStore, "users:alice")
+	commonTxMocks(t, mockStore, ledgerWithDefaults())
+	expectWorldToAccountPostingMocks(t, mockStore, "users:alice")
 
 	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutAccount(acctKey, gomock.Any())
 
 	// Explicit "tier" must win: the default value "standard" must never be written.
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "tier"},
-		commonpb.NewStringValue("premium"),
-	)
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "tier"}, nil)
 
 	explicit := map[string]*commonpb.MetadataMap{
 		"users:alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("premium")}},
@@ -265,8 +261,8 @@ func TestProcessCreateTransaction_ExistingAccountNotDefaulted(t *testing.T) {
 
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
-	commonTxMocks(mockStore, ledgerWithDefaults())
-	expectWorldToAccountPostingMocks(mockStore, "users:alice")
+	commonTxMocks(t, mockStore, ledgerWithDefaults())
+	expectWorldToAccountPostingMocks(t, mockStore, "users:alice")
 
 	// Account already exists: marker present. No PutAccount, no default metadata
 	// write must happen (gomock fails the test if either is called).
@@ -305,33 +301,30 @@ func TestProcessCreateTransaction_SameDestTwice_DedupSeen(t *testing.T) {
 		Input:  commonpb.NewUint256FromUint64(0),
 		Output: commonpb.NewUint256FromUint64(0),
 	}
-	mockStore.EXPECT().GetVolume(worldUSDKey).Return(zero.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(worldUSDKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destUSDKey).Return(zero.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(destUSDKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(worldEURKey).Return(zero.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(worldEURKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destEURKey).Return(zero.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(destEURKey, gomock.Any())
+	expectGetVolume(mockStore, worldUSDKey, zero.AsReader(), nil)
+	expectPutVolume(t, mockStore, worldUSDKey, nil)
+	expectGetVolume(mockStore, destUSDKey, zero.AsReader(), nil)
+	expectPutVolume(t, mockStore, destUSDKey, nil)
+	expectGetVolume(mockStore, worldEURKey, zero.AsReader(), nil)
+	expectPutVolume(t, mockStore, worldEURKey, nil)
+	expectGetVolume(mockStore, destEURKey, zero.AsReader(), nil)
+	expectPutVolume(t, mockStore, destEURKey, nil)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerWithDefaults().AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerWithDefaults().AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
-	mockStore.EXPECT().PutTransactionState(gomock.Any(), gomock.Any())
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
 	// Key assertion: GetAccount and PutAccount must each be called exactly ONCE
 	// despite two postings to the same destination.
 	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound).Times(1)
 	mockStore.EXPECT().PutAccount(acctKey, gomock.Any()).Times(1)
 
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "tier"},
-		commonpb.NewStringValue("standard"),
-	)
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "tier"}, nil)
 
 	result, err := processor.ProcessOrder(requestToOrder(twoPostingsToSameDestRequest("users:alice")), mockStore)
 	require.NoError(t, err)
@@ -362,34 +355,28 @@ func TestProcessCreateTransaction_NonWorldSource_MarkerWritten(t *testing.T) {
 		Input:  commonpb.NewUint256FromUint64(0),
 		Output: commonpb.NewUint256FromUint64(0),
 	}
-	mockStore.EXPECT().GetVolume(srcVolumeKey).Return(zero.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(srcVolumeKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(dstVolumeKey).Return(zero.AsReader(), nil)
-	mockStore.EXPECT().PutVolume(dstVolumeKey, gomock.Any())
+	expectGetVolume(mockStore, srcVolumeKey, zero.AsReader(), nil)
+	expectPutVolume(t, mockStore, srcVolumeKey, nil)
+	expectGetVolume(mockStore, dstVolumeKey, zero.AsReader(), nil)
+	expectPutVolume(t, mockStore, dstVolumeKey, nil)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerWithDefaults().AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerWithDefaults().AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
-	mockStore.EXPECT().PutTransactionState(gomock.Any(), gomock.Any())
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
 	// Both source and destination are new: each gets a marker and tier default.
 	mockStore.EXPECT().GetAccount(srcKey).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutAccount(srcKey, gomock.Any())
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: srcKey, Key: "tier"},
-		commonpb.NewStringValue("standard"),
-	)
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: srcKey, Key: "tier"}, nil)
 
 	mockStore.EXPECT().GetAccount(dstKey).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutAccount(dstKey, gomock.Any())
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: dstKey, Key: "tier"},
-		commonpb.NewStringValue("standard"),
-	)
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: dstKey, Key: "tier"}, nil)
 
 	result, err := processor.ProcessOrder(requestToOrder(twoNonWorldAccountsRequest("users:src", "users:dst")), mockStore)
 	require.NoError(t, err)
@@ -413,8 +400,8 @@ func TestProcessCreateTransaction_NoMatchingType_MarkerOnlyNoDefaults(t *testing
 	// "vendors:acme" does not match that pattern.
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "vendors:acme"}
 
-	commonTxMocks(mockStore, ledgerWithDefaults())
-	expectWorldToAccountPostingMocks(mockStore, "vendors:acme")
+	commonTxMocks(t, mockStore, ledgerWithDefaults())
+	expectWorldToAccountPostingMocks(t, mockStore, "vendors:acme")
 
 	// New account: marker absent.
 	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound)
@@ -449,8 +436,8 @@ func TestProcessCreateTransaction_NoDefaults_MarkerWrittenNoMetadata(t *testing.
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
 	// Use a ledger whose account type has NO default_metadata.
-	commonTxMocks(mockStore, ledgerWithNoAccountTypeDefaults())
-	expectWorldToAccountPostingMocks(mockStore, "users:alice")
+	commonTxMocks(t, mockStore, ledgerWithNoAccountTypeDefaults())
+	expectWorldToAccountPostingMocks(t, mockStore, "users:alice")
 
 	// New account: marker absent, then written. No PutAccountMetadata expected —
 	// strict gomock fails the test if a default metadata write is attempted.
@@ -482,22 +469,16 @@ func TestProcessCreateTransaction_PartialExplicitMetadata(t *testing.T) {
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
 	// Ledger type declares two defaults: tier=standard, region=eu.
-	commonTxMocks(mockStore, ledgerWithTwoDefaults())
-	expectWorldToAccountPostingMocks(mockStore, "users:alice")
+	commonTxMocks(t, mockStore, ledgerWithTwoDefaults())
+	expectWorldToAccountPostingMocks(t, mockStore, "users:alice")
 
 	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutAccount(acctKey, gomock.Any())
 
 	// Explicit order metadata sets "tier"=premium only.
 	// gomock: tier=premium (explicit wins), region=eu (default applied).
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "tier"},
-		commonpb.NewStringValue("premium"),
-	)
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "region"},
-		commonpb.NewStringValue("eu"),
-	)
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "tier"}, nil)
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "region"}, nil)
 
 	explicit := map[string]*commonpb.MetadataMap{
 		"users:alice": {Values: map[string]*commonpb.MetadataValue{

@@ -35,13 +35,14 @@ func saveAccountMetadataRequest(account string, metadata map[string]*commonpb.Me
 
 // addMetadataCommonMocks wires the processApply-level calls every AddMetadata
 // order makes regardless of the default-metadata behaviour under test.
-func addMetadataCommonMocks(mockStore *MockScope, info *commonpb.LedgerInfo) {
+func addMetadataCommonMocks(t *testing.T, mockStore *MockScope, info *commonpb.LedgerInfo) {
+	t.Helper()
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	mockStore.EXPECT().GetLedger("test-ledger").Return(info.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, info.AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890}).AnyTimes()
-	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 }
 
 // TestProcessAddMetadata_NewAccount_MergesDefaults verifies a metadata-set that
@@ -59,17 +60,15 @@ func TestProcessAddMetadata_NewAccount_MergesDefaults(t *testing.T) {
 
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
-	addMetadataCommonMocks(mockStore, ledgerWithDefaults())
+	addMetadataCommonMocks(t, mockStore, ledgerWithDefaults())
 
 	// New account: marker written exactly once.
 	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound).Times(1)
 	mockStore.EXPECT().PutAccount(acctKey, gomock.Any()).Times(1)
 
 	// Both the explicit key and the merged default are applied.
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "note"}, commonpb.NewStringValue("hello"))
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "tier"}, commonpb.NewStringValue("standard"))
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "note"}, nil)
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "tier"}, nil)
 
 	result, err := processor.ProcessOrder(requestToOrder(saveAccountMetadataRequest("users:alice",
 		map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("hello")})), mockStore)
@@ -96,14 +95,13 @@ func TestProcessAddMetadata_NewAccount_ExplicitOverridesDefault(t *testing.T) {
 
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
-	addMetadataCommonMocks(mockStore, ledgerWithDefaults())
+	addMetadataCommonMocks(t, mockStore, ledgerWithDefaults())
 
 	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound).Times(1)
 	mockStore.EXPECT().PutAccount(acctKey, gomock.Any()).Times(1)
 
 	// Only the explicit tier=gold is applied; the default tier=standard never wins.
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "tier"}, commonpb.NewStringValue("gold"))
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "tier"}, nil)
 
 	result, err := processor.ProcessOrder(requestToOrder(saveAccountMetadataRequest("users:alice",
 		map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")})), mockStore)
@@ -130,12 +128,11 @@ func TestProcessAddMetadata_ExistingAccount_NoDefaults(t *testing.T) {
 
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
-	addMetadataCommonMocks(mockStore, ledgerWithDefaults())
+	addMetadataCommonMocks(t, mockStore, ledgerWithDefaults())
 
 	// Account already exists: marker present, so no PutAccount and no defaults.
 	mockStore.EXPECT().GetAccount(acctKey).Return((&commonpb.AccountState{}).AsReader(), nil).Times(1)
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "note"}, commonpb.NewStringValue("hi"))
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "note"}, nil)
 
 	result, err := processor.ProcessOrder(requestToOrder(saveAccountMetadataRequest("users:alice",
 		map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("hi")})), mockStore)
@@ -164,13 +161,12 @@ func TestProcessAddMetadata_NoDefaults_MarkerWritten(t *testing.T) {
 	acctKey := domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"}
 
 	// Ledger declares no defaults.
-	addMetadataCommonMocks(mockStore, ledgerInfoWithID("test-ledger", 1))
+	addMetadataCommonMocks(t, mockStore, ledgerInfoWithID("test-ledger", 1))
 
 	// New account: marker written exactly once, but no default metadata merged.
 	mockStore.EXPECT().GetAccount(acctKey).Return(nil, domain.ErrNotFound).Times(1)
 	mockStore.EXPECT().PutAccount(acctKey, gomock.Any()).Times(1)
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{AccountKey: acctKey, Key: "note"}, commonpb.NewStringValue("hi"))
+	expectPutAccountMetadata(t, mockStore, domain.MetadataKey{AccountKey: acctKey, Key: "note"}, nil)
 
 	result, err := processor.ProcessOrder(requestToOrder(saveAccountMetadataRequest("users:alice",
 		map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("hi")})), mockStore)
