@@ -272,6 +272,20 @@ type LedgerServiceSpec struct {
 	// +optional
 	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
 
+	// AdditionalLabels are merged on top of the default selector labels
+	// (app.kubernetes.io/name, app.kubernetes.io/instance) on every owned
+	// resource AND on the pod template / Service selectors. Keys that collide
+	// with a default override it; the app.kubernetes.io/managed-by ownership
+	// label is dropped from the merge and stays operator-owned everywhere
+	// (top-level objects AND pods).
+	//
+	// Use this to escape an unrelated Service whose selector accidentally
+	// matches our pods. Selector fields on Service / StatefulSet are immutable
+	// after creation: changing this field on an existing cluster will be
+	// rejected by the operator (a SelectorImmutable=False condition is set).
+	// +optional
+	AdditionalLabels map[string]string `json:"additionalLabels,omitempty"`
+
 	// NodeSelector for pod scheduling.
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`

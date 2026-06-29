@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -64,6 +65,13 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
+	// Clear the persisted Phase before stepping through reconcile so a
+	// previously parked "Error" does not survive once the user fixes the
+	// underlying issue. Steps that detect an error (validateSpec, drift
+	// guard) re-set Phase=Error before returning; updateStatus recomputes
+	// from StatefulSet readiness when Phase stays empty.
+	ledger.Status.Phase = ""
+
 	// Apply hardcoded defaults (fills remaining zero-value fields).
 	applyDefaults(ledger)
 
@@ -97,6 +105,41 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		Type:               "ConfigValid",
 		Status:             metav1.ConditionTrue,
 		Reason:             "Valid",
+		ObservedGeneration: ledger.Generation,
+	})
+
+	// Prune optional Services whose spec marks them disabled BEFORE running
+	// the drift guard: an edit that both disables a Service and tweaks
+	// additionalLabels would otherwise abort on drift detected on the
+	// primary Service / StatefulSet, leaving the optional Service stranded.
+	if err := r.pruneDisabledOptionalServices(ctx, ledger); err != nil {
+		return ctrl.Result{}, fmt.Errorf("pruning disabled optional services: %w", err)
+	}
+
+	// Reject spec.additionalLabels changes that would mutate the immutable
+	// selector of an existing Service / StatefulSet. The reconcile is skipped
+	// (no requeue) and the user gets a SelectorImmutable=false condition
+	// pointing at the offending objects.
+	if err := r.validateSelectorImmutability(ctx, ledger); err != nil {
+		if errors.Is(err, errSelectorDrift) {
+			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+				Type:               "SelectorImmutable",
+				Status:             metav1.ConditionFalse,
+				Reason:             "SelectorDrift",
+				Message:            err.Error(),
+				ObservedGeneration: ledger.Generation,
+			})
+			ledger.Status.Phase = "Error"
+
+			return ctrl.Result{}, nil
+		}
+
+		return ctrl.Result{}, fmt.Errorf("validating selector immutability: %w", err)
+	}
+	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+		Type:               "SelectorImmutable",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Stable",
 		ObservedGeneration: ledger.Generation,
 	})
 
@@ -248,6 +291,12 @@ func (r *LedgerServiceReconciler) updateStatus(ctx context.Context, ledger *ledg
 		}
 
 		switch {
+		// An "Error" phase is set when reconciliation hit a hard stop
+		// (invalid spec, selector drift). Keep it visible — recomputing
+		// from StatefulSet readiness would mask the blocked state for
+		// users and automation that key off .status.phase.
+		case reconciledPhase == "Error":
+			latest.Status.Phase = "Error"
 		case sts.Status.ReadyReplicas == replicas:
 			latest.Status.Phase = "Running"
 		case sts.Status.ReadyReplicas > 0:

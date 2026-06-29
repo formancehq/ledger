@@ -52,6 +52,22 @@ spec:
           spec:
             description: LedgerServiceSpec defines the desired state of LedgerService.
             properties:
+              additionalLabels:
+                additionalProperties:
+                  type: string
+                description: |-
+                  AdditionalLabels are merged on top of the default selector labels
+                  (app.kubernetes.io/name, app.kubernetes.io/instance) on every owned
+                  resource AND on the pod template / Service selectors. Keys that collide
+                  with a default override it; the app.kubernetes.io/managed-by ownership
+                  label is dropped from the merge and stays operator-owned everywhere
+                  (top-level objects AND pods).
+
+                  Use this to escape an unrelated Service whose selector accidentally
+                  matches our pods. Selector fields on Service / StatefulSet are immutable
+                  after creation: changing this field on an existing cluster will be
+                  rejected by the operator (a SelectorImmutable=False condition is set).
+                type: object
               admissionMetrics:
                 description: AdmissionMetrics enables admission path metrics.
                 type: boolean

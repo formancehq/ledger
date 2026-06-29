@@ -189,6 +189,33 @@ spec:
     annotations: {}
 ```
 
+#### Custom Labels
+
+`spec.additionalLabels` is merged on top of the default selector labels
+(`app.kubernetes.io/name=ledger`, `app.kubernetes.io/instance=<cr>`) on every
+owned resource AND on the pod template / Service selectors. Use it to escape
+an unrelated Service whose broad selector accidentally targets the ledger
+pods — override `app.kubernetes.io/name` for a discriminating value, or add
+custom keys:
+
+```yaml
+spec:
+  additionalLabels:
+    app.formance.com/service: ledger-v3
+```
+
+Notes:
+
+- Colliding keys override the defaults (typical fix: rewrite
+  `app.kubernetes.io/name=ledger` to `app.kubernetes.io/name=ledger-v3`).
+- `app.kubernetes.io/managed-by` is operator-owned and dropped from the merge
+  on both top-level object labels and pod-template labels.
+- Selector fields on `Service` and `StatefulSet` are immutable. Changing
+  `additionalLabels` on an existing cluster surfaces a
+  `SelectorImmutable=False` condition listing the drifting objects; the
+  reconcile pauses (no requeue) until the spec is reverted or the affected
+  objects are deleted so they can be recreated with the new selector.
+
 #### Security Configuration
 
 ```yaml

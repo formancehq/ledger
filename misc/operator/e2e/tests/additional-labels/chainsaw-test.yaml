@@ -1,0 +1,112 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: additional-labels
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    # 1. Happy path — bootstrap with spec.additionalLabels.
+    #    AdditionalLabels must flow through to:
+    #      - the primary Service selector (so it still matches our pods)
+    #      - the pod template labels (so the selector finds them)
+    #      - the StatefulSet selector (immutable downstream)
+    - name: Bootstrap with additionalLabels
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-al-svc
+              status:
+                readyReplicas: 1
+
+    - name: AdditionalLabels propagate to Service selector and pods
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ledger-al-svc
+              spec:
+                selector:
+                  app.kubernetes.io/name: ledger
+                  app.kubernetes.io/instance: al-svc
+                  app.formance.com/service: ledger-v3
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-al-svc
+              spec:
+                selector:
+                  matchLabels:
+                    app.kubernetes.io/name: ledger
+                    app.kubernetes.io/instance: al-svc
+                    app.formance.com/service: ledger-v3
+                template:
+                  metadata:
+                    labels:
+                      app.kubernetes.io/name: ledger
+                      app.kubernetes.io/instance: al-svc
+                      app.formance.com/service: ledger-v3
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: al-svc
+              status:
+                (conditions[?type == 'SelectorImmutable'].status): ['True']
+
+    # 2. Drift guard — editing additionalLabels on a running cluster must
+    #    be rejected with SelectorImmutable=False / Phase=Error. The pods
+    #    keep running with the original selector; the operator does not
+    #    silently mutate the Service / StatefulSet selectors.
+    - name: Drift additionalLabels, expect SelectorImmutable=False
+      try:
+        - apply:
+            file: ledgerservice-drift.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: al-svc
+              status:
+                phase: Error
+                (conditions[?type == 'SelectorImmutable'].status): ['False']
+                (contains(conditions[?type == 'SelectorImmutable'].message | [0], 'selector drift detected')): true
+        # Selector on the live Service must still carry the OLD label —
+        # the operator must not have mutated it.
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ledger-al-svc
+              spec:
+                selector:
+                  app.formance.com/service: ledger-v3
+
+    # 3. Recovery — revert additionalLabels to the original value, the
+    #    SelectorImmutable condition clears and Phase recomputes from
+    #    StatefulSet readiness (not stuck on Error).
+    - name: Revert and recover
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: al-svc
+              status:
+                phase: Running
+                (conditions[?type == 'SelectorImmutable'].status): ['True']
