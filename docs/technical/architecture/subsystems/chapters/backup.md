@@ -19,11 +19,10 @@ Source: `internal/infra/backup/` (lower-level storage + manifest) and `internal/
 
 | Driver | Build tag | File |
 |--------|-----------|------|
-| Filesystem | (always) | `internal/infra/backup/storage*.go` |
-| S3 | `s3` | dedicated source file under `internal/infra/backup/` |
-| Azure Blob | `azure` | dedicated source file under `internal/infra/backup/` |
+| S3 | `s3` | `internal/infra/backup/s3.go` (stub at `s3_disabled.go` without the tag) |
+| Azure Blob | `azure` | `internal/infra/backup/azure.go` (stub at `azure_disabled.go` without the tag) |
 
-The build-tag pattern is the same as elsewhere — the default binary is light; operators who need S3 or Azure build with `just build-full` or the matching `-tags` flag.
+`internal/infra/backup/storage.go:51-57` dispatches on the `kind` field of `StorageConfig`: only `"s3"` and `"azure"` are recognised. **There is no filesystem driver for backup** (filesystem is supported for [cold storage](cold-storage.md), but backups must go to a real object store). The default light binary therefore has no functional backup target — operators who need backup build with `just build-full` or the matching `-tags` flag.
 
 ## How a backup is taken
 
@@ -84,9 +83,9 @@ A restore is **a node-level disaster-recovery operation**, not an in-cluster ope
 
 ## Scheduling
 
-The Operator's `LedgerBackup` CRD (`misc/operator/api/v1alpha1/`) wraps the same `BackupOrder` behind a `CronExpression` field. The Operator submits an order at every cron tick, the FSM enforces mutual exclusion, and the executor on the leader does the upload. Operators can also trigger one-off backups manually through the same gRPC surface.
+The Operator's `LedgerBackup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind a `BackupSchedule` with **two separate cron fields** — `Full` and `Incremental` — so operators can run a full checkpoint less often than the incremental segments. The Operator submits a `BackupOrder` (full) or `IncrementalBackupOrder` at each cron tick; the FSM enforces mutual exclusion; the executor on the leader does the upload. One-off backups can also be triggered manually through the same gRPC surface.
 
-A separate `IncrementalBackupOrder` exists for the case where the operator wants to flush an in-progress segment without taking a full checkpoint — useful for tight RPO targets.
+`IncrementalBackupOrder` is the right primitive for tight RPO targets — it flushes the in-progress segment without taking a fresh full checkpoint.
 
 ## Performance characteristics
 

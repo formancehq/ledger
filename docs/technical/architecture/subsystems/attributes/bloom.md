@@ -56,7 +56,7 @@ There is **no preload-time `Add`**. `MirrorPreload` writes to the cache and Pebb
 
 Dirty blocks are flushed to Pebble at every batch commit:
 
-- Key layout: `[ZoneGlobal][SubGlobBloom][attrCode][blockIdx LE8]`.
+- Key layout: `[ZoneGlobal][SubGlobBloom][attrCode][blockIdx 8B BE]`.
 - `PersistDirtyBlocks()` (`bloom.go:113-131`) iterates dirty blocks and queues writes into the FSM batch — so the bloom flush is atomic with the rest of the batch's effects.
 - On boot, `RestoreFromStore()` (`bloom.go:165-211`) reloads the persisted blocks, merging via OR. Because OR is monotone, partial restorations are safe.
 

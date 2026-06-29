@@ -55,7 +55,7 @@ The parser produces a `*commonpb.QueryFilter` — a typed proto that the FSM sto
 
 Two layers, following the project-wide pattern (see [admission / validation.md](../admission/validation.md)):
 
-**Admission (structural)** — `ValidatePreparedQueryName` (`internal/domain/validation.go:131`): non-empty, printable ASCII, ≤ 128 characters. The filter is also parsed at admission, so a syntactic error is rejected immediately. Both checks happen before the order ever reaches Raft.
+**Admission (structural)** — `ValidatePreparedQueryName` (`internal/domain/validation.go:131`): non-empty, printable ASCII, ≤ 256 bytes. The filter is also parsed at admission, so a syntactic error is rejected immediately. Both checks happen before the order ever reaches Raft.
 
 **FSM (behavioural)** — `processCreatePreparedQuery` (`processor_prepared_query.go:28-59`):
 

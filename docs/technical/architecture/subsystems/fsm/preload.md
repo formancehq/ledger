@@ -10,23 +10,23 @@ The contract has three load-bearing parts: the **`Needs` declaration** (who owns
 
 ## The `Needs` struct
 
-`internal/infra/plan/needs.go:9-23` defines what a component is asking for:
+`internal/infra/plan/needs.go:9-23` defines what a component is asking for. Each field is a **set** (`map[K]struct{}`) so duplicate declarations within the same proposal are deduplicated automatically:
 
 ```go
 type Needs struct {
-    Ledgers           []string
-    Boundaries        []BoundaryKey
-    Volumes           []VolumeKey
-    IdempotencyKeys   [][]byte
-    References        []ReferenceKey
-    Metadata          []MetadataKey
-    Transactions      []TransactionKey
-    SinkConfigs       []string
-    NumscriptVersions []NumscriptVersionKey
-    NumscriptContents []NumscriptContentKey
-    PreparedQueries   []PreparedQueryKey
-    LedgerMetadata    []LedgerMetadataKey
-    Indexes           []IndexKey
+    Ledgers           map[string]struct{}
+    Boundaries        map[BoundaryKey]struct{}
+    Volumes           map[VolumeKey]struct{}
+    IdempotencyKeys   map[string]struct{}
+    References        map[ReferenceKey]struct{}
+    Metadata          map[MetadataKey]struct{}
+    Transactions      map[TransactionKey]struct{}
+    SinkConfigs       map[string]struct{}
+    NumscriptVersions map[NumscriptVersionKey]struct{}
+    NumscriptContents map[NumscriptContentKey]struct{}
+    PreparedQueries   map[PreparedQueryKey]struct{}
+    LedgerMetadata    map[LedgerMetadataKey]struct{}
+    Indexes           map[IndexKey]struct{}
 }
 ```
 
@@ -57,8 +57,8 @@ The shared helper `proposeTechnical(ctx, builder, proposer, cmd, operations)` (`
 func (s *CacheSnapshotter) MirrorPreload(
     batch *dal.WriteSession,
     gen0Byte, gen1Byte byte,
-    attrCode AttributeCode,
-    value RawValue,
+    attrID *raftcmdpb.AttributeID,
+    rawValue []byte,
 )
 ```
 
