@@ -501,3 +501,37 @@ func TestIndexedMetadataKeys_FallsBackWhenNoIndex(t *testing.T) {
 	require.Contains(t, plan, "metadata @>",
 		"plan must use @> containment when no functional index was found")
 }
+
+// TestIndexedMetadataKeys_UnresolvedFallback verifies that IndexedMetadataKeys()
+// returns the raw feature-flag list when ResolveIndexedMetadataKeys has not been
+// called (defensive fallback for direct store construction without the driver).
+func TestIndexedMetadataKeys_UnresolvedFallback(t *testing.T) {
+	t.Parallel()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id,destination_wallet_id"))
+
+	// Force the store back to an unresolved state so we exercise the fallback
+	// branch of IndexedMetadataKeys() that returns the raw feature-flag list.
+	store.ResetIndexedMetadataKeysForTest()
+
+	keys := store.IndexedMetadataKeys()
+	require.Contains(t, keys, "source_wallet_id")
+	require.Contains(t, keys, "destination_wallet_id")
+}
+
+// TestIndexedMetadataKeys_ResolveWithCancelledContext verifies that
+// ResolveIndexedMetadataKeys handles a DB failure gracefully: it logs an error
+// and sets the confirmed list to nil (all keys fall back to @>).
+func TestIndexedMetadataKeys_ResolveWithCancelledContext(t *testing.T) {
+	t.Parallel()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+
+	ctx, cancel := context.WithCancel(logging.TestingContext())
+	cancel()
+
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	require.Empty(t, store.IndexedMetadataKeys(),
+		"all keys must fall back to @> when the pg_index query fails")
+}
