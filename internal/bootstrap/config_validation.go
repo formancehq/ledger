@@ -14,16 +14,7 @@ import (
 // CurrentStorageSchemaVersion is the storage schema version that this binary
 // expects. Increment this when the Pebble key layout or value encoding changes
 // in a way that is not backward-compatible.
-//
-// Bumps:
-//   - v1: initial schema.
-//   - v2 (EN-1413): cluster membership moved into Pebble under
-//     [ZoneGlobal][SubGlobPeers]. v1 stores carry peer addresses only in the
-//     Raft WAL snapshot, which the new node code no longer reads; mounting a
-//     v1 store on a v2 binary would silently produce a peer-less cluster.
-//     A schema bump forces an explicit operator wipe instead of a silent
-//     misbehaviour.
-const CurrentStorageSchemaVersion uint32 = 2
+const CurrentStorageSchemaVersion uint32 = 1
 
 // SchemaVersionError is returned when the persisted storage schema version is
 // incompatible with the running binary. This is NOT bypassable with
