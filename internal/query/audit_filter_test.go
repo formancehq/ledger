@@ -179,6 +179,18 @@ func TestCompileAuditPredicate_Composition(t *testing.T) {
 	predOrMiss, _, err := CompileAuditPredicate(orMiss)
 	require.NoError(t, err)
 	require.False(t, mustMatch(t, predOrMiss, entry, nil))
+
+	// An empty AND/OR (only reachable from a malformed proto request, never the
+	// DSL) matches nothing, mirroring the index compiler's empty-iterator result.
+	emptyAnd := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{}}}
+	predEmptyAnd, _, err := CompileAuditPredicate(emptyAnd)
+	require.NoError(t, err)
+	require.False(t, mustMatch(t, predEmptyAnd, entry, nil))
+
+	emptyOr := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{}}}
+	predEmptyOr, _, err := CompileAuditPredicate(emptyOr)
+	require.NoError(t, err)
+	require.False(t, mustMatch(t, predEmptyOr, entry, nil))
 }
 
 func TestCompileAuditPredicate_InvertedLogSeqRange(t *testing.T) {

@@ -83,6 +83,14 @@ func (c *auditCompiler) compileAnd(and *commonpb.AndFilter, depth int) (AuditPre
 		preds = append(preds, p)
 	}
 
+	// An empty AND matches nothing, mirroring the index compiler (compile.go's
+	// compileAnd returns an empty iterator for zero children). The DSL never
+	// emits this; a malformed proto request must not widen the result set to
+	// every entry by evaluating a vacuous AND as true.
+	if len(preds) == 0 {
+		return func(*auditpb.AuditEntry, []*auditpb.AuditItem) (bool, error) { return false, nil }, nil
+	}
+
 	return func(e *auditpb.AuditEntry, items []*auditpb.AuditItem) (bool, error) {
 		for _, p := range preds {
 			ok, err := p(e, items)
