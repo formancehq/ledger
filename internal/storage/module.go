@@ -20,6 +20,9 @@ const HealthCheckName = `storage-driver-up-to-date`
 
 type ModuleConfig struct {
 	AutoUpgrade bool
+	// DisableScopedSelectOptimization disables the alone-in-bucket optimization,
+	// forcing the `ledger = ?` predicate to always be emitted on scoped selects.
+	DisableScopedSelectOptimization bool
 }
 
 func NewFXModule(config ModuleConfig) fx.Option {
@@ -28,7 +31,9 @@ func NewFXModule(config ModuleConfig) fx.Option {
 		fx.Provide(func(store *systemstore.DefaultStore) driver.SystemStore {
 			return store
 		}),
-		driver.NewFXModule(),
+		driver.NewFXModule(driver.ModuleConfig{
+			DisableScopedSelectOptimization: config.DisableScopedSelectOptimization,
+		}),
 		servicefx.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
 			hasReachedMinimalVersion := false
 			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {

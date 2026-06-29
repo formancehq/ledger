@@ -65,6 +65,8 @@ type ServeCommandConfig struct {
 	AuditAsyncEnabled       bool   `mapstructure:"audit-async-enabled"`
 	AuditAsyncQueueCapacity int    `mapstructure:"audit-async-queue-capacity"`
 	AuditAsyncWorkerCount   int    `mapstructure:"audit-async-worker-count"`
+
+	DisableLedgerScopeOptimization bool `mapstructure:"disable-ledger-scope-optimization"`
 }
 
 const (
@@ -84,6 +86,8 @@ const (
 	AuditAsyncEnabledFlag       = "audit-async-enabled"
 	AuditAsyncQueueCapacityFlag = "audit-async-queue-capacity"
 	AuditAsyncWorkerCountFlag   = "audit-async-worker-count"
+
+	DisableLedgerScopeOptimizationFlag = "disable-ledger-scope-optimization"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -114,7 +118,8 @@ func NewServeCommand() *cobra.Command {
 				fx.Supply(connectionOptions),
 				storagefx.BunConnectModule(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
-					AutoUpgrade: cfg.AutoUpgrade,
+					AutoUpgrade:                     cfg.AutoUpgrade,
+					DisableScopedSelectOptimization: cfg.DisableLedgerScopeOptimization,
 				}),
 				drivers.NewFXModule(),
 				fx.Invoke(alldrivers.Register),
@@ -216,6 +221,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(AuditAsyncEnabledFlag, true, "Publish HTTP audit events asynchronously")
 	cmd.Flags().Int(AuditAsyncQueueCapacityFlag, api.DefaultAuditAsyncQueueCapacity, "HTTP audit async publish queue capacity")
 	cmd.Flags().Int(AuditAsyncWorkerCountFlag, api.DefaultAuditAsyncWorkerCount, "HTTP audit async publish worker count")
+	cmd.Flags().Bool(DisableLedgerScopeOptimizationFlag, false, "Always emit the `ledger = ?` predicate on read queries, disabling the alone-in-bucket optimization that skips it when a ledger is the only one in its bucket")
 
 	addWorkerFlags(cmd)
 	connect.AddFlags(cmd.Flags())
