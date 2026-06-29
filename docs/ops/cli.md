@@ -2209,7 +2209,7 @@ The `--filter` flag accepts a boolean expression using `audit[field]` conditions
 |---|---|---|---|
 | `seq` | Audit sequence number | uint | `==`, `!=`, `>`, `>=`, `<`, `<=`, `between` |
 | `proposal_id` | Proposal ID | uint | `==`, `!=`, `>`, `>=`, `<`, `<=`, `between` |
-| `timestamp` | Entry timestamp (Unix nanoseconds) | uint | `==`, `!=`, `>`, `>=`, `<`, `<=`, `between` |
+| `timestamp` | Entry timestamp (Unix microseconds) | uint | `==`, `!=`, `>`, `>=`, `<`, `<=`, `between` |
 | `log_seq` | Overlaps the produced log-sequence range | uint | `==`, `!=`, `>`, `>=`, `<`, `<=`, `between` |
 | `outcome` | `success` or `failure` | string | `==`, `!=`, `in` |
 | `error_type` | Failure error type (e.g. `INSUFFICIENT_FUNDS`) | string | `==`, `!=`, `in` |

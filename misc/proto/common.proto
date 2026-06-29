@@ -1106,7 +1106,7 @@ enum AuditField {
   AUDIT_FIELD_UNSPECIFIED    = 0;
   AUDIT_FIELD_SEQUENCE       = 1;  // uint   -> AuditEntry.sequence
   AUDIT_FIELD_PROPOSAL_ID    = 2;  // uint   -> AuditEntry.proposal_id
-  AUDIT_FIELD_TIMESTAMP      = 3;  // uint   -> AuditEntry.timestamp.data (unix nanos)
+  AUDIT_FIELD_TIMESTAMP      = 3;  // uint   -> AuditEntry.timestamp.data (unix micros)
   AUDIT_FIELD_LOG_SEQUENCE   = 4;  // uint   -> overlaps [success.min,max]_log_sequence
   AUDIT_FIELD_OUTCOME        = 5;  // string in {success, failure}
   AUDIT_FIELD_ERROR_TYPE     = 6;  // string -> failure.error_type

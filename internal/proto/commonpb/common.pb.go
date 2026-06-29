@@ -947,7 +947,7 @@ const (
 	AuditField_AUDIT_FIELD_UNSPECIFIED    AuditField = 0
 	AuditField_AUDIT_FIELD_SEQUENCE       AuditField = 1  // uint   -> AuditEntry.sequence
 	AuditField_AUDIT_FIELD_PROPOSAL_ID    AuditField = 2  // uint   -> AuditEntry.proposal_id
-	AuditField_AUDIT_FIELD_TIMESTAMP      AuditField = 3  // uint   -> AuditEntry.timestamp.data (unix nanos)
+	AuditField_AUDIT_FIELD_TIMESTAMP      AuditField = 3  // uint   -> AuditEntry.timestamp.data (unix micros)
 	AuditField_AUDIT_FIELD_LOG_SEQUENCE   AuditField = 4  // uint   -> overlaps [success.min,max]_log_sequence
 	AuditField_AUDIT_FIELD_OUTCOME        AuditField = 5  // string in {success, failure}
 	AuditField_AUDIT_FIELD_ERROR_TYPE     AuditField = 6  // string -> failure.error_type
