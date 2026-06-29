@@ -107,6 +107,13 @@ type ReadIndexConfig struct {
 	PebbleConfig pebblecfg.Config // Pebble tunables for the read index
 }
 
+// AuditIndexConfig holds configuration for the audit secondary index worker.
+type AuditIndexConfig struct {
+	BatchSize        int    // audit entries per Pebble batch (0 = default 1000)
+	RebuildThreshold uint64 // boot drop+rebuild when (last - cursor) exceeds this (0 = never)
+	Disabled         bool   // ops kill switch
+}
+
 // SnapshotSyncConfig holds configuration for the session-based snapshot sync protocol.
 type SnapshotSyncConfig struct {
 	SessionTTL     time.Duration // Server-side session lifetime before reaper cleanup
@@ -182,6 +189,7 @@ type Config struct {
 	UnsafeSkipConfigValidation  bool
 	SentinelMode                bool
 	ReadIndexConfig             ReadIndexConfig
+	AuditIndexConfig            AuditIndexConfig
 	QueryProfileThreshold       time.Duration
 	GRPCSlowThreshold           time.Duration
 	BloomConfig                 *commonpb.ClusterConfig
