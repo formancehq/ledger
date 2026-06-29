@@ -121,3 +121,47 @@ func TestPeerStore_KeyEncodingIsScoped(t *testing.T) {
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 	}, k)
 }
+
+// TestNode_reloadPeersFromStore_RefreshesCache exercises the EN-1413
+// async-snapshot-install fix. The Applier's OnSnapshotInstalled hook
+// fires AFTER the leader's Pebble checkpoint has been swapped in. This
+// test simulates that swap by mutating Pebble out-of-band, then invokes
+// the hook and asserts the in-memory peer-address cache picks up the
+// new contents.
+//
+// Without the fix, the inline LoadAll in processReady would have run
+// before the swap and the cache would stay at its pre-restore state.
+// The hook is the only thing that guarantees the cache reflects the
+// restored Pebble.
+func TestNode_reloadPeersFromStore_RefreshesCache(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+
+	// Pre-swap state: cluster A had peer 7.
+	require.NoError(t, ps.Put(7, "old:1", "old:2"))
+
+	// Build a minimal Node with just the fields reloadPeersFromStore
+	// touches. The real wiring goes through NewNode + bootstrap, but
+	// that requires a Raft loop + WAL we don't need to exercise here.
+	n := &Node{
+		logger:        logging.Testing(),
+		peerStore:     ps,
+		peerAddresses: map[uint64]ConfChangeContext{7: {RaftAddress: "old:1", ServiceAddress: "old:2"}},
+	}
+
+	// Simulate a leader checkpoint restore: Pebble now has peers 1 + 3,
+	// and no peer 7 (the source cluster A has been replaced by cluster B).
+	require.NoError(t, ps.Delete(7))
+	require.NoError(t, ps.Put(1, "new:1", "new:2"))
+	require.NoError(t, ps.Put(3, "new:3", "new:4"))
+
+	// Hook fires: cache must catch up to the new Pebble state.
+	n.reloadPeersFromStore()
+
+	got := n.PeerAddresses()
+	require.Len(t, got, 2, "stale peer 7 must be gone, peers 1+3 must be present")
+	require.Equal(t, "new:1", got[1].RaftAddress)
+	require.Equal(t, "new:3", got[3].RaftAddress)
+	require.NotContains(t, got, uint64(7))
+}

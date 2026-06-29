@@ -430,6 +430,13 @@ func NewNode(
 		node.peerAddresses = make(map[uint64]ConfChangeContext)
 	}
 
+	// EN-1413: wire the Applier so that, after it restores a leader's
+	// Pebble checkpoint via SynchronizeWithLeader, the in-memory peer-
+	// address cache is refreshed from the new Pebble contents. Without
+	// this, processReady (which runs in a different goroutine and races
+	// the async restore) would see the pre-restore peer set.
+	applier.SetOnSnapshotInstalled(node.reloadPeersFromStore)
+
 	// Initialize node metrics
 	node.appendEntriesHistogram, err = meter.Int64Histogram("raft.append_entries",
 		metric.WithDescription("Time spending appending entries to wal"),
@@ -1087,28 +1094,15 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		// Skip sync if the node is shutting down — RestoreCheckpoint reopens the
 		// Pebble DB, and background tasks (bloom restore) would create iterators
 		// that outlive the DB.Close() in the fx shutdown hook.
+		//
+		// EN-1413: SyncSnapshot only enqueues the restore on the applier
+		// and returns immediately; the actual RestoreCheckpoint runs in
+		// the applier's Run goroutine. The OnSnapshotInstalled hook wired
+		// in NewNode (node.reloadPeersFromStore) is what refreshes the
+		// peer-address cache once Pebble has been swapped — do NOT call
+		// peerStore.LoadAll here, it would read the pre-restore DB.
 		if !isStopping(stop) {
 			node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
-
-			// EN-1413: SyncSnapshot has just restored the leader's Pebble
-			// checkpoint, which contains the authoritative cluster membership
-			// under [ZoneGlobal][SubGlobPeers]. Refresh the in-memory cache
-			// from the new state so the transport's view (used to send Raft
-			// messages on the next tick) matches the durable one. Until this
-			// reload runs, peerAddresses still reflects the pre-restore
-			// cluster, which can be a strict subset of the new one.
-			peers, err := node.peerStore.LoadAll()
-			if err != nil {
-				return readyResult{}, fmt.Errorf("reloading peers after snapshot install: %w", err)
-			}
-
-			node.peerAddressesMu.Lock()
-			node.peerAddresses = peers
-			node.peerAddressesMu.Unlock()
-
-			node.logger.WithFields(map[string]any{
-				"peerCount": len(peers),
-			}).Infof("Reloaded cluster membership from Pebble post-snapshot")
 		}
 	}
 
@@ -2165,7 +2159,12 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		cs := node.rawNode.ApplyConfChange(cc)
 		node.confState.Store(cs)
 
-		node.RemovePeerAddress(nodeID)
+		// EN-1413: drop the peer from Pebble too, otherwise the next boot
+		// would resurrect it from peerStore.LoadAll and the cluster would
+		// keep dialling the removed address.
+		if err := node.UnregisterPeer(nodeID); err != nil {
+			return fmt.Errorf("removing peer after force-remove: %w", err)
+		}
 
 		// Persist the updated ConfState in the WAL snapshot so that restarts
 		// see the correct voter set.
@@ -2297,6 +2296,35 @@ func (node *Node) RemovePeerAddress(nodeID uint64) {
 	node.peerAddressesMu.Lock()
 	delete(node.peerAddresses, nodeID)
 	node.peerAddressesMu.Unlock()
+}
+
+// reloadPeersFromStore refreshes the in-memory peer-address cache from
+// Pebble. Called from the Applier's OnSnapshotInstalled hook after a
+// leader checkpoint restore has swapped the underlying Pebble DB
+// (EN-1413).
+//
+// A LoadAll failure here is logged but not fatal: the cache stays at its
+// pre-restore state, and the next admission/transport tick will see what
+// was previously known. The node will resync on the next leadership tick
+// or restart. Crashing the apply loop on a transient read failure is
+// worse than leaving a slightly stale cache.
+func (node *Node) reloadPeersFromStore() {
+	peers, err := node.peerStore.LoadAll()
+	if err != nil {
+		node.logger.WithFields(map[string]any{
+			"error": err,
+		}).Errorf("Reloading peers from Pebble after snapshot install failed; cache left stale")
+
+		return
+	}
+
+	node.peerAddressesMu.Lock()
+	node.peerAddresses = peers
+	node.peerAddressesMu.Unlock()
+
+	node.logger.WithFields(map[string]any{
+		"peerCount": len(peers),
+	}).Infof("Reloaded cluster membership from Pebble post-snapshot")
 }
 
 // RegisterPeer durably persists a peer entry in Pebble (the source of

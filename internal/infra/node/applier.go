@@ -70,6 +70,14 @@ type Applier struct {
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
 	pending *pendingCommit
 
+	// onSnapshotInstalled is invoked from startSyncSnapshot after
+	// SynchronizeWithLeader has restored the leader's Pebble checkpoint.
+	// The hook runs inside the Run goroutine, synchronously with the
+	// restore, so the Node can refresh state that depends on the new
+	// Pebble contents (EN-1413: the peer-address cache, which is seeded
+	// from Pebble at boot). nil is a no-op for tests that don't wire it.
+	onSnapshotInstalled func()
+
 	// Metrics
 	applyEntriesHistogram           metric.Int64Histogram
 	applyEntriesBatchSizeCounter    metric.Int64Counter
@@ -818,8 +826,24 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 
 		a.syncProgress.Store(nil)
 
+		// EN-1413: the leader's Pebble checkpoint is now in place. Notify
+		// the Node so it can reload anything that is seeded from Pebble
+		// (currently: the peer-address cache). Running it here — inside
+		// the maintenance task, synchronously with the restore — means
+		// the next Raft tick already sees the up-to-date cache.
+		if a.onSnapshotInstalled != nil {
+			a.onSnapshotInstalled()
+		}
+
 		return maintenanceTaskResult{frozenAtIndex: syncedIndex}, nil
 	}, nil)
+}
+
+// SetOnSnapshotInstalled registers a hook invoked from the Run goroutine
+// after a leader snapshot has been restored into Pebble. See the field
+// comment on Applier for the rationale.
+func (a *Applier) SetOnSnapshotInstalled(fn func()) {
+	a.onSnapshotInstalled = fn
 }
 
 // StatusString returns the current applier status as a human-readable string.
