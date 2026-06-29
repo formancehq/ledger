@@ -31,7 +31,7 @@ Note: images are pushed to `$ANTITHESIS_REPOSITORY` (the registry Antithesis pro
 
 - `git rev-parse --abbrev-ref HEAD` → branch name. Compute a slug (lowercase, replace `/` and any non-alphanumeric with `-`, truncate to 40 chars).
 - `git rev-parse --short=7 HEAD` → SHA7.
-- `git status --porcelain` → if non-empty, **the working tree is dirty and the image will not contain the uncommitted changes**. Surface this loud and ask the user to confirm or commit first. Do NOT proceed silently.
+- `git status --porcelain` → if non-empty, **the working tree is dirty and those uncommitted changes WILL end up in the image**: `docker build` reads its context from the working tree, not from git HEAD. The per-branch tag still uses the HEAD SHA, so the on-registry artifact will be tagged after a commit it does not actually contain. Surface this loud and ask the user to confirm or commit first. Do NOT proceed silently.
 
 ### 3. Compute the tag
 
@@ -51,6 +51,8 @@ Default to **k8s**. Only switch to compose if the user explicitly asked ("compos
   - k8s mode: hours, default `2`. Accept integers or decimals (`1.5`). Validate >0.
   - compose mode: minutes, default `30`. Validate >0.
 - **Description**: default = `<branch> — <last commit subject>` (use `git log -1 --format=%s HEAD`). Allow the user to override. This string goes into the email report header — keep it meaningful.
+
+  The description is interpolated unescaped into the Justfile's curl `-d` JSON payload and into the shell line that builds it (`{{description}}`); a literal `"`, `\`, `$`, backtick or single quote in the value would corrupt the POST body or be evaluated by the shell. **Sanitise** before passing it to `just`: collapse the value to `[A-Za-z0-9 ._-]` (replace every other byte with `-`) and trim leading/trailing whitespace. If the sanitised string is empty, fall back to the branch slug. Do not attempt to escape the original — escaping rules differ between the shell layer and the embedded JSON, and the report header is a free-form label anyway.
 
 Use a single AskUserQuestion with two questions where possible. If the user said the duration/description in the original request ("lance un run de 4h"), skip the question for that field.
 
@@ -88,7 +90,7 @@ The launch API does not return a run URL in the response, so do not invent one. 
 ## Invariants
 
 - **Never modify `tag := "antithesis"` in `tests/antithesis/Justfile`.** Pass the tag override via the CLI (`just tag=...`) — never edit the recipe file.
-- **Never run silently on a dirty working tree.** The image is built from HEAD; uncommitted work is invisible to Antithesis. Always surface and confirm.
+- **Never run silently on a dirty working tree.** `docker build` packs the working tree, so uncommitted edits silently land in the image while the image tag still pins to the HEAD SHA. Always surface and confirm before launching.
 - **No retries.** A failed launch (auth, parameter, image push) is the user's to diagnose. Do not loop.
 - **English in scripts, replies in the user's language** (typically French for this repo).
 
