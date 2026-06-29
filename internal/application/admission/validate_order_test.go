@@ -802,3 +802,76 @@ func TestValidateOrderContent(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		src     *commonpb.MirrorSourceConfig
+		wantErr error
+	}{
+		{
+			name: "no mirror source",
+			src:  nil,
+		},
+		{
+			name: "postgres mirror without IAM auth",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{Dsn: "postgres://user:pass@host:5432/db"},
+			}},
+		},
+		{
+			name: "postgres mirror with IAM auth and region",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn:        "postgres://iam-user@host:5432/db",
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+				},
+			}},
+		},
+		{
+			name: "postgres mirror with IAM auth missing region rejected at admission",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn:        "postgres://iam-user@host:5432/db",
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: ""},
+				},
+			}},
+			wantErr: domain.ErrMirrorIAMRegionRequired,
+		},
+		{
+			name: "http mirror source unaffected",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Http{
+				Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			order := &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "default",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{
+								Mode:         commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+								MirrorSource: tt.src,
+							},
+						},
+					},
+				},
+			}
+
+			err := validateOrder(order)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

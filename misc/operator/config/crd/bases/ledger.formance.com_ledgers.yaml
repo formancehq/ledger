@@ -186,7 +186,7 @@ spec:
                         maximum: 65535
                         minimum: 1
                         type: integer
-                      sslmode:
+                      sslMode:
                         default: require
                         description: |-
                           SSLMode is the libpq sslmode parameter (disable, allow, prefer, require,

@@ -405,6 +405,7 @@ var (
 	ErrSigningKeyIDTooLong     = newValidationSentinel("signing key id exceeds maximum length of 256 bytes")
 	// ErrLedgerNameRequired moved to validation.go; it wraps the
 	// github.com/formancehq/invariants sentinel.
+	ErrMirrorIAMRegionRequired = newValidationSentinel("mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set")
 )
 
 // ──────────────────────────────────────────────────────────────────────────

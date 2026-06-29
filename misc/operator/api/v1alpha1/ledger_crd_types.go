@@ -128,7 +128,7 @@ type PostgresMirrorSource struct {
 	// +kubebuilder:validation:Enum=disable;allow;prefer;require;verify-ca;verify-full
 	// +kubebuilder:default=require
 	// +optional
-	SSLMode string `json:"sslmode,omitempty"`
+	SSLMode string `json:"sslMode,omitempty"`
 
 	// PasswordFrom references a Kubernetes Secret containing the PostgreSQL password.
 	// Mutually exclusive with AWSIAMAuth.

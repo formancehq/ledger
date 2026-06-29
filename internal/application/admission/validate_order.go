@@ -30,6 +30,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
+	if err := validateOrderMirrorSource(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
 	return nil
 }
 
@@ -223,6 +227,41 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	default:
 		return nil
 	}
+}
+
+// validateOrderMirrorSource enforces structural well-formedness on the
+// optional MirrorSource carried by a CreateLedger order. Mirror ledgers go
+// through the standard create path, so a missing/blank field reaches the
+// FSM and is only surfaced when the mirror worker actually tries to open a
+// connection -- well after the ledger has been persisted via Raft. This
+// gate fails fast at admission so a malformed mirror config is rejected
+// before it lands in the audit chain.
+func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
+	create, ok := order.GetLedgerScoped().GetPayload().(*raftcmdpb.LedgerScopedOrder_CreateLedger)
+	if !ok {
+		return nil
+	}
+
+	src := create.CreateLedger.GetMirrorSource()
+	if src == nil {
+		return nil
+	}
+
+	pg := src.GetPostgres()
+	if pg == nil {
+		return nil
+	}
+
+	iam := pg.GetAwsIamAuth()
+	if iam == nil {
+		return nil
+	}
+
+	if iam.GetRegion() == "" {
+		return domain.ErrMirrorIAMRegionRequired
+	}
+
+	return nil
 }
 
 // validateMetadataMap validates all keys and values in a metadata map.

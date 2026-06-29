@@ -207,6 +207,12 @@ func iamBeforeConnect(awsCfg aws.Config) func(context.Context, *pgx.ConnConfig) 
 // encodeDSNPassword ensures that passwords containing URL-special characters
 // (e.g. |, ?, #, [, ]) are properly percent-encoded so pgx can parse the DSN.
 // Only modifies URL-format DSNs (postgres:// or postgresql://).
+//
+// Idempotent: if the password already contains valid percent-encoding (i.e.
+// url.PathUnescape decodes it to a strictly shorter string), the DSN is
+// returned unchanged. This protects against double-encoding when the caller
+// has already URL-encoded the credentials (e.g. the operator's controller
+// uses url.UserPassword before passing the DSN to ledgerctl).
 func encodeDSNPassword(dsn string) string {
 	schemeEnd := strings.Index(dsn, "://")
 	if schemeEnd == -1 {
@@ -229,6 +235,14 @@ func encodeDSNPassword(dsn string) string {
 	}
 
 	password := creds[colonIdx+1:]
+
+	// Skip if already percent-encoded: a valid decode that strictly shortens
+	// the input means at least one %XX sequence was present, so the password
+	// is treated as already URL-safe.
+	if decoded, err := url.PathUnescape(password); err == nil && len(decoded) < len(password) {
+		return dsn
+	}
+
 	encoded := url.PathEscape(password)
 
 	encoded = strings.ReplaceAll(encoded, "@", "%40")

@@ -49,6 +49,22 @@ func TestEncodeDSNPassword(t *testing.T) {
 			input:    "postgresql://user:p@ss|word@host:5432/db",
 			expected: "postgresql://user:p%40ss%7Cword@host:5432/db",
 		},
+		{
+			// Operator's controller assembles DSNs via url.URL.String(), so
+			// the password reaches this helper already percent-encoded. Without
+			// idempotency the % itself would be re-encoded (%40 -> %2540),
+			// breaking authentication silently.
+			name:     "already-encoded password is left untouched (idempotent)",
+			input:    "postgres://user:p%40ss%7Cword%3F%23@host:5432/db",
+			expected: "postgres://user:p%40ss%7Cword%3F%23@host:5432/db",
+		},
+		{
+			// A literal '%' that does not form a valid escape sequence is
+			// detected (PathUnescape errors), so we still encode it.
+			name:     "literal percent sign is escaped",
+			input:    "postgres://user:50%off@host:5432/db",
+			expected: "postgres://user:50%25off@host:5432/db",
+		},
 	}
 
 	for _, tt := range tests {
