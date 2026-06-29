@@ -139,6 +139,18 @@ type PostgresMirrorSource struct {
 	// short-lived (15 min) SigV4 token per connection from the ambient AWS
 	// credential chain on the ledger pod (IRSA, instance profile, env, profile).
 	// Mutually exclusive with PasswordFrom.
+	//
+	// In a typical EKS deployment, IRSA is wired by annotating the
+	// LedgerService ServiceAccount with eks.amazonaws.com/role-arn, e.g.:
+	//   kind: LedgerService
+	//   spec:
+	//     serviceAccount:
+	//       annotations:
+	//         eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/mirror-rds-iam
+	// The bound IAM role must allow rds-db:connect on the RDS db-user ARN
+	// (arn:aws:rds-db:REGION:ACCOUNT:dbuser:DB-RESOURCE-ID/USER). The role is
+	// shared across every mirror in the LedgerService, so its policy must
+	// cover every RDS endpoint addressed by Ledger CRDs in that service.
 	// +optional
 	AWSIAMAuth *AWSIAMAuthSpec `json:"awsIamAuth,omitempty"`
 }
