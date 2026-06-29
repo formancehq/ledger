@@ -33,6 +33,24 @@ const (
 	// pending_version, rewrite_progress) for each indexed metadata
 	// field. Key shape: [0xFE][0x04][ledgerName padded 64B][indexID canonical].
 	SubInternalIndexVersion byte = 0x04
+
+	// SubInternalAuditIndex is the keyspace for the audit secondary index.
+	// Layout: [PrefixInternal][SubInternalAuditIndex][AuditField][value][audit_seq BE8] -> ∅
+	SubInternalAuditIndex byte = 0x05
+	// SubInternalAuditProgress holds the per-replica audit indexing cursor.
+	// Layout: [PrefixInternal][SubInternalAuditProgress] -> last_indexed_audit_sequence BE8
+	SubInternalAuditProgress byte = 0x06
+)
+
+// AuditField discriminates the indexed field within the audit-index keyspace.
+const (
+	AuditFieldOutcome       byte = 0x01 // 1 byte value: 0=failure, 1=success
+	AuditFieldLedger        byte = 0x02 // string value (match-any over AuditEntry.Ledgers)
+	AuditFieldCallerSubject byte = 0x03 // string value
+	AuditFieldOrderType     byte = 0x04 // string token (match-any over items)
+	AuditFieldTimestamp     byte = 0x05 // BE uint64 unix nanos (range)
+	AuditFieldProposalID    byte = 0x06 // BE uint64 (range)
+	AuditFieldLogSeq        byte = 0x07 // BE uint64 (range, match-any over items)
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.
@@ -515,4 +533,55 @@ func IndexVersionStatePrefix() []byte {
 //	[0xFE][0x02]
 func AppliedProposalProgressKey() []byte {
 	return []byte{PrefixInternal, SubInternalAppliedProposalProgress}
+}
+
+// AuditProgressKey returns the full key for the audit indexing cursor.
+//
+//	[0xFE][0x06]
+func AuditProgressKey() []byte {
+	return []byte{PrefixInternal, SubInternalAuditProgress}
+}
+
+// AuditIndexPrefix returns the global prefix for the whole audit index,
+// used for DeleteRange on rebuild.
+//
+//	[0xFE][0x05]
+func AuditIndexPrefix() []byte {
+	return []byte{PrefixInternal, SubInternalAuditIndex}
+}
+
+// AuditIndexStringKey builds [0xFE][0x05][field][value\x00][seq BE8] for a
+// string-valued field (ledger, caller_subject, order_type).
+func AuditIndexStringKey(kb *dal.KeyBuilder, field byte, value string, seq uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixInternal).
+		PutByte(SubInternalAuditIndex).
+		PutByte(field).
+		PutStringNull(value).
+		PutUint64(seq).
+		Build()
+}
+
+// AuditIndexUint64Key builds [0xFE][0x05][field][value BE8][seq BE8] for a
+// numeric range field (timestamp, proposal_id, log_seq).
+func AuditIndexUint64Key(kb *dal.KeyBuilder, field byte, value, seq uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixInternal).
+		PutByte(SubInternalAuditIndex).
+		PutByte(field).
+		PutUint64(value).
+		PutUint64(seq).
+		Build()
+}
+
+// AuditIndexByteKey builds [0xFE][0x05][field][value][seq BE8] for a
+// single-byte field (outcome).
+func AuditIndexByteKey(kb *dal.KeyBuilder, field, value byte, seq uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixInternal).
+		PutByte(SubInternalAuditIndex).
+		PutByte(field).
+		PutByte(value).
+		PutUint64(seq).
+		Build()
 }
