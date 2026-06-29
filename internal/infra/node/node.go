@@ -1780,6 +1780,12 @@ func (node *Node) LastPersistedIndex() uint64 {
 	return node.fsm.LastPersistedIndex()
 }
 
+// WaitForApplied delegates to the FSM. Used by the GetFSMDigest gRPC
+// handler when the caller pins a target index for cross-node comparison.
+func (node *Node) WaitForApplied(ctx context.Context, target uint64) error {
+	return node.fsm.WaitForApplied(ctx, target)
+}
+
 // GetClusterState returns the current state of the Raft cluster.
 // The rawNode.Status() call is dispatched to the orchestrate goroutine
 // because rawNode is not thread-safe. lastPersistedIndex is sampled in the

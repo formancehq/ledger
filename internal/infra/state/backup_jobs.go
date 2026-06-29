@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -474,12 +473,9 @@ func writeBackupJob(batch *dal.WriteSession, destinationKey []byte, job *raftcmd
 		return nil
 	}
 
-	data, err := job.MarshalVT()
-	if err != nil {
-		return fmt.Errorf("marshaling backup job %s: %w", strconv.FormatUint(job.GetJobId(), 10), err)
-	}
-
-	return batch.SetBytes(backupJobKey(destinationKey), data)
+	// Route through batch.SetProto so the cluster-wide deterministic flag
+	// controls the marshal (sorts map keys when ON, no-op when OFF).
+	return batch.SetProto(backupJobKey(destinationKey), job)
 }
 
 func deleteBackupJob(batch *dal.WriteSession, destinationKey []byte) error {
@@ -503,10 +499,5 @@ func writeBackupJobHistory(batch *dal.WriteSession, job *raftcmdpb.BackupJob) er
 		return nil
 	}
 
-	data, err := job.MarshalVT()
-	if err != nil {
-		return fmt.Errorf("marshaling backup-job history %d: %w", job.GetJobId(), err)
-	}
-
-	return batch.SetBytes(backupJobHistoryKey(job.GetCompletedAtAppliedIndex(), job.GetDestinationKey()), data)
+	return batch.SetProto(backupJobHistoryKey(job.GetCompletedAtAppliedIndex(), job.GetDestinationKey()), job)
 }

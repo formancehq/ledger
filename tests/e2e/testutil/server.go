@@ -117,6 +117,14 @@ func WithSentinelMode() MultiNodeOption {
 	}
 }
 
+// WithFSMDeterminismEnabled opts the cluster into deterministic FSM encoding
+// and the cross-node digest health-check on every node.
+func WithFSMDeterminismEnabled() MultiNodeOption {
+	return func(o *MultiNodeOptions) {
+		o.ExtraInstruments = append(o.ExtraInstruments, testserver.WithFSMDeterminismEnabled())
+	}
+}
+
 // SetupMultiNodeCluster creates a multi-node Raft cluster for e2e tests.
 // It returns the context, the list of services with clients, the gateway (if enabled), and a pointer to the current leader ID.
 // Cleanup is handled automatically via DeferCleanup.

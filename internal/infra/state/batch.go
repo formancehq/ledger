@@ -56,15 +56,17 @@ func saveNextLedgerID(b *dal.WriteSession, nextID uint32) error {
 // appendAuditEntries appends audit entries to the batch.
 //
 // AuditEntry is the unit of the audit hash chain, so its persisted bytes
-// are marshalled deterministically (MarshalDeterministicVT sorts the
-// AuditFailure.context map keys). The hash chain itself is independent —
-// it consumes BuildHashedHeaderPayload, which already canonicalises field
-// order — but locking down on-disk byte order on the hash carrier itself
-// is defence in depth: a cross-node byte compare on the audit stream
-// now functions, and a future tool that reasons about the audit stream
-// in bytes does not have to redo the canonicalisation. Log, AuditItem
-// (no maps), and AppliedProposal stay on the non-deterministic
-// SetProto path — they are not in the chain.
+// are ALWAYS marshalled deterministically (MarshalDeterministicVT sorts the
+// AuditFailure.context map keys) — independently of the cluster-wide
+// fsm_determinism_enabled flag. Otherwise a node booted with the flag OFF
+// would produce a different audit-entry byte stream than its peers and
+// verifyAuditHashChain would diverge.
+//
+// The hash chain itself is independent: it consumes BuildHashedHeaderPayload,
+// which already canonicalises field order. Locking down on-disk byte order
+// on the hash carrier itself is defence in depth — a cross-node byte
+// compare on the audit stream functions, and a future tool that reasons
+// about the audit stream in bytes does not have to redo the canonicalisation.
 //
 // SetProtoDeterministic reuses the session's marshal buffer, so each
 // proposal pays one slice grow at most for the audit entry payload.
@@ -87,15 +89,13 @@ func appendAuditEntries(b *dal.WriteSession, entries ...*auditpb.AuditEntry) err
 // on the success path; failed proposals do not emit one so the index builder
 // can rely on a 1:1 mapping with AuditEntry on the success path.
 //
-// AppliedProposal carries a map (TransientVolumes) so two nodes will
-// persist byte-divergent Cold-zone entries for the same proposal. This
-// matches the existing Cold-zone contract: Log payloads (metadata maps,
-// etc.) and AuditEntry (AuditFailure.context map) are also marshalled
-// non-deterministically via SetProto. Cross-node authenticity goes
-// through the audit hash chain, not byte equality of Cold-zone keys.
-// Locking AppliedProposal alone behind MarshalDeterministicVT would
-// create a two-speed standard without buying anything as long as the
-// other Cold-zone writes stay non-deterministic.
+// AppliedProposal carries a map (TransientVolumes). When the cluster-wide
+// fsm_determinism_enabled flag is ON, SetProto routes through
+// MarshalDeterministicVT so two nodes persist byte-identical Cold-zone
+// entries for the same proposal and the cross-node digest stays aligned.
+// When OFF (the default), bytes may diverge across nodes — cross-node
+// authenticity goes through the audit hash chain instead. This single
+// branch is owned by WriteSession.MarshalProto; no per-call-site logic.
 func appendAppliedProposal(b *dal.WriteSession, applied *proposalpb.AppliedProposal) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).

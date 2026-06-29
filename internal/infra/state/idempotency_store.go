@@ -309,15 +309,13 @@ func saveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.Ide
 	mainKey[1] = dal.SubIdempKeys
 	copy(mainKey[2:], keyHash[:])
 
-	// Marshal order need not match across replicas: these Pebble bytes are
-	// local durability (read back via UnmarshalVT), and the cross-node state
-	// hash re-marshals deterministically in the sealer.
-	data, err := value.MarshalVT()
-	if err != nil {
-		return fmt.Errorf("marshaling idempotency value: %w", err)
-	}
-
-	if err := batch.SetBytes(mainKey, data); err != nil {
+	// Route through batch.SetProto so the WriteSession's deterministic mode
+	// (cluster-wide fsm_determinism_enabled) controls the marshal. When the
+	// flag is OFF this is byte-equivalent to MarshalVT; when ON the
+	// IdempotencyKeyValue's map<string, IdempotencyAccountFieldUpdate>
+	// payload is encoded with sorted map keys so two nodes persist identical
+	// bytes and the cross-node digest stays aligned.
+	if err := batch.SetProto(mainKey, value); err != nil {
 		return fmt.Errorf("writing idempotency key: %w", err)
 	}
 

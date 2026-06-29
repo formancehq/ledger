@@ -96,6 +96,39 @@ func TestBuildEnvVars_SentinelMode(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// FSM determinism + cross-node digest opt-in
+// ---------------------------------------------------------------------------
+
+func TestBuildEnvVars_FSMDeterminismEnabled(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set to true", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		b := true
+		ls.Spec.FSMDeterminismEnabled = &b
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "FSM_DETERMINISM_ENABLED", "true")
+	})
+
+	t.Run("set to false", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		b := false
+		ls.Spec.FSMDeterminismEnabled = &b
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "FSM_DETERMINISM_ENABLED", "false")
+	})
+
+	t.Run("nil omitted", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertNoEnv(t, envs, "FSM_DETERMINISM_ENABLED")
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Log level
 // ---------------------------------------------------------------------------
 

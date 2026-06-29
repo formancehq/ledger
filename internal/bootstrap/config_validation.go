@@ -39,6 +39,24 @@ func (e *SchemaVersionError) Error() string {
 	)
 }
 
+// FSMDeterminismMismatchError is returned when the persisted
+// fsm_determinism_enabled flag differs from the running binary's. This is NOT
+// bypassable with --unsafe-skip-config-validation: flipping the flag would
+// either re-encode existing entries non-deterministically (ON→OFF) or compare
+// new deterministic entries against pre-existing non-deterministic ones
+// (OFF→ON), tripping the very cross-node digest the flag powers.
+type FSMDeterminismMismatchError struct {
+	Persisted bool
+	Current   bool
+}
+
+func (e *FSMDeterminismMismatchError) Error() string {
+	return fmt.Sprintf(
+		"fsm-determinism-enabled mismatch: persisted=%t, current=%t (the flag is set once at first bootstrap and cannot be changed; bring the binary in line with the persisted value or wipe the data directory to start a fresh cluster)",
+		e.Persisted, e.Current,
+	)
+}
+
 // ValidateOrPersistConfig checks that critical configuration parameters have not
 // changed since the last boot. On first boot (no persisted config), it persists
 // the current values. On subsequent boots, it compares node-id, cluster-id, and
@@ -57,6 +75,7 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		ClusterId:             cfg.ClusterID,
 		IdempotencyTtlSeconds: uint64(cfg.IdempotencyTTL.Seconds()),
 		StorageSchemaVersion:  CurrentStorageSchemaVersion,
+		FsmDeterminismEnabled: cfg.FSMDeterminismEnabled,
 	}
 
 	if persisted == nil {
@@ -104,6 +123,17 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		return &SchemaVersionError{
 			Persisted: persisted.GetStorageSchemaVersion(),
 			Current:   current.GetStorageSchemaVersion(),
+		}
+	}
+
+	// FSM determinism check — never bypassable, even with --unsafe-skip-config-validation.
+	// Flipping the flag between boots would either re-encode existing entries
+	// non-deterministically (ON→OFF) or compare new deterministic entries against
+	// pre-existing non-deterministic ones (OFF→ON), tripping the cross-node digest.
+	if persisted.GetFsmDeterminismEnabled() != current.GetFsmDeterminismEnabled() {
+		return &FSMDeterminismMismatchError{
+			Persisted: persisted.GetFsmDeterminismEnabled(),
+			Current:   current.GetFsmDeterminismEnabled(),
 		}
 	}
 

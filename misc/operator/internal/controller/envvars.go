@@ -171,6 +171,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, ag
 	envs = appendIfStr(envs, "IDEMPOTENCY_EVICTION_INTERVAL", spec.IdempotencyEvictionInterval)
 	envs = appendIfStr(envs, "HASH_ALGORITHM", spec.HashAlgorithm)
 	envs = appendIfBool(envs, "UNSAFE_SKIP_CONFIG_VALIDATION", spec.UnsafeSkipConfigValidation)
+	envs = appendIfBool(envs, "FSM_DETERMINISM_ENABLED", spec.FSMDeterminismEnabled)
 
 	// Snapshot sync
 	if spec.Snapshot != nil {

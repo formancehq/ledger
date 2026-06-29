@@ -7,6 +7,8 @@ import (
 	"time"
 
 	ggrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -298,6 +300,76 @@ func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *cluste
 
 	return &clusterpb.NodeTime{
 		TimestampUs: uint64(time.Now().UnixMicro()),
+	}, nil
+}
+
+// GetFSMDigest returns the rolling cross-node FSM digest persisted under
+// dal.SubGlobFSMDigest. Node-local read (never forwarded to the leader):
+// the whole point of the RPC is to compare per-node values so callers
+// MUST hit each peer directly.
+//
+// Strategy (live rolling digest, persisted per batch):
+//
+//  1. Optionally wait for LastPersistedIndex >= req.Index so the persisted
+//     digest reflects state up to a known applied index.
+//  2. Read the single key SubGlobFSMDigest, which carries a
+//     [appliedIndex BE 8][digest 16] record updated atomically with every
+//     FSM batch commit. The returned (appliedIndex, hash) is the chain
+//     state at the moment that batch was committed — no snapshot scan,
+//     no concurrency race between the index and the bytes.
+//
+// All peers applying the same Raft entries (regardless of how they were
+// grouped into MsgApp batches) advance the chain by the same number of
+// links with the same per-entry inputs, so the persisted hash matches
+// cross-node at the same applied index. Any difference is exactly the
+// FSM divergence this oracle exists to detect.
+func (impl *ClusterServiceServerImpl) GetFSMDigest(ctx context.Context, req *clusterpb.GetFSMDigestRequest) (*clusterpb.FSMDigest, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
+		return nil, err
+	}
+
+	if !impl.store.DeterministicEncoding() {
+		return nil, status.Error(codes.FailedPrecondition,
+			"fsm digest is unavailable: cluster bootstrapped with fsm_determinism_enabled=false")
+	}
+
+	if req.GetIndex() > 0 {
+		waitCtx := ctx
+
+		if req.GetWaitMs() > 0 {
+			var cancel context.CancelFunc
+
+			waitCtx, cancel = context.WithTimeout(ctx, time.Duration(req.GetWaitMs())*time.Millisecond)
+			defer cancel()
+		}
+
+		if err := impl.node.WaitForApplied(waitCtx, req.GetIndex()); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, status.Errorf(codes.DeadlineExceeded,
+					"node did not reach applied index %d within wait_ms=%d", req.GetIndex(), req.GetWaitMs())
+			}
+
+			return nil, status.Errorf(codes.Internal, "waiting for applied index: %v", err)
+		}
+	}
+
+	handle, err := impl.store.NewReadHandle()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "opening snapshot: %v", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	appliedIndex, digest, err := dal.LoadFSMDigest(handle)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "reading rolling fsm digest: %v", err)
+	}
+
+	return &clusterpb.FSMDigest{
+		AppliedIndex: appliedIndex,
+		Digest:       digest,
+		NodeId:       uint32(impl.node.GetNodeID()),
+		HashVersion:  uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3),
 	}, nil
 }
 

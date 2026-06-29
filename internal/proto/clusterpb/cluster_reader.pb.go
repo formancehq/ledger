@@ -4,8 +4,166 @@
 package clusterpb
 
 import (
+	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+// GetFSMDigestRequestReader provides read-only access to GetFSMDigestRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetFSMDigestRequestReader interface {
+	GetIndex() uint64
+	GetWaitMs() uint64
+	Mutate() *GetFSMDigestRequest
+}
+
+type getFSMDigestRequestReadonly struct{ v *GetFSMDigestRequest }
+
+func (r *getFSMDigestRequestReadonly) GetIndex() uint64 {
+	return r.v.GetIndex()
+}
+
+func (r *getFSMDigestRequestReadonly) GetWaitMs() uint64 {
+	return r.v.GetWaitMs()
+}
+
+func (r *getFSMDigestRequestReadonly) Mutate() *GetFSMDigestRequest {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this GetFSMDigestRequest.
+func (m *GetFSMDigestRequest) AsReader() GetFSMDigestRequestReader {
+	if m == nil {
+		return nil
+	}
+	return &getFSMDigestRequestReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this GetFSMDigestRequest.
+func (m *GetFSMDigestRequest) Mutate() *GetFSMDigestRequest {
+	return m.CloneVT()
+}
+
+// GetFSMDigestRequestListReader provides read-only iteration over []*GetFSMDigestRequest.
+type GetFSMDigestRequestListReader interface {
+	Len() int
+	Get(i int) GetFSMDigestRequestReader
+	Range(yield func(int, GetFSMDigestRequestReader) bool)
+}
+
+type getFSMDigestRequestListReadonly []*GetFSMDigestRequest
+
+func (l getFSMDigestRequestListReadonly) Len() int { return len(l) }
+
+func (l getFSMDigestRequestListReadonly) Get(i int) GetFSMDigestRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getFSMDigestRequestListReadonly) Range(yield func(int, GetFSMDigestRequestReader) bool) {
+	for i, v := range l {
+		var r GetFSMDigestRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetFSMDigestRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetFSMDigestRequestListReader(s []*GetFSMDigestRequest) GetFSMDigestRequestListReader {
+	return getFSMDigestRequestListReadonly(s)
+}
+
+// FSMDigestReader provides read-only access to FSMDigest.
+// Call Mutate() to obtain a mutable clone.
+type FSMDigestReader interface {
+	GetAppliedIndex() uint64
+	GetSnapshotIndex() uint64
+	GetDigest() []byte
+	GetNodeId() uint32
+	GetHashVersion() uint32
+	Mutate() *FSMDigest
+}
+
+type fSMDigestReadonly struct{ v *FSMDigest }
+
+func (r *fSMDigestReadonly) GetAppliedIndex() uint64 {
+	return r.v.GetAppliedIndex()
+}
+
+func (r *fSMDigestReadonly) GetSnapshotIndex() uint64 {
+	return r.v.GetSnapshotIndex()
+}
+
+func (r *fSMDigestReadonly) GetDigest() []byte {
+	return bytes.Clone(r.v.GetDigest())
+}
+
+func (r *fSMDigestReadonly) GetNodeId() uint32 {
+	return r.v.GetNodeId()
+}
+
+func (r *fSMDigestReadonly) GetHashVersion() uint32 {
+	return r.v.GetHashVersion()
+}
+
+func (r *fSMDigestReadonly) Mutate() *FSMDigest {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this FSMDigest.
+func (m *FSMDigest) AsReader() FSMDigestReader {
+	if m == nil {
+		return nil
+	}
+	return &fSMDigestReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this FSMDigest.
+func (m *FSMDigest) Mutate() *FSMDigest {
+	return m.CloneVT()
+}
+
+// FSMDigestListReader provides read-only iteration over []*FSMDigest.
+type FSMDigestListReader interface {
+	Len() int
+	Get(i int) FSMDigestReader
+	Range(yield func(int, FSMDigestReader) bool)
+}
+
+type fSMDigestListReadonly []*FSMDigest
+
+func (l fSMDigestListReadonly) Len() int { return len(l) }
+
+func (l fSMDigestListReadonly) Get(i int) FSMDigestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l fSMDigestListReadonly) Range(yield func(int, FSMDigestReader) bool) {
+	for i, v := range l {
+		var r FSMDigestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewFSMDigestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewFSMDigestListReader(s []*FSMDigest) FSMDigestListReader { return fSMDigestListReadonly(s) }
 
 // GetClusterStateRequestReader provides read-only access to GetClusterStateRequest.
 // Call Mutate() to obtain a mutable clone.

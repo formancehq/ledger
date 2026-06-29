@@ -325,6 +325,19 @@ func WithSentinelMode() testservice.InstrumentationFunc {
 	}
 }
 
+// WithFSMDeterminismEnabled opts the cluster into deterministic FSM byte
+// encoding and the cross-node digest health-check (PersistedConfig.fsm_determinism_enabled).
+// IMMUTABLE post-bootstrap: every node in the same cluster must be started
+// with the same value, or the second boot will refuse to start with
+// FSMDeterminismMismatchError.
+func WithFSMDeterminismEnabled() testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--fsm-determinism-enabled")
+
+		return nil
+	}
+}
+
 func WithBloomTestConfig() testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs(

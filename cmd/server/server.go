@@ -214,6 +214,9 @@ func NewRunCommand() *cobra.Command {
 	// Sentinel mode (runtime consistency checks)
 	runCmd.Flags().Bool("sentinel-mode", false, "Enable sentinel mode: runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification)")
 
+	// FSM determinism + cross-node digest health-check (immutable post-bootstrap)
+	runCmd.Flags().Bool("fsm-determinism-enabled", false, "Enable deterministic FSM byte encoding and the cross-node digest health-check (immutable post-bootstrap; mismatch with persisted value is fatal and not bypassable)")
+
 	// Bloom filter per-attribute-type configuration
 	registerBloomFlags(runCmd)
 
@@ -646,6 +649,13 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	// Sentinel mode
 	cfg.SentinelMode = getBool("sentinel-mode", false)
+
+	// FSM determinism + cross-node digest health-check.
+	// The flag must propagate into the Pebble store so OpenWriteSession()
+	// inherits the deterministic-encoding mode; see dal.Config and
+	// WriteSession.MarshalProto for the branching logic.
+	cfg.FSMDeterminismEnabled = getBool("fsm-determinism-enabled", false)
+	cfg.PebbleConfig.DeterministicEncoding = cfg.FSMDeterminismEnabled
 
 	// Background checkpoint interval
 	// Bloom filter per-type config

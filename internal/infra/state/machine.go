@@ -163,6 +163,15 @@ type Machine struct {
 	// without a sequence increment can only come from a bare Store that
 	// bypassed the wake protocol (#327 class).
 	publishSeq uint64
+
+	// digestChain is the rolling cross-node FSM digest chain. The FSM
+	// attaches it to every WriteSession opened on the hot path via
+	// WriteSessionFactory.OpenFSMWriteSession, and folds one chain link
+	// per applied Raft entry via WriteSession.AdvanceDigest. The chain
+	// itself is a thin wrapper around an XXH3 HashGenerator (per-cluster
+	// keyed) — see processing.NewFSMDigestChain. Stored as a single
+	// pointer because the FSM is single-goroutine: no concurrent advance.
+	digestChain dal.FSMDigestChain
 }
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
@@ -249,6 +258,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		coldCompactionCh:               make(chan struct{}, 1),
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
+		digestChain:                    processing.NewFSMDigestChain(clusterID),
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = cacheSnapshotter
@@ -453,7 +463,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		}
 	}
 
-	batch := sessions.OpenWriteSession()
+	batch := sessions.OpenFSMWriteSession(fsm.digestChain)
 
 	cmd := raftcmdpb.ProposalFromVTPool()
 	defer func() { cmd.ReturnToVTPool() }()
@@ -549,6 +559,18 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 				fsm.sentinelTracer.SkipEntry(entry.Index, entry.Type.String(), len(entry.Data))
 			}
 
+			// Advance the rolling cross-node FSM digest chain even for
+			// non-Normal entries (ConfChange) and empty-payload entries.
+			// They bump LastAppliedIndex on every node identically, so the
+			// chain must take a (deterministic, empty-ops) step to stay in
+			// sync with peers. Skipping the advance would leave the chain
+			// frozen at the last applyProposal entry while LastAppliedIndex
+			// keeps advancing — and two nodes committing at different
+			// lastAppliedIndex values would persist the same hash under
+			// different applied indices, tripping the workload's
+			// (applied, hash) equality check.
+			batch.AdvanceDigest()
+
 			continue
 		}
 
@@ -571,6 +593,11 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 
 			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entry.Index})
 
+			// See the matching comment on the EntryConfChange / empty-data
+			// branch above: a no-op proposal also bumps LastAppliedIndex on
+			// every node, so the chain must take its empty-ops step here too.
+			batch.AdvanceDigest()
+
 			continue
 		}
 
@@ -584,6 +611,13 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 
 			return nil, err
 		}
+
+		// Fold this entry's filtered op stream into the rolling cross-node
+		// FSM digest chain. One chain link per Raft entry is what makes the
+		// digest cross-node-equal regardless of how Raft batches entries
+		// into MsgApps. No-op when deterministic encoding is off (the
+		// WriteSession has no chain attached).
+		batch.AdvanceDigest()
 
 		result.AppliedIndex = entry.Index
 
@@ -734,8 +768,14 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) error {
 	commitStart := time.Now()
 
-	err := pb.batch.Commit()
-	if err != nil {
+	// CommitWithRollingDigest persists the cross-node FSM digest tuple
+	// (lastAppliedIndex, hash) into the same Pebble batch as the rest of
+	// the writes, then commits. When deterministic encoding is off the
+	// session has no chain attached and this degenerates to a plain
+	// commit — same path, no overhead. On success the store's in-memory
+	// rolling-digest cache is updated so the next session's chain seed
+	// stays current.
+	if _, err := pb.batch.CommitWithRollingDigest(pb.lastAppliedIndex); err != nil {
 		return fmt.Errorf("committing batch: %w", err)
 	}
 

@@ -29,8 +29,21 @@ import (
 // a parameter to ApplyEntries / PrepareEntries, not stored as a field — this
 // makes it impossible for any other method on the holder to open a write
 // session.
+//
+// Two flavours:
+//   - OpenWriteSession: plain session, no rolling-digest chain attached.
+//     For lifecycle paths (bootstrap, backup, attributes/prepare) that
+//     write to Pebble without contributing to the cross-node FSM digest.
+//   - OpenFSMWriteSession: session wired to the supplied rolling-digest
+//     chain. The FSM hot path uses this so each applied Raft entry folds
+//     its filtered ops into the chain via AdvanceDigest, and the final
+//     (appliedIndex, hash) tuple is persisted atomically via
+//     CommitWithRollingDigest. If the supplied chain is nil — or the
+//     parent store has deterministic encoding off — the returned session
+//     is byte-equivalent to OpenWriteSession with no digest overhead.
 type WriteSessionFactory interface {
 	OpenWriteSession() *WriteSession
+	OpenFSMWriteSession(chain FSMDigestChain) *WriteSession
 }
 
 // SentinelFactory exposes a scoped reader for post-commit sentinel checks in
