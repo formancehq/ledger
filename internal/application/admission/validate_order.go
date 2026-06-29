@@ -240,7 +240,15 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 // gate fails fast at admission so a malformed mirror config is rejected
 // before it lands in the audit chain.
 func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
-	create, ok := order.GetLedgerScoped().GetPayload().(*raftcmdpb.LedgerScopedOrder_CreateLedger)
+	// System-scoped orders carry no mirror source. The proto-generated
+	// GetLedgerScoped/GetPayload getters are nil-safe by themselves, but
+	// the explicit guard mirrors the rest of the validators in this file.
+	ls := order.GetLedgerScoped()
+	if ls == nil {
+		return nil
+	}
+
+	create, ok := ls.GetPayload().(*raftcmdpb.LedgerScopedOrder_CreateLedger)
 	if !ok {
 		return nil
 	}
