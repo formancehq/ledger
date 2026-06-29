@@ -6,6 +6,9 @@ The admission pipeline (`internal/application/admission`) is the gateway every w
 
 | Document | Description |
 |----------|-------------|
+| [pipeline.md](pipeline.md) | End-to-end pipeline from gRPC request to Raft proposal: gate, signature, order conversion, numscript, preload, proposal guard, predicted-index trick. |
+| [signing.md](signing.md) | Ed25519 request and response signing — keys, lifecycle, cross-language constraint, audit-chain propagation, replay nuance. |
+| [validation.md](validation.md) | Structural validation (admission, fast UX feedback) vs behavioural validation (FSM, audit-bound). Shared sentinels. |
 | [idempotency.md](idempotency.md) | Idempotency key mechanism, hash-based conflict detection, and TTL eviction. |
 | [admission-cache-horizon.md](admission-cache-horizon.md) | Rejecting proposals when the predicted apply-time generation is ≥ 2 ahead of the FSM's current generation. |
 
