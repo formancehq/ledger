@@ -258,7 +258,7 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	if iam.GetRegion() == "" {
-		return domain.ErrMirrorIAMRegionRequired
+		return ErrMirrorIAMRegionRequired
 	}
 
 	return nil

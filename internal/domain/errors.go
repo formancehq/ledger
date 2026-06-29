@@ -282,10 +282,14 @@ func (e *validationSentinel) Error() string             { return e.msg }
 func (*validationSentinel) Reason() string              { return ErrReasonValidation }
 func (*validationSentinel) Metadata() map[string]string { return nil }
 
-// newValidationSentinel constructs a stateless validation sentinel. Use only
+// NewValidationSentinel constructs a stateless validation sentinel. Use only
 // at package init time; the returned pointer is the identity used by
 // errors.Is at every call site.
-func newValidationSentinel(msg string) Describable {
+//
+// Exported so packages outside internal/domain (e.g. integration-config
+// validators in the application layer) can build their own sentinels without
+// piling integration-specific errors into the domain package.
+func NewValidationSentinel(msg string) Describable {
 	return &validationSentinel{msg: msg}
 }
 
@@ -377,35 +381,34 @@ var ErrNoChapterOpen Describable = errNoChapterOpen{}
 // the comparison is stable). No per-occurrence metadata — the message is
 // the same every time and the Reason() is shared (ErrReasonValidation).
 var (
-	ErrTargetRequired             = newValidationSentinel("target is required")
-	ErrMetadataKeyRequired        = newValidationSentinel("key is required")
-	ErrNumscriptContentRequired   = newValidationSentinel("numscript content is required")
-	ErrScriptAndReferenceConflict = newValidationSentinel("cannot specify both script and scriptReference")
-	ErrEmptyTransaction           = newValidationSentinel("transaction must produce at least one posting")
-	ErrPostingsAndScriptConflict  = newValidationSentinel("postings cannot be combined with script or scriptReference")
-	ErrScriptRequired             = newValidationSentinel("numscript: script is required")
+	ErrTargetRequired             = NewValidationSentinel("target is required")
+	ErrMetadataKeyRequired        = NewValidationSentinel("key is required")
+	ErrNumscriptContentRequired   = NewValidationSentinel("numscript content is required")
+	ErrScriptAndReferenceConflict = NewValidationSentinel("cannot specify both script and scriptReference")
+	ErrEmptyTransaction           = NewValidationSentinel("transaction must produce at least one posting")
+	ErrPostingsAndScriptConflict  = NewValidationSentinel("postings cannot be combined with script or scriptReference")
+	ErrScriptRequired             = NewValidationSentinel("numscript: script is required")
 	// Numscript identifier sentinels stay local: numscript is a
 	// ledger-internal DSL, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
-	ErrNumscriptNameRequired    = newValidationSentinel("numscript name is required")
-	ErrNumscriptNameInvalidChar = newValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
-	ErrNumscriptNameTooLong     = newValidationSentinel("numscript name exceeds maximum length of 256 bytes")
+	ErrNumscriptNameRequired    = NewValidationSentinel("numscript name is required")
+	ErrNumscriptNameInvalidChar = NewValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
+	ErrNumscriptNameTooLong     = NewValidationSentinel("numscript name exceeds maximum length of 256 bytes")
 	// Prepared-query identifier sentinels stay local: prepared queries are
 	// a ledger-internal feature (CQRS read-side), not part of the
 	// Formance-wide invariants in github.com/formancehq/invariants.
-	ErrPreparedQueryRequired        = newValidationSentinel("prepared query payload is required")
-	ErrPreparedQueryNameRequired    = newValidationSentinel("prepared query name is required")
-	ErrPreparedQueryNameInvalidChar = newValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
-	ErrPreparedQueryNameTooLong     = newValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
+	ErrPreparedQueryRequired        = NewValidationSentinel("prepared query payload is required")
+	ErrPreparedQueryNameRequired    = NewValidationSentinel("prepared query name is required")
+	ErrPreparedQueryNameInvalidChar = NewValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
+	ErrPreparedQueryNameTooLong     = NewValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
-	ErrSigningKeyIDRequired    = newValidationSentinel("signing key id is required")
-	ErrSigningKeyIDInvalidChar = newValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
-	ErrSigningKeyIDTooLong     = newValidationSentinel("signing key id exceeds maximum length of 256 bytes")
+	ErrSigningKeyIDRequired    = NewValidationSentinel("signing key id is required")
+	ErrSigningKeyIDInvalidChar = NewValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
+	ErrSigningKeyIDTooLong     = NewValidationSentinel("signing key id exceeds maximum length of 256 bytes")
 	// ErrLedgerNameRequired moved to validation.go; it wraps the
 	// github.com/formancehq/invariants sentinel.
-	ErrMirrorIAMRegionRequired = newValidationSentinel("mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set")
 )
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -498,7 +501,7 @@ func (e *ErrTransactionReferenceNotFound) Metadata() map[string]string {
 
 // ErrTransactionTargetMissing is returned when a TargetTransaction is empty
 // (neither id nor reference set).
-var ErrTransactionTargetMissing = newValidationSentinel("transaction target requires either id or reference")
+var ErrTransactionTargetMissing = NewValidationSentinel("transaction target requires either id or reference")
 
 // ErrTransactionAlreadyReverted — attempting to revert an already-reverted transaction.
 type ErrTransactionAlreadyReverted struct {

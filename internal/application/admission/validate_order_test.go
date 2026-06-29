@@ -838,7 +838,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: ""},
 				},
 			}},
-			wantErr: domain.ErrMirrorIAMRegionRequired,
+			wantErr: ErrMirrorIAMRegionRequired,
 		},
 		{
 			name: "http mirror source unaffected",
