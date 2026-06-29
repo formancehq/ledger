@@ -22,14 +22,19 @@ func assembleAccount(
 	volEntries []attributes.ComputedEntry[*raftcmdpb.VolumePair],
 	metaEntries []attributes.ComputedEntry[*commonpb.MetadataValue],
 	collapseColors bool,
-) *commonpb.Account {
+) (*commonpb.Account, error) {
 	account := &commonpb.Account{
 		Address:  address,
 		Metadata: map[string]*commonpb.MetadataValue{},
 	}
 
 	if len(volEntries) > 0 {
-		account.Volumes = buildAccountVolumes(volEntries, collapseColors)
+		vols, err := buildAccountVolumes(volEntries, collapseColors)
+		if err != nil {
+			return nil, err
+		}
+
+		account.Volumes = vols
 	}
 
 	if len(metaEntries) > 0 {
@@ -48,14 +53,20 @@ func assembleAccount(
 		}
 	}
 
-	return account
+	return account, nil
 }
 
 // buildAccountVolumes turns the flushed volume entries into the
 // `repeated AccountVolume` list carried by Account.volumes. The list is
 // sorted by (asset, color) ascending. If collapseColors is true, entries
 // with the same asset (different colors) are summed under color = "".
-func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.VolumePair], collapseColors bool) []*commonpb.AccountVolume {
+//
+// A malformed canonical key surfaces a hard error rather than a silent
+// `continue`: every other Pebble scan path in the codebase propagates
+// unmarshal errors, and silently dropping a row from GetAccount would
+// return a truncated balance the caller has no way to detect (CLAUDE.md
+// invariant #7).
+func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.VolumePair], collapseColors bool) ([]*commonpb.AccountVolume, error) {
 	type key struct {
 		asset string
 		color string
@@ -66,7 +77,7 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 	for _, entry := range volEntries {
 		var vk domain.VolumeKey
 		if err := vk.Unmarshal(entry.CanonicalKey); err != nil {
-			continue
+			return nil, fmt.Errorf("malformed volume canonical key in account scan: %w", err)
 		}
 
 		input := big.NewInt(0)
@@ -121,7 +132,7 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 		return out[i].GetColor() < out[j].GetColor()
 	})
 
-	return out
+	return out, nil
 }
 
 // scanAccount performs two forward scans — one for Volume and one for Metadata —
@@ -175,5 +186,5 @@ func scanAccount(
 		}).Infof("scanAccount complete")
 	}
 
-	return assembleAccount(address, volEntries, metaEntries, collapseColors), nil
+	return assembleAccount(address, volEntries, metaEntries, collapseColors)
 }
