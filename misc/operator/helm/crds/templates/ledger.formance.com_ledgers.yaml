@@ -161,10 +161,12 @@ spec:
                         type: object
                       database:
                         description: Database is the PostgreSQL database name.
+                        minLength: 1
                         type: string
                       host:
                         description: Host is the PostgreSQL endpoint hostname (e.g.
                           RDS DB cluster endpoint).
+                        minLength: 1
                         type: string
                       passwordFrom:
                         description: |-
@@ -203,6 +205,7 @@ spec:
                         type: string
                       user:
                         description: User is the PostgreSQL user.
+                        minLength: 1
                         type: string
                     required:
                     - database

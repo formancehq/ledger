@@ -106,6 +106,7 @@ type SecretKeyRef struct {
 type PostgresMirrorSource struct {
 	// Host is the PostgreSQL endpoint hostname (e.g. RDS DB cluster endpoint).
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Host string `json:"host"`
 
 	// Port is the PostgreSQL port. Defaults to 5432.
@@ -117,10 +118,12 @@ type PostgresMirrorSource struct {
 
 	// User is the PostgreSQL user.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	User string `json:"user"`
 
 	// Database is the PostgreSQL database name.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Database string `json:"database"`
 
 	// SSLMode is the libpq sslmode parameter (disable, allow, prefer, require,
