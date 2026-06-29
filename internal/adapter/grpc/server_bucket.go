@@ -329,7 +329,16 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 		reader = mainStore
 		tx, err = impl.localCtrl.GetTransactionFrom(ctx, mainStore, req.GetLedger(), req.GetTransactionId())
 	} else {
-		reader = impl.store
+		// Pin a snapshot so the receipt's ledger + creation-log reads observe one
+		// committed state (the checkpoint path is already a fixed snapshot).
+		handle, hErr := impl.store.NewReadHandle()
+		if hErr != nil {
+			return nil, fmt.Errorf("creating read handle: %w", hErr)
+		}
+
+		defer func() { _ = handle.Close() }()
+
+		reader = handle
 		tx, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
 	}
 
