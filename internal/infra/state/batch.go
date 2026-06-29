@@ -507,6 +507,7 @@ var ledgerScopedAttrTypes = []byte{
 	dal.SubAttrNumscriptContent,
 	dal.SubAttrPreparedQuery,
 	dal.SubAttrIndex,
+	dal.SubAttrAccount, // EN-1276: per-account existence markers are ledger-scoped
 }
 
 // DeleteLedgerData removes all per-ledger data from Pebble for the given ledger.
