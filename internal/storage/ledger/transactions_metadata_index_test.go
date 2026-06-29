@@ -160,7 +160,7 @@ func TestIndexedMetadataKeys_FlaggedKeyReturnsCorrectRows(t *testing.T) {
 	// indexedMetadataKeys=[]).  Create the index now and re-resolve so the store
 	// actually exercises the ->> rewrite path rather than the @> fallback.
 	createFunctionalIndexForKey(t, store, "source_wallet_id")
-	require.NoError(t, store.ResolveIndexedMetadataKeys(ctx))
+	store.ResolveIndexedMetadataKeys(ctx)
 	require.Contains(t, store.IndexedMetadataKeys(), "source_wallet_id",
 		"index must be confirmed for the ->> path to be active")
 
@@ -259,7 +259,7 @@ func TestIndexedMetadataKeys_SemanticEquivalence(t *testing.T) {
 	// Create the functional index on the flagged store and re-resolve so it
 	// actually exercises the ->> path; plain uses @> with no flag.
 	createFunctionalIndexForKey(t, flagged, "source_wallet_id")
-	require.NoError(t, flagged.ResolveIndexedMetadataKeys(ctx))
+	flagged.ResolveIndexedMetadataKeys(ctx)
 	require.Contains(t, flagged.IndexedMetadataKeys(), "source_wallet_id",
 		"index must be confirmed so the ->> path is active during comparison")
 
@@ -296,7 +296,7 @@ func TestIndexedMetadataKeys_DestinationWalletID(t *testing.T) {
 	// CreateLedger calls ResolveIndexedMetadataKeys with no index → empty list.
 	// Create the index for the key under test and re-resolve.
 	createFunctionalIndexForKey(t, store, "destination_wallet_id")
-	require.NoError(t, store.ResolveIndexedMetadataKeys(ctx))
+	store.ResolveIndexedMetadataKeys(ctx)
 	require.Contains(t, store.IndexedMetadataKeys(), "destination_wallet_id",
 		"index must be confirmed for the ->> path to be active")
 
@@ -389,7 +389,7 @@ func TestIndexedMetadataKeys_NegatedFilterSemantics(t *testing.T) {
 
 	// Confirm the index on flagged so the ->> path is active.
 	createFunctionalIndexForKey(t, flagged, "source_wallet_id")
-	require.NoError(t, flagged.ResolveIndexedMetadataKeys(ctx))
+	flagged.ResolveIndexedMetadataKeys(ctx)
 	require.Contains(t, flagged.IndexedMetadataKeys(), "source_wallet_id",
 		"index must be confirmed so NULL-semantics regression is actually exercised")
 
@@ -427,7 +427,7 @@ func TestIndexedMetadataKeys_ExplainUsesLiteralPredicate(t *testing.T) {
 
 	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
 	createFunctionalIndexForKey(t, store, "source_wallet_id")
-	require.NoError(t, store.ResolveIndexedMetadataKeys(ctx))
+	store.ResolveIndexedMetadataKeys(ctx)
 	require.Contains(t, store.IndexedMetadataKeys(), "source_wallet_id",
 		"index must be confirmed for the ->> path to be active")
 
@@ -471,7 +471,7 @@ func TestIndexedMetadataKeys_FallsBackWhenNoIndex(t *testing.T) {
 	// Resolve at creation time (no index → empty list); call again explicitly
 	// to make the test intent clear and confirm the state is stable.
 	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
-	require.NoError(t, store.ResolveIndexedMetadataKeys(ctx))
+	store.ResolveIndexedMetadataKeys(ctx)
 	require.Empty(t, store.IndexedMetadataKeys(),
 		"key should be excluded when no functional index exists")
 
