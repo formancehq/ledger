@@ -148,7 +148,13 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	require.Equal(t, "cluster-b", persisted.GetClusterId())
 }
 
-func TestValidateOrPersistConfig_SchemaVersionBackfill(t *testing.T) {
+// TestValidateOrPersistConfig_LegacyPreVersioningIsRejected covers the
+// pre-versioning persisted config (schema_version == 0). The backfill logic
+// turns the missing field into v1; once the binary moves past v1 (EN-1413
+// bumps to v2), that backfilled v1 must trip the "too old" guard so the
+// operator gets a clear signal instead of a silent corruption. The force
+// flag must not bypass it.
+func TestValidateOrPersistConfig_LegacyPreVersioningIsRejected(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)
 	logger := logging.Testing()
@@ -161,17 +167,38 @@ func TestValidateOrPersistConfig_SchemaVersionBackfill(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	// Boot with current code should backfill to version 1 and succeed.
 	cfg := Config{
 		RaftConfig: node.NodeConfig{NodeID: 1},
 		ClusterID:  "test",
 	}
-	err := ValidateOrPersistConfig(store, cfg, logger, false)
-	require.NoError(t, err)
 
-	persisted, err := LoadPersistedConfig(store)
-	require.NoError(t, err)
-	require.Equal(t, uint32(1), persisted.GetStorageSchemaVersion())
+	// While CurrentStorageSchemaVersion == 1 this is a backfill-and-succeed
+	// case. Once it moves past 1, the same path produces a "too old" error
+	// (the backfilled v1 != current). EN-1413 lands the second case; the
+	// branch is kept so future schema bumps don't silently swallow the
+	// reject path.
+	err := ValidateOrPersistConfig(store, cfg, logger, false)
+	if CurrentStorageSchemaVersion == 1 {
+		require.NoError(t, err)
+
+		persisted, err := LoadPersistedConfig(store)
+		require.NoError(t, err)
+		require.Equal(t, uint32(1), persisted.GetStorageSchemaVersion())
+
+		return
+	}
+
+	require.Error(t, err)
+
+	var schemaErr *SchemaVersionError
+	require.ErrorAs(t, err, &schemaErr)
+	require.False(t, schemaErr.Downgrade)
+	require.Equal(t, uint32(1), schemaErr.Persisted, "backfill landed at v1, current is %d", CurrentStorageSchemaVersion)
+	require.Equal(t, CurrentStorageSchemaVersion, schemaErr.Current)
+
+	// Force must not bypass schema-version errors.
+	err = ValidateOrPersistConfig(store, cfg, logger, true)
+	require.ErrorAs(t, err, &schemaErr)
 }
 
 func TestValidateOrPersistConfig_SchemaVersionTooNew(t *testing.T) {

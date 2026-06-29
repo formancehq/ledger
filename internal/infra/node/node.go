@@ -142,12 +142,16 @@ type Node struct {
 	observer         *Observer
 	applier          *Applier
 
-	readies            chan raft.Ready
-	readyTerminated    chan readyResult
-	tasks              *taskSet
-	stopChannel        chan chan struct{}
-	runDone            chan struct{} // closed when Run() exits
-	recoveredPeers     map[uint64]ConfChangeContext
+	readies         chan raft.Ready
+	readyTerminated chan readyResult
+	tasks           *taskSet
+	stopChannel     chan chan struct{}
+	runDone         chan struct{} // closed when Run() exits
+	recoveredPeers  map[uint64]ConfChangeContext
+	// peerStore persists Raft cluster membership in Pebble (EN-1413).
+	// Mutations land at ConfChange apply time (finishReady); the boot
+	// path seeds peerAddresses by calling peerStore.LoadAll().
+	peerStore          *PeerStore
 	peerAddressesMu    sync.RWMutex
 	peerAddresses      map[uint64]ConfChangeContext
 	pendingConfChanges SyncMap[uint64, *futures.Future[struct{}]]
@@ -207,6 +211,7 @@ func NewNode(
 	fsm *state.Machine,
 	recovery *state.Recovery,
 	synchronizer *state.Synchronizer,
+	peerStore *PeerStore,
 ) (*Node, error) {
 	cfg.SetDefaults()
 
@@ -215,10 +220,18 @@ func NewNode(
 		return nil, fmt.Errorf("reading snapshot: %w", err)
 	}
 
-	var (
-		initialConfState raftpb.ConfState
-		recoveredPeers   map[uint64]ConfChangeContext
-	)
+	// Load cluster membership from Pebble (EN-1413). At fresh bootstrap this
+	// is empty: registerInitialPeers in the bootstrap module seeds self +
+	// cfg.Peers into the store via peerStore.Put before raft starts ticking,
+	// and the ConfChange apply path keeps it in sync afterwards. At restart,
+	// this is the only source of peer addresses — no WAL snapshot payload,
+	// no WAL entry scan, no side-file.
+	recoveredPeers, err := peerStore.LoadAll()
+	if err != nil {
+		return nil, fmt.Errorf("loading peers from pebble: %w", err)
+	}
+
+	var initialConfState raftpb.ConfState
 
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
 		logger.Infof("Fresh start: WAL has no ConfState voters, creating initial snapshot")
@@ -243,7 +256,7 @@ func NewNode(
 				return nil, fmt.Errorf("recovering FSM state from store: %w", err)
 			}
 
-			// Wrap with empty NodeSnapshot (no FSM data, no peer addresses on restore bootstrap)
+			// Wrap with empty NodeSnapshot (no FSM data; peer addresses live in Pebble)
 			ns := &raftcmdpb.NodeSnapshot{}
 
 			data, err := ns.MarshalVT()
@@ -299,7 +312,7 @@ func NewNode(
 				return nil, errors.New("first start requires --bootstrap or --join")
 			}
 
-			// Wrap with empty NodeSnapshot (no FSM data, no peer addresses on initial bootstrap)
+			// Wrap with empty NodeSnapshot (no FSM data; peer addresses live in Pebble)
 			ns := &raftcmdpb.NodeSnapshot{}
 
 			data, err := ns.MarshalVT()
@@ -339,56 +352,23 @@ func NewNode(
 			"peerCount":     len(cfg.Peers),
 		}).Infof("Restart detected: WAL already has ConfState (not a fresh start)")
 
+		// EN-1413: peer addresses come from Pebble (loaded above into
+		// recoveredPeers). The WAL snapshot payload no longer carries them,
+		// and we no longer scan WAL entries to overlay newer peers. The
+		// snapshot bookkeeping (FSM cache reset, snapshotIndex update) is
+		// still required on the install path; that lives in Synchronizer.
 		switch {
-		case snapshot.Metadata.Index > 0 && len(snapshot.Data) > 0:
+		case snapshot.Metadata.Index > 0:
 			logger.WithFields(map[string]any{
 				"index":        snapshot.Metadata.Index,
 				"snapshotSize": len(snapshot.Data),
 			}).Infof("Restoring Machine from snapshot")
-
-			// Unwrap NodeSnapshot to get FSM data and peer addresses
-			unwrapStart := time.Now()
-
-			result, err := unwrapSnapshot(snapshot.Data)
-			if err != nil {
-				return nil, fmt.Errorf("unwrapping snapshot: %w", err)
-			}
-
-			logger.WithFields(map[string]any{
-				"duration":  time.Since(unwrapStart).String(),
-				"peerCount": len(result.peerAddresses),
-			}).Infof("Unwrapped NodeSnapshot")
 
 			if err := synchronizer.InstallSnapshot(context.Background(), snapshot); err != nil {
 				panic(err)
 			}
 
 			logger.Infof("Installed FSM snapshot (snapshotIndex set, cache reset)")
-
-			// Seed recovered peers from snapshot peer addresses
-			recoveredPeers = make(map[uint64]ConfChangeContext, len(result.peerAddresses))
-			for _, addr := range result.peerAddresses {
-				recoveredPeers[addr.GetNodeId()] = ConfChangeContext{
-					RaftAddress:    addr.GetRaftAddress(),
-					ServiceAddress: addr.GetServiceAddress(),
-				}
-			}
-
-			logger.Infof("Snapshot restored successfully")
-		case snapshot.Metadata.Index > 0:
-			// Recovered snapshot from WAL records (snap file was lost).
-			// ConfState is available but peer addresses are not — they will be
-			// rediscovered via etcd. The FSM state lives in Pebble (separate
-			// volume), so no data resync is needed.
-			logger.WithFields(map[string]any{
-				"index": snapshot.Metadata.Index,
-			}).Errorf("Snapshot at index %d has no peer addresses (snap file was lost); "+
-				"peers will be rediscovered via etcd",
-				snapshot.Metadata.Index)
-
-			if err := synchronizer.InstallSnapshot(context.Background(), snapshot); err != nil {
-				panic(err)
-			}
 		default:
 			logger.Infof("Empty snapshot found, starting with empty Machine")
 		}
@@ -411,43 +391,9 @@ func NewNode(
 			)
 		}
 
-		// Overlay WAL entries which may contain more recent peer addresses.
-		// Scan in bounded chunks to avoid loading the entire WAL into memory.
-		if recoveredPeers == nil {
-			recoveredPeers = make(map[uint64]ConfChangeContext)
-		}
-
-		walScanStart := time.Now()
-		firstIdx, firstErr := wal.FirstIndex()
-
-		// Todo: is it safe if the wal was compacted?
-		lastIdx, lastErr := wal.LastIndex()
-		if firstErr == nil && lastErr == nil && firstIdx <= lastIdx {
-			logger.WithFields(map[string]any{
-				"firstIndex": firstIdx,
-				"lastIndex":  lastIdx,
-				"entryCount": lastIdx - firstIdx + 1,
-			}).Infof("Scanning WAL entries for peer addresses")
-
-			const maxChunkBytes = 8 * 1024 * 1024 // 8MB per chunk
-
-			lo := firstIdx
-			for lo <= lastIdx {
-				entries, err := wal.Entries(lo, lastIdx+1, maxChunkBytes)
-				if err != nil || len(entries) == 0 {
-					break
-				}
-
-				maps.Copy(recoveredPeers, ExtractPeerAddressesFromEntries(entries))
-
-				lo = entries[len(entries)-1].Index + 1
-			}
-		}
-
 		logger.WithFields(map[string]any{
-			"duration":  time.Since(walScanStart).String(),
 			"peerCount": len(recoveredPeers),
-		}).Infof("WAL peer address scan complete")
+		}).Infof("Loaded cluster membership from Pebble")
 	}
 
 	node := &Node{
@@ -468,6 +414,7 @@ func NewNode(
 		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
 		recoveredPeers:   recoveredPeers,
 		peerAddresses:    recoveredPeers,
+		peerStore:        peerStore,
 		lastAutoPromote:  make(map[uint64]time.Time),
 		indexTracker:     NewIndexTracker(initialIndex(wal)),
 		observer:         NewNoOpObserver(),
@@ -1144,33 +1091,9 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			return readyResult{}, fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
-		// Unwrap NodeSnapshot to get FSM data and peer addresses
-		unwrapStart := time.Now()
-
-		snapResult, err := unwrapSnapshot(rd.Snapshot.Data)
-		if err != nil {
-			return readyResult{}, fmt.Errorf("unwrapping snapshot: %w", err)
-		}
-
-		node.logger.WithFields(map[string]any{
-			"duration":  time.Since(unwrapStart).String(),
-			"peerCount": len(snapResult.peerAddresses),
-		}).Infof("Unwrapped leader snapshot")
-
 		if err := node.synchronizer.InstallSnapshot(ctx, rd.Snapshot); err != nil {
 			return readyResult{}, fmt.Errorf("installing snapshot: %w", err)
 		}
-
-		// Restore peer addresses into node
-		node.peerAddressesMu.Lock()
-		node.peerAddresses = make(map[uint64]ConfChangeContext, len(snapResult.peerAddresses))
-		for _, addr := range snapResult.peerAddresses {
-			node.peerAddresses[addr.GetNodeId()] = ConfChangeContext{
-				RaftAddress:    addr.GetRaftAddress(),
-				ServiceAddress: addr.GetServiceAddress(),
-			}
-		}
-		node.peerAddressesMu.Unlock()
 
 		// Defer ReportSnapshot to orchestrate goroutine (rawNode is not thread-safe).
 		result.snapshotApplied = true
@@ -1189,6 +1112,26 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		// that outlive the DB.Close() in the fx shutdown hook.
 		if !isStopping(stop) {
 			node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
+
+			// EN-1413: SyncSnapshot has just restored the leader's Pebble
+			// checkpoint, which contains the authoritative cluster membership
+			// under [ZoneGlobal][SubGlobPeers]. Refresh the in-memory cache
+			// from the new state so the transport's view (used to send Raft
+			// messages on the next tick) matches the durable one. Until this
+			// reload runs, peerAddresses still reflects the pre-restore
+			// cluster, which can be a strict subset of the new one.
+			peers, err := node.peerStore.LoadAll()
+			if err != nil {
+				return readyResult{}, fmt.Errorf("reloading peers after snapshot install: %w", err)
+			}
+
+			node.peerAddressesMu.Lock()
+			node.peerAddresses = peers
+			node.peerAddressesMu.Unlock()
+
+			node.logger.WithFields(map[string]any{
+				"peerCount": len(peers),
+			}).Infof("Reloaded cluster membership from Pebble post-snapshot")
 		}
 	}
 
@@ -1241,17 +1184,27 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 			Infof("Applying configuration change")
 		node.confState.Store(node.rawNode.ApplyConfChange(cc))
 
-		// Update peer address map and collect pending futures
+		// Update peer address map (Pebble + in-memory cache) via
+		// RegisterPeer / UnregisterPeer so both stay in lockstep. A
+		// failure to persist surfaces here so the FSM does not desync
+		// from the durable membership state (invariant 7).
 		for _, change := range cc.Changes {
 			switch change.Type {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 				if len(cc.Context) > 0 {
-					if ccCtx, err := UnmarshalConfChangeContext(cc.Context); err == nil {
-						node.SetPeerAddress(change.NodeID, ccCtx.RaftAddress, ccCtx.ServiceAddress)
+					ccCtx, err := UnmarshalConfChangeContext(cc.Context)
+					if err != nil {
+						return fmt.Errorf("invariant: unmarshal ConfChange context for node %d: %w", change.NodeID, err)
+					}
+
+					if err := node.RegisterPeer(change.NodeID, ccCtx.RaftAddress, ccCtx.ServiceAddress); err != nil {
+						return err
 					}
 				}
 			case raftpb.ConfChangeRemoveNode:
-				node.RemovePeerAddress(change.NodeID)
+				if err := node.UnregisterPeer(change.NodeID); err != nil {
+					return err
+				}
 			}
 
 			// Collect pending ConfChange future (if any) — resolved below after WAL update.
@@ -2341,49 +2294,17 @@ func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
 	return slices.Contains(cs.Learners, nodeID)
 }
 
-// ExtractPeerAddressesFromEntries scans committed entries for ConfChange entries
-// and extracts peer addresses from their Context field. For AddNode/AddLearnerNode
-// the address is stored (latest wins); for RemoveNode the entry is deleted.
-func ExtractPeerAddressesFromEntries(entries []raftpb.Entry) map[uint64]ConfChangeContext {
-	peers := make(map[uint64]ConfChangeContext)
-
-	for _, entry := range entries {
-		cc, ok, err := unmarshalConfChangeV2(entry)
-		if err != nil || !ok {
-			continue
-		}
-
-		for _, change := range cc.Changes {
-			switch change.Type {
-			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
-				if len(cc.Context) == 0 {
-					continue
-				}
-
-				ccCtx, err := UnmarshalConfChangeContext(cc.Context)
-				if err != nil {
-					continue
-				}
-
-				peers[change.NodeID] = ccCtx
-			case raftpb.ConfChangeRemoveNode:
-				delete(peers, change.NodeID)
-			}
-		}
-	}
-
-	return peers
-}
-
-// RecoveredPeers returns the peer addresses recovered from WAL entries and/or
-// snapshots during node initialization. Used by bootstrap to restore transport
-// connections without requiring a PeerStore file.
+// RecoveredPeers returns the peer addresses loaded from Pebble at boot.
+// Used by bootstrap to seed the Raft transport and the service-pool
+// connections before the first Ready tick.
 func (node *Node) RecoveredPeers() map[uint64]ConfChangeContext {
 	return node.recoveredPeers
 }
 
-// SetPeerAddress upserts a peer's raft and service addresses.
-// Called on ConfChange commits and by bootstrap for self-registration.
+// SetPeerAddress upserts a peer's raft and service addresses in the
+// in-memory cache only. Prefer RegisterPeer in production code so the
+// Pebble durable store stays in lockstep with the cache (EN-1413). This
+// method is kept for test seeding.
 func (node *Node) SetPeerAddress(nodeID uint64, raftAddr, serviceAddr string) {
 	node.peerAddressesMu.Lock()
 	node.peerAddresses[nodeID] = ConfChangeContext{
@@ -2393,12 +2314,46 @@ func (node *Node) SetPeerAddress(nodeID uint64, raftAddr, serviceAddr string) {
 	node.peerAddressesMu.Unlock()
 }
 
-// RemovePeerAddress removes a peer's addresses.
-// Called when a ConfChange removing a peer is committed.
+// RemovePeerAddress removes a peer from the in-memory cache only. Prefer
+// UnregisterPeer in production code. Kept for test seeding.
 func (node *Node) RemovePeerAddress(nodeID uint64) {
 	node.peerAddressesMu.Lock()
 	delete(node.peerAddresses, nodeID)
 	node.peerAddressesMu.Unlock()
+}
+
+// RegisterPeer durably persists a peer entry in Pebble (the source of
+// truth for restart recovery) and updates the in-memory cache (the runtime
+// view used by the transport). Both writes must succeed: a divergence
+// would put the node in the EN-1404 failure mode where the next restart
+// sees a peer set that does not match what the transport already talks
+// to. The Pebble write happens first so a crash between the two leaves a
+// state that is at worst "Pebble has it, cache does not" — which the next
+// boot resolves by reading from Pebble.
+//
+// Called from the ConfChange apply path (finishReady) and from the
+// bootstrap module's initial-peer registration (self + cfg.Peers, before
+// the Raft loop starts).
+func (node *Node) RegisterPeer(nodeID uint64, raftAddr, serviceAddr string) error {
+	if err := node.peerStore.Put(nodeID, raftAddr, serviceAddr); err != nil {
+		return fmt.Errorf("persisting peer %d: %w", nodeID, err)
+	}
+
+	node.SetPeerAddress(nodeID, raftAddr, serviceAddr)
+
+	return nil
+}
+
+// UnregisterPeer is the dual of RegisterPeer: deletes from Pebble then
+// from the cache. Called from the ConfChange RemoveNode apply path.
+func (node *Node) UnregisterPeer(nodeID uint64) error {
+	if err := node.peerStore.Delete(nodeID); err != nil {
+		return fmt.Errorf("removing peer %d from pebble: %w", nodeID, err)
+	}
+
+	node.RemovePeerAddress(nodeID)
+
+	return nil
 }
 
 // PeerAddresses returns a copy of the current peer address map.
@@ -2412,23 +2367,13 @@ func (node *Node) PeerAddresses() map[uint64]ConfChangeContext {
 	return cp
 }
 
-// wrapSnapshot serializes cluster-level metadata (peer addresses) into a
-// NodeSnapshot for WAL storage.
+// wrapSnapshot returns the bytes to store as the Raft snapshot's Data
+// field. Cluster membership lives in Pebble under [ZoneGlobal][SubGlobPeers]
+// (EN-1413), so an empty NodeSnapshot is sufficient as a placeholder. The
+// envelope is kept (rather than nil) so future cluster-level metadata can be
+// added without touching every snapshot call site.
 func (node *Node) wrapSnapshot() ([]byte, error) {
-	node.peerAddressesMu.RLock()
-	peerAddrs := make([]*raftcmdpb.PeerAddress, 0, len(node.peerAddresses))
-	for nodeID, addr := range node.peerAddresses {
-		peerAddrs = append(peerAddrs, &raftcmdpb.PeerAddress{
-			NodeId:         nodeID,
-			RaftAddress:    addr.RaftAddress,
-			ServiceAddress: addr.ServiceAddress,
-		})
-	}
-	node.peerAddressesMu.RUnlock()
-
-	ns := &raftcmdpb.NodeSnapshot{
-		PeerAddresses: peerAddrs,
-	}
+	ns := &raftcmdpb.NodeSnapshot{}
 
 	return ns.MarshalVT()
 }

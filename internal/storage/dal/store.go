@@ -240,6 +240,13 @@ const (
 	SubGlobClusterConfig           byte = 0x11
 	SubGlobBloom                   byte = 0x12
 	SubGlobNextLedgerID            byte = 0x13
+	// SubGlobPeers stores Raft cluster membership (one entry per voter or
+	// learner): [ZoneGlobal][SubGlobPeers][node_id BE 8] → raftcmdpb.PeerAddress.
+	// Mutations are driven by the Raft ConfChange apply path; the node
+	// reloads from this prefix at boot so the bootstrap voter and every
+	// other peer survive restarts without relying on the WAL snapshot
+	// payload (EN-1413).
+	SubGlobPeers byte = 0x14
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

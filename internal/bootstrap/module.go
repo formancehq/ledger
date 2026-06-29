@@ -337,6 +337,12 @@ func Module() fx.Option {
 			func(machine *state.Machine, recovery *state.Recovery, store *dal.Store) *state.Synchronizer {
 				return state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 			},
+			// PeerStore persists Raft cluster membership in Pebble under
+			// [ZoneGlobal][SubGlobPeers] (EN-1413). It is consumed by Node
+			// (Pebble seed at boot + ConfChange apply at runtime) and by
+			// registerInitialPeers (one-shot persistence of cfg.Peers + self
+			// before the Raft loop starts ticking).
+			node.NewPeerStore,
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a
@@ -422,6 +428,7 @@ func Module() fx.Option {
 					Machine       *state.Machine
 					Recovery      *state.Recovery
 					Synchronizer  *state.Synchronizer
+					PeerStore     *node.PeerStore
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -449,6 +456,7 @@ func Module() fx.Option {
 					params.Machine,
 					params.Recovery,
 					params.Synchronizer,
+					params.PeerStore,
 				)
 				if err != nil {
 					return nodeProvideResult{}, err
@@ -931,9 +939,16 @@ func Module() fx.Option {
 				n *node.Node,
 				fullCfg Config,
 			) {
-				// Store own address in Node so it gets included in the next snapshot.
-				// This ensures that after a snapshot cycle, all nodes know this node's address.
-				n.SetPeerAddress(cfg.NodeID, cfg.AdvertiseAddr, fullCfg.ServiceAdvertiseAddr())
+				// Persist self in Pebble (and the in-memory cache) so the
+				// node's own address is durable across restarts (EN-1413).
+				// On the bootstrap voter this is the ONLY path that ever
+				// writes its address: it is never the subject of a Raft
+				// ConfChange (it appears in the initial ConfState
+				// directly), so without this call no follower would ever
+				// learn its address from the leader's Pebble checkpoint.
+				if err := n.RegisterPeer(cfg.NodeID, cfg.AdvertiseAddr, fullCfg.ServiceAdvertiseAddr()); err != nil {
+					panic(fmt.Errorf("registering self in peer store: %w", err))
+				}
 
 				var waitRaft func()
 
@@ -958,14 +973,22 @@ func Module() fx.Option {
 
 						logger.Infof("Raft gRPC server started successfully")
 
-						// Load peers from config (set during --join or --peers)
+						// Load peers from config (set during --join or --peers).
+						// EN-1413: also persist each peer in Pebble so that
+						// the bootstrap voter's address survives restarts —
+						// it never arrives via a Raft ConfChange on a
+						// follower's apply path. n.RegisterPeer writes Pebble
+						// first then the in-memory cache.
 						for _, peerEntry := range cfg.Peers {
 							logger := logger.WithFields(map[string]any{"peer": peerEntry})
 							logger.Infof("Adding peer to transport and service pool")
 							defaultTransport.AddPeer(peerEntry.ID, peerEntry.Address)
 
-							err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress)
-							if err != nil {
+							if err := n.RegisterPeer(peerEntry.ID, peerEntry.Address, peerEntry.ServiceAddress); err != nil {
+								return fmt.Errorf("persisting peer %d: %w", peerEntry.ID, err)
+							}
+
+							if err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress); err != nil {
 								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
 							}
 						}

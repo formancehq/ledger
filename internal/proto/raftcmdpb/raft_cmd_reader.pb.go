@@ -5869,15 +5869,10 @@ func NewReloadIdempotencyKeyListReader(s []*ReloadIdempotencyKey) ReloadIdempote
 // NodeSnapshotReader provides read-only access to NodeSnapshot.
 // Call Mutate() to obtain a mutable clone.
 type NodeSnapshotReader interface {
-	GetPeerAddresses() PeerAddressListReader
 	Mutate() *NodeSnapshot
 }
 
 type nodeSnapshotReadonly struct{ v *NodeSnapshot }
-
-func (r *nodeSnapshotReadonly) GetPeerAddresses() PeerAddressListReader {
-	return NewPeerAddressListReader(r.v.GetPeerAddresses())
-}
 
 func (r *nodeSnapshotReadonly) Mutate() *NodeSnapshot {
 	return r.v.CloneVT()
