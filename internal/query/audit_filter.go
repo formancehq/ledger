@@ -171,7 +171,7 @@ func uintFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEn
 	if uc == nil {
 		return nil, domain.NewFilterCompilationError("audit field %v requires a uint condition", cond.GetField())
 	}
-	bounds, err := resolveUintBounds(uc, nil)
+	bounds, err := resolveAuditUintBounds(uc, cond.GetField().String())
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +179,21 @@ func uintFieldPredicate(cond *commonpb.AuditCondition, get func(*auditpb.AuditEn
 	return func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) (bool, error) {
 		return matchUintBounds(bounds, get(e)), nil
 	}, nil
+}
+
+// resolveAuditUintBounds validates and resolves an audit UintCondition. Audit
+// filters are evaluated at scan time, and — unlike the index path — a
+// UintCondition with no bound set must be rejected rather than compiled to an
+// unbounded range that silently matches every entry (mirrors
+// hardcodedAuditString/hardcodedAuditBool). The four input fields are checked
+// directly (not the resolved bounds) so the legitimate `field <= MaxUint64`
+// shape, which resolves to no upper bound, is not falsely rejected.
+func resolveAuditUintBounds(uc *commonpb.UintCondition, field string) (resolvedUintBounds, error) {
+	if uc.GetParamMin() == "" && uc.Min == nil && uc.GetParamMax() == "" && uc.Max == nil {
+		return resolvedUintBounds{}, domain.NewFilterCompilationError("audit field %s requires at least one uint bound", field)
+	}
+
+	return resolveUintBounds(uc, nil)
 }
 
 func matchUintBounds(b resolvedUintBounds, v uint64) bool {
@@ -203,7 +218,7 @@ func logSequencePredicate(cond *commonpb.AuditCondition) (AuditPredicate, error)
 	if uc == nil {
 		return nil, domain.NewFilterCompilationError("audit field log_seq requires a uint condition")
 	}
-	bounds, err := resolveUintBounds(uc, nil)
+	bounds, err := resolveAuditUintBounds(uc, "log_seq")
 	if err != nil {
 		return nil, err
 	}

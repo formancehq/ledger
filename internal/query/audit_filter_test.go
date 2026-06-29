@@ -191,6 +191,8 @@ func TestCompileAuditPredicate_Rejections(t *testing.T) {
 		{"unset string oneof caller.subject", auditFilter(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, &commonpb.StringCondition{})},
 		{"unset string oneof outcome", auditFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, &commonpb.StringCondition{})},
 		{"unset string oneof order_type", auditFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, &commonpb.StringCondition{})},
+		{"unset uint oneof sequence", auditFilter(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, &commonpb.UintCondition{})},
+		{"unset uint oneof log_seq", auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, &commonpb.UintCondition{})},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
