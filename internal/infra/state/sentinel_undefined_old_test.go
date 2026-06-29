@@ -59,8 +59,8 @@ func TestVerifyVolumeDeltasMatchPostings_UndefinedOldZeroBaseline(t *testing.T) 
 
 	// Use NewVolumeKey so AssetBase / AssetPrecision are pre-parsed and the
 	// keys compare equal to the ones the sentinel rebuilds from postings.
-	srcKey := domain.NewVolumeKey(ledger, "world", "USD")
-	dstKey := domain.NewVolumeKey(ledger, "users:bob", "USD")
+	srcKey := domain.NewVolumeKey(ledger, "world", "USD", "")
+	dstKey := domain.NewVolumeKey(ledger, "users:bob", "USD", "")
 
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
 		{

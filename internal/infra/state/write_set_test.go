@@ -824,10 +824,10 @@ func TestValidateTransientVolumesListsAllOffendersSorted(t *testing.T) {
 	// Four offenders across two ledgers. The last shares (account, asset) with
 	// the second — a cross-ledger repeat that must dedup to a single entry.
 	offenders := []domain.VolumeKey{
-		domain.NewVolumeKey("l-a", "staging:z", "USD"),
-		domain.NewVolumeKey("l-a", "staging:a", "USD"),
-		domain.NewVolumeKey("l-b", "staging:m", "EUR"),
-		domain.NewVolumeKey("l-b", "staging:a", "USD"),
+		domain.NewVolumeKey("l-a", "staging:z", "USD", ""),
+		domain.NewVolumeKey("l-a", "staging:a", "USD", ""),
+		domain.NewVolumeKey("l-b", "staging:m", "EUR", ""),
+		domain.NewVolumeKey("l-b", "staging:a", "USD", ""),
 	}
 	// Non-zero balance (input != output) => offending. Reused read-only.
 	nonZero := &raftcmdpb.VolumePair{
@@ -905,8 +905,8 @@ func TestValidateTransientVolumesStorageFaultTakesPrecedence(t *testing.T) {
 	require.NoError(t, err)
 	buf.Derived.Ledgers.Put(domain.LedgerKey{Name: ledger.GetName()}, ledger)
 
-	businessOffender := domain.NewVolumeKey("l-a", "staging:a", "USD")
-	uncoveredOffender := domain.NewVolumeKey("l-a", "staging:z", "USD")
+	businessOffender := domain.NewVolumeKey("l-a", "staging:a", "USD", "")
+	uncoveredOffender := domain.NewVolumeKey("l-a", "staging:z", "USD", "")
 	nonZero := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(200),
 		Output: commonpb.NewUint256FromUint64(50),

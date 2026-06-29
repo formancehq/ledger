@@ -264,7 +264,7 @@ func TestHandleAggregateVolumes_EmitsColorAlways(t *testing.T) {
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/my-ledger/volumes?collapseColors=true", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v3/my-ledger/volumes?collapseColors=true", nil)
 
 	handler.ServeHTTP(w, r)
 

@@ -188,8 +188,8 @@ func TestApplyPosting_AbsentVolumes_TreatedAsZero(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	sourceKey := domain.NewVolumeKey("test", "world", "USD")
-	destKey := domain.NewVolumeKey("test", "users:001", "USD")
+	sourceKey := domain.NewVolumeKey("test", "world", "USD", "")
+	destKey := domain.NewVolumeKey("test", "users:001", "USD", "")
 
 	// Both source (world) and destination are absent in the cache. Apply
 	// must still succeed: world skips the balance check, dest receives the
@@ -222,7 +222,7 @@ func TestApplyPosting_AbsentNonWorldSource_InsufficientFunds(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
+	sourceKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	// kindStub's default for an unregistered Get is ErrNotFound — exactly
 	// the "absent in cache" state readVolumeOrZero must treat as a zero
