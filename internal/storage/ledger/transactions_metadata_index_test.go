@@ -238,6 +238,69 @@ func TestIndexedMetadataKeys_NoFlagUsesContainment(t *testing.T) {
 	require.Len(t, cursor.Data, 1, "containment path must still find the transaction")
 }
 
+// TestIndexedMetadataKeys_NegatedFilterSemantics verifies that NOT(metadata[key] = val)
+// returns rows where the key is absent, matching the NOT(metadata @> ...) semantics.
+//
+// The bug this guards against: metadata ->> 'key' = ? returns NULL when the key is
+// absent, so NOT(NULL) = NULL, silently excluding rows that should be included. The
+// fix (adding metadata ? 'key') makes the expression evaluate to false for absent-key
+// rows, so NOT(false) = true.
+func TestIndexedMetadataKeys_NegatedFilterSemantics(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	now := time.Now()
+
+	// Both stores get identical data; one uses the ->> rewrite, the other @>.
+	flagged := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+	plain := newLedgerStore(t)
+
+	for _, store := range []*ledgerstore.Store{flagged, plain} {
+		// tx1: has the key with a different value — must be included by NOT filter.
+		tx1 := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "alice", "USD", big.NewInt(100))).
+			WithMetadata(metadata.Metadata{"source_wallet_id": "other-wallet"}).
+			WithTimestamp(now.Add(-2 * time.Hour))
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx1))
+
+		// tx2: has the key with the target value — must be excluded by NOT filter.
+		tx2 := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "bob", "USD", big.NewInt(50))).
+			WithMetadata(metadata.Metadata{"source_wallet_id": "target-wallet"}).
+			WithTimestamp(now.Add(-time.Hour))
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx2))
+
+		// tx3: key absent — must be included by NOT filter (the regression case).
+		tx3 := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "carol", "USD", big.NewInt(10))).
+			WithTimestamp(now)
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx3))
+	}
+
+	q := common.InitialPaginatedQuery[any]{
+		Options: common.ResourceQuery[any]{
+			Builder: query.Not(query.Match("metadata[source_wallet_id]", "target-wallet")),
+		},
+	}
+
+	flaggedCursor, err := flagged.Transactions().Paginate(ctx, q)
+	require.NoError(t, err)
+
+	plainCursor, err := plain.Transactions().Paginate(ctx, q)
+	require.NoError(t, err)
+
+	require.Equal(t, len(plainCursor.Data), len(flaggedCursor.Data),
+		"->> rewrite must return the same row count as @> for negated filters")
+	require.Equal(t, 2, len(flaggedCursor.Data),
+		"NOT filter must include the absent-key row and the different-value row")
+
+	// Verify the IDs match between both paths.
+	for i := range plainCursor.Data {
+		require.Equalf(t, *plainCursor.Data[i].ID, *flaggedCursor.Data[i].ID,
+			"row %d: id mismatch between @> path and ->> path for NOT filter", i)
+	}
+}
+
 // captureExplain runs EXPLAIN (FORMAT TEXT) using predExpr as the WHERE predicate
 // and returns the full plan text. The caller is responsible for supplying the
 // predicate that matches the production path they intend to verify — this avoids

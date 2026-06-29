@@ -153,10 +153,16 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 			// The literal form is required: Postgres matches functional indexes by exact expression
 			// equality, so `metadata ->> 'key'` matches the index but `metadata ->> ?` does not.
 			//
-			// We always prepend ledger = ? even when newScopedSelect already adds it (alone-in-bucket
-			// optimisation omits the predicate). The partial index is defined as
-			// WHERE ledger = '...'; without the predicate in the query Postgres cannot use it.
-			return fmt.Sprintf("ledger = ? AND metadata ->> '%s' = ?", key), []any{h.store.GetLedger().Name, value}, nil
+			// We always prepend ledger = ? even when newScopedSelect already adds it, because the
+			// partial index is defined as WHERE ledger = '...'. Without the predicate in the query,
+			// Postgres cannot use the partial index (alone-in-bucket optimisation omits it).
+			//
+			// We include metadata \? 'key' (key-existence check) before the ->> equality so the
+			// composite expression evaluates to false (not NULL) when the key is absent.
+			// Without it, metadata ->> 'key' = ? is NULL for absent-key rows, which means
+			// NOT(...) remains NULL instead of TRUE, silently changing result sets for negated
+			// metadata filters compared to the NOT (metadata @> ...) path.
+			return fmt.Sprintf("ledger = ? AND metadata \\? '%s' AND metadata ->> '%s' = ?", key, key), []any{h.store.GetLedger().Name, value}, nil
 		}
 		return "metadata @> ?", []any{map[string]any{key: value}}, nil
 
