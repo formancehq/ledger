@@ -794,6 +794,35 @@ func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (raftpb.Entry, u
 	}, cmd.GetId()
 }
 
+// makeStaleCreateQueryCheckpointEntry builds a CreateQueryCheckpoint entry
+// whose PredictedIndex deliberately differs from the raft index, so
+// checkStaleProposal rejects it before any order runs. Used to exercise the
+// "structural trigger that does not actually fire" branch of applyEntriesToFSM.
+func makeStaleCreateQueryCheckpointEntry(t *testing.T, index, predictedIndex uint64) (raftpb.Entry, uint64) {
+	t.Helper()
+
+	cmd := commands.NewCommand(&raftcmdpb.Order{
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+				},
+			},
+		},
+	})
+	cmd.PredictedIndex = predictedIndex
+
+	data, err := cmd.MarshalVT()
+	require.NoError(t, err)
+
+	return raftpb.Entry{
+		Term:  1,
+		Index: index,
+		Type:  raftpb.EntryNormal,
+		Data:  data,
+	}, cmd.GetId()
+}
+
 // TestApplierCascadingQueryCheckpointsDuringReplay verifies that entries after
 // a second CreateQueryCheckpoint are not lost during spool replay.
 //
@@ -840,6 +869,59 @@ func TestApplierCascadingQueryCheckpointsDuringReplay(t *testing.T) {
 	require.True(t, listLedgerContains(setup.store, "between-cps"), "between-cps should exist")
 	require.True(t, listLedgerContains(setup.store, "after-second-cp"),
 		"after-second-cp should exist — it was lost before the cascading checkpoint fix")
+}
+
+// TestApplierRejectedTriggerDoesNotDropTail is a regression test for an
+// antithesis-discovered bug where a leadership transition caused all nodes to
+// panic with "task pool error: preparing entries: invalid index, got 231,
+// expected 230 [recovered, repanicked]".
+//
+// Root cause: applyEntriesToFSM pre-splits the committed entries slice at any
+// CreateQueryCheckpoint / CloseChapter trigger so each FSM batch contains at
+// most one trigger as its last entry. The pre-split is purely structural — it
+// does not know whether the trigger will actually fire at apply time. When
+// checkStaleProposal rejected a CreateQueryCheckpoint after a leadership
+// transfer, the proposal's orders never ran, so ApplyEntriesResult.
+// CheckpointRequired stayed false and the function returned early — silently
+// dropping the tail entries. The next Raft Ready brought entry index N+2 to a
+// FSM still at lastAppliedIndex=N, tripping the gap detector.
+//
+// The fix loops on the remaining tail when CheckpointRequired is false, so a
+// rejected trigger no longer hides the entries that followed it.
+func TestApplierRejectedTriggerDoesNotDropTail(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	setup := newTestApplierSetup(t)
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+
+	// Entry 1: a CreateQueryCheckpoint whose PredictedIndex (99) does not
+	// match the raft index (1), so checkStaleProposal rejects it. The
+	// structural pre-split still detects the trigger, so the slice is split
+	// into head=[1] and tail=[2]. CheckpointRequired remains false because
+	// the order never runs.
+	stale, _ := makeStaleCreateQueryCheckpointEntry(t, 1, 99)
+
+	// Entry 2: a regular CreateLedger that must still be applied — it was
+	// the entry being dropped by the bug.
+	tail, _ := makeCreateLedgerEntry(t, 2, "tail-ledger")
+
+	setup.applier.Submit([]raftpb.Entry{stale, tail}, setup.confState, setup.stop)
+	setup.applier.Drain(setup.stop)
+
+	require.True(t, listLedgerContains(setup.store, "tail-ledger"),
+		"tail-ledger must exist — entries past a rejected checkpoint trigger were dropped before the fix")
+
+	close(setup.stop)
+
+	select {
+	case err := <-runDone:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after stop")
+	}
 }
 
 func TestApplierSnapshotGatingCycle(t *testing.T) {

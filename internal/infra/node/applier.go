@@ -1066,44 +1066,62 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 //
 // To preserve the "one PrepareEntries call = one commit through runCommitter"
 // invariant, callers must never mix a checkpoint-trigger entry with later
-// entries in the same FSM batch. We split the input slice at the first
-// checkpoint trigger and apply the prefix as one batch; any entries past the
-// trigger are spooled before we hand control to the maintenance task so the
-// spool replay picks them up once gating clears.
+// entries in the same FSM batch. We split the input slice at each checkpoint
+// trigger and apply each prefix as its own batch; entries past a trigger that
+// actually fires (CheckpointRequired) are spooled before we hand control to
+// the maintenance task so the spool replay picks them up once gating clears.
+//
+// findCheckpointBoundary classifies entries STRUCTURALLY (the proposal's last
+// order is a checkpoint trigger), but the trigger may not actually fire at
+// apply time — e.g. checkStaleProposal rejects the whole proposal after a
+// leadership transition, so no order runs and CheckpointRequired stays false.
+// When that happens we MUST continue processing the tail in subsequent FSM
+// batches; dropping it produces an "entry index gap detected" panic in the
+// next PrepareEntries call. Hence the loop.
 func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
-	boundary, err := findCheckpointBoundary(entries)
-	if err != nil {
-		return fmt.Errorf("classifying checkpoint boundary: %w", err)
-	}
-
-	head := entries[:boundary]
-	tail := entries[boundary:]
-
-	result, err := a.applyEntriesPipelined(ctx, head...)
-	if err != nil {
-		return err
-	}
-
-	if !result.CheckpointRequired {
-		return nil
-	}
-
-	// Spool entries past the checkpoint trigger so the spool replay picks
-	// them up after the maintenance window clears. Doing this here (instead
-	// of inside gateAndLaunchMaintenance) keeps the maintenance helper
-	// agnostic of "leftover entries" and makes the pre-split contract
-	// explicit at the call site.
-	if len(tail) > 0 {
-		if err := a.spool.AppendCommittedEntries(ctx, tail...); err != nil {
-			return fmt.Errorf("spooling entries past checkpoint trigger: %w", err)
+	for offset := 0; offset < len(entries); {
+		boundary, err := findCheckpointBoundary(entries[offset:])
+		if err != nil {
+			return fmt.Errorf("classifying checkpoint boundary: %w", err)
 		}
+
+		end := offset + boundary
+		head := entries[offset:end]
+		tail := entries[end:]
+
+		result, err := a.applyEntriesPipelined(ctx, head...)
+		if err != nil {
+			return err
+		}
+
+		if !result.CheckpointRequired {
+			// Either head carried no trigger, or the trigger was rejected
+			// (e.g. stale proposal). Continue with the next FSM batch — the
+			// tail must not be dropped.
+			offset = end
+
+			continue
+		}
+
+		// Spool entries past the checkpoint trigger so the spool replay picks
+		// them up after the maintenance window clears. Doing this here (instead
+		// of inside gateAndLaunchMaintenance) keeps the maintenance helper
+		// agnostic of "leftover entries" and makes the pre-split contract
+		// explicit at the call site.
+		if len(tail) > 0 {
+			if err := a.spool.AppendCommittedEntries(ctx, tail...); err != nil {
+				return fmt.Errorf("spooling entries past checkpoint trigger: %w", err)
+			}
+		}
+
+		if result.QueryCheckpointID > 0 {
+			return a.handleQueryCheckpointRequired(ctx, head, result)
+		}
+
+		return a.handleCheckpointRequired(ctx, head, result)
 	}
 
-	if result.QueryCheckpointID > 0 {
-		return a.handleQueryCheckpointRequired(ctx, head, result)
-	}
-
-	return a.handleCheckpointRequired(ctx, head, result)
+	return nil
 }
 
 // findCheckpointBoundary returns the length of the prefix of entries that
