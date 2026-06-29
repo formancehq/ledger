@@ -18,7 +18,7 @@ func main() {
 		r := internal.Rand()
 
 		// Use a dedicated ledger with strict enforcement.
-		ledger := fmt.Sprintf("typeviolation-%d", r.Uint64()%1_000_000)
+		ledger := internal.PrefixTypeViolation.New()
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
@@ -84,7 +84,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"transaction with valid typed address should succeed",
 			details.With(internal.Details{"address": validAddr, "error": err}))
 
@@ -161,7 +161,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"invalid address should succeed in AUDIT mode",
 			details.With(internal.Details{"address": invalidAddr, "error": err}))
 	})

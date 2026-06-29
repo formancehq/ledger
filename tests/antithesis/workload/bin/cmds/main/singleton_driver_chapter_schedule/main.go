@@ -21,7 +21,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"should be able to set chapter schedule", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
@@ -45,7 +45,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"should be able to delete chapter schedule", details.With(internal.Details{"error": err}))
 	})
 }

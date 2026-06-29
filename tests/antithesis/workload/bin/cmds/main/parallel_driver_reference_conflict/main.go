@@ -31,7 +31,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"should be able to create a transaction with reference",
 			details.With(internal.Details{"error": err}))
 		if err != nil {

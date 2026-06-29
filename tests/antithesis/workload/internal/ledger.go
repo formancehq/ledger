@@ -11,33 +11,122 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// restrictedPrefixes lists ledger name prefixes created by specialized drivers
-// that set account type restrictions or have specific balance assumptions.
-// Generic drivers (via RunDriver) must not pick these ledgers. The "sentinel-"
-// prefix is reserved for operational drivers (scaling_structured,
-// rolling_restart, config_change, quorum_recovery) that commit a witness
-// transaction and re-read it after a disruption — letting delete_ledger pick
-// these would weaken the survival assertion to Reachable.
-var restrictedPrefixes = []string{
-	"transient-", "insuf-", "deltest-", "sentinel-",
-	// parallel_driver_delete_ledger creates then deletes these; a generic driver
-	// that picked one would race the deletion, and a read on a deleted ledger
-	// returns plain NotFound (not LedgerDeleted), which generic drivers don't
-	// tolerate — a false finding.
-	"ephemeral-",
-	// Wave-1 property drivers: each owns its ledgers and asserts balance/
-	// completeness/ordering invariants that a foreign write would break.
-	"refrace-",  // parallel_driver_reference_race
-	"bulkatom-", // parallel_driver_bulk_atomicity
-	"deferr-",   // parallel_driver_definitive_errors
-	"lrec-",     // parallel_driver_ledger_recreate (covers lrecreate- too)
-	"listcomp-", // parallel_driver_list_completeness
-	"tsorder-",  // parallel_driver_timestamp_order
-	"minseq-",   // parallel_driver_minlogseq
-	"stale-",    // parallel_driver_stale_reads
-	// singleton_driver_model assumes it is the only writer on its ledgers; a
-	// foreign write would surface as a model divergence, not a ledger bug.
-	"model-",
+// OwnedLedgerPrefix tags a ledger-name token reserved for a single driver
+// (or a tight family of drivers — see PrefixSentinel). Generic drivers go
+// through GetRandomLedger and MUST NOT pick a ledger whose name starts
+// with `<prefix>-`; the restriction is enforced by RestrictedPrefixes().
+//
+// Why typed: until run-#4 of the antithesis cleanup PR, this list was
+// `[]string` and the parallel_driver_ledger_recreate entry was the
+// truncated `"lrec-"` instead of `"lrecreate-"`. The hyphen-aware prefix
+// match (`strings.HasPrefix("lrecreate-…", "lrec-")` → false, since char
+// 5 is 'r', not '-') silently let every recreated ledger leak into the
+// random pool and `typed_metadata` hit a deleted ledger mid-test.
+//
+// With OwnedLedgerPrefix, the constant is the token without the trailing
+// hyphen, the hyphen is appended exactly once by the type's methods, and
+// TestOwnedLedgerPrefixes_NoOverlap (in ledger_test.go) catches any new
+// constant that is a prefix of another.
+type OwnedLedgerPrefix string
+
+// Driver-owned prefixes. Each constant pairs with a driver (or family) in
+// `bin/cmds/`. New entries: add the constant here AND list it in
+// `ownedLedgerPrefixes` below so the random-ledger pool filter picks it up.
+const (
+	// Wave-0 specialized drivers: each creates dedicated ledgers and asserts
+	// account-type / balance invariants a foreign write would break.
+	PrefixTransientAccounts OwnedLedgerPrefix = "transient"
+	PrefixInsufficientFunds OwnedLedgerPrefix = "insuf"
+	PrefixDeltest           OwnedLedgerPrefix = "deltest"   // parallel_driver_concurrent_ledger_delete
+	PrefixMaintenance       OwnedLedgerPrefix = "maint"     // parallel_driver_maintenance
+	PrefixAccountTypes      OwnedLedgerPrefix = "accttype"  // parallel_driver_account_types
+	PrefixTypeViolation     OwnedLedgerPrefix = "typeviolation"
+	PrefixEphemeral         OwnedLedgerPrefix = "ephemeral" // parallel_driver_delete_ledger
+
+	// Wave-1 property drivers: each owns its ledgers and asserts
+	// balance/completeness/ordering invariants that a foreign write would
+	// break.
+	PrefixReferenceRace    OwnedLedgerPrefix = "refrace"
+	PrefixBulkAtomicity    OwnedLedgerPrefix = "bulkatom"
+	PrefixDefinitiveErrors OwnedLedgerPrefix = "deferr"
+	PrefixLedgerRecreate   OwnedLedgerPrefix = "lrecreate"
+	PrefixListCompleteness OwnedLedgerPrefix = "listcomp"
+	PrefixTimestampOrder   OwnedLedgerPrefix = "tsorder"
+	PrefixMinLogSeq        OwnedLedgerPrefix = "minseq"
+	PrefixStaleReads       OwnedLedgerPrefix = "stale"
+
+	// PrefixSentinel covers the witness-ledger family used by the
+	// operational singletons (scaling_structured, rolling_restart,
+	// config_change, quorum_recovery). Each singleton picks its own full
+	// name ("sentinel-scaling-structured", …) via PrefixSentinel.WithSuffix.
+	PrefixSentinel OwnedLedgerPrefix = "sentinel"
+
+	// PrefixModel covers singleton_driver_model's per-run fleet names
+	// (model-<hex>-<idx>). Generic drivers reading a model-owned ledger
+	// would surface as a model divergence, not a ledger bug.
+	PrefixModel OwnedLedgerPrefix = "model"
+)
+
+// ownedLedgerPrefixes is the registry of every driver-owned prefix.
+// GetRandomLedger filters its return value against RestrictedPrefixes()
+// (derived from this slice) so generic drivers never see a driver-owned
+// ledger in their random pool. New driver-owned prefixes MUST be appended
+// here; TestOwnedLedgerPrefixes_NoOverlap pins the no-shared-prefix
+// invariant so a typo like "lrec" (which does not match "lrecreate-N")
+// is caught at test time, not in a chaos run.
+var ownedLedgerPrefixes = []OwnedLedgerPrefix{
+	PrefixTransientAccounts,
+	PrefixInsufficientFunds,
+	PrefixDeltest,
+	PrefixMaintenance,
+	PrefixAccountTypes,
+	PrefixTypeViolation,
+	PrefixEphemeral,
+	PrefixReferenceRace,
+	PrefixBulkAtomicity,
+	PrefixDefinitiveErrors,
+	PrefixLedgerRecreate,
+	PrefixListCompleteness,
+	PrefixTimestampOrder,
+	PrefixMinLogSeq,
+	PrefixStaleReads,
+	PrefixSentinel,
+	PrefixModel,
+}
+
+// RestrictedPrefixes returns the hyphen-terminated string forms of the
+// owned ledger prefixes. GetRandomLedger uses these to filter the pool.
+// Exposed for tests; production callers should use GetRandomLedger
+// directly.
+func RestrictedPrefixes() []string {
+	out := make([]string, len(ownedLedgerPrefixes))
+	for i, p := range ownedLedgerPrefixes {
+		out[i] = string(p) + "-"
+	}
+
+	return out
+}
+
+// New returns a fresh ledger name with this prefix and a random 6-digit
+// suffix. Use this when the driver only needs one ledger per run.
+func (p OwnedLedgerPrefix) New() string {
+	return p.WithSeed(Rand().Uint64())
+}
+
+// WithSeed returns a ledger name with this prefix and the given seed
+// reduced to 6 digits. Use this when the driver derives multiple names
+// (ledger + helper ledger + account references) from the same seed so
+// they all share the same numeric tail.
+func (p OwnedLedgerPrefix) WithSeed(seed uint64) string {
+	return fmt.Sprintf("%s-%d", p, seed%1_000_000)
+}
+
+// WithSuffix returns a ledger name composed of this prefix and an
+// explicit hyphen-separated suffix. Use this for fixed names like
+// "sentinel-rolling-restart" or "model-<hex>-<idx>" that need to be
+// stable across runs.
+func (p OwnedLedgerPrefix) WithSuffix(suffix string) string {
+	return string(p) + "-" + suffix
 }
 
 // CreateLedger creates a ledger via the Apply RPC and verifies it can be read back.
@@ -54,14 +143,14 @@ func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, nam
 			CreateLedger: &servicepb.CreateLedgerRequest{Name: name},
 		},
 	}))
-	assert.Sometimes(err == nil || IsUnavailable(err), "should be able to create ledger", details.With(Details{"error": err}))
+	assert.Sometimes(IsTolerated(err), "should be able to create ledger", details.With(Details{"error": err}))
 	if err != nil {
 		return err
 	}
 
 	// Verify it's readable
 	_, err = client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
-	assert.Sometimes(err == nil || IsUnavailable(err), "should always be able to get created ledger", details.With(Details{"error": err}))
+	assert.Sometimes(IsTolerated(err), "should always be able to get created ledger", details.With(Details{"error": err}))
 	return nil
 }
 
@@ -85,26 +174,27 @@ func ListLedgers(ctx context.Context, client servicepb.BucketServiceClient) ([]s
 	return names, nil
 }
 
-// GetRandomLedger returns a random unrestricted ledger name. Ledgers created
-// by specialized drivers (transient-, insuf-, deltest-) are filtered out to
-// prevent cross-driver interference (e.g. account type violations).
+// GetRandomLedger returns a random unrestricted ledger name. Ledgers
+// belonging to a driver-owned prefix (see ownedLedgerPrefixes) are
+// filtered out to prevent cross-driver interference.
 func GetRandomLedger(ctx context.Context, client servicepb.BucketServiceClient) (string, error) {
 	ledgers, err := ListLedgers(ctx, client)
-	assert.Sometimes(err == nil || IsUnavailable(err), "should be able to get a random ledger", Details{"error": err})
+	assert.Sometimes(IsTolerated(err), "should be able to get a random ledger", Details{"error": err})
 	if err != nil {
 		return "", err
 	}
 
+	restricted := RestrictedPrefixes()
 	filtered := ledgers[:0]
 	for _, name := range ledgers {
-		restricted := false
-		for _, prefix := range restrictedPrefixes {
+		isOwned := false
+		for _, prefix := range restricted {
 			if strings.HasPrefix(name, prefix) {
-				restricted = true
+				isOwned = true
 				break
 			}
 		}
-		if !restricted {
+		if !isOwned {
 			filtered = append(filtered, name)
 		}
 	}

@@ -16,7 +16,7 @@ func main() {
 		r := internal.Rand()
 
 		// Use a dedicated ledger with a transient account type.
-		ledger := fmt.Sprintf("transient-%d", r.Uint64()%1_000_000)
+		ledger := internal.PrefixTransientAccounts.New()
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
@@ -95,7 +95,7 @@ func main() {
 			},
 		))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"balanced transient batch should succeed",
 			details.With(internal.Details{"error": err}))
 

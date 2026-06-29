@@ -40,7 +40,7 @@ func main() {
 		r := internal.Rand()
 
 		run := r.Uint64()
-		ledger := fmt.Sprintf("listcomp-%d", run%1_000_000)
+		ledger := internal.PrefixListCompleteness.WithSeed(run)
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}

@@ -63,7 +63,7 @@ func main() {
 			return
 		}
 
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to execute prepared query", details.With(internal.Details{"error": err}))
+		assert.Sometimes(internal.IsTolerated(err), "should be able to execute prepared query", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}

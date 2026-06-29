@@ -33,8 +33,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+var ccSentinelLedger = internal.PrefixSentinel.WithSuffix("config-change")
+
 const (
-	ccSentinelLedger       = "sentinel-config-change"
 	ccPatchSleep           = 30 * time.Second
 	ccConvergeWait         = 8 * time.Minute
 	ccStsReadyWait         = 8 * time.Minute
@@ -60,8 +61,8 @@ type configChange struct {
 func main() {
 	log.Println("composer: singleton_driver_config_change")
 
-	ctx := context.Background()
-
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
 		log.Printf("cannot build k8s client: %s", err)

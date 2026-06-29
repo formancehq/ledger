@@ -16,7 +16,7 @@ func main() {
 		r := internal.Rand()
 
 		// Use a dedicated ledger to control account balances precisely.
-		ledger := fmt.Sprintf("insuf-%d", r.Uint64()%1_000_000)
+		ledger := internal.PrefixInsufficientFunds.New()
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
@@ -58,9 +58,7 @@ func main() {
 			return
 		}
 
-		if ct := internal.ExtractCreatedTransaction(resp); ct != nil {
-			internal.CheckPostCommitVolumes(ct.PostCommitVolumes, details)
-		}
+		internal.CheckCreatedTransaction(resp, details)
 
 		// 2. Attempt exact balance transfer (should succeed without Force).
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -82,7 +80,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"exact balance transfer should succeed",
 			details.With(internal.Details{"error": err}))
 		if err != nil {

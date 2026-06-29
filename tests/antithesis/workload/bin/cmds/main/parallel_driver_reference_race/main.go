@@ -171,7 +171,7 @@ func main() {
 		r := internal.Rand()
 
 		run := r.Uint64()
-		ledger := fmt.Sprintf("refrace-%d", run%1_000_000)
+		ledger := internal.PrefixReferenceRace.WithSeed(run)
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}

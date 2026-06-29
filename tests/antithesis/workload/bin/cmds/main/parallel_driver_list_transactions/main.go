@@ -28,7 +28,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create tx for list test", internal.Details{"ledger": ledger, "error": err})
+		assert.Sometimes(internal.IsTolerated(err), "should be able to create tx for list test", internal.Details{"ledger": ledger, "error": err})
 		if err != nil {
 			return
 		}
@@ -89,6 +89,10 @@ func main() {
 
 				if err != nil {
 					streamErr = true
+					if !internal.IsTolerated(err) {
+						assert.Unreachable("ListTransactions stream returned unexpected error",
+							details.With(internal.Details{"error": err}))
+					}
 
 					break
 				}
@@ -136,6 +140,10 @@ func main() {
 
 			if err != nil {
 				streamErr = true
+				if !internal.IsTolerated(err) {
+					assert.Unreachable("reverse ListTransactions stream returned unexpected error",
+						details.With(internal.Details{"error": err}))
+				}
 
 				break
 			}

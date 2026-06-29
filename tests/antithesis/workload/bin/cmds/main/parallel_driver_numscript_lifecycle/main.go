@@ -30,7 +30,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to save numscript", details.With(internal.Details{"error": err}))
+		assert.Sometimes(internal.IsTolerated(err), "should be able to save numscript", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}
@@ -82,7 +82,7 @@ func main() {
 				},
 			},
 		}))
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"should be able to save second numscript version", details.With(internal.Details{"version": version2, "error": err}))
 		if err != nil {
 			return
@@ -112,7 +112,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to delete numscript", details.With(internal.Details{"error": err}))
+		assert.Sometimes(internal.IsTolerated(err), "should be able to delete numscript", details.With(internal.Details{"error": err}))
 	})
 }
 

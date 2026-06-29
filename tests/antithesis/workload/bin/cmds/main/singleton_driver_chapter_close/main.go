@@ -15,7 +15,8 @@ import (
 func main() {
 	log.Println("composer: singleton_driver_chapter_close")
 
-	ctx := context.Background()
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)

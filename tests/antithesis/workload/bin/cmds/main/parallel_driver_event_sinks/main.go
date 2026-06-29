@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 
@@ -14,7 +13,8 @@ import (
 func main() {
 	log.Println("composer: parallel_driver_event_sinks")
 
-	ctx := context.Background()
+	ctx, cancel := internal.DriverContext()
+	defer cancel()
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
@@ -47,7 +47,7 @@ func main() {
 		},
 	}))
 
-	assert.Sometimes(err == nil || internal.IsTransient(err),
+	assert.Sometimes(internal.IsTolerated(err),
 		"should be able to add NATS event sink", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return
@@ -102,7 +102,7 @@ func main() {
 		},
 	}))
 
-	assert.Sometimes(err == nil || internal.IsTransient(err),
+	assert.Sometimes(internal.IsTolerated(err),
 		"should be able to remove event sink", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return

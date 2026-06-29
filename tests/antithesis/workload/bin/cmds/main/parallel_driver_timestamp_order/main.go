@@ -55,7 +55,7 @@ func main() {
 		r := internal.Rand()
 
 		run := r.Uint64()
-		ledger := fmt.Sprintf("tsorder-%d", run%1_000_000)
+		ledger := internal.PrefixTimestampOrder.WithSeed(run)
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
