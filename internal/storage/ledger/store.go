@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -456,13 +457,15 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 	for _, key := range requested {
 		var count int
 		// Check pg_indexes for an index whose definition contains the functional
-		// expression for this key. Key names are validated as [a-zA-Z0-9_]+.
+		// expression for this key. Escape LIKE metacharacters so underscores and
+		// percent signs in key names match literally.
+		escapedKey := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(key)
 		err := store.db.NewSelect().
 			TableExpr("pg_indexes").
 			ColumnExpr("COUNT(*)").
 			Where("schemaname = ?", schema).
 			Where("tablename = ?", "transactions").
-			Where("indexdef LIKE ?", "%metadata ->> '"+key+"'%").
+			Where("indexdef LIKE ? ESCAPE '\\'", "%metadata ->> '"+escapedKey+"'%").
 			Scan(ctx, &count)
 		if err != nil {
 			return fmt.Errorf("checking pg_indexes for key %q: %w", key, err)

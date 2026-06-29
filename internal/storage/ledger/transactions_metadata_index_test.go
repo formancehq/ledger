@@ -24,6 +24,7 @@ package ledger_test
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"testing"
 
@@ -240,7 +241,7 @@ func captureExplain(t *testing.T, store *ledgerstore.Store, key, value string) s
 	// if the key is in IndexedMetadataKeys()  →  metadata ->> 'key' = 'value'
 	// otherwise                               →  metadata @> '{"key":"value"}'
 	var predExpr string
-	if contains(store.IndexedMetadataKeys(), key) {
+	if slices.Contains(store.IndexedMetadataKeys(), key) {
 		predExpr = fmt.Sprintf("metadata ->> '%s' = '%s'", key, value)
 	} else {
 		predExpr = fmt.Sprintf(`metadata @> '{"%s": "%s"}'`, key, value)
@@ -263,15 +264,6 @@ func captureExplain(t *testing.T, store *ledgerstore.Store, key, value string) s
 		plan.WriteByte('\n')
 	}
 	return plan.String()
-}
-
-func contains(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 // TestIndexedMetadataKeys_ExplainUsesLiteralPredicate verifies that when a functional
