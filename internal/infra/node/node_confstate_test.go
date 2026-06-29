@@ -54,11 +54,11 @@ func TestFinishReady_SnapshotInstall_PreservesWALConfState(t *testing.T) {
 	setup := newTestApplierSetup(t)
 
 	node := &Node{
-		logger:        logging.Testing(),
-		wal:           setup.wal,
-		fsm:           setup.fsm,
-		applier:       setup.applier,
-		peerAddresses: map[uint64]ConfChangeContext{},
+		logger:     logging.Testing(),
+		wal:        setup.wal,
+		fsm:        setup.fsm,
+		applier:    setup.applier,
+		membership: newTestMembership(t),
 	}
 
 	// Build a real rawNode backed by the WAL (raft.Storage), before installing

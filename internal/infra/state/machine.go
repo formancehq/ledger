@@ -175,20 +175,17 @@ type Machine struct {
 	confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error
 }
 
-// SetConfChangeHandler registers the callback PrepareEntries invokes for
-// every EntryConfChange* it sees. See the field comment for the
-// rationale. Must be called before the first PrepareEntries.
-func (fsm *Machine) SetConfChangeHandler(fn func(entry raftpb.Entry, session *dal.WriteSession) error) {
-	fsm.confChangeHandler = fn
-}
-
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
 // (Registry, CacheSnapshotter) so the constructor reads no Pebble and keeps
 // the surface focused on hot-path concerns. The bootstrap is responsible for
 // wiring those sub-objects up-front. NewMachine does NOT perform RecoverState;
 // callers must invoke Recovery.RecoverState() before the Machine applies
 // entries.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int) (*Machine, error) {
+//
+// confChangeHandler is invoked from PrepareEntries for every
+// EntryConfChange* in the in-flight batch (see the field comment on
+// Machine). Pass nil for tests that don't wire a Node.
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -266,6 +263,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		coldCompactionCh:               make(chan struct{}, 1),
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
+		confChangeHandler:              confChangeHandler,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = cacheSnapshotter

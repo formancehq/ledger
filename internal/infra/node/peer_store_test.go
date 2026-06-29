@@ -28,6 +28,18 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 	return NewPeerStore(store)
 }
 
+// newTestMembership returns a Membership backed by a fresh in-memory
+// Pebble store. Used to seed a minimal Node in tests that only exercise
+// fields touching peer state.
+func newTestMembership(t *testing.T) *Membership {
+	t.Helper()
+
+	m, err := NewMembership(newTestPeerStore(t), logging.Testing())
+	require.NoError(t, err)
+
+	return m
+}
+
 func TestPeerStore_PutLoadAll(t *testing.T) {
 	t.Parallel()
 
@@ -123,30 +135,21 @@ func TestPeerStore_KeyEncodingIsScoped(t *testing.T) {
 	}, k)
 }
 
-// TestNode_writeConfChangeToSession covers the EN-1413 follow-up fix
-// for the "ConfChange lost across snapshot install" scenario:
+// TestMembership_WriteConfChange covers the EN-1413 follow-up fix for
+// the "ConfChange lost across snapshot install" scenario: the FSM, in
+// PrepareEntries, invokes this handler for every EntryConfChange* with
+// the in-flight WriteSession. The peer mutation lands in the same
+// Pebble batch as the surrounding business writes — atomic, idempotent
+// across spool/WAL replay.
 //
-//  1. A snapshot install overwrites Pebble with the leader's checkpoint.
-//  2. ConfChange entries that landed between the checkpoint index and
-//     the install completion are in the applier's spool.
-//  3. The FSM, in PrepareEntries, invokes this handler for every
-//     EntryConfChange* with the in-flight WriteSession. The peer
-//     mutation lands in the same Pebble batch as the surrounding
-//     business writes — atomic, idempotent across spool/WAL replay.
-//
-// This test pins the three relevant transition types (Add / AddLearner /
-// Remove), the PromoteLearner no-op (empty context), and asserts both
+// This test pins the three relevant transition types (Add / AddLearner
+// / Remove), the PromoteLearner no-op (empty context), and asserts both
 // the Pebble write (via LoadAll after commit) and the in-memory cache
 // update.
-func TestNode_writeConfChangeToSession(t *testing.T) {
+func TestMembership_WriteConfChange(t *testing.T) {
 	t.Parallel()
 
-	ps := newTestPeerStore(t)
-	n := &Node{
-		logger:        logging.Testing(),
-		peerStore:     ps,
-		peerAddresses: map[uint64]ConfChangeContext{},
-	}
+	m := newTestMembership(t)
 
 	addCtx, err := MarshalConfChangeContext(ConfChangeContext{
 		RaftAddress:    "pod-1:7777",
@@ -184,8 +187,8 @@ func TestNode_writeConfChangeToSession(t *testing.T) {
 			entry = raftpb.Entry{Type: raftpb.EntryConfChange, Data: d}
 		}
 
-		session := ps.store.OpenWriteSession()
-		require.NoError(t, n.writeConfChangeToSession(entry, session))
+		session := m.store.store.OpenWriteSession()
+		require.NoError(t, m.WriteConfChange(entry, session))
 		require.NoError(t, session.Commit())
 	}
 
@@ -198,13 +201,13 @@ func TestNode_writeConfChangeToSession(t *testing.T) {
 		Context: addLearnerCtx,
 	}, true)
 
-	got, err := ps.LoadAll()
+	got, err := m.store.LoadAll()
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	require.Equal(t, "pod-1:7777", got[1].RaftAddress)
 	require.Equal(t, "pod-2:7777", got[2].RaftAddress)
 
-	require.Len(t, n.PeerAddresses(), 2, "cache must mirror the Pebble write")
+	require.Len(t, m.PeerAddresses(), 2, "cache must mirror the Pebble write")
 
 	// PromoteLearner (ConfChangeAddNode without context) — must be a
 	// no-op for the peer payload: it's a role change, not an address
@@ -214,7 +217,7 @@ func TestNode_writeConfChangeToSession(t *testing.T) {
 		Context: nil,
 	}, true)
 
-	got, err = ps.LoadAll()
+	got, err = m.store.LoadAll()
 	require.NoError(t, err)
 	require.Equal(t, "pod-2:7777", got[2].RaftAddress, "promote must not overwrite the address")
 
@@ -223,29 +226,24 @@ func TestNode_writeConfChangeToSession(t *testing.T) {
 		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeRemoveNode, NodeID: 1}},
 	}, true)
 
-	got, err = ps.LoadAll()
+	got, err = m.store.LoadAll()
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.NotContains(t, got, uint64(1))
 	require.Contains(t, got, uint64(2))
 
-	cache := n.PeerAddresses()
+	cache := m.PeerAddresses()
 	require.NotContains(t, cache, uint64(1), "cache must drop the removed peer")
 	require.Contains(t, cache, uint64(2))
 }
 
-// TestNode_reloadPeersFromStore_RefreshesCache exercises the EN-1413
-// async-snapshot-install fix. The Applier's OnSnapshotInstalled hook
-// fires AFTER the leader's Pebble checkpoint has been swapped in. This
-// test simulates that swap by mutating Pebble out-of-band, then invokes
-// the hook and asserts the in-memory peer-address cache picks up the
-// new contents.
-//
-// Without the fix, the inline LoadAll in processReady would have run
-// before the swap and the cache would stay at its pre-restore state.
-// The hook is the only thing that guarantees the cache reflects the
-// restored Pebble.
-func TestNode_reloadPeersFromStore_RefreshesCache(t *testing.T) {
+// TestMembership_OnSnapshotInstalled exercises the EN-1413 async-
+// snapshot-install fix. The Applier's OnSnapshotInstalled hook fires
+// AFTER the leader's Pebble checkpoint has been swapped in. This test
+// simulates that swap by mutating Pebble out-of-band, then invokes the
+// hook and asserts the in-memory peer-address cache picks up the new
+// contents.
+func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	t.Parallel()
 
 	ps := newTestPeerStore(t)
@@ -253,14 +251,9 @@ func TestNode_reloadPeersFromStore_RefreshesCache(t *testing.T) {
 	// Pre-swap state: cluster A had peer 7.
 	require.NoError(t, ps.Put(7, "old:1", "old:2"))
 
-	// Build a minimal Node with just the fields reloadPeersFromStore
-	// touches. The real wiring goes through NewNode + bootstrap, but
-	// that requires a Raft loop + WAL we don't need to exercise here.
-	n := &Node{
-		logger:        logging.Testing(),
-		peerStore:     ps,
-		peerAddresses: map[uint64]ConfChangeContext{7: {RaftAddress: "old:1", ServiceAddress: "old:2"}},
-	}
+	m, err := NewMembership(ps, logging.Testing())
+	require.NoError(t, err)
+	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
 
 	// Simulate a leader checkpoint restore: Pebble now has peers 1 + 3,
 	// and no peer 7 (the source cluster A has been replaced by cluster B).
@@ -269,9 +262,9 @@ func TestNode_reloadPeersFromStore_RefreshesCache(t *testing.T) {
 	require.NoError(t, ps.Put(3, "new:3", "new:4"))
 
 	// Hook fires: cache must catch up to the new Pebble state.
-	n.reloadPeersFromStore()
+	m.OnSnapshotInstalled()
 
-	got := n.PeerAddresses()
+	got := m.PeerAddresses()
 	require.Len(t, got, 2, "stale peer 7 must be gone, peers 1+3 must be present")
 	require.Equal(t, "new:1", got[1].RaftAddress)
 	require.Equal(t, "new:3", got[3].RaftAddress)

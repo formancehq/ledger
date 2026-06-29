@@ -301,6 +301,7 @@ func Module() fx.Option {
 				machine *state.Machine,
 				recovery *state.Recovery,
 				synchronizer *state.Synchronizer,
+				membership *node.Membership,
 			) (*node.Applier, error) {
 				return node.NewApplier(
 					machine,
@@ -314,6 +315,7 @@ func Module() fx.Option {
 					cfg.CompactionMargin,
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
+					membership.OnSnapshotInstalled,
 				)
 			},
 			// Recovery owns the Pebble read capability for boot/post-sync rehydrate.
@@ -338,11 +340,12 @@ func Module() fx.Option {
 				return state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 			},
 			// PeerStore persists Raft cluster membership in Pebble under
-			// [ZoneGlobal][SubGlobPeers] (EN-1413). It is consumed by Node
-			// (Pebble seed at boot + ConfChange apply at runtime) and by
-			// registerInitialPeers (one-shot persistence of cfg.Peers + self
-			// before the Raft loop starts ticking).
+			// [ZoneGlobal][SubGlobPeers] (EN-1413). Membership wraps it
+			// with the in-memory cache + the OnSnapshotInstalled /
+			// WriteConfChange callbacks injected into Applier and Machine
+			// via constructor.
 			node.NewPeerStore,
+			node.NewMembership,
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a
@@ -378,6 +381,7 @@ func Module() fx.Option {
 				mirrorNotifications *signal.Notifications,
 				indexNotifications *signal.Notifications,
 				bloomFilters *bloom.FilterSet,
+				membership *node.Membership,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 
@@ -404,6 +408,7 @@ func Module() fx.Option {
 					bloomFilters,
 					cfg.ClusterID,
 					cfg.NumscriptCacheSize,
+					membership.WriteConfChange,
 				)
 				if err != nil {
 					return nil, err
@@ -414,7 +419,7 @@ func Module() fx.Option {
 				}).Infof("FSM Machine created")
 
 				return m, nil
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`)),
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`, ``, ``)),
 			func(
 				params struct {
 					fx.In
@@ -428,7 +433,7 @@ func Module() fx.Option {
 					Machine       *state.Machine
 					Recovery      *state.Recovery
 					Synchronizer  *state.Synchronizer
-					PeerStore     *node.PeerStore
+					Membership    *node.Membership
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -456,7 +461,7 @@ func Module() fx.Option {
 					params.Machine,
 					params.Recovery,
 					params.Synchronizer,
-					params.PeerStore,
+					params.Membership,
 				)
 				if err != nil {
 					return nodeProvideResult{}, err

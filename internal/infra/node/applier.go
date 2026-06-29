@@ -141,11 +141,13 @@ func NewApplier(
 	compactionMargin uint64,
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
+	onSnapshotInstalled func(),
 ) (*Applier, error) {
 	initialStatus := atomic.Int32{}
 	initialStatus.Store(statusNormal)
 
 	a := &Applier{
+		onSnapshotInstalled:     onSnapshotInstalled,
 		fsm:                     fsm,
 		recovery:                recovery,
 		synchronizer:            synchronizer,
@@ -837,13 +839,6 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 
 		return maintenanceTaskResult{frozenAtIndex: syncedIndex}, nil
 	}, nil)
-}
-
-// SetOnSnapshotInstalled registers a hook invoked from the Run goroutine
-// after a leader snapshot has been restored into Pebble. See the field
-// comment on Applier for the rationale.
-func (a *Applier) SetOnSnapshotInstalled(fn func()) {
-	a.onSnapshotInstalled = fn
 }
 
 // StatusString returns the current applier status as a human-readable string.
