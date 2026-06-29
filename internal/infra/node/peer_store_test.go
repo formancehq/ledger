@@ -19,7 +19,7 @@ import (
 // checks).
 type noopTransport struct{}
 
-func (noopTransport) AddPeer(uint64, string)                {}
+func (noopTransport) AddPeer(uint64, string)             {}
 func (noopTransport) RemovePeer(context.Context, uint64) {} //nolint:gochecknoglobals
 
 type noopPool struct{}
