@@ -49,7 +49,7 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 func newTestMembership(t *testing.T) *Membership {
 	t.Helper()
 
-	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, 0, logging.Testing())
+	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, 0, "", "", logging.Testing())
 	require.NoError(t, err)
 
 	return m
@@ -266,7 +266,7 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	// Pre-swap state: cluster A had peer 7.
 	require.NoError(t, ps.Put(7, "old:1", "old:2"))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, 0, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, 0, "", "", logging.Testing())
 	require.NoError(t, err)
 	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
 

@@ -352,7 +352,7 @@ func Module() fx.Option {
 				cfg node.NodeConfig,
 				logger logging.Logger,
 			) (*node.Membership, error) {
-				return node.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, logger)
+				return node.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, logger)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker

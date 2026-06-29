@@ -51,36 +51,43 @@ type peerPool interface {
 //     session): bootstrap's initial-peer persistence in
 //     PersistInitialPeers, and Node.ForceRemoveNode via Unregister.
 type Membership struct {
-	store      *PeerStore
-	transport  peerTransport
-	pool       peerPool
-	selfNodeID uint64
-	logger     logging.Logger
+	store             *PeerStore
+	transport         peerTransport
+	pool              peerPool
+	selfNodeID        uint64
+	selfRaftAddr      string
+	selfServiceAddr   string
+	logger            logging.Logger
 
 	mu        sync.RWMutex
 	addresses map[uint64]ConfChangeContext
 }
 
 // NewMembership loads the in-memory cache from Pebble and wires the
-// transport + service pool to match. selfNodeID is skipped from
-// transport/pool registration — a node never dials itself.
+// transport + service pool to match. self is skipped from transport /
+// pool registration — a node never dials itself — but its raft +
+// service addresses are kept on the Membership so OnSnapshotInstalled
+// can re-upsert the local row whenever a leader checkpoint overwrites
+// it with a stale value.
 //
 // Failure to read the peer rows is fatal: without them the node would
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
-func NewMembership(store *PeerStore, transport peerTransport, pool peerPool, selfNodeID uint64, logger logging.Logger) (*Membership, error) {
+func NewMembership(store *PeerStore, transport peerTransport, pool peerPool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, logger logging.Logger) (*Membership, error) {
 	addresses, err := store.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
 	}
 
 	m := &Membership{
-		store:      store,
-		transport:  transport,
-		pool:       pool,
-		selfNodeID: selfNodeID,
-		logger:     logger,
-		addresses:  addresses,
+		store:           store,
+		transport:       transport,
+		pool:            pool,
+		selfNodeID:      selfNodeID,
+		selfRaftAddr:    selfRaftAddr,
+		selfServiceAddr: selfServiceAddr,
+		logger:          logger,
+		addresses:       addresses,
 	}
 
 	for nodeID, addr := range addresses {
@@ -269,20 +276,41 @@ func (m *Membership) OnSnapshotInstalled() {
 		return
 	}
 
+	// The leader's checkpoint may carry a stale self row (e.g. our
+	// previous AdvertiseAddr before a pod restart with a new endpoint).
+	// Overwrite it with the locally-known truth before publishing. The
+	// empty-string check filters out the test path that constructs a
+	// Membership without a real self identity.
+	if m.selfRaftAddr != "" {
+		fresh[m.selfNodeID] = ConfChangeContext{
+			RaftAddress:    m.selfRaftAddr,
+			ServiceAddress: m.selfServiceAddr,
+		}
+	}
+
+	// Compute the diff (toAdd / toRemove) BEFORE publishing fresh to
+	// m.addresses. Once published, a concurrent Set/Remove could mutate
+	// the same map under us — Go map reads concurrent with writes panic.
+	// Holding the lock for the whole computation also ensures no Set
+	// lands "in between" the diff and the publish.
+	//
+	// AddPeer / pool.AddPeer are no-ops on existing entries, so an
+	// address change is modelled as RemovePeer + AddPeer.
+	type entry struct {
+		id       uint64
+		raftAddr string
+		svcAddr  string
+	}
+
+	var (
+		toReadd  []entry
+		toAdd    []entry
+		toRemove []uint64
+	)
+
 	m.mu.Lock()
 	old := m.addresses
-	m.addresses = fresh
-	m.mu.Unlock()
 
-	// Wire in anything present in the new view that wasn't (or was
-	// different) before; wire out anything that disappeared.
-	//
-	// AddPeer / pool.AddPeer are documented as no-op when an entry
-	// already exists, so an address CHANGE has to be modelled as
-	// RemovePeer + AddPeer — otherwise the transport keeps dialling
-	// the pre-restore address and the new one is silently dropped.
-	// Same NodeID with the same addresses is a no-op short-circuit
-	// (skip both removeAdd and the underlying calls).
 	for nodeID, addr := range fresh {
 		oldAddr, existed := old[nodeID]
 		if existed && oldAddr == addr {
@@ -290,15 +318,45 @@ func (m *Membership) OnSnapshotInstalled() {
 		}
 
 		if existed {
-			m.wireRemoveLocked(nodeID)
+			toReadd = append(toReadd, entry{nodeID, addr.RaftAddress, addr.ServiceAddress})
+		} else {
+			toAdd = append(toAdd, entry{nodeID, addr.RaftAddress, addr.ServiceAddress})
 		}
-
-		m.wireAddLocked(nodeID, addr.RaftAddress, addr.ServiceAddress)
 	}
 
 	for nodeID := range old {
 		if _, kept := fresh[nodeID]; !kept {
-			m.wireRemoveLocked(nodeID)
+			toRemove = append(toRemove, nodeID)
+		}
+	}
+
+	m.addresses = fresh
+	m.mu.Unlock()
+
+	// Wire side effects outside the lock — these may dial, close
+	// connections, or otherwise be slow.
+	for _, e := range toReadd {
+		m.wireRemoveLocked(e.id)
+		m.wireAddLocked(e.id, e.raftAddr, e.svcAddr)
+	}
+
+	for _, e := range toAdd {
+		m.wireAddLocked(e.id, e.raftAddr, e.svcAddr)
+	}
+
+	for _, id := range toRemove {
+		m.wireRemoveLocked(id)
+	}
+
+	// Make the locally-authoritative self row durable in Pebble too,
+	// so the next checkpoint we serve carries the fresh address. The
+	// in-memory cache is already correct (set above before publishing).
+	// Same empty-string guard as above for the test path.
+	if m.selfRaftAddr != "" {
+		if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr); err != nil {
+			m.logger.WithFields(map[string]any{
+				"error": err,
+			}).Errorf("Refreshing self in Pebble after snapshot install failed; checkpoint may carry stale address")
 		}
 	}
 
