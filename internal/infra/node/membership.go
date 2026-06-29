@@ -285,12 +285,24 @@ func (m *Membership) OnSnapshotInstalled() {
 	m.mu.Unlock()
 
 	// Wire in anything present in the new view that wasn't (or was
-	// different) before; wire out anything that disappeared. Idempotent
-	// AddPeer calls on the transport are fine — they overwrite the
-	// address slot. We do NOT compare raftAddr to skip re-Adds:
-	// transport.AddPeer is cheap and "re-adding with the same address"
-	// is the right behavior for an address change as well.
+	// different) before; wire out anything that disappeared.
+	//
+	// AddPeer / pool.AddPeer are documented as no-op when an entry
+	// already exists, so an address CHANGE has to be modelled as
+	// RemovePeer + AddPeer — otherwise the transport keeps dialling
+	// the pre-restore address and the new one is silently dropped.
+	// Same NodeID with the same addresses is a no-op short-circuit
+	// (skip both removeAdd and the underlying calls).
 	for nodeID, addr := range fresh {
+		oldAddr, existed := old[nodeID]
+		if existed && oldAddr == addr {
+			continue
+		}
+
+		if existed {
+			m.wireRemoveLocked(nodeID)
+		}
+
 		m.wireAddLocked(nodeID, addr.RaftAddress, addr.ServiceAddress)
 	}
 
