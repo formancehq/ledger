@@ -23,8 +23,9 @@ an index-only scan that also covers the `ORDER BY id DESC`, eliminating the
 table walk entirely.
 
 **The rewrite only takes effect when a matching functional index is confirmed to
-exist.** Ledger checks `pg_indexes` at startup (per ledger). If the index is
-absent, the query falls back to the standard `@>` form.
+exist.** Ledger checks `pg_index` (via `pg_get_expr`) at store-open time (per
+ledger, per request). If the index is absent, the query falls back to the
+standard `@>` form.
 
 ---
 
@@ -53,28 +54,40 @@ Wait for `CREATE INDEX` to complete before proceeding.
 
 ### 2. Enable the feature flag
 
+Features are set at ledger creation time. To create a ledger with indexed
+metadata keys:
+
 ```http
-PATCH /ledgers/<ledger>
+POST /v2/ledgers/<ledger>
 Content-Type: application/json
 
 {"features": {"INDEXED_METADATA_KEYS": "source_wallet_id,destination_wallet_id"}}
 ```
 
-Ledger accepts the PATCH immediately and validates only key name syntax (must
-match `[a-zA-Z0-9_]+`). Index existence is verified at store-open time (the
-start of each request): if no matching functional index is found in `pg_indexes`
-for a given key, that key falls back to the `@>` containment form and an INFO
-message is logged — the request is not rejected.
+Key names are validated against `[a-zA-Z0-9_]+` at creation time.
 
-After the PATCH, new requests will use the functional index for confirmed keys.
+For existing ledgers, update the `features` column directly:
+
+```sql
+UPDATE _system.ledgers
+SET features = jsonb_set(features, '{INDEXED_METADATA_KEYS}', '"source_wallet_id,destination_wallet_id"')
+WHERE name = '<ledger>';
+```
+
+Index existence is verified at store-open time (the start of each request): if
+no matching functional index is found for a given key, that key falls back to
+the `@>` containment form and an INFO message is logged.
+
+After the change, new requests will use the functional index for confirmed keys.
 
 ### 3. Deactivation
 
-To deactivate, remove the key from the flag **before** dropping the index:
+To deactivate, clear the flag **before** dropping the index:
 
-```http
-PATCH /ledgers/<ledger>
-{"features": {"INDEXED_METADATA_KEYS": ""}}
+```sql
+UPDATE _system.ledgers
+SET features = jsonb_set(features, '{INDEXED_METADATA_KEYS}', '""')
+WHERE name = '<ledger>';
 ```
 
 Once the flag is cleared, Ledger reverts to `@>` for all metadata filters and
@@ -85,9 +98,9 @@ DROP INDEX CONCURRENTLY IF EXISTS "<bucket>".transactions_metadata_<key>_<ledger
 ```
 
 Dropping the index before clearing the flag is safe (Ledger's startup check
-detects the missing index and disables the rewrite automatically on next
-restart), but clearing the flag first avoids any window where the rewrite is
-attempted without an index.
+detects the missing index and disables the rewrite automatically), but clearing
+the flag first avoids any window where the rewrite is attempted without an
+index.
 
 ---
 
