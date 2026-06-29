@@ -85,6 +85,18 @@ func main() {
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"exact balance transfer should succeed",
 			details.With(internal.Details{"error": err}))
+
+		// EN-1410: a bloom miss on a key still present in Pebble — caused by a
+		// rotation that wiped 0xFF while !IsReady, without persisting bloom
+		// blocks — surfaces here as a spurious INSUFFICIENT_FUNDS on a transfer
+		// whose source was funded earlier in this driver. The exact-balance
+		// transfer must NEVER be rejected with INSUFFICIENT_FUNDS: that would
+		// mean the bloom diverged from Pebble.
+		isSpuriousInsuf := internal.HasErrorReason(err, domain.ErrReasonInsufficientFunds)
+		assert.AlwaysOrUnreachable(!isSpuriousInsuf,
+			"exact balance transfer must not be rejected as INSUFFICIENT_FUNDS — bloom must reflect persisted Pebble state",
+			details.With(internal.Details{"error": err}))
+
 		if err != nil {
 			return
 		}
