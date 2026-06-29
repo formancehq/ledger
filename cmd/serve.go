@@ -67,21 +67,20 @@ type ServeCommandConfig struct {
 	AuditAsyncQueueCapacity int    `mapstructure:"audit-async-queue-capacity"`
 	AuditAsyncWorkerCount   int    `mapstructure:"audit-async-worker-count"`
 
-	// TxListAdaptiveFallback enables the probe-then-retry strategy for the
-	// transactions-list SELECT. Default true. When triggered (SQLSTATE 57014
-	// from our own probe timeout, client still alive), the query is retried
-	// once with SET LOCAL enable_indexscan = off. Dense/fast wallets never
-	// reach the probe timeout and see no behaviour change beyond the explicit
-	// transaction wrapper. See ledgerstore.TransactionListConfig for details.
+	// TxListAdaptiveFallback enables the hedged-request strategy for the
+	// transactions-list SELECT. Default true. When enabled, the original query
+	// races against a delayed chaser with GIN plan override; whichever finishes
+	// first wins. Dense/fast wallets finish before the chaser fires and see no
+	// behaviour change. See ledgerstore.TransactionListConfig for details.
 	TxListAdaptiveFallback bool `mapstructure:"tx-list-adaptive-fallback"`
 
-	// TxListFirstAttemptTimeoutMs is the statement_timeout for the probe
-	// attempt (ms). Default 5000. Must leave headroom for the retry.
-	TxListFirstAttemptTimeoutMs int64 `mapstructure:"tx-list-first-attempt-timeout-ms"`
+	// TxListChaserDelayMs is the delay before firing the chaser query (ms).
+	// Default 5000. If the original finishes within this budget, no chaser fires.
+	TxListChaserDelayMs int64 `mapstructure:"tx-list-chaser-delay-ms"`
 
-	// TxListRetryTimeoutMs is the statement_timeout for the GIN-override retry
-	// attempt (ms). Default 40000.
-	TxListRetryTimeoutMs int64 `mapstructure:"tx-list-retry-timeout-ms"`
+	// TxListChaserTimeoutMs is the statement_timeout for the chaser query (ms).
+	// The original query has no timeout. Default 40000.
+	TxListChaserTimeoutMs int64 `mapstructure:"tx-list-chaser-timeout-ms"`
 }
 
 const (
@@ -102,12 +101,12 @@ const (
 	AuditAsyncQueueCapacityFlag = "audit-async-queue-capacity"
 	AuditAsyncWorkerCountFlag   = "audit-async-worker-count"
 
-	// TxListAdaptiveFallbackFlag enables the probe-then-retry strategy.
+	// TxListAdaptiveFallbackFlag enables the hedged-request strategy.
 	TxListAdaptiveFallbackFlag = "tx-list-adaptive-fallback"
-	// TxListFirstAttemptTimeoutMsFlag sets the probe statement_timeout (ms).
-	TxListFirstAttemptTimeoutMsFlag = "tx-list-first-attempt-timeout-ms"
-	// TxListRetryTimeoutMsFlag sets the retry statement_timeout (ms).
-	TxListRetryTimeoutMsFlag = "tx-list-retry-timeout-ms"
+	// TxListChaserDelayMsFlag sets the delay before the chaser fires (ms).
+	TxListChaserDelayMsFlag = "tx-list-chaser-delay-ms"
+	// TxListChaserTimeoutMsFlag sets the chaser's statement_timeout (ms).
+	TxListChaserTimeoutMsFlag = "tx-list-chaser-timeout-ms"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -141,8 +140,8 @@ func NewServeCommand() *cobra.Command {
 					AutoUpgrade: cfg.AutoUpgrade,
 					TransactionListConfig: ledgerstore.TransactionListConfig{
 						EnableAdaptiveFallback: cfg.TxListAdaptiveFallback,
-						FirstAttemptTimeoutMs:  cfg.TxListFirstAttemptTimeoutMs,
-						RetryTimeoutMs:         cfg.TxListRetryTimeoutMs,
+						ChaserDelayMs:          cfg.TxListChaserDelayMs,
+						ChaserTimeoutMs:        cfg.TxListChaserTimeoutMs,
 					},
 				}),
 				drivers.NewFXModule(),
@@ -246,16 +245,17 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Int(AuditAsyncQueueCapacityFlag, api.DefaultAuditAsyncQueueCapacity, "HTTP audit async publish queue capacity")
 	cmd.Flags().Int(AuditAsyncWorkerCountFlag, api.DefaultAuditAsyncWorkerCount, "HTTP audit async publish worker count")
 	cmd.Flags().Bool(TxListAdaptiveFallbackFlag, true,
-		"Enable the adaptive probe-then-retry fallback for the transactions-list SELECT. "+
-			"When enabled (default), the first attempt runs with --tx-list-first-attempt-timeout-ms; "+
-			"if Postgres cancels with SQLSTATE 57014 and the client is still waiting, "+
-			"the query is retried once with SET LOCAL enable_indexscan = off. "+
-			"Dense/fast wallets never hit the probe timeout and see no behaviour change.")
-	cmd.Flags().Int64(TxListFirstAttemptTimeoutMsFlag, 5_000,
-		"Statement timeout in ms for the probe (first) attempt of the transactions-list SELECT. "+
-			"Must leave headroom for the retry before the upstream client disconnects.")
-	cmd.Flags().Int64(TxListRetryTimeoutMsFlag, 40_000,
-		"Statement timeout in ms for the GIN-override retry attempt of the transactions-list SELECT.")
+		"Enable the hedged-request strategy for the transactions-list SELECT. "+
+			"When enabled (default), the original query runs with no timeout; "+
+			"after --tx-list-chaser-delay-ms a parallel chaser fires with GIN plan override. "+
+			"Whichever finishes first wins, the other is cancelled. "+
+			"Dense/fast wallets finish before the chaser fires and see no behaviour change.")
+	cmd.Flags().Int64(TxListChaserDelayMsFlag, 5_000,
+		"Delay in ms before firing the chaser query for the transactions-list SELECT. "+
+			"If the original finishes within this budget, no chaser fires.")
+	cmd.Flags().Int64(TxListChaserTimeoutMsFlag, 40_000,
+		"Statement timeout in ms for the chaser query of the transactions-list SELECT. "+
+			"The original query has no timeout.")
 
 	addWorkerFlags(cmd)
 	connect.AddFlags(cmd.Flags())
