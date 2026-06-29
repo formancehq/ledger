@@ -10,6 +10,25 @@ const (
 	labelName              = "app.kubernetes.io/name"
 	annotationSpecHash     = "ledger.formance.com/spec-hash"
 	annotationAuthKeysHash = "ledger.formance.com/auth-keys-hash"
+
+	// labelDeletionProtection (set to labelDeletionProtectionValue) is stamped on
+	// the PVCs and bound PVs of a LedgerService whose spec.persistence.deletionProtection
+	// is true. The volume deletion-protection ValidatingAdmissionPolicyBinding scopes
+	// itself to this label, so a ledger opts in or out per-CR without touching the
+	// cluster-scoped policy. PVs are cluster-scoped and don't inherit PVC labels, so
+	// the operator stamps both sides explicitly.
+	labelDeletionProtection      = "ledger.formance.com/deletion-protection"
+	labelDeletionProtectionValue = "enabled"
+
+	// volumeProtectionPVCBindingName is the fixed, release-independent name of the
+	// PVC ValidatingAdmissionPolicyBinding rendered by the chart when
+	// pvcProtection.enabled=true (see helm/operator/templates/validatingadmissionpolicy.yaml).
+	// The controller probes it to tell whether deletion protection is actually
+	// active cluster-wide — which is what matters in a multi-release setup where a
+	// sibling release owns the singleton — rather than trusting this release's own
+	// Helm flag. The PV binding is installed in the same bundle, so the PVC binding's
+	// presence is a sufficient proxy for the whole policy.
+	volumeProtectionPVCBindingName = "ledger-volume-protection-pvc"
 )
 
 // selectorLabels returns the labels used to select pods owned by this LedgerService.

@@ -1,0 +1,149 @@
+{{- if .Values.pvcProtection.enabled }}
+{{- $sa := printf "system:serviceaccount:%s:%s" .Release.Namespace (include "ledger-operator.serviceAccountName" .) }}
+{{- $annotation := .Values.pvcProtection.allowDeletionAnnotation }}
+{{- /* Validate as a Kubernetes annotation key: an optional lowercase DNS-1123
+       subdomain prefix (<=253 chars) before '/', then a name segment of
+       alphanumerics/'-'/'_'/'.' (mixed case allowed, <=63 chars). A single regex
+       can't express the differing case rules and length caps, so split on '/'.
+       Enforcing this at render time turns an API-server VAP rejection at apply
+       time into a clear Helm error. */}}
+{{- $parts := splitList "/" $annotation }}
+{{- $name := $annotation }}
+{{- if gt (len $parts) 2 }}
+{{- fail (printf "pvcProtection.allowDeletionAnnotation %q is not a valid Kubernetes annotation key (at most one '/' separator)" $annotation) }}
+{{- end }}
+{{- if eq (len $parts) 2 }}
+{{- $prefix := index $parts 0 }}
+{{- $name = index $parts 1 }}
+{{- if gt (len $prefix) 253 }}
+{{- fail (printf "pvcProtection.allowDeletionAnnotation %q: prefix must be at most 253 characters" $annotation) }}
+{{- end }}
+{{- /* DNS-1123 subdomain: validate each dot-separated label so consecutive dots,
+       empty leading/trailing labels, and >63-char labels are caught in Helm rather
+       than rejected later by the API server. */}}
+{{- range $label := splitList "." $prefix }}
+{{- if or (not (regexMatch "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" $label)) (gt (len $label) 63) }}
+{{- fail (printf "pvcProtection.allowDeletionAnnotation %q: each prefix DNS label must be a non-empty lowercase alphanumeric/'-' segment (start/end alphanumeric) of at most 63 characters" $annotation) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if or (not (regexMatch "^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$" $name)) (gt (len $name) 63) }}
+{{- fail (printf "pvcProtection.allowDeletionAnnotation %q: name segment must be alphanumerics, '-', '_' or '.' (start/end alphanumeric) of at most 63 characters" $annotation) }}
+{{- end }}
+{{- /* The kube-controller-manager garbage collector reaps PVCs when retentionPolicy
+       whenScaled/whenDeleted=Delete removes their owner refs; exempt it so that path
+       composes with protection (the operator SA covers its own scale-down deletes). */}}
+{{- $gc := "system:serviceaccount:kube-system:generic-garbage-collector" }}
+{{- /* Extra ServiceAccount usernames the admin wants exempt (sibling operator releases
+       in a multi-release cluster, or managed workload/GitOps controllers). Each entry is
+       interpolated into the single-quoted CEL matchConditions below, so validate the full
+       system:serviceaccount:<namespace>:<name> shape (both segments are DNS-1123 labels)
+       at render time. A strict shape check rejects single quotes and any other
+       CEL-breaking character, so a malformed entry fails the render rather than breaking
+       policy installation or neutralizing a matchCondition. */}}
+{{- range $extra := .Values.pvcProtection.additionalExemptServiceAccounts }}
+{{- if not (regexMatch "^system:serviceaccount:[a-z0-9]([a-z0-9-]*[a-z0-9])?:[a-z0-9]([a-z0-9-]*[a-z0-9])?$" $extra) }}
+{{- fail (printf "pvcProtection.additionalExemptServiceAccounts entry %q must be a ServiceAccount username of the form system:serviceaccount:<namespace>:<name>" $extra) }}
+{{- end }}
+{{- end }}
+{{- /* These cluster-scoped objects use fixed, release-independent names on purpose:
+       volume deletion protection is a cluster-wide admin singleton. A second operator
+       release that also sets pvcProtection.enabled=true would render the same names and
+       fail its helm install/upgrade with an ownership conflict, rather than silently
+       installing a second policy that cross-applies to (and blocks legitimate deletes
+       on) the first release's volumes. Enable it on at most one release per cluster. */}}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: ledger-volume-protection-pvc
+  labels:
+    {{- include "ledger-operator.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["DELETE"]
+        resources: ["persistentvolumeclaims"]
+  matchConditions:
+    - name: not-operator-sa
+      expression: "request.userInfo.username != '{{ $sa }}'"
+    - name: not-gc-sa
+      expression: "request.userInfo.username != '{{ $gc }}'"
+    {{- range $i, $extra := .Values.pvcProtection.additionalExemptServiceAccounts }}
+    - name: {{ printf "not-extra-sa-%d" $i }}
+      expression: "request.userInfo.username != '{{ $extra }}'"
+    {{- end }}
+  validations:
+    - expression: >-
+        has(oldObject.metadata.annotations) &&
+        '{{ $annotation }}' in oldObject.metadata.annotations &&
+        oldObject.metadata.annotations['{{ $annotation }}'] == 'true'
+      message: "Deletion blocked: set annotation {{ $annotation }}=true to permit deleting this ledger volume."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: ledger-volume-protection-pvc
+  labels:
+    {{- include "ledger-operator.labels" . | nindent 4 }}
+spec:
+  policyName: ledger-volume-protection-pvc
+  validationActions: ["Deny"]
+  matchResources:
+    objectSelector:
+      matchLabels:
+        ledger.formance.com/deletion-protection: enabled
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: ledger-volume-protection-pv
+  labels:
+    {{- include "ledger-operator.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["DELETE"]
+        resources: ["persistentvolumes"]
+  matchConditions:
+    - name: not-operator-sa
+      expression: "request.userInfo.username != '{{ $sa }}'"
+    - name: not-gc-sa
+      expression: "request.userInfo.username != '{{ $gc }}'"
+    {{- range $i, $extra := .Values.pvcProtection.additionalExemptServiceAccounts }}
+    - name: {{ printf "not-extra-sa-%d" $i }}
+      expression: "request.userInfo.username != '{{ $extra }}'"
+    {{- end }}
+    {{- /* Only protect live (Bound) PVs. Once the PVC is gone the PV goes Released and
+           is reclaimed by the PV controller / CSI external-provisioner (reclaimPolicy:
+           Delete) — a non-exempt identity. Gating on Bound lets that reclaim proceed
+           without leaking storage, and the deletion of live data is still blocked at the
+           PVC gate. This also lets an admin clean up an orphaned Released (Retain) PV. */}}
+    - name: pv-still-bound
+      expression: "has(oldObject.status) && oldObject.status.phase == 'Bound'"
+  validations:
+    - expression: >-
+        has(oldObject.metadata.annotations) &&
+        '{{ $annotation }}' in oldObject.metadata.annotations &&
+        oldObject.metadata.annotations['{{ $annotation }}'] == 'true'
+      message: "Deletion blocked: set annotation {{ $annotation }}=true to permit deleting this ledger volume."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: ledger-volume-protection-pv
+  labels:
+    {{- include "ledger-operator.labels" . | nindent 4 }}
+spec:
+  policyName: ledger-volume-protection-pv
+  validationActions: ["Deny"]
+  matchResources:
+    objectSelector:
+      matchLabels:
+        ledger.formance.com/deletion-protection: enabled
+{{- end }}

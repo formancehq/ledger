@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -13,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -20,7 +22,14 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) error {
+// volumeBindRequeueInterval is how soon to requeue while a ledger's PVC is still
+// awaiting binding, so the deletion-protection label lands on the PV promptly
+// once it binds. The controller does not watch PVC/PV binding events, so this
+// poll is what makes stamping deterministic rather than dependent on incidental
+// StatefulSet status churn.
+const volumeBindRequeueInterval = 10 * time.Second
+
+func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	name := resourceName(ledger.Name)
 
@@ -30,7 +39,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 	// only exposes a boolean.
 	existingForTLS, err := r.fetchExistingStatefulSet(ctx, ledger)
 	if err != nil {
-		return fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
+		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
 	}
 
 	targetTLSMode := computeTargetTLSMode(
@@ -91,7 +100,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 			})
 			ledger.Spec.Replicas = savedReplicas
 			if err != nil {
-				return fmt.Errorf("updating StatefulSet spec before scale-down: %w", err)
+				return ctrl.Result{}, fmt.Errorf("updating StatefulSet spec before scale-down: %w", err)
 			}
 
 			logger.Info("scale-down detected, removing Raft nodes",
@@ -103,7 +112,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 			// started, so pod-0's gRPC server is still on the old TLS_MODE.
 			runningTLSMode := currentTLSModeFromStatefulSet(existingForTLS)
 			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode); err != nil {
-				return fmt.Errorf("removing Raft nodes before scale-down: %w", err)
+				return ctrl.Result{}, fmt.Errorf("removing Raft nodes before scale-down: %w", err)
 			}
 		}
 	}
@@ -127,11 +136,11 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 			if err := r.Delete(ctx, existing, &client.DeleteOptions{
 				PropagationPolicy: &orphan,
 			}); err != nil {
-				return fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate change: %w", err)
+				return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate change: %w", err)
 			}
-			// Return nil to requeue — next reconciliation will create the new StatefulSet
-			// and the orphaned pods will be adopted.
-			return nil
+			// Returning here requeues via the owned-StatefulSet delete event — the next
+			// reconciliation creates the new StatefulSet and the orphaned pods are adopted.
+			return ctrl.Result{}, nil
 		}
 	}
 
@@ -155,18 +164,43 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 		return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
 	})
 	if err != nil {
-		return err
+		return ctrl.Result{}, err
 	}
 
 	// After the StatefulSet is updated (pods terminated), delete orphaned PVCs.
 	if scalingDown && r.Clientset != nil {
 		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
 		if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger.Namespace, name, previousReplicas, desiredReplicas, volNames); err != nil {
-			return fmt.Errorf("deleting PVCs after scale-down: %w", err)
+			return ctrl.Result{}, fmt.Errorf("deleting PVCs after scale-down: %w", err)
 		}
 	}
 
-	return nil
+	// Reconcile the deletion-protection label on this ledger's PVCs and bound
+	// PVs to match spec.persistence.deletionProtection, so the opt-in volume
+	// protection admission policy selects (or stops selecting) the volumes per-CR.
+	// PVs are cluster-scoped and don't inherit PVC labels. This is the last step
+	// of the pass, so returning the error skips nothing and makes controller-runtime
+	// requeue with backoff. The requeue matters: the controller does not watch
+	// PVC/PV events, so without it a transient failure after the StatefulSet has
+	// settled would leave the label out of sync until the next full resync.
+	//
+	// We requeue on a short interval whenever a desired PVC is not yet created or
+	// (when protecting) not yet bound, so the label reaches the right state promptly
+	// rather than relying on an incidental later StatefulSet status change — in both
+	// directions: stamping a freshly scaled-out PVC/PV when protection is on, and
+	// unstamping a PVC born from a still-labeled immutable VCT after an opt-out.
+	if r.Clientset != nil {
+		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
+		pending, err := reconcileVolumeProtection(ctx, r.Clientset, ledger.Namespace, name, desiredReplicas, volNames, ledger.Spec.Persistence.DeletionProtection)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconciling volume deletion-protection labels: %w", err)
+		}
+		if pending {
+			return ctrl.Result{RequeueAfter: volumeBindRequeueInterval}, nil
+		}
+	}
+
+	return ctrl.Result{}, nil
 }
 
 func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo, targetTLSMode string) appsv1.StatefulSetSpec {
@@ -596,8 +630,29 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.Pe
 			size = resource.MustParse(d.dflt)
 		}
 
+		// When deletion protection is on, stamp the label directly on the VCT so
+		// the PVCs the StatefulSet controller provisions carry it from creation,
+		// closing the window before reconcileVolumeProtection's first stamp pass.
+		//
+		// VCTs are immutable, so this born-labels PVCs only for newly-created
+		// StatefulSets, and the template label cannot be changed after creation in
+		// either direction. On a false->true toggle the VCT stays unlabeled; on a
+		// true->false toggle it stays labeled. Existing PVCs are relabeled (or
+		// unlabeled) by reconcileVolumeProtection, but PVCs born from a later
+		// scale-out inherit the stale template label. reconcileVolumeProtection runs
+		// in the same reconcile that bumps replicas and requeues every
+		// volumeBindRequeueInterval until the new PVCs appear, then stamps/unstamps
+		// them to the desired state, so the residual scale-out window is small and
+		// self-healing in both directions. We accept it deliberately: closing it
+		// fully would mean recreating the StatefulSet just to re-emit templates,
+		// which is too disruptive for a running Raft cluster.
+		var labels map[string]string
+		if ledger.Spec.Persistence.DeletionProtection {
+			labels = map[string]string{labelDeletionProtection: labelDeletionProtectionValue}
+		}
+
 		pvc := corev1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{Name: d.name},
+			ObjectMeta: metav1.ObjectMeta{Name: d.name, Labels: labels},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes: []corev1.PersistentVolumeAccessMode{accessMode},
 				Resources: corev1.VolumeResourceRequirements{
