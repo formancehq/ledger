@@ -554,7 +554,7 @@ ledgerctl indexes create [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at` |
+| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |
@@ -570,6 +570,7 @@ ledgerctl indexes create [flags]
 | `reference` | Transaction reference exact-match index |
 | `timestamp` | Transaction timestamp (effective date) range-scan index |
 | `inserted-at` | Transaction creation date (`inserted_at`) range-scan index |
+| `account-asset` | Inverted index of accounts by asset; enables the `has asset` filter on account queries |
 
 > **Note:** Filtering by transaction ID (`id`) does not require any index — it is always available via a direct range scan.
 
@@ -599,6 +600,9 @@ ledgerctl indexes create --ledger my-ledger --type timestamp
 # Create inserted-at index (enables filtering transactions by creation date range)
 ledgerctl indexes create --ledger my-ledger --type inserted-at
 
+# Create account-asset index (enables 'has asset' filter on account queries)
+ledgerctl indexes create --ledger my-ledger --type account-asset
+
 # Interactive mode
 ledgerctl indexes create
 ```
@@ -618,7 +622,7 @@ ledgerctl indexes drop [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at` |
+| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |
@@ -923,11 +927,12 @@ or_expr        := and_expr ("or" and_expr)*
 and_expr       := unary_expr ("and" unary_expr)*
 unary_expr     := "not" unary_expr | primary
 primary        := "(" expression ")" | condition
-condition      := metadata_cond | address_cond | source_cond | destination_cond
+condition      := metadata_cond | address_cond | source_cond | destination_cond | has_asset_cond
 metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists")
 address_cond   := "address" ("==" VALUE | "^=" VALUE)
 source_cond    := "source" ("==" VALUE | "^=" VALUE)
 destination_cond := "destination" ("==" VALUE | "^=" VALUE)
+has_asset_cond := "has" "asset" ASSET_BASE ["/" PRECISION]
 ```
 
 **Conditions:**
@@ -948,6 +953,8 @@ destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 | `source ^= value` | Source address prefix match (transactions only) |
 | `destination == value` | Exact destination address match (transactions only) |
 | `destination ^= value` | Destination address prefix match (transactions only) |
+| `has asset BASE` | Accounts that have ever touched asset `BASE` with precision 0 (requires `account-asset` index) |
+| `has asset BASE/PRECISION` | Accounts that have ever touched asset `BASE` with the given precision (requires `account-asset` index) |
 
 **Boolean operators** (precedence: `not` > `and` > `or`):
 
@@ -1024,6 +1031,15 @@ destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 
 # Grouping
 --filter "(metadata[a] == x or metadata[b] == y) and address ^= users:"
+
+# Has asset (precision 0) — requires account-asset index
+--filter "has asset USD"
+
+# Has asset with explicit precision — requires account-asset index
+--filter "has asset USD/2"
+
+# Combine has asset with other conditions
+--filter "has asset USD and address ^= users:"
 ```
 
 #### accounts get

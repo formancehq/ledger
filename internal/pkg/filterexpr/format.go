@@ -41,9 +41,22 @@ func formatFilter(f *commonpb.QueryFilter) (string, int) {
 		return formatBinaryOp(v.Or.GetFilters(), "or", precOr), precOr
 	case *commonpb.QueryFilter_Not:
 		return formatNot(v.Not)
+	case *commonpb.QueryFilter_AccountHasAsset:
+		return formatAccountHasAsset(v.AccountHasAsset), precLeaf
 	default:
 		return "<unknown filter>", precLeaf
 	}
+}
+
+// formatAccountHasAsset renders an AccountHasAssetCondition as `has asset BASE`
+// (precision 0) or `has asset BASE/PRECISION`. Inverse of the parser's
+// `has asset <asset>` production.
+func formatAccountHasAsset(c *commonpb.AccountHasAssetCondition) string {
+	if c.GetPrecision() == 0 {
+		return "has asset " + c.GetAssetBase()
+	}
+
+	return fmt.Sprintf("has asset %s/%d", c.GetAssetBase(), c.GetPrecision())
 }
 
 // formatWithPrec formats a child filter, wrapping it in parentheses if its
@@ -354,7 +367,7 @@ func quoteIfNeeded(s string) string {
 var keywords = map[string]bool{
 	"and": true, "or": true, "not": true, "between": true,
 	"metadata": true, "address": true, "source": true, "destination": true,
-	"exists": true, "true": true, "false": true,
+	"exists": true, "true": true, "false": true, "has": true, "asset": true,
 }
 
 func needsQuoting(s string) bool {

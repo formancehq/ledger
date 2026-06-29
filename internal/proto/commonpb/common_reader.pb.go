@@ -8945,6 +8945,78 @@ func NewLogBuiltinUintConditionListReader(s []*LogBuiltinUintCondition) LogBuilt
 	return logBuiltinUintConditionListReadonly(s)
 }
 
+// AccountHasAssetConditionReader provides read-only access to AccountHasAssetCondition.
+// Call Mutate() to obtain a mutable clone.
+type AccountHasAssetConditionReader interface {
+	GetAssetBase() string
+	GetPrecision() uint32
+	Mutate() *AccountHasAssetCondition
+}
+
+type accountHasAssetConditionReadonly struct{ v *AccountHasAssetCondition }
+
+func (r *accountHasAssetConditionReadonly) GetAssetBase() string {
+	return r.v.GetAssetBase()
+}
+
+func (r *accountHasAssetConditionReadonly) GetPrecision() uint32 {
+	return r.v.GetPrecision()
+}
+
+func (r *accountHasAssetConditionReadonly) Mutate() *AccountHasAssetCondition {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountHasAssetCondition.
+func (m *AccountHasAssetCondition) AsReader() AccountHasAssetConditionReader {
+	if m == nil {
+		return nil
+	}
+	return &accountHasAssetConditionReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this AccountHasAssetCondition.
+func (m *AccountHasAssetCondition) Mutate() *AccountHasAssetCondition {
+	return m.CloneVT()
+}
+
+// AccountHasAssetConditionListReader provides read-only iteration over []*AccountHasAssetCondition.
+type AccountHasAssetConditionListReader interface {
+	Len() int
+	Get(i int) AccountHasAssetConditionReader
+	Range(yield func(int, AccountHasAssetConditionReader) bool)
+}
+
+type accountHasAssetConditionListReadonly []*AccountHasAssetCondition
+
+func (l accountHasAssetConditionListReadonly) Len() int { return len(l) }
+
+func (l accountHasAssetConditionListReadonly) Get(i int) AccountHasAssetConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountHasAssetConditionListReadonly) Range(yield func(int, AccountHasAssetConditionReader) bool) {
+	for i, v := range l {
+		var r AccountHasAssetConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountHasAssetConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountHasAssetConditionListReader(s []*AccountHasAssetCondition) AccountHasAssetConditionListReader {
+	return accountHasAssetConditionListReadonly(s)
+}
+
 // AndFilterReader provides read-only access to AndFilter.
 // Call Mutate() to obtain a mutable clone.
 type AndFilterReader interface {

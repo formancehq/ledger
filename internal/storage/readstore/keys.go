@@ -20,6 +20,7 @@ const (
 	PrefixLedgerLogs            byte = 0x09 // llog — ledger log mapping
 	PrefixLedgerLogDate         byte = 0x0A // lldt — ledger log date
 	PrefixTransactionInsertedAt byte = 0x0B // txiat — transaction inserted_at
+	PrefixAccountByAsset        byte = 0x0C // abya — account-by-asset inverted index (asset→account)
 
 	// PrefixInternal groups all non-ledger-scoped keys under a single prefix
 	// so that Comparer.Split can treat them uniformly (full key = prefix).
@@ -196,6 +197,34 @@ func AccountTxPrefix(kb *dal.KeyBuilder, prefix byte, ledgerName string, account
 		PutByte(prefix).
 		PutLedgerNameFixed(ledgerName).
 		PutStringNull(account).
+		Snapshot()
+}
+
+// AccountByAssetKey builds an account-by-asset inverted-index key. Presence-only
+// (nil value). Order-preserving so a prefix scan on (assetBase, precision)
+// yields every account that has touched that exact asset cell.
+//
+//	[0x0C][ledgerName padded 64B][assetBase\x00][precision(1B)][account]
+func AccountByAssetKey(kb *dal.KeyBuilder, ledgerName, assetBase string, precision uint8, account string) []byte {
+	return kb.Reset().
+		PutByte(PrefixAccountByAsset).
+		PutLedgerNameFixed(ledgerName).
+		PutStringNull(assetBase).
+		PutByte(precision).
+		PutString(account).
+		Build()
+}
+
+// AccountByAssetPrefix returns the scan prefix matching every account that has
+// touched (assetBase, precision).
+//
+//	[0x0C][ledgerName padded 64B][assetBase\x00][precision(1B)]
+func AccountByAssetPrefix(kb *dal.KeyBuilder, ledgerName, assetBase string, precision uint8) []byte {
+	return kb.Reset().
+		PutByte(PrefixAccountByAsset).
+		PutLedgerNameFixed(ledgerName).
+		PutStringNull(assetBase).
+		PutByte(precision).
 		Snapshot()
 }
 

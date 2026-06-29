@@ -98,7 +98,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 		// Create a batch up front so write methods have a valid target.
 		batch := b.readStore.NewBatch()
-		b.wb.Init(batch)
+		b.initBatch(batch)
 
 		// Iterate logs from Pebble and buffer index writes into the batch.
 		for batchCount < b.batchSize {
@@ -125,11 +125,14 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			// Handle ledger deletion: remove all read indexes for the deleted ledger.
 			if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
 				if dl.DeleteLedger != nil {
-					if err := readstore.DeleteLedgerIndexes(batch, dl.DeleteLedger.GetName()); err != nil {
+					name := dl.DeleteLedger.GetName()
+					if err := readstore.DeleteLedgerIndexes(batch, name); err != nil {
 						_ = batch.Cancel()
 
 						return cursor, err
 					}
+
+					b.markLedgerDeletedInBatch(name)
 				}
 
 				continue
@@ -166,7 +169,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 			cfg := b.ledgerConfig(ledgerName)
 			var excludedVolumes map[domain.AccountAssetKey]struct{}
-			if cfg.indexesPostingAddressMappings() {
+			if cfg.indexesPostingDerived() {
 				excludedVolumes = proposals.excludedForLog(lastSeq, ledgerName, ledgerLog)
 			}
 
@@ -387,7 +390,12 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	// Handle ledger deletion: remove all read indexes for the deleted ledger.
 	if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
 		if dl.DeleteLedger != nil && b.wb.Batch() != nil {
-			return readstore.DeleteLedgerIndexes(b.wb.Batch(), dl.DeleteLedger.GetName())
+			name := dl.DeleteLedger.GetName()
+			if err := readstore.DeleteLedgerIndexes(b.wb.Batch(), name); err != nil {
+				return err
+			}
+
+			b.markLedgerDeletedInBatch(name)
 		}
 
 		return nil
@@ -436,7 +444,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		}
 
 		batch := b.readStore.NewBatch()
-		b.wb.Init(batch) // re-init with a new batch after flush
+		b.initBatch(batch) // re-init with a new batch after flush
 
 		return b.indexSetMetadataFieldType(cfg, b.kb, ledgerName, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
@@ -481,7 +489,7 @@ func (b *Builder) indexCreatedTransaction(
 		b.accounts[posting.GetDestination()] = struct{}{}
 
 		if err := b.indexPostingAddressMappings(
-			kb, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
+			kb, cfg, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
 			indexAny, indexSrc, indexDst, excludedVolumes,
 		); err != nil {
 			return err
@@ -607,7 +615,7 @@ func (b *Builder) indexRevertedTransaction(
 		b.accounts[posting.GetDestination()] = struct{}{}
 
 		if err := b.indexPostingAddressMappings(
-			kb, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
+			kb, cfg, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
 			indexAny, indexSrc, indexDst, excludedVolumes,
 		); err != nil {
 			return err
@@ -667,6 +675,7 @@ func (b *Builder) indexRevertedTransaction(
 
 func (b *Builder) indexPostingAddressMappings(
 	kb *dal.KeyBuilder,
+	cfg *ledgerIndexConfig,
 	ledger string,
 	txID uint64,
 	source string,
@@ -680,6 +689,26 @@ func (b *Builder) indexPostingAddressMappings(
 	wb := b.wb
 	srcExcluded := isExcluded(excludedVolumes, source, asset)
 	dstExcluded := isExcluded(excludedVolumes, destination, asset)
+
+	// Account has-asset index: record every (account, assetBase, precision) a
+	// posting touches, for both source and destination, skipping excluded
+	// (transient/purged) volumes. Routed through the shared posting walk so
+	// created and reverted transactions are both covered.
+	if cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
+		assetBase, precision := domain.ParseAssetPrecision(asset)
+
+		if !srcExcluded {
+			if err := b.writeAccountByAssetDedup(kb, ledger, source, assetBase, precision); err != nil {
+				return err
+			}
+		}
+
+		if !dstExcluded {
+			if err := b.writeAccountByAssetDedup(kb, ledger, destination, assetBase, precision); err != nil {
+				return err
+			}
+		}
+	}
 
 	if indexAny {
 		if !srcExcluded {
@@ -711,6 +740,73 @@ func (b *Builder) indexPostingAddressMappings(
 	}
 
 	return nil
+}
+
+// writeAccountByAssetDedup writes an account-by-asset entry unless it already
+// exists. The entry is presence-only so the Put is idempotent; the Get is purely
+// to cut write amplification (the indexbuilder runs off the FSM hot path, so the
+// extra read is acceptable). Dedup spans the in-flight batch (seenAcctAsset) and
+// committed state (readstoreKeyExists).
+func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, assetBase string, precision uint8) error {
+	// AccountByAssetKey uses Build(), which returns a fresh copy and resets the
+	// builder — so key does not alias the builder buffer and stays valid after
+	// the WriteAccountByAssetIndex call below rebuilds the same key.
+	key := readstore.AccountByAssetKey(kb, ledger, assetBase, precision, account)
+	sk := string(key)
+
+	if _, ok := b.seenAcctAsset[sk]; ok {
+		return nil
+	}
+
+	b.seenAcctAsset[sk] = struct{}{}
+
+	// If this ledger's indexes were range-deleted earlier in the same batch,
+	// the committed-state read is stale: readstoreKeyExists reads committed
+	// Pebble directly and cannot see the pending range delete, so it would
+	// report the about-to-be-deleted row as present and suppress this Put —
+	// which the range delete then wipes at commit, dropping the row. Force the
+	// idempotent Put instead; queued after the range delete (the recreated
+	// ledger's logs have higher sequence), it wins at commit.
+	if _, deleted := b.deletedThisBatch[ledger]; !deleted {
+		exists, err := b.readstoreKeyExists(key)
+		if err != nil {
+			return fmt.Errorf("account-by-asset dedup get: %w", err)
+		}
+
+		if exists {
+			return nil
+		}
+	}
+
+	return b.wb.WriteAccountByAssetIndex(kb, ledger, account, assetBase, precision)
+}
+
+// markLedgerDeletedInBatch records that ledger's read indexes were
+// range-deleted in the in-flight batch (DeleteLedger) and drops the
+// account-by-asset dedup set, which the deletion invalidates: any seenAcctAsset
+// entry written before the delete now points at a row the range delete will
+// remove. Subsequent dedup checks for this ledger skip committed-state reads
+// (see deletedThisBatch in writeAccountByAssetDedup).
+func (b *Builder) markLedgerDeletedInBatch(name string) {
+	b.deletedThisBatch[name] = struct{}{}
+	b.seenAcctAsset = make(map[string]struct{})
+}
+
+// readstoreKeyExists reports whether key is present in committed read-store
+// state. A point Get on the underlying Pebble DB: (false, nil) on not-found,
+// (true, nil) on hit. Mirrors reverseMapValue's committed-read path.
+func (b *Builder) readstoreKeyExists(key []byte) (bool, error) {
+	_, closer, err := b.readStore.DB().Get(key)
+	if errors.Is(err, pebble.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	_ = closer.Close()
+
+	return true, nil
 }
 
 // reverseMapValue returns the encoded value the index currently holds for an

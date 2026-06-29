@@ -1,6 +1,7 @@
 package indexbuilder
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -276,6 +278,10 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	batch := store.NewBatch()
 	b.wb.Init(batch)
 
+	// Account-by-asset index not registered: the posting walk exercises only
+	// the address mappings under test.
+	cfg := newLedgerIndexConfig()
+
 	// Multi-asset case: account "shared:account" has USD purged but EUR
 	// kept. transient:source / purged:dest are excluded on USD only;
 	// shared:account on USD is excluded but shared:account on EUR must be
@@ -287,19 +293,19 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	}
 
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, "test", 42, "transient:source", "kept:dest", "USD",
+		b.kb, cfg, "test", 42, "transient:source", "kept:dest", "USD",
 		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, "test", 43, "kept:source", "purged:dest", "USD",
+		b.kb, cfg, "test", 43, "kept:source", "purged:dest", "USD",
 		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, "test", 44, "shared:account", "kept:dest", "USD",
+		b.kb, cfg, "test", 44, "shared:account", "kept:dest", "USD",
 		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, "test", 45, "shared:account", "kept:dest", "EUR",
+		b.kb, cfg, "test", 45, "shared:account", "kept:dest", "EUR",
 		true, true, true, excludedVolumes,
 	))
 	require.NoError(t, b.wb.Flush())
@@ -342,6 +348,281 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "shared:account", 45,
 	)))
+}
+
+// scanAccountByAsset returns the set of accounts recorded in the
+// account-by-asset index for (ledger, assetBase, precision).
+func scanAccountByAsset(t *testing.T, store *readstore.Store, ledger, assetBase string, precision uint8) map[string]struct{} {
+	t.Helper()
+
+	prefix := readstore.AccountByAssetPrefix(dal.NewKeyBuilder(), ledger, assetBase, precision)
+	iter, err := store.DB().NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: readstore.IncrementBytes(prefix),
+	})
+	require.NoError(t, err)
+
+	defer func() { _ = iter.Close() }()
+
+	out := make(map[string]struct{})
+	for iter.First(); iter.Valid(); iter.Next() {
+		k := iter.Key()
+		// Key layout: [prefix][account]; the account is the suffix after prefix.
+		out[string(k[len(prefix):])] = struct{}{}
+	}
+
+	require.NoError(t, iter.Error())
+
+	return out
+}
+
+// acctAssetConfig builds a ledgerIndexConfig with the account has-asset
+// builtin index registered (plus the address builtin so the posting walk
+// runs at all).
+func acctAssetConfig() *ledgerIndexConfig {
+	cfg := newLedgerIndexConfig()
+	cfg.byCanonical[indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))] =
+		&commonpb.Index{Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)}
+
+	return cfg
+}
+
+func TestIndexPostingAddressMappingsWritesAccountByAsset(t *testing.T) {
+	t.Parallel()
+
+	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		readStore: store,
+		kb:        dal.NewKeyBuilder(),
+		wb:        readstore.NewWriteBatch(),
+	}
+
+	batch := store.NewBatch()
+	b.initBatch(batch)
+
+	cfg := acctAssetConfig()
+
+	// source=accounts:alice dest=accounts:bob asset="USD/2".
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+		false, false, false, nil,
+	))
+	require.NoError(t, b.wb.Flush())
+
+	got := scanAccountByAsset(t, store, "test", "USD", 2)
+	assert.Equal(t, map[string]struct{}{
+		"accounts:alice": {},
+		"accounts:bob":   {},
+	}, got)
+}
+
+func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
+	t.Parallel()
+
+	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		readStore: store,
+		kb:        dal.NewKeyBuilder(),
+		wb:        readstore.NewWriteBatch(),
+	}
+
+	batch := store.NewBatch()
+	b.initBatch(batch)
+
+	cfg := acctAssetConfig()
+
+	// Feed the same posting twice within the same batch.
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+		false, false, false, nil,
+	))
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, cfg, "test", 2, "accounts:alice", "accounts:bob", "USD/2",
+		false, false, false, nil,
+	))
+	require.NoError(t, b.wb.Flush())
+
+	got := scanAccountByAsset(t, store, "test", "USD", 2)
+	assert.Len(t, got, 2)
+	assert.Equal(t, map[string]struct{}{
+		"accounts:alice": {},
+		"accounts:bob":   {},
+	}, got)
+}
+
+// TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete guards the
+// dedup against a DeleteLedger that lands in the same indexer batch as renewed
+// account-by-asset activity for a same-name (recreated) ledger. DeleteLedger
+// only queues a by-name range delete (no batch flush), and readstoreKeyExists
+// reads committed Pebble directly — so without the in-batch-delete guard the
+// dedup sees the about-to-be-deleted row, skips the new Put, and the range
+// delete then wipes the row, silently dropping the account from has-asset
+// queries.
+func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testing.T) {
+	t.Parallel()
+
+	t.Run("committed row pending range-delete does not suppress the recreate", func(t *testing.T) {
+		t.Parallel()
+
+		store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+		require.NoError(t, err)
+
+		defer func() { _ = store.Close() }()
+
+		b := &Builder{
+			readStore: store,
+			kb:        dal.NewKeyBuilder(),
+			wb:        readstore.NewWriteBatch(),
+		}
+		cfg := acctAssetConfig()
+
+		// Batch 1: commit account-by-asset rows for the original ledger.
+		batch1 := store.NewBatch()
+		b.initBatch(batch1)
+		require.NoError(t, b.indexPostingAddressMappings(
+			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+			false, false, false, nil,
+		))
+		require.NoError(t, b.wb.Flush())
+		require.Len(t, scanAccountByAsset(t, store, "test", "USD", 2), 2)
+
+		// Batch 2: delete the ledger, then index the recreated same-name ledger
+		// in the SAME batch. The committed rows are still visible to a direct
+		// Get, so the dedup must not let them suppress the new Put.
+		batch2 := store.NewBatch()
+		b.initBatch(batch2)
+		require.NoError(t, readstore.DeleteLedgerIndexes(b.wb.Batch(), "test"))
+		b.markLedgerDeletedInBatch("test")
+		require.NoError(t, b.indexPostingAddressMappings(
+			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2",
+			false, false, false, nil,
+		))
+		require.NoError(t, b.wb.Flush())
+
+		// alice (re-touched) and carol (new) survive; bob existed only in the
+		// deleted generation and is correctly gone (proving the range delete
+		// fired while the recreate's writes were preserved).
+		got := scanAccountByAsset(t, store, "test", "USD", 2)
+		assert.Equal(t, map[string]struct{}{
+			"accounts:alice": {},
+			"accounts:carol": {},
+		}, got)
+	})
+
+	t.Run("uncommitted same-batch row pending range-delete does not suppress the recreate", func(t *testing.T) {
+		t.Parallel()
+
+		store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+		require.NoError(t, err)
+
+		defer func() { _ = store.Close() }()
+
+		b := &Builder{
+			readStore: store,
+			kb:        dal.NewKeyBuilder(),
+			wb:        readstore.NewWriteBatch(),
+		}
+		cfg := acctAssetConfig()
+
+		batch := store.NewBatch()
+		b.initBatch(batch)
+
+		// Old generation writes (queued, uncommitted) populate seenAcctAsset ...
+		require.NoError(t, b.indexPostingAddressMappings(
+			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+			false, false, false, nil,
+		))
+		// ... the ledger is deleted in the same batch (range delete queued,
+		// seenAcctAsset invalidated) ...
+		require.NoError(t, readstore.DeleteLedgerIndexes(b.wb.Batch(), "test"))
+		b.markLedgerDeletedInBatch("test")
+		// ... and the recreated ledger re-touches alice. Without clearing
+		// seenAcctAsset on delete, this Put would be skipped and lost.
+		require.NoError(t, b.indexPostingAddressMappings(
+			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2",
+			false, false, false, nil,
+		))
+		require.NoError(t, b.wb.Flush())
+
+		got := scanAccountByAsset(t, store, "test", "USD", 2)
+		assert.Equal(t, map[string]struct{}{
+			"accounts:alice": {},
+			"accounts:carol": {},
+		}, got)
+	})
+}
+
+func TestIndexPostingAddressMappingsAccountByAssetExcludesTransient(t *testing.T) {
+	t.Parallel()
+
+	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		readStore: store,
+		kb:        dal.NewKeyBuilder(),
+		wb:        readstore.NewWriteBatch(),
+	}
+
+	batch := store.NewBatch()
+	b.initBatch(batch)
+
+	cfg := acctAssetConfig()
+
+	excludedVolumes := map[domain.AccountAssetKey]struct{}{
+		{Account: "accounts:alice", Asset: "USD/2"}: {},
+	}
+
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+		false, false, false, excludedVolumes,
+	))
+	require.NoError(t, b.wb.Flush())
+
+	got := scanAccountByAsset(t, store, "test", "USD", 2)
+	assert.Equal(t, map[string]struct{}{
+		"accounts:bob": {},
+	}, got)
+}
+
+func TestIndexPostingAddressMappingsAccountByAssetDisabled(t *testing.T) {
+	t.Parallel()
+
+	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		readStore: store,
+		kb:        dal.NewKeyBuilder(),
+		wb:        readstore.NewWriteBatch(),
+	}
+
+	batch := store.NewBatch()
+	b.initBatch(batch)
+
+	// Index NOT registered.
+	cfg := newLedgerIndexConfig()
+
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+		false, false, false, nil,
+	))
+	require.NoError(t, b.wb.Flush())
+
+	got := scanAccountByAsset(t, store, "test", "USD", 2)
+	assert.Empty(t, got)
 }
 
 func TestAppliedProposalSyncResumeSequenceOnlySkipsFullyConsumedRanges(t *testing.T) {
@@ -1244,6 +1525,16 @@ func TestIsPostingIndex(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "account has-asset index",
+			id:       indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+			expected: true,
+		},
+		{
+			name:     "account builtin unspecified (not posting)",
+			id:       indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED),
+			expected: false,
+		},
+		{
 			name:     "reference index (not posting)",
 			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 			expected: false,
@@ -1573,4 +1864,331 @@ func TestSchemaRewrite_SeqGate_SameBatchSwitchWhenGateMet(t *testing.T) {
 	current, pending := b.versionFor(ledger, canonical)
 	assert.Equal(t, uint32(2), current)
 	assert.Equal(t, uint32(0), pending)
+}
+
+// writeLogToFSM persists a marshaled Log under [ZoneCold][SubColdLog][seq] so
+// the backfill iterator (query.ReadLogsSinceRaw) can read it back.
+func writeLogToFSM(t *testing.T, b *Builder, log *commonpb.Log) {
+	t.Helper()
+
+	data, err := log.MarshalVT()
+	require.NoError(t, err)
+
+	kb := dal.NewKeyBuilder()
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(log.GetSequence())
+
+	session := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, session.SetBytes(kb.Build(), data))
+	require.NoError(t, session.Commit())
+}
+
+// writeAppliedProposalToFSM persists an AppliedProposal covering [min,max] log
+// sequences with no transient volumes — the backfill posting walk consults the
+// AppliedProposal stream for exclusions and fails loudly on coverage gaps.
+func writeAppliedProposalToFSM(t *testing.T, b *Builder, seq, minLog, maxLog uint64) {
+	t.Helper()
+
+	kb := dal.NewKeyBuilder()
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(seq)
+
+	session := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, session.SetProto(kb.Build(), &proposalpb.AppliedProposal{
+		Sequence:       seq,
+		MinLogSequence: minLog,
+		MaxLogSequence: maxLog,
+	}))
+	require.NoError(t, session.Commit())
+}
+
+// TestAccountAssetBackfillLifecycle exercises the end-to-end PENDING →
+// BUILDING → READY lifecycle for an ACCT_BUILTIN_INDEX_ASSET index:
+// CreateIndex schedules a backfill, the driver replays historical
+// CreatedTransaction / RevertedTransaction logs through the shared posting
+// walk with the account-asset index registered, and on catch-up the index's
+// version flips current ← pending (READY) while AccountByAssetPrefix scans
+// return the historical accounts.
+func TestAccountAssetBackfillLifecycle(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+
+	// Historical logs: two CreatedTransaction touching USD/2, one
+	// RevertedTransaction touching EUR/2. AppliedProposals cover each.
+	writeLogToFSM(t, b, makeCreatedTxLog(1, ledger, 100, []*commonpb.Posting{
+		{Source: "accounts:alice", Destination: "accounts:bob", Asset: "USD/2"},
+	}))
+	writeAppliedProposalToFSM(t, b, 1, 1, 1)
+
+	writeLogToFSM(t, b, makeCreatedTxLog(2, ledger, 101, []*commonpb.Posting{
+		{Source: "accounts:bob", Destination: "accounts:carol", Asset: "USD/2"},
+	}))
+	writeAppliedProposalToFSM(t, b, 2, 2, 2)
+
+	writeLogToFSM(t, b, makeRevertedTxLog(3, ledger, 100, 102, []*commonpb.Posting{
+		{Source: "accounts:dave", Destination: "accounts:erin", Asset: "EUR/2"},
+	}))
+	writeAppliedProposalToFSM(t, b, 3, 3, 3)
+
+	globalCursor, err := query.ReadLastSequence(mustReadHandle(t, b))
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), globalCursor)
+
+	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+
+	// CreateIndex: registers the index BUILDING, sets pending=1, schedules
+	// the backfill task. Wrap in an active batch so the IndexVersionState
+	// persistence inside handleCreatedIndexLog has a batch to write into.
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
+		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+	})
+	require.NoError(t, b.wb.Flush())
+
+	require.Len(t, b.backfillTasks, 1, "CreateIndex must schedule one account-asset backfill task")
+
+	// PENDING: current=0, pending=1 before the backfill runs.
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current, "index must be PENDING (current=0) before backfill catches up")
+	require.Equal(t, uint32(1), pending)
+
+	// Drive the backfill until it catches up to the global cursor. Generous
+	// budget so a single tick replays all three logs.
+	b.backfillBudget = time.Second
+	stop := make(chan struct{})
+	for range 10 {
+		if len(b.backfillTasks) == 0 {
+			break
+		}
+		b.processBackfills(context.Background(), stop, globalCursor)
+	}
+
+	require.Empty(t, b.backfillTasks, "backfill task must be retired after catch-up")
+
+	// READY: the atomic switch promoted current ← pending.
+	current, pending = b.versionFor(ledger, canonical)
+	assert.Equal(t, uint32(1), current, "index must be READY (current=pending) after backfill catches up")
+	assert.Equal(t, uint32(0), pending)
+
+	// The historical accounts are now reachable through AccountByAssetPrefix.
+	gotUSD := scanAccountByAsset(t, b.readStore, ledger, "USD", 2)
+	assert.Equal(t, map[string]struct{}{
+		"accounts:alice": {},
+		"accounts:bob":   {},
+		"accounts:carol": {},
+	}, gotUSD)
+
+	gotEUR := scanAccountByAsset(t, b.readStore, ledger, "EUR", 2)
+	assert.Equal(t, map[string]struct{}{
+		"accounts:dave": {},
+		"accounts:erin": {},
+	}, gotEUR)
+}
+
+// TestAccountAssetBackfillWipesDeletedLedgerGeneration pins that the
+// account-asset backfill honors a DeleteLedger log replayed mid-stream. The
+// backfill replays the global log from the start with no generation filter, so
+// a delete + same-name recreate would otherwise leave the deleted generation's
+// account-by-asset rows mixed under the shared by-name keyspace. The replayed
+// DeleteLedger must wipe them (via DeleteLedgerIndexes) before the recreated
+// generation is indexed, mirroring the live processLogs path.
+func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+
+	// Generation 1: alice & bob touch USD/2.
+	writeLogToFSM(t, b, makeCreatedTxLog(1, ledger, 100, []*commonpb.Posting{
+		{Source: "accounts:alice", Destination: "accounts:bob", Asset: "USD/2"},
+	}))
+	writeAppliedProposalToFSM(t, b, 1, 1, 1)
+
+	// DeleteLedger: the entire generation-1 keyspace must be wiped on replay.
+	writeLogToFSM(t, b, makeDeleteLedgerLog(2, ledger))
+	writeAppliedProposalToFSM(t, b, 2, 2, 2)
+
+	// Generation 2 (same name, recreated): only carol & dave touch USD/2.
+	writeLogToFSM(t, b, makeCreatedTxLog(3, ledger, 101, []*commonpb.Posting{
+		{Source: "accounts:carol", Destination: "accounts:dave", Asset: "USD/2"},
+	}))
+	writeAppliedProposalToFSM(t, b, 3, 3, 3)
+
+	globalCursor, err := query.ReadLastSequence(mustReadHandle(t, b))
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), globalCursor)
+
+	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+
+	// CreateIndex schedules the backfill (current=0, pending=1).
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
+		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+	})
+	require.NoError(t, b.wb.Flush())
+	require.Len(t, b.backfillTasks, 1, "CreateIndex must schedule one account-asset backfill task")
+
+	// Drive the backfill to catch-up. A generous budget replays all three
+	// logs (gen-1 write, delete, gen-2 write) in a single batch, so the range
+	// delete and the recreate's writes land in one commit.
+	b.backfillBudget = time.Second
+	stop := make(chan struct{})
+	for range 10 {
+		if len(b.backfillTasks) == 0 {
+			break
+		}
+		b.processBackfills(context.Background(), stop, globalCursor)
+	}
+	require.Empty(t, b.backfillTasks, "backfill task must be retired after catch-up")
+
+	// READY: the atomic switch promoted current ← pending.
+	current, pending := b.versionFor(ledger, canonical)
+	assert.Equal(t, uint32(1), current)
+	assert.Equal(t, uint32(0), pending)
+
+	// Only the recreated generation's accounts survive. alice & bob existed
+	// only in the deleted generation and must be gone — proving the replayed
+	// DeleteLedger fired and its range delete did not clobber the recreate's
+	// writes ordered after it.
+	got := scanAccountByAsset(t, b.readStore, ledger, "USD", 2)
+	assert.Equal(t, map[string]struct{}{
+		"accounts:carol": {},
+		"accounts:dave":  {},
+	}, got)
+}
+
+// TestAccountAssetBackfillDoesNotWipeUnrelatedLedger pins that a single-ledger
+// account-asset backfill, which replays the GLOBAL log, must not act on a
+// DeleteLedger entry for a *different* ledger. DeleteLedgerIndexes is a full
+// wipe of every ledger-scoped prefix (version state, backfill state, all index
+// keyspaces), so firing it for an unrelated, currently-READY ledger during this
+// task's replay would silently degrade that ledger's indexes (version reset to
+// 0, rows gone). Regression for the EN-1368 review blocker.
+func TestAccountAssetBackfillDoesNotWipeUnrelatedLedger(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const (
+		other = "other"
+		task  = "task"
+	)
+
+	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+
+	// Single global stream. Ledger "other" lives through a delete + same-name
+	// recreate (so it currently holds live state), then "task" records its own
+	// transaction:
+	//   seq 1: other gen-1 (alice/bob)
+	//   seq 2: DeleteLedger(other)
+	//   seq 3: other gen-2 (carol/dave) -- the surviving generation
+	//   seq 4: task (zoe/yan)
+	writeLogToFSM(t, b, makeCreatedTxLog(1, other, 100, []*commonpb.Posting{
+		{Source: "accounts:alice", Destination: "accounts:bob", Asset: "USD/2"},
+	}))
+	writeAppliedProposalToFSM(t, b, 1, 1, 1)
+
+	writeLogToFSM(t, b, makeDeleteLedgerLog(2, other))
+	writeAppliedProposalToFSM(t, b, 2, 2, 2)
+
+	writeLogToFSM(t, b, makeCreatedTxLog(3, other, 101, []*commonpb.Posting{
+		{Source: "accounts:carol", Destination: "accounts:dave", Asset: "USD/2"},
+	}))
+	writeAppliedProposalToFSM(t, b, 3, 3, 3)
+
+	writeLogToFSM(t, b, makeCreatedTxLog(4, task, 102, []*commonpb.Posting{
+		{Source: "accounts:zoe", Destination: "accounts:yan", Asset: "USD/2"},
+	}))
+	writeAppliedProposalToFSM(t, b, 4, 4, 4)
+
+	globalCursor, err := query.ReadLastSequence(mustReadHandle(t, b))
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), globalCursor)
+
+	// Bring "other"'s account-asset index to READY first. Its own backfill
+	// honors the mid-stream DeleteLedger(other), so only the recreated
+	// generation survives.
+	runAccountAssetBackfill(t, b, other, globalCursor)
+
+	// "other"'s version state is persisted to Pebble as {current:1, pending:0}.
+	// This is the load-bearing signal: a node restart rebuilds the in-memory
+	// version cache from this row (initIndexConfig → ReadAllIndexVersionStates),
+	// so wiping it silently degrades "other"'s READY index to "still building".
+	otherState, found, err := b.readStore.ReadIndexVersionState(other, canonical)
+	require.NoError(t, err)
+	require.True(t, found, "other's version state must be persisted before task's backfill runs")
+	require.Equal(t, uint32(1), otherState.CurrentVersion)
+	require.Equal(t, uint32(0), otherState.PendingVersion)
+	require.Equal(t, map[string]struct{}{
+		"accounts:carol": {},
+		"accounts:dave":  {},
+	}, scanAccountByAsset(t, b.readStore, other, "USD", 2))
+
+	// Now build "task"'s account-asset index. Its backfill replays the SAME
+	// global log and encounters DeleteLedger(other) at seq 2 — it must skip it,
+	// because "other" is unrelated to this task and currently READY.
+	runAccountAssetBackfill(t, b, task, globalCursor)
+
+	// task is indexed from its own transaction.
+	assert.Equal(t, map[string]struct{}{
+		"accounts:zoe": {},
+		"accounts:yan": {},
+	}, scanAccountByAsset(t, b.readStore, task, "USD", 2))
+
+	// "other"'s PERSISTED version state is untouched. Before the fix, task's
+	// backfill called DeleteLedgerIndexes(other), range-deleting other's
+	// SubInternalIndexVersion row — so on the next restart other's READY index
+	// would silently revert to current=0. (The in-memory versionFor and the
+	// account-by-asset rows are NOT reliable signals here: the cache is not
+	// re-read mid-process, and the buggy global writes re-create other's rows
+	// after the range delete within the same batch — only the persisted version
+	// state exposes the wipe.)
+	otherState, found, err = b.readStore.ReadIndexVersionState(other, canonical)
+	require.NoError(t, err)
+	assert.True(t, found, "task's backfill must not wipe other's persisted version state")
+	assert.Equal(t, uint32(1), otherState.CurrentVersion, "task's backfill must not reset other's index version")
+	assert.Equal(t, uint32(0), otherState.PendingVersion)
+	assert.Equal(t, map[string]struct{}{
+		"accounts:carol": {},
+		"accounts:dave":  {},
+	}, scanAccountByAsset(t, b.readStore, other, "USD", 2))
+}
+
+// runAccountAssetBackfill creates the account-asset index for ledger and drives
+// its backfill to catch up to globalCursor, leaving the index READY.
+func runAccountAssetBackfill(t *testing.T, b *Builder, ledger string, globalCursor uint64) {
+	t.Helper()
+
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
+		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+	})
+	require.NoError(t, b.wb.Flush())
+
+	b.backfillBudget = time.Second
+	stop := make(chan struct{})
+	for range 10 {
+		if len(b.backfillTasks) == 0 {
+			break
+		}
+		b.processBackfills(context.Background(), stop, globalCursor)
+	}
+	require.Empty(t, b.backfillTasks, "backfill task for %q must be retired after catch-up", ledger)
+}
+
+// mustReadHandle opens a direct read handle on the builder's FSM store and
+// registers its cleanup with the test.
+func mustReadHandle(t *testing.T, b *Builder) *dal.ReadHandle {
+	t.Helper()
+
+	handle, err := b.pebbleStore.NewDirectReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = handle.Close() })
+
+	return handle
 }

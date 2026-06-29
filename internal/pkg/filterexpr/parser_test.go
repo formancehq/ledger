@@ -972,3 +972,86 @@ func TestParse(t *testing.T) {
 			"deeply-nested parens must trip the depth guard before participle (#341)")
 	})
 }
+
+func TestParse_HasAsset(t *testing.T) {
+	t.Parallel()
+
+	t.Run("bare asset is precision 0", func(t *testing.T) {
+		t.Parallel()
+
+		f, err := Parse("has asset USD")
+		require.NoError(t, err)
+		c := f.GetAccountHasAsset()
+		require.NotNil(t, c)
+		assert.Equal(t, "USD", c.GetAssetBase())
+		assert.Equal(t, uint32(0), c.GetPrecision())
+	})
+
+	t.Run("asset with precision", func(t *testing.T) {
+		t.Parallel()
+
+		f, err := Parse("has asset USD/4")
+		require.NoError(t, err)
+		c := f.GetAccountHasAsset()
+		require.NotNil(t, c)
+		assert.Equal(t, "USD", c.GetAssetBase())
+		assert.Equal(t, uint32(4), c.GetPrecision())
+	})
+
+	t.Run("combined with metadata", func(t *testing.T) {
+		t.Parallel()
+
+		f, err := Parse("has asset USD and metadata[type] == premium")
+		require.NoError(t, err)
+		require.NotNil(t, f.GetAnd())
+		require.Len(t, f.GetAnd().GetFilters(), 2)
+	})
+
+	// A "/" present but with a non-canonical precision must be rejected, not
+	// silently coerced to a different cell (a wrong result set). Covers
+	// unparseable suffixes plus the leading-zero / zero-precision forms that
+	// domain.ValidateAsset also rejects ("USD/02" aliasing "USD/2",
+	// "USD/0"/"USD/00" aliasing the bare-"USD" precision-0 cell).
+	t.Run("malformed precision is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		for _, in := range []string{
+			"has asset USD/abc", "has asset USD/256", "has asset USD/2/3", "has asset USD/",
+			"has asset USD/0", "has asset USD/02", "has asset USD/00",
+		} {
+			_, err := Parse(in)
+			require.Error(t, err, "Parse(%q) should reject the non-canonical precision", in)
+		}
+	})
+}
+
+// TestParse_HasAssetKeywordsNotReserved guards that `has` and `asset` stay
+// usable as bare account/metadata values — they must not be promoted to global
+// lexer keywords just to drive the `has asset` production.
+func TestParse_HasAssetKeywordsNotReserved(t *testing.T) {
+	t.Parallel()
+
+	t.Run("has is a usable bare address value", func(t *testing.T) {
+		t.Parallel()
+
+		f, err := Parse("address == has")
+		require.NoError(t, err)
+		assert.Equal(t, "has", f.GetAddress().GetHardcodedExact())
+	})
+
+	t.Run("asset is a usable bare metadata value", func(t *testing.T) {
+		t.Parallel()
+
+		f, err := Parse("metadata[k] == asset")
+		require.NoError(t, err)
+		assert.Equal(t, "asset", f.GetField().GetStringCond().GetHardcoded())
+	})
+
+	t.Run("has-prefixed address segment lexes as one identifier", func(t *testing.T) {
+		t.Parallel()
+
+		f, err := Parse("address ^= has:wallet")
+		require.NoError(t, err)
+		assert.Equal(t, "has:wallet", f.GetAddress().GetHardcodedPrefix())
+	})
+}

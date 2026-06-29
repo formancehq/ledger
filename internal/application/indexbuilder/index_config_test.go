@@ -349,6 +349,62 @@ func TestLoadIndexRegistry_StreamsAndDispatches(t *testing.T) {
 	assert.Contains(t, scheduledLedgers, "ledgerB")
 }
 
+// TestLoadIndexRegistry_SkipsCompletedBuiltinBackfill pins the version guard
+// for builtin indexes: a BUILDING entry whose local IndexVersionState was
+// already promoted ({current:1, pending:0}) must NOT be re-scheduled on
+// restart, while a BUILDING entry that was never built locally
+// ({current:0, pending:1}) still IS. Without the guard the completed
+// account-builtin backfill re-runs and trips the pending==0 invariant in
+// completeBackfill, stranding the task in a BUILDING logging loop.
+func TestLoadIndexRegistry_SkipsCompletedBuiltinBackfill(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.indexConfig["done"] = newLedgerIndexConfig()
+	b.indexConfig["fresh"] = newLedgerIndexConfig()
+
+	assetID := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+
+	type seed struct {
+		ledger string
+		id     *commonpb.IndexID
+		status commonpb.IndexBuildStatus
+	}
+	seeds := []seed{
+		// Completed locally but still BUILDING in the registry (READY flip
+		// not yet applied) — must be skipped.
+		{"done", assetID, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
+		// Never built locally — must be scheduled.
+		{"fresh", assetID, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
+	}
+
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	for _, s := range seeds {
+		k := domain.IndexKey{LedgerName: s.ledger, Canonical: indexes.Canonical(s.id)}.Bytes()
+		_, err := b.attrs.Index.Set(fsmBatch, k, &commonpb.Index{
+			Ledger:      s.ledger,
+			Id:          s.id,
+			BuildStatus: s.status,
+		})
+		require.NoError(t, err)
+	}
+	require.NoError(t, fsmBatch.Commit())
+
+	// Prime the per-replica version states: "done" is promoted, "fresh" is
+	// mid-build.
+	b.putVersionState("done", indexes.Canonical(assetID), readstore.IndexVersionState{CurrentVersion: 1, PendingVersion: 0})
+	b.putVersionState("fresh", indexes.Canonical(assetID), readstore.IndexVersionState{CurrentVersion: 0, PendingVersion: 1})
+
+	handle, err := b.pebbleStore.NewDirectReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = handle.Close() })
+
+	require.NoError(t, b.loadIndexRegistry(handle))
+
+	require.Len(t, b.backfillTasks, 1, "only the never-built index should be scheduled")
+	assert.Equal(t, "fresh", b.backfillTasks[0].ledger)
+}
+
 func TestRemoveBackfillTask(t *testing.T) {
 	t.Parallel()
 

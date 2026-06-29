@@ -152,6 +152,8 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 		return compileNot(ctx, f.Not)
 	case *commonpb.QueryFilter_Reference:
 		return compileReferenceCondition(ctx, f.Reference)
+	case *commonpb.QueryFilter_AccountHasAsset:
+		return compileAccountHasAssetCondition(ctx, f.AccountHasAsset)
 	case *commonpb.QueryFilter_BuiltinUint:
 		return compileBuiltinUintCondition(ctx, f.BuiltinUint)
 	case *commonpb.QueryFilter_LogBuiltinUint:
@@ -1010,6 +1012,43 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 		Label:  fmt.Sprintf("PrefixIterator(txref:%s:%s)", ctx.ledgerName, value),
 		Kind:   "Prefix",
 		Prefix: "txref",
+	}), nil
+}
+
+// compileAccountHasAssetCondition compiles a has-asset condition into a prefix
+// scan on the account-by-asset inverted index, yielding the account address
+// (the trailing key segment) for every account that has touched the exact
+// (assetBase, precision) cell. Valid only on the ACCOUNTS target. Requires the
+// account asset builtin index to be READY — there is no on-scan fallback.
+func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAssetCondition) (readstore.EntityIterator, error) {
+	if ctx.target != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		return nil, domain.NewFilterCompilationError("has asset condition is only valid on the accounts target")
+	}
+
+	if _, err := requireIndexReady(ctx,
+		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+		"has asset"); err != nil {
+		return nil, err
+	}
+
+	if c.GetPrecision() > math.MaxUint8 {
+		return nil, domain.NewFilterCompilationError("has asset precision %d exceeds maximum %d", c.GetPrecision(), math.MaxUint8)
+	}
+
+	// Key layout: [0x0C][ledger 64B][assetBase\x00][precision 1B][account].
+	// The account is the variable-length trailing segment after the prefix,
+	// so entityOffset = len(prefix) and entityLen = 0 (extends to end of key).
+	prefix := readstore.AccountByAssetPrefix(ctx.kb, ctx.ledgerName, c.GetAssetBase(), uint8(c.GetPrecision()))
+
+	iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, prefix, len(prefix), 0)
+	if pErr != nil {
+		return nil, fmt.Errorf("creating has-asset prefix iterator: %w", pErr)
+	}
+
+	return trackIterator(iter, ctx.profile, &IteratorStats{
+		Label:  fmt.Sprintf("PrefixIterator(abya:%s:%s/%d)", ctx.ledgerName, c.GetAssetBase(), c.GetPrecision()),
+		Kind:   "Prefix",
+		Prefix: "abya",
 	}), nil
 }
 

@@ -25,10 +25,12 @@ Index types:
   source-address       Source account→transaction mapping
   dest-address         Destination account→transaction mapping
   metadata             Metadata field index (requires --target and --key)
+  account-asset        Account asset-presence index (the 'has asset' account filter)
 
 Examples:
   ledgerctl indexes drop --ledger my-ledger --type address
-  ledgerctl indexes drop --ledger my-ledger --type metadata --target account --key category`,
+  ledgerctl indexes drop --ledger my-ledger --type metadata --target account --key category
+  ledgerctl indexes drop --ledger my-ledger --type account-asset`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runDropIndex,
@@ -61,7 +63,7 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {
 		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "inserted-at", "log-ledger"}).
+			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "inserted-at", "log-ledger", "account-asset"}).
 			WithDefaultText("Select index type to drop").
 			Show()
 		if err != nil {
@@ -104,8 +106,11 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	case "inserted-at":
 		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)
 		indexDesc = "inserted-at"
+	case "account-asset":
+		req.Id = accountBuiltinIndexID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+		indexDesc = "account has-asset"
 	default:
-		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, or inserted-at", indexType)
+		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, inserted-at, or account-asset", indexType)
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)

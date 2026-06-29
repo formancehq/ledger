@@ -9,6 +9,37 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+func TestFormatAccountHasAsset(t *testing.T) {
+	t.Parallel()
+
+	hasAsset := func(base string, precision uint32) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_AccountHasAsset{
+				AccountHasAsset: &commonpb.AccountHasAssetCondition{AssetBase: base, Precision: precision},
+			},
+		}
+	}
+
+	t.Run("bare base renders without precision", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, "has asset USD", Format(hasAsset("USD", 0)))
+	})
+
+	t.Run("base with precision", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, "has asset USD/4", Format(hasAsset("USD", 4)))
+	})
+
+	t.Run("round-trips through Parse", func(t *testing.T) {
+		t.Parallel()
+		for _, in := range []string{"has asset USD", "has asset USD/2"} {
+			f, err := Parse(in)
+			require.NoError(t, err)
+			assert.Equal(t, in, Format(f), "round-trip for %q", in)
+		}
+	})
+}
+
 func TestFormat(t *testing.T) {
 	t.Parallel()
 

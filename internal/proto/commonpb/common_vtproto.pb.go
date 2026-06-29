@@ -2837,6 +2837,15 @@ func (m *QueryFilter_LogBuiltinUint) CloneVT() isQueryFilter_Filter {
 	return r
 }
 
+func (m *QueryFilter_AccountHasAsset) CloneVT() isQueryFilter_Filter {
+	if m == nil {
+		return (*QueryFilter_AccountHasAsset)(nil)
+	}
+	r := new(QueryFilter_AccountHasAsset)
+	r.AccountHasAsset = m.AccountHasAsset.CloneVT()
+	return r
+}
+
 func (m *ReferenceCondition) CloneVT() *ReferenceCondition {
 	if m == nil {
 		return (*ReferenceCondition)(nil)
@@ -2921,6 +2930,24 @@ func (m *LogBuiltinUintCondition) CloneVT() *LogBuiltinUintCondition {
 }
 
 func (m *LogBuiltinUintCondition) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *AccountHasAssetCondition) CloneVT() *AccountHasAssetCondition {
+	if m == nil {
+		return (*AccountHasAssetCondition)(nil)
+	}
+	r := new(AccountHasAssetCondition)
+	r.AssetBase = m.AssetBase
+	r.Precision = m.Precision
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AccountHasAssetCondition) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -8350,6 +8377,31 @@ func (this *QueryFilter_LogBuiltinUint) EqualVT(thatIface isQueryFilter_Filter) 
 	return true
 }
 
+func (this *QueryFilter_AccountHasAsset) EqualVT(thatIface isQueryFilter_Filter) bool {
+	that, ok := thatIface.(*QueryFilter_AccountHasAsset)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.AccountHasAsset, that.AccountHasAsset; p != q {
+		if p == nil {
+			p = &AccountHasAssetCondition{}
+		}
+		if q == nil {
+			q = &AccountHasAssetCondition{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *ReferenceCondition) EqualVT(that *ReferenceCondition) bool {
 	if this == that {
 		return true
@@ -8446,6 +8498,28 @@ func (this *LogBuiltinUintCondition) EqualVT(that *LogBuiltinUintCondition) bool
 
 func (this *LogBuiltinUintCondition) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*LogBuiltinUintCondition)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AccountHasAssetCondition) EqualVT(that *AccountHasAssetCondition) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.AssetBase != that.AssetBase {
+		return false
+	}
+	if this.Precision != that.Precision {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *AccountHasAssetCondition) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountHasAssetCondition)
 	if !ok {
 		return false
 	}
@@ -16713,6 +16787,25 @@ func (m *QueryFilter_LogBuiltinUint) MarshalToSizedBufferVT(dAtA []byte) (int, e
 	}
 	return len(dAtA) - i, nil
 }
+func (m *QueryFilter_AccountHasAsset) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *QueryFilter_AccountHasAsset) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AccountHasAsset != nil {
+		size, err := m.AccountHasAsset.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x5a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *ReferenceCondition) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -16934,6 +17027,51 @@ func (m *LogBuiltinUintCondition) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Field))
 		i--
 		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AccountHasAssetCondition) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountHasAssetCondition) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountHasAssetCondition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Precision != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Precision))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.AssetBase) > 0 {
+		i -= len(m.AssetBase)
+		copy(dAtA[i:], m.AssetBase)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.AssetBase)))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -21709,6 +21847,18 @@ func (m *QueryFilter_LogBuiltinUint) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *QueryFilter_AccountHasAsset) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AccountHasAsset != nil {
+		l = m.AccountHasAsset.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *ReferenceCondition) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -21780,6 +21930,23 @@ func (m *LogBuiltinUintCondition) SizeVT() (n int) {
 	if m.Cond != nil {
 		l = m.Cond.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AccountHasAssetCondition) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.AssetBase)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Precision != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Precision))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -39895,6 +40062,47 @@ func (m *QueryFilter) UnmarshalVT(dAtA []byte) error {
 				m.Filter = &QueryFilter_LogBuiltinUint{LogBuiltinUint: v}
 			}
 			iNdEx = postIndex
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AccountHasAsset", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Filter.(*QueryFilter_AccountHasAsset); ok {
+				if err := oneof.AccountHasAsset.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountHasAssetCondition{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Filter = &QueryFilter_AccountHasAsset{AccountHasAsset: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -40368,6 +40576,108 @@ func (m *LogBuiltinUintCondition) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AccountHasAssetCondition) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountHasAssetCondition: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountHasAssetCondition: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AssetBase", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AssetBase = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Precision", wireType)
+			}
+			m.Precision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Precision |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -162,16 +162,18 @@ func (b *Builder) seedLedgerIndexConfig(ctx context.Context, handle *dal.ReadHan
 // backfill for every BUILDING entry. Bucket-scoped entries (LedgerID == 0,
 // Index.Ledger empty) are kept aside in bucketIndexConfig.
 //
-// Backfill scheduling logic for BUILDING entries:
-//   - Non-metadata indexes (builtin tx/account/log): schedule unconditionally.
-//     BuildStatus is the FSM-side signal for these — versioning doesn't apply.
-//   - Metadata indexes: cross-check the local IndexVersionState cache.
-//     If CurrentVersion != 0, the local replica already finished a prior
-//     build, so any BUILDING flag reflects a *new* retype which is handled
-//     by scheduleResumedRewrites (rewrite task) — NOT a backfill from
-//     cursor 0. If CurrentVersion == 0, the local replica has never built
-//     this index; a backfill IS needed to populate v_pending (or v=1 by
-//     default).
+// Backfill scheduling for BUILDING entries cross-checks the local
+// IndexVersionState cache, which every index kind (builtin tx/account/log and
+// metadata) maintains identically — CreateIndex seeds {current:0, pending:1}
+// and completeBackfill promotes to {current:1, pending:0}:
+//   - CurrentVersion == 0: this replica has never built the index; a backfill
+//     IS needed to populate v_pending (v=1 by default).
+//   - CurrentVersion != 0: this replica already finished the backfill. The
+//     BUILDING flag only lingers because the cluster-wide READY flip (a
+//     non-audited TechnicalUpdate) hasn't landed yet, or — for metadata — a
+//     *new* retype owned by scheduleResumedRewrites (a rewrite task, NOT a
+//     backfill from cursor 0). Re-scheduling would re-run a completed backfill
+//     and trip the pending==0 invariant in completeBackfill, so it is skipped.
 func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 	iter, err := b.attrs.Index.NewStreamingIter(handle, nil)
 	if err != nil {
@@ -225,14 +227,21 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 			continue
 		}
 
-		if _, isMetadata := idx.GetId().GetKind().(*commonpb.IndexID_Metadata); isMetadata {
-			current, _ := b.versionFor(ledgerName, canonical)
-			if current != 0 {
-				// The local replica already built v_current; the
-				// resume path (scheduleResumedRewrites) owns the
-				// BUILDING flag here.
-				continue
-			}
+		// Every index kind (builtin tx/account/log and metadata) records a
+		// per-replica IndexVersionState: handleCreatedIndexLog seeds
+		// {current:0, pending:1} and completeBackfill promotes it to
+		// {current:1, pending:0}. A non-zero current_version therefore means
+		// this replica already finished the backfill; the lingering BUILDING
+		// flag only reflects the cluster-wide READY flip (a non-audited
+		// TechnicalUpdate) not having landed yet, or — for metadata — a retype
+		// owned by scheduleResumedRewrites. Re-scheduling here would re-run a
+		// completed backfill and trip the pending==0 invariant in
+		// completeBackfill, stranding the task in a BUILDING logging loop. A
+		// backfill is only needed while current_version == 0 (never built
+		// locally); a drop+recreate clears the version state so a genuine
+		// rebuild still re-enters this branch with current == 0.
+		if current, _ := b.versionFor(ledgerName, canonical); current != 0 {
+			continue
 		}
 
 		b.scheduleBackfillForIndex(ledgerName, idx.GetId())
@@ -251,7 +260,11 @@ func (b *Builder) scheduleBackfillForIndex(ledgerName string, id *commonpb.Index
 	case *commonpb.IndexID_LogBuiltin:
 		b.addBackfillTaskForLogBuiltin(ledgerName, k.LogBuiltin)
 	case *commonpb.IndexID_AccountBuiltin:
-		// No account builtin backfills yet — placeholder for future kinds.
+		// Only the account has-asset index has a posting-replay backfill;
+		// other account builtin kinds plug in here as they land.
+		if k.AccountBuiltin == commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET {
+			b.addBackfillTaskForAccountBuiltin(ledgerName, k.AccountBuiltin)
+		}
 	case *commonpb.IndexID_Metadata:
 		switch k.Metadata.GetTarget() {
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
@@ -334,10 +347,28 @@ func (c *ledgerIndexConfig) indexesPostingAddressMappings() bool {
 		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
 }
 
+// indexesPostingDerived reports whether any enabled index is derived from
+// transaction postings and therefore needs the per-log excluded-volume set
+// (transient/purged volumes) to skip ephemeral accounts. Covers the tx address
+// mappings and the account has-asset index — the account-asset index alone is
+// enough to require exclusion, otherwise asset-presence rows would be written
+// for transient/purged volumes on ledgers that enable only that index.
+func (c *ledgerIndexConfig) indexesPostingDerived() bool {
+	return c.indexesPostingAddressMappings() ||
+		c.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+}
+
 // isLogBuiltinIndexed checks if a specific log builtin index is enabled.
 // Returns false if the receiver is nil (unknown ledger).
 func (c *ledgerIndexConfig) isLogBuiltinIndexed(index commonpb.LogBuiltinIndex) bool {
 	return c.isIndexed(indexes.LogBuiltinID(index))
+}
+
+// isAccountBuiltinIndexed reports whether the given account builtin index is
+// registered (regardless of build status) for this ledger config.
+// Returns false if the receiver is nil (unknown ledger).
+func (c *ledgerIndexConfig) isAccountBuiltinIndexed(index commonpb.AccountBuiltinIndex) bool {
+	return c.isIndexed(indexes.AccountBuiltinID(index))
 }
 
 // ledgerConfig returns the index config for a ledger, or nil if unknown.

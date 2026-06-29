@@ -1,6 +1,7 @@
 package readstore
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -210,4 +211,20 @@ func TestReadStoreComparerSplitProperties(t *testing.T) {
 		require.LessOrEqual(t, cmp(prefixA, prefixB), 0,
 			"Compare(prefix(%x), prefix(%x)) should be <= 0", a, b)
 	}
+}
+
+func TestAccountByAssetKeyOrdering(t *testing.T) {
+	t.Parallel()
+	kb := dal.NewKeyBuilder()
+
+	prefix := AccountByAssetPrefix(kb, "billing", "USD", 0)
+	k1 := AccountByAssetKey(kb, "billing", "USD", 0, "accounts:alice")
+	k2 := AccountByAssetKey(kb, "billing", "USD", 0, "accounts:bob")
+	require.True(t, bytes.HasPrefix(k1, prefix))
+	require.True(t, bytes.HasPrefix(k2, prefix))
+
+	other := AccountByAssetPrefix(kb, "billing", "USD", 2)
+	require.False(t, bytes.HasPrefix(k1, other))
+
+	require.Equal(t, PrefixAccountByAsset, k1[0])
 }

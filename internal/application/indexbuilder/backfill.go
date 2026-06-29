@@ -148,6 +148,11 @@ func (b *Builder) addBackfillTaskForAcctMetadata(ledgerName string, key string) 
 	b.addBackfillTask(ledgerName, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 }
 
+// addBackfillTaskForAccountBuiltin creates a backfill task for an account builtin index.
+func (b *Builder) addBackfillTaskForAccountBuiltin(ledgerName string, index commonpb.AccountBuiltinIndex) {
+	b.addBackfillTask(ledgerName, indexes.AccountBuiltinID(index))
+}
+
 // addBackfillTaskForLogBuiltin creates a backfill task for a log builtin index.
 func (b *Builder) addBackfillTaskForLogBuiltin(ledgerName string, index commonpb.LogBuiltinIndex) {
 	b.addBackfillTask(ledgerName, indexes.LogBuiltinID(index))
@@ -680,7 +685,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	// the same batch. Cancel-on-error / Commit-on-success below
 	// guarantees we never leave the batch dangling.
 	batch := b.readStore.NewBatch()
-	b.wb.Init(batch)
+	b.initBatch(batch)
 	committed := false
 
 	defer func() {
@@ -913,7 +918,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 	}
 
 	batch := b.readStore.NewBatch()
-	b.wb.Init(batch)
+	b.initBatch(batch)
 	committed := false
 
 	defer func() {
@@ -1094,10 +1099,10 @@ func (b *Builder) processBackfills(ctx context.Context, stop <-chan struct{}, gl
 		task := b.backfillTasks[b.nextBackfillIdx]
 
 		if task.cursor >= globalCursor {
-			// Backfill caught up to the global indexer cursor. For
-			// metadata indexes, promote pending → current locally and
-			// clean up. Builtin indexes (tx/account/log) don't use
-			// versioning, so the only cleanup is dropping the task.
+			// Backfill caught up to the global indexer cursor. Every index
+			// kind (metadata and builtin tx/account/log) uses the same
+			// per-replica IndexVersionState, so completeBackfill promotes
+			// pending → current locally and then the task is dropped.
 			if err := b.completeBackfill(task); err != nil {
 				b.logger.WithFields(map[string]any{
 					"ledger": task.ledger,
@@ -1283,7 +1288,7 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 		)
 
 		batch := b.readStore.NewBatch()
-		b.wb.Init(batch)
+		b.initBatch(batch)
 
 		for batchCount < backfillBatchSize {
 			log, err := logsCursor.Next()

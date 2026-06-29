@@ -205,6 +205,7 @@ enum TransactionBuiltinIndex {
 // AccountBuiltinIndex identifies a built-in account field that can be indexed.
 enum AccountBuiltinIndex {
   ACCT_BUILTIN_INDEX_UNSPECIFIED = 0;
+  ACCT_BUILTIN_INDEX_ASSET = 1;
 }
 
 // LogBuiltinIndex identifies a built-in log field that can be indexed.
@@ -1040,6 +1041,7 @@ message QueryFilter {
     LedgerCondition ledger = 8;
     LogIdCondition log_id = 9;
     LogBuiltinUintCondition log_builtin_uint = 10;
+    AccountHasAssetCondition account_has_asset = 11;
   }
 }
 
@@ -1068,6 +1070,15 @@ message BuiltinUintCondition {
 message LogBuiltinUintCondition {
   LogBuiltinIndex field = 1;
   UintCondition cond = 2;
+}
+
+// AccountHasAssetCondition matches accounts that have ever held a volume cell
+// for the given asset (base + precision). Volume-cell presence semantics, not
+// balance. Resolved exclusively via the ACCT_BUILTIN_INDEX_ASSET readstore
+// index; there is no on-scan fallback.
+message AccountHasAssetCondition {
+  string asset_base = 1;
+  uint32 precision = 2;
 }
 
 message AndFilter {

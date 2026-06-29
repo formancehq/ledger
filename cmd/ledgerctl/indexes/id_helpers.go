@@ -7,6 +7,11 @@ func txBuiltinIndexID(b commonpb.TransactionBuiltinIndex) *commonpb.IndexID {
 	return &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: b}}
 }
 
+// accountBuiltinIndexID constructs an IndexID for an account builtin field.
+func accountBuiltinIndexID(b commonpb.AccountBuiltinIndex) *commonpb.IndexID {
+	return &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{AccountBuiltin: b}}
+}
+
 // metadataIndexID constructs an IndexID for a metadata key on the given target.
 func metadataIndexID(target commonpb.TargetType, key string) *commonpb.IndexID {
 	return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{

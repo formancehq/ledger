@@ -120,6 +120,15 @@ func (wb *WriteBatch) WriteDestAccountTxMapping(kb *dal.KeyBuilder, ledgerName s
 	return wb.put(key, nil)
 }
 
+// WriteAccountByAssetIndex records that an account has ever touched (assetBase,
+// precision). Presence-only (nil value); the Put is idempotent so repeated
+// writes for the same cell are harmless.
+func (wb *WriteBatch) WriteAccountByAssetIndex(kb *dal.KeyBuilder, ledgerName, account, assetBase string, precision uint8) error {
+	key := AccountByAssetKey(kb, ledgerName, assetBase, precision, account)
+
+	return wb.put(key, nil)
+}
+
 // WriteMetadataIndex inserts a forward index entry in the metadata inverted
 // index under version 1. Equivalent to WriteMetadataIndexV(..., 1, ...) —
 // kept for callers not yet aware of versioning.

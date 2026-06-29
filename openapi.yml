@@ -3502,7 +3502,12 @@ components:
 
     QueryFilter:
       type: object
-      description: Recursive filter tree (AND/OR/NOT of field conditions and address matches)
+      description: >-
+        Recursive filter tree (AND/OR/NOT of field conditions and address matches).
+        The `match` object holds one of the named condition types: field equality/range
+        (`FieldCondition`), address prefix/exact match (`AddressMatch`), transaction
+        reference match (`ReferenceCondition`), built-in uint range (`BuiltinUintCondition`),
+        or account-asset presence (`AccountHasAssetCondition`).
       properties:
         and:
           type: array
@@ -3516,7 +3521,32 @@ components:
           $ref: '#/components/schemas/QueryFilter'
         match:
           type: object
-          description: Field condition or address match
+          description: >-
+            Field condition or address match. Use one of the named condition schemas
+            (e.g. `AccountHasAssetCondition`) as the value.
+
+    AccountHasAssetCondition:
+      type: object
+      description: >-
+        Matches accounts that have ever touched the specified asset (volume-cell
+        presence semantics — not a balance check). Requires a READY `account-asset`
+        index on the ledger; the query is rejected if the index is absent or still
+        BUILDING.
+      required:
+        - assetBase
+      properties:
+        assetBase:
+          type: string
+          description: Asset code without precision suffix (e.g. `USD`, `EUR`).
+          example: USD
+        precision:
+          type: integer
+          format: int32
+          minimum: 0
+          description: >-
+            Asset precision (number of decimal places). Defaults to `0` when
+            omitted, matching assets recorded with no decimal places.
+          example: 2
 
     ExecutePreparedQueryResponse:
       type: object

@@ -29,6 +29,7 @@ Index types:
   timestamp            Transaction timestamp index (range filter)
   inserted-at          Transaction inserted_at (creation date) index (range filter)
   log-ledger           Per-ledger log index (enables filtered log listing)
+  account-asset        Account asset-presence index (enables the 'has asset' account filter)
 
 Examples:
   ledgerctl indexes create --ledger my-ledger --type address
@@ -37,7 +38,8 @@ Examples:
   ledgerctl indexes create --ledger my-ledger --type reference
   ledgerctl indexes create --ledger my-ledger --type timestamp
   ledgerctl indexes create --ledger my-ledger --type inserted-at
-  ledgerctl indexes create --ledger my-ledger --type log-ledger`,
+  ledgerctl indexes create --ledger my-ledger --type log-ledger
+  ledgerctl indexes create --ledger my-ledger --type account-asset`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runCreateIndex,
@@ -70,7 +72,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {
 		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "inserted-at", "log-ledger"}).
+			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "inserted-at", "log-ledger", "account-asset"}).
 			WithDefaultText("Select index type").
 			Show()
 		if err != nil {
@@ -113,8 +115,11 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	case "inserted-at":
 		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)
 		indexDesc = "inserted-at"
+	case "account-asset":
+		req.Id = accountBuiltinIndexID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+		indexDesc = "account has-asset"
 	default:
-		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, or inserted-at", indexType)
+		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, inserted-at, log-ledger, or account-asset", indexType)
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)

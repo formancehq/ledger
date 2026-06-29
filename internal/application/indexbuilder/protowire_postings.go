@@ -26,6 +26,10 @@ type parsedLog struct {
 	Postings      []rawPosting              // reused across iterations via truncate-to-zero
 	LogType       int32                     // LedgerLogPayload oneof tag: 1=created, 2=reverted, 0=skip
 	PurgedVolumes []*commonpb.TouchedVolume // LedgerLog.purged_volumes (field 4), reused across iterations
+	// DeletedLedger is the name carried by a DeleteLedger log (LogPayload
+	// field 2); empty for every other log. It lets the backfill replay wipe
+	// the deleted ledger's readstore rows, mirroring the live processLogs path.
+	DeletedLedger string
 }
 
 // GetPurgedVolumes satisfies ledgerLogWithPurgedVolumes so extractPurgedVolumes
@@ -54,6 +58,7 @@ func parsePostingsFromLog(data []byte, out *parsedLog) error {
 	out.Ledger = ""
 	out.TxID = 0
 	out.PurgedVolumes = out.PurgedVolumes[:0]
+	out.DeletedLedger = ""
 
 	// --- Log level: extract sequence (field 1) and payload (field 2) ---
 	var payloadBytes []byte
@@ -94,6 +99,27 @@ func parsePostingsFromLog(data []byte, out *parsedLog) error {
 	}
 
 	if payloadBytes == nil {
+		return nil
+	}
+
+	// --- LogPayload level: a DeleteLedger payload (field 2) carries no
+	// postings. Record the deleted ledger name so the backfill can wipe its
+	// readstore rows (mirroring the live processLogs path), then stop. The
+	// oneof guarantees field 2 and field 3 (apply) are mutually exclusive. ---
+	deleteBytes, err := scanBytesField(payloadBytes, 2)
+	if err != nil {
+		return fmt.Errorf("LogPayload delete_ledger: %w", err)
+	}
+
+	if deleteBytes != nil {
+		// DeletedLedgerLog.name is field 1.
+		name, nerr := scanBytesField(deleteBytes, 1)
+		if nerr != nil {
+			return fmt.Errorf("DeletedLedgerLog: %w", nerr)
+		}
+
+		out.DeletedLedger = string(name)
+
 		return nil
 	}
 

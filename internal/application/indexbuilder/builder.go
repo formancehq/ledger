@@ -74,6 +74,22 @@ type Builder struct {
 	wb       *readstore.WriteBatch
 	accounts map[string]struct{}
 
+	// seenAcctAsset deduplicates account-by-asset index writes within the
+	// in-flight batch: it holds the AccountByAssetKey bytes (as string) already
+	// written, so a repeated (account, assetBase, precision) cell in the same
+	// batch skips a redundant Get + Put. Reset per batch (initBatch) so it does
+	// not grow unbounded across a long backfill.
+	seenAcctAsset map[string]struct{}
+
+	// deletedThisBatch holds the names of ledgers whose read indexes were
+	// range-deleted earlier in the in-flight batch (DeleteLedger). The
+	// account-by-asset dedup must NOT consult committed state for these
+	// ledgers: readstoreKeyExists reads committed Pebble directly and cannot
+	// see the pending range delete, so a stale committed row would suppress the
+	// recreated ledger's Put — which the range delete then wipes at commit,
+	// silently dropping the row. Reset per batch (initBatch).
+	deletedThisBatch map[string]struct{}
+
 	// batchSchema is the per-batch memoization layer over FSM Pebble
 	// LedgerInfo lookups. Set at the top of each indexer batch
 	// (processLogs / processBackfill), reset to nil at the end via defer.
@@ -330,6 +346,16 @@ func NewBuilder(
 		wb:             readstore.NewWriteBatch(),
 		accounts:       make(map[string]struct{}, 64),
 	}
+}
+
+// initBatch binds the WriteBatch to a fresh dal.WriteSession and resets the
+// per-batch account-by-asset dedup set. This is the single place a batch is
+// bound for index processing, so the dedup set can never be left stale (or
+// grow unbounded) relative to the batch it tracks.
+func (b *Builder) initBatch(batch *dal.WriteSession) {
+	b.wb.Init(batch)
+	b.seenAcctAsset = make(map[string]struct{})
+	b.deletedThisBatch = make(map[string]struct{})
 }
 
 // SetNotifications sets the dedicated Notifications signal for the builder.

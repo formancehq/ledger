@@ -388,6 +388,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// build status (BUILDING ↔ READY) rides on a non-
 						// audited IndexReady TU and is not tracked here —
 						// compareIndexes verifies presence + identity only.
+						//
+						// Account builtin indexes (e.g. ACCT_BUILTIN_INDEX_ASSET)
+						// are verified here at registry level (presence + identity)
+						// like every other index. Readstore *contents* (the
+						// asset→account entries) are intentionally NOT re-derived:
+						// no index type has content verification today; adding it is
+						// a cross-cutting invariant-#8 effort tracked separately.
 						switch d := payload.Apply.GetLog().GetData().GetPayload().(type) {
 						case *commonpb.LedgerLogPayload_CreateIndex:
 							if id := d.CreateIndex.GetId(); id != nil {

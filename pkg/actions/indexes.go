@@ -31,6 +31,20 @@ func DropAddressIndexAction(ledger string, role commonpb.AddressRole) *servicepb
 	return DropBuiltinTxIndexAction(ledger, AddressRoleToBuiltinIndex(role))
 }
 
+// CreateAccountAssetIndexAction creates a request for creating the account
+// asset-presence builtin index (ACCT_BUILTIN_INDEX_ASSET), which backs the
+// `has asset <asset>` account filter.
+func CreateAccountAssetIndexAction(ledger string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateIndex{
+			CreateIndex: &servicepb.CreateIndexRequest{
+				Ledger: ledger,
+				Id:     &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{AccountBuiltin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET}},
+			},
+		},
+	}
+}
+
 // CreateLogBuiltinIndexAction creates a request for creating a log builtin index.
 func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) *servicepb.Request {
 	return &servicepb.Request{
@@ -109,6 +123,23 @@ func WaitForBuiltinIndexReady(ctx context.Context, client servicepb.BucketServic
 // atomically switched into a live keyspace on the local replica.
 func WaitForAddressIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, role commonpb.AddressRole) error {
 	return WaitForBuiltinIndexReady(ctx, client, ledger, AddressRoleToBuiltinIndex(role))
+}
+
+// WaitForAccountAssetIndexReady polls until the account asset-presence builtin
+// index has been atomically switched into a live keyspace on the local replica.
+func WaitForAccountAssetIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string) error {
+	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
+		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+		if err != nil {
+			return err
+		}
+
+		return indexReadyOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
+			b, ok := id.GetKind().(*commonpb.IndexID_AccountBuiltin)
+
+			return ok && b.AccountBuiltin == commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET
+		}, "acct_builtin:"+commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET.String())
+	})
 }
 
 // WaitForLogBuiltinIndexReady polls until a log builtin index has been

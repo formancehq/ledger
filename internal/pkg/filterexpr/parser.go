@@ -9,6 +9,7 @@ import (
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -179,12 +180,17 @@ func (p *Primary) toProto() (*commonpb.QueryFilter, error) {
 }
 
 type Condition struct {
-	Metadata *MetadataCond `parser:"  @@"`
+	Asset    *AssetCond    `parser:"  @@"`
+	Metadata *MetadataCond `parser:"| @@"`
 	Address  *AddressCond  `parser:"| @@"`
 	Ledger   *LedgerCond   `parser:"| @@"`
 }
 
 func (c *Condition) toProto() (*commonpb.QueryFilter, error) {
+	if c.Asset != nil {
+		return c.Asset.toProto()
+	}
+
 	if c.Metadata != nil {
 		return c.Metadata.toProto()
 	}
@@ -194,6 +200,51 @@ func (c *Condition) toProto() (*commonpb.QueryFilter, error) {
 	}
 
 	return c.Address.toProto()
+}
+
+// --- Asset conditions ---
+
+// AssetCond is the `has asset <assetRef>` filter. <assetRef> is a bare base
+// ("USD" → precision 0) or base/precision ("USD/4"). Resolved via the
+// ACCT_BUILTIN_INDEX_ASSET readstore index.
+type AssetCond struct {
+	Asset string `parser:"'has' 'asset' @Ident"`
+}
+
+func (a *AssetCond) toProto() (*commonpb.QueryFilter, error) {
+	base, precision, err := splitAsset(a.Asset)
+	if err != nil {
+		return nil, err
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_AccountHasAsset{
+			AccountHasAsset: &commonpb.AccountHasAssetCondition{
+				AssetBase: base,
+				Precision: uint32(precision),
+			},
+		},
+	}, nil
+}
+
+// splitAsset splits an asset string of the form "BASE" or "BASE/PRECISION"
+// into its base and precision parts. It defers to the canonical asset rules
+// in internal/domain — the single source of truth shared by the hot path
+// (domain.ValidateAsset in processor_transaction) and the volume-key encoder
+// (domain.ParseAssetPrecision in keys.go) — rather than re-deriving them here.
+// Validate-then-parse mirrors that idiom: ValidateAsset rejects a malformed
+// base, a non-numeric or out-of-range precision, and the non-canonical
+// suffixes ("USD/0", "USD/02", "USD/2/3") that would alias a different volume
+// cell, so ParseAssetPrecision can split a known-canonical string. A bare base
+// (no "/") yields precision 0.
+func splitAsset(asset string) (string, uint8, error) {
+	if err := domain.ValidateAsset(asset); err != nil {
+		return "", 0, fmt.Errorf("invalid asset %q: %w", asset, err)
+	}
+
+	base, precision := domain.ParseAssetPrecision(asset)
+
+	return base, precision, nil
 }
 
 // --- Metadata conditions ---

@@ -2072,6 +2072,62 @@ func TestCompareIndexes_PendingCleanupIgnored(t *testing.T) {
 	require.Empty(t, events, "stored entry for a ledger awaiting deferred purge must not trigger a mismatch")
 }
 
+// TestCompareIndexes_AccountBuiltinAsset_Identical pins the happy path for the
+// account-asset builtin index: when the SubAttrIndex registry entry matches the
+// audit-derived expected set, compareIndexes must stay silent. This exercises
+// the generic indexes.Canonical / indexes.Equal path with an account_builtin
+// IndexID to confirm no special-casing is needed.
+func TestCompareIndexes_AccountBuiltinAsset_Identical(t *testing.T) {
+	t.Parallel()
+
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
+
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+		key: {Id: id, Ledger: "L1"},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{
+		key: {Id: id, Ledger: "L1"},
+	}, nil, nil, false, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+
+	require.Empty(t, events, "compareIndexes must stay silent when account-asset registry matches audit-derived set")
+}
+
+// TestCompareIndexes_AccountBuiltinAsset_ExtraInStored covers the tamper path
+// for the account-asset builtin index: a SubAttrIndex registry entry exists but
+// there is no matching CreateIndex in the audit chain. The checker must surface
+// CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH.
+func TestCompareIndexes_AccountBuiltinAsset_ExtraInStored(t *testing.T) {
+	t.Parallel()
+
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
+
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+		key: {Id: id, Ledger: "L1"},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	// Pass an empty expected map (no CreateIndex in audit chain).
+	var events []*servicepb.CheckStoreEvent
+	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{}, nil, nil, false, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
 // TestCompareIndexes_DeletedInReplayFlagged pins the deleted-ledger
 // follow-up guard: a stored entry survives a DeleteLedger that was
 // replayed AND whose deferred Pebble cleanup has already completed

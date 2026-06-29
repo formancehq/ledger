@@ -61,6 +61,17 @@ func makeRevertedTxLog(seq uint64, ledger string, revertedTxID, revertTxID uint6
 	}
 }
 
+func makeDeleteLedgerLog(seq uint64, name string) *commonpb.Log {
+	return &commonpb.Log{
+		Sequence: seq,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_DeleteLedger{
+				DeleteLedger: &commonpb.DeletedLedgerLog{Name: name},
+			},
+		},
+	}
+}
+
 func TestParsePostingsFromLog_CreatedTransaction(t *testing.T) {
 	t.Parallel()
 
@@ -142,6 +153,26 @@ func TestParsePostingsFromLog_NonDataLog(t *testing.T) {
 	require.Equal(t, uint64(10), parsed.Sequence)
 	require.Equal(t, int32(0), parsed.LogType)
 	require.Empty(t, parsed.Postings)
+}
+
+func TestParsePostingsFromLog_DeleteLedger(t *testing.T) {
+	t.Parallel()
+
+	// DeleteLedger is a non-apply log (LogPayload field 2). The fast path must
+	// surface the deleted ledger name so the backfill can wipe its readstore
+	// rows, while still reporting no postings (LogType=0).
+	log := makeDeleteLedgerLog(77, "to-delete")
+
+	data, err := log.MarshalVT()
+	require.NoError(t, err)
+
+	var parsed parsedLog
+	require.NoError(t, parsePostingsFromLog(data, &parsed))
+
+	require.Equal(t, uint64(77), parsed.Sequence)
+	require.Equal(t, int32(0), parsed.LogType)
+	require.Empty(t, parsed.Postings)
+	require.Equal(t, "to-delete", parsed.DeletedLedger)
 }
 
 func TestParsePostingsFromLog_NonApplyLog(t *testing.T) {
