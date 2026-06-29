@@ -126,7 +126,7 @@ var _ = Describe("Query Checkpoints", func() {
 			// bob was funded (500 EUR) AFTER the checkpoint.
 			liveBob, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bob"})
 			Expect(err).To(Succeed())
-			Expect(liveBob.GetVolumes()).To(HaveKey("EUR"), "live store has the post-checkpoint balance")
+			Expect(liveBob.FindVolume("EUR", "")).NotTo(BeNil(), "live store has the post-checkpoint balance")
 
 			cpBob, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:       ledgerName,
@@ -134,7 +134,7 @@ var _ = Describe("Query Checkpoints", func() {
 				CheckpointId: checkpointID,
 			})
 			Expect(err).To(Succeed())
-			Expect(cpBob.GetVolumes()).NotTo(HaveKey("EUR"),
+			Expect(cpBob.FindVolume("EUR", "")).To(BeNil(),
 				"checkpoint predates bob; reading it must not return live data")
 		})
 
@@ -344,8 +344,8 @@ var _ = Describe("Query Checkpoints", func() {
 			})
 			Expect(err).To(Succeed())
 
-			vols, ok := resp.GetVolumes()[asset]
-			Expect(ok).To(BeTrue(), "expected %s volumes at checkpoint %d", asset, cp)
+			vols := resp.FindVolume(asset, "")
+			Expect(vols).NotTo(BeNil(), "expected %s volumes at checkpoint %d", asset, cp)
 			Expect(vols.GetBalance()).To(Equal(expected),
 				"balance at checkpoint %d should be frozen at %s", cp, expected)
 		}
@@ -369,7 +369,7 @@ var _ = Describe("Query Checkpoints", func() {
 			})
 			Expect(err).To(Succeed())
 
-			Expect(resp.GetVolumes()[asset].GetBalance()).To(Equal("400"))
+			Expect(resp.FindVolume(asset, "").GetBalance()).To(Equal("400"))
 		})
 	})
 })

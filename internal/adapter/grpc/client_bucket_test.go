@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
+	appctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -128,7 +129,7 @@ func TestGetAccount_Success(t *testing.T) {
 	mock.EXPECT().GetAccount(gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
-	account, err := client.GetAccount(context.Background(), "ledger1", "user:001")
+	account, err := client.GetAccount(context.Background(), "ledger1", "user:001", appctrl.GetAccountOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "user:001", account.GetAddress())
 }
@@ -141,7 +142,7 @@ func TestGetAccount_ReturnsError(t *testing.T) {
 	mock.EXPECT().GetAccount(gomock.Any(), gomock.Any()).Return(nil, errors.New("unavailable"))
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.GetAccount(context.Background(), "ledger1", "user:001")
+	_, err := client.GetAccount(context.Background(), "ledger1", "user:001", appctrl.GetAccountOptions{})
 	require.Error(t, err)
 }
 

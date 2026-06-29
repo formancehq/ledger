@@ -16,7 +16,11 @@ type aggregateVolumesResponseJSON struct {
 }
 
 type aggregatedVolumeJSON struct {
-	Asset   string `json:"asset"`
+	Asset string `json:"asset"`
+	// Color is always emitted (even when empty) so clients can distinguish
+	// the uncolored bucket from an older response shape that didn't carry
+	// the color dimension at all.
+	Color   string `json:"color"`
 	Input   string `json:"input"`
 	Output  string `json:"output"`
 	Balance string `json:"balance"`
@@ -34,6 +38,7 @@ func toAggregatedVolumeJSON(v *commonpb.AggregatedVolume) *aggregatedVolumeJSON 
 
 	return &aggregatedVolumeJSON{
 		Asset:   v.GetAsset(),
+		Color:   v.GetColor(),
 		Input:   input.String(),
 		Output:  output.String(),
 		Balance: balance.String(),
@@ -74,6 +79,7 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 	}
 
 	useMaxPrecision := queryParamBool(r, "useMaxPrecision")
+	collapseColors := queryParamBool(r, "collapseColors")
 
 	var groupByPrefixes []string
 	if g := r.URL.Query().Get("groupByPrefixes"); g != "" {
@@ -96,6 +102,7 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 
 	result, err := s.backend.AggregateVolumes(ctx, ledgerName, filter, query.AggregateOptions{
 		UseMaxPrecision: useMaxPrecision,
+		CollapseColors:  collapseColors,
 		GroupByPrefixes: groupByPrefixes,
 	})
 	if err != nil {

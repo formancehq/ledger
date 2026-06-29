@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -801,4 +802,82 @@ func TestValidateOrderContent(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidateOrder_RejectsInvalidPostingColor guards the admission-side color
+// validation that runs BEFORE preload extraction. A malformed Color value
+// (lowercase, NUL byte, oversize) would otherwise reach addVolumeNeed and
+// materialize a corrupted cache key before the FSM rejected the order.
+func TestValidateOrder_RejectsInvalidPostingColor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		color   string
+		wantErr bool
+	}{
+		{name: "empty color (uncolored bucket)", color: "", wantErr: false},
+		{name: "valid uppercase color", color: "GRANTS", wantErr: false},
+		{name: "lowercase rejected", color: "grants", wantErr: true},
+		{name: "embedded NUL rejected", color: "A\x00B", wantErr: true},
+		{name: "mixed-case rejected", color: "Grants", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			order := &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "default",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{
+								Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+									CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+										Postings: []*commonpb.Posting{
+											commonpb.NewColoredPosting("world", "users:alice", "USD/2", tt.color, big.NewInt(100)),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := validateOrder(order)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateOrder_RejectsInvalidColorInRevert(t *testing.T) {
+	t.Parallel()
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "default",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+								TransactionId: 42,
+								OriginalPostings: []*commonpb.Posting{
+									commonpb.NewColoredPosting("users:alice", "world", "USD/2", "lowercase", big.NewInt(100)),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	require.Error(t, validateOrder(order))
 }

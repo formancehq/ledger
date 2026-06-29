@@ -135,14 +135,17 @@ func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, le
 		})
 	}
 
-	aggregated := make(map[string]*big.Int)
+	// Double-entry holds per (asset, color) bucket.
+	type aggKey struct{ asset, color string }
+	aggregated := make(map[aggKey]*big.Int)
 	for _, account := range accounts {
-		for asset, vol := range account.Volumes {
-			if aggregated[asset] == nil {
-				aggregated[asset] = big.NewInt(0)
+		for _, entry := range account.GetVolumes() {
+			k := aggKey{asset: entry.GetAsset(), color: entry.GetColor()}
+			if aggregated[k] == nil {
+				aggregated[k] = big.NewInt(0)
 			}
 
-			aggregated[asset].Add(aggregated[asset], parseBalance(vol.GetBalance()))
+			aggregated[k].Add(aggregated[k], parseBalance(entry.GetVolumes().GetBalance()))
 		}
 	}
 
@@ -218,7 +221,10 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 
 	checked := false
 	for _, account := range accounts {
-		for asset, vol := range account.Volumes {
+		for _, entry := range account.GetVolumes() {
+			asset := entry.GetAsset()
+			color := entry.GetColor()
+			vol := entry.GetVolumes()
 			input := parseBalance(vol.GetInput())
 			output := parseBalance(vol.GetOutput())
 			balance := parseBalance(vol.GetBalance())
@@ -226,6 +232,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 			internal.CheckVolume(input, output, balance, details.With(internal.Details{
 				"account": account.Address,
 				"asset":   asset,
+				"color":   color,
 			}))
 
 			getAcc, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
@@ -243,11 +250,13 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 				continue
 			}
 
-			actualVol, ok := getAcc.Volumes[asset]
-			if !ok {
+			// Cross-check the same (asset, color) bucket as the list result.
+			actualVol := getAcc.FindVolume(asset, color)
+			if actualVol == nil {
 				assert.Unreachable("should get requested volumes", details.With(internal.Details{
 					"account": account.Address,
 					"asset":   asset,
+					"color":   color,
 				}))
 
 				continue

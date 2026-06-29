@@ -775,17 +775,22 @@ func wrapSystemScoped(order *raftcmdpb.Order, ss *raftcmdpb.SystemScopedOrder) {
 	order.Type = &raftcmdpb.Order_SystemScoped{SystemScoped: ss}
 }
 
-// addVolumeNeed adds a volume key to the preload needs. Since EN-1378 a
-// declared-but-absent volume key resolves to a `Declare` plan (pure
-// coverage, no FSM-side cache mutation); the FSM-side `Scope.GetVolume`
-// returns `domain.ErrNotFound` and callers treat it as a fresh zero
-// balance (see `processing.readVolumeOrZero`). A `*state.ErrCoverageMiss`
-// (admission contract violation — need never declared) stays distinct
-// and propagates loud through `ErrStorageOperation{Cause: covErr}`.
-func addVolumeNeed(p *plan.Needs, ledgerName string, account, asset string) {
+// addVolumeNeed adds a (account, asset, color) volume key to the preload
+// needs. The empty color is the uncolored bucket; colored postings must
+// request their own bucket so the FSM doesn't error.
+//
+// Since EN-1378 a declared-but-absent volume key resolves to a `Declare`
+// plan (pure coverage, no FSM-side cache mutation); the FSM-side
+// `Scope.Volumes().Get` returns `domain.ErrNotFound` and callers treat it
+// as a fresh zero balance (see `processing.readVolumeOrZero`). A
+// `*state.ErrCoverageMiss` (admission contract violation — need never
+// declared) stays distinct and propagates loud through
+// `ErrStorageOperation{Cause: covErr}`.
+func addVolumeNeed(p *plan.Needs, ledgerName, account, asset, color string) {
 	p.Volumes[domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Asset:      asset,
+		Color:      color,
 	}] = struct{}{}
 }
 
@@ -825,9 +830,11 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 			postings = rt.GetReversePostings()
 		}
 
+		// Mirror ingestion only handles v2 logs, which have no color
+		// dimension — every mirrored posting lands in the uncolored bucket.
 		for _, posting := range postings {
-			addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
-			addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+			addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), "")
+			addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), "")
 		}
 
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
@@ -946,8 +953,8 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 
 			if !scriptBacked {
 				for _, posting := range applyData.CreateTransaction.GetPostings() {
-					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
-					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
+					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
 				}
 			}
 
@@ -958,8 +965,8 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 			}] = struct{}{}
 
 			for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
-				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
-				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
+				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
+				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
@@ -1177,13 +1184,13 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 		if discovered != nil {
 			for key := range discovered.SourceVolumes {
-				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset)
-				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset)
+				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
+				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
 			}
 
 			for key := range discovered.DestinationVolumes {
-				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset)
-				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset)
+				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
+				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
 			}
 
 			for key := range discovered.WrittenMetadata {

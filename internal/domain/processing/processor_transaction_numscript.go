@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math/big"
+	"strings"
 
 	"github.com/holiman/uint256"
 
@@ -82,15 +83,16 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			Destination: posting.Destination,
 			Amount:      commonpb.NewUint256(&u256Amount),
 			Asset:       posting.Asset,
+			Color:       posting.Color,
 		}
 
 		// Update source output (money going out)
-		sourceKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset)
+		sourceKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset, posting.Color)
 
 		sourceReader, err := readVolumeOrZero(s, sourceKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{
-				Operation: fmt.Sprintf("source volume %s/%s", posting.Source, posting.Asset),
+				Operation: fmt.Sprintf("source volume %s/%s color=%q", posting.Source, posting.Asset, posting.Color),
 				Cause:     err,
 			}
 		}
@@ -98,6 +100,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			return nil, &domain.ErrVolumeNotMaterialized{
 				Account: posting.Source,
 				Asset:   posting.Asset,
+				Color:   posting.Color,
 				Side:    "source",
 			}
 		}
@@ -111,6 +114,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			return nil, &domain.ErrVolumeOverflow{
 				Account: posting.Source,
 				Asset:   posting.Asset,
+				Color:   posting.Color,
 				Side:    "output",
 				Amount:  u256Amount.Dec(),
 				Current: scratch.Dec(),
@@ -121,12 +125,12 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		s.Volumes().Put(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
-		destKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset)
+		destKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset, posting.Color)
 
 		destReader, err := readVolumeOrZero(s, destKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{
-				Operation: fmt.Sprintf("destination volume %s/%s", posting.Destination, posting.Asset),
+				Operation: fmt.Sprintf("destination volume %s/%s color=%q", posting.Destination, posting.Asset, posting.Color),
 				Cause:     err,
 			}
 		}
@@ -134,6 +138,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			return nil, &domain.ErrVolumeNotMaterialized{
 				Account: posting.Destination,
 				Asset:   posting.Asset,
+				Color:   posting.Color,
 				Side:    "destination",
 			}
 		}
@@ -145,6 +150,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			return nil, &domain.ErrVolumeOverflow{
 				Account: posting.Destination,
 				Asset:   posting.Asset,
+				Color:   posting.Color,
 				Side:    "input",
 				Amount:  u256Amount.Dec(),
 				Current: scratch.Dec(),
@@ -219,43 +225,63 @@ type numscriptStoreAdapter struct {
 }
 
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
-	balances := make(numscriptlib.Balances)
+	balances := make(numscriptlib.Balances, 0, len(query))
 
 	var inputVal, outputVal uint256.Int // stack scratch reused across iterations
 
-	for account, assets := range query {
-		accountBalance := make(numscriptlib.AccountBalance)
-		balances[account] = accountBalance
-
-		for _, asset := range assets {
-			// When force mode is enabled, return unlimited balance for all accounts
-			// This bypasses all balance checks in Numscript execution
-			if s.force {
-				accountBalance[asset] = new(big.Int).Set(numscript.MaxForceBalance)
-
-				continue
-			}
-
-			volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset)
-
-			vol, err := readVolumeOrZero(s.store, volumeKey)
-			if err != nil {
-				return nil, err
-			}
-
-			if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
-				return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
-			}
-
-			// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary
-			vol.GetInput().IntoUint256(&inputVal)
-			vol.GetOutput().IntoUint256(&outputVal)
-
-			// balance escapes into the map, so it must be heap-allocated
-			// Convert to *big.Int at the numscript boundary (numscript uses *big.Int)
-			balance := new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig())
-			accountBalance[asset] = balance
+	for _, item := range query {
+		// Reject the numscript runtime's catch-all asset query (`BASE/*`)
+		// explicitly: the in-memory store does not expose iteration, so we
+		// cannot expand the wildcard to the concrete precision flavors that
+		// live on the account. Surface the unsupported case loudly rather
+		// than letting readVolumeOrZero miss on a literal "BASE/*" key.
+		if strings.HasSuffix(item.Asset, "/*") {
+			return nil, numscript.ErrCatchAllAssetNotSupported
 		}
+
+		// When force mode is enabled, return unlimited balance for the
+		// queried (account, asset, color) tuple. This bypasses balance
+		// checks inside numscript while still respecting the color
+		// dimension numscript will use to assemble postings.
+		if s.force {
+			balances = append(balances, numscriptlib.BalanceRow{
+				Account: item.Account,
+				Asset:   item.Asset,
+				Color:   item.Color,
+				Amount:  new(big.Int).Set(numscript.MaxForceBalance),
+			})
+
+			continue
+		}
+
+		volumeKey := domain.NewVolumeKey(s.ledgerName, item.Account, item.Asset, item.Color)
+
+		vol, err := readVolumeOrZero(s.store, volumeKey)
+		if err != nil {
+			return nil, err
+		}
+
+		// Mirrors the guard in applyPosting (processor_posting.go) and produce()
+		// above: WriteSet.GetVolume legitimately returns (nil, nil) for a key the
+		// admission layer never preloaded (e.g. a colored bucket touched by a
+		// catch-all expansion that didn't preload everything). Calling GetInput()
+		// on a nil interface panics in the FSM apply path and desyncs the cluster.
+		if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
+			return nil, &domain.ErrBalanceNotPreloaded{Account: item.Account, Asset: item.Asset, Color: item.Color}
+		}
+
+		// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary
+		vol.GetInput().IntoUint256(&inputVal)
+		vol.GetOutput().IntoUint256(&outputVal)
+
+		// balance escapes into the row, so it must be heap-allocated
+		// Convert to *big.Int at the numscript boundary (numscript uses *big.Int)
+		balances = append(balances, numscriptlib.BalanceRow{
+			Account: item.Account,
+			Asset:   item.Asset,
+			Color:   item.Color,
+			Amount:  new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig()),
+		})
 	}
 
 	return balances, nil

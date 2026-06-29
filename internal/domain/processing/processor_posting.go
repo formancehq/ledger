@@ -54,9 +54,9 @@ type cachedAssetPrecision struct {
 // cachedVolumeKey builds a VolumeKey, using the assetCache to avoid
 // re-parsing the asset precision when the same asset string recurs.
 // If assetCache is nil, falls back to domain.NewVolumeKey.
-func cachedVolumeKey(ledgerName string, account, asset string, assetCache map[string]cachedAssetPrecision) domain.VolumeKey {
+func cachedVolumeKey(ledgerName, account, asset, color string, assetCache map[string]cachedAssetPrecision) domain.VolumeKey {
 	if assetCache == nil {
-		return domain.NewVolumeKey(ledgerName, account, asset)
+		return domain.NewVolumeKey(ledgerName, account, asset, color)
 	}
 
 	cached, ok := assetCache[asset]
@@ -70,6 +70,7 @@ func cachedVolumeKey(ledgerName string, account, asset string, assetCache map[st
 		Asset:          asset,
 		AssetBase:      cached.base,
 		AssetPrecision: cached.precision,
+		Color:          color,
 	}
 }
 
@@ -78,8 +79,13 @@ func cachedVolumeKey(ledgerName string, account, asset string, assetCache map[st
 // increases Output for source and Input for destination.
 // All volumes must be preloaded by the admission layer — nil volumes return an error.
 // assetCache, if non-nil, avoids redundant ParseAssetPrecision calls across postings.
+//
+// Color is carried into both source and destination volume keys, so balances are
+// strictly segregated per (account, asset, color). The empty color is the
+// uncolored bucket and is itself one of these segregated buckets.
 func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.Describable {
-	sourceKey := cachedVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), assetCache)
+	color := posting.GetColor()
+	sourceKey := cachedVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), color, assetCache)
 
 	// Decode posting amount into stack variable to avoid heap allocation
 	var amount uint256.Int
@@ -94,7 +100,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 		return &domain.ErrStorageOperation{Operation: "loading source volume", Cause: err}
 	}
 	if sourceReader == nil || sourceReader.GetInput() == nil || sourceReader.GetOutput() == nil {
-		return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset()}
+		return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset(), Color: color}
 	}
 
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
@@ -113,6 +119,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 			return &domain.ErrInsufficientFunds{
 				Account: posting.GetSource(),
 				Asset:   posting.GetAsset(),
+				Color:   color,
 				Amount:  amount.Dec(),
 				Balance: balanceBig.String(),
 			}
@@ -136,6 +143,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 		return &domain.ErrVolumeOverflow{
 			Account: posting.GetSource(),
 			Asset:   posting.GetAsset(),
+			Color:   color,
 			Side:    "output",
 			Amount:  amount.Dec(),
 			Current: scratch.Dec(),
@@ -146,14 +154,14 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	s.Volumes().Put(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
-	destKey := cachedVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset(), assetCache)
+	destKey := cachedVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset(), color, assetCache)
 
 	destReader, err := readVolumeOrZero(s, destKey)
 	if err != nil {
 		return &domain.ErrStorageOperation{Operation: "loading destination volume", Cause: err}
 	}
 	if destReader == nil || destReader.GetInput() == nil || destReader.GetOutput() == nil {
-		return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset()}
+		return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset(), Color: color}
 	}
 
 	destVol := destReader.Mutate()
@@ -163,6 +171,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 		return &domain.ErrVolumeOverflow{
 			Account: posting.GetDestination(),
 			Asset:   posting.GetAsset(),
+			Color:   color,
 			Side:    "input",
 			Amount:  amount.Dec(),
 			Current: scratch.Dec(),

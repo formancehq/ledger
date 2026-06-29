@@ -210,68 +210,87 @@ func CloseChapterAndWait(t *testing.T, ctx context.Context, client servicepb.Buc
 // Invariant checks (Antithesis-ready)
 // ---------------------------------------------------------------------------
 
-// CheckPositiveBalance verifies that an account has a strictly positive balance for a given asset.
+// CheckPositiveBalance verifies that the uncolored balance of an account
+// for a given asset is strictly positive.
 func CheckPositiveBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string) {
 	t.Helper()
 
 	acct, err := actions.GetAccount(ctx, client, ledgerName, address)
 	require.NoError(t, err, "failed to get account %s", address)
 
-	vol, ok := acct.Volumes[asset]
-	require.True(t, ok, "account %s has no volumes for asset %s", address, asset)
+	vol := acct.FindVolume(asset, "")
+	require.NotNil(t, vol, "account %s has no volumes for asset %s (uncolored)", address, asset)
 
-	balance, ok := new(big.Int).SetString(vol.Balance, 10)
-	require.True(t, ok, "invalid balance %q for account %s asset %s", vol.Balance, address, asset)
+	balance, ok := new(big.Int).SetString(vol.GetBalance(), 10)
+	require.True(t, ok, "invalid balance %q for account %s asset %s", vol.GetBalance(), address, asset)
 	require.True(t, balance.Sign() > 0,
 		"account %s asset %s: expected positive balance, got %s", address, asset, balance.String())
 }
 
-// CheckDoubleEntryBalance verifies that for every asset in the ledger,
-// the sum of all account balances equals zero (double-entry invariant).
+// CheckDoubleEntryBalance verifies that for every (asset, color) tuple, the
+// sum of all account balances equals zero (double-entry invariant). Each
+// (asset, color) bucket is its own segregated double-entry universe.
 func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) {
 	t.Helper()
 
 	accounts, err := actions.ListAllAccounts(ctx, client, ledgerName)
 	require.NoError(t, err, "failed to list accounts for double-entry check")
 
-	sums := make(map[string]*big.Int) // asset -> sum of balances
+	type bucket struct{ asset, color string }
+	sums := make(map[bucket]*big.Int)
 	for _, acct := range accounts {
-		for asset, vol := range acct.Volumes {
-			balance, ok := new(big.Int).SetString(vol.Balance, 10)
-			require.True(t, ok, "invalid balance %q for account %s asset %s", vol.Balance, acct.Address, asset)
+		for _, entry := range acct.GetVolumes() {
+			vol := entry.GetVolumes()
+			balance, ok := new(big.Int).SetString(vol.GetBalance(), 10)
+			require.True(t, ok, "invalid balance %q for account %s asset %s color %q",
+				vol.GetBalance(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
 
-			if sums[asset] == nil {
-				sums[asset] = new(big.Int)
+			k := bucket{asset: entry.GetAsset(), color: entry.GetColor()}
+			if sums[k] == nil {
+				sums[k] = new(big.Int)
 			}
-			sums[asset].Add(sums[asset], balance)
+			sums[k].Add(sums[k], balance)
 		}
 	}
 
-	for asset, sum := range sums {
+	for k, sum := range sums {
 		require.Equal(t, 0, sum.Sign(),
-			"double-entry violated for asset %s: sum of balances = %s (expected 0)", asset, sum.String())
+			"double-entry violated for asset %s color %q: sum of balances = %s (expected 0)",
+			k.asset, k.color, sum.String())
 	}
 }
 
-// CheckAccountBalance verifies that a specific account has the expected balance for a given asset.
+// CheckAccountBalance verifies the uncolored balance of an account for a
+// given asset matches the expected amount. For colored buckets, use
+// CheckColoredAccountBalance.
 func CheckAccountBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string, expected *big.Int) {
+	t.Helper()
+	CheckColoredAccountBalance(t, ctx, client, ledgerName, address, asset, "", expected)
+}
+
+// CheckColoredAccountBalance verifies the balance for a specific
+// (account, asset, color) bucket. Color "" is the uncolored bucket.
+func CheckColoredAccountBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset, color string, expected *big.Int) {
 	t.Helper()
 
 	acct, err := actions.GetAccount(ctx, client, ledgerName, address)
 	require.NoError(t, err, "failed to get account %s", address)
 
-	vol, ok := acct.Volumes[asset]
-	require.True(t, ok, "account %s has no volumes for asset %s", address, asset)
+	vol := acct.FindVolume(asset, color)
+	require.NotNil(t, vol, "account %s has no volumes for asset %s color %q", address, asset, color)
 
-	balance, ok := new(big.Int).SetString(vol.Balance, 10)
-	require.True(t, ok, "invalid balance %q for account %s asset %s", vol.Balance, address, asset)
+	balance, ok := new(big.Int).SetString(vol.GetBalance(), 10)
+	require.True(t, ok, "invalid balance %q for account %s asset %s color %q",
+		vol.GetBalance(), address, asset, color)
 
 	require.Equal(t, 0, expected.Cmp(balance),
-		"account %s asset %s: expected balance %s, got %s", address, asset, expected.String(), balance.String())
+		"account %s asset %s color %q: expected balance %s, got %s",
+		address, asset, color, expected.String(), balance.String())
 }
 
-// CheckNoNegativeBalances verifies no account has a negative balance,
-// except for explicitly listed exceptions (e.g., @world, overdraft accounts).
+// CheckNoNegativeBalances verifies no (account, asset, color) bucket has a
+// negative balance, except for explicitly listed exceptions (e.g., @world,
+// overdraft accounts).
 func CheckNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, exceptions []string) {
 	t.Helper()
 
@@ -284,14 +303,17 @@ func CheckNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb
 	require.NoError(t, err, "failed to list accounts for negative balance check")
 
 	for _, acct := range accounts {
-		if exceptionSet[acct.Address] {
+		if exceptionSet[acct.GetAddress()] {
 			continue
 		}
-		for asset, vol := range acct.Volumes {
-			balance, ok := new(big.Int).SetString(vol.Balance, 10)
-			require.True(t, ok, "invalid balance %q for account %s asset %s", vol.Balance, acct.Address, asset)
+		for _, entry := range acct.GetVolumes() {
+			vol := entry.GetVolumes()
+			balance, ok := new(big.Int).SetString(vol.GetBalance(), 10)
+			require.True(t, ok, "invalid balance %q for account %s asset %s color %q",
+				vol.GetBalance(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
 			require.True(t, balance.Sign() >= 0,
-				"negative balance on account %s asset %s: %s", acct.Address, asset, balance.String())
+				"negative balance on account %s asset %s color %q: %s",
+				acct.GetAddress(), entry.GetAsset(), entry.GetColor(), balance.String())
 		}
 	}
 }

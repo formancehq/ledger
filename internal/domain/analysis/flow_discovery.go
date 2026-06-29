@@ -351,24 +351,36 @@ func normalizePostings(postings []CompactPosting, root *trieNode, addrCache map[
 			SourcePattern:      cachedNormalizeAddress(postings[i].Source, root, addrCache),
 			DestinationPattern: cachedNormalizeAddress(postings[i].Destination, root, addrCache),
 			Asset:              postings[i].Asset,
+			Color:              postings[i].Color,
 		}
 	}
 
 	return normalized
 }
 
+// flowSignaturePart formats a single posting into its signature contribution.
+// Color is always included so two postings differing only by color produce
+// distinct signatures (and therefore distinct flow stats).
+//
+// Components are joined with NUL bytes: ValidateAccountAddress / ValidateAsset
+// / ValidateColor all reject NUL upstream, so the separator cannot appear
+// inside any component. This keeps the signature unambiguous even if a
+// component contains characters previously used as separators (`->`, `[`,
+// `|`, `]`).
+func flowSignaturePart(p *servicepb.NormalizedPosting) string {
+	return p.GetSourcePattern() + "\x00" + p.GetDestinationPattern() + "\x00" + p.GetAsset() + "\x00" + p.GetColor()
+}
+
 // computeFlowSignature returns a canonical, sorted signature string from normalized postings.
 func computeFlowSignature(postings []*servicepb.NormalizedPosting) string {
 	if len(postings) == 1 {
 		// Fast path: single posting, no sorting needed.
-		p := postings[0]
-
-		return p.GetSourcePattern() + "->" + p.GetDestinationPattern() + "[" + p.GetAsset() + "]"
+		return flowSignaturePart(postings[0])
 	}
 
 	parts := make([]string, len(postings))
 	for i, p := range postings {
-		parts[i] = p.GetSourcePattern() + "->" + p.GetDestinationPattern() + "[" + p.GetAsset() + "]"
+		parts[i] = flowSignaturePart(p)
 	}
 
 	sort.Strings(parts)

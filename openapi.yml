@@ -586,6 +586,16 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/AccountAddress'
+        - name: collapseColors
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            When true, every colored bucket of the same asset is summed
+            into a single AccountVolume entry with color = "". By default
+            each (asset, color) tuple is returned as its own entry.
       responses:
         '200':
           description: Account retrieved successfully
@@ -639,6 +649,15 @@ paths:
           description: Comma-separated list of account prefixes to group volumes by
           schema:
             type: string
+        - name: collapseColors
+          in: query
+          description: |
+            When true, every colored bucket of the same (asset, precision) is
+            summed and the resulting AggregatedVolume entry carries color = "".
+            By default the response is segregated per (asset, color).
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: Aggregated volumes retrieved successfully
@@ -2299,6 +2318,15 @@ components:
         asset:
           type: string
           description: Asset identifier
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          description: |
+            Optional segregation key for "color of money". The empty string
+            (or omitted field) means the uncolored bucket. Two postings on the
+            same (account, asset) but different colors operate on strictly
+            isolated balances. Color is constrained to `^[A-Z]*$` and is
+            immutable once carried by funds.
 
     Script:
       type: object
@@ -2574,10 +2602,33 @@ components:
             $ref: '#/components/schemas/MetadataValue'
           description: Account metadata (typed values)
         volumes:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/VolumesWithBalance'
-          description: Account volumes per asset (input, output, balance)
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountVolume'
+          description: |
+            Account volumes listed per (asset, color). Sorted by (asset, color)
+            ascending for stable serialization. The empty color is the
+            uncolored bucket; colored buckets are strictly isolated. Use the
+            `collapseColors=true` query parameter on GET /accounts to sum
+            every colored bucket of the same asset into a single uncolored
+            entry.
+
+    AccountVolume:
+      type: object
+      required:
+        - asset
+        - color
+        - volumes
+      properties:
+        asset:
+          type: string
+          description: Asset identifier (e.g. "USD/2")
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          description: Color of the bucket. Empty string is the uncolored bucket.
+        volumes:
+          $ref: '#/components/schemas/VolumesWithBalance'
 
     VolumesWithBalance:
       type: object
@@ -2631,6 +2682,15 @@ components:
         asset:
           type: string
           description: Asset identifier (e.g. "USD/2")
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          description: |
+            Color of the aggregated bucket. By default the response contains
+            one AggregatedVolume per (asset, color) tuple. With
+            `collapseColors=true`, every colored bucket of the same
+            (asset, precision) is summed and the resulting entry carries
+            color = "".
         input:
           type: string
           description: Total amount received (as big integer string)
@@ -3101,11 +3161,39 @@ components:
 
     PostCommitVolumes:
       type: object
-      additionalProperties:
-        type: object
-        additionalProperties:
+      description: Post-commit volumes grouped by account address.
+      properties:
+        volumesByAccount:
+          type: object
+          description: Map from account address to its per-(asset, color) volume entries.
+          additionalProperties:
+            $ref: '#/components/schemas/VolumesByAssets'
+
+    VolumesByAssets:
+      type: object
+      description: List of post-commit volume entries for a single account, one per (asset, color) bucket.
+      properties:
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/VolumeEntry'
+
+    VolumeEntry:
+      type: object
+      description: A single (asset, color) bucket inside a VolumesByAssets list.
+      required:
+        - asset
+        - color
+        - volumes
+      properties:
+        asset:
+          type: string
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          description: Empty string for the uncolored bucket; always emitted.
+        volumes:
           $ref: '#/components/schemas/Volumes'
-      description: Post-commit volumes grouped by account address, then by asset
 
     Volumes:
       type: object
@@ -3361,6 +3449,14 @@ components:
           type: string
         asset:
           type: string
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          description: |
+            Color discriminates postings on the same (source, destination, asset)
+            but different color buckets in the FSM. Always emitted (even empty)
+            so clients can distinguish the uncolored bucket from patterns that
+            differ only by color.
 
     TemporalStats:
       type: object

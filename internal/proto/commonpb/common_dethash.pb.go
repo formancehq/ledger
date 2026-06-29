@@ -299,41 +299,22 @@ func (m *VolumesByAssets) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	sz := m.SizeVT()
-	buf := make([]byte, sz)
-	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
-	return append(dAtA, buf[sz-n:]...)
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
 }
 
-func (m *VolumesByAssets) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+func (m *VolumeEntry) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
-		return 0, nil
+		return dAtA
 	}
-	i := len(dAtA)
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
 	}
-	if len(m.Volumes) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Volumes)) {
-			v := m.Volumes[k]
-			baseI := i
-			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x12
-			i -= len(k)
-			copy(dAtA[i:], k)
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
-			i--
-			dAtA[i] = 0xa
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
-			i--
-			dAtA[i] = 0xa
-		}
-	}
-	return len(dAtA) - i, nil
+	return append(dAtA, b...)
 }
 
 func (m *PostCommitVolumes) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -359,7 +340,7 @@ func (m *PostCommitVolumes) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		for _, k := range slices.Sorted(maps.Keys(m.VolumesByAccount)) {
 			v := m.VolumesByAccount[k]
 			baseI := i
-			size, _ := v.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -375,6 +356,17 @@ func (m *PostCommitVolumes) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		}
 	}
 	return len(dAtA) - i, nil
+}
+
+func (m *AccountVolume) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
 }
 
 func (m *Account) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -397,20 +389,10 @@ func (m *Account) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Volumes) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Volumes)) {
-			v := m.Volumes[k]
-			baseI := i
-			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+		for iNdEx := len(m.Volumes) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.Volumes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x12
-			i -= len(k)
-			copy(dAtA[i:], k)
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
-			i--
-			dAtA[i] = 0xa
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
 			dAtA[i] = 0x32
 		}
