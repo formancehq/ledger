@@ -160,6 +160,7 @@ type AWSIAMAuthSpec struct {
 	// Region is the AWS region of the RDS instance (e.g. "eu-west-1").
 	// Required to sign the IAM authentication token (SigV4).
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Region string `json:"region"`
 
 	// AssumeRoleArn is an optional STS role ARN to assume before minting the
@@ -172,6 +173,7 @@ type AWSIAMAuthSpec struct {
 	//
 	// When left empty, the pod's ambient credentials are used directly and
 	// must hold rds-db:connect on the target db-user ARN.
+	// +kubebuilder:validation:MinLength=1
 	// +optional
 	AssumeRoleArn string `json:"assumeRoleArn,omitempty"`
 }

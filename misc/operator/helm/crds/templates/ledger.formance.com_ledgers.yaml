@@ -148,11 +148,13 @@ spec:
 
                               When left empty, the pod's ambient credentials are used directly and
                               must hold rds-db:connect on the target db-user ARN.
+                            minLength: 1
                             type: string
                           region:
                             description: |-
                               Region is the AWS region of the RDS instance (e.g. "eu-west-1").
                               Required to sign the IAM authentication token (SigV4).
+                            minLength: 1
                             type: string
                         required:
                         - region

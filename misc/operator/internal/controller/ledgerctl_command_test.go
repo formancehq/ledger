@@ -74,8 +74,10 @@ func TestLedgerctlCommand_TLSModes(t *testing.T) {
 			require.Equal(t, []string{"/bin/sh", "-c"}, cmd[:2], "command must be wrapped in sh -c")
 			shell := cmd[2]
 
-			require.True(t, strings.HasPrefix(shell, "./ledgerctl store backup"),
-				"shell command must start with the ledgerctl subcommand, got %q", shell)
+			// Args are single-quoted to neutralize shell metacharacters that
+			// can reach this helper from CRD fields or Secret values.
+			require.True(t, strings.HasPrefix(shell, "./ledgerctl 'store' 'backup'"),
+				"shell command must start with the (quoted) ledgerctl subcommand, got %q", shell)
 			for _, fragment := range tt.wantContains {
 				require.Contains(t, shell, fragment)
 			}
