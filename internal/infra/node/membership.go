@@ -38,14 +38,18 @@ type peerPool interface {
 //
 // Three mutator classes:
 //
-//   - finishReady (cache-only): the Node has just observed a committed
-//     ConfChange and must update the cache before the next Raft tick;
-//     the matching Pebble write lands later via WriteConfChange when
-//     the FSM batch commits. Use Set / Remove.
-//
-//   - FSM apply (cache + Pebble through the FSM's session, atomic with
+//   - FSM apply (Pebble only, through the FSM's session, atomic with
 //     the surrounding business writes): every EntryConfChange* in
-//     PrepareEntries fires WriteConfChange.
+//     PrepareEntries fires WriteConfChange. NO cache or transport
+//     mutation here — the FSM hot path must stay deterministic and
+//     free of network side effects, and Pebble must be the only place
+//     that mutates synchronously with the batch.
+//
+//   - finishReady (cache + transport, post-commit): the Node has just
+//     observed the committed ConfChange and must update the cache +
+//     wire the transport / service pool before the next Raft tick.
+//     Use Set / Remove. Pebble is already up to date thanks to the
+//     FSM batch.
 //
 //   - Lifecycle paths that bypass the FSM (cache + Pebble, own
 //     session): bootstrap's initial-peer persistence in
@@ -149,9 +153,10 @@ func (m *Membership) PeerAddresses() map[uint64]ConfChangeContext {
 
 // Set upserts a peer in the cache AND wires it into the transport +
 // service pool so the Raft transport / client RPCs can reach it on the
-// next tick. The matching Pebble write lands later via WriteConfChange
-// when the FSM batch commits. Used from finishReady (cache-side mirror
-// of the FSM-applied ConfChange).
+// next tick. Used from finishReady once a ConfChange has been observed
+// post-commit; the matching Pebble row was already written by the FSM
+// handler (WriteConfChange) in the same batch as the surrounding
+// business writes.
 func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string) {
 	m.mu.Lock()
 	m.addresses[nodeID] = ConfChangeContext{
@@ -164,7 +169,9 @@ func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string) {
 }
 
 // Remove deletes a peer from the cache AND from the transport +
-// service pool. Pebble removal happens later via WriteConfChange.
+// service pool. Pebble was already updated by the FSM handler
+// (WriteConfChange) in the same batch as the surrounding business
+// writes.
 func (m *Membership) Remove(nodeID uint64) {
 	m.mu.Lock()
 	delete(m.addresses, nodeID)
@@ -367,9 +374,13 @@ func (m *Membership) OnSnapshotInstalled() {
 
 // WriteConfChange is the FSM ConfChange handler: invoked from
 // PrepareEntries for every EntryConfChange* with the in-flight
-// WriteSession. The peer mutation lands in the same Pebble commit as
-// the surrounding business writes; the cache is updated in-line so it
-// stays consistent without waiting for the next applier tick.
+// WriteSession. It writes ONLY to the supplied Pebble batch — no cache
+// mutation, no transport/pool wiring — so the FSM hot path stays
+// deterministic and free of network side effects, and the in-memory
+// state cannot diverge from Pebble if the surrounding batch later
+// fails to commit. Cache + transport wiring happens in
+// Node.finishReady once the ConfChange is observed post-commit, via
+// Membership.Set / Membership.Remove.
 //
 // PromoteLearner (ConfChangeAddNode with empty context) carries no
 // address payload — it's a role change — so we skip it.
@@ -402,14 +413,10 @@ func (m *Membership) WriteConfChange(entry raftpb.Entry, session *dal.WriteSessi
 			}); err != nil {
 				return fmt.Errorf("session write peer %d: %w", change.NodeID, err)
 			}
-
-			m.Set(change.NodeID, ccCtx.RaftAddress, ccCtx.ServiceAddress)
 		case raftpb.ConfChangeRemoveNode:
 			if err := session.DeleteKey(peerKey(change.NodeID)); err != nil {
 				return fmt.Errorf("session delete peer %d: %w", change.NodeID, err)
 			}
-
-			m.Remove(change.NodeID)
 		}
 	}
 

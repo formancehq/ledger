@@ -157,10 +157,13 @@ func TestPeerStore_KeyEncodingIsScoped(t *testing.T) {
 // Pebble batch as the surrounding business writes — atomic, idempotent
 // across spool/WAL replay.
 //
-// This test pins the three relevant transition types (Add / AddLearner
-// / Remove), the PromoteLearner no-op (empty context), and asserts both
-// the Pebble write (via LoadAll after commit) and the in-memory cache
-// update.
+// The FSM handler writes ONLY to the supplied batch (no cache/transport
+// side effect); the cache update is the responsibility of
+// Node.finishReady once the entry is observed post-commit. This test
+// therefore pins the three relevant transition types (Add / AddLearner
+// / Remove) and the PromoteLearner no-op (empty context) by asserting
+// the Pebble write via LoadAll after commit, and asserts that the
+// in-memory cache is NOT touched by the handler.
 func TestMembership_WriteConfChange(t *testing.T) {
 	t.Parallel()
 
@@ -222,7 +225,7 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	require.Equal(t, "pod-1:7777", got[1].RaftAddress)
 	require.Equal(t, "pod-2:7777", got[2].RaftAddress)
 
-	require.Len(t, m.PeerAddresses(), 2, "cache must mirror the Pebble write")
+	require.Empty(t, m.PeerAddresses(), "FSM handler must not touch the cache; finishReady owns that")
 
 	// PromoteLearner (ConfChangeAddNode without context) — must be a
 	// no-op for the peer payload: it's a role change, not an address
@@ -247,9 +250,7 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	require.NotContains(t, got, uint64(1))
 	require.Contains(t, got, uint64(2))
 
-	cache := m.PeerAddresses()
-	require.NotContains(t, cache, uint64(1), "cache must drop the removed peer")
-	require.Contains(t, cache, uint64(2))
+	require.Empty(t, m.PeerAddresses(), "FSM handler must not touch the cache; finishReady owns that")
 }
 
 // TestMembership_OnSnapshotInstalled exercises the EN-1413 async-
