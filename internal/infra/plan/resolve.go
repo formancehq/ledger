@@ -73,15 +73,23 @@ func preloadPlan(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.
 }
 
 // resolveAttributePreload resolves a standard attribute type (loaded via attrs.*.Get).
-// For each key it emits one AttributePlan: declare (already Gen0), touch
-// (Gen1->Gen0 promotion), or preload (value loaded from store). Keys are
-// resolved with bounded parallelism to amortize I/O latency.
+// For each key it emits one AttributePlan: declare (already Gen0, absent in
+// Pebble, or bloom-confirmed absent), touch (Gen1->Gen0 promotion), or
+// preload (value loaded from store). Keys are resolved with bounded
+// parallelism to amortize I/O latency.
 //
 // The Preload variant carries a vtproto-marshaled raw_value blob keyed by
 // attrCode — the FSM unmarshals it through the same attrCode dispatch.
-// For attribute kinds that emit a non-Go-zero "default" when bloom
-// confirms absence (volumes seed {Input:0, Output:0}), pass a non-nil
-// newZero; otherwise pass nil and the function falls back to a zero T.
+//
+// Absent keys uniformly produce a Declare plan: the coverage gate admits
+// the read, the cache stays empty, and the FSM-side `Scope.GetX` returns
+// `domain.ErrNotFound`, which each reader interprets per attribute (the
+// canonical pattern is `errors.Is(err, ErrNotFound) → "doesn't exist"`,
+// see `GetPreparedQuery` / `GetNumscriptLatestVersion`). The cache is
+// never seeded with a typed-nil placeholder — that pattern existed for
+// Volume (EN-1378, dropped) and for the Numscript / PreparedQuery
+// attributes whose readers relied on it implicitly (now ported to
+// explicit ErrNotFound handling, same commit).
 func resolveAttributePreload[K interface {
 	comparable
 	Bytes() []byte
@@ -94,8 +102,6 @@ func resolveAttributePreload[K interface {
 	loader *preload.AttributeLoader[T],
 	getValue func(reader dal.PebbleGetter, canonicalKey []byte) (T, error),
 	store dal.PebbleGetter,
-	newZero func() T,
-	includeZeroValue bool,
 	attrCode byte,
 	tracker []attributes.U128,
 	bloomFilter *bloom.Filter,
@@ -147,42 +153,13 @@ func resolveAttributePreload[K interface {
 			continue
 
 		case cache.CacheMiss:
-			// Bloom filter short-circuit: if the key is definitely not in
-			// Pebble, skip the goroutine + Pebble Get. For volumes, inject
-			// a zero value (new accounts start with zero balances). For
-			// other types, declare the key so the FSM-side Plan
-			// admits the read; the underlying KeyStore will then return
-			// ErrNotFound for "legitimately absent" (e.g. creating a new
-			// transaction reference or prepared query).
+			// Bloom filter short-circuit: when the key is definitely not in
+			// Pebble, skip the goroutine + Pebble Get and emit a Declare
+			// (coverage-only). The FSM-side Scope.GetX returns ErrNotFound
+			// on read; each reader interprets that as "doesn't exist".
 			if bloomFilter != nil && !bloomFilter.MayContain(id) {
-				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-
-				if !includeZeroValue {
-					mu.Lock()
-					plans = append(plans, declarePlan(id, attrCode, tag))
-					mu.Unlock()
-
-					continue
-				}
-
-				var zero T
-				if newZero != nil {
-					zero = newZero()
-				}
-
-				attrValue, err := buildPreloadPayload(attrCode, zero)
-				if err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = err
-					}
-					mu.Unlock()
-
-					continue
-				}
-
 				mu.Lock()
-				plans = append(plans, preloadPlan(attrID, attrCode, attrValue))
+				plans = append(plans, declarePlan(id, attrCode, tag))
 				mu.Unlock()
 
 				continue
@@ -234,15 +211,10 @@ func resolveAttributePreload[K interface {
 					bloomFilter.RecordFalsePositive()
 				}
 
-				if includeZeroValue || hasValue {
+				if hasValue {
 					attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-					typed := result.Value
 
-					if !hasValue && newZero != nil {
-						typed = newZero()
-					}
-
-					attrValue, marshalErr := buildPreloadPayload(attrCode, typed)
+					attrValue, marshalErr := buildPreloadPayload(attrCode, result.Value)
 					if marshalErr != nil {
 						if firstErr == nil {
 							firstErr = marshalErr

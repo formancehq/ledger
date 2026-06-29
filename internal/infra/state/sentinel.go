@@ -185,24 +185,22 @@ func verifyPostCommitVolumes(
 // verifyVolumeUpdateMonotonicity checks that volume updates are monotonically
 // increasing (input and output can only grow, never shrink). A shrinking volume
 // indicates a stale base value was used during processing.
+//
+// Post-EN-1378, an undefined Old (or nil Old.Value()) is a legitimate state:
+// admission emits a Declare for absent volume keys, the FSM-side cache stays
+// empty, and the first PutVolume on a fresh (account, asset) records the
+// non-zero new value without any prior cache entry to surface as Old. The
+// implicit baseline is VolumePair{0,0}; monotonicity from zero is trivially
+// satisfied for any non-negative Uint256, so the check short-circuits.
 func verifyVolumeUpdateMonotonicity(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
 	for _, update := range volumeUpdates {
-		if !update.Old.IsDefined() {
-			return fmt.Errorf(
-				"volume update has no old value for %q/%s/%s (preload missing)",
-				update.Key.LedgerName, update.Key.Account, update.Key.Asset,
-			)
+		if !update.Old.IsDefined() || update.Old.Value() == nil {
+			continue
 		}
 
 		old := update.Old.Value()
-		if old == nil {
-			return fmt.Errorf(
-				"volume update has nil old value for %q/%s/%s (preload missing)",
-				update.Key.LedgerName, update.Key.Account, update.Key.Asset,
-			)
-		}
 
 		oldInput := old.GetInput().ToBigInt()
 		oldOutput := old.GetOutput().ToBigInt()
@@ -314,17 +312,18 @@ func verifyVolumeDeltasMatchPostings(
 		newInput := update.New.GetInput().ToBigInt()
 		newOutput := update.New.GetOutput().ToBigInt()
 
-		var oldInput, oldOutput *big.Int
+		// Post-EN-1378: an undefined Old is a legitimate "first write on a
+		// fresh (account, asset)" — admission's Declare leaves the cache
+		// empty, so the FSM's first PutVolume has no prior entry to record
+		// as Old. Baseline is VolumePair{0,0}; the delta reduces to the
+		// new values themselves.
+		oldInput := big.NewInt(0)
+		oldOutput := big.NewInt(0)
 
-		if !update.Old.IsDefined() || update.Old.Value() == nil {
-			return fmt.Errorf(
-				"volume delta computation has no old value for %q/%s/%s (preload missing)",
-				update.Key.LedgerName, update.Key.Account, update.Key.Asset,
-			)
+		if update.Old.IsDefined() && update.Old.Value() != nil {
+			oldInput = update.Old.Value().GetInput().ToBigInt()
+			oldOutput = update.Old.Value().GetOutput().ToBigInt()
 		}
-
-		oldInput = update.Old.Value().GetInput().ToBigInt()
-		oldOutput = update.Old.Value().GetOutput().ToBigInt()
 
 		inputDelta := new(big.Int).Sub(newInput, oldInput)
 		outputDelta := new(big.Int).Sub(newOutput, oldOutput)

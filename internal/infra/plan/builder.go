@@ -15,7 +15,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -376,7 +375,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.Ledgers, nextIndex, boundary, snap.Epoch,
 				p.cache.Ledgers, p.loaders.Ledgers,
 				p.attrs.Ledger.Get, p.store,
-				nil, false,
 				dal.SubAttrLedger, nil,
 				p.bloomFilter(dal.SubAttrLedger),
 				p.logger, "ledgers",
@@ -393,7 +391,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.Boundaries, nextIndex, boundary, snap.Epoch,
 				p.cache.Boundaries, p.loaders.Boundaries,
 				p.attrs.Boundary.Get, p.store,
-				nil, false,
 				dal.SubAttrBoundary, nil,
 				p.bloomFilter(dal.SubAttrBoundary),
 				p.logger, "boundaries",
@@ -410,7 +407,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.Volumes, nextIndex, boundary, snap.Epoch,
 				p.cache.Volumes, p.loaders.Volumes,
 				p.attrs.Volume.Get, p.store,
-				newZeroVolumePair, true,
 				dal.SubAttrVolume, nil,
 				p.bloomFilter(dal.SubAttrVolume),
 				p.logger, "volumes",
@@ -457,7 +453,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.References, nextIndex, boundary, snap.Epoch,
 				p.cache.References, p.loaders.References,
 				p.attrs.References.Get, p.store,
-				nil, false,
 				dal.SubAttrReference, nil,
 				p.bloomFilter(dal.SubAttrReference),
 				p.logger, "references",
@@ -474,7 +469,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.SinkConfigs, nextIndex, boundary, snap.Epoch,
 				p.cache.SinkConfigs, p.loaders.SinkConfigs,
 				p.attrs.SinkConfig.Get, p.store,
-				nil, false,
 				dal.SubAttrSinkConfig, nil,
 				p.bloomFilter(dal.SubAttrSinkConfig),
 				p.logger, "sink_configs",
@@ -491,7 +485,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.NumscriptVersions, nextIndex, boundary, snap.Epoch,
 				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
 				p.attrs.NumscriptVersion.Get, p.store,
-				nil, true,
 				dal.SubAttrNumscriptVersion, nil,
 				p.bloomFilter(dal.SubAttrNumscriptVersion),
 				p.logger, "numscript_versions",
@@ -508,7 +501,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.NumscriptContents, nextIndex, boundary, snap.Epoch,
 				p.cache.NumscriptContents, p.loaders.NumscriptContents,
 				p.attrs.NumscriptContent.Get, p.store,
-				nil, true,
 				dal.SubAttrNumscriptContent, nil,
 				p.bloomFilter(dal.SubAttrNumscriptContent),
 				p.logger, "numscript_contents",
@@ -525,7 +517,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.Transactions, nextIndex, boundary, snap.Epoch,
 				p.cache.Transactions, p.loaders.Transactions,
 				p.attrs.Transaction.Get, p.store,
-				nil, false,
 				dal.SubAttrTransaction, nil,
 				p.bloomFilter(dal.SubAttrTransaction),
 				p.logger, "transactions",
@@ -542,7 +533,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.Metadata, nextIndex, boundary, snap.Epoch,
 				p.cache.AccountMetadata, p.loaders.AccountMetadata,
 				p.attrs.Metadata.Get, p.store,
-				nil, false,
 				dal.SubAttrMetadata, nil,
 				p.bloomFilter(dal.SubAttrMetadata),
 				p.logger, "metadata",
@@ -559,7 +549,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.PreparedQueries, nextIndex, boundary, snap.Epoch,
 				p.cache.PreparedQueries, p.loaders.PreparedQueries,
 				p.attrs.PreparedQuery.Get, p.store,
-				nil, true,
 				dal.SubAttrPreparedQuery, nil,
 				p.bloomFilter(dal.SubAttrPreparedQuery),
 				p.logger, "prepared_queries",
@@ -576,7 +565,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.LedgerMetadata, nextIndex, boundary, snap.Epoch,
 				p.cache.LedgerMetadata, p.loaders.LedgerMetadata,
 				p.attrs.LedgerMetadata.Get, p.store,
-				nil, false,
 				dal.SubAttrLedgerMetadata, nil,
 				p.bloomFilter(dal.SubAttrLedgerMetadata),
 				p.logger, "ledger_metadata",
@@ -593,7 +581,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 				needs.Indexes, nextIndex, boundary, snap.Epoch,
 				p.cache.Indexes, p.loaders.Indexes,
 				p.attrs.Index.Get, p.store,
-				nil, false,
 				dal.SubAttrIndex, nil,
 				p.bloomFilter(dal.SubAttrIndex),
 				p.logger, "indexes",
@@ -638,16 +625,4 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 	}
 
 	return executionPlan, token, nil
-}
-
-// newZeroVolumePair seeds the bloom-confirmed-absent volume preload with
-// {Input:0, Output:0}. Other attribute kinds use a nil-zero T directly (an
-// empty proto marshals to empty bytes and the FSM unmarshal restores a
-// fresh zero proto), but volumes need the explicit Uint256(0) sentinels
-// so postings against fresh accounts find a balance to debit/credit.
-func newZeroVolumePair() *raftcmdpb.VolumePair {
-	return &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
-	}
 }

@@ -165,15 +165,15 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	attrID *raftcmdpb.AttributeID,
 	rawValue []byte,
 ) error {
-	// Empty rawValue is the bloom-confirmed-absent signal: the proposer told
-	// the FSM "this key has no value in Pebble". The cache must hold a
-	// typed-nil so read paths that gate on `entry.Data != nil` (e.g.
-	// ResolveLedgerID) fall through to Pebble — a non-nil zero-proto would
-	// instead surface a phantom "id=0" hit.
-	//
-	// The dual on disk is a tombstone row: writeCacheRaw with empty bytes is
-	// what RestoreEntry interprets as Deleted=true, so a restart rebuilds
-	// the same nil-entry semantics.
+	// Empty rawValue is defensive after EN-1378: no caller of MirrorPreload
+	// produces it any longer (admission emits a Declare plan for absent
+	// keys uniformly, and Declare bypasses this code path). Kept so a
+	// hypothetical future caller — or an old 0xFF entry written by a
+	// pre-EN-1378 binary — does not panic on UnmarshalVT. The on-disk
+	// dual is a tombstone row (writeCacheRaw with empty bytes is what
+	// RestoreEntry interprets as Deleted=true), so a restart sees the
+	// entry as deleted — consistent with the no-cache-entry semantics
+	// Declare establishes on the live side.
 	var typed V
 	if len(rawValue) > 0 {
 		typed = s.newValue()

@@ -99,7 +99,13 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	require.Contains(t, err.Error(), "not preloaded")
 }
 
-func TestGetBalances_VolumeNotFound_ReturnsError(t *testing.T) {
+// TestGetBalances_VolumeNotFound_TreatedAsZero pins the EN-1378 contract:
+// a declared-but-absent volume key (Scope.GetVolume → domain.ErrNotFound)
+// is treated as a fresh zero balance by the numscript balance adapter, not
+// as an admission failure. The coverage gate (one layer up) is what catches
+// "admission forgot to declare"; ErrNotFound is the legitimate signal once
+// admission has stopped injecting zero-VolumePair AttributeValue plans.
+func TestGetBalances_VolumeNotFound_TreatedAsZero(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -114,20 +120,16 @@ func TestGetBalances_VolumeNotFound_ReturnsError(t *testing.T) {
 
 	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
 
-	// Volume not found — the adapter returns ErrBalanceNotPreloaded
 	expectGetVolume(mockStore, volumeKey, nil, domain.ErrNotFound)
 
 	query := numscriptlib.BalanceQuery{
 		"bank": {"USD"},
 	}
 
-	_, err := adapter.GetBalances(context.Background(), query)
-	require.Error(t, err)
-
-	var preloadErr *domain.ErrBalanceNotPreloaded
-	require.ErrorAs(t, err, &preloadErr)
-	require.Equal(t, "bank", preloadErr.Account)
-	require.Equal(t, "USD", preloadErr.Asset)
+	balances, err := adapter.GetBalances(context.Background(), query)
+	require.NoError(t, err)
+	require.NotNil(t, balances["bank"])
+	require.Equal(t, "0", balances["bank"]["USD"].String())
 }
 
 func TestGetAccountsMetadata_Basic(t *testing.T) {

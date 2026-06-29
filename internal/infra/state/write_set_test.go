@@ -80,6 +80,40 @@ func TestWriteSetGetPutAccountMetadata(t *testing.T) {
 	require.NotNil(t, val)
 }
 
+// TestResolveNumscriptContent_AbsentReturnsNilNilNotError pins the EN-1378
+// contract for the NumscriptContent reader: a declared-but-absent key returns
+// (nil, nil), not (nil, ErrNotFound). processCreateTransaction relies on
+// `info == nil` to surface ErrNumscriptNotFound (business error); a propagated
+// ErrNotFound would be wrapped as ErrStorageOperation (infra error) and
+// misclassify the failure mode for any proposal that references a script the
+// proposer's chart never declared.
+//
+// Caught by NumaryBot review on PR #573 — the same Declare-on-absent shift
+// the rest of the PR makes for Volume / NumscriptVersion / PreparedQuery
+// applied to NumscriptContent too, and this reader had not been ported to
+// explicit ErrNotFound handling yet.
+func TestResolveNumscriptContent_AbsentReturnsNilNilNotError(t *testing.T) {
+	t.Parallel()
+	buf, _, _ := newTestBuffer(t)
+
+	info, err := buf.ResolveNumscriptContent("test-ledger", "missing", "v1")
+	require.NoError(t, err, "absent NumscriptContent must not surface ErrNotFound to the caller")
+	require.Nil(t, info)
+
+	// Put then re-read — the same reader must now return the stored content.
+	buf.PutNumscript("test-ledger", &commonpb.NumscriptInfo{
+		Name:    "saved",
+		Version: "v1",
+		Content: "send [USD 1] (source = @world allocating { 1 to @bob })",
+		Ledger:  "test-ledger",
+	})
+
+	info, err = buf.ResolveNumscriptContent("test-ledger", "saved", "v1")
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.Equal(t, "send [USD 1] (source = @world allocating { 1 to @bob })", info.GetContent())
+}
+
 func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)

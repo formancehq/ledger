@@ -775,7 +775,13 @@ func wrapSystemScoped(order *raftcmdpb.Order, ss *raftcmdpb.SystemScopedOrder) {
 	order.Type = &raftcmdpb.Order_SystemScoped{SystemScoped: ss}
 }
 
-// addVolumeNeed adds a volume key to the preload needs.
+// addVolumeNeed adds a volume key to the preload needs. Since EN-1378 a
+// declared-but-absent volume key resolves to a `Declare` plan (pure
+// coverage, no FSM-side cache mutation); the FSM-side `Scope.GetVolume`
+// returns `domain.ErrNotFound` and callers treat it as a fresh zero
+// balance (see `processing.readVolumeOrZero`). A `*state.ErrCoverageMiss`
+// (admission contract violation — need never declared) stays distinct
+// and propagates loud through `ErrStorageOperation{Cause: covErr}`.
 func addVolumeNeed(p *plan.Needs, ledgerName string, account, asset string) {
 	p.Volumes[domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},

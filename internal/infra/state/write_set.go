@@ -1053,6 +1053,15 @@ func (b *WriteSet) getLedgerData(name string) (*commonpb.LedgerInfo, error) {
 // (ledgerName, name, version) signature does not fit the Accessor trio.
 func (b *WriteSet) ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error) {
 	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
+	// Treat a cache miss as "doesn't exist" — same pattern as GetPreparedQuery
+	// and GetNumscriptLatestVersion. Admission emits a Declare plan for absent
+	// NumscriptContent keys (EN-1378), so the Derived store returns ErrNotFound
+	// for a never-recorded script; the caller (processCreateTransaction) checks
+	// `info == nil` to surface ErrNumscriptNotFound, not ErrStorageOperation.
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+
 	if err != nil || info == nil {
 		return nil, err
 	}
@@ -1543,6 +1552,15 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 
 func (b *WriteSet) GetNumscriptLatestVersion(ledgerName string, name string) (string, error) {
 	val, err := b.Derived.NumscriptVersions.Get(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name})
+	// Treat a cache miss as "doesn't exist" — same pattern as GetPreparedQuery.
+	// Admission emits a Declare plan for absent NumscriptVersion keys (no
+	// typed-nil cache injection); the FSM-side Derived store consequently
+	// returns ErrNotFound, which is the legitimate "no version recorded yet"
+	// signal — not a storage failure callers should surface as ErrStorageOperation.
+	if errors.Is(err, domain.ErrNotFound) {
+		return "", nil
+	}
+
 	if err != nil || val == nil {
 		return "", err
 	}

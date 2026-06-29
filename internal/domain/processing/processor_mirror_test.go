@@ -362,12 +362,19 @@ func TestPromoteLedger_NotFound(t *testing.T) {
 	require.ErrorAs(t, err, &ledgerNotFound)
 }
 
-// TestMirrorIngest_CreatedTransaction_MissingVolumes verifies that mirror mode
-// rejects the command when volumes are not preloaded (indicating a preloading bug).
-// Before the fix, applyPosting errors were silently ignored with `_ = applyPosting(...)`,
-// resulting in lost volume updates. The fix propagates the error so the FSM rejects
-// the command, making the preloading bug visible instead of silently corrupting data.
-func TestMirrorIngest_CreatedTransaction_MissingVolumes(t *testing.T) {
+// TestMirrorIngest_CreatedTransaction_AbsentVolumes pins the EN-1378
+// contract through the mirror ingestion path: when source/destination
+// volumes are declared but absent in the cache (Scope.GetVolume →
+// domain.ErrNotFound), the mirror processor must auto-init them to zero
+// and apply the posting — matching the explicit promise of
+// processMirrorCreatedTransaction's doc-comment ("Missing volumes are
+// auto-initialized to zero so postings are never silently skipped").
+//
+// Pre-EN-1378, "missing volume" was an error path (ErrBalanceNotPreloaded)
+// asserted by this test; under the new contract it is the normal path —
+// admission emits Declare for absent keys and readVolumeOrZero synthesises
+// the zero at apply.
+func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -387,10 +394,23 @@ func TestMirrorIngest_CreatedTransaction_MissingVolumes(t *testing.T) {
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
-	// Simulate cache miss: GetVolume returns ErrNotFound for the source volume.
-	// This happens when a volume was evicted from the dual-generation cache
-	// and the preload didn't include it.
-	expectGetVolume(mockStore, domain.VolumeKey{}, nil, domain.ErrNotFound)
+	now := &commonpb.Timestamp{Data: 1234567890}
+
+	// Both source (world) and destination volumes are absent — admission
+	// emitted Declare for both, the cache has nothing, Volumes().Get
+	// falls through to the kindStub's default ErrNotFound, and
+	// readVolumeOrZero synthesises a zero balance. expectPutVolume both
+	// wires the stub lazily AND pins that the apply path writes both
+	// fresh balances back through Scope.Volumes().Put.
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2"), nil)
+
+	expectPutTransactionState(t, mockStore,
+		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 
 	postings := []*commonpb.Posting{{
 		Source:      "world",
@@ -419,16 +439,16 @@ func TestMirrorIngest_CreatedTransaction_MissingVolumes(t *testing.T) {
 		},
 	}
 
-	// The FSM must reject the command — not silently ignore the missing volume.
 	result, err := processor.ProcessOrder(order, mockStore)
-	require.Error(t, err)
-	require.Nil(t, result)
-	require.Contains(t, err.Error(), "not preloaded")
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }
 
-// TestMirrorIngest_RevertedTransaction_MissingVolumes verifies the same behavior
-// for reverted transactions: the FSM must reject when volumes are not preloaded.
-func TestMirrorIngest_RevertedTransaction_MissingVolumes(t *testing.T) {
+// TestMirrorIngest_RevertedTransaction_AbsentVolumes pins the EN-1378
+// contract for the mirror revert path: absent volumes are auto-initialised
+// to zero and the revert posting applies (force mode skips the balance
+// check, so even the non-world source on a zero balance is allowed).
+func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -448,8 +468,17 @@ func TestMirrorIngest_RevertedTransaction_MissingVolumes(t *testing.T) {
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
-	// Simulate cache miss for volumes
-	expectGetVolume(mockStore, domain.VolumeKey{}, nil, domain.ErrNotFound)
+	now := &commonpb.Timestamp{Data: 1234567890}
+
+	mockStore.EXPECT().PutReverted(domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}, true)
+	expectGetTransactionState(mockStore, domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}, nil, domain.ErrNotFound)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2"), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), nil)
+	expectPutTransactionState(t, mockStore,
+		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 
 	reversePostings := []*commonpb.Posting{{
 		Source:      "users:rare-account",
@@ -479,11 +508,8 @@ func TestMirrorIngest_RevertedTransaction_MissingVolumes(t *testing.T) {
 		},
 	}
 
-	// The FSM must reject the command — not silently ignore the missing volume.
-	result, err := processor.ProcessOrder(order, mockStore)
-	require.Error(t, err)
-	require.Nil(t, result)
-	require.Contains(t, err.Error(), "not preloaded")
+	_, err = processor.ProcessOrder(order, mockStore)
+	require.NoError(t, err)
 }
 
 func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {

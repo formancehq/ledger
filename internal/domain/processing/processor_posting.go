@@ -8,7 +8,40 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+// zeroVolumePair is the canonical "fresh (account, asset)" balance. It is
+// frozen at package load and only ever surfaced as a VolumePairReader, whose
+// Mutate() returns a deep CloneVT — callers writing into the balance get an
+// independent clone, the shared instance stays immutable.
+var zeroVolumePair = &raftcmdpb.VolumePair{
+	Input:  commonpb.NewUint256FromUint64(0),
+	Output: commonpb.NewUint256FromUint64(0),
+}
+
+// readVolumeOrZero is the canonical helper for the FSM apply path's volume
+// reads (EN-1378). Admission emits a Declare plan for volume keys it
+// resolved as absent in Pebble — the FSM-side cache stays empty and
+// Scope.Volumes().Get returns domain.ErrNotFound. By convention that is a
+// fresh (account, asset) with zero balance, synthesised here so callers
+// never special-case the absent path.
+//
+// A *state.ErrCoverageMiss (admission contract violation — the need was
+// never declared) is NOT domain.ErrNotFound and propagates unchanged so
+// the coverage gate keeps catching admission bugs.
+func readVolumeOrZero(s Scope, key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
+	reader, err := s.Volumes().Get(key)
+	if err == nil {
+		return reader, nil
+	}
+
+	if errors.Is(err, domain.ErrNotFound) {
+		return zeroVolumePair.AsReader(), nil
+	}
+
+	return nil, err
+}
 
 // cachedAssetPrecision holds pre-parsed asset base and precision to avoid
 // redundant ParseAssetPrecision calls when the same asset appears across
@@ -52,18 +85,12 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	var amount uint256.Int
 	posting.GetAmount().IntoUint256(&amount)
 
-	// Get current volume pair for source — must be preloaded
-	sourceReader, err := s.Volumes().Get(sourceKey)
+	// Get current volume pair for source. readVolumeOrZero treats a
+	// declared-but-absent key as a fresh zero balance (EN-1378); a coverage
+	// miss (admission contract violation) propagates unchanged through the
+	// ErrStorageOperation wrap, preserving the cause for downstream errors.As.
+	sourceReader, err := readVolumeOrZero(s, sourceKey)
 	if err != nil {
-		// ErrNotFound means the admission layer didn't preload this volume
-		// — a precondition the caller can satisfy. Anything else is an
-		// internal storage/cache failure the client cannot fix; surface it
-		// as ErrStorageOperation instead of masking it as a preload miss
-		// (paul-nicolas/NumaryBot review on #432).
-		if errors.Is(err, domain.ErrNotFound) {
-			return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset()}
-		}
-
 		return &domain.ErrStorageOperation{Operation: "loading source volume", Cause: err}
 	}
 	if sourceReader == nil || sourceReader.GetInput() == nil || sourceReader.GetOutput() == nil {
@@ -121,12 +148,8 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	// Destination receives credit - increase Input
 	destKey := cachedVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset(), assetCache)
 
-	destReader, err := s.Volumes().Get(destKey)
+	destReader, err := readVolumeOrZero(s, destKey)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset()}
-		}
-
 		return &domain.ErrStorageOperation{Operation: "loading destination volume", Cause: err}
 	}
 	if destReader == nil || destReader.GetInput() == nil || destReader.GetOutput() == nil {

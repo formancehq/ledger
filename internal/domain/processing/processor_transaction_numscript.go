@@ -87,12 +87,8 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		// Update source output (money going out)
 		sourceKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset)
 
-		sourceReader, err := s.Volumes().Get(sourceKey)
+		sourceReader, err := readVolumeOrZero(s, sourceKey)
 		if err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Source, Asset: posting.Asset}
-			}
-
 			return nil, &domain.ErrStorageOperation{
 				Operation: fmt.Sprintf("source volume %s/%s", posting.Source, posting.Asset),
 				Cause:     err,
@@ -127,12 +123,8 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		// Update destination input (money coming in)
 		destKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset)
 
-		destReader, err := s.Volumes().Get(destKey)
+		destReader, err := readVolumeOrZero(s, destKey)
 		if err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Destination, Asset: posting.Asset}
-			}
-
 			return nil, &domain.ErrStorageOperation{
 				Operation: fmt.Sprintf("destination volume %s/%s", posting.Destination, posting.Asset),
 				Cause:     err,
@@ -246,16 +238,12 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 
 			volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset)
 
-			vol, err := s.store.Volumes().Get(volumeKey)
+			vol, err := readVolumeOrZero(s.store, volumeKey)
 			if err != nil {
-				if errors.Is(err, domain.ErrNotFound) {
-					return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
-				}
-
 				return nil, err
 			}
 
-			if vol.GetInput() == nil || vol.GetOutput() == nil {
+			if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
 				return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
 			}
 

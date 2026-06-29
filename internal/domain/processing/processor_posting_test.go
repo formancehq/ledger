@@ -170,6 +170,78 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 	require.Contains(t, err.Error(), "balance not preloaded")
 }
 
+// TestApplyPosting_AbsentVolumes_TreatedAsZero pins the EN-1378 contract:
+// a declared-but-absent volume key (Scope.GetVolume → domain.ErrNotFound)
+// is treated as a zero balance, not as an admission failure. The
+// coverage gate is what catches "admission forgot to declare"; ErrNotFound
+// is the legitimate "fresh (account, asset)" signal once admission has
+// stopped injecting zero-VolumePair AttributeValue plans.
+func TestApplyPosting_AbsentVolumes_TreatedAsZero(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	sourceKey := domain.NewVolumeKey("test", "world", "USD")
+	destKey := domain.NewVolumeKey("test", "users:001", "USD")
+
+	// Both source (world) and destination are absent in the cache. Apply
+	// must still succeed: world skips the balance check, dest receives the
+	// amount onto a synthesised zero. expectPutVolume lazily wires the
+	// volumes stub; an unregistered Get falls through to the stub's
+	// default ErrNotFound, which is exactly the "absent" state
+	// readVolumeOrZero must synthesise a zero balance for.
+	expectPutVolume(t, mockStore, sourceKey, nil)
+	expectPutVolume(t, mockStore, destKey, nil)
+
+	posting := &commonpb.Posting{
+		Source:      "world",
+		Destination: "users:001",
+		Amount:      commonpb.NewUint256FromUint64(500),
+		Asset:       "USD",
+	}
+
+	require.NoError(t, applyPosting(mockStore, "test", posting, false, nil))
+}
+
+// TestApplyPosting_AbsentNonWorldSource_InsufficientFunds confirms the
+// synthesised zero balance still feeds the regular balance check: a
+// non-world source with no preloaded volume cannot cover a positive
+// posting and must surface ErrInsufficientFunds (not pass through with a
+// silently-zero balance).
+func TestApplyPosting_AbsentNonWorldSource_InsufficientFunds(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	sourceKey := domain.NewVolumeKey("test", "bank", "USD")
+
+	// kindStub's default for an unregistered Get is ErrNotFound — exactly
+	// the "absent in cache" state readVolumeOrZero must treat as a zero
+	// balance. We still need to register an explicit Get on this key so
+	// the volumes stub is wired (no Put expectation either: the apply
+	// path must fail before reaching the destination side).
+	expectGetVolume(mockStore, sourceKey, nil, domain.ErrNotFound)
+
+	posting := &commonpb.Posting{
+		Source:      "bank",
+		Destination: "users:001",
+		Amount:      commonpb.NewUint256FromUint64(100),
+		Asset:       "USD",
+	}
+
+	err := applyPosting(mockStore, "test", posting, false, nil)
+	require.Error(t, err)
+
+	var insufficientFunds *domain.ErrInsufficientFunds
+	require.ErrorAs(t, err, &insufficientFunds)
+	require.Equal(t, "bank", insufficientFunds.Account)
+	require.Equal(t, "USD", insufficientFunds.Asset)
+}
+
 // uint256Max returns the maximum uint256 value (2^256 - 1).
 func uint256Max() *uint256.Int {
 	var m uint256.Int
