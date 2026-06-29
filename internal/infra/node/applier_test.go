@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -78,13 +79,23 @@ type testApplierSetup struct {
 	store     *dal.Store
 	wal       wal.WAL
 	spool     *spool.Default
+	spoolDir  string
 	fsm       *state.Machine
 	stop      chan struct{}
 	confState *raftpb.ConfState
 }
 
-// newTestApplierSetup creates a minimal Applier with real infrastructure (Pebble, WAL, spool, FSM).
+// newTestApplierSetup creates a minimal Applier with real infrastructure (Pebble, WAL, spool, FSM)
+// using the default spool config (large segments — entries rarely roll).
 func newTestApplierSetup(t *testing.T) *testApplierSetup {
+	return newTestApplierSetupWithSpool(t, spool.DefaultSpoolConfig{})
+}
+
+// newTestApplierSetupWithSpool is the variant that lets a test pin the spool
+// segment size (typically a few KiB) so that submitting a handful of entries
+// reliably rolls 2+ segments — required to exercise the unspoolAndResume +
+// Prune reclamation path.
+func newTestApplierSetupWithSpool(t *testing.T, spoolCfg spool.DefaultSpoolConfig) *testApplierSetup {
 	t.Helper()
 
 	logger := logging.Testing()
@@ -98,7 +109,8 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	w, err := wal.New(walDir, logger, meter)
 	require.NoError(t, err)
 
-	defaultSpool, err := spool.NewDefault(spool.DefaultSpoolConfig{Dir: spoolDir})
+	spoolCfg.Dir = spoolDir
+	defaultSpool, err := spool.NewDefault(spoolCfg)
 	require.NoError(t, err)
 
 	pebbleStore, err := dal.NewStore(dataDir, logger, meter, dal.DefaultConfig())
@@ -146,6 +158,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 		store:     pebbleStore,
 		wal:       w,
 		spool:     defaultSpool,
+		spoolDir:  spoolDir,
 		fsm:       fsm,
 		stop:      stop,
 		confState: &confState,
@@ -1008,4 +1021,86 @@ func TestStartMaintenanceTaskReportsFailureOnTaskError(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 
 	require.ErrorIs(t, err, taskErr)
+}
+
+// TestApplierUnspoolAndResumeReclaimsFullyAppliedSegments pins the
+// `spool pruned after resync` Antithesis Sometimes assertion in
+// unspoolAndResume (applier.go:1418). Production runs depend on a workload
+// large enough to roll multiple spool segments AND a gated window long
+// enough to spool entries that survive to Prune — Antithesis filtered runs
+// rarely match both conditions, so the Sometimes is fragile. Pin it here
+// deterministically: shrink SegmentMaxBytes so a handful of CreateLedger
+// entries roll 2+ segments while OutOfSync, then drive unspoolAndResume
+// (replay drains the spool, Prune reclaims the sealed segments) and assert
+// at least one sealed segment was removed from disk.
+//
+// The assertion in production is on pruneStats.SegmentsRemoved > 0; the
+// on-disk segment file count is the side-effect that proves the same thing
+// without exposing internal stats to the test surface.
+func TestApplierUnspoolAndResumeReclaimsFullyAppliedSegments(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	setup := newTestApplierSetupWithSpool(t, spool.DefaultSpoolConfig{
+		// 1 KiB → a CreateLedger record (~200 B per entry once protobuf
+		// + record header is counted) rolls a new segment every ~5 entries.
+		SegmentMaxBytes: 1024,
+	})
+
+	// Force spooling: while OutOfSync, Submitted entries are written to the
+	// spool instead of being applied to Pebble — the production state the
+	// gated-window machinery enters during snapshot install / sync.
+	setup.applier.setOutOfSync()
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+
+	const entryCount = 30
+	for i := uint64(1); i <= entryCount; i++ {
+		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
+		setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+	}
+	setup.applier.Drain(setup.stop)
+
+	beforePrune, err := countSpoolSegments(setup.spoolDir)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, beforePrune, 2,
+		"expected ≥2 spool segments after rolling under 1 KiB cap, got %d", beforePrune)
+
+	// Verify entries are spooled, not applied (negative control).
+	for i := uint64(1); i <= entryCount; i++ {
+		require.False(t, listLedgerContains(setup.store, fmt.Sprintf("ledger-%d", i)),
+			"ledger-%d should still be spooled at this point", i)
+	}
+
+	// Stop the Run goroutine so unspoolAndResume runs without contention.
+	close(setup.stop)
+	require.NoError(t, <-runDone)
+
+	// Drive the production path: replay drains the spool into the FSM,
+	// status flips to Normal, Prune reclaims the sealed segments.
+	require.NoError(t, setup.applier.unspoolAndResume(ctx))
+
+	// Replay should have fully applied every entry.
+	for i := uint64(1); i <= entryCount; i++ {
+		require.True(t, listLedgerContains(setup.store, fmt.Sprintf("ledger-%d", i)),
+			"ledger-%d should be applied after unspoolAndResume", i)
+	}
+
+	afterPrune, err := countSpoolSegments(setup.spoolDir)
+	require.NoError(t, err)
+	require.Less(t, afterPrune, beforePrune,
+		"Prune should remove ≥1 sealed fully-applied segment (before=%d, after=%d)",
+		beforePrune, afterPrune)
+}
+
+// countSpoolSegments returns the number of segment files in the spool dir.
+// Default spool writes one file per segment; comparing the count before and
+// after Prune is a cheap proxy for pruneStats.SegmentsRemoved.
+func countSpoolSegments(dir string) (int, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, err
+	}
+	return len(entries), nil
 }
