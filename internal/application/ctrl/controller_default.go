@@ -164,12 +164,12 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*
 	return cursor.NewClosingCursor(filtered, handle), nil
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, string, error) {
-	// No receipt signer at this layer: a locally-served read returns an empty
-	// receipt and the gRPC layer signs it from the same snapshot.
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error) {
+	// No receipt signer at this layer: a locally-served read returns a nil receipt
+	// so the gRPC layer signs it from the same snapshot.
 	tx, err := ctrl.GetTransactionFrom(ctx, ctrl.store, ledgerName, transactionID)
 
-	return tx, "", err
+	return tx, nil, err
 }
 
 // WithStores returns a shallow copy of the controller whose reads are served

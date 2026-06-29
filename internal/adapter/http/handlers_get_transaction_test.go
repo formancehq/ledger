@@ -22,8 +22,8 @@ func TestHandleGetTransaction_Success(t *testing.T) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, txID uint64) (*commonpb.Transaction, string, error) {
-			return &commonpb.Transaction{Id: txID}, "", nil
+		func(_ context.Context, _ string, txID uint64) (*commonpb.Transaction, *string, error) {
+			return &commonpb.Transaction{Id: txID}, nil, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -63,8 +63,8 @@ func TestHandleGetTransaction_NotFound(t *testing.T) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint64) (*commonpb.Transaction, string, error) {
-			return nil, "", &domain.ErrTransactionNotFound{TransactionID: 999}
+		func(_ context.Context, _ string, _ uint64) (*commonpb.Transaction, *string, error) {
+			return nil, nil, &domain.ErrTransactionNotFound{TransactionID: 999}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

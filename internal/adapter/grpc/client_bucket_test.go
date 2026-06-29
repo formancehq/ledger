@@ -65,8 +65,10 @@ func TestGetTransaction_Success(t *testing.T) {
 	tx, receipt, err := client.GetTransaction(context.Background(), "ledger1", 42)
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), tx.GetId())
-	// The receipt the serving node signed must be surfaced, not discarded.
-	require.Equal(t, "leader-receipt", receipt)
+	// The receipt the serving node signed must be surfaced as authoritative
+	// (non-nil), not discarded.
+	require.NotNil(t, receipt)
+	require.Equal(t, "leader-receipt", *receipt)
 }
 
 func TestGetTransaction_Error(t *testing.T) {

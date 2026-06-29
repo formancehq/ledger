@@ -309,12 +309,12 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 		tx *commonpb.Transaction
 		// reader is the store a locally-derived receipt is read from: the
 		// checkpoint's fixed store, or (live path) a snapshot opened AFTER the
-		// transaction read so it can't predate the creation log. fwdReceipt is set
-		// only when the read was forwarded to another node, which already signed
-		// the receipt from its own fresh state — then we reuse it rather than
-		// re-deriving from a possibly-stale local snapshot.
+		// transaction read so it can't predate the creation log. fwdReceipt is
+		// non-nil only when the read was forwarded to a signing node, which already
+		// produced the (authoritative, possibly empty) receipt — then we use it
+		// as-is rather than re-deriving from a possibly-stale local snapshot.
 		reader     dal.PebbleGetter
-		fwdReceipt string
+		fwdReceipt *string
 		err        error
 	)
 
@@ -342,11 +342,11 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 	resp := &servicepb.GetTransactionResponse{Transaction: tx}
 	if impl.receiptSigner != nil {
-		if fwdReceipt != "" {
-			// Forwarded read: the node that read the transaction already signed the
-			// receipt from its fresh state; reuse it rather than re-deriving from a
+		if fwdReceipt != nil {
+			// Forwarded read: the serving node already signed the receipt (possibly
+			// empty, e.g. a reversal). Use it as-is; re-deriving here would read a
 			// possibly-stale local snapshot.
-			resp.Receipt = fwdReceipt
+			resp.Receipt = *fwdReceipt
 		} else {
 			// Locally-served read: open the snapshot now — after the transaction
 			// read barrier — so the receipt's ledger + creation-log reads share one

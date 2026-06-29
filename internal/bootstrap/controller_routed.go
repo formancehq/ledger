@@ -157,10 +157,10 @@ func (b *RoutedController) ListLedgers(ctx context.Context) (cursor.Cursor[*comm
 	return c.ListLedgers(ctx)
 }
 
-func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, string, error) {
+func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
 	tx, receipt, err := c.GetTransaction(ctx, ledgerName, transactionID)
