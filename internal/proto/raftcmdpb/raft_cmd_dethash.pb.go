@@ -1965,17 +1965,6 @@ func (m *ReloadIdempotencyKey) MarshalToSizedBufferDeterministicVT(dAtA []byte) 
 	return len(dAtA) - i, nil
 }
 
-func (m *NodeSnapshot) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *CacheGenerationMeta) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA

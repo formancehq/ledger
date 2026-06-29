@@ -23,7 +23,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
@@ -256,18 +255,12 @@ func NewNode(
 				return nil, fmt.Errorf("recovering FSM state from store: %w", err)
 			}
 
-			// Wrap with empty NodeSnapshot (no FSM data; peer addresses live in Pebble)
-			ns := &raftcmdpb.NodeSnapshot{}
-
-			data, err := ns.MarshalVT()
-			if err != nil {
-				return nil, fmt.Errorf("wrapping restore snapshot: %w", err)
-			}
-
+			// EN-1413: peer addresses live in Pebble; the Raft snapshot's
+			// Data field carries no cluster-level metadata, so pass nil.
 			initialConfState = raftpb.ConfState{
 				Voters: []uint64{cfg.NodeID},
 			}
-			if err := wal.CreateSnapshot(marker.LastAppliedIndex, &initialConfState, data); err != nil {
+			if err := wal.CreateSnapshot(marker.LastAppliedIndex, &initialConfState, nil); err != nil {
 				return nil, fmt.Errorf("creating restore snapshot: %w", err)
 			}
 
@@ -312,19 +305,13 @@ func NewNode(
 				return nil, errors.New("first start requires --bootstrap or --join")
 			}
 
-			// Wrap with empty NodeSnapshot (no FSM data; peer addresses live in Pebble)
-			ns := &raftcmdpb.NodeSnapshot{}
-
-			data, err := ns.MarshalVT()
-			if err != nil {
-				return nil, fmt.Errorf("wrapping initial snapshot: %w", err)
-			}
-
+			// EN-1413: peer addresses live in Pebble; the Raft snapshot's
+			// Data field carries no cluster-level metadata, so pass nil.
 			initialConfState = raftpb.ConfState{
 				Voters:   voters,
 				Learners: learners,
 			}
-			if err := wal.CreateSnapshot(0, &initialConfState, data); err != nil {
+			if err := wal.CreateSnapshot(0, &initialConfState, nil); err != nil {
 				return nil, fmt.Errorf("creating initial snapshot: %w", err)
 			}
 
@@ -583,18 +570,11 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 
 	compactionStart := time.Now()
 
-	// Wrap nil FSM data with peer addresses for the WAL snapshot.
-	snapshotData, err := node.wrapSnapshot()
-	if err != nil {
-		return fmt.Errorf("wrapping snapshot: %w", err)
-	}
-
-	if err := node.wal.CreateSnapshot(appliedIndex, node.confState.Load(), snapshotData); err != nil {
+	if err := node.wal.CreateSnapshot(appliedIndex, node.confState.Load(), nil); err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
 	node.logger.WithFields(map[string]any{
-		"snapshotSize": len(snapshotData),
 		"appliedIndex": appliedIndex,
 	}).Infof("Saved snapshot to WAL")
 
@@ -674,10 +654,7 @@ func (node *Node) doMaintenance() {
 	// loss right after this point, Pebble can recover to >= capturedIndex.
 
 	// 1. WAL snapshot + compact.
-	data, err := node.wrapSnapshot()
-	if err != nil {
-		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to wrap snapshot")
-	} else if err := node.wal.CreateSnapshot(capturedIndex, node.confState.Load(), data); err != nil {
+	if err := node.wal.CreateSnapshot(capturedIndex, node.confState.Load(), nil); err != nil {
 		if !errors.Is(err, raft.ErrSnapOutOfDate) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
 		}
@@ -2365,15 +2342,4 @@ func (node *Node) PeerAddresses() map[uint64]ConfChangeContext {
 	maps.Copy(cp, node.peerAddresses)
 
 	return cp
-}
-
-// wrapSnapshot returns the bytes to store as the Raft snapshot's Data
-// field. Cluster membership lives in Pebble under [ZoneGlobal][SubGlobPeers]
-// (EN-1413), so an empty NodeSnapshot is sufficient as a placeholder. The
-// envelope is kept (rather than nil) so future cluster-level metadata can be
-// added without touching every snapshot call site.
-func (node *Node) wrapSnapshot() ([]byte, error) {
-	ns := &raftcmdpb.NodeSnapshot{}
-
-	return ns.MarshalVT()
 }

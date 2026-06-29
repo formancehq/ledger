@@ -762,17 +762,6 @@ message ReloadIdempotencyKey {
   common.IdempotencyKeyValue value = 2;
 }
 
-// ============================================================================
-// Snapshot
-// ============================================================================
-
-// NodeSnapshot is an extensible envelope for the Raft snapshot's Data
-// field. Cluster membership has been moved to Pebble under
-// [ZoneGlobal][SubGlobPeers] (EN-1413), so this message is currently
-// empty; it is kept as a placeholder so future cluster-level metadata can
-// be added without touching every snapshot call site.
-message NodeSnapshot {}
-
 // CacheGenerationMeta stores per-generation metadata in Pebble.
 message CacheGenerationMeta {
   fixed64 base_index = 1;
