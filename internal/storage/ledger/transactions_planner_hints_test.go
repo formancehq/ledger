@@ -289,8 +289,7 @@ func TestTransactionListAdaptive_NoLeakage(t *testing.T) {
 }
 
 // TestTransactionListAdaptive_BothFail verifies that when both the original and
-// the chaser fail, the error is propagated to the caller. The hook makes both
-// queries time out via pg_sleep against a tight chaser timeout.
+// the chaser fail, the error is propagated to the caller.
 func TestTransactionListAdaptive_BothFail(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()
@@ -300,15 +299,12 @@ func TestTransactionListAdaptive_BothFail(t *testing.T) {
 	adaptive := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
 		EnableAdaptiveFallback: true,
 		ChaserDelayMs:          1,
-		ChaserTimeoutMs:        1, // 1ms chaser timeout
+		ChaserTimeoutMs:        30_000,
 	})
 
-	// Both original and chaser get a long sleep. The chaser has a 1ms timeout
-	// so it gets 57014. The original has no timeout but the context will be
-	// cancelled once we drain both results (both fail).
-	adaptive.SetTestHookBeforePaginateSelect(func(ctx context.Context, tx bun.Tx, _ bool) error {
-		_, err := tx.ExecContext(ctx, "SELECT pg_sleep(10)")
-		return err
+	// Both original and chaser return a hard error immediately.
+	adaptive.SetTestHookBeforePaginateSelect(func(_ context.Context, _ bun.Tx, _ bool) error {
+		return fmt.Errorf("simulated DB error")
 	})
 
 	_, err := adaptive.Transactions().Paginate(ctx, walletQuery(15))

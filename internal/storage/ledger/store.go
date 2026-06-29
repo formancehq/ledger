@@ -9,8 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
@@ -63,18 +61,6 @@ type TransactionListConfig struct {
 	// ChaserTimeoutMs is the SET LOCAL statement_timeout for the chaser query
 	// (milliseconds). The original query has no timeout. Default 40000 ms.
 	ChaserTimeoutMs int64
-}
-
-// isStatementTimeout returns true when err carries SQLSTATE 57014
-// (query_canceled) AND the message confirms it was fired by statement_timeout.
-// PostgreSQL reuses 57014 for pg_cancel_backend ("user request"),
-// idle_in_transaction_session_timeout, and other operator-initiated
-// cancellations — those must NOT trigger the adaptive retry.
-func isStatementTimeout(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) &&
-		pgErr.Code == pgerrcode.QueryCanceled &&
-		strings.Contains(pgErr.Message, "statement timeout")
 }
 
 type Store struct {
