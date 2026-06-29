@@ -193,7 +193,11 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			}
 		}
 
-		if assumeRoleArn, _ := cmd.Flags().GetString("mirror-aws-iam-assume-role-arn"); assumeRoleArn != "" {
+		if cmd.Flags().Changed("mirror-aws-iam-assume-role-arn") {
+			assumeRoleArn, _ := cmd.Flags().GetString("mirror-aws-iam-assume-role-arn")
+			if assumeRoleArn == "" {
+				return 0, nil, errors.New("--mirror-aws-iam-assume-role-arn must be a non-empty ARN when set (got empty value)")
+			}
 			if pgCfg.GetAwsIamAuth() == nil {
 				return 0, nil, errors.New("--mirror-aws-iam-assume-role-arn requires --mirror-aws-iam-region to be set")
 			}

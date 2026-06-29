@@ -57,6 +57,23 @@ func TestParseMirrorFlags_PostgresIAMAssumeRoleWiresArn(t *testing.T) {
 	require.Equal(t, "arn:aws:iam::222222222222:role/cross-tenant-mirror", iam.GetAssumeRoleArn())
 }
 
+func TestParseMirrorFlags_PostgresEmptyAssumeRoleArnRejected(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewCreateCommand()
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--mode=mirror",
+		"--mirror-source-type=postgres",
+		"--mirror-dsn=postgres://iam-user@host:5432/db",
+		"--mirror-aws-iam-region=eu-west-1",
+		"--mirror-aws-iam-assume-role-arn=",
+	}))
+
+	_, _, err := parseMirrorFlags(cmd, "ledger-x")
+	require.Error(t, err, "explicit but empty --mirror-aws-iam-assume-role-arn must NOT silently fall back to no-role IAM")
+	require.Contains(t, err.Error(), "non-empty ARN")
+}
+
 func TestParseMirrorFlags_PostgresAssumeRoleWithoutRegionRejected(t *testing.T) {
 	t.Parallel()
 
