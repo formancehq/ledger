@@ -22,10 +22,27 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumeclaims
   verbs:
   - delete
+  - get
   - list
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - get
+  - list
+  - patch
 - apiGroups:
   - ""
   resources:
@@ -46,6 +63,14 @@ rules:
   - pods/log
   verbs:
   - get
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingadmissionpolicybindings
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - apps
   resources:

@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -33,6 +34,7 @@ type LedgerServiceReconciler struct {
 	Scheme    *runtime.Scheme
 	Config    *rest.Config
 	Clientset kubernetes.Interface
+	Recorder  record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices,verbs=get;list;watch;create;update;patch;delete
@@ -43,12 +45,15 @@ type LedgerServiceReconciler struct {
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=delete;list
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=delete;get;list;patch
+// +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=externaldns.k8s.io,resources=dnsendpoints,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingadmissionpolicybindings,verbs=get;list;watch
 
 // Reconcile handles the reconciliation loop for LedgerService resources.
 func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -156,6 +161,41 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		meta.RemoveStatusCondition(&ledger.Status.Conditions, "HostPathSchedulingWarning")
 	}
 
+	// Warn when a ledger opts into deletion protection but no cluster-scoped
+	// protection policy is installed. The operator still stamps the label, but
+	// with no policy selecting it the volumes are not actually protected — surface
+	// that instead of silently no-op'ing. We detect "installed" by probing the
+	// actual ValidatingAdmissionPolicyBinding rather than this release's own Helm
+	// flag: in a multi-release setup a sibling release (pvcProtection.enabled=false)
+	// still stamps the label and the owning release's cluster-wide binding protects
+	// it, so keying off the local flag would falsely report unprotected.
+	if r.Clientset != nil {
+		inactive := false
+		if ledger.Spec.Persistence.DeletionProtection {
+			installed, err := r.deletionProtectionPolicyInstalled(ctx)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("checking volume deletion-protection policy: %w", err)
+			}
+			inactive = !installed
+		}
+
+		if inactive {
+			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+				Type:               "DeletionProtectionInactive",
+				Status:             metav1.ConditionTrue,
+				Reason:             "ClusterPolicyNotInstalled",
+				Message:            "spec.persistence.deletionProtection is set but no cluster-scoped volume protection policy is installed (Helm pvcProtection.enabled on no release); volumes are NOT protected",
+				ObservedGeneration: ledger.Generation,
+			})
+			if r.Recorder != nil {
+				r.Recorder.Event(ledger, corev1.EventTypeWarning, "DeletionProtectionInactive",
+					"deletion protection requested but no cluster policy is installed; volumes are NOT protected")
+			}
+		} else {
+			meta.RemoveStatusCondition(&ledger.Status.Conditions, "DeletionProtectionInactive")
+		}
+	}
+
 	// Compute spec hash for rolling updates
 	specHash := computeSpecHash(&ledger.Spec)
 
@@ -220,13 +260,34 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// StatefulSet needs the specHash and agent info
-	if err := r.reconcileStatefulSet(ctx, ledger, specHash, agents); err != nil {
+	result, err := r.reconcileStatefulSet(ctx, ledger, specHash, agents)
+	if err != nil {
 		logger.Error(err, "failed to reconcile StatefulSet")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
 	}
 
-	return ctrl.Result{}, nil
+	return result, nil
+}
+
+// deletionProtectionPolicyInstalled reports whether the cluster-scoped volume
+// deletion-protection policy is installed, by probing for the fixed-name PVC
+// ValidatingAdmissionPolicyBinding. This reflects actual cluster state regardless
+// of which operator release owns the singleton, so it stays correct in the
+// documented multi-release setup where a sibling release (pvcProtection.enabled=false)
+// relies on the owning release's binding to protect its volumes.
+func (r *LedgerServiceReconciler) deletionProtectionPolicyInstalled(ctx context.Context) (bool, error) {
+	_, err := r.Clientset.AdmissionregistrationV1().
+		ValidatingAdmissionPolicyBindings().
+		Get(ctx, volumeProtectionPVCBindingName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("getting ValidatingAdmissionPolicyBinding %s: %w", volumeProtectionPVCBindingName, err)
+	}
+
+	return true, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -253,11 +314,14 @@ func (r *LedgerServiceReconciler) updateStatus(ctx context.Context, ledger *ledg
 		return err
 	}
 
-	// Carry over conditions accumulated during reconciliation on the
-	// in-memory ledger object.
-	for _, c := range ledger.Status.Conditions {
-		meta.SetStatusCondition(&latest.Status.Conditions, c)
-	}
+	// ledger was fetched fresh at the top of Reconcile and this reconciler is the
+	// sole writer of LedgerService status conditions, so ledger.Status.Conditions is
+	// the authoritative desired set after this pass — including conditions removed
+	// during reconcile (e.g. DeletionProtectionInactive once the cluster policy is
+	// installed or protection is disabled). Assign it onto the freshly-fetched latest
+	// so those removals are persisted; an additive SetStatusCondition merge would
+	// leave stale conditions in .status.conditions forever.
+	latest.Status.Conditions = ledger.Status.Conditions
 
 	// Preserve the phase set during reconciliation (e.g. "Degraded" from
 	// validation failure) before we try to recompute from StatefulSet state.

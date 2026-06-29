@@ -62,6 +62,7 @@ e2e-cluster-up: _e2e-build-ledger
         --set image.tag=e2e \
         --set image.pullPolicy=Never \
         --set leaderElection=false \
+        --set pvcProtection.enabled=true \
         --kube-context kind-ledger-e2e --wait --timeout 120s
 
 # Build the ledger image from the local working tree (with S3 support).

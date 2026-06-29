@@ -1085,6 +1085,19 @@ type PersistenceSpec struct {
 	// RetentionPolicy for PVCs.
 	// +optional
 	RetentionPolicy *RetentionPolicySpec `json:"retentionPolicy,omitempty"`
+
+	// DeletionProtection opts this ledger's PVCs and bound PVs into the
+	// cluster-scoped volume deletion-protection admission policy. When true, the
+	// operator stamps the `ledger.formance.com/deletion-protection: enabled`
+	// label on the volumes so the policy selects them and rejects accidental
+	// DELETEs unless the object carries the allow-deletion annotation; when set
+	// back to false the label is removed and protection is lifted. The policy
+	// itself must be installed cluster-wide by an admin via the Helm value
+	// `pvcProtection.enabled` — otherwise this flag has no effect and the
+	// operator emits a DeletionProtectionInactive warning on the CR.
+	// +kubebuilder:default=false
+	// +optional
+	DeletionProtection bool `json:"deletionProtection,omitempty"`
 }
 
 // VolumeSpec defines a volume configuration.

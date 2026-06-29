@@ -74,8 +74,9 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := (&LedgerServiceReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("ledgerservice-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up LedgerService controller: %v", err))
 	}

@@ -87,6 +87,7 @@ func main() {
 		Scheme:    mgr.GetScheme(),
 		Config:    cfg,
 		Clientset: clientset,
+		Recorder:  mgr.GetEventRecorderFor("ledgerservice-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LedgerService")
 		os.Exit(1)

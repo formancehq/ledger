@@ -34,3 +34,29 @@ tolerations: []
 
 nameOverride: ""
 fullnameOverride: ""
+
+# -- Volume deletion protection (cluster-admin consent layer). When enabled,
+# installs the cluster-scoped ValidatingAdmissionPolicy that rejects DELETE of
+# ledger PVCs/PVs unless they carry the allow-deletion annotation. This only
+# arms the policy — a ledger is protected only once it also opts in per-CR via
+# spec.persistence.deletionProtection (the operator then stamps the
+# `ledger.formance.com/deletion-protection: enabled` label the policy selects on).
+# Requires Kubernetes >= 1.30. The operator ServiceAccount (scale-down deletes)
+# and the kube-controller-manager garbage collector (retentionPolicy
+# whenScaled/whenDeleted=Delete) are exempt, so both deletion paths keep working.
+# allowDeletionAnnotation must be a valid Kubernetes annotation key (render fails
+# otherwise). The installed policy is a cluster-wide singleton: enable it on at most
+# one operator release per cluster. A second release with pvcProtection.enabled=true
+# renders the same fixed-name cluster-scoped objects and fails to install (Helm
+# ownership conflict) by design. See the operator README "Volume deletion protection".
+pvcProtection:
+  enabled: false
+  allowDeletionAnnotation: formance.com/allow-deletion
+  # Extra ServiceAccount usernames to exempt from the deletion-protection policies,
+  # beyond this release's operator SA and the kube-controller-manager GC. Entries must
+  # be full SA usernames (system:serviceaccount:<namespace>:<name>); a malformed entry
+  # fails the render. Use this on the release that owns the cluster-wide singleton to
+  # exempt (a) other operator releases' SAs that manage protected ledgers, and (b)
+  # managed workload/GitOps controllers (ArgoCD, Flux, Velero) that legitimately delete
+  # protected volumes during a teardown.
+  additionalExemptServiceAccounts: []

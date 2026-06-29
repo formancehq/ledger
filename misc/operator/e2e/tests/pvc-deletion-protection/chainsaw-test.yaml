@@ -1,0 +1,138 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: pvc-deletion-protection
+# Requires the operator installed with pvcProtection.enabled=true and Kubernetes >= 1.30.
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    # 1. Deploy a single-replica ledger so its PVCs/PVs are provisioned.
+    - name: Deploy 1-replica cluster
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-protect-vol
+              status:
+                readyReplicas: 1
+
+    # 2. Wait until the operator has stamped the per-CR deletion-protection label
+    #    on the bound PV (driven by spec.persistence.deletionProtection=true).
+    - name: Wait for PV label stamping
+      try:
+        - script:
+            content: |
+              for i in $(seq 1 30); do
+                PV=$(kubectl get pvc data-ledger-protect-vol-0 -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
+                if [ -n "$PV" ]; then
+                  LABEL=$(kubectl get pv "$PV" -o jsonpath='{.metadata.labels.ledger\.formance\.com/deletion-protection}')
+                  echo "Attempt $i: pv=$PV deletion-protection-label=$LABEL"
+                  [ "$LABEL" = "enabled" ] && exit 0
+                fi
+                sleep 5
+              done
+              echo "FAIL: PV was not stamped with ledger.formance.com/deletion-protection=enabled"
+              exit 1
+            timeout: 180s
+
+    # 3. PV DELETE without the annotation must also be rejected (the PV-level
+    #    policy, scoped to the label stamped in step 2). Tested while the PV is
+    #    still Bound, before the PVC is touched below.
+    - name: Delete PV without annotation is blocked
+      try:
+        - script:
+            content: |
+              PV=$(kubectl get pvc data-ledger-protect-vol-0 -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
+              [ -n "$PV" ] || { echo "FAIL: PVC has no bound volume"; exit 1; }
+              if kubectl delete pv "$PV" --timeout=30s 2>err.txt; then
+                echo "FAIL: PV deletion succeeded but should have been blocked"
+                cat err.txt
+                exit 1
+              fi
+              echo "PV deletion correctly blocked:"
+              cat err.txt
+              grep -q "allow-deletion" err.txt
+            timeout: 60s
+
+    # 4. After opting in via the annotation, the PV DELETE is admitted. The PV is
+    #    still bound, so the kubernetes.io/pv-protection finalizer keeps it
+    #    Terminating — we assert the request was ADMITTED (deletionTimestamp set).
+    - name: Delete PV with annotation is admitted
+      try:
+        - script:
+            content: |
+              set -e
+              PV=$(kubectl get pvc data-ledger-protect-vol-0 -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
+              [ -n "$PV" ] || { echo "FAIL: PVC has no bound volume"; exit 1; }
+              kubectl annotate pv "$PV" formance.com/allow-deletion=true --overwrite
+              kubectl delete pv "$PV" --wait=false
+              TS=$(kubectl get pv "$PV" -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null || true)
+              echo "deletionTimestamp=$TS"
+              [ -n "$TS" ]
+            timeout: 60s
+
+    # 5. PVC DELETE without the annotation must be rejected by the admission policy.
+    - name: Delete PVC without annotation is blocked
+      try:
+        - script:
+            content: |
+              if kubectl delete pvc data-ledger-protect-vol-0 -n $NAMESPACE --timeout=30s 2>err.txt; then
+                echo "FAIL: PVC deletion succeeded but should have been blocked"
+                cat err.txt
+                exit 1
+              fi
+              echo "PVC deletion correctly blocked:"
+              cat err.txt
+              grep -q "allow-deletion" err.txt
+            timeout: 60s
+
+    # 6. After opting in via the annotation, the PVC DELETE is admitted.
+    #    The PVC is in use by pod-0, so the kubernetes.io/pvc-protection finalizer
+    #    keeps it Terminating until the pod unmounts — we assert the request was
+    #    ADMITTED (deletionTimestamp set), not that the object is fully gone.
+    - name: Delete PVC with annotation is admitted
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl annotate pvc data-ledger-protect-vol-0 -n $NAMESPACE formance.com/allow-deletion=true --overwrite
+              kubectl delete pvc data-ledger-protect-vol-0 -n $NAMESPACE --wait=false
+              TS=$(kubectl get pvc data-ledger-protect-vol-0 -n $NAMESPACE -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null || true)
+              echo "deletionTimestamp=$TS"
+              [ -n "$TS" ]
+            timeout: 60s
+
+    # 7. Toggle path: setting spec.persistence.deletionProtection back to false must
+    #    make the operator remove the label from the volumes, lifting protection so a
+    #    PVC DELETE without the annotation is admitted. This guards the remove path in
+    #    reconcileVolumeProtection — protection that stays stuck on after the owner
+    #    turns it off would be a silent regression. Run last (disabling is CR-wide) and
+    #    against the so-far-untouched wal volume, since the data PVC/PV are already
+    #    Terminating from the steps above.
+    - name: Disabling deletionProtection lifts protection
+      try:
+        - script:
+            content: |
+              set -e
+              kubectl patch ledgerservice protect-vol -n $NAMESPACE \
+                --type merge -p '{"spec":{"persistence":{"deletionProtection":false}}}'
+              for i in $(seq 1 30); do
+                PVC_LABEL=$(kubectl get pvc wal-ledger-protect-vol-0 -n $NAMESPACE -o jsonpath='{.metadata.labels.ledger\.formance\.com/deletion-protection}')
+                PV=$(kubectl get pvc wal-ledger-protect-vol-0 -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
+                PV_LABEL=""
+                [ -n "$PV" ] && PV_LABEL=$(kubectl get pv "$PV" -o jsonpath='{.metadata.labels.ledger\.formance\.com/deletion-protection}')
+                echo "Attempt $i: pvc-label='$PVC_LABEL' pv=$PV pv-label='$PV_LABEL'"
+                [ -z "$PVC_LABEL" ] && [ -z "$PV_LABEL" ] && break
+                sleep 5
+              done
+              [ -z "$PVC_LABEL" ] && [ -z "$PV_LABEL" ] || { echo "FAIL: label not removed after disabling protection"; exit 1; }
+              kubectl delete pvc wal-ledger-protect-vol-0 -n $NAMESPACE --wait=false
+              TS=$(kubectl get pvc wal-ledger-protect-vol-0 -n $NAMESPACE -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null || true)
+              echo "deletionTimestamp=$TS"
+              [ -n "$TS" ]
+            timeout: 180s

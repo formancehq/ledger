@@ -29,6 +29,11 @@ func computeSpecHash(spec *ledgerv1alpha1.LedgerServiceSpec) string {
 	cp.NetworkPolicy = nil
 	cp.DNSEndpoint = nil
 
+	// DeletionProtection only drives PVC/PV label patches (reconcileVolumeProtection);
+	// it has no pod-template effect, so toggling it must not roll the StatefulSet.
+	// Persistence is a value field, so zeroing it on the shallow copy is safe.
+	cp.Persistence.DeletionProtection = false
+
 	data, _ := json.Marshal(&cp) //nolint:errchkjson // spec is always serializable
 
 	return fmt.Sprintf("%x", sha256.Sum256(data))
