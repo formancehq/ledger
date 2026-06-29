@@ -844,6 +844,15 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 		}
 
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
+			// EN-1276: the mirror apply path writes the per-account existence
+			// marker for posting and account-metadata accounts, so declare the
+			// account need to cover the gated GetAccount/PutAccount (invariants
+			// #6/#9). Kept in sync with the mirror worker's extractMirrorNeeds.
+			for _, posting := range ct.GetPostings() {
+				addAccountNeed(p, ledgerName, posting.GetSource())
+				addAccountNeed(p, ledgerName, posting.GetDestination())
+			}
+
 			for account, mm := range ct.GetAccountMetadata() {
 				for key := range mm.GetValues() {
 					p.Metadata[domain.MetadataKey{
@@ -851,12 +860,17 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 						Key:        key,
 					}] = struct{}{}
 				}
+
+				addAccountNeed(p, ledgerName, account)
 			}
 		}
 
 		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
 			switch target := sm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
+				// EN-1276: mirror metadata-set marks the account; declare the need.
+				addAccountNeed(p, ledgerName, target.Account.GetAddr())
+
 				for key := range sm.GetMetadata() {
 					p.Metadata[domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},

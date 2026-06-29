@@ -191,6 +191,16 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 		}
 	}
 
+	// EN-1276: write the universal per-account existence marker for every
+	// account this mirror log touches, so a marker exists regardless of ledger
+	// mode and PromoteLedger is a no-op for the projection. No default-metadata
+	// derivation — mirror replays exactly what the source committed (defaults
+	// already merged upstream into AccountMetadata). The marked set matches
+	// recordTouchedAccounts on the replay/checker side.
+	if err := markMirrorTouchedAccounts(s, ledger, ct.GetPostings(), accountMetadata); err != nil {
+		return nil, err
+	}
+
 	var chapterID uint64
 	if p, ok := s.GetCurrentOpenChapter(); ok {
 		chapterID = p.GetId()
@@ -225,6 +235,14 @@ func processMirrorSavedMetadata(ledger string, sm *raftcmdpb.MirrorSavedMetadata
 	if sm.GetTarget() != nil {
 		switch target := sm.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
+			// EN-1276: a metadata-set is an account-creation path. Write the
+			// universal existence marker (no default derivation — mirror parity)
+			// so promotion is a no-op for the projection, matching the marker the
+			// replay/checker records for this log.
+			if _, err := markAccountExistence(s, ledger, target.Account.GetAddr()); err != nil {
+				return nil, err
+			}
+
 			for key, value := range sm.GetMetadata() {
 				metaKey := domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: ledger, Account: target.Account.GetAddr()},

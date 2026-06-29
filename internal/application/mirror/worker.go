@@ -658,6 +658,30 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Needs, []*pl
 			p.Transactions[domain.TransactionKey{LedgerName: w.ledgerName, ID: rt.GetRevertedTransactionId()}] = struct{}{}
 		}
 
+		// EN-1276: declare the per-account existence-marker need for every
+		// account the mirror apply path will mark — CreatedTransaction postings
+		// and account-metadata targets, plus a SavedMetadata account target — so
+		// the gated GetAccount/PutAccount in the mirror handlers is covered
+		// (invariants #6/#9). Reverts touch only pre-existing accounts, which
+		// already carry a marker, so the revert apply path writes none and the
+		// reverse postings need no account declaration.
+		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
+			for _, posting := range ct.GetPostings() {
+				p.Accounts[domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetSource()}] = struct{}{}
+				p.Accounts[domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetDestination()}] = struct{}{}
+			}
+
+			for account := range ct.GetAccountMetadata() {
+				p.Accounts[domain.AccountKey{LedgerName: w.ledgerName, Account: account}] = struct{}{}
+			}
+		}
+
+		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
+			if target, ok := sm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+				p.Accounts[domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()}] = struct{}{}
+			}
+		}
+
 		perOrder[orderIdx] = p
 		aggregate.Merge(p)
 	}

@@ -16,20 +16,18 @@ import (
 // rawLedgerTypes tracks the raw account type map for add/remove mutations.
 // ledgerAccountTypes tracks pre-compiled account types for ephemeral purge simulation.
 //
-// isMirror reflects the ledger's mode AT THE TIME of this log (EN-1276). Mirror
-// apply handlers (processMirrorCreatedTransaction / processMirrorSavedMetadata)
-// ingest decided logs and deliberately do NOT write per-account existence
-// markers, so replay/rebuild must not record one either — otherwise the checker
-// reverse-check raises spurious ACCOUNT_MISMATCH and a backup rebuild writes
-// markers the live FSM never persisted. The mode is per-log, not per-ledger: a
-// mirror promoted to normal (PromoteLedger) starts writing markers, so callers
-// flip this to false once they replay the promotion log.
+// Per-account existence markers are recorded UNCONDITIONALLY for every
+// account-touching log, with no mirror special-casing: the mirror apply path
+// (processMirrorCreatedTransaction / processMirrorSavedMetadata) now writes the
+// universal existence marker on ingest just like the NORMAL apply path, so a
+// mirror-applied log produces the same marker live and on replay/rebuild. There
+// is therefore nothing for replay to skip — a promoted mirror's pre-promotion
+// accounts already carry markers (EN-1276).
 //
 // Extracted from internal/application/check/checker.go for reuse across
 // the integrity checker and the backup restore pipeline.
 func ReplayLedgerLog(
 	ledger string,
-	isMirror bool,
 	seq uint64,
 	logDate *commonpb.Timestamp,
 	payload *commonpb.LedgerLogPayload,
@@ -74,13 +72,11 @@ func ReplayLedgerLog(
 		// transaction touched — both posting accounts and metadata-only accounts
 		// (accounts present solely in AccountMetadata, e.g. via Numscript
 		// set_account_meta with no posting) — mirroring the FSM apply path (which
-		// marks unconditionally) so the checker/rebuild reconstruct exactly the
-		// markers apply wrote, stamped with the log's HLC date. Skipped for mirror
-		// ledgers: their apply handler writes no markers (see isMirror doc).
-		if !isMirror {
-			if err := recordTouchedAccounts(ledger, tx.GetPostings(), p.CreatedTransaction.GetAccountMetadata(), logDate, w); err != nil {
-				return err
-			}
+		// marks unconditionally on every mode, mirror included) so the
+		// checker/rebuild reconstruct exactly the markers apply wrote, stamped
+		// with the log's HLC date.
+		if err := recordTouchedAccounts(ledger, tx.GetPostings(), p.CreatedTransaction.GetAccountMetadata(), logDate, w); err != nil {
+			return err
 		}
 
 		if err := replayEphemeralPurge(ledger, tx.GetPostings(), w, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
@@ -148,17 +144,13 @@ func ReplayLedgerLog(
 		case *commonpb.Target_Account:
 			// EN-1276: a metadata-set is an account-creation path, so record the
 			// per-account existence marker (mirroring the FSM apply path in
-			// processAddMetadata, which marks unconditionally) stamped with the
-			// log's HLC date — so the checker/rebuild reconstruct exactly the
-			// markers apply wrote. The default values themselves ride this log's
-			// Metadata and replay below. world is never marked. RecordAccount is
-			// idempotent, so recording a pre-existing account here is harmless.
-			//
-			// Skipped for mirror ledgers: processMirrorSavedMetadata writes no
-			// marker, so recording one here would make the checker reverse-check
-			// fire a spurious ACCOUNT_MISMATCH and a backup rebuild persist a
-			// marker the live FSM never wrote (see isMirror doc).
-			if !isMirror && target.Account.GetAddr() != "world" {
+			// processAddMetadata and processMirrorSavedMetadata, both of which
+			// mark unconditionally) stamped with the log's HLC date — so the
+			// checker/rebuild reconstruct exactly the markers apply wrote. The
+			// default values themselves ride this log's Metadata and replay below.
+			// world is never marked. RecordAccount is idempotent, so recording a
+			// pre-existing account here is harmless.
+			if target.Account.GetAddr() != "world" {
 				key := domain.AccountKey{LedgerName: ledger, Account: target.Account.GetAddr()}
 				if err := w.RecordAccount(key.Bytes(), logDate); err != nil {
 					return fmt.Errorf("recording account marker for saved metadata: %w", err)

@@ -55,11 +55,6 @@ func RebuildDelta(
 
 	rawLedgerTypes := make(map[string]map[string]*commonpb.AccountType)
 	ledgerAccountTypes := make(map[string][]accounttype.CompiledType)
-	// mirrorLedgers tracks each ledger's mode at the current replay point
-	// (EN-1276). Mirror apply handlers write no per-account existence marker, so
-	// rebuild must not persist one for a mirror-applied log or the restored DB
-	// diverges from live. Per-log: flipped to false on a PromoteLedger log.
-	mirrorLedgers := make(map[string]bool)
 
 	readHandle, err := store.NewDirectReadHandle()
 	if err != nil {
@@ -73,7 +68,7 @@ func RebuildDelta(
 	// incremental rebuild the AddAccountType logs precede fromLogSeq, so
 	// without this the replayed entries would skip ephemeral-purge simulation
 	// and write transient volumes that should never have been persisted.
-	if err := seedLedgerContext(ctx, readHandle, rawLedgerTypes, ledgerAccountTypes, mirrorLedgers); err != nil {
+	if err := seedLedgerContext(ctx, readHandle, rawLedgerTypes, ledgerAccountTypes); err != nil {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("seeding ledger context: %w", err)
@@ -156,7 +151,7 @@ func RebuildDelta(
 
 			ledgerName := p.Apply.GetLedgerName()
 
-			if err := replay.ReplayLedgerLog(ledgerName, mirrorLedgers[ledgerName], seq, p.Apply.GetLog().GetDate(), p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetDate(), p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
@@ -174,8 +169,6 @@ func RebuildDelta(
 				Mode:      p.CreateLedger.GetMode(),
 			}
 
-			mirrorLedgers[info.GetName()] = info.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR
-
 			if err := state.SaveLedger(batch, info); err != nil {
 				_ = batch.Cancel()
 
@@ -188,11 +181,9 @@ func RebuildDelta(
 		case *commonpb.LogPayload_PromoteLedger:
 			// Promotion changes ledger mode — would need to read and update LedgerInfo.
 			// For now, the original CreateLedger captures the initial state.
-			// EN-1276: from this log on, the ledger applies as normal and the
-			// FSM writes per-account markers, so replay must record them too.
-			if p.PromoteLedger != nil {
-				mirrorLedgers[p.PromoteLedger.GetName()] = false
-			}
+			// EN-1276: per-account markers are written unconditionally on every
+			// apply path (mirror included), so promotion is a no-op for the marker
+			// projection and nothing needs to be reconstructed here.
 
 		case *commonpb.LogPayload_RegisterSigningKey:
 			if p.RegisterSigningKey != nil {
@@ -420,7 +411,6 @@ func seedLedgerContext(
 	reader dal.PebbleReader,
 	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
-	mirrorLedgers map[string]bool,
 ) error {
 	cursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
@@ -440,12 +430,6 @@ func seedLedgerContext(
 		}
 
 		name := info.GetName()
-
-		// Seed mirror mode for incremental rebuilds whose CreateLedger log
-		// predates the replay window (EN-1276). The persisted mode reflects the
-		// current mode after any promotion, matching how the live FSM applies
-		// logs in the rebuilt window.
-		mirrorLedgers[name] = info.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR
 
 		if types := info.GetAccountTypes(); len(types) > 0 {
 			cloned := maps.Clone(types)

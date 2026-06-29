@@ -82,6 +82,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -381,6 +382,7 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	allowAccountMarkers(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

@@ -262,30 +262,16 @@ func markNewAccountAndMatchDefaults(
 	account string,
 	compiled []accounttype.CompiledType,
 ) (map[string]*commonpb.MetadataValue, domain.Describable) {
-	// System accounts (world) are never marked or assigned default metadata.
-	if account == "world" {
+	created, err := markAccountExistence(s, ledgerName, account)
+	if err != nil {
+		return nil, err
+	}
+
+	if !created {
+		// world, or an account already created before this order — not new,
+		// so no default metadata is (re-)applied.
 		return nil, nil
 	}
-
-	key := domain.AccountKey{LedgerName: ledgerName, Account: account}
-
-	existing, err := s.GetAccount(key)
-	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return nil, &domain.ErrStorageOperation{Operation: "loading account state", Cause: err}
-	}
-
-	if existing != nil {
-		// Account already created before this order — not new.
-		return nil, nil
-	}
-
-	// First time this account is ever touched: record the marker so it is
-	// recognised as existing from now on. The value is the log's HLC date
-	// (s.GetDate(), identical to LedgerLog.date) — non-empty so the cache
-	// snapshot/preload machinery never reads it back as a tombstone, and the
-	// FSM-side source of the insertion-date projection (EN-1360). Apply and
-	// rebuild both write LedgerLog.date, so the marker bytes are byte-identical.
-	s.PutAccount(key, &commonpb.AccountState{InsertionDate: s.GetDate().Mutate()})
 
 	matched := accounttype.FindMatchingType(account, compiled)
 	if matched == nil {
@@ -293,6 +279,95 @@ func markNewAccountAndMatchDefaults(
 	}
 
 	return matched.GetDefaultMetadata(), nil
+}
+
+// markAccountExistence writes the universal per-account existence marker the
+// first time `account` is ever created (by any posting or metadata-set), stamped
+// with the log's HLC date. It is the marker-only core shared by every
+// account-creation path —
+// transaction postings, metadata-set, and mirror ingest alike — so a
+// pre-existing account always carries a marker and is never backfilled when
+// defaults are added later, regardless of ledger mode. Returns true when it
+// wrote a NEW marker (the account had never been seen), false for the world
+// system account and for accounts already created before this order.
+//
+// The marker value is the log's HLC date (s.GetDate(), identical to the
+// LedgerLog.date the envelope is stamped with), which both keeps the serialized
+// marker non-empty (snapshotter/preload tombstone trap) and feeds the
+// insertion-date projection (EN-1360). Replay/rebuild reconstruct the same value
+// from LedgerLog.date, so the bytes are identical for the same applied index.
+//
+// Newness is authoritative here at apply: GetAccount returns ErrNotFound only
+// when the account has never been seen. The PutAccount marker is written to the
+// WriteSet so a later order in the same batch (and the next order) sees the
+// account as existing. A non-ErrNotFound error (e.g. a coverage miss from a
+// stale plan that failed to declare the key) is surfaced loudly, never skipped.
+func markAccountExistence(s Scope, ledgerName, account string) (bool, domain.Describable) {
+	// System accounts (world) are never marked.
+	if account == "world" {
+		return false, nil
+	}
+
+	key := domain.AccountKey{LedgerName: ledgerName, Account: account}
+
+	existing, err := s.GetAccount(key)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return false, &domain.ErrStorageOperation{Operation: "loading account state", Cause: err}
+	}
+
+	if existing != nil {
+		return false, nil
+	}
+
+	s.PutAccount(key, &commonpb.AccountState{InsertionDate: s.GetDate().Mutate()})
+
+	return true, nil
+}
+
+// markMirrorTouchedAccounts writes the universal existence marker for every
+// non-world account a mirror-ingested log touches (postings + account-metadata
+// targets), WITHOUT deriving or applying default metadata. Mirror parity means
+// replaying exactly what the source ledger committed — the source already merged
+// any defaults into the account metadata it sent — but the existence marker must
+// still be written so a pre-existing account is protected from backfill after
+// the ledger is promoted to NORMAL mode (EN-1276). The set of marked accounts
+// matches recordTouchedAccounts (replay) and applyDefaultMetadataToNewAccounts
+// (NORMAL apply), so live apply, replay and rebuild all agree.
+func markMirrorTouchedAccounts(
+	s Scope,
+	ledgerName string,
+	postings []*commonpb.Posting,
+	accountMetadata map[string]*commonpb.MetadataMap,
+) domain.Describable {
+	seen := make(map[string]struct{}, len(postings)*2+len(accountMetadata))
+
+	mark := func(account string) domain.Describable {
+		if _, dup := seen[account]; dup {
+			return nil
+		}
+
+		seen[account] = struct{}{}
+
+		_, err := markAccountExistence(s, ledgerName, account)
+
+		return err
+	}
+
+	for _, posting := range postings {
+		for _, account := range [2]string{posting.GetSource(), posting.GetDestination()} {
+			if err := mark(account); err != nil {
+				return err
+			}
+		}
+	}
+
+	for account := range accountMetadata {
+		if err := mark(account); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // applyDefaultMetadataToNewAccounts records an existence marker for each

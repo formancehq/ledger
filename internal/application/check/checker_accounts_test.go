@@ -387,15 +387,28 @@ func mirrorIngestCreatedTxOrder(ledger string, v2LogID, txID uint64, postings ..
 	}
 }
 
-// TestCompareAccounts_MirrorLedger_NoReverseFalsePositive is the regression test
-// for PR #564 finding [2]. Mirror apply handlers (processMirrorCreatedTransaction)
-// deliberately write NO per-account existence marker — mirror ledgers ingest
-// already-decided logs and never derive defaults locally — so replay/rebuild
-// must not record a marker touch for a mirror-applied log either. Before the fix
-// the reverse check (every replay-touched account must have a live marker) fired
-// a spurious ACCOUNT_MISMATCH for every account on a healthy mirror ledger,
-// because replay recorded touches the live FSM never marked.
-func TestCompareAccounts_MirrorLedger_NoReverseFalsePositive(t *testing.T) {
+// createPromoteLedgerOrder builds a PromoteLedger order, flipping a mirror
+// ledger to NORMAL mode.
+func createPromoteLedgerOrder(name string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: name,
+				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{
+					PromoteLedger: &raftcmdpb.PromoteLedgerOrder{},
+				},
+			},
+		},
+	}
+}
+
+// TestCompareAccounts_MirrorLedger_MarkerWritten pins the EN-1276 Option B
+// behaviour (PR #564 finding [A]). Mirror apply handlers now write the universal
+// per-account existence marker on ingest — without deriving defaults — so a
+// mirror-ingested account carries a live marker just like a NORMAL-mode account,
+// and replay records the matching touch. The checker stays clean (forward +
+// reverse agree). world is never marked.
+func TestCompareAccounts_MirrorLedger_MarkerWritten(t *testing.T) {
 	t.Parallel()
 
 	engine := newTestEngine(t)
@@ -405,8 +418,67 @@ func TestCompareAccounts_MirrorLedger_NoReverseFalsePositive(t *testing.T) {
 		newPosting("world", "users:001", "USD", 500),
 	))
 
+	_, ok := engine.accounts[string(domain.AccountKey{LedgerName: "mirror", Account: "users:001"}.Bytes())]
+	require.True(t, ok, "mirror-ingested account must carry a live existence marker (EN-1276 Option B)")
+
+	_, worldMarked := engine.accounts[string(domain.AccountKey{LedgerName: "mirror", Account: "world"}.Bytes())]
+	require.False(t, worldMarked, "world is never marked")
+
 	errs := collectAccountMismatchErrors(t, engine)
-	require.Empty(t, errs, "mirror-ingested accounts carry no live marker by design; replay must not record a touch for them")
+	require.Empty(t, errs, "mirror apply writes the marker and replay records the touch; checker must be clean")
+}
+
+// TestCompareAccounts_MirrorPromote_NoBackfill is the regression test for PR #564
+// finding [A] (mirror-promoted accounts lack existence markers). Before the fix,
+// mirror ingest wrote no marker, so after PromoteLedger the first NORMAL-mode
+// transaction touching a pre-promotion account hit ErrNotFound, treated it as
+// brand-new, and backfilled the account type's default metadata (and re-stamped
+// insertion_date). With Option B mirror ingest writes the universal marker, so
+// the promoted account is recognised as pre-existing: no default is applied and
+// the marker's insertion_date is unchanged.
+func TestCompareAccounts_MirrorPromote_NoBackfill(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	acctKey := domain.AccountKey{LedgerName: "mirror", Account: "users:001"}
+
+	// Mirror ledger ingests a transaction creating users:001 (pre-promotion).
+	engine.processAndCommit(createMirrorLedgerOrder("mirror"))
+	engine.processAndCommit(mirrorIngestCreatedTxOrder("mirror", 1, 42,
+		newPosting("world", "users:001", "USD", 500),
+	))
+
+	marker, ok := engine.accounts[string(acctKey.Bytes())]
+	require.True(t, ok, "mirror-ingested account must carry a marker")
+	insertionBefore := marker.GetInsertionDate().GetData()
+
+	// Promote to NORMAL, then add a default-bearing type matching users:001.
+	engine.processAndCommit(createPromoteLedgerOrder("mirror"))
+	engine.processAndCommit(addAccountTypeWithDefaultMetadataOrder(
+		"mirror", "users", "users:{id}",
+		map[string]string{"tier": "gold"},
+	))
+
+	// A post-promotion NORMAL transaction touches the pre-promotion account.
+	engine.processAndCommit(createTransactionOrder("mirror", false,
+		newPosting("world", "users:001", "USD", 100),
+	))
+
+	// The default must NOT be backfilled: users:001 pre-existed (it carries a
+	// marker from mirror ingest), so processCreateTransaction treats it as
+	// already-created and applies no default metadata.
+	defKey := domain.MetadataKey{AccountKey: acctKey, Key: "tier"}
+	_, backfilled := engine.metadata[string(defKey.Bytes())]
+	require.False(t, backfilled, "default metadata must not backfill onto a pre-promotion account")
+
+	// The marker's insertion_date must be unchanged (mirror-era, not re-stamped).
+	markerAfter := engine.accounts[string(acctKey.Bytes())]
+	require.Equal(t, insertionBefore, markerAfter.GetInsertionDate().GetData(),
+		"insertion_date must not be re-stamped on a pre-existing account")
+
+	errs := collectAccountMismatchErrors(t, engine)
+	require.Empty(t, errs, "checker must be clean across mirror ingest + promotion")
 }
 
 // TestCompareAccounts_EndToEnd_MetadataOnlyAccountInTransaction is the
