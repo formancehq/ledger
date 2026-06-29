@@ -68,7 +68,7 @@ require (
 	github.com/aws/smithy-go v1.24.2
 	github.com/cockroachdb/pebble/v2 v2.1.4
 	github.com/databricks/databricks-sql-go v1.10.0
-	github.com/formancehq/go-libs/v5 v5.6.2-0.20260626135051-86a0eb8cd435
+	github.com/formancehq/go-libs/v5 v5.6.2-0.20260629083238-3bb56dedfb1d
 	github.com/formancehq/invariants v0.10.0
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/google/uuid v1.6.0

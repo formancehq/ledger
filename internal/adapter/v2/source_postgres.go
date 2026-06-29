@@ -8,10 +8,12 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	bunconnect "github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -134,25 +136,47 @@ func (s *PostgresSource) Close() error {
 
 // buildPgxPoolConfig parses the source DSN and, when AWS IAM auth is enabled,
 // wires a BeforeConnect hook that refreshes a fresh RDS IAM token per new
-// pool connection (token TTL is 15 minutes).
+// pool connection (token TTL is 15 minutes; pgxpool fires BeforeConnect on
+// every new connection it opens, so rotation is automatic).
 func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceConfig) (*pgxpool.Config, error) {
-	var opts []connect.PgxPoolOption
-
-	if iam := cfg.GetAwsIamAuth(); iam != nil {
-		region := iam.GetRegion()
-		if region == "" {
-			return nil, errors.New("aws_iam_auth.region is required when AWS IAM auth is enabled")
-		}
-
-		awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
-		if err != nil {
-			return nil, fmt.Errorf("loading AWS config for IAM auth: %w", err)
-		}
-
-		opts = append(opts, connect.WithPgxPoolIAMAuth(awsCfg))
+	poolCfg, err := pgxpool.ParseConfig(encodeDSNPassword(cfg.GetDsn()))
+	if err != nil {
+		return nil, fmt.Errorf("parsing mirror DSN: %w", err)
 	}
 
-	return connect.BuildPgxPoolConfig(ctx, encodeDSNPassword(cfg.GetDsn()), opts...)
+	iam := cfg.GetAwsIamAuth()
+	if iam == nil {
+		return poolCfg, nil
+	}
+
+	region := iam.GetRegion()
+	if region == "" {
+		return nil, errors.New("aws_iam_auth.region is required when AWS IAM auth is enabled")
+	}
+
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return nil, fmt.Errorf("loading AWS config for IAM auth: %w", err)
+	}
+
+	poolCfg.BeforeConnect = iamBeforeConnect(awsCfg)
+
+	return poolCfg, nil
+}
+
+// iamBeforeConnect returns a pgxpool BeforeConnect hook that mints a fresh
+// RDS IAM auth token for each new connection and writes it to ConnConfig.Password.
+func iamBeforeConnect(awsCfg aws.Config) func(context.Context, *pgx.ConnConfig) error {
+	return func(ctx context.Context, cc *pgx.ConnConfig) error {
+		endpoint := fmt.Sprintf("%s:%d", cc.Host, cc.Port)
+		token, err := bunconnect.BuildIAMAuthToken(ctx, awsCfg, endpoint, cc.User)
+		if err != nil {
+			return fmt.Errorf("building aws auth token: %w", err)
+		}
+		cc.Password = token
+
+		return nil
+	}
 }
 
 // encodeDSNPassword ensures that passwords containing URL-special characters
