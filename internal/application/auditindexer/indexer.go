@@ -104,6 +104,38 @@ func (i *Indexer) ProcessOnce(ctx context.Context) (uint64, error) {
 	return cursor, nil
 }
 
+// Rebuild drops the audit index and the cursor, then replays from the earliest
+// surviving audit entry. Used by ledgerctl and by boot auto-rebuild.
+func (i *Indexer) Rebuild(ctx context.Context) error {
+	if err := i.readStore.DropAuditIndex(); err != nil {
+		return err
+	}
+	batch := i.readStore.NewBatch()
+	if err := i.readStore.WriteAuditProgress(batch, 0); err != nil {
+		return err
+	}
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("resetting audit cursor: %w", err)
+	}
+	i.lastIndexed.Store(0)
+
+	_, err := i.ProcessOnce(ctx)
+	return err
+}
+
+// shouldRebuildOnBoot reports whether boot should drop+rebuild instead of an
+// incremental catch-up: cursor missing (0) with entries present, or the gap
+// exceeds the configured threshold.
+func (i *Indexer) shouldRebuildOnBoot(cursor, last uint64) bool {
+	if cursor == 0 && last > 0 {
+		return true
+	}
+	if i.cfg.RebuildThreshold > 0 && last > cursor && last-cursor > i.cfg.RebuildThreshold {
+		return true
+	}
+	return false
+}
+
 // processBatch indexes up to batchSize audit entries whose sequence is strictly
 // greater than after, commits a single readstore batch, and returns the new
 // cursor and whether at least one entry was processed.

@@ -52,6 +52,55 @@ func newIndexerForTest(t *testing.T) (*Indexer, *dal.Store, *readstore.Store) {
 	return idx, mainStore, rs
 }
 
+// dumpAuditIndexKeys returns every audit-index key currently stored, as a
+// sorted slice, for byte-identical parity comparisons.
+func dumpAuditIndexKeys(t *testing.T, rs *readstore.Store) [][]byte {
+	t.Helper()
+	return rs.DumpAuditIndexKeysForTest()
+}
+
+func TestRebuildYieldsIdenticalIndex(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	idx, mainStore, rs := newIndexerForTest(t)
+
+	for s := uint64(1); s <= 5; s++ {
+		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Ledgers: []string{"main"},
+		})
+	}
+
+	_, err := idx.ProcessOnce(ctx)
+	require.NoError(t, err)
+	before := dumpAuditIndexKeys(t, rs)
+	require.NotEmpty(t, before)
+
+	require.NoError(t, idx.Rebuild(ctx))
+	after := dumpAuditIndexKeys(t, rs)
+
+	require.Equal(t, before, after, "rebuild must yield a byte-identical index")
+
+	cursor, err := rs.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), cursor)
+}
+
+func TestShouldRebuildOnBoot(t *testing.T) {
+	t.Parallel()
+	idx, _, _ := newIndexerForTest(t)
+	idx.cfg.RebuildThreshold = 100
+
+	require.True(t, idx.shouldRebuildOnBoot(0, 5), "missing cursor with entries -> rebuild")
+	require.False(t, idx.shouldRebuildOnBoot(0, 0), "empty store -> no rebuild")
+	require.False(t, idx.shouldRebuildOnBoot(5, 10), "small gap -> no rebuild")
+	require.True(t, idx.shouldRebuildOnBoot(5, 200), "gap beyond threshold -> rebuild")
+
+	idx.cfg.RebuildThreshold = 0
+	require.False(t, idx.shouldRebuildOnBoot(5, 1_000_000), "threshold 0 disables gap-based rebuild")
+}
+
 func TestIndexerCatchUpAndResume(t *testing.T) {
 	t.Parallel()
 
