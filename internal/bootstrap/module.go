@@ -1163,12 +1163,29 @@ func Module() fx.Option {
 			// member (e.g. after a crash-restart where the initial WAL was written
 			// but the AddLearner RPC never reached the leader), the server returns
 			// AlreadyExists which we treat as success.
+			//
+			// Skip entirely on restart: the CLUSTER_JOINED marker is written
+			// after the initial join succeeds (see tryAddLearner). On any
+			// subsequent boot — even one where --join is still in the CLI
+			// (e.g. E2E test framework that reuses Instruments across restarts)
+			// — re-running tryAddLearner would propose a redundant AddLearner
+			// for a node that is already a voter, racing leadership state and
+			// stalling the test's "should become follower" Eventually. The
+			// operator's StatefulSet entrypoint already gates --join on the
+			// same marker; this check makes the safety hold regardless of how
+			// the binary is invoked.
 			func(
 				lc fx.Lifecycle,
 				cfg Config,
 				logger logging.Logger,
 			) {
 				if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
+					return
+				}
+
+				if wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
+					logger.Infof("CLUSTER_JOINED marker present, skipping learner registration")
+
 					return
 				}
 
