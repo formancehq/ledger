@@ -25,7 +25,7 @@
 #   NODES=3 ./run_model_test.sh 300
 #
 # Environment:
-#   REPO              path to the ledger-v3-poc checkout (default: the repo root, two levels up from this script)
+#   REPO              path to the ledger repo checkout (default: the repo root, two levels up from this script)
 #   NODES             node count (default 1); --nodes / --cluster override it
 #   GRPC_BASE         base gRPC port; raft = +100, http = +200 per band (default: random)
 #   RESTART_INTERVAL  seconds to soak between restarts, N>1 only; 0 disables restarts (default: 15)

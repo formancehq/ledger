@@ -51,7 +51,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	ls := &ledgerv1alpha1.LedgerService{
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-v3"},
 		Spec: ledgerv1alpha1.LedgerServiceSpec{
-			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger-v3-poc", Tag: "v0.0.8"},
+			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "v0.0.8"},
 			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
 		},
 	}
@@ -85,7 +85,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.Len(t, job.Spec.Template.Spec.Containers, 1)
 	c := job.Spec.Template.Spec.Containers[0]
 	require.Equal(t, backupJobContainerName, c.Name)
-	require.Equal(t, "ghcr.io/formancehq/ledger-v3-poc:v0.0.8", c.Image)
+	require.Equal(t, "ghcr.io/formancehq/ledger:v0.0.8", c.Image)
 
 	require.Equal(t, "/bin/sh", c.Command[0])
 	require.Equal(t, "-c", c.Command[1])

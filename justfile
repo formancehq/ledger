@@ -38,6 +38,11 @@ tidy:
 # All optional feature build tags
 all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"
 
+# Docker image repository (registry + name). Override via env var to push
+# to a different GHCR location. Default targets the canonical
+# `formancehq/ledger` published image.
+image_repository := env_var_or_default("IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger")
+
 # Build the server application (light: no optional deps)
 build:
     go build -o ./build/ledger-server .
@@ -372,11 +377,11 @@ operator-helm-publish version='' suffix='':
 
 # Build and push multi-arch Docker image
 docker-build *ARGS:
-    docker buildx build -t ghcr.io/formancehq/ledger-v3-poc --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,azure,pyroscope {{ARGS}} .
+    docker buildx build -t '{{ image_repository }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,azure,pyroscope {{ARGS}} .
 
 # Build and push a PR docker image under a single explicit tag (no `:latest`).
 # Used by the `Build-PR-Image` workflow job to publish
-# `ghcr.io/formancehq/ledger-v3-poc:pr-<num>-<sha7>` for smoke tests
+# `{{ image_repository }}:pr-<num>-<sha7>` for smoke tests
 # before merge — keeps the same BUILD_TAGS set as `docker-build` so a
 # reviewer exercises the full optional-feature surface.
 docker-build-pr image:

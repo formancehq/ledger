@@ -5,6 +5,6 @@ metadata:
 spec:
   replicas: 1
   image:
-    repository: ledger-v3-poc
+    repository: ledger
     tag: e2e
     pullPolicy: Never

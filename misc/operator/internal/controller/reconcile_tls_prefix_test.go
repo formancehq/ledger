@@ -33,7 +33,7 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 	ls := &ledgerv1alpha1.LedgerService{
 		ObjectMeta: metav1.ObjectMeta{Name: crName, Namespace: namespace},
 		Spec: ledgerv1alpha1.LedgerServiceSpec{
-			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger-v3-poc", Tag: "v0.0.8"},
+			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "v0.0.8"},
 			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
 		},
 	}

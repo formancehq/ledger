@@ -3,6 +3,12 @@
 version: 2
 project_name: ledger-v3
 
+# IMAGE_REPOSITORY controls where Docker images are pushed. Override the env
+# var to publish to a different GHCR location. Default targets the canonical
+# `formancehq/ledger` published image.
+env:
+- IMAGE_REPOSITORY={{ envOrDefault "IMAGE_REPOSITORY" "ghcr.io/formancehq/ledger" }}
+
 builds:
 - binary: ledger-server
   id: ledger-server
@@ -75,7 +81,7 @@ changelog:
     - "^ci:"
 
 dockers:
-- image_templates: ["ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64"]
+- image_templates: ["{{ .Env.IMAGE_REPOSITORY }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64"]
   goarch: amd64
   ids:
   - ledger-server
@@ -85,15 +91,15 @@ dockers:
   build_flag_templates:
   - --provenance=false
   - --platform=linux/amd64
-  - --label=org.opencontainers.image.title=ledger-v3-poc
-  - --label=org.opencontainers.image.description=ledger-v3-poc
-  - --label=org.opencontainers.image.url=https://github.com/formancehq/ledger-v3-poc
-  - --label=org.opencontainers.image.source=https://github.com/formancehq/ledger-v3-poc
+  - --label=org.opencontainers.image.title=ledger
+  - --label=org.opencontainers.image.description=ledger
+  - --label=org.opencontainers.image.url=https://github.com/formancehq/ledger
+  - --label=org.opencontainers.image.source=https://github.com/formancehq/ledger
   - --label=org.opencontainers.image.version={{ .Version }}
   - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
   - --label=org.opencontainers.image.revision={{ .FullCommit }}
   - --label=org.opencontainers.image.licenses=MIT
-- image_templates: ["ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-arm64"]
+- image_templates: ["{{ .Env.IMAGE_REPOSITORY }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-arm64"]
   goarch: arm64
   ids:
   - ledger-server
@@ -103,21 +109,21 @@ dockers:
   build_flag_templates:
   - --provenance=false
   - --platform=linux/arm64/v8
-  - --label=org.opencontainers.image.title=ledger-v3-poc
-  - --label=org.opencontainers.image.description=ledger-v3-poc
-  - --label=org.opencontainers.image.url=https://github.com/formancehq/ledger-v3-poc
-  - --label=org.opencontainers.image.source=https://github.com/formancehq/ledger-v3-poc
+  - --label=org.opencontainers.image.title=ledger
+  - --label=org.opencontainers.image.description=ledger
+  - --label=org.opencontainers.image.url=https://github.com/formancehq/ledger
+  - --label=org.opencontainers.image.source=https://github.com/formancehq/ledger
   - --label=org.opencontainers.image.version={{ .Version }}
   - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
   - --label=org.opencontainers.image.revision={{ .FullCommit }}
   - --label=org.opencontainers.image.licenses=MIT
 
 docker_manifests:
-- name_template: 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}'
+- name_template: '{{ .Env.IMAGE_REPOSITORY }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}'
   image_templates:
-  - 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64'
-  - 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-arm64'
-- name_template: '{{ if not .IsNightly }}{{ if not .Prerelease }}ghcr.io/formancehq/ledger-v3-poc:latest{{ end }}{{ end }}'
+  - '{{ .Env.IMAGE_REPOSITORY }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64'
+  - '{{ .Env.IMAGE_REPOSITORY }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-arm64'
+- name_template: '{{ if not .IsNightly }}{{ if not .Prerelease }}{{ .Env.IMAGE_REPOSITORY }}:latest{{ end }}{{ end }}'
   image_templates:
-  - 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64'
-  - 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-arm64'
+  - '{{ .Env.IMAGE_REPOSITORY }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64'
+  - '{{ .Env.IMAGE_REPOSITORY }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-arm64'

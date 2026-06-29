@@ -9,7 +9,7 @@ x-etcd-common: &etcd-common
     ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
 
 x-ledger-common: &ledger-common
-  image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc:__TAG__
+  image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/__IMAGE_NAME__:__TAG__
   init: true
   environment: &ledger-env
     WAL_DIR: "/data/raft"

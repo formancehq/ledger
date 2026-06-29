@@ -40,7 +40,7 @@ pre-commit: generate
 #
 # The ledger image is built from the local checkout that contains this operator
 # module (../.. by default — the operator lives at misc/operator/ inside the
-# ledger-v3-poc repo). Override LEDGER_V3_PATH to build against a different
+# ledger repo). Override LEDGER_V3_PATH to build against a different
 # local working tree.
 
 ledger-v3-path := env("LEDGER_V3_PATH", "../..")
@@ -51,7 +51,7 @@ e2e-cluster-up: _e2e-build-ledger
     docker pull minio/minio:latest
     docker pull minio/mc:latest
     kind load docker-image ledger-operator:e2e --name ledger-e2e
-    kind load docker-image ledger-v3-poc:e2e --name ledger-e2e
+    kind load docker-image ledger:e2e --name ledger-e2e
     kind load docker-image minio/minio:latest --name ledger-e2e
     kind load docker-image minio/mc:latest --name ledger-e2e
     kubectl apply -f e2e/manifests/minio.yaml --context kind-ledger-e2e
@@ -64,9 +64,9 @@ e2e-cluster-up: _e2e-build-ledger
         --set leaderElection=false \
         --kube-context kind-ledger-e2e --wait --timeout 120s
 
-# Build the ledger-v3-poc image from the local working tree (with S3 support).
+# Build the ledger image from the local working tree (with S3 support).
 _e2e-build-ledger:
-    docker build -t ledger-v3-poc:e2e --build-arg BUILD_TAGS=s3 {{ledger-v3-path}}
+    docker build -t ledger:e2e --build-arg BUILD_TAGS=s3 {{ledger-v3-path}}
 
 e2e-cluster-down:
     kind delete cluster --name ledger-e2e

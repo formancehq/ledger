@@ -1,7 +1,8 @@
 tag := "antithesis"
+ledger_image_name := env_var_or_default("LEDGER_IMAGE_NAME", "ledger")
 
 build-config output:
-	sed 's/__TAG__/{{tag}}/g' docker-compose.yaml > '{{output}}'
+	sed 's/__TAG__/{{tag}}/g; s/__IMAGE_NAME__/{{ledger_image_name}}/g' docker-compose.yaml > '{{output}}'
 
 push *ARGS:
 	#!/usr/bin/env bash

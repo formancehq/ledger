@@ -112,7 +112,7 @@ func ApplyExports(
 //
 // The caller owns the *dal.Store lifecycle. Earlier versions opened and closed
 // the store internally, but Pebble v2's in-process lock map could keep the
-// staging directory marked as "locked" past Close (see ledger-v3-poc#293),
+// staging directory marked as "locked" past Close (see formancehq/ledger#293),
 // blocking the post-download validate/preview/finalize RPCs that need to open
 // the same directory in the same process. Reusing one handle eliminates that
 // re-open hazard.

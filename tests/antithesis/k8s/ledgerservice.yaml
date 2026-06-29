@@ -7,7 +7,7 @@ metadata:
 spec:
   replicas: 3
   image:
-    repository: __REGISTRY__/ledger-v3-poc
+    repository: __REGISTRY__/__IMAGE_NAME__
     tag: "__TAG__"
     pullPolicy: IfNotPresent
 

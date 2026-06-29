@@ -5,6 +5,10 @@ mod k8s
 
 tag := "antithesis"
 
+# Ledger Docker image name (sans registry). Override via LEDGER_IMAGE_NAME
+# to cohabit with other forks pushed under the same Antithesis registry.
+ledger_image_name := env_var_or_default("LEDGER_IMAGE_NAME", "ledger")
+
 # --- Docker Compose mode (legacy) ---
 
 run duration description='ledger-v3 manual run' *ARGS:
@@ -18,7 +22,7 @@ run duration description='ledger-v3 manual run' *ARGS:
                 "antithesis.report.recipients": "'"$ANTITHESIS_REPORT_RECIPIENT"'", \
                 "antithesis.config_image": "'"antithesis-config-ledger-v3:{{tag}}"'", \
                 "antithesis.description": "{{description}}", \
-                "antithesis.images": "'"workload-ledger-v3:{{tag}};ledger-v3-poc:{{tag}};etcd:v3.5.9"'" \
+                "antithesis.images": "'"workload-ledger-v3:{{tag}};{{ledger_image_name}}:{{tag}};etcd:v3.5.9"'" \
             } \
         }'
 
@@ -32,14 +36,14 @@ build-images:
         --platform linux/amd64 \
         -f ../../Dockerfile.antithesis \
         --progress=plain \
-        -t "$ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}" \
+        -t "$ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}" \
         ../../
 
 push-images *ARGS:
     just build-images
     just --justfile config/Justfile -d config push {{ARGS}}
     just --justfile workload/Justfile -d workload push
-    docker push $ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}
+    docker push $ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}
     docker push $ANTITHESIS_REPOSITORY/etcd:v3.5.9
 
 deploy-local: build-images
@@ -68,7 +72,7 @@ k8s-run duration_hours description='ledger-v3 k8s run' *ARGS:
                 "antithesis.report.recipients": "'"$ANTITHESIS_REPORT_RECIPIENT"'", \
                 "antithesis.config_image": "'"antithesis-config-ledger-v3-k8s:{{tag}}"'", \
                 "antithesis.description": "{{description}}", \
-                "antithesis.images": "'"workload-ledger-v3:{{tag}};ledger-v3-poc:{{tag}};ledger-operator:{{tag}}"'" \
+                "antithesis.images": "'"workload-ledger-v3:{{tag}};{{ledger_image_name}}:{{tag}};ledger-operator:{{tag}}"'" \
             } \
         }'
 
@@ -79,7 +83,7 @@ k8s-build-images:
         --platform linux/amd64 \
         -f ../../Dockerfile.antithesis \
         --progress=plain \
-        -t "$ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}" \
+        -t "$ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}" \
         ../../
 
     # operator
@@ -93,5 +97,5 @@ k8s-push-images *ARGS:
     just k8s-build-images
     just --justfile k8s/Justfile -d k8s push {{ARGS}}
     just --justfile workload/Justfile -d workload push
-    docker push $ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}
+    docker push $ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}
     docker push $ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}

@@ -558,7 +558,7 @@ one Pebble batch, and the post-commit sentinel reads a snapshot pinned to
 that commit. There is no concurrent commit path on the main store; any
 cache/pebble divergence reported by the sentinel is a genuine FSM bug.
 
-See issue [#424 / EN-1235](https://github.com/formancehq/ledger-v3-poc/issues/424)
+See issue [#424 / EN-1235](https://github.com/formancehq/ledger/issues/424)
 for the race this design eliminated.
 
 ## 16. Summary

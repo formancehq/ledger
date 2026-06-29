@@ -4,7 +4,6 @@
 *.dll
 *.so
 *.dylib
-ledger-v3-poc
 
 # Test binary, built with `go test -c`
 *.test

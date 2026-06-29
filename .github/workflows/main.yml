@@ -247,6 +247,8 @@ jobs:
       packages: write
     env:
       GOPATH: /tmp/go
+      # See Build-PR-Image for the override semantics.
+      IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'ghcr.io/formancehq/ledger' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -304,6 +306,11 @@ jobs:
       packages: write
     env:
       GOPATH: /tmp/go
+      # IMAGE_REPOSITORY can be overridden via a repo-level GitHub Variable
+      # (`vars.IMAGE_REPOSITORY`) to publish PR images to a different GHCR
+      # location while the repo rename is in flight. Default targets the
+      # canonical `formancehq/ledger` published image.
+      IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'ghcr.io/formancehq/ledger' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -328,7 +335,7 @@ jobs:
         run: |
           short=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
           tag="pr-${{ github.event.pull_request.number }}-${short}"
-          image="ghcr.io/formancehq/ledger-v3-poc:${tag}"
+          image="${IMAGE_REPOSITORY}:${tag}"
           echo "tag=${tag}"     >> "$GITHUB_OUTPUT"
           echo "image=${image}" >> "$GITHUB_OUTPUT"
       - name: Build and push PR image

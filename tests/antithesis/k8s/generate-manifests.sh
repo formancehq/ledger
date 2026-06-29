@@ -14,6 +14,7 @@ TAG="${1:-antithesis}"
 OUT="$SCRIPT_DIR/manifests"
 
 ANTITHESIS_REGISTRY="${ANTITHESIS_REGISTRY:-us-central1-docker.pkg.dev/molten-verve-216720/formance-repository}"
+LEDGER_IMAGE_NAME="${LEDGER_IMAGE_NAME:-ledger}"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -35,7 +36,7 @@ helm template ledger-operator "$REPO_ROOT/misc/operator/helm/operator" \
   --set image.tag="$TAG" \
   --set image.pullPolicy=IfNotPresent \
   --set ledgerImage.registry="$ANTITHESIS_REGISTRY" \
-  --set ledgerImage.name=ledger-v3-poc \
+  --set ledgerImage.name="$LEDGER_IMAGE_NAME" \
   --set ledgerImage.tag="$TAG" \
   --set leaderElection=false \
   --set "resources.requests.cpu=50m" \
@@ -48,9 +49,9 @@ helm template ledger-operator "$REPO_ROOT/misc/operator/helm/operator" \
     END { if (buf != "" && !skip) print buf }
   ' > "$OUT/operator.yaml"
 
-# 3. Static manifests — substitute tag
+# 3. Static manifests — substitute tag, registry, image name
 for tmpl in kapp-config.yaml minio.yaml nats.yaml ledgerservice.yaml workload.yaml; do
-  sed "s|__TAG__|$TAG|g; s|__REGISTRY__|$ANTITHESIS_REGISTRY|g" \
+  sed "s|__TAG__|$TAG|g; s|__REGISTRY__|$ANTITHESIS_REGISTRY|g; s|__IMAGE_NAME__|$LEDGER_IMAGE_NAME|g" \
     "$SCRIPT_DIR/$tmpl" > "$OUT/$tmpl"
 done
 
