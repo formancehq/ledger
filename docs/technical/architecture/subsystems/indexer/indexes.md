@@ -92,7 +92,7 @@ There is **no persisted statistics structure**. The figures returned by `Inspect
 
 | Mode | Output | Cost |
 |------|--------|------|
-| `InspectDistinctValuesMode` | Paginated set of distinct values for the metadata key. | One Pebble seek per page. |
+| `InspectDistinctValuesMode` | Paginated set of distinct values for the metadata key. | One Pebble seek to the cursor, then linear iteration over the forward index — entries with the same value as the previous one are skipped (`bytes.Equal` check). For a key with many entities per value, walking enough rows to fill a `page_size` worth of *distinct* values can iterate over significantly more than `page_size` keys. |
 | `InspectFacetsMode` | `(value, count)` pairs. | Linear scan of the value range. |
 | `InspectSummaryMode` | `Cardinality`, `Min`, `Max`, `EntitiesWithKey`, `EntitiesWithNull`. | Full scan (metadata index + two existence prefixes). |
 
@@ -161,8 +161,8 @@ In-flight `IndexVersionState` is NOT checked: by design it is per-replica and ma
 
 | Concern | Where it lives | Persisted? | Hash-bound? |
 |---------|---------------|------------|-------------|
-| Index definition | `commonpb.Index` in `SubAttrIndex` | Yes | No — projection of `CreateIndex` / `SetMetadataFieldType` logs (re-verified by `compareIndexes`). |
-| Cluster-wide rewrite version | `Index.forward_encoding_version` | Yes (with the definition) | Same as above. |
+| Index definition (presence + `IndexID`) | `commonpb.Index` in `SubAttrIndex` | Yes | No — projection of `CreateIndex` / `DropIndex` / `RemovedMetadataFieldType` / `DeleteLedger` logs (re-verified by `compareIndexes` — presence + identity only). |
+| Cluster-wide rewrite version | `Index.forward_encoding_version` | Yes (with the definition) | No — **not** re-verified by the checker. The version is informational at the registry level; the per-replica `IndexVersionState.CurrentVersion` is what queries gate on, and is also not checked across replicas (legitimately per-local). |
 | Per-replica rewrite state | `IndexVersionState` in `SubInternalIndexVersion` | Yes | No — purely local; not compared across replicas. |
 | Cardinality / Min / Max / null counts | Computed by `inspectSummary` on demand | **No** | N/A — derived from the live keyspace. |
 | Bloom counters | OTel | No | N/A — monitoring only. |
