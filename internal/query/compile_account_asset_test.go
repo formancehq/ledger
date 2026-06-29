@@ -19,7 +19,7 @@ import (
 // compile tests. Keyed exactly like the production registry.
 type staticIndexLookup map[domain.IndexKey]*commonpb.Index
 
-func (s staticIndexLookup) GetIndex(key domain.IndexKey) (commonpb.IndexReader, error) {
+func (s staticIndexLookup) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
 	idx, ok := s[key]
 	if !ok {
 		return nil, domain.ErrNotFound
