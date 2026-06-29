@@ -74,33 +74,42 @@ func (a *AttributeCache[T]) GetAndPut(k attributes.U128, v attributes.Entry[T]) 
 	return a.gen1.Load().Get(k)
 }
 
-// Del marks the entry as a tombstone in both Gen0 and Gen1 instead of
-// removing it. This prevents pipelined MirrorTouch from failing when
-// the leader admitted a touch before the FSM processed the deletion —
-// admission relies on the tombstone being present in the cache to
-// distinguish "deleted" from "cache miss". Tombstones age out naturally
-// via rotation.
+// Del marks the key as a tombstone in both Gen0 and Gen1: the entry stays in
+// the cache with Deleted set so CheckCache/MirrorTouch still see the key and a
+// pipelined touch admitted before the FSM processed the deletion does not fail.
+// Writing both generations mirrors state.writeCacheTombstone, which stamps a
+// tombstone at both gen bytes in the 0xFF zone, keeping the in-memory cache
+// equal to disk for the same applied index (the cache-mirror invariant). A
+// generation that lacks the key borrows the tag from the one that has it.
 //
-// Data is reset to the zero value: a tombstone's payload is unreadable
-// by contract (every consumer checks Deleted first and returns
-// ErrNotFound), so retaining the pre-delete value yields zombie state
-// that has historically caused snapshot/restore foot-guns (see EN-1377
-// — the persist path used to marshal entry.Data unconditionally and
-// resurrect the deleted key on restore).
+// Data is reset to the zero value: a tombstone's payload is unreadable by
+// contract (every consumer checks Deleted first and returns ErrNotFound), and
+// retaining it risks snapshot/restore resurrection of the deleted key (EN-1377).
+//
+// Tombstones age out naturally via rotation. Called only from the FSM goroutine.
 func (a *AttributeCache[T]) Del(k attributes.U128) {
 	var zero T
 
-	if entry, ok := a.gen0.Load().Get(k); ok {
-		entry.Deleted = true
-		entry.Data = zero
-		a.gen0.Load().Put(k, entry)
+	e0, ok0 := a.gen0.Load().Get(k)
+	e1, ok1 := a.gen1.Load().Get(k)
+	if !ok0 && !ok1 {
+		return
 	}
 
-	if entry, ok := a.gen1.Load().Get(k); ok {
-		entry.Deleted = true
-		entry.Data = zero
-		a.gen1.Load().Put(k, entry)
+	if !ok0 {
+		e0 = e1
 	}
+
+	if !ok1 {
+		e1 = e0
+	}
+
+	e0.Deleted = true
+	e0.Data = zero
+	e1.Deleted = true
+	e1.Data = zero
+	a.gen0.Load().Put(k, e0)
+	a.gen1.Load().Put(k, e1)
 }
 
 func (a *AttributeCache[T]) Size() uint64 {
