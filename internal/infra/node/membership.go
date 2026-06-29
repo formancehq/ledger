@@ -202,6 +202,39 @@ func (m *Membership) Unregister(nodeID uint64) error {
 	return nil
 }
 
+// ReconcileAgainstConfState drops every peer (Pebble + cache +
+// transport + pool) whose NodeID is not in the supplied ConfState.
+// Called by NewNode at boot once the durable ConfState is known, so
+// that stale Pebble rows left over by an interrupted ForceRemoveNode
+// (or carried in from a restored backup) cannot resurrect into the
+// transport and shadow a future re-Add with a different address —
+// DefaultTransport.AddPeer is no-op on existing entries.
+func (m *Membership) ReconcileAgainstConfState(cs raftpb.ConfState) error {
+	m.mu.RLock()
+	stale := make([]uint64, 0)
+
+	for nodeID := range m.addresses {
+		if confStateContainsNode(cs, nodeID) || nodeID == m.selfNodeID {
+			continue
+		}
+
+		stale = append(stale, nodeID)
+	}
+	m.mu.RUnlock()
+
+	for _, nodeID := range stale {
+		m.logger.WithFields(map[string]any{
+			"peer_id": nodeID,
+		}).Infof("Dropping stale peer not present in ConfState")
+
+		if err := m.Unregister(nodeID); err != nil {
+			return fmt.Errorf("reconciling stale peer %d: %w", nodeID, err)
+		}
+	}
+
+	return nil
+}
+
 // PersistInitialPeers writes cfg.Peers (and self when includeSelf is
 // true) before the WAL snapshot / CLUSTER_JOINED marker is written, so
 // a crash cannot leave a durable ConfState without the matching peer

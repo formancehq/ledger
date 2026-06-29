@@ -377,6 +377,15 @@ func NewNode(
 		}
 	}
 
+	// EN-1413: drop any Pebble peer row whose NodeID is no longer in the
+	// durable ConfState. Covers two crash windows: an interrupted
+	// ForceRemoveNode (ConfState updated, Unregister not yet committed)
+	// and a backup that carried source-cluster peers across restore
+	// without the matching ConfState entries.
+	if err := membership.ReconcileAgainstConfState(initialConfState); err != nil {
+		return nil, fmt.Errorf("reconciling peers against ConfState: %w", err)
+	}
+
 	node := &Node{
 		logger:           logger,
 		wal:              wal,
