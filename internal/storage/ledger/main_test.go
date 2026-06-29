@@ -49,6 +49,7 @@ func TestMain(m *testing.M) {
 				hook := debug.NewQueryHook()
 				hook.Debug = os.Getenv("DEBUG") == "true"
 				bunDB.AddQueryHook(hook)
+				bunDB.AddQueryHook(sqlCaptureHook{})
 				bunDB.SetMaxOpenConns(100)
 
 				require.NoError(t, systemstore.Migrate(logging.TestingContext(), bunDB))
