@@ -61,6 +61,13 @@
     logs_indexed_total: 'index.builder.logs_indexed_total',
   },
 
+  // audit_index — internal/application/auditindexer/indexer.go
+  audit_index:: {
+    last_indexed_sequence: 'audit_index.last_indexed_sequence',
+    audit_last_sequence: 'audit_index.audit_last_sequence',
+    lag: 'audit_index.lag',
+  },
+
   // numscript — internal/domain/processing/numscript/cache.go
   numscript:: {
     cache_size: 'numscript.cache.size',
