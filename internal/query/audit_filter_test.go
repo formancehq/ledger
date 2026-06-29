@@ -22,6 +22,12 @@ func uintMax(v uint64) *commonpb.UintCondition {
 	return &commonpb.UintCondition{Max: &v}
 }
 
+// uintBetween builds an inclusive [lo,hi] range. Passing lo > hi produces an
+// inverted (impossible) range, used to assert it matches nothing.
+func uintBetween(lo, hi uint64) *commonpb.UintCondition {
+	return &commonpb.UintCondition{Min: &lo, Max: &hi}
+}
+
 func auditFilter(field commonpb.AuditField, cond any) *commonpb.QueryFilter {
 	ac := &commonpb.AuditCondition{Field: field}
 	switch c := cond.(type) {
@@ -112,6 +118,8 @@ func TestCompileAuditPredicate_HeaderFields(t *testing.T) {
 		// Equality and (the regression-exposing) upper-bounded filters both miss.
 		{"log seq on no-log success", auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintEq(103)), noLogSuccess, false},
 		{"log seq upper bound on no-log success", auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintMax(100)), noLogSuccess, false},
+		// An inverted range is impossible and must match nothing on a point field.
+		{"seq inverted range", auditFilter(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, uintBetween(10, 5)), success, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -171,6 +179,20 @@ func TestCompileAuditPredicate_Composition(t *testing.T) {
 	predOrMiss, _, err := CompileAuditPredicate(orMiss)
 	require.NoError(t, err)
 	require.False(t, mustMatch(t, predOrMiss, entry, nil))
+}
+
+func TestCompileAuditPredicate_InvertedLogSeqRange(t *testing.T) {
+	t.Parallel()
+	// A success whose produced log range [1,20] straddles the inverted filter
+	// range `between 10 and 5` (resolved to the empty half-open [10,6)). Without
+	// the empty-range guard the overlap check fired neither bound and spuriously
+	// matched this unrelated entry.
+	straddling := &auditpb.AuditEntry{
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 20}},
+	}
+	pred, _, err := CompileAuditPredicate(auditFilter(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, uintBetween(10, 5)))
+	require.NoError(t, err)
+	require.False(t, mustMatch(t, pred, straddling, nil))
 }
 
 func TestCompileAuditPredicate_Rejections(t *testing.T) {

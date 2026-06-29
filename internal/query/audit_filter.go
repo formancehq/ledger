@@ -193,7 +193,20 @@ func resolveAuditUintBounds(uc *commonpb.UintCondition, field string) (resolvedU
 		return resolvedUintBounds{}, domain.NewFilterCompilationError("audit field %s requires at least one uint bound", field)
 	}
 
-	return resolveUintBounds(uc, nil)
+	bounds, err := resolveUintBounds(uc, nil)
+	if err != nil {
+		return resolvedUintBounds{}, err
+	}
+	// An inverted range (min >= max after exclusivity adjustment, e.g.
+	// `between 10 and 5` → [10,6)) can never match. Mark it empty so both
+	// matchUintBounds and the log_seq overlap check short-circuit to false,
+	// instead of the overlap test spuriously matching an entry whose log range
+	// straddles the inverted bounds. Equality (min==v, max==v+1) is unaffected.
+	if bounds.hasMin && bounds.hasMax && bounds.min >= bounds.max {
+		bounds.empty = true
+	}
+
+	return bounds, nil
 }
 
 func matchUintBounds(b resolvedUintBounds, v uint64) bool {
