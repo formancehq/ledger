@@ -155,13 +155,16 @@ func (store *Store) IndexedMetadataKeys() []string {
 	return store.ledger.GetIndexedMetadataKeys()
 }
 
-func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
+func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) {
 	store.indexedKeysResolved = true
 	requested := store.ledger.GetIndexedMetadataKeys()
 	if len(requested) == 0 {
-		return nil
+		return
 	}
 	schema := store.ledger.Bucket
+	logger := logging.FromContext(ctx).WithFields(map[string]any{
+		"ledger": store.ledger.Name,
+	})
 	confirmed := make([]string, 0, len(requested))
 	for _, key := range requested {
 		// Use pg_get_expr so we match the exact functional expression rather than
@@ -202,19 +205,17 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 			Where("(i.indpred IS NULL OR position(? IN pg_get_expr(i.indpred, i.indrelid)) > 0)", "= '"+store.ledger.Name+"'").
 			Scan(ctx, &count)
 		if err != nil {
-			return fmt.Errorf("checking pg_index for key %q: %w", key, err)
+			logger.Errorf("INDEXED_METADATA_KEYS: pg_index query failed for key %q, all keys fall back to @>: %s", key, err)
+			store.indexedMetadataKeys = nil
+			return
 		}
 		if count > 0 {
 			confirmed = append(confirmed, key)
 		} else {
-			logging.FromContext(ctx).WithFields(map[string]any{
-				"key":    key,
-				"ledger": store.ledger.Name,
-			}).Infof("INDEXED_METADATA_KEYS: no functional index found for key — rewrite disabled, falling back to @>")
+			logger.Infof("INDEXED_METADATA_KEYS: no functional index found for key %q — rewrite disabled, falling back to @>", key)
 		}
 	}
 	store.indexedMetadataKeys = confirmed
-	return nil
 }
 
 func (store *Store) GetDB() bun.IDB {

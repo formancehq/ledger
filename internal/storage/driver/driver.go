@@ -90,13 +90,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		return nil, postgres.ResolveError(err)
 	}
 
-	if err := ret.ResolveIndexedMetadataKeys(ctx); err != nil {
-		// The ledger is already committed; don't fail the create. Log and
-		// continue — all keys fall back to @> for this store lifetime.
-		logging.FromContext(ctx).WithFields(map[string]any{
-			"ledger": ret.GetLedger().Name,
-		}).Errorf("INDEXED_METADATA_KEYS: index resolution failed, all keys fall back to @>: %s", err)
-	}
+	ret.ResolveIndexedMetadataKeys(ctx)
 
 	return ret, nil
 }
@@ -120,12 +114,7 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
 	store.SetAloneInBucket(count == 1)
 
-	if err := store.ResolveIndexedMetadataKeys(ctx); err != nil {
-		// Log and continue — all keys fall back to @> for this store lifetime.
-		logging.FromContext(ctx).WithFields(map[string]any{
-			"ledger": name,
-		}).Errorf("INDEXED_METADATA_KEYS: index resolution failed, all keys fall back to @>: %s", err)
-	}
+	store.ResolveIndexedMetadataKeys(ctx)
 
 	return store, ret, nil
 }
