@@ -386,6 +386,18 @@ func NewNode(
 		return nil, fmt.Errorf("reconciling peers against ConfState: %w", err)
 	}
 
+	// EN-1413: upsert self unconditionally so a changed AdvertiseAddr /
+	// ServiceAdvertiseAddr (e.g. a pod restart with a new advertised
+	// endpoint) overwrites the stale Pebble row. Without this, the
+	// node's checkpoint streaming would teach peers to dial the old
+	// address. PersistInitialPeers on the fresh-start branches already
+	// writes self for Bootstrap/Restore, but the restart branch never
+	// did — that's the gap the previous bootstrap hook used to cover
+	// before transport wiring moved into Membership.
+	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr); err != nil {
+		return nil, fmt.Errorf("refreshing self in peer store: %w", err)
+	}
+
 	node := &Node{
 		logger:           logger,
 		wal:              wal,
