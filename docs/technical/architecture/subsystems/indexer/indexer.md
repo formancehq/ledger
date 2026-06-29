@@ -74,7 +74,7 @@ flowchart TB
 
 ## Handlers
 
-`process_logs.go` and `index_payload.go`.
+`internal/application/indexbuilder/process_logs.go` — the `indexPayload` dispatcher and every per-payload handler live in this single file.
 
 | Log type | Handler | What it writes |
 |----------|---------|---------------|

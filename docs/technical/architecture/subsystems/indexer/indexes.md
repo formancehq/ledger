@@ -152,7 +152,7 @@ These are **monitoring signals**, not persisted state and not visible through an
 Because the index registry and the per-replica version state are projections (only the originating audit logs — `CreateIndex`, `SetMetadataFieldType`, `RemovedMetadataFieldType`, `DropIndex`, `DeleteLedger` — are hash-bound), the checker re-derives the expected set of indexes from the audit chain and compares it to the stored `SubAttrIndex` registry.
 
 - `compareIndexes` (`internal/application/check/checker.go:667+`) verifies **presence + identity** (the `IndexID` matches).
-- `BuildStatus` is **intentionally excluded** from the comparison: it is purely informational and per-replica, queries already gate on `IndexVersionState.CurrentVersion`. (There used to be a cluster-wide `IndexReadyUpdate` TechnicalUpdate driving the `BUILDING → READY` flip; it has been removed — see [No Cluster-Wide `IndexReady`](indexer.md#no-cluster-wide-indexready) in the indexer page.)
+- `BuildStatus` is **intentionally excluded** from the comparison. It is a cluster-wide field on the `commonpb.Index` registry entry but is purely informational — queries gate on the per-replica `IndexVersionState.CurrentVersion`, not on `BuildStatus`. (There used to be a cluster-wide `IndexReadyUpdate` TechnicalUpdate driving the `BUILDING → READY` flip; it has been removed — see [No Cluster-Wide `IndexReady`](indexer.md#no-cluster-wide-indexready) in the indexer page.)
 - Mismatches emit `CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH`.
 
 In-flight `IndexVersionState` is NOT checked: by design it is per-replica and may legitimately differ across nodes while a rewrite is propagating.
