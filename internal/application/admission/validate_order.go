@@ -1,6 +1,9 @@
 package admission
 
 import (
+	"net/url"
+	"strings"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -261,7 +264,48 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 		return ErrMirrorIAMRegionRequired
 	}
 
+	// The SigV4 token written to ConnConfig.Password is a short-lived bearer
+	// credential; admitting a mirror with a non-TLS sslmode would let it
+	// travel in cleartext. Mirror the runtime guard in internal/adapter/v2.
+	if mode := dsnSSLMode(pg.GetDsn()); !sslModeIsTLS(mode) {
+		return ErrMirrorIAMRequiresTLS
+	}
+
 	return nil
+}
+
+// dsnSSLMode extracts the libpq sslmode parameter from a Postgres DSN
+// (URI or keyword=value), returning the empty string when unset.
+func dsnSSLMode(dsn string) string {
+	if u, err := url.Parse(dsn); err == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") {
+		return u.Query().Get("sslmode")
+	}
+
+	for kv := range strings.FieldsSeq(dsn) {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k != "sslmode" {
+			continue
+		}
+		v = strings.TrimPrefix(v, "'")
+		v = strings.TrimSuffix(v, "'")
+		v = strings.TrimPrefix(v, `"`)
+		v = strings.TrimSuffix(v, `"`)
+
+		return v
+	}
+
+	return ""
+}
+
+// sslModeIsTLS reports whether the libpq sslmode value forces TLS for every
+// connection attempt (i.e. never falls back to cleartext).
+func sslModeIsTLS(mode string) bool {
+	switch mode {
+	case "require", "verify-ca", "verify-full":
+		return true
+	}
+
+	return false
 }
 
 // validateMetadataMap validates all keys and values in a metadata map.

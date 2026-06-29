@@ -5,75 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
-
-func TestEncodeDSNPassword(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "no special chars",
-			input:    "postgres://user:simple@host:5432/db",
-			expected: "postgres://user:simple@host:5432/db",
-		},
-		{
-			name:     "password with pipe and question mark",
-			input:    "postgres://formance:YCA[sRR-~X]Pqdv|Ms3?hzc0u#f_@host:5432/db",
-			expected: "postgres://formance:YCA%5BsRR-~X%5DPqdv%7CMs3%3Fhzc0u%23f_@host:5432/db",
-		},
-		{
-			name:     "keyword value format unchanged",
-			input:    "host=localhost user=admin password=secret dbname=mydb",
-			expected: "host=localhost user=admin password=secret dbname=mydb",
-		},
-		{
-			name:     "no password",
-			input:    "postgres://user@host:5432/db",
-			expected: "postgres://user@host:5432/db",
-		},
-		{
-			name:     "no credentials",
-			input:    "postgres://host:5432/db",
-			expected: "postgres://host:5432/db",
-		},
-		{
-			name:     "postgresql scheme",
-			input:    "postgresql://user:p@ss|word@host:5432/db",
-			expected: "postgresql://user:p%40ss%7Cword@host:5432/db",
-		},
-		{
-			// Operator's controller assembles DSNs via url.URL.String(), so
-			// the password reaches this helper already percent-encoded. Without
-			// idempotency the % itself would be re-encoded (%40 -> %2540),
-			// breaking authentication silently.
-			name:     "already-encoded password is left untouched (idempotent)",
-			input:    "postgres://user:p%40ss%7Cword%3F%23@host:5432/db",
-			expected: "postgres://user:p%40ss%7Cword%3F%23@host:5432/db",
-		},
-		{
-			// A literal '%' that does not form a valid escape sequence is
-			// detected (PathUnescape errors), so we still encode it.
-			name:     "literal percent sign is escaped",
-			input:    "postgres://user:50%off@host:5432/db",
-			expected: "postgres://user:50%25off@host:5432/db",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.expected, encodeDSNPassword(tt.input))
-		})
-	}
-}
 
 func TestBuildPgxPoolConfig_NoIAMLeavesBeforeConnectNil(t *testing.T) {
 	t.Parallel()
@@ -95,6 +30,65 @@ func TestBuildPgxPoolConfig_IAMRegionRequired(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "region is required")
+}
+
+func TestBuildPgxPoolConfig_IAMRejectsNonTLSSSLMode(t *testing.T) {
+	t.Parallel()
+
+	// The SigV4 token is a 15-min bearer credential; sslmode in
+	// {disable, allow, prefer, ""} would let it travel in cleartext.
+	for _, mode := range []string{"disable", "allow", "prefer", ""} {
+		t.Run("sslmode="+mode, func(t *testing.T) {
+			t.Parallel()
+
+			dsn := "postgres://iam-user@host:5432/db"
+			if mode != "" {
+				dsn += "?sslmode=" + mode
+			}
+
+			_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+				Dsn:        dsn,
+				AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+			})
+			require.Error(t, err, "sslmode=%q must be rejected when awsIamAuth is set", mode)
+			require.Contains(t, err.Error(), "sslmode")
+		})
+	}
+}
+
+func TestBuildPgxPoolConfig_IAMAcceptsTLSSSLModes(t *testing.T) {
+	// Cannot run in parallel: t.Setenv mutates process env, and the AWS SDK
+	// default credential chain resolves env lazily inside BuildAuthToken.
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIATEST")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "SECRETTEST")
+	t.Setenv("AWS_REGION", "eu-west-1")
+
+	for _, mode := range []string{"require", "verify-ca", "verify-full"} {
+		cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+			Dsn:        "postgres://iam-user@host:5432/db?sslmode=" + mode,
+			AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+		})
+		require.NoError(t, err, "sslmode=%q must be accepted with awsIamAuth", mode)
+		require.NotNil(t, cfg.BeforeConnect, "BeforeConnect must be installed for sslmode=%q", mode)
+	}
+}
+
+func TestBuildPgxPoolConfig_IAMAssumeRoleInstallsBeforeConnect(t *testing.T) {
+	t.Parallel()
+
+	// AssumeRoleArn branch wires an STS-AssumeRole credentials provider before
+	// installing iamBeforeConnect. We only assert the hook is in place; the
+	// actual sts:AssumeRole call would only fire on connect (no real network
+	// here) and is mocked away by NewCredentialsCache's lazy semantics.
+	cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		Dsn: "postgres://iam-user@host:5432/db?sslmode=require",
+		AwsIamAuth: &commonpb.PostgresAwsIamAuth{
+			Region:        "eu-west-1",
+			AssumeRoleArn: "arn:aws:iam::222222222222:role/cross-tenant-mirror",
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cfg.BeforeConnect, "BeforeConnect must be installed even when AssumeRoleArn is set")
 }
 
 func TestBuildPgxPoolConfig_IAMWiresBeforeConnect(t *testing.T) {

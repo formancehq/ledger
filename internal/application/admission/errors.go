@@ -13,4 +13,11 @@ var (
 	// at admission (rather than only at mirror-worker startup) avoids
 	// persisting a malformed mirror config in the audit chain.
 	ErrMirrorIAMRegionRequired = domain.NewValidationSentinel("mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set")
+
+	// ErrMirrorIAMRequiresTLS rejects mirror configs that pair AWS RDS IAM
+	// authentication with an sslmode that allows cleartext (disable, allow,
+	// prefer, or unset -- libpq's default "prefer" falls back to non-TLS).
+	// The SigV4 token in cc.Password is a short-lived bearer credential and
+	// must not transit cleartext.
+	ErrMirrorIAMRequiresTLS = domain.NewValidationSentinel("mirrorSource.postgres: awsIamAuth requires sslmode in {require, verify-ca, verify-full}")
 )

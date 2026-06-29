@@ -103,6 +103,9 @@ type SecretKeyRef struct {
 // Exactly one of PasswordFrom (static credentials via Secret) or AWSIAMAuth (RDS IAM
 // token minted per connection) must be set. The operator assembles the DSN before
 // invoking ledgerctl on the target pod.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.passwordFrom) != has(self.awsIamAuth)",message="exactly one of passwordFrom or awsIamAuth must be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.awsIamAuth) || !has(self.sslMode) || self.sslMode in ['require','verify-ca','verify-full']",message="awsIamAuth requires sslMode in {require, verify-ca, verify-full}; non-TLS sslmodes would let the SigV4 bearer token travel in cleartext"
 type PostgresMirrorSource struct {
 	// Host is the PostgreSQL endpoint hostname (e.g. RDS DB cluster endpoint).
 	// +kubebuilder:validation:Required

@@ -212,6 +212,14 @@ spec:
                     - host
                     - user
                     type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of passwordFrom or awsIamAuth must be set
+                      rule: has(self.passwordFrom) != has(self.awsIamAuth)
+                    - message: awsIamAuth requires sslMode in {require, verify-ca,
+                        verify-full}; non-TLS sslmodes would let the SigV4 bearer
+                        token travel in cleartext
+                      rule: '!has(self.awsIamAuth) || !has(self.sslMode) || self.sslMode
+                        in [''require'',''verify-ca'',''verify-full'']'
                 type: object
               mode:
                 default: normal

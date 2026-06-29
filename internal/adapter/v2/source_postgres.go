@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -16,8 +17,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
-
-	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -145,7 +144,7 @@ func (s *PostgresSource) Close() error {
 // pool connection (token TTL is 15 minutes; pgxpool fires BeforeConnect on
 // every new connection it opens, so rotation is automatic).
 func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceConfig) (*pgxpool.Config, error) {
-	poolCfg, err := pgxpool.ParseConfig(encodeDSNPassword(cfg.GetDsn()))
+	poolCfg, err := pgxpool.ParseConfig(cfg.GetDsn())
 	if err != nil {
 		return nil, fmt.Errorf("parsing mirror DSN: %w", err)
 	}
@@ -158,6 +157,17 @@ func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceC
 	region := iam.GetRegion()
 	if region == "" {
 		return nil, errors.New("aws_iam_auth.region is required when AWS IAM auth is enabled")
+	}
+
+	// Refuse to install the IAM hook on a non-TLS sslmode: the SigV4 token
+	// written to ConnConfig.Password is a 15-minute bearer credential, and
+	// sslmode in {disable, allow, prefer} would let it travel in cleartext
+	// (allow/prefer fall back to non-TLS). libpq's documented default is
+	// "prefer", which is unsafe here, so an unset sslmode is also rejected.
+	// Defense-in-depth -- the operator CRD's XValidation enforces the same
+	// rule, but a direct gRPC caller could bypass it.
+	if mode := dsnSSLMode(cfg.GetDsn()); !sslModeIsTLS(mode) {
+		return nil, fmt.Errorf("aws_iam_auth requires sslmode in {require, verify-ca, verify-full}, got %q", mode)
 	}
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
@@ -180,6 +190,12 @@ func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceC
 	return poolCfg, nil
 }
 
+// iamBeforeConnectTimeout bounds the credential-resolution + SigV4-signing call
+// inside iamBeforeConnect. A hung STS/IMDS endpoint would otherwise stall every
+// fresh pgxpool connection setup for the full pool dial deadline. 5s matches
+// the AWS SDK's default IMDS retry budget.
+const iamBeforeConnectTimeout = 5 * time.Second
+
 // iamBeforeConnect returns a pgxpool BeforeConnect hook that mints a fresh
 // RDS IAM auth token for each new connection and writes it to ConnConfig.Password.
 // The SigV4 token is short-lived (15 min); pgxpool fires BeforeConnect on every
@@ -189,12 +205,15 @@ func iamBeforeConnect(awsCfg aws.Config) func(context.Context, *pgx.ConnConfig) 
 		ctx, span := mirrorTracer.Start(ctx, "iam.build-auth-token")
 		defer span.End()
 
+		ctx, cancel := context.WithTimeout(ctx, iamBeforeConnectTimeout)
+		defer cancel()
+
 		endpoint := fmt.Sprintf("%s:%d", cc.Host, cc.Port)
 
+		// pgx's connect tracer records this error on its own span when we
+		// return it, so we don't double-attribute via otlp.RecordError here.
 		token, err := auth.BuildAuthToken(ctx, endpoint, awsCfg.Region, cc.User, awsCfg.Credentials)
 		if err != nil {
-			otlp.RecordError(ctx, err)
-
 			return fmt.Errorf("building aws auth token: %w", err)
 		}
 
@@ -204,51 +223,39 @@ func iamBeforeConnect(awsCfg aws.Config) func(context.Context, *pgx.ConnConfig) 
 	}
 }
 
-// encodeDSNPassword ensures that passwords containing URL-special characters
-// (e.g. |, ?, #, [, ]) are properly percent-encoded so pgx can parse the DSN.
-// Only modifies URL-format DSNs (postgres:// or postgresql://).
-//
-// Idempotent: if the password already contains valid percent-encoding (i.e.
-// url.PathUnescape decodes it to a strictly shorter string), the DSN is
-// returned unchanged. This protects against double-encoding when the caller
-// has already URL-encoded the credentials (e.g. the operator's controller
-// uses url.UserPassword before passing the DSN to ledgerctl).
-func encodeDSNPassword(dsn string) string {
-	schemeEnd := strings.Index(dsn, "://")
-	if schemeEnd == -1 {
-		return dsn
+// dsnSSLMode extracts the sslmode parameter from a Postgres DSN (URI or
+// libpq keyword=value format). Returns the empty string when sslmode is
+// unset.
+func dsnSSLMode(dsn string) string {
+	if u, err := url.Parse(dsn); err == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") {
+		return u.Query().Get("sslmode")
 	}
 
-	rest := dsn[schemeEnd+3:]
+	// Best-effort keyword=value parser. libpq tolerates quoted values; we
+	// strip a single layer of quotes for the common case.
+	for kv := range strings.FieldsSeq(dsn) {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k != "sslmode" {
+			continue
+		}
+		v = strings.TrimPrefix(v, "'")
+		v = strings.TrimSuffix(v, "'")
+		v = strings.TrimPrefix(v, `"`)
+		v = strings.TrimSuffix(v, `"`)
 
-	lastAt := strings.LastIndex(rest, "@")
-	if lastAt == -1 {
-		return dsn
+		return v
 	}
 
-	creds := rest[:lastAt]
-	hostPart := rest[lastAt:]
+	return ""
+}
 
-	colonIdx := strings.Index(creds, ":")
-	if colonIdx == -1 {
-		return dsn
+// sslModeIsTLS reports whether the libpq sslmode value forces TLS for every
+// connection attempt (i.e. never falls back to cleartext).
+func sslModeIsTLS(mode string) bool {
+	switch mode {
+	case "require", "verify-ca", "verify-full":
+		return true
 	}
 
-	password := creds[colonIdx+1:]
-
-	// Skip if already percent-encoded: a valid decode that strictly shortens
-	// the input means at least one %XX sequence was present, so the password
-	// is treated as already URL-safe.
-	if decoded, err := url.PathUnescape(password); err == nil && len(decoded) < len(password) {
-		return dsn
-	}
-
-	encoded := url.PathEscape(password)
-
-	encoded = strings.ReplaceAll(encoded, "@", "%40")
-	if encoded == password {
-		return dsn
-	}
-
-	return dsn[:schemeEnd+3] + creds[:colonIdx+1] + encoded + hostPart
+	return false
 }

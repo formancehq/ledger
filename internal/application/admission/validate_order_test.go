@@ -825,7 +825,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			name: "postgres mirror with IAM auth and region",
 			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
 				Postgres: &commonpb.PostgresMirrorSourceConfig{
-					Dsn:        "postgres://iam-user@host:5432/db",
+					Dsn:        "postgres://iam-user@host:5432/db?sslmode=require",
 					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 				},
 			}},
@@ -834,11 +834,31 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			name: "postgres mirror with IAM auth missing region rejected at admission",
 			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
 				Postgres: &commonpb.PostgresMirrorSourceConfig{
-					Dsn:        "postgres://iam-user@host:5432/db",
+					Dsn:        "postgres://iam-user@host:5432/db?sslmode=require",
 					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: ""},
 				},
 			}},
 			wantErr: ErrMirrorIAMRegionRequired,
+		},
+		{
+			name: "postgres mirror with IAM auth on non-TLS sslmode rejected at admission",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn:        "postgres://iam-user@host:5432/db?sslmode=disable",
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+				},
+			}},
+			wantErr: ErrMirrorIAMRequiresTLS,
+		},
+		{
+			name: "postgres mirror with IAM auth on unset sslmode rejected at admission",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn:        "postgres://iam-user@host:5432/db",
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+				},
+			}},
+			wantErr: ErrMirrorIAMRequiresTLS,
 		},
 		{
 			name: "http mirror source unaffected",
