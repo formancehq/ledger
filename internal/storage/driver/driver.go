@@ -90,11 +90,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		return nil, postgres.ResolveError(err)
 	}
 
-	if err := ret.ResolveIndexedMetadataKeys(ctx); err != nil {
-		logging.FromContext(ctx).WithFields(map[string]any{
-			"ledger": l.Name,
-		}).Infof("ResolveIndexedMetadataKeys failed (non-fatal, falling back to @>): %s", err)
-	}
+	ret.ResolveIndexedMetadataKeys(ctx)
 
 	return ret, nil
 }
@@ -118,11 +114,7 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
 	store.SetAloneInBucket(count == 1)
 
-	if err := store.ResolveIndexedMetadataKeys(ctx); err != nil {
-		logging.FromContext(ctx).WithFields(map[string]any{
-			"ledger": name,
-		}).Infof("ResolveIndexedMetadataKeys failed (non-fatal, falling back to @>): %s", err)
-	}
+	store.ResolveIndexedMetadataKeys(ctx)
 
 	return store, ret, nil
 }

@@ -22,6 +22,7 @@ package ledger_test
 //  5. When the index is absent, ResolveIndexedMetadataKeys falls back to @>.
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"math/big"
@@ -52,13 +53,14 @@ func withIndexedMetadataKeys(keys string) func(cfg *ledger.Configuration) {
 }
 
 // TestIndexedMetadataKeys_FlaggedKeyReturnsCorrectRows verifies that when
-// source_wallet_id is a flagged key, filtering by metadata[source_wallet_id]
-// returns the expected transactions (functional-index path).
+// source_wallet_id is a flagged key AND a matching functional index exists,
+// filtering by metadata[source_wallet_id] returns the expected transactions
+// via the ->> literal path.
 func TestIndexedMetadataKeys_FlaggedKeyReturnsCorrectRows(t *testing.T) {
 	t.Parallel()
+	ctx := logging.TestingContext()
 
 	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id,destination_wallet_id"))
-	ctx := logging.TestingContext()
 	now := time.Now()
 
 	tx1 := ledger.NewTransaction().
@@ -78,6 +80,10 @@ func TestIndexedMetadataKeys_FlaggedKeyReturnsCorrectRows(t *testing.T) {
 		WithPostings(ledger.NewPosting("world", "carol", "USD", big.NewInt(10))).
 		WithTimestamp(now)
 	require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx3))
+
+	// Create the functional index and re-resolve so the ->> path is used.
+	createFunctionalIndex(t, store)
+	store.ResolveIndexedMetadataKeys(ctx)
 
 	// Filter by source_wallet_id = "wallet-A" via the flagged (->> ) path.
 	cursor, err := store.Transactions().Paginate(ctx, common.InitialPaginatedQuery[any]{
@@ -131,7 +137,7 @@ func TestIndexedMetadataKeys_SemanticEquivalence(t *testing.T) {
 	ctx := logging.TestingContext()
 	now := time.Now()
 
-	// Store with the flag: uses ->> path.
+	// Store with the flag + functional index: uses ->> path.
 	flagged := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
 	// Store without the flag: uses @> path.
 	plain := newLedgerStore(t)
@@ -151,6 +157,11 @@ func TestIndexedMetadataKeys_SemanticEquivalence(t *testing.T) {
 			WithTimestamp(now.Add(10 * time.Hour))
 		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &unrelated))
 	}
+
+	// Create the functional index on the flagged store and re-resolve
+	// so the ->> path is actually used.
+	createFunctionalIndex(t, flagged)
+	flagged.ResolveIndexedMetadataKeys(ctx)
 
 	q := common.InitialPaginatedQuery[any]{
 		Options: common.ResourceQuery[any]{
@@ -282,7 +293,7 @@ func TestIndexedMetadataKeys_ExplainUsesLiteralPredicate(t *testing.T) {
 	createFunctionalIndex(t, store)
 
 	// Resolve against pg_indexes so the store confirms the index.
-	require.NoError(t, store.ResolveIndexedMetadataKeys(ctx))
+	store.ResolveIndexedMetadataKeys(ctx)
 
 	plan := captureExplain(t, store, "source_wallet_id", "w-target")
 	t.Logf("EXPLAIN plan:\n%s", plan)
@@ -305,7 +316,7 @@ func TestIndexedMetadataKeys_FallsBackWhenNoIndex(t *testing.T) {
 
 	// Flag the key but do NOT create the index.
 	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
-	require.NoError(t, store.ResolveIndexedMetadataKeys(ctx))
+	store.ResolveIndexedMetadataKeys(ctx)
 
 	// After resolution, the key should have been dropped (no index found).
 	require.Empty(t, store.IndexedMetadataKeys(),
@@ -316,4 +327,36 @@ func TestIndexedMetadataKeys_FallsBackWhenNoIndex(t *testing.T) {
 
 	require.Contains(t, plan, "metadata @>",
 		"plan must use @> containment when no functional index was found")
+}
+
+// TestIndexedMetadataKeys_UnresolvedFallback verifies that IndexedMetadataKeys()
+// returns the raw feature-flag list when ResolveIndexedMetadataKeys has not been
+// called (defensive fallback for direct store construction without the driver).
+func TestIndexedMetadataKeys_UnresolvedFallback(t *testing.T) {
+	t.Parallel()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id,destination_wallet_id"))
+
+	store.ResetIndexedMetadataKeysForTest()
+
+	keys := store.IndexedMetadataKeys()
+	require.Contains(t, keys, "source_wallet_id")
+	require.Contains(t, keys, "destination_wallet_id")
+}
+
+// TestIndexedMetadataKeys_ResolveWithCancelledContext verifies that
+// ResolveIndexedMetadataKeys handles a DB failure gracefully: it logs an error
+// and sets the confirmed list to nil (all keys fall back to @>).
+func TestIndexedMetadataKeys_ResolveWithCancelledContext(t *testing.T) {
+	t.Parallel()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+
+	ctx, cancel := context.WithCancel(logging.TestingContext())
+	cancel()
+
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	require.Empty(t, store.IndexedMetadataKeys(),
+		"all keys must fall back to @> when the pg_indexes query fails")
 }

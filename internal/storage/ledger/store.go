@@ -463,27 +463,21 @@ func (store *Store) IndexedMetadataKeys() []string {
 // have a matching functional index. Keys without an index fall back silently to
 // the @> containment predicate; a warning is logged for each missing index.
 // Call this once after the store is created (the driver does this automatically).
-func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
+func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) {
 	store.indexedKeysResolved = true
 	requested := store.ledger.GetIndexedMetadataKeys()
 	if len(requested) == 0 {
-		return nil
+		return
 	}
 
 	schema := store.ledger.Bucket
+	logger := logging.FromContext(ctx).WithFields(map[string]any{
+		"ledger": store.ledger.Name,
+	})
 	confirmed := make([]string, 0, len(requested))
 	escaper := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	for _, key := range requested {
 		var count int
-		// Check pg_indexes for an index whose definition contains the functional
-		// expression for this key. Escape LIKE metacharacters so underscores and
-		// percent signs in key names match literally.
-		//
-		// The second LIKE condition scopes the match to partial indexes for this
-		// ledger (WHERE ledger = '...') or non-partial indexes (no WHERE clause
-		// means the index covers all ledgers). Without this filter, a partial
-		// index created for a different ledger in the same bucket would falsely
-		// confirm the key.
 		escapedKey := escaper.Replace(key)
 		escapedLedger := escaper.Replace(store.ledger.Name)
 		err := store.db.NewSelect().
@@ -495,19 +489,17 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 			Where("(indexdef NOT LIKE '%WHERE%' ESCAPE '\\' OR indexdef LIKE ? ESCAPE '\\')", "%'"+escapedLedger+"'%").
 			Scan(ctx, &count)
 		if err != nil {
-			return fmt.Errorf("checking pg_indexes for key %q: %w", key, err)
+			logger.Errorf("INDEXED_METADATA_KEYS: pg_indexes query failed for key %q, all keys fall back to @>: %s", key, err)
+			store.indexedMetadataKeys = nil
+			return
 		}
 		if count > 0 {
 			confirmed = append(confirmed, key)
 		} else {
-			logging.FromContext(ctx).WithFields(map[string]any{
-				"key":    key,
-				"ledger": store.ledger.Name,
-			}).Infof("INDEXED_METADATA_KEYS: no functional index found for key — rewrite disabled, falling back to @>")
+			logger.Infof("INDEXED_METADATA_KEYS: no functional index found for key %q — rewrite disabled, falling back to @>", key)
 		}
 	}
 	store.indexedMetadataKeys = confirmed
-	return nil
 }
 
 func (store *Store) GetDB() bun.IDB {
