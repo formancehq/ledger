@@ -51,13 +51,13 @@ type peerPool interface {
 //     session): bootstrap's initial-peer persistence in
 //     PersistInitialPeers, and Node.ForceRemoveNode via Unregister.
 type Membership struct {
-	store             *PeerStore
-	transport         peerTransport
-	pool              peerPool
-	selfNodeID        uint64
-	selfRaftAddr      string
-	selfServiceAddr   string
-	logger            logging.Logger
+	store           *PeerStore
+	transport       peerTransport
+	pool            peerPool
+	selfNodeID      uint64
+	selfRaftAddr    string
+	selfServiceAddr string
+	logger          logging.Logger
 
 	mu        sync.RWMutex
 	addresses map[uint64]ConfChangeContext
