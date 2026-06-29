@@ -16,7 +16,7 @@ security:
   - {}
 
 paths:
-  /:
+  /v3/:
     get:
       summary: List all ledgers
       description: Returns a list of all ledgers in the cluster. Requires `ledger:read` scope.
@@ -141,7 +141,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ServerInfo'
 
-  /{ledgerName}:
+  /v3/{ledgerName}:
     get:
       summary: Get a ledger
       description: Retrieves a ledger by its name. Requires `ledger:read` scope.
@@ -280,7 +280,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/stats:
+  /v3/{ledgerName}/stats:
     get:
       summary: Get ledger statistics
       description: Returns aggregate statistics (account count, transaction count) for a ledger. Requires `ledger:read` scope.
@@ -314,7 +314,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/logs:
+  /v3/{ledgerName}/logs:
     get:
       summary: List logs for a ledger
       description: |
@@ -385,7 +385,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/promote:
+  /v3/{ledgerName}/promote:
     post:
       summary: Promote a mirror ledger
       description: |
@@ -427,7 +427,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/transactions:
+  /v3/{ledgerName}/transactions:
     post:
       summary: Create a new transaction
       description: Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
@@ -485,7 +485,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/transactions/{transactionId}:
+  /v3/{ledgerName}/transactions/{transactionId}:
     get:
       summary: Get a transaction
       description: Retrieves a transaction by its ID from the specified ledger. Requires `ledger:read` scope.
@@ -520,7 +520,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/accounts:
+  /v3/{ledgerName}/accounts:
     get:
       summary: List accounts
       description: Lists accounts in a ledger in alphabetical order with optional prefix filtering and cursor pagination. Requires `ledger:read` scope.
@@ -573,7 +573,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/accounts/{address}:
+  /v3/{ledgerName}/accounts/{address}:
     get:
       summary: Get an account
       description: Retrieves account information including metadata for a specific account address. Requires `ledger:read` scope.
@@ -608,7 +608,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/volumes:
+  /v3/{ledgerName}/volumes:
     get:
       summary: Aggregate volumes
       description: |
@@ -661,7 +661,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/metadata:
+  /v3/{ledgerName}/metadata:
     post:
       summary: Save ledger metadata
       description: Saves metadata key-value pairs on the ledger itself. Requires `ledger:write` scope.
@@ -707,7 +707,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/metadata/{key}:
+  /v3/{ledgerName}/metadata/{key}:
     delete:
       summary: Delete ledger metadata
       description: Deletes a metadata key from the ledger. Requires `ledger:write` scope.
@@ -741,7 +741,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/accounts/{address}/metadata:
+  /v3/{ledgerName}/accounts/{address}/metadata:
     post:
       summary: Save account metadata
       description: Saves metadata for a specific account in the ledger. Requires `ledger:write` scope.
@@ -789,7 +789,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/transactions/{transactionId}/metadata:
+  /v3/{ledgerName}/transactions/{transactionId}/metadata:
     post:
       summary: Save transaction metadata
       description: Saves metadata for a specific transaction in the ledger. Requires `ledger:write` scope.
@@ -836,7 +836,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/accounts/{address}/metadata/{key}:
+  /v3/{ledgerName}/accounts/{address}/metadata/{key}:
     delete:
       summary: Delete account metadata
       description: Deletes a metadata key for a specific account in the ledger. Requires `ledger:write` scope.
@@ -871,7 +871,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/transactions/{transactionId}/metadata/{key}:
+  /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}:
     delete:
       summary: Delete transaction metadata
       description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:write` scope.
@@ -906,7 +906,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/transactions/{transactionId}/revert:
+  /v3/{ledgerName}/transactions/{transactionId}/revert:
     post:
       summary: Revert a transaction
       description: Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
@@ -954,7 +954,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/metadata-schema:
+  /v3/{ledgerName}/metadata-schema:
     get:
       summary: Get metadata schema status
       description: Returns the metadata schema for a ledger, including per-field type declarations and conversion status. Requires `ledger:read` scope.
@@ -988,7 +988,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/indexes/{metadataKey}:
+  /v3/{ledgerName}/indexes/{metadataKey}:
     get:
       summary: Inspect a metadata index
       description: |
@@ -1060,7 +1060,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/analyze-accounts:
+  /v3/{ledgerName}/analyze-accounts:
     get:
       summary: Analyze accounts and suggest a Chart of Accounts
       description: |
@@ -1105,7 +1105,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/analyze-transactions:
+  /v3/{ledgerName}/analyze-transactions:
     get:
       summary: Analyze transaction flow patterns
       description: |
@@ -1150,7 +1150,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/metadata-schema/{targetType}/{key}:
+  /v3/{ledgerName}/metadata-schema/{targetType}/{key}:
     put:
       summary: Set metadata field type
       description: |
@@ -1233,7 +1233,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/numscripts:
+  /v3/{ledgerName}/numscripts:
     get:
       summary: List all numscripts
       description: Returns a list of all saved numscripts for a ledger with their latest version info.
@@ -1260,7 +1260,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/numscripts/{name}:
+  /v3/{ledgerName}/numscripts/{name}:
     get:
       summary: Get a numscript
       description: |
@@ -1412,7 +1412,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/_bulk:
+  /v3/{ledgerName}/_bulk:
     post:
       summary: Bulk operations
       description: Execute multiple operations (create transactions, add metadata, revert transactions, delete metadata) in a single request. Requires `ledger:write` scope.
@@ -1476,7 +1476,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/bulk:
+  /v3/{ledgerName}/bulk:
     post:
       summary: Bulk operations (alternate path)
       description: |
@@ -1543,7 +1543,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/prepared-queries:
+  /v3/{ledgerName}/prepared-queries:
     post:
       summary: Create a prepared query
       description: |
@@ -1616,7 +1616,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/prepared-queries/{queryName}:
+  /v3/{ledgerName}/prepared-queries/{queryName}:
     put:
       summary: Update a prepared query
       description: |
@@ -1683,7 +1683,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/prepared-queries/{queryName}/execute:
+  /v3/{ledgerName}/prepared-queries/{queryName}/execute:
     post:
       summary: Execute a prepared query
       description: |
@@ -1738,7 +1738,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/account-types:
+  /v3/{ledgerName}/account-types:
     post:
       summary: Add an account type
       description: |
@@ -1812,7 +1812,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/account-types/default-enforcement-mode:
+  /v3/{ledgerName}/account-types/default-enforcement-mode:
     put:
       summary: Set default enforcement mode
       description: |
@@ -1850,7 +1850,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /{ledgerName}/account-types/{typeName}:
+  /v3/{ledgerName}/account-types/{typeName}:
     get:
       summary: Get an account type
       description: Retrieves a specific account type by name from a ledger. Requires `accounts:read` scope.

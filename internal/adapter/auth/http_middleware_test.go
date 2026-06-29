@@ -39,7 +39,7 @@ func TestHTTPAuthMiddleware_PublicEndpoints(t *testing.T) {
 		Service: "ledger",
 	})(ok200)
 
-	for _, path := range []string{"/health", "/livez", "/readyz", "/v2/health", "/v2/livez", "/v2/readyz"} {
+	for _, path := range []string{"/health", "/livez", "/readyz", "/_info"} {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		handler.ServeHTTP(w, r)

@@ -18,6 +18,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 )
 
+// APIVersionPrefix is the URL prefix under which business API routes are
+// mounted. Ops endpoints (/health, /livez, /readyz, /clusterz, /_info,
+// /debug/pprof) are intentionally not versioned.
+const APIVersionPrefix = "/v3"
+
 // NewHandler creates a new HTTP handler (router) for the ledger service.
 // The authCfg parameter controls JWT authentication with read/write scopes:
 // when Enabled is false, requests pass through without authentication.
@@ -63,9 +68,10 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	// Create server instance for handlers
 	server := NewServer(logger, backend, defaultBulkMaxSize)
 
-	// Register routes function - can be called with different prefixes
-	registerRoutes := func(r chi.Router) {
-		// pprof: requires ops:read scope when auth is enabled
+	// Ops routes: not versioned (K8s probes, monitoring, profiling).
+	// /health, /livez, /readyz, /_info are also exempted from auth in
+	// HTTPAuthMiddleware.
+	registerOpsRoutes := func(r chi.Router) {
 		r.With(requireOpsRead).Route("/debug/pprof", func(r chi.Router) {
 			r.Get("/", pprof.Index)
 			r.Get("/cmdline", pprof.Cmdline)
@@ -86,7 +92,12 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			r.Get("/readyz", server.handleReadyz)
 			r.Get("/clusterz", server.handleClusterz)
 			r.Get("/_info", infoHandler(info))
+		})
+	}
 
+	// Business API routes: mounted under APIVersionPrefix.
+	registerAPIRoutes := func(r chi.Router) {
+		r.With(contentTypeMiddleware, utf8PathParamValidator).Group(func(r chi.Router) {
 			// Ledgers read scope
 			r.With(requireLedgersRead).Group(func(r chi.Router) {
 				r.Get("/", server.handleListAllLedgers)
@@ -164,11 +175,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 		})
 	}
 
-	// Register routes without prefix (backward compatibility)
-	registerRoutes(r)
-
-	// Register routes with /v2 prefix (optional)
-	r.Route("/v2", registerRoutes)
+	registerOpsRoutes(r)
+	r.Route(APIVersionPrefix, registerAPIRoutes)
 
 	return r
 }

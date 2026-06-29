@@ -51,21 +51,6 @@ func TestNewHandler_HealthEndpoint(t *testing.T) {
 	require.Equal(t, "application/json", w.Header().Get("Content-Type"))
 }
 
-func TestNewHandler_V2Prefix(t *testing.T) {
-	t.Parallel()
-
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().IsHealthy().Return(true).AnyTimes()
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/v2/health", nil)
-
-	handler.ServeHTTP(w, r)
-
-	require.Equal(t, http.StatusOK, w.Code)
-}
-
 func TestNewHandler_LivezEndpoint(t *testing.T) {
 	t.Parallel()
 
@@ -1185,7 +1170,7 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/test", nil)
+	r := httptest.NewRequest(http.MethodPost, "/v3/test", nil)
 
 	handler.ServeHTTP(w, r)
 
@@ -1204,7 +1189,7 @@ func TestNewHandler_GetLedgerRoute(t *testing.T) {
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/my-ledger", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v3/my-ledger", nil)
 
 	handler.ServeHTTP(w, r)
 
@@ -1223,7 +1208,7 @@ func TestNewHandler_ListAllLedgersRoute(t *testing.T) {
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v3/", nil)
 
 	handler.ServeHTTP(w, r)
 

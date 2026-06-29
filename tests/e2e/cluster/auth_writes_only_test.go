@@ -168,7 +168,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 
 	Context("HTTP", func() {
 		It("allows reads without a token", func() {
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpAddr+"/writes-only-ledger", nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpAddr+"/v3/writes-only-ledger", nil)
 			Expect(err).To(Succeed())
 
 			resp, err := http.DefaultClient.Do(req)
@@ -179,7 +179,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		})
 
 		It("rejects reads with a malformed token", func() {
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpAddr+"/writes-only-ledger", nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpAddr+"/v3/writes-only-ledger", nil)
 			Expect(err).To(Succeed())
 			req.Header.Set("Authorization", "Bearer not-a-real-jwt")
 
@@ -191,7 +191,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		})
 
 		It("rejects writes without a token", func() {
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, httpAddr+"/new-ledger", nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, httpAddr+"/v3/new-ledger", nil)
 			Expect(err).To(Succeed())
 
 			resp, err := http.DefaultClient.Do(req)

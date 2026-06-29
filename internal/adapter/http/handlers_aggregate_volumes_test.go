@@ -229,26 +229,7 @@ func TestHandleAggregateVolumes_FullRouteIntegration(t *testing.T) {
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/my-ledger/volumes", nil)
-
-	handler.ServeHTTP(w, r)
-
-	require.Equal(t, http.StatusOK, w.Code)
-}
-
-func TestHandleAggregateVolumes_V2RouteIntegration(t *testing.T) {
-	t.Parallel()
-
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
-			return &commonpb.AggregateResult{}, nil
-		}).AnyTimes()
-
-	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/v2/my-ledger/volumes", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v3/my-ledger/volumes", nil)
 
 	handler.ServeHTTP(w, r)
 

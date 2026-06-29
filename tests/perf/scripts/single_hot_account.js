@@ -166,7 +166,7 @@ export default function () {
 
 // Setup: Initialize the hot account with funds
 export function setup() {
-  const setupUrl = `${config.httpAddr}/${config.ledgerName}/_bulk?atomic=true`;
+  const setupUrl = `${config.httpAddr}/v3/${config.ledgerName}/_bulk?atomic=true`;
   const element = scriptBulkElement(
     `send [USD/2 100000000] (
             source = @world

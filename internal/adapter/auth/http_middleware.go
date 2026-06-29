@@ -34,9 +34,10 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Public endpoints: no auth required
-			path := strings.TrimPrefix(r.URL.Path, "/v2")
-			if path == "/health" || path == "/livez" || path == "/readyz" || path == "/_info" {
+			// Public endpoints: no auth required. These paths are mounted at the
+			// router root (unversioned) — see handler.go registerOpsRoutes.
+			switch r.URL.Path {
+			case "/health", "/livez", "/readyz", "/_info":
 				next.ServeHTTP(w, r)
 
 				return

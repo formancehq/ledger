@@ -172,7 +172,7 @@ func TestHandleGetLedgerStats_FullRouteIntegration(t *testing.T) {
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/my-ledger/stats", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v3/my-ledger/stats", nil)
 
 	handler.ServeHTTP(w, r)
 

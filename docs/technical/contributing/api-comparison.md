@@ -2,6 +2,12 @@
 
 This document compares the POC's API with the original Formance ledger API and documents missing features.
 
+> **URL prefix.** All business endpoints in this POC are served under the
+> `/v3` prefix (e.g. `POST /v3/{ledgerName}/transactions`). Ops endpoints
+> (`/health`, `/livez`, `/readyz`, `/clusterz`, `/_info`, `/debug/pprof`) are
+> intentionally unversioned. The original ledger's `/v2` is **not** preserved
+> by this POC — there is no compatibility shim.
+
 ## Summary
 
 | Feature | POC | Original | Notes |
@@ -115,7 +121,7 @@ This document compares the POC's API with the original Formance ledger API and d
 
 ### 1. Transaction Creation
 
-**Endpoint:** `POST /{ledgerName}/transactions`
+**Endpoint:** `POST /v3/{ledgerName}/transactions`
 
 **Features:**
 - ✅ Creation with direct postings
@@ -141,7 +147,7 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 
 ### 2. Transaction Revert
 
-**Endpoint:** `POST /{ledgerName}/transactions/{transactionId}/revert`
+**Endpoint:** `POST /v3/{ledgerName}/transactions/{transactionId}/revert`
 
 **Features:**
 - ✅ Standard revert
@@ -153,21 +159,21 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 ### 3. Metadata Management
 
 **Endpoints:**
-- `POST /{ledgerName}/metadata` - Save ledger metadata (new in v3)
-- `DELETE /{ledgerName}/metadata/{key}` - Delete ledger metadata (new in v3)
-- `POST /{ledgerName}/accounts/{address}/metadata` - Save account metadata
-- `DELETE /{ledgerName}/accounts/{address}/metadata/{key}` - Delete account metadata
-- `POST /{ledgerName}/transactions/{transactionId}/metadata` - Save transaction metadata
-- `DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}` - Delete transaction metadata
-- `GET /{ledgerName}/metadata-schema` - Get metadata schema (per-field declared type)
-- `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` - Set/change metadata field type
-- `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` - Remove metadata field type declaration
+- `POST /v3/{ledgerName}/metadata` - Save ledger metadata (new in v3)
+- `DELETE /v3/{ledgerName}/metadata/{key}` - Delete ledger metadata (new in v3)
+- `POST /v3/{ledgerName}/accounts/{address}/metadata` - Save account metadata
+- `DELETE /v3/{ledgerName}/accounts/{address}/metadata/{key}` - Delete account metadata
+- `POST /v3/{ledgerName}/transactions/{transactionId}/metadata` - Save transaction metadata
+- `DELETE /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}` - Delete transaction metadata
+- `GET /v3/{ledgerName}/metadata-schema` - Get metadata schema (per-field declared type)
+- `PUT /v3/{ledgerName}/metadata-schema/{targetType}/{key}` - Set/change metadata field type
+- `DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key}` - Remove metadata field type declaration
 
-Ledger metadata is stored separately from ledger configuration (LedgerInfo) and is populated at read time when calling `GET /{ledgerName}` or `GET /` (list ledgers). It uses the same typed value system as account/transaction metadata.
+Ledger metadata is stored separately from ledger configuration (LedgerInfo) and is populated at read time when calling `GET /v3/{ledgerName}` or `GET /v3/` (list ledgers). It uses the same typed value system as account/transaction metadata.
 
 ### 4. Bulk Operations
 
-**Endpoint:** `POST /{ledgerName}/_bulk`
+**Endpoint:** `POST /v3/{ledgerName}/_bulk`
 
 **Supported actions:**
 - ✅ `CREATE_TRANSACTION`
@@ -184,18 +190,18 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 ### 5. Ledger Management
 
 **Endpoints:**
-- `POST /{ledgerName}` - Create a ledger (supports optional `chartOfAccounts` and `enforcementMode` in body)
-- `DELETE /{ledgerName}` - Delete a ledger
-- `GET /{ledgerName}` - Get ledger info (read)
-- `GET /` - List all ledgers (read)
+- `POST /v3/{ledgerName}` - Create a ledger (supports optional `chartOfAccounts` and `enforcementMode` in body)
+- `DELETE /v3/{ledgerName}` - Delete a ledger
+- `GET /v3/{ledgerName}` - Get ledger info (read)
+- `GET /v3/` - List all ledgers (read)
 
 ### 5b. Account Types
 
 **Endpoints:**
-- `GET /{ledgerName}/account-types` - List all account types for a ledger
-- `GET /{ledgerName}/account-types/{typeName}` - Get details of a specific account type
-- `POST /{ledgerName}/account-types` - Add a new account type
-- `DELETE /{ledgerName}/account-types/{typeName}` - Remove an account type
+- `GET /v3/{ledgerName}/account-types` - List all account types for a ledger
+- `GET /v3/{ledgerName}/account-types/{typeName}` - Get details of a specific account type
+- `POST /v3/{ledgerName}/account-types` - Add a new account type
+- `DELETE /v3/{ledgerName}/account-types/{typeName}` - Remove an account type
 
 **Features:**
 - ✅ Pattern-based account address validation (e.g., `users:{id}:checking`)
@@ -208,7 +214,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 
 ### 6. Transaction Read
 
-**Endpoint:** `GET /{ledgerName}/transactions/{transactionId}`
+**Endpoint:** `GET /v3/{ledgerName}/transactions/{transactionId}`
 
 **Features:**
 - ✅ Get transaction by ID
@@ -274,7 +280,7 @@ ledgerctl chapters list
 
 Mirror mode enables one-way synchronization from an existing v2 ledger into a v3 ledger. The mirror ledger is read-only until promoted to normal mode.
 
-**Create a mirror ledger:** `POST /{ledgerName}`
+**Create a mirror ledger:** `POST /v3/{ledgerName}`
 
 Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration.
 
@@ -286,7 +292,7 @@ If `type` is omitted, defaults to `"http"`.
 
 **Write guard:** All direct write operations (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
 
-**Sync progress:** `GET /{ledgerName}` returns a `mirrorSyncProgress` object for mirror ledgers with:
+**Sync progress:** `GET /v3/{ledgerName}` returns a `mirrorSyncProgress` object for mirror ledgers with:
 - `state`: `SYNCING` (catching up with history) or `FOLLOWING` (up to date)
 - `cursor`: Last ingested v2 log ID
 - `sourceLogCount`: Latest known log ID in the v2 source
@@ -300,7 +306,7 @@ If `type` is omitted, defaults to `"http"`.
 - `DELETE_METADATA` — Deletes a metadata key
 - Unknown log types are recorded as fill-gap entries (no-op for data, preserves log ID sequence)
 
-**Promote a mirror ledger:** `POST /{ledgerName}/promote`
+**Promote a mirror ledger:** `POST /v3/{ledgerName}/promote`
 
 Converts the mirror ledger to normal mode. After promotion:
 - The mirror worker is stopped
@@ -317,23 +323,23 @@ Promoting a non-mirror ledger returns HTTP 400 (`LEDGER_NOT_IN_MIRROR_MODE`) or 
 The numscript library allows saving, retrieving, and managing reusable numscript programs with semver versioning.
 
 **Endpoints:**
-- `GET /{ledgerName}/numscripts` - List all saved numscripts for a ledger
-- `GET /{ledgerName}/numscripts/{name}?version=` - Get a numscript by name (optional version query param)
-- `PUT /{ledgerName}/numscripts/{name}` - Save a numscript (create new version or overwrite latest)
-- `DELETE /{ledgerName}/numscripts/{name}` - Delete a numscript
+- `GET /v3/{ledgerName}/numscripts` - List all saved numscripts for a ledger
+- `GET /v3/{ledgerName}/numscripts/{name}?version=` - Get a numscript by name (optional version query param)
+- `PUT /v3/{ledgerName}/numscripts/{name}` - Save a numscript (create new version or overwrite latest)
+- `DELETE /v3/{ledgerName}/numscripts/{name}` - Delete a numscript
 
 **Versioning:**
 
 Numscripts use **semantic versioning** (semver) with the format `major.minor.patch` (e.g. `"1.0.0"`).
 
-When saving a numscript via `PUT /{ledgerName}/numscripts/{name}`, the request body includes:
+When saving a numscript via `PUT /v3/{ledgerName}/numscripts/{name}`, the request body includes:
 - `content` (required): The numscript source code
 - `version` (optional): Controls versioning behavior:
   - A semver string (e.g. `"2.0.0"`) creates a new version. Fails with 409 if the version already exists.
   - The special value `"latest"` overwrites the content of the current latest version.
   - If omitted or empty, defaults to `"latest"`.
 
-When retrieving a numscript via `GET /{ledgerName}/numscripts/{name}`, the `version` query parameter selects which version to return. If omitted or empty, the latest version is returned.
+When retrieving a numscript via `GET /v3/{ledgerName}/numscripts/{name}`, the `version` query parameter selects which version to return. If omitted or empty, the latest version is returned.
 
 **Response schema (NumscriptInfo):**
 - `name` (string): Numscript name
@@ -346,11 +352,11 @@ When retrieving a numscript via `GET /{ledgerName}/numscripts/{name}`, the `vers
 Prepared queries are reusable, named filter queries stored per-ledger. They can be executed in two modes: `LIST` (returns matching entity IDs with cursor pagination) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for matched accounts).
 
 **Endpoints:**
-- `POST /{ledgerName}/prepared-queries` — Create
-- `PUT /{ledgerName}/prepared-queries/{name}` — Update filter
-- `DELETE /{ledgerName}/prepared-queries/{name}` — Delete
-- `GET /{ledgerName}/prepared-queries` — List
-- `POST /{ledgerName}/prepared-queries/{name}/execute` — Execute
+- `POST /v3/{ledgerName}/prepared-queries` — Create
+- `PUT /v3/{ledgerName}/prepared-queries/{name}` — Update filter
+- `DELETE /v3/{ledgerName}/prepared-queries/{name}` — Delete
+- `GET /v3/{ledgerName}/prepared-queries` — List
+- `POST /v3/{ledgerName}/prepared-queries/{name}/execute` — Execute
 
 **Supported filter types (`QueryFilter`):**
 
@@ -403,7 +409,7 @@ ledgerctl indexes list --ledger my-ledger
 - Implementation returns `ErrNotFound`
 
 **To implement:**
-- HTTP endpoint (probably `POST /{ledgerName}/_import`)
+- HTTP endpoint (probably `POST /v3/{ledgerName}/_import`)
 - Log validation
 - Sequential insertion with consistency verification
 - Streaming support for large volumes
@@ -417,7 +423,7 @@ ledgerctl indexes list --ledger my-ledger
 - Implementation returns `ErrNotFound`
 
 **To implement:**
-- HTTP endpoint (probably `GET /{ledgerName}/_export`)
+- HTTP endpoint (probably `GET /v3/{ledgerName}/_export`)
 - Log streaming
 - Output format (JSON lines, protobuf, etc.)
 - Pagination/cursor for large volumes
@@ -438,8 +444,8 @@ ledgerctl indexes list --ledger my-ledger
 **Description:** Ability to add/modify metadata on a ledger after creation.
 
 **Current status:** Fully implemented.
-- `POST /{ledgerName}/metadata` - Add/modify metadata
-- `DELETE /{ledgerName}/metadata/{key}` - Delete a metadata key
+- `POST /v3/{ledgerName}/metadata` - Add/modify metadata
+- `DELETE /v3/{ledgerName}/metadata/{key}` - Delete a metadata key
 
 These endpoints are documented in Section 3 (Metadata Management) above.
 
@@ -448,7 +454,7 @@ These endpoints are documented in Section 3 (Metadata Management) above.
 **Description:** Modify certain ledger parameters after creation (e.g., maintenanceInterval).
 
 **To implement:**
-- `PATCH /{ledgerName}` or `PUT /{ledgerName}/config`
+- `PATCH /v3/{ledgerName}` or `PUT /v3/{ledgerName}/config`
 
 ---
 
@@ -604,40 +610,39 @@ Read endpoints comparison with the original ledger:
 
 | Endpoint | POC | Original | Notes |
 |----------|-----|----------|-------|
-| `GET /{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
-| `GET /{ledgerName}/transactions` | ⚠️ | ✅ | List transactions (gRPC stream only, no HTTP handler) |
-| `GET /{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination) |
-| `GET /{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
-| `GET /{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
-| `GET /{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
-| `GET /{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, supports prefix filtering) |
-| `GET /{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination |
-| `GET /{ledgerName}/aggregate/balances` | ❌ | ✅ | Balance aggregation |
-| `GET /{ledgerName}/stats` | ✅ | ✅ | Ledger statistics (account + transaction count) |
-| `GET /{ledgerName}` | ✅ | ✅ | Get ledger info |
-| `POST /{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
-| `GET /` | ✅ | ✅ | List all ledgers |
-| `GET /{ledgerName}/metadata-schema` | ✅ | ❌ | Get metadata schema status |
-| `GET /{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
-| `GET /{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns |
-| `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
-| `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
-| `POST /{ledgerName}/prepared-queries` | ✅ | ❌ | Create a prepared query |
-| `PUT /{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Update a prepared query |
-| `DELETE /{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
-| `GET /{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
-| `POST /{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
-| `GET /{ledgerName}/numscripts` | ✅ | ❌ | List all numscripts for a ledger |
-| `GET /{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (semver version, empty = latest) |
-| `PUT /{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save numscript (semver versioned) |
-| `DELETE /{ledgerName}/numscripts/{name}` | ✅ | ❌ | Delete numscript |
-| `GET /{ledgerName}/account-types` | ✅ | ❌ | List account types |
-| `GET /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
-| `POST /{ledgerName}/account-types` | ✅ | ❌ | Add account type |
-| `DELETE /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
-| `PUT /{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
-| `GET /{ledgerName}/indexes/{metadataKey}` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) |
-| `POST /{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
+| `GET /v3/{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
+| `GET /v3/{ledgerName}/transactions` | ⚠️ | ✅ | List transactions (gRPC stream only, no HTTP handler) |
+| `GET /v3/{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination) |
+| `GET /v3/{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
+| `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
+| `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
+| `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, supports prefix filtering) |
+| `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination |
+| `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger statistics (account + transaction count) |
+| `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
+| `POST /v3/{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
+| `GET /v3/` | ✅ | ✅ | List all ledgers |
+| `GET /v3/{ledgerName}/metadata-schema` | ✅ | ❌ | Get metadata schema status |
+| `GET /v3/{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
+| `GET /v3/{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns |
+| `PUT /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
+| `DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
+| `POST /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | Create a prepared query |
+| `PUT /v3/{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Update a prepared query |
+| `DELETE /v3/{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
+| `GET /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
+| `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
+| `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List all numscripts for a ledger |
+| `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (semver version, empty = latest) |
+| `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save numscript (semver versioned) |
+| `DELETE /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Delete numscript |
+| `GET /v3/{ledgerName}/account-types` | ✅ | ❌ | List account types |
+| `GET /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
+| `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type |
+| `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
+| `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
+| `GET /v3/{ledgerName}/indexes/{metadataKey}` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) |
+| `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
 
 ---

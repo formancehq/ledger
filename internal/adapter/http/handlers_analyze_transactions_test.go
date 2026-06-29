@@ -247,7 +247,7 @@ func TestHandleAnalyzeTransactions_FullRouteIntegration(t *testing.T) {
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/my-ledger/analyze-transactions", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v3/my-ledger/analyze-transactions", nil)
 
 	handler.ServeHTTP(w, r)
 
