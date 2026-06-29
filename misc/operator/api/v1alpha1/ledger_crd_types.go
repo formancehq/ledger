@@ -98,10 +98,57 @@ type SecretKeyRef struct {
 }
 
 // PostgresMirrorSource configures PostgreSQL-based mirror replication.
+//
+// The connection target is described by explicit fields (Host/Port/User/Database/SSLMode).
+// Exactly one of PasswordFrom (static credentials via Secret) or AWSIAMAuth (RDS IAM
+// token minted per connection) must be set. The operator assembles the DSN before
+// invoking ledgerctl on the target pod.
 type PostgresMirrorSource struct {
-	// DSNFrom references a Kubernetes Secret containing the PostgreSQL connection string.
+	// Host is the PostgreSQL endpoint hostname (e.g. RDS DB cluster endpoint).
 	// +kubebuilder:validation:Required
-	DSNFrom SecretKeyRef `json:"dsnFrom"`
+	Host string `json:"host"`
+
+	// Port is the PostgreSQL port. Defaults to 5432.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +kubebuilder:default=5432
+	// +optional
+	Port int32 `json:"port,omitempty"`
+
+	// User is the PostgreSQL user.
+	// +kubebuilder:validation:Required
+	User string `json:"user"`
+
+	// Database is the PostgreSQL database name.
+	// +kubebuilder:validation:Required
+	Database string `json:"database"`
+
+	// SSLMode is the libpq sslmode parameter (disable, allow, prefer, require,
+	// verify-ca, verify-full). Defaults to "require".
+	// +kubebuilder:validation:Enum=disable;allow;prefer;require;verify-ca;verify-full
+	// +kubebuilder:default=require
+	// +optional
+	SSLMode string `json:"sslmode,omitempty"`
+
+	// PasswordFrom references a Kubernetes Secret containing the PostgreSQL password.
+	// Mutually exclusive with AWSIAMAuth.
+	// +optional
+	PasswordFrom *SecretKeyRef `json:"passwordFrom,omitempty"`
+
+	// AWSIAMAuth enables AWS RDS IAM authentication: the mirror mints a
+	// short-lived (15 min) SigV4 token per connection from the ambient AWS
+	// credential chain on the ledger pod (IRSA, instance profile, env, profile).
+	// Mutually exclusive with PasswordFrom.
+	// +optional
+	AWSIAMAuth *AWSIAMAuthSpec `json:"awsIamAuth,omitempty"`
+}
+
+// AWSIAMAuthSpec configures AWS RDS IAM authentication for a Postgres mirror source.
+type AWSIAMAuthSpec struct {
+	// Region is the AWS region of the RDS instance (e.g. "eu-west-1").
+	// Required to sign the IAM authentication token (SigV4).
+	// +kubebuilder:validation:Required
+	Region string `json:"region"`
 }
 
 // LedgerCRDStatus defines the observed state of a Ledger.

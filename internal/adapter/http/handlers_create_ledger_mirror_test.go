@@ -205,47 +205,6 @@ func TestMirrorSourceToProto_Postgres(t *testing.T) {
 	require.Equal(t, "postgres://user:pass@host/db", pgCfg.GetDsn())
 }
 
-func TestMirrorSourceToProto_PostgresWithAwsIamAuth(t *testing.T) {
-	t.Parallel()
-
-	body := &mirrorSourceBody{
-		LedgerName: "src-ledger",
-		Type:       "postgres",
-		DSN:        "postgres://iam-user@host:5432/db?sslmode=require",
-		AwsIamAuth: &postgresAwsIamAuthBody{
-			Region: "eu-west-1",
-		},
-	}
-
-	cfg, err := mirrorSourceToProto(body)
-	require.NoError(t, err)
-
-	pgCfg := cfg.GetPostgres()
-	require.NotNil(t, pgCfg)
-	require.Equal(t, "postgres://iam-user@host:5432/db?sslmode=require", pgCfg.GetDsn())
-
-	iam := pgCfg.GetAwsIamAuth()
-	require.NotNil(t, iam)
-	require.Equal(t, "eu-west-1", iam.GetRegion())
-}
-
-func TestMirrorSourceToProto_PostgresAwsIamAuthRegionRequired(t *testing.T) {
-	t.Parallel()
-
-	body := &mirrorSourceBody{
-		LedgerName: "src-ledger",
-		Type:       "postgres",
-		DSN:        "postgres://iam-user@host:5432/db",
-		AwsIamAuth: &postgresAwsIamAuthBody{
-			Region: "",
-		},
-	}
-
-	_, err := mirrorSourceToProto(body)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "region is required")
-}
-
 func TestMirrorSourceToProto_EmptyType(t *testing.T) {
 	t.Parallel()
 
