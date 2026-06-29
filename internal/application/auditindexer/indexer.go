@@ -136,6 +136,7 @@ func (i *Indexer) Rebuild(ctx context.Context) error {
 	i.lastIndexed.Store(0)
 
 	_, err := i.ProcessOnce(ctx)
+
 	return err
 }
 
@@ -149,6 +150,7 @@ func (i *Indexer) shouldRebuildOnBoot(cursor, last uint64) bool {
 	if i.cfg.RebuildThreshold > 0 && last > cursor && last-cursor > i.cfg.RebuildThreshold {
 		return true
 	}
+
 	return false
 }
 
@@ -231,6 +233,7 @@ func (i *Indexer) lastAuditSequence() (uint64, error) {
 func (i *Indexer) Start() {
 	if i.cfg.Disabled {
 		i.logger.Infof("Audit indexer disabled")
+
 		return
 	}
 	if reg, err := i.registerMetrics(); err == nil {
@@ -255,6 +258,7 @@ func (i *Indexer) loop(ctx context.Context) {
 	cursor, err := i.readStore.ReadAuditProgress()
 	if err != nil {
 		i.logger.Errorf("read audit cursor: %v", err)
+
 		return
 	}
 	if last, err := i.lastAuditSequence(); err == nil {
@@ -300,12 +304,14 @@ func (i *Indexer) registerMetrics() (metric.Registration, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return i.meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
 		idx := int64(i.lastIndexed.Load())
 		al := int64(i.auditLast.Load())
 		o.ObserveInt64(indexed, idx)
 		o.ObserveInt64(last, al)
 		o.ObserveInt64(lag, max(al-idx, 0))
+
 		return nil
 	}, indexed, last, lag)
 }

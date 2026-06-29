@@ -17,6 +17,7 @@ func (s *Store) ReadAuditProgress() (uint64, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
 		}
+
 		return 0, fmt.Errorf("reading audit progress: %w", err)
 	}
 	defer func() { _ = closer.Close() }()
@@ -24,6 +25,7 @@ func (s *Store) ReadAuditProgress() (uint64, error) {
 	if len(v) != 8 {
 		return 0, fmt.Errorf("audit progress: unexpected length %d", len(v))
 	}
+
 	return binary.BigEndian.Uint64(v), nil
 }
 
@@ -31,6 +33,7 @@ func (s *Store) ReadAuditProgress() (uint64, error) {
 func (s *Store) WriteAuditProgress(batch *dal.WriteSession, sequence uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
+
 	return batch.SetBytes(AuditProgressKey(), buf[:])
 }
 
@@ -43,6 +46,7 @@ func (s *Store) DropAuditIndex() error {
 	if err := batch.DeleteRange(start, end, nil); err != nil {
 		return fmt.Errorf("dropping audit index: %w", err)
 	}
+
 	return batch.Commit()
 }
 
@@ -55,9 +59,11 @@ func prefixUpperBound(prefix []byte) []byte {
 	for i := len(end) - 1; i >= 0; i-- {
 		if end[i] != 0xFF {
 			end[i]++
+
 			return end[:i+1]
 		}
 	}
+
 	return nil
 }
 
@@ -81,6 +87,7 @@ func (s *Store) auditSeqsForPrefix(lower, upper []byte) ([]uint64, error) {
 	if err := iter.Error(); err != nil {
 		return nil, fmt.Errorf("iterating audit index: %w", err)
 	}
+
 	return seqs, nil
 }
 
@@ -94,6 +101,7 @@ func (s *Store) AuditSeqsByString(field byte, value string) ([]uint64, error) {
 		PutByte(field).
 		PutStringNull(value).
 		Build()
+
 	return s.auditSeqsForPrefix(lower, prefixUpperBound(lower))
 }
 
@@ -110,6 +118,7 @@ func (s *Store) AuditSeqsByOutcome(success bool) ([]uint64, error) {
 		PutByte(AuditFieldOutcome).
 		PutByte(b).
 		Build()
+
 	return s.auditSeqsForPrefix(lower, prefixUpperBound(lower))
 }
 
@@ -141,5 +150,6 @@ func (s *Store) AuditSeqsByUint64Range(field byte, lo, hi uint64) ([]uint64, err
 			PutUint64(hi + 1).
 			Build()
 	}
+
 	return s.auditSeqsForPrefix(lower, upper)
 }

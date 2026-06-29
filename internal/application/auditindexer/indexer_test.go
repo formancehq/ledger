@@ -57,6 +57,7 @@ func newIndexerForTest(t *testing.T) (*Indexer, *dal.Store, *readstore.Store) {
 // sorted slice, for byte-identical parity comparisons.
 func dumpAuditIndexKeys(t *testing.T, rs *readstore.Store) [][]byte {
 	t.Helper()
+
 	return rs.DumpAuditIndexKeysForTest()
 }
 
@@ -171,6 +172,7 @@ func TestStartStopIndexes(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
+
 		return err == nil && len(seqs) == 1
 	}, 5*time.Second, 20*time.Millisecond)
 }
@@ -192,6 +194,7 @@ func TestIndexerKeepsUpUnderLoad(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		c, err := rs.ReadAuditProgress()
+
 		return err == nil && c == total
 	}, 10*time.Second, 50*time.Millisecond)
 

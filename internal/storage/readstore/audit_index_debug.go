@@ -22,5 +22,6 @@ func (s *Store) DumpAuditIndexKeysForTest() [][]byte {
 		copy(cp, k)
 		keys = append(keys, cp)
 	}
+
 	return keys
 }

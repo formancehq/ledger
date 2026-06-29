@@ -17,6 +17,7 @@ func mustOrderBytes(t *testing.T, o *raftcmdpb.Order) []byte {
 	t.Helper()
 	b, err := proto.Marshal(o)
 	require.NoError(t, err)
+
 	return b
 }
 
@@ -40,7 +41,11 @@ func TestAppendEntryKeys(t *testing.T) {
 	}
 
 	var keys [][]byte
-	emit := func(k []byte) error { keys = append(keys, append([]byte{}, k...)); return nil }
+	emit := func(k []byte) error {
+		keys = append(keys, append([]byte{}, k...))
+
+		return nil
+	}
 
 	require.NoError(t, appendEntryKeys(dal.NewKeyBuilder(), emit, entry, items))
 
@@ -72,7 +77,11 @@ func TestAppendEntryKeysFailureNilCaller(t *testing.T) {
 	}
 
 	var keys [][]byte
-	emit := func(k []byte) error { keys = append(keys, append([]byte{}, k...)); return nil }
+	emit := func(k []byte) error {
+		keys = append(keys, append([]byte{}, k...))
+
+		return nil
+	}
 	require.NoError(t, appendEntryKeys(dal.NewKeyBuilder(), emit, entry, nil))
 
 	require.Len(t, keys, 4) // outcome + ledger("x") + timestamp + proposal_id

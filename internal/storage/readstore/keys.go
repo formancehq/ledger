@@ -35,10 +35,10 @@ const (
 	SubInternalIndexVersion byte = 0x04
 
 	// SubInternalAuditIndex is the keyspace for the audit secondary index.
-	// Layout: [PrefixInternal][SubInternalAuditIndex][AuditField][value][audit_seq BE8] -> ∅
+	// Layout: [PrefixInternal][SubInternalAuditIndex][AuditField][value][audit_seq BE8] -> ∅.
 	SubInternalAuditIndex byte = 0x05
 	// SubInternalAuditProgress holds the per-replica audit indexing cursor.
-	// Layout: [PrefixInternal][SubInternalAuditProgress] -> last_indexed_audit_sequence BE8
+	// Layout: [PrefixInternal][SubInternalAuditProgress] -> last_indexed_audit_sequence BE8.
 	SubInternalAuditProgress byte = 0x06
 )
 

@@ -15,6 +15,7 @@ func newTestStore(t *testing.T) *Store {
 	s, err := New(t.TempDir(), logging.NopZap(), DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
+
 	return s
 }
 
@@ -26,7 +27,7 @@ func TestAuditIndexKeysAreInternalNamespaced(t *testing.T) {
 
 	require.Equal(t, PrefixInternal, key[0])
 	require.Equal(t, SubInternalAuditIndex, key[1])
-	require.Equal(t, byte(AuditFieldLedger), key[2])
+	require.Equal(t, AuditFieldLedger, key[2])
 	require.Equal(t, len(key), readStoreSplit(key), "audit-index key must not be split")
 }
 
@@ -48,9 +49,11 @@ func bytesCompare(a, b []byte) int {
 			if a[i] < b[i] {
 				return -1
 			}
+
 			return 1
 		}
 	}
+
 	return len(a) - len(b)
 }
 
