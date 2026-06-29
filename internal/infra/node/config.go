@@ -34,16 +34,23 @@ type NodeConfig struct {
 	DataDir             string        // Data directory (for detecting RESTORED marker)
 	MaintenanceInterval time.Duration // Interval for background WAL snapshot + Pebble checkpoint (default: 30s)
 
-	RotationThreshold      uint64 // Number of entries before rotating generations (default: 1000)
-	ElectionTick           int    // Election timeout in ticks (default: 10)
-	HeartbeatTick          int    // Heartbeat interval in ticks (default: 1)
-	MaxSizePerMsg          uint64 // Maximum size per message in bytes (default: 1MB)
-	MaxInflightMsgs        int    // Maximum number of in-flight messages (default: 256)
-	TickInterval           time.Duration
-	CompactionMargin       uint64 // Compaction margin in number of logs
-	ProposeQueueCapacity   int    // Capacity of the propose queue (default: 100)
-	AdvertiseAddr          string
-	BindAddr               string
+	RotationThreshold    uint64 // Number of entries before rotating generations (default: 1000)
+	ElectionTick         int    // Election timeout in ticks (default: 10)
+	HeartbeatTick        int    // Heartbeat interval in ticks (default: 1)
+	MaxSizePerMsg        uint64 // Maximum size per message in bytes (default: 1MB)
+	MaxInflightMsgs      int    // Maximum number of in-flight messages (default: 256)
+	TickInterval         time.Duration
+	CompactionMargin     uint64 // Compaction margin in number of logs
+	ProposeQueueCapacity int    // Capacity of the propose queue (default: 100)
+	AdvertiseAddr        string
+	BindAddr             string
+	// ServiceAdvertiseAddr is the address this node advertises for its
+	// service API (gRPC client-facing). It is persisted alongside
+	// AdvertiseAddr in the peer store so the cluster knows how to forward
+	// client requests after a restart, even when this node is the only
+	// voter (the bootstrap voter) and no Raft ConfChange ever publishes
+	// its address. EN-1413.
+	ServiceAdvertiseAddr   string
 	TransportBufferSize    int           // Per-peer send buffer capacity in bytes (default: 10MB)
 	ProcessingTickInterval time.Duration // Interval for processing committed entries (default: TickInterval/10)
 	ReplayBatchSize        int           // Number of entries per batch during spool replay (default: 1000)

@@ -474,6 +474,7 @@ func Module() fx.Option {
 			buildResponseSigner,
 			func(cfg Config) node.NodeConfig {
 				cfg.RaftConfig.DataDir = cfg.DataDir
+				cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
 				cfg.RaftConfig.SetDefaults()
 
 				return cfg.RaftConfig
@@ -937,19 +938,7 @@ func Module() fx.Option {
 				servicePool *transport.ConnectionPool,
 				cfg node.NodeConfig,
 				n *node.Node,
-				fullCfg Config,
 			) {
-				// Persist self in Pebble (and the in-memory cache) so the
-				// node's own address is durable across restarts (EN-1413).
-				// On the bootstrap voter this is the ONLY path that ever
-				// writes its address: it is never the subject of a Raft
-				// ConfChange (it appears in the initial ConfState
-				// directly), so without this call no follower would ever
-				// learn its address from the leader's Pebble checkpoint.
-				if err := n.RegisterPeer(cfg.NodeID, cfg.AdvertiseAddr, fullCfg.ServiceAdvertiseAddr()); err != nil {
-					panic(fmt.Errorf("registering self in peer store: %w", err))
-				}
-
 				var waitRaft func()
 
 				lc.Append(fx.Hook{
@@ -973,30 +962,15 @@ func Module() fx.Option {
 
 						logger.Infof("Raft gRPC server started successfully")
 
-						// Load peers from config (set during --join or --peers).
-						// EN-1413: also persist each peer in Pebble so that
-						// the bootstrap voter's address survives restarts —
-						// it never arrives via a Raft ConfChange on a
-						// follower's apply path. n.RegisterPeer writes Pebble
-						// first then the in-memory cache.
-						for _, peerEntry := range cfg.Peers {
-							logger := logger.WithFields(map[string]any{"peer": peerEntry})
-							logger.Infof("Adding peer to transport and service pool")
-							defaultTransport.AddPeer(peerEntry.ID, peerEntry.Address)
-
-							if err := n.RegisterPeer(peerEntry.ID, peerEntry.Address, peerEntry.ServiceAddress); err != nil {
-								return fmt.Errorf("persisting peer %d: %w", peerEntry.ID, err)
-							}
-
-							if err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress); err != nil {
-								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
-							}
-						}
-
-						// Recover peers from snapshot + WAL (populated by NewNode during recovery).
-						for nodeID, addr := range n.RecoveredPeers() {
+						// Wire the transport and service pool from the peers
+						// loaded out of Pebble by NewNode (which seeded them
+						// from cfg.Peers + self in the fresh-start branch and
+						// from previous ConfChange applies in the restart
+						// branch). Self is skipped — no transport/pool entry
+						// to ourselves. EN-1413.
+						for nodeID, addr := range n.PeerAddresses() {
 							if nodeID == cfg.NodeID {
-								continue // skip self
+								continue
 							}
 
 							logger := logger.WithFields(map[string]any{
@@ -1004,12 +978,11 @@ func Module() fx.Option {
 								"raft_addr":    addr.RaftAddress,
 								"service_addr": addr.ServiceAddress,
 							})
-							logger.Infof("Restoring recovered peer")
+							logger.Infof("Wiring peer into transport and service pool")
 							defaultTransport.AddPeer(nodeID, addr.RaftAddress)
 
-							err := servicePool.AddPeer(nodeID, addr.ServiceAddress)
-							if err != nil {
-								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add recovered peer to service pool")
+							if err := servicePool.AddPeer(nodeID, addr.ServiceAddress); err != nil {
+								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
 							}
 						}
 
@@ -1024,7 +997,7 @@ func Module() fx.Option {
 						return err
 					},
 				})
-			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``, ``)),
 			// Wire Observer: handle ConfChange, LeadershipChange, and LeaderReady events
 			fx.Annotate(func(
 				n *node.Node,
