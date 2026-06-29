@@ -53,3 +53,22 @@ func TestLedger_WithMetadata(t *testing.T) {
 	l2 := l.WithMetadata(map[string]string{"key": "value"})
 	require.Equal(t, "value", l2.Metadata["key"])
 }
+
+func TestGetIndexedMetadataKeys(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		l := Ledger{Configuration: Configuration{Features: features.FeatureSet{}}}
+		require.Nil(t, l.GetIndexedMetadataKeys())
+	})
+	t.Run("single key", func(t *testing.T) {
+		l := Ledger{Configuration: Configuration{Features: features.FeatureSet{
+			features.FeatureIndexedMetadataKeys: "source_wallet_id",
+		}}}
+		require.Equal(t, []string{"source_wallet_id"}, l.GetIndexedMetadataKeys())
+	})
+	t.Run("multiple keys", func(t *testing.T) {
+		l := Ledger{Configuration: Configuration{Features: features.FeatureSet{
+			features.FeatureIndexedMetadataKeys: "source_wallet_id,destination_wallet_id",
+		}}}
+		require.Equal(t, []string{"source_wallet_id", "destination_wallet_id"}, l.GetIndexedMetadataKeys())
+	})
+}
