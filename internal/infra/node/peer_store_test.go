@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -120,6 +121,117 @@ func TestPeerStore_KeyEncodingIsScoped(t *testing.T) {
 		dal.SubGlobPeers,
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 	}, k)
+}
+
+// TestNode_writeConfChangeToSession covers the EN-1413 follow-up fix
+// for the "ConfChange lost across snapshot install" scenario:
+//
+//  1. A snapshot install overwrites Pebble with the leader's checkpoint.
+//  2. ConfChange entries that landed between the checkpoint index and
+//     the install completion are in the applier's spool.
+//  3. The FSM, in PrepareEntries, invokes this handler for every
+//     EntryConfChange* with the in-flight WriteSession. The peer
+//     mutation lands in the same Pebble batch as the surrounding
+//     business writes — atomic, idempotent across spool/WAL replay.
+//
+// This test pins the three relevant transition types (Add / AddLearner /
+// Remove), the PromoteLearner no-op (empty context), and asserts both
+// the Pebble write (via LoadAll after commit) and the in-memory cache
+// update.
+func TestNode_writeConfChangeToSession(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+	n := &Node{
+		logger:        logging.Testing(),
+		peerStore:     ps,
+		peerAddresses: map[uint64]ConfChangeContext{},
+	}
+
+	addCtx, err := MarshalConfChangeContext(ConfChangeContext{
+		RaftAddress:    "pod-1:7777",
+		ServiceAddress: "pod-1:8888",
+	})
+	require.NoError(t, err)
+
+	addLearnerCtx, err := MarshalConfChangeContext(ConfChangeContext{
+		RaftAddress:    "pod-2:7777",
+		ServiceAddress: "pod-2:8888",
+	})
+	require.NoError(t, err)
+
+	// apply runs the handler on a fresh WriteSession + commits it, so
+	// the test exercises the same Pebble write path the FSM uses.
+	apply := func(t *testing.T, cc raftpb.ConfChangeV2, v2 bool) {
+		t.Helper()
+
+		data, err := cc.Marshal()
+		require.NoError(t, err)
+
+		entry := raftpb.Entry{
+			Type: raftpb.EntryConfChangeV2,
+			Data: data,
+		}
+		if !v2 {
+			ccV1 := raftpb.ConfChange{
+				Type:    cc.Changes[0].Type,
+				NodeID:  cc.Changes[0].NodeID,
+				Context: cc.Context,
+			}
+			d, err := ccV1.Marshal()
+			require.NoError(t, err)
+
+			entry = raftpb.Entry{Type: raftpb.EntryConfChange, Data: d}
+		}
+
+		session := ps.store.OpenWriteSession()
+		require.NoError(t, n.writeConfChangeToSession(entry, session))
+		require.NoError(t, session.Commit())
+	}
+
+	apply(t, raftpb.ConfChangeV2{
+		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeAddLearnerNode, NodeID: 1}},
+		Context: addCtx,
+	}, false)
+	apply(t, raftpb.ConfChangeV2{
+		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeAddLearnerNode, NodeID: 2}},
+		Context: addLearnerCtx,
+	}, true)
+
+	got, err := ps.LoadAll()
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, "pod-1:7777", got[1].RaftAddress)
+	require.Equal(t, "pod-2:7777", got[2].RaftAddress)
+
+	require.Len(t, n.PeerAddresses(), 2, "cache must mirror the Pebble write")
+
+	// PromoteLearner (ConfChangeAddNode without context) — must be a
+	// no-op for the peer payload: it's a role change, not an address
+	// change.
+	apply(t, raftpb.ConfChangeV2{
+		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeAddNode, NodeID: 2}},
+		Context: nil,
+	}, true)
+
+	got, err = ps.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-2:7777", got[2].RaftAddress, "promote must not overwrite the address")
+
+	// RemoveNode → Pebble delete + cache delete.
+	apply(t, raftpb.ConfChangeV2{
+		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeRemoveNode, NodeID: 1}},
+	}, true)
+
+	got, err = ps.LoadAll()
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.NotContains(t, got, uint64(1))
+	require.Contains(t, got, uint64(2))
+
+	cache := n.PeerAddresses()
+	require.NotContains(t, cache, uint64(1), "cache must drop the removed peer")
+	require.Contains(t, cache, uint64(2))
 }
 
 // TestNode_reloadPeersFromStore_RefreshesCache exercises the EN-1413

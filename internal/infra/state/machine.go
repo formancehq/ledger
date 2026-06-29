@@ -163,6 +163,23 @@ type Machine struct {
 	// without a sequence increment can only come from a bare Store that
 	// bypassed the wake protocol (#327 class).
 	publishSeq uint64
+
+	// confChangeHandler is invoked from PrepareEntries for every
+	// EntryConfChange* in the batch. The handler receives the entry and
+	// the in-flight WriteSession so it can land its peer mutation in the
+	// SAME Pebble batch as the surrounding business writes. This keeps
+	// cluster membership atomic with FSM state and makes the spool/WAL
+	// replay path naturally idempotent — every replay of the entry
+	// re-asserts the membership row. nil is a no-op for tests that do
+	// not wire a Node. EN-1413.
+	confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error
+}
+
+// SetConfChangeHandler registers the callback PrepareEntries invokes for
+// every EntryConfChange* it sees. See the field comment for the
+// rationale. Must be called before the first PrepareEntries.
+func (fsm *Machine) SetConfChangeHandler(fn func(entry raftpb.Entry, session *dal.WriteSession) error) {
+	fsm.confChangeHandler = fn
 }
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
@@ -572,6 +589,24 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
 			if fsm.sentinelMode {
 				fsm.sentinelTracer.SkipEntry(entry.Index, entry.Type.String(), len(entry.Data))
+			}
+
+			// EN-1413: ConfChange entries do not carry business state,
+			// but they carry cluster membership which must land in the
+			// same Pebble batch as the surrounding business writes.
+			// Otherwise a crash (or a snapshot restore that wipes
+			// Pebble) between the FSM commit and a separate peer-store
+			// commit would lose the membership change. The Node
+			// registers a handler that writes the peer entry via the
+			// supplied session; replay (boot WAL replay or post-
+			// snapshot spool replay) re-asserts the same row.
+			if fsm.confChangeHandler != nil &&
+				(entry.Type == raftpb.EntryConfChange || entry.Type == raftpb.EntryConfChangeV2) {
+				if err := fsm.confChangeHandler(entry, batch); err != nil {
+					_ = batch.Cancel()
+
+					return nil, fmt.Errorf("applying ConfChange at index %d: %w", entry.Index, err)
+				}
 			}
 
 			continue

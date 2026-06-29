@@ -23,7 +23,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
@@ -436,6 +438,16 @@ func NewNode(
 	// this, processReady (which runs in a different goroutine and races
 	// the async restore) would see the pre-restore peer set.
 	applier.SetOnSnapshotInstalled(node.reloadPeersFromStore)
+
+	// EN-1413 (review fix): wire the FSM ConfChange handler so that
+	// every EntryConfChange* — initial apply OR replay (spool / WAL) —
+	// writes its peer mutation in the SAME Pebble batch as the
+	// surrounding business writes. This makes membership atomic with
+	// FSM state and idempotent across snapshot restore: the spool
+	// replay re-asserts the membership row, so a restore that wipes
+	// Pebble between finishReady and the next FSM commit cannot lose
+	// the ConfChange.
+	fsm.SetConfChangeHandler(node.writeConfChangeToSession)
 
 	// Initialize node metrics
 	node.appendEntriesHistogram, err = meter.Int64Histogram("raft.append_entries",
@@ -1155,10 +1167,14 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 			Infof("Applying configuration change")
 		node.confState.Store(node.rawNode.ApplyConfChange(cc))
 
-		// Update peer address map (Pebble + in-memory cache) via
-		// RegisterPeer / UnregisterPeer so both stay in lockstep. A
-		// failure to persist surfaces here so the FSM does not desync
-		// from the durable membership state (invariant 7).
+		// Update the in-memory peer-address cache so the transport sees
+		// the new membership on the next Raft tick. The durable Pebble
+		// write happens inside the FSM batch when the applier processes
+		// these entries (see node.writeConfChangeToSession registered
+		// on the FSM); that path is atomic with the surrounding
+		// business writes and idempotent across spool/WAL replay.
+		// Updating the cache here too means the transport doesn't have
+		// to wait for the applier tick to learn the new address.
 		for _, change := range cc.Changes {
 			switch change.Type {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
@@ -1168,14 +1184,10 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 						return fmt.Errorf("invariant: unmarshal ConfChange context for node %d: %w", change.NodeID, err)
 					}
 
-					if err := node.RegisterPeer(change.NodeID, ccCtx.RaftAddress, ccCtx.ServiceAddress); err != nil {
-						return err
-					}
+					node.SetPeerAddress(change.NodeID, ccCtx.RaftAddress, ccCtx.ServiceAddress)
 				}
 			case raftpb.ConfChangeRemoveNode:
-				if err := node.UnregisterPeer(change.NodeID); err != nil {
-					return err
-				}
+				node.RemovePeerAddress(change.NodeID)
 			}
 
 			// Collect pending ConfChange future (if any) — resolved below after WAL update.
@@ -2325,6 +2337,60 @@ func (node *Node) reloadPeersFromStore() {
 	node.logger.WithFields(map[string]any{
 		"peerCount": len(peers),
 	}).Infof("Reloaded cluster membership from Pebble post-snapshot")
+}
+
+// writeConfChangeToSession is the FSM ConfChange handler: invoked from
+// PrepareEntries for every EntryConfChange* in the in-flight batch. It
+// writes the peer mutation through the supplied session so the Pebble
+// commit is atomic with the FSM business writes (EN-1413). The
+// in-memory peer-address cache is updated in the SAME call so the
+// transport sees the new state on the next tick — this is the only
+// path that updates the cache from the apply side; finishReady's
+// SetPeerAddress covers the hot path before the applier has run.
+//
+// PromoteLearner (ConfChangeAddNode with empty context) carries no
+// address payload — it's a role change — so we skip it.
+func (node *Node) writeConfChangeToSession(entry raftpb.Entry, session *dal.WriteSession) error {
+	cc, ok, err := unmarshalConfChangeV2(entry)
+	if err != nil {
+		return fmt.Errorf("decoding ConfChange entry: %w", err)
+	}
+
+	if !ok {
+		return nil
+	}
+
+	for _, change := range cc.Changes {
+		switch change.Type {
+		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+			if len(cc.Context) == 0 {
+				continue
+			}
+
+			ccCtx, err := UnmarshalConfChangeContext(cc.Context)
+			if err != nil {
+				return fmt.Errorf("invariant: unmarshal ConfChange context for node %d: %w", change.NodeID, err)
+			}
+
+			if err := session.SetProto(peerKey(change.NodeID), &raftcmdpb.PeerAddress{
+				NodeId:         change.NodeID,
+				RaftAddress:    ccCtx.RaftAddress,
+				ServiceAddress: ccCtx.ServiceAddress,
+			}); err != nil {
+				return fmt.Errorf("session write peer %d: %w", change.NodeID, err)
+			}
+
+			node.SetPeerAddress(change.NodeID, ccCtx.RaftAddress, ccCtx.ServiceAddress)
+		case raftpb.ConfChangeRemoveNode:
+			if err := session.DeleteKey(peerKey(change.NodeID)); err != nil {
+				return fmt.Errorf("session delete peer %d: %w", change.NodeID, err)
+			}
+
+			node.RemovePeerAddress(change.NodeID)
+		}
+	}
+
+	return nil
 }
 
 // RegisterPeer durably persists a peer entry in Pebble (the source of
