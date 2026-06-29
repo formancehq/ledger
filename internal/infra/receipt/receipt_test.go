@@ -1,6 +1,7 @@
 package receipt
 
 import (
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -250,4 +251,26 @@ func TestSignBindsColor(t *testing.T) {
 	roundTripped := ClaimsToPostings(grantsClaims.Postings)
 	require.Len(t, roundTripped, 1)
 	require.Equal(t, "GRANTS", roundTripped[0].GetColor())
+}
+
+// TestPostingClaim_AlwaysEmitsColor pins the receipt-JSON contract: the
+// uncolored bucket must surface as `color:""` in the signed JWT claim,
+// not be dropped via omitempty. Matches the contract enforced on
+// commonpb.Posting, sinkPosting, and AccountVolume — keeps the v3
+// uncolored claim distinguishable from a pre-color claim shape.
+func TestPostingClaim_AlwaysEmitsColor(t *testing.T) {
+	t.Parallel()
+
+	claim := PostingClaim{
+		Source:      "world",
+		Destination: "users:alice",
+		Amount:      "100",
+		Asset:       "USD/2",
+		// Color intentionally left empty — uncolored bucket.
+	}
+
+	data, err := json.Marshal(claim)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"color":""`,
+		`uncolored receipt claims must surface "color":"" — receipt JWTs bind the (account, asset, color) identity, so the empty bucket cannot be omitted`)
 }

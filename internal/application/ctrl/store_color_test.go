@@ -38,7 +38,8 @@ func TestAssembleAccount_SegregatesColorsByDefault(t *testing.T) {
 		volEntry(t, "test", "alice", "EUR/2", "", 10, 0),
 	}
 
-	acct := assembleAccount("alice", entries, nil, false)
+	acct, err := assembleAccount("alice", entries, nil, false)
+	require.NoError(t, err)
 
 	// Order: (EUR/2,""), (USD/2,""), (USD/2,"GRANTS"), (USD/2,"OPS")
 	got := acct.GetVolumes()
@@ -72,7 +73,8 @@ func TestAssembleAccount_CollapseColors(t *testing.T) {
 		volEntry(t, "test", "alice", "USD/2", "OPS", 25, 5),
 	}
 
-	acct := assembleAccount("alice", entries, nil, true)
+	acct, err := assembleAccount("alice", entries, nil, true)
+	require.NoError(t, err)
 
 	require.Len(t, acct.GetVolumes(), 1)
 	entry := acct.GetVolumes()[0]
@@ -92,10 +94,33 @@ func TestAssembleAccount_FindVolume(t *testing.T) {
 		volEntry(t, "test", "alice", "USD/2", "", 100, 0),
 		volEntry(t, "test", "alice", "USD/2", "GRANTS", 50, 0),
 	}
-	acct := assembleAccount("alice", entries, nil, false)
+	acct, err := assembleAccount("alice", entries, nil, false)
+	require.NoError(t, err)
 
 	require.Equal(t, "100", acct.FindVolume("USD/2", "").GetBalance())
 	require.Equal(t, "50", acct.FindVolume("USD/2", "GRANTS").GetBalance())
 	require.Nil(t, acct.FindVolume("USD/2", "MISSING"))
 	require.Nil(t, acct.FindVolume("EUR/2", ""))
+}
+
+// TestAssembleAccount_MalformedKeyReturnsError pins the contract that a
+// malformed canonical volume key surfaces a hard error rather than being
+// silently dropped from the GetAccount output. Silent skip would return a
+// truncated balance the caller cannot detect — CLAUDE.md invariant #7.
+func TestAssembleAccount_MalformedKeyReturnsError(t *testing.T) {
+	t.Parallel()
+
+	entries := []attributes.ComputedEntry[*raftcmdpb.VolumePair]{
+		{
+			// A byte slice too short to decode as a VolumeKey (the canonical
+			// shape begins with a 64-byte padded ledger name) — VolumeKey.Unmarshal
+			// rejects it.
+			CanonicalKey: []byte{0xAB, 0xCD},
+			Value:        &raftcmdpb.VolumePair{},
+		},
+	}
+
+	_, err := assembleAccount("alice", entries, nil, false)
+	require.Error(t, err, "malformed canonical key must surface as an error, not be silently skipped")
+	require.Contains(t, err.Error(), "malformed volume canonical key")
 }

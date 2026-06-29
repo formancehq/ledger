@@ -25,12 +25,16 @@ func NewSigner(key []byte) *Signer {
 // Color is part of the receipt-bound identity because balances are
 // segregated per (account, asset, color); a receipt that did not bind
 // the color would be verifiable against the wrong bucket on revert.
+// Color is always emitted (no `omitempty`) so uncolored claims serialize
+// as `color:""` rather than dropping the field — matches the contract
+// enforced by commonpb.Posting / sinkPosting / AccountVolume, and keeps
+// the receipt JWT distinguishable from pre-color claim shapes.
 type PostingClaim struct {
 	Source      string `json:"source"`
 	Destination string `json:"destination"`
 	Amount      string `json:"amount"`
 	Asset       string `json:"asset"`
-	Color       string `json:"color,omitempty"`
+	Color       string `json:"color"`
 }
 
 // Claims are the custom JWT claims for a transaction receipt.
