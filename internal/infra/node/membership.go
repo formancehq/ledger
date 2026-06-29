@@ -62,8 +62,7 @@ type Membership struct {
 }
 
 // NewMembership loads the in-memory cache from Pebble and wires the
-// transport + service pool to match. transport and pool may be nil for
-// tests that don't exercise the wiring. selfNodeID is skipped from
+// transport + service pool to match. selfNodeID is skipped from
 // transport/pool registration — a node never dials itself.
 //
 // Failure to read the peer rows is fatal: without them the node would
@@ -95,25 +94,20 @@ func NewMembership(store *PeerStore, transport peerTransport, pool peerPool, sel
 	return m, nil
 }
 
-// wireAddLocked pushes a peer into the transport + service pool. Caller
-// must NOT hold m.mu — this method makes no map access. Self is skipped
-// because a node never dials itself.
+// wireAddLocked pushes a peer into the transport + service pool. Self
+// is skipped because a node never dials itself.
 func (m *Membership) wireAddLocked(nodeID uint64, raftAddr, serviceAddr string) {
 	if nodeID == m.selfNodeID {
 		return
 	}
 
-	if m.transport != nil {
-		m.transport.AddPeer(nodeID, raftAddr)
-	}
+	m.transport.AddPeer(nodeID, raftAddr)
 
-	if m.pool != nil {
-		if err := m.pool.AddPeer(nodeID, serviceAddr); err != nil {
-			m.logger.WithFields(map[string]any{
-				"peer_id": nodeID,
-				"error":   err,
-			}).Errorf("Failed to add peer to service pool")
-		}
+	if err := m.pool.AddPeer(nodeID, serviceAddr); err != nil {
+		m.logger.WithFields(map[string]any{
+			"peer_id": nodeID,
+			"error":   err,
+		}).Errorf("Failed to add peer to service pool")
 	}
 }
 
@@ -125,17 +119,13 @@ func (m *Membership) wireRemoveLocked(nodeID uint64) {
 		return
 	}
 
-	if m.transport != nil {
-		m.transport.RemovePeer(context.Background(), nodeID)
-	}
+	m.transport.RemovePeer(context.Background(), nodeID)
 
-	if m.pool != nil {
-		if err := m.pool.RemovePeer(nodeID); err != nil {
-			m.logger.WithFields(map[string]any{
-				"peer_id": nodeID,
-				"error":   err,
-			}).Errorf("Failed to remove peer from service pool")
-		}
+	if err := m.pool.RemovePeer(nodeID); err != nil {
+		m.logger.WithFields(map[string]any{
+			"peer_id": nodeID,
+			"error":   err,
+		}).Errorf("Failed to remove peer from service pool")
 	}
 }
 

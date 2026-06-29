@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,20 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// noopTransport / noopPool satisfy peerTransport / peerPool with no
+// side effect — Membership tests that don't exercise the wiring side
+// pass these so the production code path stays branchless (no nil
+// checks).
+type noopTransport struct{}
+
+func (noopTransport) AddPeer(uint64, string)                {}
+func (noopTransport) RemovePeer(context.Context, uint64) {} //nolint:gochecknoglobals
+
+type noopPool struct{}
+
+func (noopPool) AddPeer(uint64, string) error { return nil }
+func (noopPool) RemovePeer(uint64) error      { return nil }
 
 // newTestPeerStore returns a fresh PeerStore backed by an in-memory Pebble
 // store in a temp directory, cleaned up at test end.
@@ -29,13 +44,12 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 }
 
 // newTestMembership returns a Membership backed by a fresh in-memory
-// Pebble store. Transport and pool are nil — Membership tolerates this
-// for tests that don't exercise the wiring side. Used to seed a minimal
-// Node in tests that only touch peer state.
+// Pebble store and noop transport/pool. Used to seed a minimal Node
+// in tests that only touch peer state.
 func newTestMembership(t *testing.T) *Membership {
 	t.Helper()
 
-	m, err := NewMembership(newTestPeerStore(t), nil, nil, 0, logging.Testing())
+	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, 0, logging.Testing())
 	require.NoError(t, err)
 
 	return m
@@ -252,7 +266,7 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	// Pre-swap state: cluster A had peer 7.
 	require.NoError(t, ps.Put(7, "old:1", "old:2"))
 
-	m, err := NewMembership(ps, nil, nil, 0, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, 0, logging.Testing())
 	require.NoError(t, err)
 	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
 
