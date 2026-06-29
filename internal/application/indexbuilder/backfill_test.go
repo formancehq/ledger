@@ -408,7 +408,7 @@ func TestIndexPostingAddressMappingsWritesAccountByAsset(t *testing.T) {
 
 	// source=accounts:alice dest=accounts:bob asset="USD/2".
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
 		false, false, false, nil,
 	))
 	require.NoError(t, b.wb.Flush())
@@ -441,11 +441,11 @@ func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
 
 	// Feed the same posting twice within the same batch.
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
 		false, false, false, nil,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 2, "accounts:alice", "accounts:bob", "USD/2",
+		b.kb, cfg, "test", 2, "accounts:alice", "accounts:bob", "USD/2", "",
 		false, false, false, nil,
 	))
 	require.NoError(t, b.wb.Flush())
@@ -488,7 +488,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		batch1 := store.NewBatch()
 		b.initBatch(batch1)
 		require.NoError(t, b.indexPostingAddressMappings(
-			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
 			false, false, false, nil,
 		))
 		require.NoError(t, b.wb.Flush())
@@ -502,7 +502,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		require.NoError(t, readstore.DeleteLedgerIndexes(b.wb.Batch(), "test"))
 		b.markLedgerDeletedInBatch("test")
 		require.NoError(t, b.indexPostingAddressMappings(
-			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2",
+			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2", "",
 			false, false, false, nil,
 		))
 		require.NoError(t, b.wb.Flush())
@@ -537,7 +537,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 
 		// Old generation writes (queued, uncommitted) populate seenAcctAsset ...
 		require.NoError(t, b.indexPostingAddressMappings(
-			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
 			false, false, false, nil,
 		))
 		// ... the ledger is deleted in the same batch (range delete queued,
@@ -547,7 +547,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		// ... and the recreated ledger re-touches alice. Without clearing
 		// seenAcctAsset on delete, this Put would be skipped and lost.
 		require.NoError(t, b.indexPostingAddressMappings(
-			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2",
+			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2", "",
 			false, false, false, nil,
 		))
 		require.NoError(t, b.wb.Flush())
@@ -584,7 +584,7 @@ func TestIndexPostingAddressMappingsAccountByAssetExcludesTransient(t *testing.T
 	}
 
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
 		false, false, false, excludedVolumes,
 	))
 	require.NoError(t, b.wb.Flush())
@@ -616,7 +616,7 @@ func TestIndexPostingAddressMappingsAccountByAssetDisabled(t *testing.T) {
 	cfg := newLedgerIndexConfig()
 
 	require.NoError(t, b.indexPostingAddressMappings(
-		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
+		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
 		false, false, false, nil,
 	))
 	require.NoError(t, b.wb.Flush())

@@ -110,8 +110,8 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 	volumes := setupVolumesStub(mockStore)
-	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), zeroVol.AsReader(), nil)
-	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "users:001", "USD/2"), zeroVol.AsReader(), nil)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), zeroVol.AsReader(), nil)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "users:001", "USD/2", ""), zeroVol.AsReader(), nil)
 
 	// Transaction state update
 	expectPutTransactionState(t, mockStore,
@@ -402,8 +402,8 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 	// readVolumeOrZero synthesises a zero balance. expectPutVolume both
 	// wires the stub lazily AND pins that the apply path writes both
 	// fresh balances back through Scope.Volumes().Put.
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), nil)
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2"), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2", ""), nil)
 
 	expectPutTransactionState(t, mockStore,
 		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
@@ -472,8 +472,8 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 
 	mockStore.EXPECT().PutReverted(domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}, true)
 	expectGetTransactionState(mockStore, domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}, nil, domain.ErrNotFound)
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2"), nil)
-	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2", ""), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), nil)
 	expectPutTransactionState(t, mockStore,
 		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)
