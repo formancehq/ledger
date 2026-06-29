@@ -454,18 +454,27 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) error {
 
 	schema := store.ledger.Bucket
 	confirmed := make([]string, 0, len(requested))
+	escaper := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	for _, key := range requested {
 		var count int
 		// Check pg_indexes for an index whose definition contains the functional
 		// expression for this key. Escape LIKE metacharacters so underscores and
 		// percent signs in key names match literally.
-		escapedKey := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(key)
+		//
+		// The second LIKE condition scopes the match to partial indexes for this
+		// ledger (WHERE ledger = '...') or non-partial indexes (no WHERE clause
+		// means the index covers all ledgers). Without this filter, a partial
+		// index created for a different ledger in the same bucket would falsely
+		// confirm the key.
+		escapedKey := escaper.Replace(key)
+		escapedLedger := escaper.Replace(store.ledger.Name)
 		err := store.db.NewSelect().
 			TableExpr("pg_indexes").
 			ColumnExpr("COUNT(*)").
 			Where("schemaname = ?", schema).
 			Where("tablename = ?", "transactions").
 			Where("indexdef LIKE ? ESCAPE '\\'", "%metadata ->> '"+escapedKey+"'%").
+			Where("(indexdef NOT LIKE '%WHERE%' ESCAPE '\\' OR indexdef LIKE ? ESCAPE '\\')", "%"+escapedLedger+"%").
 			Scan(ctx, &count)
 		if err != nil {
 			return fmt.Errorf("checking pg_indexes for key %q: %w", key, err)
