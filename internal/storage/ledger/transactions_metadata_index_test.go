@@ -24,6 +24,7 @@ package ledger_test
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math/big"
 	"strings"
 	"sync"
@@ -97,6 +98,7 @@ func withSQLCapture(parent context.Context) (context.Context, *sqlCapture) {
 // INDEXED_METADATA_KEYS feature to the given comma-separated list.
 func withIndexedMetadataKeys(keys string) func(cfg *ledger.Configuration) {
 	return func(cfg *ledger.Configuration) {
+		cfg.Features = maps.Clone(cfg.Features)
 		cfg.Features[features.FeatureIndexedMetadataKeys] = keys
 	}
 }
