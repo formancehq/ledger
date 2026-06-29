@@ -280,6 +280,11 @@ func (a *transactionsAdaptivePaginator) Paginate(
 		}
 		if r.source == "original" {
 			origErr = r.err
+			// Original failed with a hard error — cancel the chaser immediately
+			// so we don't wait up to ChaserDelayMs before returning. If the
+			// chaser hasn't fired yet its select sees raceCtx.Done(); if it's
+			// already running the in-flight query is interrupted via context.
+			raceCancel()
 		}
 	}
 
@@ -714,4 +719,5 @@ func WithTransactionListConfig(cfg TransactionListConfig) Option {
 var defaultOptions = []Option{
 	WithMeter(noopmetrics.Meter{}),
 	WithTracer(nooptracer.Tracer{}),
+	WithTransactionListConfig(DefaultTransactionListConfig()),
 }
