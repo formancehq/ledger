@@ -7,6 +7,9 @@ Chapters partition a ledger's transaction history into discrete sealed segments.
 | Document | Description |
 |----------|-------------|
 | [lifecycle.md](lifecycle.md) | Chapter lifecycle (OPEN, CLOSING, CLOSED, ARCHIVING, ARCHIVED), sealing hash, and crash recovery. |
+| [cold-storage.md](cold-storage.md) | Export of sealed chapter logs to durable cold storage (filesystem, S3) with a two-phase archive flow. |
+| [receipts.md](receipts.md) | HMAC-signed JWT receipts that allow reverting archived transactions without re-reading cold storage. |
+| [backup.md](backup.md) | Full-database backup (Pebble checkpoint + incremental segments) to S3, Azure, or filesystem; restore for disaster recovery. |
 
 ## Related
 
