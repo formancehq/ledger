@@ -669,12 +669,13 @@ func (c *MockBackendGetNumscriptCall) DoAndReturn(f func(context.Context, string
 }
 
 // GetTransaction mocks base method.
-func (m *MockBackend) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (m *MockBackend) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, ledgerName, transactionID)
 	ret0, _ := ret[0].(*commonpb.Transaction)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // GetTransaction indicates an expected call of GetTransaction.
@@ -690,19 +691,19 @@ type MockBackendGetTransactionCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBackendGetTransactionCall) Return(arg0 *commonpb.Transaction, arg1 error) *MockBackendGetTransactionCall {
-	c.Call = c.Call.Return(arg0, arg1)
+func (c *MockBackendGetTransactionCall) Return(arg0 *commonpb.Transaction, arg1 string, arg2 error) *MockBackendGetTransactionCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBackendGetTransactionCall) Do(f func(context.Context, string, uint64) (*commonpb.Transaction, error)) *MockBackendGetTransactionCall {
+func (c *MockBackendGetTransactionCall) Do(f func(context.Context, string, uint64) (*commonpb.Transaction, string, error)) *MockBackendGetTransactionCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBackendGetTransactionCall) DoAndReturn(f func(context.Context, string, uint64) (*commonpb.Transaction, error)) *MockBackendGetTransactionCall {
+func (c *MockBackendGetTransactionCall) DoAndReturn(f func(context.Context, string, uint64) (*commonpb.Transaction, string, error)) *MockBackendGetTransactionCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -57,16 +57,18 @@ func (g *BucketGrpcClient) Apply(ctx context.Context, req *servicepb.ApplyReques
 	return resp.GetLogs(), nil
 }
 
-func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, string, error) {
 	resp, err := g.client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 		Ledger:        ledgerName,
 		TransactionId: transactionID,
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return resp.GetTransaction(), nil
+	// Surface the receipt the serving node signed from its own fresh state so the
+	// caller can reuse it instead of re-deriving from a possibly-stale snapshot.
+	return resp.GetTransaction(), resp.GetReceipt(), nil
 }
 
 func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {

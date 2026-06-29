@@ -307,13 +307,15 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 	var (
 		tx *commonpb.Transaction
-		// reader is the store the receipt is computed from. For a checkpoint read
-		// it is the checkpoint's fixed store, so the receipt stays consistent with
-		// the checkpoint's ledger/log data. For a live read it is a snapshot opened
-		// AFTER the (routed/linearizable) transaction read — see below — so it can
-		// never predate the transaction's creation log.
-		reader dal.PebbleGetter
-		err    error
+		// reader is the store a locally-derived receipt is read from: the
+		// checkpoint's fixed store, or (live path) a snapshot opened AFTER the
+		// transaction read so it can't predate the creation log. fwdReceipt is set
+		// only when the read was forwarded to another node, which already signed
+		// the receipt from its own fresh state — then we reuse it rather than
+		// re-deriving from a possibly-stale local snapshot.
+		reader     dal.PebbleGetter
+		fwdReceipt string
+		err        error
 	)
 
 	checkpoint := req.GetCheckpointId() > 0
@@ -331,7 +333,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 		reader = mainStore
 		tx, err = impl.localCtrl.GetTransactionFrom(ctx, mainStore, req.GetLedger(), req.GetTransactionId())
 	} else {
-		tx, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
+		tx, fwdReceipt, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
 	}
 
 	if err != nil {
@@ -340,28 +342,33 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 	resp := &servicepb.GetTransactionResponse{Transaction: tx}
 	if impl.receiptSigner != nil {
-		// Live path: open the snapshot now — after the transaction read barrier —
-		// so the receipt's ledger + creation-log reads share one committed state
-		// at least as fresh as the transaction. Opening it earlier could pin a
-		// state predating the transaction's creation log and yield an empty
-		// receipt for an existing transaction.
-		if !checkpoint {
-			handle, hErr := impl.store.NewReadHandle()
-			if hErr != nil {
-				return nil, fmt.Errorf("creating read handle: %w", hErr)
+		if fwdReceipt != "" {
+			// Forwarded read: the node that read the transaction already signed the
+			// receipt from its fresh state; reuse it rather than re-deriving from a
+			// possibly-stale local snapshot.
+			resp.Receipt = fwdReceipt
+		} else {
+			// Locally-served read: open the snapshot now — after the transaction
+			// read barrier — so the receipt's ledger + creation-log reads share one
+			// committed state at least as fresh as the transaction.
+			if !checkpoint {
+				handle, hErr := impl.store.NewReadHandle()
+				if hErr != nil {
+					return nil, fmt.Errorf("creating read handle: %w", hErr)
+				}
+
+				defer func() { _ = handle.Close() }()
+
+				reader = handle
 			}
 
-			defer func() { _ = handle.Close() }()
+			receiptToken, err := impl.computeTransactionReceipt(ctx, reader, req.GetLedger(), req.GetTransactionId(), tx)
+			if err != nil {
+				return nil, fmt.Errorf("computing transaction receipt: %w", err)
+			}
 
-			reader = handle
+			resp.Receipt = receiptToken
 		}
-
-		receiptToken, err := impl.computeTransactionReceipt(ctx, reader, req.GetLedger(), req.GetTransactionId(), tx)
-		if err != nil {
-			return nil, fmt.Errorf("computing transaction receipt: %w", err)
-		}
-
-		resp.Receipt = receiptToken
 	}
 
 	return resp, nil
