@@ -3069,6 +3069,7 @@ components:
             - uint8
             - uint16
             - uint32
+            - datetime
           description: Declared type for this metadata field
         status:
           type: string
@@ -3095,6 +3096,7 @@ components:
             - uint8
             - uint16
             - uint32
+            - datetime
           description: Metadata type to set for the field
 
     PostCommitVolumes:

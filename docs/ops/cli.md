@@ -215,7 +215,7 @@ ledgerctl ledgers create [flags]
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
-**Schema format:** `target:key:type` where target is `account` or `transaction`, and type is one of: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`.
+**Schema format:** `target:key:type` where target is `account` or `transaction`, and type is one of: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`, `datetime`.
 
 **Behavior:**
 - In interactive mode (no `--schema` flags), prompts "Add metadata schema?" and loops through target/key/type selection
@@ -431,7 +431,7 @@ ledgerctl ledgers set-metadata-type [flags]
 | `--ledger` | | Name of the ledger |
 | `--target` | | Target type: `account` or `transaction` |
 | `--key` | | Metadata key name |
-| `--type` | | Metadata type: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32` |
+| `--type` | | Metadata type: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`, `datetime` |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**

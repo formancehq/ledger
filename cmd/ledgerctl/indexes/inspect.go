@@ -1,9 +1,11 @@
 package indexes
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -104,34 +106,60 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	declaredType := declaredMetadataType(ctx, client, ledgerName, targetType, key)
+
 	pterm.Println()
 	pterm.Printf("Index: %s on %s (ledger: %s)\n", pterm.Cyan(key), pterm.Cyan(target), pterm.Cyan(ledgerName))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
 	switch result := resp.GetResult().(type) {
 	case *servicepb.InspectIndexResponse_Summary:
-		printSummary(result.Summary)
+		printSummary(result.Summary, declaredType)
 	case *servicepb.InspectIndexResponse_DistinctValues:
-		printDistinctValues(result.DistinctValues)
+		printDistinctValues(result.DistinctValues, declaredType)
 	case *servicepb.InspectIndexResponse_Facets:
-		printFacets(result.Facets)
+		printFacets(result.Facets, declaredType)
 	}
 
 	return nil
 }
 
-func printSummary(s *servicepb.InspectSummary) {
+// declaredMetadataType resolves the schema-declared MetadataType for
+// (ledger, targetType, key), or METADATA_TYPE_STRING when the lookup fails or
+// the key has no declaration. It is a render hint only: datetime index keys
+// share the int64 encoding, so the server returns an int_value for them, and
+// formatMetadataValue uses this type to render those values as RFC3339 instead
+// of raw microseconds (mirroring the HTTP inspect handler). A failed lookup
+// degrades to the default integer rendering rather than erroring.
+func declaredMetadataType(
+	ctx context.Context,
+	client servicepb.BucketServiceClient,
+	ledgerName string,
+	targetType commonpb.TargetType,
+	key string,
+) commonpb.MetadataType {
+	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+	if err != nil {
+		return commonpb.MetadataType_METADATA_TYPE_STRING
+	}
+
+	_, fs := commonpb.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
+
+	return fs.GetType()
+}
+
+func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataType) {
 	pterm.Printf("Cardinality:       %d\n", s.GetCardinality())
-	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin()))
-	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax()))
+	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), declaredType))
+	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), declaredType))
 	pterm.Printf("Entities with key: %d\n", s.GetEntitiesWithKey())
 	pterm.Printf("Entities null:     %d\n", s.GetEntitiesWithNull())
 }
 
-func printDistinctValues(dv *servicepb.InspectDistinctValues) {
+func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commonpb.MetadataType) {
 	table := pterm.TableData{{"VALUE"}}
 	for _, v := range dv.GetValues() {
-		table = append(table, []string{formatMetadataValue(v)})
+		table = append(table, []string{formatMetadataValue(v, declaredType)})
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
@@ -142,7 +170,7 @@ func printDistinctValues(dv *servicepb.InspectDistinctValues) {
 	}
 }
 
-func printFacets(f *servicepb.InspectFacets) {
+func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType) {
 	facets := make([]*servicepb.InspectFacet, len(f.GetFacets()))
 	copy(facets, f.GetFacets())
 
@@ -153,7 +181,7 @@ func printFacets(f *servicepb.InspectFacets) {
 	table := pterm.TableData{{"VALUE", "COUNT"}}
 	for _, fv := range facets {
 		table = append(table, []string{
-			formatMetadataValue(fv.GetValue()),
+			formatMetadataValue(fv.GetValue(), declaredType),
 			strconv.FormatUint(fv.GetCount(), 10),
 		})
 	}
@@ -166,7 +194,7 @@ func printFacets(f *servicepb.InspectFacets) {
 	}
 }
 
-func formatMetadataValue(v *commonpb.MetadataValue) string {
+func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.MetadataType) string {
 	if v == nil {
 		return pterm.Gray("(none)")
 	}
@@ -175,9 +203,17 @@ func formatMetadataValue(v *commonpb.MetadataValue) string {
 	case *commonpb.MetadataValue_StringValue:
 		return fmt.Sprintf("%q", t.StringValue)
 	case *commonpb.MetadataValue_IntValue:
+		// Datetime index keys share the int64 encoding, so the server returns an
+		// int_value for them; render as RFC3339 when the field is declared datetime.
+		if commonpb.IsDatetimeType(declaredType) {
+			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
+		}
+
 		return strconv.FormatInt(t.IntValue, 10)
 	case *commonpb.MetadataValue_UintValue:
 		return strconv.FormatUint(t.UintValue, 10)
+	case *commonpb.MetadataValue_DatetimeValue:
+		return commonpb.MetadataValueToString(v)
 	case *commonpb.MetadataValue_BoolValue:
 		return strconv.FormatBool(t.BoolValue)
 	case *commonpb.MetadataValue_NullValue:

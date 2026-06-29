@@ -28,6 +28,7 @@ message MetadataValue {
     bool bool_value = 3;
     NullValue null_value = 4;
     uint64 uint_value = 5;
+    int64 datetime_value = 6;  // microseconds since the Unix epoch (signed; pre-1970 allowed)
   }
 }
 
@@ -158,6 +159,7 @@ enum MetadataType {
   METADATA_TYPE_UINT8 = 7;
   METADATA_TYPE_UINT16 = 8;
   METADATA_TYPE_UINT32 = 9;
+  METADATA_TYPE_DATETIME = 10;
 }
 
 // MetadataConversionStatus and the `status` field on MetadataFieldSchema

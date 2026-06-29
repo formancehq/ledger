@@ -120,6 +120,15 @@ func (m *MetadataValue_UintValue) CloneVT() isMetadataValue_Type {
 	return r
 }
 
+func (m *MetadataValue_DatetimeValue) CloneVT() isMetadataValue_Type {
+	if m == nil {
+		return (*MetadataValue_DatetimeValue)(nil)
+	}
+	r := new(MetadataValue_DatetimeValue)
+	r.DatetimeValue = m.DatetimeValue
+	return r
+}
+
 func (m *MetadataMap) CloneVT() *MetadataMap {
 	if m == nil {
 		return (*MetadataMap)(nil)
@@ -3811,6 +3820,23 @@ func (this *MetadataValue_UintValue) EqualVT(thatIface isMetadataValue_Type) boo
 		return false
 	}
 	if this.UintValue != that.UintValue {
+		return false
+	}
+	return true
+}
+
+func (this *MetadataValue_DatetimeValue) EqualVT(thatIface isMetadataValue_Type) bool {
+	that, ok := thatIface.(*MetadataValue_DatetimeValue)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.DatetimeValue != that.DatetimeValue {
 		return false
 	}
 	return true
@@ -9846,6 +9872,18 @@ func (m *MetadataValue_UintValue) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.UintValue))
 	i--
 	dAtA[i] = 0x28
+	return len(dAtA) - i, nil
+}
+func (m *MetadataValue_DatetimeValue) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *MetadataValue_DatetimeValue) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DatetimeValue))
+	i--
+	dAtA[i] = 0x30
 	return len(dAtA) - i, nil
 }
 func (m *MetadataMap) MarshalVT() (dAtA []byte, err error) {
@@ -18856,6 +18894,15 @@ func (m *MetadataValue_UintValue) SizeVT() (n int) {
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.UintValue))
 	return n
 }
+func (m *MetadataValue_DatetimeValue) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.DatetimeValue))
+	return n
+}
 func (m *MetadataMap) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -22971,6 +23018,26 @@ func (m *MetadataValue) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Type = &MetadataValue_UintValue{UintValue: v}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DatetimeValue", wireType)
+			}
+			var v int64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Type = &MetadataValue_DatetimeValue{DatetimeValue: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

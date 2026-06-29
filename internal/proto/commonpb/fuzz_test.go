@@ -204,7 +204,7 @@ func FuzzConvertMetadataValue(f *testing.F) {
 	f.Add(byte(4), "42", int(MetadataType_METADATA_TYPE_INT64))
 	f.Add(byte(5), "", int(MetadataType_METADATA_TYPE_STRING))
 
-	maxType := int(MetadataType_METADATA_TYPE_UINT32) + 1
+	maxType := int(MetadataType_METADATA_TYPE_DATETIME) + 1
 
 	f.Fuzz(func(t *testing.T, tag byte, raw string, targetInt int) {
 		// Build the source MetadataValue based on the tag.

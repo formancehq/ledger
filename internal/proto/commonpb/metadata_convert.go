@@ -4,6 +4,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Constructors for MetadataValue variants.
@@ -26,6 +27,10 @@ func NewBoolValue(b bool) *MetadataValue {
 
 func NewNullValue(original string) *MetadataValue {
 	return &MetadataValue{Type: &MetadataValue_NullValue{NullValue: &NullValue{Original: original}}}
+}
+
+func NewDatetimeValue(micros int64) *MetadataValue {
+	return &MetadataValue{Type: &MetadataValue_DatetimeValue{DatetimeValue: micros}}
 }
 
 // signedRange returns (min, max) for a signed integer MetadataType.
@@ -62,6 +67,28 @@ func unsignedRange(t MetadataType) (uint64, bool) {
 	}
 }
 
+// IsDatetimeType reports whether t is the datetime metadata type. Datetime
+// values are stored in datetime_value (signed int64 microseconds since the
+// Unix epoch), reusing the order-preserving int64 index encoding so range
+// queries route through the signed integer path.
+func IsDatetimeType(t MetadataType) bool {
+	return t == MetadataType_METADATA_TYPE_DATETIME
+}
+
+// parseDatetimeMicros parses an RFC3339/RFC3339Nano string into signed int64
+// microseconds since the Unix epoch (UTC). RFC3339Nano is a superset that also
+// parses values without fractional seconds. Pre-1970 timestamps are valid and
+// produce a negative result. Returns ok=false only when the string is not a
+// valid datetime.
+func parseDatetimeMicros(s string) (int64, bool) {
+	ts, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return 0, false
+	}
+
+	return ts.UnixMicro(), true
+}
+
 // IsSignedType returns true for INT8, INT16, INT32, INT64.
 func IsSignedType(t MetadataType) bool {
 	_, _, ok := signedRange(t)
@@ -90,6 +117,8 @@ func MetadataValueToString(v *MetadataValue) string {
 		return strconv.FormatInt(t.IntValue, 10)
 	case *MetadataValue_UintValue:
 		return strconv.FormatUint(t.UintValue, 10)
+	case *MetadataValue_DatetimeValue:
+		return time.UnixMicro(t.DatetimeValue).UTC().Format(time.RFC3339Nano)
 	case *MetadataValue_BoolValue:
 		return strconv.FormatBool(t.BoolValue)
 	case *MetadataValue_NullValue:
@@ -134,6 +163,14 @@ func TypeMatches(v *MetadataValue, target MetadataType) bool {
 		uv, isUint := v.GetType().(*MetadataValue_UintValue)
 
 		return isUint && uv.UintValue <= hi
+	}
+
+	// Datetime is stored in datetime_value (signed int64 micros since epoch);
+	// any datetime_value already matches and must not be re-converted.
+	if IsDatetimeType(target) {
+		_, isDatetime := v.GetType().(*MetadataValue_DatetimeValue)
+
+		return isDatetime
 	}
 
 	return false
@@ -211,6 +248,8 @@ func ConvertMetadataValue(v *MetadataValue, target MetadataType) *MetadataValue 
 		return convertFromUint64(t.UintValue, target)
 	case *MetadataValue_BoolValue:
 		return convertFromBool(t.BoolValue, target)
+	case *MetadataValue_DatetimeValue:
+		return convertFromDatetime(t.DatetimeValue, target)
 	case *MetadataValue_NullValue:
 		return convertFromNull(t.NullValue, target)
 	default:
@@ -233,6 +272,14 @@ func convertFromString(s string, target MetadataType) *MetadataValue {
 		default:
 			return NewNullValue(s)
 		}
+
+	case IsDatetimeType(target):
+		micros, ok := parseDatetimeMicros(s)
+		if !ok {
+			return NewNullValue(s)
+		}
+
+		return NewDatetimeValue(micros)
 
 	case IsSignedType(target):
 		lo, hi, _ := signedRange(target)
@@ -269,6 +316,9 @@ func convertFromInt64(n int64, target MetadataType) *MetadataValue {
 	case target == MetadataType_METADATA_TYPE_BOOL:
 		return NewBoolValue(n != 0)
 
+	case IsDatetimeType(target):
+		return NewDatetimeValue(n)
+
 	case IsSignedType(target):
 		lo, hi, _ := signedRange(target)
 		if n < lo || n > hi {
@@ -300,6 +350,13 @@ func convertFromUint64(n uint64, target MetadataType) *MetadataValue {
 	case target == MetadataType_METADATA_TYPE_BOOL:
 		return NewBoolValue(n != 0)
 
+	case IsDatetimeType(target):
+		if n > math.MaxInt64 {
+			return NewNullValue(s)
+		}
+
+		return NewDatetimeValue(int64(n))
+
 	case IsSignedType(target):
 		_, hi, _ := signedRange(target)
 		if n > uint64(hi) {
@@ -321,6 +378,43 @@ func convertFromUint64(n uint64, target MetadataType) *MetadataValue {
 	}
 }
 
+// convertFromDatetime converts a datetime value (signed int64 microseconds
+// since the Unix epoch) to the target type. A datetime is physically an int64,
+// so numeric targets reuse the raw micros; the string form is RFC3339 (matching
+// MetadataValueToString) rather than the decimal micros. Bool (and any other
+// target) has no meaningful datetime form and yields a NullValue preserving the
+// RFC3339 representation — symmetric with convertFromBool's datetime → null.
+func convertFromDatetime(micros int64, target MetadataType) *MetadataValue {
+	s := time.UnixMicro(micros).UTC().Format(time.RFC3339Nano)
+
+	switch {
+	case target == MetadataType_METADATA_TYPE_STRING:
+		return NewStringValue(s)
+
+	case IsDatetimeType(target):
+		return NewDatetimeValue(micros)
+
+	case IsSignedType(target):
+		lo, hi, _ := signedRange(target)
+		if micros < lo || micros > hi {
+			return NewNullValue(s)
+		}
+
+		return NewIntValue(micros)
+
+	case IsUnsignedType(target):
+		hi, _ := unsignedRange(target)
+		if micros < 0 || uint64(micros) > hi {
+			return NewNullValue(s)
+		}
+
+		return NewUintValue(uint64(micros))
+
+	default:
+		return NewNullValue(s)
+	}
+}
+
 func convertFromBool(b bool, target MetadataType) *MetadataValue {
 	switch {
 	case target == MetadataType_METADATA_TYPE_STRING:
@@ -328,6 +422,9 @@ func convertFromBool(b bool, target MetadataType) *MetadataValue {
 
 	case target == MetadataType_METADATA_TYPE_BOOL:
 		return NewBoolValue(b)
+
+	case IsDatetimeType(target):
+		return NewNullValue(strconv.FormatBool(b))
 
 	case IsSignedType(target):
 		if b {
@@ -369,6 +466,14 @@ func convertFromNull(nv *NullValue, target MetadataType) *MetadataValue {
 		default:
 			return NewNullValue(original)
 		}
+
+	case IsDatetimeType(target):
+		micros, ok := parseDatetimeMicros(original)
+		if !ok {
+			return NewNullValue(original)
+		}
+
+		return NewDatetimeValue(micros)
 
 	case IsSignedType(target):
 		lo, hi, _ := signedRange(target)

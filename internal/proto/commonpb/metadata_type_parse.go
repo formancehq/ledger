@@ -19,29 +19,31 @@ var (
 	}
 
 	metadataTypeMap = map[string]MetadataType{
-		"string": MetadataType_METADATA_TYPE_STRING,
-		"int64":  MetadataType_METADATA_TYPE_INT64,
-		"bool":   MetadataType_METADATA_TYPE_BOOL,
-		"uint64": MetadataType_METADATA_TYPE_UINT64,
-		"int8":   MetadataType_METADATA_TYPE_INT8,
-		"int16":  MetadataType_METADATA_TYPE_INT16,
-		"int32":  MetadataType_METADATA_TYPE_INT32,
-		"uint8":  MetadataType_METADATA_TYPE_UINT8,
-		"uint16": MetadataType_METADATA_TYPE_UINT16,
-		"uint32": MetadataType_METADATA_TYPE_UINT32,
+		"string":   MetadataType_METADATA_TYPE_STRING,
+		"int64":    MetadataType_METADATA_TYPE_INT64,
+		"bool":     MetadataType_METADATA_TYPE_BOOL,
+		"uint64":   MetadataType_METADATA_TYPE_UINT64,
+		"int8":     MetadataType_METADATA_TYPE_INT8,
+		"int16":    MetadataType_METADATA_TYPE_INT16,
+		"int32":    MetadataType_METADATA_TYPE_INT32,
+		"uint8":    MetadataType_METADATA_TYPE_UINT8,
+		"uint16":   MetadataType_METADATA_TYPE_UINT16,
+		"uint32":   MetadataType_METADATA_TYPE_UINT32,
+		"datetime": MetadataType_METADATA_TYPE_DATETIME,
 	}
 
 	metadataTypeNames = map[MetadataType]string{
-		MetadataType_METADATA_TYPE_STRING: "string",
-		MetadataType_METADATA_TYPE_INT64:  "int64",
-		MetadataType_METADATA_TYPE_BOOL:   "bool",
-		MetadataType_METADATA_TYPE_UINT64: "uint64",
-		MetadataType_METADATA_TYPE_INT8:   "int8",
-		MetadataType_METADATA_TYPE_INT16:  "int16",
-		MetadataType_METADATA_TYPE_INT32:  "int32",
-		MetadataType_METADATA_TYPE_UINT8:  "uint8",
-		MetadataType_METADATA_TYPE_UINT16: "uint16",
-		MetadataType_METADATA_TYPE_UINT32: "uint32",
+		MetadataType_METADATA_TYPE_STRING:   "string",
+		MetadataType_METADATA_TYPE_INT64:    "int64",
+		MetadataType_METADATA_TYPE_BOOL:     "bool",
+		MetadataType_METADATA_TYPE_UINT64:   "uint64",
+		MetadataType_METADATA_TYPE_INT8:     "int8",
+		MetadataType_METADATA_TYPE_INT16:    "int16",
+		MetadataType_METADATA_TYPE_INT32:    "int32",
+		MetadataType_METADATA_TYPE_UINT8:    "uint8",
+		MetadataType_METADATA_TYPE_UINT16:   "uint16",
+		MetadataType_METADATA_TYPE_UINT32:   "uint32",
+		MetadataType_METADATA_TYPE_DATETIME: "datetime",
 	}
 )
 
@@ -85,7 +87,7 @@ func TargetTypeToString(t TargetType) string {
 
 // MetadataTypeOptions returns valid type names.
 func MetadataTypeOptions() []string {
-	return []string{"string", "int64", "bool", "uint64", "int8", "int16", "int32", "uint8", "uint16", "uint32"}
+	return []string{"string", "int64", "bool", "uint64", "int8", "int16", "int32", "uint8", "uint16", "uint32", "datetime"}
 }
 
 // TargetTypeOptions returns valid target names.

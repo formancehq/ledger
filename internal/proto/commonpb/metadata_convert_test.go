@@ -560,3 +560,146 @@ func TestCoerceToDeclaredType(t *testing.T) {
 		assert.Equal(t, a.GetUintValue(), b.GetUintValue())
 	})
 }
+
+func TestConvertFromString_Datetime(t *testing.T) {
+	t.Parallel()
+
+	// 2024-01-15T10:00:00Z = 1705312800000000 micros.
+	const baseMicros = int64(1705312800000000)
+
+	// wantNull == "" means expect a datetime_value equal to wantMicros;
+	// otherwise expect a null_value preserving wantNull as the original string.
+	tests := []struct {
+		name       string
+		input      string
+		wantMicros int64
+		wantNull   string
+	}{
+		{name: "rfc3339 utc", input: "2024-01-15T10:00:00Z", wantMicros: baseMicros},
+		{name: "rfc3339nano fractional millis", input: "2024-01-15T10:00:00.123Z", wantMicros: baseMicros + 123_000},
+		{name: "rfc3339nano fractional micros", input: "2024-01-15T10:00:00.123456Z", wantMicros: baseMicros + 123_456},
+		{name: "sub-micro truncates", input: "2024-01-15T10:00:00.123456789Z", wantMicros: baseMicros + 123_456},
+		{name: "non-utc offset normalizes", input: "2024-01-15T11:00:00+01:00", wantMicros: baseMicros},
+		{name: "invalid string", input: "tot", wantNull: "tot"},
+		{name: "pre-epoch is valid (negative micros)", input: "1969-12-31T23:59:59Z", wantMicros: -1_000_000},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := ConvertMetadataValue(NewStringValue(tc.input), MetadataType_METADATA_TYPE_DATETIME)
+			require.NotNil(t, got)
+			if tc.wantNull == "" {
+				dv, ok := got.GetType().(*MetadataValue_DatetimeValue)
+				require.True(t, ok, "expected datetime_value, got %T", got.GetType())
+				assert.Equal(t, tc.wantMicros, dv.DatetimeValue)
+
+				return
+			}
+			nv, ok := got.GetType().(*MetadataValue_NullValue)
+			require.True(t, ok, "expected null_value, got %T", got.GetType())
+			assert.Equal(t, tc.wantNull, nv.NullValue.GetOriginal())
+		})
+	}
+}
+
+func TestConvertFromInt64_Datetime(t *testing.T) {
+	t.Parallel()
+
+	// int64 is treated as raw micros, including negative (pre-1970) values.
+	pos := ConvertMetadataValue(NewIntValue(1705312800000000), MetadataType_METADATA_TYPE_DATETIME)
+	dv, ok := pos.GetType().(*MetadataValue_DatetimeValue)
+	require.True(t, ok)
+	assert.Equal(t, int64(1705312800000000), dv.DatetimeValue)
+
+	neg := ConvertMetadataValue(NewIntValue(-1), MetadataType_METADATA_TYPE_DATETIME)
+	dvNeg, ok := neg.GetType().(*MetadataValue_DatetimeValue)
+	require.True(t, ok, "negative int -> datetime is now valid")
+	assert.Equal(t, int64(-1), dvNeg.DatetimeValue)
+}
+
+func TestConvertFromUint64_Datetime(t *testing.T) {
+	t.Parallel()
+
+	ok64 := ConvertMetadataValue(NewUintValue(1705312800000000), MetadataType_METADATA_TYPE_DATETIME)
+	dv, ok := ok64.GetType().(*MetadataValue_DatetimeValue)
+	require.True(t, ok)
+	assert.Equal(t, int64(1705312800000000), dv.DatetimeValue)
+
+	// uint64 > MaxInt64 cannot be a signed micros value → NullValue.
+	overflow := ConvertMetadataValue(NewUintValue(uint64(math.MaxInt64)+1), MetadataType_METADATA_TYPE_DATETIME)
+	_, ok = overflow.GetType().(*MetadataValue_NullValue)
+	require.True(t, ok, "uint64 > MaxInt64 -> datetime must be NullValue")
+}
+
+func TestConvertFromBool_Datetime(t *testing.T) {
+	t.Parallel()
+
+	got := ConvertMetadataValue(NewBoolValue(true), MetadataType_METADATA_TYPE_DATETIME)
+	_, ok := got.GetType().(*MetadataValue_NullValue)
+	require.True(t, ok, "bool -> datetime must be NullValue")
+}
+
+func TestTypeMatches_Datetime(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, TypeMatches(NewDatetimeValue(123), MetadataType_METADATA_TYPE_DATETIME),
+		"a stored datetime_value already matches datetime (no re-parse)")
+	assert.False(t, TypeMatches(NewUintValue(123), MetadataType_METADATA_TYPE_DATETIME),
+		"a uint_value is no longer a datetime")
+	assert.False(t, TypeMatches(NewStringValue("2024-01-15T10:00:00Z"), MetadataType_METADATA_TYPE_DATETIME))
+}
+
+func TestMetadataValueToString_Datetime(t *testing.T) {
+	t.Parallel()
+
+	// 2024-01-15T10:00:00.123456Z = 1705312800123456 micros.
+	v := NewDatetimeValue(1705312800123456)
+	assert.Equal(t, "2024-01-15T10:00:00.123456Z", MetadataValueToString(v))
+
+	// Pre-epoch round-trips as an RFC3339 string.
+	assert.Equal(t, "1969-12-31T23:59:59Z", MetadataValueToString(NewDatetimeValue(-1_000_000)))
+}
+
+func TestConvertFromDatetime(t *testing.T) {
+	t.Parallel()
+
+	// 2024-01-15T10:00:00Z = 1705312800000000 micros.
+	const micros = int64(1705312800000000)
+
+	// datetime -> string formats RFC3339, not the decimal micros.
+	str := ConvertMetadataValue(NewDatetimeValue(micros), MetadataType_METADATA_TYPE_STRING)
+	sv, ok := str.GetType().(*MetadataValue_StringValue)
+	require.True(t, ok, "datetime -> string must be a string_value, got %T", str.GetType())
+	assert.Equal(t, "2024-01-15T10:00:00Z", sv.StringValue)
+
+	// datetime -> int64 keeps the raw micros.
+	i64 := ConvertMetadataValue(NewDatetimeValue(micros), MetadataType_METADATA_TYPE_INT64)
+	iv, ok := i64.GetType().(*MetadataValue_IntValue)
+	require.True(t, ok, "datetime -> int64 must be an int_value, got %T", i64.GetType())
+	assert.Equal(t, micros, iv.IntValue)
+
+	// datetime -> uint64 keeps the raw micros when non-negative.
+	u64 := ConvertMetadataValue(NewDatetimeValue(micros), MetadataType_METADATA_TYPE_UINT64)
+	uv, ok := u64.GetType().(*MetadataValue_UintValue)
+	require.True(t, ok, "datetime -> uint64 must be a uint_value, got %T", u64.GetType())
+	assert.Equal(t, uint64(micros), uv.UintValue)
+
+	// pre-epoch datetime -> uint64 cannot fit and falls back to a NullValue
+	// preserving the RFC3339 representation (not an empty original).
+	negToUint := ConvertMetadataValue(NewDatetimeValue(-1_000_000), MetadataType_METADATA_TYPE_UINT64)
+	nv, ok := negToUint.GetType().(*MetadataValue_NullValue)
+	require.True(t, ok, "negative datetime -> uint64 must be NullValue, got %T", negToUint.GetType())
+	assert.Equal(t, "1969-12-31T23:59:59Z", nv.NullValue.GetOriginal())
+
+	// datetime -> bool has no meaningful form and yields a NullValue.
+	toBool := ConvertMetadataValue(NewDatetimeValue(micros), MetadataType_METADATA_TYPE_BOOL)
+	bnv, ok := toBool.GetType().(*MetadataValue_NullValue)
+	require.True(t, ok, "datetime -> bool must be NullValue, got %T", toBool.GetType())
+	assert.Equal(t, "2024-01-15T10:00:00Z", bnv.NullValue.GetOriginal())
+
+	// datetime -> int8 overflows and falls back to a NullValue.
+	toInt8 := ConvertMetadataValue(NewDatetimeValue(micros), MetadataType_METADATA_TYPE_INT8)
+	_, ok = toInt8.GetType().(*MetadataValue_NullValue)
+	require.True(t, ok, "datetime overflowing int8 must be NullValue, got %T", toInt8.GetType())
+}

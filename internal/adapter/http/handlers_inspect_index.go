@@ -1,8 +1,10 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -35,7 +37,11 @@ type inspectSummaryJSON struct {
 	EntitiesWithNull uint64 `json:"entitiesWithNull"`
 }
 
-func metadataValueToAny(v *commonpb.MetadataValue) any {
+// metadataValueToAny renders a decoded index value for JSON output. declaredType
+// is the field's schema type for the inspected key: datetime index keys share
+// the int64 encoding (decode reconstructs an int_value), so a datetime field is
+// rendered as an RFC3339 string here rather than as a raw integer.
+func metadataValueToAny(v *commonpb.MetadataValue, declaredType commonpb.MetadataType) any {
 	if v == nil {
 		return nil
 	}
@@ -44,9 +50,15 @@ func metadataValueToAny(v *commonpb.MetadataValue) any {
 	case *commonpb.MetadataValue_StringValue:
 		return t.StringValue
 	case *commonpb.MetadataValue_IntValue:
+		if commonpb.IsDatetimeType(declaredType) {
+			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
+		}
+
 		return t.IntValue
 	case *commonpb.MetadataValue_UintValue:
 		return t.UintValue
+	case *commonpb.MetadataValue_DatetimeValue:
+		return time.UnixMicro(t.DatetimeValue).UTC().Format(time.RFC3339Nano)
 	case *commonpb.MetadataValue_BoolValue:
 		return t.BoolValue
 	case *commonpb.MetadataValue_NullValue:
@@ -110,13 +122,15 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	declaredType := s.declaredMetadataType(r.Context(), ledgerName, targetType, metadataKey)
+
 	switch result := resp.GetResult().(type) {
 	case *servicepb.InspectIndexResponse_DistinctValues:
 		dv := result.DistinctValues
 		values := make([]any, len(dv.GetValues()))
 
 		for i, v := range dv.GetValues() {
-			values[i] = metadataValueToAny(v)
+			values[i] = metadataValueToAny(v, declaredType)
 		}
 
 		writeOK(w, &inspectDistinctValuesJSON{
@@ -131,7 +145,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 
 		for i, fv := range f.GetFacets() {
 			facets[i] = inspectFacetJSON{
-				Value: metadataValueToAny(fv.GetValue()),
+				Value: metadataValueToAny(fv.GetValue(), declaredType),
 				Count: fv.GetCount(),
 			}
 		}
@@ -146,10 +160,25 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		s := result.Summary
 		writeOK(w, &inspectSummaryJSON{
 			Cardinality:      s.GetCardinality(),
-			Min:              metadataValueToAny(s.GetMin()),
-			Max:              metadataValueToAny(s.GetMax()),
+			Min:              metadataValueToAny(s.GetMin(), declaredType),
+			Max:              metadataValueToAny(s.GetMax(), declaredType),
 			EntitiesWithKey:  s.GetEntitiesWithKey(),
 			EntitiesWithNull: s.GetEntitiesWithNull(),
 		})
 	}
+}
+
+// declaredMetadataType returns the schema-declared MetadataType for
+// (ledger, targetType, key), or METADATA_TYPE_STRING when the ledger lookup
+// fails or the key has no declaration. It is a render hint only: a failed
+// lookup degrades to the default (raw integer) rendering rather than erroring.
+func (s *Server) declaredMetadataType(ctx context.Context, ledgerName string, targetType commonpb.TargetType, key string) commonpb.MetadataType {
+	info, err := s.backend.GetLedgerByName(ctx, ledgerName)
+	if err != nil {
+		return commonpb.MetadataType_METADATA_TYPE_STRING
+	}
+
+	_, fs := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
+
+	return fs.GetType()
 }

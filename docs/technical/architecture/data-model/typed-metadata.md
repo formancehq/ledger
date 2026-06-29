@@ -2,7 +2,7 @@
 
 ## Overview
 
-Metadata values support multiple types beyond plain strings. The `MetadataValue` proto uses a `oneof` discriminated union supporting `string`, `int64`, `uint64`, `bool`, and `NullValue` (for inconvertible values). An explicit **metadata schema** per ledger declares the expected type for each key, enabling automatic type enforcement on writes and lazy conversion on reads.
+Metadata values support multiple types beyond plain strings. The `MetadataValue` proto uses a `oneof` discriminated union supporting `string`, `int64`, `uint64`, `datetime` (signed int64 micros), `bool`, and `NullValue` (for inconvertible values). An explicit **metadata schema** per ledger declares the expected type for each key, enabling automatic type enforcement on writes and lazy conversion on reads.
 
 ## Supported Types
 
@@ -11,10 +11,13 @@ Metadata values support multiple types beyond plain strings. The `MetadataValue`
 | String | `string_value` | `string` | Labels, categories, free-text |
 | Signed Integer | `int_value` | `int64` | Timestamps, counters, thresholds, deltas |
 | Unsigned Integer | `uint_value` | `uint64` | IDs, sequence numbers, non-negative counters |
+| Datetime | `datetime_value` | `int64` (µs) | Timestamps (signed, pre-1970 allowed) |
 | Boolean | `bool_value` | `bool` | Flags (kyc_verified, is_active, etc.) |
 | Null | `null_value` | `*NullValue` | Inconvertible value placeholder (preserves original) |
 
 The `MetadataType` enum also supports sub-64-bit integer types (`INT8`, `INT16`, `INT32`, `UINT8`, `UINT16`, `UINT32`) with range validation. These are stored using the same `int_value`/`uint_value` proto fields but enforce bounds at read/write time.
+
+The enum also supports `datetime`: a self-describing value type stored in its own `datetime_value` oneof slot as **signed int64 microseconds since the Unix epoch (UTC)**. Pre-1970 timestamps are supported (negative micros). A source string is parsed with Go-standard layouts (RFC3339 / RFC3339Nano) and read back as an RFC3339 string (`time.UnixMicro(v).UTC().Format(time.RFC3339Nano)`), round-tripping the original timestamp. For the index, datetime reuses the order-preserving signed int64 encoding (`EncodeInt64`) — datetime and int64 index keys are byte-interchangeable — so datetime fields get efficient ordered range selection (`gte` / `lte` / between) via the signed integer query path. Available for account, transaction, and ledger metadata.
 
 **Intentionally excluded:** `float64` (dangerous in financial software), `[]byte`, nested objects/arrays.
 
@@ -38,6 +41,7 @@ message MetadataValue {
     bool bool_value = 3;
     NullValue null_value = 4;
     uint64 uint_value = 5;
+    int64 datetime_value = 6;  // microseconds since the Unix epoch (signed)
   }
 }
 
@@ -52,11 +56,13 @@ enum MetadataType {
   METADATA_TYPE_UINT8 = 7;
   METADATA_TYPE_UINT16 = 8;
   METADATA_TYPE_UINT32 = 9;
+  METADATA_TYPE_DATETIME = 10;
 }
 
 message MetadataFieldSchema {
+  reserved 3, 4, 5, 6;
+  reserved "total_keys", "converted_keys", "indexed", "index_build_status";
   MetadataType type = 1;
-  MetadataConversionStatus status = 2;
 }
 
 message MetadataSchema {
@@ -100,6 +106,7 @@ Conversions **never produce errors at the storage level**. Inconvertible values 
 |--------|------|---------|
 | `int64` | `strconv.ParseInt(s, 10, 64)` | `NullValue` |
 | `uint64` | `strconv.ParseUint(s, 10, 64)` | `NullValue` |
+| `datetime` | `time.Parse(RFC3339Nano)` -> `UnixMicro()` (UTC), stored as signed `int64` micros (pre-1970 allowed) | `NullValue` (invalid format only) |
 | `bool` | `"true"`/`"1"` -> `true`, `"false"`/`"0"` -> `false` | `NullValue` |
 | `string` | identity | — |
 
@@ -137,6 +144,8 @@ Conversions **never produce errors at the storage level**. Inconvertible values 
 | `bool` | attempt parse of `original` | stays `NullValue` |
 
 **Design principle:** converting to `string` never fails. Converting from `string` to a narrower type may produce `NullValue`. Converting between `int64` and `uint64` may fail on overflow/sign.
+
+**Datetime semantics:** `datetime` is a self-describing value type stored in its own `datetime_value` oneof slot as signed `int64` **microseconds** since the Unix epoch (UTC). Pre-1970 timestamps are valid and stored as negative micros. Parsing keeps microsecond resolution — sub-microsecond fractions in an RFC3339Nano input are truncated (`UnixMicro()`), so `…:00.123456789Z` and `…:00.123456Z` map to the same value. Reading a `datetime` back renders an RFC3339 string (`time.UnixMicro(v).UTC().Format(time.RFC3339Nano)`), so a string write round-trips to an equivalent string read. For the index, `datetime` reuses the order-preserving signed `int64` encoding (`EncodeInt64`) — datetime and `int64` index keys are byte-interchangeable — so the decode path reconstructs an `int_value` and the inspect HTTP handler re-derives datetime-ness from the declared schema type to render RFC3339. Query-time gates treat a `datetime` field as a signed `int64`, so `gte`/`lte`/between range filters use an integer condition (`IntCondition`) over the microsecond value via the signed query path.
 
 Sub-64-bit types (`INT8`, `INT16`, etc.) follow the same rules with additional range checking. For example, converting `int64(200)` to `INT8` produces `NullValue` because 200 exceeds the `[-128, 127]` range.
 
@@ -234,7 +243,7 @@ The aggregate schema is also available on `LedgerInfo.metadata_schema` (returned
 | `PUT` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Set/change metadata field type |
 | `DELETE` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Remove metadata field type declaration |
 
-The `targetType` path parameter accepts `account`, `transaction`, or `ledger`. The PUT body is `{ "type": "<metadataType>" }` where `metadataType` is one of: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`.
+The `targetType` path parameter accepts `account`, `transaction`, or `ledger`. The PUT body is `{ "type": "<metadataType>" }` where `metadataType` is one of: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`, `datetime`.
 
 ### JSON Type Inference
 

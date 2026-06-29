@@ -17,6 +17,11 @@ func EncodeMetadataValue(dst []byte, v *commonpb.MetadataValue) []byte {
 		return EncodeString(dst, t.StringValue)
 	case *commonpb.MetadataValue_IntValue:
 		return EncodeInt64(dst, t.IntValue)
+	case *commonpb.MetadataValue_DatetimeValue:
+		// Datetime shares the order-preserving int64 encoding so datetime and
+		// int64 index keys stay byte-interchangeable; the inspect handler
+		// re-derives datetime-ness from the declared schema type.
+		return EncodeInt64(dst, t.DatetimeValue)
 	case *commonpb.MetadataValue_UintValue:
 		return EncodeUint64(dst, t.UintValue)
 	case *commonpb.MetadataValue_BoolValue:

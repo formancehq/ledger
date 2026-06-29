@@ -1767,7 +1767,10 @@ func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *common
 		return fc, nil
 
 	case *commonpb.FieldCondition_IntCond:
-		if commonpb.IsSignedType(schemaType) {
+		// Datetime is stored as signed int64 micros, so it accepts integer
+		// bounds verbatim like any signed field (compileIntCondition uses the
+		// order-preserving EncodeInt64 path, matching the index encoding).
+		if commonpb.IsSignedType(schemaType) || commonpb.IsDatetimeType(schemaType) {
 			return fc, nil
 		}
 

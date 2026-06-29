@@ -74,43 +74,46 @@ func (TargetType) EnumDescriptor() ([]byte, []int) {
 type MetadataType int32
 
 const (
-	MetadataType_METADATA_TYPE_STRING MetadataType = 0
-	MetadataType_METADATA_TYPE_INT64  MetadataType = 1
-	MetadataType_METADATA_TYPE_BOOL   MetadataType = 2
-	MetadataType_METADATA_TYPE_UINT64 MetadataType = 3
-	MetadataType_METADATA_TYPE_INT8   MetadataType = 4
-	MetadataType_METADATA_TYPE_INT16  MetadataType = 5
-	MetadataType_METADATA_TYPE_INT32  MetadataType = 6
-	MetadataType_METADATA_TYPE_UINT8  MetadataType = 7
-	MetadataType_METADATA_TYPE_UINT16 MetadataType = 8
-	MetadataType_METADATA_TYPE_UINT32 MetadataType = 9
+	MetadataType_METADATA_TYPE_STRING   MetadataType = 0
+	MetadataType_METADATA_TYPE_INT64    MetadataType = 1
+	MetadataType_METADATA_TYPE_BOOL     MetadataType = 2
+	MetadataType_METADATA_TYPE_UINT64   MetadataType = 3
+	MetadataType_METADATA_TYPE_INT8     MetadataType = 4
+	MetadataType_METADATA_TYPE_INT16    MetadataType = 5
+	MetadataType_METADATA_TYPE_INT32    MetadataType = 6
+	MetadataType_METADATA_TYPE_UINT8    MetadataType = 7
+	MetadataType_METADATA_TYPE_UINT16   MetadataType = 8
+	MetadataType_METADATA_TYPE_UINT32   MetadataType = 9
+	MetadataType_METADATA_TYPE_DATETIME MetadataType = 10
 )
 
 // Enum value maps for MetadataType.
 var (
 	MetadataType_name = map[int32]string{
-		0: "METADATA_TYPE_STRING",
-		1: "METADATA_TYPE_INT64",
-		2: "METADATA_TYPE_BOOL",
-		3: "METADATA_TYPE_UINT64",
-		4: "METADATA_TYPE_INT8",
-		5: "METADATA_TYPE_INT16",
-		6: "METADATA_TYPE_INT32",
-		7: "METADATA_TYPE_UINT8",
-		8: "METADATA_TYPE_UINT16",
-		9: "METADATA_TYPE_UINT32",
+		0:  "METADATA_TYPE_STRING",
+		1:  "METADATA_TYPE_INT64",
+		2:  "METADATA_TYPE_BOOL",
+		3:  "METADATA_TYPE_UINT64",
+		4:  "METADATA_TYPE_INT8",
+		5:  "METADATA_TYPE_INT16",
+		6:  "METADATA_TYPE_INT32",
+		7:  "METADATA_TYPE_UINT8",
+		8:  "METADATA_TYPE_UINT16",
+		9:  "METADATA_TYPE_UINT32",
+		10: "METADATA_TYPE_DATETIME",
 	}
 	MetadataType_value = map[string]int32{
-		"METADATA_TYPE_STRING": 0,
-		"METADATA_TYPE_INT64":  1,
-		"METADATA_TYPE_BOOL":   2,
-		"METADATA_TYPE_UINT64": 3,
-		"METADATA_TYPE_INT8":   4,
-		"METADATA_TYPE_INT16":  5,
-		"METADATA_TYPE_INT32":  6,
-		"METADATA_TYPE_UINT8":  7,
-		"METADATA_TYPE_UINT16": 8,
-		"METADATA_TYPE_UINT32": 9,
+		"METADATA_TYPE_STRING":   0,
+		"METADATA_TYPE_INT64":    1,
+		"METADATA_TYPE_BOOL":     2,
+		"METADATA_TYPE_UINT64":   3,
+		"METADATA_TYPE_INT8":     4,
+		"METADATA_TYPE_INT16":    5,
+		"METADATA_TYPE_INT32":    6,
+		"METADATA_TYPE_UINT8":    7,
+		"METADATA_TYPE_UINT16":   8,
+		"METADATA_TYPE_UINT32":   9,
+		"METADATA_TYPE_DATETIME": 10,
 	}
 )
 
@@ -1182,6 +1185,7 @@ type MetadataValue struct {
 	//	*MetadataValue_BoolValue
 	//	*MetadataValue_NullValue
 	//	*MetadataValue_UintValue
+	//	*MetadataValue_DatetimeValue
 	Type          isMetadataValue_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1269,6 +1273,15 @@ func (x *MetadataValue) GetUintValue() uint64 {
 	return 0
 }
 
+func (x *MetadataValue) GetDatetimeValue() int64 {
+	if x != nil {
+		if x, ok := x.Type.(*MetadataValue_DatetimeValue); ok {
+			return x.DatetimeValue
+		}
+	}
+	return 0
+}
+
 type isMetadataValue_Type interface {
 	isMetadataValue_Type()
 }
@@ -1293,6 +1306,10 @@ type MetadataValue_UintValue struct {
 	UintValue uint64 `protobuf:"varint,5,opt,name=uint_value,json=uintValue,proto3,oneof"`
 }
 
+type MetadataValue_DatetimeValue struct {
+	DatetimeValue int64 `protobuf:"varint,6,opt,name=datetime_value,json=datetimeValue,proto3,oneof"` // microseconds since the Unix epoch (signed; pre-1970 allowed)
+}
+
 func (*MetadataValue_StringValue) isMetadataValue_Type() {}
 
 func (*MetadataValue_IntValue) isMetadataValue_Type() {}
@@ -1302,6 +1319,8 @@ func (*MetadataValue_BoolValue) isMetadataValue_Type() {}
 func (*MetadataValue_NullValue) isMetadataValue_Type() {}
 
 func (*MetadataValue_UintValue) isMetadataValue_Type() {}
+
+func (*MetadataValue_DatetimeValue) isMetadataValue_Type() {}
 
 // MetadataMap wraps a metadata map for use as a proto map value
 // (proto3 does not support nested maps like map<string, map<string, MetadataValue>>).
@@ -10522,7 +10541,7 @@ const file_common_proto_rawDesc = "" +
 	"\tTimestamp\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\x06R\x04data\"'\n" +
 	"\tNullValue\x12\x1a\n" +
-	"\boriginal\x18\x01 \x01(\tR\boriginal\"\xd1\x01\n" +
+	"\boriginal\x18\x01 \x01(\tR\boriginal\"\xfa\x01\n" +
 	"\rMetadataValue\x12#\n" +
 	"\fstring_value\x18\x01 \x01(\tH\x00R\vstringValue\x12\x1d\n" +
 	"\tint_value\x18\x02 \x01(\x03H\x00R\bintValue\x12\x1f\n" +
@@ -10531,7 +10550,8 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"null_value\x18\x04 \x01(\v2\x11.common.NullValueH\x00R\tnullValue\x12\x1f\n" +
 	"\n" +
-	"uint_value\x18\x05 \x01(\x04H\x00R\tuintValueB\x06\n" +
+	"uint_value\x18\x05 \x01(\x04H\x00R\tuintValue\x12'\n" +
+	"\x0edatetime_value\x18\x06 \x01(\x03H\x00R\rdatetimeValueB\x06\n" +
 	"\x04type\"\x98\x01\n" +
 	"\vMetadataMap\x127\n" +
 	"\x06values\x18\x01 \x03(\v2\x1f.common.MetadataMap.ValuesEntryR\x06values\x1aP\n" +
@@ -11229,7 +11249,7 @@ const file_common_proto_rawDesc = "" +
 	"TargetType\x12\x17\n" +
 	"\x13TARGET_TYPE_ACCOUNT\x10\x00\x12\x1b\n" +
 	"\x17TARGET_TYPE_TRANSACTION\x10\x01\x12\x16\n" +
-	"\x12TARGET_TYPE_LEDGER\x10\x02*\x8a\x02\n" +
+	"\x12TARGET_TYPE_LEDGER\x10\x02*\xa6\x02\n" +
 	"\fMetadataType\x12\x18\n" +
 	"\x14METADATA_TYPE_STRING\x10\x00\x12\x17\n" +
 	"\x13METADATA_TYPE_INT64\x10\x01\x12\x16\n" +
@@ -11240,7 +11260,9 @@ const file_common_proto_rawDesc = "" +
 	"\x13METADATA_TYPE_INT32\x10\x06\x12\x17\n" +
 	"\x13METADATA_TYPE_UINT8\x10\a\x12\x18\n" +
 	"\x14METADATA_TYPE_UINT16\x10\b\x12\x18\n" +
-	"\x14METADATA_TYPE_UINT32\x10\t*u\n" +
+	"\x14METADATA_TYPE_UINT32\x10\t\x12\x1a\n" +
+	"\x16METADATA_TYPE_DATETIME\x10\n" +
+	"*u\n" +
 	"\x10IndexBuildStatus\x12\"\n" +
 	"\x1eINDEX_BUILD_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bINDEX_BUILD_STATUS_BUILDING\x10\x01\x12\x1c\n" +
@@ -11801,6 +11823,7 @@ func file_common_proto_init() {
 		(*MetadataValue_BoolValue)(nil),
 		(*MetadataValue_NullValue)(nil),
 		(*MetadataValue_UintValue)(nil),
+		(*MetadataValue_DatetimeValue)(nil),
 	}
 	file_common_proto_msgTypes[4].OneofWrappers = []any{
 		(*ParameterValue_StringValue)(nil),

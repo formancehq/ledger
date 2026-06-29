@@ -124,11 +124,12 @@ func TestMetadataTypeOptions(t *testing.T) {
 	t.Parallel()
 
 	opts := MetadataTypeOptions()
-	require.Len(t, opts, 10)
+	require.Len(t, opts, 11)
 	require.Contains(t, opts, "string")
 	require.Contains(t, opts, "int64")
 	require.Contains(t, opts, "bool")
 	require.Contains(t, opts, "uint64")
+	require.Contains(t, opts, "datetime")
 }
 
 func TestTargetTypeOptions(t *testing.T) {

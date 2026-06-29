@@ -3,6 +3,7 @@ package commonpb
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 
@@ -67,7 +68,7 @@ func MetadataMapFromGoMap(m metadata.Metadata) *MetadataMap {
 
 // MetadataValueToAny converts a MetadataValue to a JSON-compatible any value.
 // string_value → string, int_value → int64, uint_value → uint64,
-// bool_value → bool, null_value → nil.
+// datetime_value → RFC3339 string, bool_value → bool, null_value → nil.
 func MetadataValueToAny(v *MetadataValue) any {
 	if v == nil {
 		return nil
@@ -80,6 +81,8 @@ func MetadataValueToAny(v *MetadataValue) any {
 		return t.IntValue
 	case *MetadataValue_UintValue:
 		return t.UintValue
+	case *MetadataValue_DatetimeValue:
+		return time.UnixMicro(t.DatetimeValue).UTC().Format(time.RFC3339Nano)
 	case *MetadataValue_BoolValue:
 		return t.BoolValue
 	case *MetadataValue_NullValue:
