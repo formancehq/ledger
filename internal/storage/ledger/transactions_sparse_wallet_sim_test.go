@@ -204,19 +204,17 @@ func explainAnalyze(t *testing.T, store *ledgerstore.Store, filter string, value
 		sqlStr = fmt.Sprintf(`
 			EXPLAIN (FORMAT TEXT)
 			SELECT id FROM %q.transactions
-			WHERE ledger = $1
-			AND metadata @> $2
+			WHERE ledger = ?
+			AND metadata @> ?
 			ORDER BY id DESC LIMIT 16
 		`, schema)
 		args = []any{ledgerName, fmt.Sprintf(`{"source_wallet_id": %q}`, value)}
 	} else {
-		// The ->> key is inlined as a literal (matching the runtime form, which
-		// embeds the key to enable functional-index matching).
 		sqlStr = fmt.Sprintf(`
 			EXPLAIN (FORMAT TEXT)
 			SELECT id FROM %q.transactions
-			WHERE ledger = $1
-			AND metadata ->> 'source_wallet_id' = $2
+			WHERE ledger = ?
+			AND metadata ->> 'source_wallet_id' = ?
 			ORDER BY id DESC LIMIT 16
 		`, schema)
 		args = []any{ledgerName, value}
