@@ -482,8 +482,8 @@ func TestCacheSnapshotter_RestorePreRotation(t *testing.T) {
 	require.NoError(t, err)
 
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, writeCacheRaw(batch, genByte, dal.SubAttrBoundary, boundaryU128, 11, boundaryBytes))
-	require.NoError(t, writeCacheRaw(batch, genByte, dal.SubAttrVolume, volU128, 22, volBytes))
+	require.NoError(t, writeCacheRaw(batch, genByte, dal.SubAttrBoundary, boundaryU128, 11, false, boundaryBytes))
+	require.NoError(t, writeCacheRaw(batch, genByte, dal.SubAttrVolume, volU128, 22, false, volBytes))
 	require.NoError(t, batch.Commit())
 
 	// Sanity: no meta keys written.
@@ -599,4 +599,230 @@ func TestCacheSnapshotter_MirrorTouchDoesNotResurrectDeletedMetadata(t *testing.
 		t.Fatalf("deleted ledger-metadata key resurrected after restore: gen1 holds live value %q",
 			e.Data.GetStringValue())
 	}
+}
+
+// TestCacheSnapshotter_EN1377_LiveZeroByteProtoRoundTrip is the main
+// regression test for EN-1377. Before the fix, an attribute whose proto
+// marshals to zero bytes (here LedgerBoundaries with all-default fixed64
+// counters) round-tripped as a tombstone because the snapshotter used
+// len(value) == 0 as the in-band tombstone signal. With the explicit flag
+// byte the entry restores as live.
+func TestCacheSnapshotter_EN1377_LiveZeroByteProtoRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	emptyBoundaries := &raftcmdpb.LedgerBoundaries{}
+	// Sanity: the proto we picked really does marshal to zero bytes — the
+	// precondition that made the bug exist in the first place.
+	require.Equal(t, 0, emptyBoundaries.SizeVT(),
+		"LedgerBoundaries with all-default fixed64 must marshal to zero bytes (regression precondition)")
+
+	u128 := attributes.HashU128([]byte("ledger:empty-boundaries"))
+	const tag uint64 = 42
+	registry.Cache.Boundaries.Gen0().Put(u128, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
+		Tag:  tag,
+		Data: emptyBoundaries,
+	})
+
+	require.NoError(t, persistToStore(snapshotter, dataStore))
+
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+
+	restored, ok := registry.Cache.Boundaries.Gen0().Get(u128)
+	require.True(t, ok, "live zero-byte entry must restore")
+	require.False(t, restored.Deleted, "live zero-byte entry must NOT restore as tombstone (EN-1377)")
+	require.Equal(t, tag, restored.Tag)
+}
+
+// TestCacheSnapshotter_EN1377_PersistRotationDoesNotResurrectDeletedEntry
+// guards the latent bug in persistLeanProtoEntries that EN-1377 fixes
+// alongside the format change: AttributeCache.Del keeps the pre-delete
+// payload in entry.Data with Deleted=true. Before the fix, persist marshaled
+// entry.Data unconditionally — restoring the deleted key as live with its
+// pre-delete value. The explicit flag byte makes persist emit a tombstone row.
+func TestCacheSnapshotter_EN1377_PersistRotationDoesNotResurrectDeletedEntry(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	lmk := domain.LedgerMetadataKey{LedgerName: "ledger", Key: "to-delete"}
+	u128 := attributes.HashU128(lmk.Bytes())
+	value := commonpb.NewStringValue("pre-delete-payload")
+	const tag uint64 = 7
+
+	// Live entry, then deleted in place (Del flips Deleted but keeps Data).
+	registry.Cache.LedgerMetadata.Gen0().Put(u128, attributes.Entry[*commonpb.MetadataValue]{
+		Tag:     tag,
+		Data:    value,
+		Deleted: true,
+	})
+
+	require.NoError(t, persistToStore(snapshotter, dataStore))
+
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+
+	restored, ok := registry.Cache.LedgerMetadata.Gen0().Get(u128)
+	require.True(t, ok, "tombstone must restore")
+	require.True(t, restored.Deleted,
+		"persisted tombstone must round-trip as deleted, not as live with pre-delete payload (EN-1377)")
+	require.Equal(t, tag, restored.Tag)
+}
+
+// TestCacheSnapshotter_EN1377_MirrorPreloadEmptyRawValue confirms that an
+// empty rawValue passed to MirrorPreload — the wire form of a presence-only
+// proto — populates the cache as a LIVE zero-value entry, not as a tombstone.
+// Before the fix, MirrorPreload guarded on len(rawValue) > 0 and would have
+// left the typed value zero, but the on-disk write was still len==0 and
+// therefore re-read as a tombstone on the next restart.
+func TestCacheSnapshotter_EN1377_MirrorPreloadEmptyRawValue(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	u128 := attributes.HashU128([]byte("preload:empty-boundaries"))
+	const tag uint64 = 99
+
+	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+	gen1Byte := byte((registry.Cache.CurrentGeneration() + 1) % 2)
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, snapshotter.MirrorPreload(
+		batch, gen0Byte, gen1Byte,
+		&raftcmdpb.AttributeID{Id: u128[:], Tag: tag},
+		dal.SubAttrBoundary,
+		&raftcmdpb.AttributeValue{RawValue: nil},
+	))
+	require.NoError(t, batch.Commit())
+
+	// In-memory: live entry with zero-value proto, not a tombstone.
+	inMem, ok := registry.Cache.Boundaries.Gen0().Get(u128)
+	require.True(t, ok)
+	require.False(t, inMem.Deleted, "MirrorPreload of empty rawValue must populate a live entry (EN-1377)")
+	require.NotNil(t, inMem.Data, "live entry must have a non-nil zero-value proto")
+
+	// On-disk round-trip: restore must agree.
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+
+	restored, ok := registry.Cache.Boundaries.Gen0().Get(u128)
+	require.True(t, ok)
+	require.False(t, restored.Deleted, "presence-only marker must round-trip as live")
+	require.Equal(t, tag, restored.Tag)
+}
+
+// TestCacheSnapshotter_EN1377_MirrorTouchOfZeroByteValue mirrors the
+// previous test on the Touch path. A live gen1 entry whose proto marshals
+// to zero bytes is promoted to gen0 by MirrorTouch; the new gen0 row must
+// be readable as live after a restart.
+func TestCacheSnapshotter_EN1377_MirrorTouchOfZeroByteValue(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	u128 := attributes.HashU128([]byte("touch:empty-boundaries"))
+	const tag uint64 = 11
+
+	registry.Cache.Boundaries.Gen1().Put(u128, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
+		Tag:  tag,
+		Data: &raftcmdpb.LedgerBoundaries{},
+	})
+
+	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, snapshotter.MirrorTouch(batch, dal.SubAttrBoundary, gen0Byte, u128))
+	require.NoError(t, batch.Commit())
+
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+
+	restored, ok := registry.Cache.Boundaries.Gen0().Get(u128)
+	require.True(t, ok, "touched zero-byte entry must restore in gen0")
+	require.False(t, restored.Deleted, "touched live entry must NOT restore as tombstone (EN-1377)")
+	require.Equal(t, tag, restored.Tag)
+}
+
+// TestCacheSnapshotter_EN1377_RestoreRejectsShortValue asserts the
+// snapshotter panics on a 0xFF row shorter than the lean header. Every
+// row is produced by writeCacheRaw which writes at least cacheValueHeaderLen
+// bytes; a shorter row implies external corruption and silent
+// interpretation would be unsafe.
+func TestCacheSnapshotter_EN1377_RestoreRejectsShortValue(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	u128 := attributes.HashU128([]byte("corrupt:short-value"))
+	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+
+	key := []byte{dal.ZoneCache, gen0Byte, dal.SubAttrBoundary}
+	key = append(key, u128[:]...)
+
+	// Write a value that is shorter than the lean header (8-byte tag + 1-byte flag).
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, batch.Set(key, []byte{0x00, 0x00, 0x00}, nil))
+	require.NoError(t, batch.Commit())
+
+	require.Panics(t, func() {
+		_ = snapshotter.RestoreFromStore(dataStore)
+	}, "restore must panic on a 0xFF row shorter than the lean header")
+}
+
+// TestCacheSnapshotter_EN1377_RestoreRejectsTombstoneWithPayload asserts the
+// snapshotter panics on a 0xFF row tagged as tombstone (flag 0x01) that
+// carries trailing bytes after the lean header. writeCacheRaw never emits
+// such a row — a single-byte flip on a live row could turn it into this
+// shape and silently mask the original value, so we reject it loudly.
+func TestCacheSnapshotter_EN1377_RestoreRejectsTombstoneWithPayload(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	u128 := attributes.HashU128([]byte("corrupt:tombstone-with-payload"))
+	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+
+	key := []byte{dal.ZoneCache, gen0Byte, dal.SubAttrBoundary}
+	key = append(key, u128[:]...)
+
+	// Header (9 bytes) with tombstone flag, plus stray trailing bytes.
+	value := make([]byte, cacheValueHeaderLen+4)
+	value[8] = cacheValueFlagTombstone
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Commit())
+
+	require.Panics(t, func() {
+		_ = snapshotter.RestoreFromStore(dataStore)
+	}, "restore must panic on a tombstone row that carries trailing payload bytes")
+}
+
+// TestCacheSnapshotter_EN1377_RestoreRejectsUnknownFlagByte asserts the
+// snapshotter panics on a 0xFF row whose flag byte at offset 8 is neither
+// cacheValueFlagLive (0x00) nor cacheValueFlagTombstone (0x01). Silently
+// treating unknown flags as live would let a corrupted store or a
+// forward-incompatible binary resurrect deleted keys.
+func TestCacheSnapshotter_EN1377_RestoreRejectsUnknownFlagByte(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	u128 := attributes.HashU128([]byte("corrupt:unknown-flag"))
+	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+
+	key := []byte{dal.ZoneCache, gen0Byte, dal.SubAttrBoundary}
+	key = append(key, u128[:]...)
+
+	// Header-shaped value (9 bytes) but with an out-of-range flag byte.
+	value := make([]byte, cacheValueHeaderLen)
+	value[8] = 0x42
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Commit())
+
+	require.Panics(t, func() {
+		_ = snapshotter.RestoreFromStore(dataStore)
+	}, "restore must panic on a 0xFF row with an unknown tombstone flag byte")
 }

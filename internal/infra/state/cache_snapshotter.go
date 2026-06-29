@@ -23,10 +23,41 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// parseLeanValue extracts the tag and raw value bytes from a lean cache entry.
-// Lean format: [8-byte tag LE][raw value bytes].
-func parseLeanValue(value []byte) (uint64, []byte) {
-	return binary.LittleEndian.Uint64(value[:8]), value[8:]
+// parseLeanValue extracts the tag, tombstone flag, and raw value bytes from a
+// lean cache entry. Lean format: [8-byte tag LE][1-byte flag][raw value bytes].
+// Panics when the buffer is shorter than cacheValueHeaderLen or when the flag
+// byte is neither cacheValueFlagLive nor cacheValueFlagTombstone — every 0xFF
+// row is produced by writeCacheRaw, so any other shape means a corrupted store
+// or a forward-incompatible binary, and silently treating an unknown flag as
+// live would let either case resurrect deleted keys.
+func parseLeanValue(value []byte) (tag uint64, deleted bool, valueBytes []byte) {
+	if len(value) < cacheValueHeaderLen {
+		panic(fmt.Sprintf("cache snapshotter: 0xFF value of %d bytes is shorter than the %d-byte lean header — store corrupted",
+			len(value), cacheValueHeaderLen))
+	}
+
+	tag = binary.LittleEndian.Uint64(value[:8])
+
+	switch value[8] {
+	case cacheValueFlagLive:
+		deleted = false
+	case cacheValueFlagTombstone:
+		deleted = true
+		// Tombstones are always 9 bytes on the wire: writeCacheRaw ignores
+		// valueBytes when deleted=true. Trailing payload after the flag
+		// means the row was written by a corrupt or forward-incompatible
+		// producer — silently dropping it would let an attacker mask a
+		// live row as a tombstone with a one-byte flip.
+		if len(value) != cacheValueHeaderLen {
+			panic(fmt.Sprintf("cache snapshotter: 0xFF tombstone row has %d trailing bytes after the %d-byte lean header — store corrupted or written by an incompatible binary",
+				len(value)-cacheValueHeaderLen, cacheValueHeaderLen))
+		}
+	default:
+		panic(fmt.Sprintf("cache snapshotter: 0xFF value has unknown tombstone flag 0x%02x at offset 8 (expected 0x%02x or 0x%02x) — store corrupted or written by an incompatible binary",
+			value[8], cacheValueFlagLive, cacheValueFlagTombstone))
+	}
+
+	return tag, deleted, value[cacheValueHeaderLen:]
 }
 
 // putAttributeIfAbsent puts value at id only if store doesn't already have
@@ -139,20 +170,24 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.WriteSession, gen0Byte byt
 			id, s.cacheType, s.ac.Gen0().Size(), s.ac.Gen1().Size())
 	}
 
-	// A tombstone keeps the pre-delete value in entry.Data (AttributeCache.Del
-	// only flips Deleted), so marshalValue would persist a live value to 0xFF and
-	// resurrect the key when a node rehydrates its cache from the snapshot zone.
-	// Empty bytes are the tombstone form RestoreEntry reads back as Deleted.
-	var valueBytes []byte
-	if !entry.Deleted {
-		var err error
-		valueBytes, err = s.marshalValue(entry.Data)
-		if err != nil {
-			return fmt.Errorf("marshaling touched value: %w", err)
+	// Tombstones are persisted with the explicit tombstone flag byte
+	// (writeCacheRaw deleted=true), which RestoreEntry reads back as Deleted.
+	// AttributeCache.Del also resets entry.Data to zero, so even a stray
+	// marshalValue would emit an empty proto rather than a live payload.
+	if entry.Deleted {
+		if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, entry.Tag, true, nil); err != nil {
+			return fmt.Errorf("persisting touched tombstone: %w", err)
 		}
+
+		return nil
 	}
 
-	if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, entry.Tag, valueBytes); err != nil {
+	valueBytes, err := s.marshalValue(entry.Data)
+	if err != nil {
+		return fmt.Errorf("marshaling touched value: %w", err)
+	}
+
+	if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, entry.Tag, false, valueBytes); err != nil {
 		return fmt.Errorf("persisting touched value: %w", err)
 	}
 
@@ -165,21 +200,16 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	attrID *raftcmdpb.AttributeID,
 	rawValue []byte,
 ) error {
-	// Empty rawValue is defensive after EN-1378: no caller of MirrorPreload
-	// produces it any longer (admission emits a Declare plan for absent
-	// keys uniformly, and Declare bypasses this code path). Kept so a
-	// hypothetical future caller — or an old 0xFF entry written by a
-	// pre-EN-1378 binary — does not panic on UnmarshalVT. The on-disk
-	// dual is a tombstone row (writeCacheRaw with empty bytes is what
-	// RestoreEntry interprets as Deleted=true), so a restart sees the
-	// entry as deleted — consistent with the no-cache-entry semantics
-	// Declare establishes on the live side.
-	var typed V
-	if len(rawValue) > 0 {
-		typed = s.newValue()
-		if err := typed.UnmarshalVT(rawValue); err != nil {
-			return fmt.Errorf("MirrorPreload: unmarshal cacheType=0x%x (%d bytes): %w", s.cacheType, len(rawValue), err)
-		}
+	// rawValue is the vtproto-marshaled blob of the (live) attribute value.
+	// It can legitimately be empty — a presence-only marker or an all-default
+	// proto marshals to zero bytes (EN-1377). The tombstone signal lives in
+	// the on-disk lean format's flag byte, not in len(rawValue); admission
+	// emits a Declare plan for absent keys (EN-1378) and never reaches this
+	// code path for tombstones. Unmarshal unconditionally: vtproto produces
+	// a valid zero-value proto from an empty buffer.
+	typed := s.newValue()
+	if err := typed.UnmarshalVT(rawValue); err != nil {
+		return fmt.Errorf("MirrorPreload: unmarshal cacheType=0x%x (%d bytes): %w", s.cacheType, len(rawValue), err)
 	}
 
 	id := attributes.U128FromBytes(attrID.GetId())
@@ -227,13 +257,13 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	}
 
 	if gen0Set {
-		if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, tag, valueBytes); err != nil {
+		if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, tag, false, valueBytes); err != nil {
 			return fmt.Errorf("persisting preloaded gen0 value: %w", err)
 		}
 	}
 
 	if gen1Set {
-		if err := writeCacheRaw(batch, gen1Byte, s.cacheType, id, tag, valueBytes); err != nil {
+		if err := writeCacheRaw(batch, gen1Byte, s.cacheType, id, tag, false, valueBytes); err != nil {
 			return fmt.Errorf("persisting preloaded gen1 value: %w", err)
 		}
 	}
@@ -257,11 +287,13 @@ func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U
 	store := s.selectGen(genIndex)
 
 	return func(u128 attributes.U128, rawValue []byte) error {
-		tag, valueBytes := parseLeanValue(rawValue)
+		tag, deleted, valueBytes := parseLeanValue(rawValue)
 
-		// Empty value bytes = tombstone (key was deleted but kept in cache
-		// to prevent pipelined MirrorTouch failures).
-		if len(valueBytes) == 0 {
+		// The flag byte at offset 8 distinguishes tombstones from live entries.
+		// Tombstones are kept in cache to prevent pipelined MirrorTouch failures.
+		// A live entry whose proto marshals to zero bytes is valid and must
+		// round-trip as live (EN-1377).
+		if deleted {
 			var zero V
 			store.Put(u128, attributes.Entry[V]{Tag: tag, Data: zero, Deleted: true})
 
@@ -390,16 +422,28 @@ func (s *CacheSnapshotter) MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1
 }
 
 // persistLeanProtoEntries writes all entries from a KV store to 0xFF in lean format.
+// Tombstones (entry.Deleted) are written as a 9-byte row with the flag byte
+// set; their pre-delete entry.Data is intentionally not marshaled (it would
+// resurrect on restore — AttributeCache.Del only flips Deleted and keeps the
+// payload around).
 func persistLeanProtoEntries[V interface {
 	MarshalVT() ([]byte, error)
 }](batch *dal.WriteSession, genByte, cacheType byte, store kv.KV[attributes.U128, attributes.Entry[V]]) error {
 	for u128, entry := range store.Iter() {
+		if entry.Deleted {
+			if err := writeCacheRaw(batch, genByte, cacheType, u128, entry.Tag, true, nil); err != nil {
+				return err
+			}
+
+			continue
+		}
+
 		valueBytes, err := entry.Data.MarshalVT()
 		if err != nil {
 			return fmt.Errorf("marshaling cache value: %w", err)
 		}
 
-		if err := writeCacheRaw(batch, genByte, cacheType, u128, entry.Tag, valueBytes); err != nil {
+		if err := writeCacheRaw(batch, genByte, cacheType, u128, entry.Tag, false, valueBytes); err != nil {
 			return err
 		}
 	}
@@ -529,7 +573,7 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 	}
 
 	// Restore each cache type by iterating over its Pebble prefix.
-	// All entries use lean format: [8-byte tag LE][raw value proto bytes].
+	// All entries use lean format: [8-byte tag LE][1-byte flag][raw value proto bytes].
 	for _, slot := range s.slots {
 		restoreFn := slot.RestoreEntry(genIndex)
 

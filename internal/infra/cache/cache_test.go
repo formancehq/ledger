@@ -168,6 +168,49 @@ func TestAttributeCache_Del(t *testing.T) {
 	result, ok = ac.Get(key)
 	assert.True(t, ok)
 	assert.True(t, result.Deleted)
+	// Data is reset to the zero value: a tombstone's payload is unreadable by
+	// contract, and retaining it has historically caused snapshot/restore
+	// foot-guns (EN-1377).
+	assert.Nil(t, result.Data, "Del must reset entry.Data to the zero value")
+}
+
+func TestAttributeCache_DelResetsDataAcrossGenerations(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(10, nil)
+	require.NoError(t, err)
+
+	ac := cache.Volumes
+
+	key1 := attributes.NewU128(1, 1)
+	key2 := attributes.NewU128(2, 2)
+
+	ac.Put(key1, attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag:  10,
+		Data: &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)},
+	})
+
+	ac.Rotate()
+
+	// key1 is now in Gen1 (post-rotation). Add key2 to Gen0 with the same id
+	// signature so both generations carry a payload — Del must clear both.
+	ac.Put(key2, attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag:  20,
+		Data: &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(200)},
+	})
+
+	ac.Del(key1)
+	ac.Del(key2)
+
+	got, ok := ac.Gen1().Get(key1)
+	require.True(t, ok, "tombstone must remain visible in Gen1 for the cache predictor")
+	assert.True(t, got.Deleted)
+	assert.Nil(t, got.Data, "Gen1 tombstone payload must be reset")
+
+	got, ok = ac.Gen0().Get(key2)
+	require.True(t, ok, "tombstone must remain visible in Gen0 for the cache predictor")
+	assert.True(t, got.Deleted)
+	assert.Nil(t, got.Data, "Gen0 tombstone payload must be reset")
 }
 
 func TestAttributeCache_Size(t *testing.T) {

@@ -69,7 +69,7 @@ func (c *CacheAwareEntry[K, V]) PutWithCache(
 		return old, idWithTag, fmt.Errorf("attribute set (0xF1): %w", err)
 	}
 
-	if err := writeCacheRaw(batch, genByte, c.cacheType, idWithTag.ID, idWithTag.Tag, valueBytes); err != nil {
+	if err := writeCacheRaw(batch, genByte, c.cacheType, idWithTag.ID, idWithTag.Tag, false, valueBytes); err != nil {
 		return old, idWithTag, fmt.Errorf("cache write (0xFF): %w", err)
 	}
 
@@ -92,7 +92,7 @@ func (c *CacheAwareEntry[K, V]) PutCacheOnly(
 		return fmt.Errorf("keystore put: %w", err)
 	}
 
-	if err := writeCacheRaw(batch, genByte, c.cacheType, idWithTag.ID, idWithTag.Tag, valueBytes); err != nil {
+	if err := writeCacheRaw(batch, genByte, c.cacheType, idWithTag.ID, idWithTag.Tag, false, valueBytes); err != nil {
 		return fmt.Errorf("cache write (0xFF): %w", err)
 	}
 

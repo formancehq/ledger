@@ -99,7 +99,9 @@ See [System Attributes](./attributes.md) and [Attribute Key Hashing](./attribute
 
 Key format: `[0x02][genByte][SubAttr][16-byte U128]`
 
-Mirrors attribute values in a lean format (`[8-byte tag][proto bytes]`) for fast restart without scanning the full attributes zone. The gen byte alternates between 0 and 1 on generation rotation.
+Mirrors attribute values in a lean format (`[8-byte tag][1-byte flag][proto bytes]`) for fast restart without scanning the full attributes zone. The flag byte at offset 8 is `0x00` for a live entry and `0x01` for a tombstone (no trailing bytes — tombstones are uniform 9-byte rows). The gen byte alternates between 0 and 1 on generation rotation.
+
+The explicit flag byte is required because some attribute protos legitimately marshal to zero bytes (presence-only markers, all-default scalars, unset oneofs). Using `len(value) == 0` as the tombstone signal would silently resurrect such live entries as tombstones on restore.
 
 Special keys:
 - `[0x02][0xFF]` — global cache snapshot metadata (`CacheSnapshotMeta`)

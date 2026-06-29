@@ -76,16 +76,29 @@ func (a *AttributeCache[T]) GetAndPut(k attributes.U128, v attributes.Entry[T]) 
 
 // Del marks the entry as a tombstone in both Gen0 and Gen1 instead of
 // removing it. This prevents pipelined MirrorTouch from failing when
-// the leader admitted a touch before the FSM processed the deletion.
-// Tombstones age out naturally via rotation.
+// the leader admitted a touch before the FSM processed the deletion —
+// admission relies on the tombstone being present in the cache to
+// distinguish "deleted" from "cache miss". Tombstones age out naturally
+// via rotation.
+//
+// Data is reset to the zero value: a tombstone's payload is unreadable
+// by contract (every consumer checks Deleted first and returns
+// ErrNotFound), so retaining the pre-delete value yields zombie state
+// that has historically caused snapshot/restore foot-guns (see EN-1377
+// — the persist path used to marshal entry.Data unconditionally and
+// resurrect the deleted key on restore).
 func (a *AttributeCache[T]) Del(k attributes.U128) {
+	var zero T
+
 	if entry, ok := a.gen0.Load().Get(k); ok {
 		entry.Deleted = true
+		entry.Data = zero
 		a.gen0.Load().Put(k, entry)
 	}
 
 	if entry, ok := a.gen1.Load().Get(k); ok {
 		entry.Deleted = true
+		entry.Data = zero
 		a.gen1.Load().Put(k, entry)
 	}
 }

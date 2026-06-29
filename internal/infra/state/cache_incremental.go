@@ -14,11 +14,26 @@ import (
 
 // 0xFF cache value format (lean):
 //
-//	[8-byte tag LE][raw value proto bytes]
+//	[8-byte tag LE][1-byte tombstone flag][raw value proto bytes]
 //
 // The tag is the U128-collision fingerprint from the attribute system.
-// The raw value bytes are the same proto bytes written to the 0xF1 attributes zone.
-// attr.Set returns the marshaled bytes, avoiding a second marshal.
+// The flag byte at offset 8 is 0x00 for a live entry and 0x01 for a
+// tombstone (no trailing bytes for tombstones — uniform 9-byte rows).
+// The raw value bytes are the same proto bytes written to the 0xF1 attributes
+// zone; attr.Set returns the marshaled bytes, avoiding a second marshal.
+//
+// An explicit flag byte is required because some attribute protos legitimately
+// marshal to zero bytes (presence-only markers, all-default scalars, unset
+// oneofs). Using len(value) == 0 as the tombstone signal would silently
+// resurrect such live entries as tombstones on restore (EN-1377).
+
+const (
+	cacheValueFlagLive      byte = 0x00
+	cacheValueFlagTombstone byte = 0x01
+	// cacheValueHeaderLen is the size of [tag 8][flag 1].
+	// Every 0xFF value row is at least this size.
+	cacheValueHeaderLen = 9
+)
 
 // fillCacheKey builds a 0xFF cache key on the stack and returns it.
 // Format: [0xFF][genByte][cacheType][16-byte U128] = 19 bytes.
@@ -32,11 +47,16 @@ func fillCacheKey(genByte, cacheType byte, id attributes.U128) [3 + 16]byte {
 	return buf
 }
 
-// writeCacheRaw writes a [tag][valueBytes] entry to the 0xFF zone.
-// Uses batch.CacheBuffer to avoid allocating per call — Pebble copies
-// the value into its repr buffer, so reuse is safe.
-func writeCacheRaw(batch *dal.WriteSession, genByte, cacheType byte, id attributes.U128, tag uint64, valueBytes []byte) error {
-	needed := 8 + len(valueBytes)
+// writeCacheRaw writes a [tag][flag][valueBytes] entry to the 0xFF zone.
+// When deleted is true, valueBytes is ignored and a 9-byte tombstone row is
+// written. Uses batch.CacheBuffer to avoid allocating per call — Pebble
+// copies the value into its repr buffer, so reuse is safe.
+func writeCacheRaw(batch *dal.WriteSession, genByte, cacheType byte, id attributes.U128, tag uint64, deleted bool, valueBytes []byte) error {
+	needed := cacheValueHeaderLen
+	if !deleted {
+		needed += len(valueBytes)
+	}
+
 	if cap(batch.CacheBuffer) >= needed {
 		batch.CacheBuffer = batch.CacheBuffer[:needed]
 	} else {
@@ -44,19 +64,25 @@ func writeCacheRaw(batch *dal.WriteSession, genByte, cacheType byte, id attribut
 	}
 
 	binary.LittleEndian.PutUint64(batch.CacheBuffer, tag)
-	copy(batch.CacheBuffer[8:], valueBytes)
+
+	if deleted {
+		batch.CacheBuffer[8] = cacheValueFlagTombstone
+	} else {
+		batch.CacheBuffer[8] = cacheValueFlagLive
+		copy(batch.CacheBuffer[cacheValueHeaderLen:], valueBytes)
+	}
 
 	key := fillCacheKey(genByte, cacheType, id)
 
 	return batch.Set(key[:], batch.CacheBuffer, pebble.NoSync)
 }
 
-// writeCacheTombstone writes a tombstone (tag + empty value bytes) to both
-// gen bytes in 0xFF, matching AttributeCache.Del's tombstone semantic.
-// On restore, empty value bytes signal a tombstone entry.
+// writeCacheTombstone writes a tombstone row to both gen bytes in 0xFF,
+// matching AttributeCache.Del's tombstone semantic. The on-disk form is
+// [tag 8][0x01] (no trailing bytes).
 func writeCacheTombstone(batch *dal.WriteSession, cacheType byte, id attributes.U128, tag uint64) error {
 	for _, genByte := range []byte{0, 1} {
-		if err := writeCacheRaw(batch, genByte, cacheType, id, tag, nil); err != nil {
+		if err := writeCacheRaw(batch, genByte, cacheType, id, tag, true, nil); err != nil {
 			return fmt.Errorf("writing cache tombstone: %w", err)
 		}
 	}
@@ -65,8 +91,8 @@ func writeCacheTombstone(batch *dal.WriteSession, cacheType byte, id attributes.
 }
 
 // mergeSimpleWithCache writes attribute updates to the 0xF1 zone via attr.Set,
-// then immediately writes the lean [tag][valueBytes] to the 0xFF cache zone.
-// This avoids marshaling the value proto twice.
+// then immediately writes the lean [tag][flag][valueBytes] to the 0xFF cache
+// zone. This avoids marshaling the value proto twice.
 func mergeSimpleWithCache[K attributes.Key, V proto.Message](
 	attr *attributes.Attribute[V],
 	batch *dal.WriteSession,
@@ -80,7 +106,7 @@ func mergeSimpleWithCache[K attributes.Key, V proto.Message](
 			return err
 		}
 
-		if err := writeCacheRaw(batch, genByte, cacheType, u.ID, u.Tag, valueBytes); err != nil {
+		if err := writeCacheRaw(batch, genByte, cacheType, u.ID, u.Tag, false, valueBytes); err != nil {
 			return err
 		}
 	}

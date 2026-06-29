@@ -137,7 +137,7 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 	infoBytes, err := info.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen1Byte, dal.SubAttrLedger, id, 7, infoBytes))
+		writeCacheRaw(seedBatch, gen1Byte, dal.SubAttrLedger, id, 7, false, infoBytes))
 	require.NoError(t, seedBatch.Commit())
 
 	gen1Key := []byte{dal.ZoneCache, gen1Byte, dal.SubAttrLedger}
@@ -222,9 +222,9 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	freshBytes, err := freshInfo.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen1Byte, dal.SubAttrLedger, id, 1, staleBytes))
+		writeCacheRaw(seedBatch, gen1Byte, dal.SubAttrLedger, id, 1, false, staleBytes))
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen0Byte, dal.SubAttrLedger, id, 1, freshBytes))
+		writeCacheRaw(seedBatch, gen0Byte, dal.SubAttrLedger, id, 1, false, freshBytes))
 	require.NoError(t, seedBatch.Commit())
 
 	applyBatch := dataStore.OpenWriteSession()
@@ -251,8 +251,9 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 
 	defer func() { _ = closer.Close() }()
 
-	// Lean format: [8-byte tag LE][value bytes].
-	require.Equal(t, freshBytes, val[8:], "0xFF gen0 row must not be clobbered with stale gen1 value")
+	// Lean format: [8-byte tag LE][1-byte flag][value bytes].
+	require.Equal(t, cacheValueFlagLive, val[8], "0xFF gen0 row must be live")
+	require.Equal(t, freshBytes, val[cacheValueHeaderLen:], "0xFF gen0 row must not be clobbered with stale gen1 value")
 }
 
 // Asserts a CacheMiss preload for a key already in gen0 is a no-op for that
@@ -295,7 +296,7 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	freshBytes, err := freshInfo.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen0Byte, dal.SubAttrNumscriptContent, hash, tag, freshBytes))
+		writeCacheRaw(seedBatch, gen0Byte, dal.SubAttrNumscriptContent, hash, tag, false, freshBytes))
 	require.NoError(t, seedBatch.Commit())
 
 	// Entry N+1's preload arrives with the leader's admission-time value
@@ -328,7 +329,8 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 
 	defer func() { _ = closer.Close() }()
 
-	require.Equal(t, freshBytes, val[8:],
+	require.Equal(t, cacheValueFlagLive, val[8], "0xFF gen0 row must be live")
+	require.Equal(t, freshBytes, val[cacheValueHeaderLen:],
 		"0xFF gen0 row must not be clobbered with stale preload value")
 
 	gen1Key := []byte{dal.ZoneCache, gen1Byte, dal.SubAttrNumscriptContent}
