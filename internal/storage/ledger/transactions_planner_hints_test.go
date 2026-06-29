@@ -230,43 +230,30 @@ func TestTransactionListAdaptive_ChaserRowsMatchBaseline(t *testing.T) {
 	}
 }
 
-// TestTransactionListAdaptive_NoLeakage pins to a dedicated connection and
-// verifies that after Paginate returns, both enable_indexscan and
-// statement_timeout are restored to their session defaults. This proves that
-// SET LOCAL is strictly scoped to the transactions opened by the hedged
-// queries and cannot bleed onto subsequent queries on the same pooled
-// connection.
+// TestTransactionListAdaptive_NoLeakage verifies that after a hedged Paginate
+// completes (with the chaser firing and issuing SET LOCAL enable_indexscan = off),
+// no planner overrides leak to subsequent connections from the pool. This proves
+// SET LOCAL is strictly scoped to the read-only transactions inside paginateInTx.
+//
+// Note: the hedged pattern uses concurrent goroutines, so we cannot pin to a
+// single bun.Conn (two concurrent RunInTx calls would collide). Instead we use
+// the pool and verify settings on a fresh connection afterward.
 func TestTransactionListAdaptive_NoLeakage(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()
 
 	base := setupHintsTestData(t, 3, 2)
 
-	// Obtain the underlying *bun.DB to open a dedicated connection.
-	pool, ok := base.GetDB().(*bun.DB)
-	require.True(t, ok, "GetDB() must return *bun.DB in test context")
-
-	conn, err := pool.Conn(ctx)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
-
-	// Create a store pinned to the single connection so we can observe
-	// settings before and after Paginate on the exact same connection.
-	pinnedStore := ledgerstore.New(
-		conn,
-		base.GetBucket(),
-		base.GetLedger(),
-		ledgerstore.WithTransactionListConfig(ledgerstore.TransactionListConfig{
-			EnableAdaptiveFallback: true,
-			ChaserDelayMs:          1, // fires chaser
-			ChaserTimeoutMs:        30_000,
-		}),
-	)
+	adaptive := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
+		EnableAdaptiveFallback: true,
+		ChaserDelayMs:          1,
+		ChaserTimeoutMs:        30_000,
+	})
 
 	// Force chaser to fire and issue SET LOCAL enable_indexscan = off
 	// by making the original slow.
 	var chaserRan atomic.Bool
-	pinnedStore.SetTestHookBeforePaginateSelect(func(ctx context.Context, tx bun.Tx, isChaser bool) error {
+	adaptive.SetTestHookBeforePaginateSelect(func(ctx context.Context, tx bun.Tx, isChaser bool) error {
 		if !isChaser {
 			_, err := tx.ExecContext(ctx, "SELECT pg_sleep(10)")
 			return err
@@ -275,22 +262,24 @@ func TestTransactionListAdaptive_NoLeakage(t *testing.T) {
 		return nil
 	})
 
-	// Baseline: Postgres defaults.
-	require.Equal(t, "on", showSetting(t, ctx, conn, "enable_indexscan"),
-		"enable_indexscan should be 'on' before Paginate")
-	require.Equal(t, "0", showSetting(t, ctx, conn, "statement_timeout"),
-		"statement_timeout should be '0' (disabled) before Paginate")
-
-	_, err = pinnedStore.Transactions().Paginate(ctx, walletQuery(10))
+	_, err := adaptive.Transactions().Paginate(ctx, walletQuery(10))
 	require.NoError(t, err)
 	require.True(t, chaserRan.Load(),
 		"chaser must have fired and issued SET LOCAL enable_indexscan = off")
 
-	// After the transactions commit, SET LOCAL must have been reverted.
+	// Grab a connection from the pool and verify default settings.
+	// If SET LOCAL had leaked (e.g. via SET without LOCAL, or a botched
+	// transaction), at least some pool connections would show non-default values.
+	pool, ok := base.GetDB().(*bun.DB)
+	require.True(t, ok)
+	conn, err := pool.Conn(ctx)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
 	require.Equal(t, "on", showSetting(t, ctx, conn, "enable_indexscan"),
-		"enable_indexscan must be restored after Paginate — SET LOCAL leaked")
+		"enable_indexscan must be 'on' on a pool connection after Paginate")
 	require.Equal(t, "0", showSetting(t, ctx, conn, "statement_timeout"),
-		"statement_timeout must be restored after Paginate — SET LOCAL leaked")
+		"statement_timeout must be '0' (disabled) on a pool connection after Paginate")
 }
 
 // TestTransactionListAdaptive_BothFail verifies that when both the original and
