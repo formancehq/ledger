@@ -194,13 +194,30 @@ func transferAll(ctx context.Context, client servicepb.BucketServiceClient, acco
 	assert.Sometimes(err == nil || internal.IsTransient(err),
 		"exact balance transfer should succeed", withErr)
 
-	// EN-1410: the read-side just returned balance > 0 for this cell, so the
-	// FSM cache injecting a zero VolumePair (the only path to spurious
-	// INSUFFICIENT_FUNDS on a non-overdraft transfer) means the bloom no
-	// longer admits a key whose volume still lives in Pebble — the
-	// boot-ordering desync. Every iteration that observes it is the bug.
-	isSpuriousInsuf := internal.HasErrorReason(err, domain.ErrReasonInsufficientFunds)
-	assert.AlwaysOrUnreachable(!isSpuriousInsuf,
+	// EN-1410 detection. The naive "INSUFFICIENT_FUNDS implies bug" check is
+	// racy because parallel_driver_ spawns many concurrent instances that
+	// may pick the same pool cell between their GetAccount and their Apply.
+	// One wins; the others observe a legitimate INSUFFICIENT_FUNDS even
+	// though the bloom is healthy. Disambiguate by re-reading the balance
+	// after the failure: the bug's signature is "FSM apply rejected on
+	// available=0 while the read-side still shows balance > 0", because
+	// the only path that produces available=0 on a cell with non-zero
+	// volumes in Pebble is the FSM-side cache injecting a zero VolumePair
+	// — i.e. the bloom dropped a key whose volume Pebble still holds.
+	//
+	// The re-read itself is racy too (the read-side can lag, a concurrent
+	// fund can re-credit the cell, etc.). We accept those: a confirmed
+	// bug requires the conjunction (apply rejected available=0 AND
+	// read-side balance > 0 after the fact). A miss in either direction
+	// is the safe answer.
+	confirmed := false
+	if internal.HasErrorReason(err, domain.ErrReasonInsufficientFunds) {
+		if confirm, rerr := readBalance(ctx, client, sharedLedger, account); rerr == nil && confirm.Sign() > 0 {
+			confirmed = true
+			withErr = withErr.With(internal.Details{"reReadBalance": confirm.String()})
+		}
+	}
+	assert.AlwaysOrUnreachable(!confirmed,
 		"exact balance transfer must not be rejected as INSUFFICIENT_FUNDS — bloom must reflect persisted Pebble state",
 		withErr)
 }
