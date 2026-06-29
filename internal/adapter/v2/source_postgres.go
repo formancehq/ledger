@@ -10,13 +10,17 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel"
 
-	bunconnect "github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+var mirrorTracer = otel.Tracer("mirror.v2.postgres")
 
 // PostgresSource is a Source that reads logs directly from a v2 ledger's
 // PostgreSQL database. In v2, the _system.ledgers table maps each ledger
@@ -166,13 +170,22 @@ func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceC
 
 // iamBeforeConnect returns a pgxpool BeforeConnect hook that mints a fresh
 // RDS IAM auth token for each new connection and writes it to ConnConfig.Password.
+// The SigV4 token is short-lived (15 min); pgxpool fires BeforeConnect on every
+// new connection it opens, so rotation is automatic.
 func iamBeforeConnect(awsCfg aws.Config) func(context.Context, *pgx.ConnConfig) error {
 	return func(ctx context.Context, cc *pgx.ConnConfig) error {
+		ctx, span := mirrorTracer.Start(ctx, "iam.build-auth-token")
+		defer span.End()
+
 		endpoint := fmt.Sprintf("%s:%d", cc.Host, cc.Port)
-		token, err := bunconnect.BuildIAMAuthToken(ctx, awsCfg, endpoint, cc.User)
+
+		token, err := auth.BuildAuthToken(ctx, endpoint, awsCfg.Region, cc.User, awsCfg.Credentials)
 		if err != nil {
+			otlp.RecordError(ctx, err)
+
 			return fmt.Errorf("building aws auth token: %w", err)
 		}
+
 		cc.Password = token
 
 		return nil
