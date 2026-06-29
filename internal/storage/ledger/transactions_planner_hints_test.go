@@ -29,6 +29,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"sync/atomic"
 	"testing"
 
 	"github.com/jackc/pgerrcode"
@@ -264,11 +265,13 @@ func TestTransactionListAdaptive_NoLeakage(t *testing.T) {
 
 	// Force chaser to fire and issue SET LOCAL enable_indexscan = off
 	// by making the original slow.
+	var chaserRan atomic.Bool
 	pinnedStore.SetTestHookBeforePaginateSelect(func(ctx context.Context, tx bun.Tx, isChaser bool) error {
 		if !isChaser {
 			_, err := tx.ExecContext(ctx, "SELECT pg_sleep(10)")
 			return err
 		}
+		chaserRan.Store(true)
 		return nil
 	})
 
@@ -280,6 +283,8 @@ func TestTransactionListAdaptive_NoLeakage(t *testing.T) {
 
 	_, err = pinnedStore.Transactions().Paginate(ctx, walletQuery(10))
 	require.NoError(t, err)
+	require.True(t, chaserRan.Load(),
+		"chaser must have fired and issued SET LOCAL enable_indexscan = off")
 
 	// After the transactions commit, SET LOCAL must have been reverted.
 	require.Equal(t, "on", showSetting(t, ctx, conn, "enable_indexscan"),
