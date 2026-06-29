@@ -495,12 +495,16 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	// ErrTransferLeaderTimeout: leadership transfer did not complete in time.
 	// ErrNoLeader: target peer doesn't know who the leader is yet (election
 	// still in progress, or it just joined and hasn't received the heartbeat).
+	// ErrNodeNotReachable: forwarder lost its conn-pool entry for the target
+	// peer (network partition / pod restart in flight). Recovers as soon as
+	// the pool re-converges.
 	if errors.Is(err, raft.ErrProposalDropped) ||
 		errors.Is(err, node.ErrLeadershipLost) ||
 		errors.Is(err, node.ErrNotLeader) ||
 		errors.Is(err, node.ErrNodeSyncing) ||
 		errors.Is(err, node.ErrTransferLeaderTimeout) ||
-		errors.Is(err, commonpb.ErrNoLeader) {
+		errors.Is(err, commonpb.ErrNoLeader) ||
+		errors.Is(err, ErrNodeNotReachable) {
 		return status.Error(codes.Unavailable, err.Error())
 	}
 

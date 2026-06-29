@@ -555,6 +555,38 @@ func TestConvertToGRPCError_BackupInProgress(t *testing.T) {
 	}
 }
 
+// TestConvertToGRPCError_NodeNotReachable pins EN-1416: when the forwarder
+// fails to resolve a peer (conn-pool entry missing during a partition or
+// pod restart), the error must surface as codes.Unavailable so client
+// retry logic and the antithesis IsTransient predicate cover it the same
+// way as the other peer-transport transients. Before the fix the bare
+// fmt.Errorf("node N not reachable") fell through to the codes.Unknown
+// sanitizer and looked like a permanent server bug.
+func TestConvertToGRPCError_NodeNotReachable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"sentinel raw", ErrNodeNotReachable},
+		{"wrapped from resolve", fmt.Errorf("%w: node 3", ErrNodeNotReachable)},
+		{"wrapped twice", fmt.Errorf("forward: %w", fmt.Errorf("%w: node 7", ErrNodeNotReachable))},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			grpcErr := convertToGRPCError(tt.err, testLogger())
+			st, ok := status.FromError(grpcErr)
+			require.True(t, ok)
+			require.Equal(t, codes.Unavailable, st.Code(),
+				"ErrNodeNotReachable must surface as Unavailable, not %v", st.Code())
+		})
+	}
+}
+
 func TestConvertToGRPCError_MissingSignature(t *testing.T) {
 	t.Parallel()
 
