@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"sync"
@@ -12,6 +13,22 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// peerTransport is the slice of *DefaultTransport that Membership must
+// keep in lockstep with its peer-address cache so the Raft transport
+// dials the right hosts on the next tick.
+type peerTransport interface {
+	AddPeer(id uint64, addr string)
+	RemovePeer(ctx context.Context, id uint64)
+}
+
+// peerPool is the slice of *transport.ConnectionPool used to forward
+// client RPCs to the appropriate peer. Kept in lockstep with the cache
+// the same way as peerTransport.
+type peerPool interface {
+	AddPeer(id uint64, addr string) error
+	RemovePeer(id uint64) error
+}
 
 // Membership owns the cluster's peer-address state in two views kept in
 // lockstep: the durable Pebble rows under [ZoneGlobal][SubGlobPeers] and
@@ -34,31 +51,92 @@ import (
 //     session): bootstrap's initial-peer persistence in
 //     PersistInitialPeers, and Node.ForceRemoveNode via Unregister.
 type Membership struct {
-	store  *PeerStore
-	logger logging.Logger
+	store      *PeerStore
+	transport  peerTransport
+	pool       peerPool
+	selfNodeID uint64
+	logger     logging.Logger
 
 	mu        sync.RWMutex
 	addresses map[uint64]ConfChangeContext
 }
 
-// NewMembership loads the in-memory cache from Pebble. Failure to read
-// the peer rows is fatal: without them the node would boot with an empty
-// cache while the WAL ConfState still claims the cluster has voters.
-func NewMembership(store *PeerStore, logger logging.Logger) (*Membership, error) {
+// NewMembership loads the in-memory cache from Pebble and wires the
+// transport + service pool to match. transport and pool may be nil for
+// tests that don't exercise the wiring. selfNodeID is skipped from
+// transport/pool registration — a node never dials itself.
+//
+// Failure to read the peer rows is fatal: without them the node would
+// boot with an empty cache while the WAL ConfState still claims the
+// cluster has voters.
+func NewMembership(store *PeerStore, transport peerTransport, pool peerPool, selfNodeID uint64, logger logging.Logger) (*Membership, error) {
 	addresses, err := store.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
+	}
+
+	m := &Membership{
+		store:      store,
+		transport:  transport,
+		pool:       pool,
+		selfNodeID: selfNodeID,
+		logger:     logger,
+		addresses:  addresses,
+	}
+
+	for nodeID, addr := range addresses {
+		m.wireAddLocked(nodeID, addr.RaftAddress, addr.ServiceAddress)
 	}
 
 	logger.WithFields(map[string]any{
 		"peerCount": len(addresses),
 	}).Infof("Loaded cluster membership from Pebble")
 
-	return &Membership{
-		store:     store,
-		logger:    logger,
-		addresses: addresses,
-	}, nil
+	return m, nil
+}
+
+// wireAddLocked pushes a peer into the transport + service pool. Caller
+// must NOT hold m.mu — this method makes no map access. Self is skipped
+// because a node never dials itself.
+func (m *Membership) wireAddLocked(nodeID uint64, raftAddr, serviceAddr string) {
+	if nodeID == m.selfNodeID {
+		return
+	}
+
+	if m.transport != nil {
+		m.transport.AddPeer(nodeID, raftAddr)
+	}
+
+	if m.pool != nil {
+		if err := m.pool.AddPeer(nodeID, serviceAddr); err != nil {
+			m.logger.WithFields(map[string]any{
+				"peer_id": nodeID,
+				"error":   err,
+			}).Errorf("Failed to add peer to service pool")
+		}
+	}
+}
+
+// wireRemoveLocked removes a peer from the transport + service pool.
+// Self is skipped (would not be there). context.Background is fine: the
+// transport's RemovePeer is internal bookkeeping, not a network call.
+func (m *Membership) wireRemoveLocked(nodeID uint64) {
+	if nodeID == m.selfNodeID {
+		return
+	}
+
+	if m.transport != nil {
+		m.transport.RemovePeer(context.Background(), nodeID)
+	}
+
+	if m.pool != nil {
+		if err := m.pool.RemovePeer(nodeID); err != nil {
+			m.logger.WithFields(map[string]any{
+				"peer_id": nodeID,
+				"error":   err,
+			}).Errorf("Failed to remove peer from service pool")
+		}
+	}
 }
 
 // PeerAddresses returns a defensive copy of the current cache.
@@ -72,10 +150,11 @@ func (m *Membership) PeerAddresses() map[uint64]ConfChangeContext {
 	return cp
 }
 
-// Set upserts a peer in the cache. The matching Pebble write happens
-// later via WriteConfChange when the FSM batch commits. Used from
-// finishReady so the transport sees the new membership on the next tick
-// without waiting for the applier.
+// Set upserts a peer in the cache AND wires it into the transport +
+// service pool so the Raft transport / client RPCs can reach it on the
+// next tick. The matching Pebble write lands later via WriteConfChange
+// when the FSM batch commits. Used from finishReady (cache-side mirror
+// of the FSM-applied ConfChange).
 func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string) {
 	m.mu.Lock()
 	m.addresses[nodeID] = ConfChangeContext{
@@ -83,14 +162,18 @@ func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string) {
 		ServiceAddress: serviceAddr,
 	}
 	m.mu.Unlock()
+
+	m.wireAddLocked(nodeID, raftAddr, serviceAddr)
 }
 
-// Remove deletes a peer from the cache. Pebble removal happens later
-// via WriteConfChange.
+// Remove deletes a peer from the cache AND from the transport +
+// service pool. Pebble removal happens later via WriteConfChange.
 func (m *Membership) Remove(nodeID uint64) {
 	m.mu.Lock()
 	delete(m.addresses, nodeID)
 	m.mu.Unlock()
+
+	m.wireRemoveLocked(nodeID)
 }
 
 // Register writes a peer through Pebble (own session) AND the cache, in
@@ -144,16 +227,17 @@ func (m *Membership) PersistInitialPeers(cfg NodeConfig, includeSelf bool) error
 }
 
 // OnSnapshotInstalled refreshes the cache from Pebble after a leader
-// checkpoint restore overwrites it. Wired on Applier; runs synchronously
-// inside the maintenance task so the next Raft tick already sees the
-// up-to-date cache.
+// checkpoint restore overwrites it AND reconciles the transport +
+// service pool to match (added peers wired in, removed peers wired out).
+// Wired on Applier; runs synchronously inside the maintenance task so
+// the next Raft tick already sees the up-to-date cache + transport.
 //
-// LoadAll failure is logged but not fatal: the cache stays at its
-// pre-restore state and the next leadership/restart resyncs. Crashing
-// the apply loop on a transient read failure is worse than a slightly
-// stale cache.
+// LoadAll failure is logged but not fatal: state stays at its pre-
+// restore values and the next leadership/restart resyncs. Crashing the
+// apply loop on a transient read failure is worse than a slightly stale
+// view.
 func (m *Membership) OnSnapshotInstalled() {
-	addresses, err := m.store.LoadAll()
+	fresh, err := m.store.LoadAll()
 	if err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,
@@ -163,11 +247,28 @@ func (m *Membership) OnSnapshotInstalled() {
 	}
 
 	m.mu.Lock()
-	m.addresses = addresses
+	old := m.addresses
+	m.addresses = fresh
 	m.mu.Unlock()
 
+	// Wire in anything present in the new view that wasn't (or was
+	// different) before; wire out anything that disappeared. Idempotent
+	// AddPeer calls on the transport are fine — they overwrite the
+	// address slot. We do NOT compare raftAddr to skip re-Adds:
+	// transport.AddPeer is cheap and "re-adding with the same address"
+	// is the right behavior for an address change as well.
+	for nodeID, addr := range fresh {
+		m.wireAddLocked(nodeID, addr.RaftAddress, addr.ServiceAddress)
+	}
+
+	for nodeID := range old {
+		if _, kept := fresh[nodeID]; !kept {
+			m.wireRemoveLocked(nodeID)
+		}
+	}
+
 	m.logger.WithFields(map[string]any{
-		"peerCount": len(addresses),
+		"peerCount": len(fresh),
 	}).Infof("Reloaded cluster membership from Pebble post-snapshot")
 }
 

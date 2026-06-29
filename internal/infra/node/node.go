@@ -1164,17 +1164,15 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 			}
 		}
 
-		// Notify observers about configuration changes
+		// Notify observers about configuration changes.
+		// Membership owns the transport / service-pool side effects;
+		// only the antithesis lifecycle ping remains here for the
+		// fault-injector to observe membership transitions.
 		for _, change := range cc.Changes {
 			lifecycle.SendEvent("conf_change_committed", map[string]any{
 				"nodeID":     node.config.NodeID,
 				"targetNode": change.NodeID,
 				"changeType": change.Type.String(),
-			})
-			node.observer.Emit(ConfChangeEvent{
-				NodeID:     change.NodeID,
-				ChangeType: change.Type,
-				Context:    cc.Context,
 			})
 		}
 	}
@@ -2164,11 +2162,8 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 			"learners":      cs.Learners,
 		}).Infof("Force-removed node (bypassed consensus)")
 
-		// Notify observers so bootstrap can clean up transport/service pool.
-		node.observer.Emit(ConfChangeEvent{
-			NodeID:     nodeID,
-			ChangeType: raftpb.ConfChangeRemoveNode,
-		})
+		// membership.Unregister above already wired the peer out of
+		// transport / service pool, so no observer event is needed.
 
 		return nil
 	})

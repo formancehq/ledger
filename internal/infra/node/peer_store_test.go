@@ -29,12 +29,13 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 }
 
 // newTestMembership returns a Membership backed by a fresh in-memory
-// Pebble store. Used to seed a minimal Node in tests that only exercise
-// fields touching peer state.
+// Pebble store. Transport and pool are nil — Membership tolerates this
+// for tests that don't exercise the wiring side. Used to seed a minimal
+// Node in tests that only touch peer state.
 func newTestMembership(t *testing.T) *Membership {
 	t.Helper()
 
-	m, err := NewMembership(newTestPeerStore(t), logging.Testing())
+	m, err := NewMembership(newTestPeerStore(t), nil, nil, 0, logging.Testing())
 	require.NoError(t, err)
 
 	return m
@@ -251,7 +252,7 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	// Pre-swap state: cluster A had peer 7.
 	require.NoError(t, ps.Put(7, "old:1", "old:2"))
 
-	m, err := NewMembership(ps, logging.Testing())
+	m, err := NewMembership(ps, nil, nil, 0, logging.Testing())
 	require.NoError(t, err)
 	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
 

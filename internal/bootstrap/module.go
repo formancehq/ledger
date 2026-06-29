@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -341,11 +340,20 @@ func Module() fx.Option {
 			},
 			// PeerStore persists Raft cluster membership in Pebble under
 			// [ZoneGlobal][SubGlobPeers] (EN-1413). Membership wraps it
-			// with the in-memory cache + the OnSnapshotInstalled /
+			// with the in-memory cache, owns the transport / service-pool
+			// wiring, and exposes the OnSnapshotInstalled /
 			// WriteConfChange callbacks injected into Applier and Machine
 			// via constructor.
 			node.NewPeerStore,
-			node.NewMembership,
+			fx.Annotate(func(
+				store *node.PeerStore,
+				defaultTransport *node.DefaultTransport,
+				servicePool *transport.ConnectionPool,
+				cfg node.NodeConfig,
+				logger logging.Logger,
+			) (*node.Membership, error) {
+				return node.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, logger)
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a
@@ -934,15 +942,14 @@ func Module() fx.Option {
 					},
 				})
 			},
-			// Start Raft server (internal) - must start before adding peers
+			// Start Raft server (internal). Peer wiring (transport +
+			// service pool) is now owned by Membership, which sets it up
+			// at construction from the Pebble peer rows — no explicit
+			// loop here. (EN-1413)
 			fx.Annotate(func(
 				lc fx.Lifecycle,
 				raftServer *grpcadp.RaftServer,
 				logger logging.Logger,
-				defaultTransport *node.DefaultTransport,
-				servicePool *transport.ConnectionPool,
-				cfg node.NodeConfig,
-				n *node.Node,
 			) {
 				var waitRaft func()
 
@@ -967,30 +974,6 @@ func Module() fx.Option {
 
 						logger.Infof("Raft gRPC server started successfully")
 
-						// Wire the transport and service pool from the peers
-						// loaded out of Pebble by NewNode (which seeded them
-						// from cfg.Peers + self in the fresh-start branch and
-						// from previous ConfChange applies in the restart
-						// branch). Self is skipped — no transport/pool entry
-						// to ourselves. EN-1413.
-						for nodeID, addr := range n.PeerAddresses() {
-							if nodeID == cfg.NodeID {
-								continue
-							}
-
-							logger := logger.WithFields(map[string]any{
-								"peer_id":      nodeID,
-								"raft_addr":    addr.RaftAddress,
-								"service_addr": addr.ServiceAddress,
-							})
-							logger.Infof("Wiring peer into transport and service pool")
-							defaultTransport.AddPeer(nodeID, addr.RaftAddress)
-
-							if err := servicePool.AddPeer(nodeID, addr.ServiceAddress); err != nil {
-								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
-							}
-						}
-
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
@@ -1002,12 +985,13 @@ func Module() fx.Option {
 						return err
 					},
 				})
-			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``, ``)),
-			// Wire Observer: handle ConfChange, LeadershipChange, and LeaderReady events
-			fx.Annotate(func(
+			}),
+			// Wire Observer: handle LeadershipChange and LeaderReady events.
+			// ConfChange events are no longer dispatched here — Membership
+			// owns the transport / service-pool wiring and reacts directly
+			// to peer mutations (EN-1413).
+			func(
 				n *node.Node,
-				defaultTransport *node.DefaultTransport,
-				servicePool *transport.ConnectionPool,
 				store *dal.Store,
 				builder *plan.Builder,
 				cfg Config,
@@ -1018,8 +1002,6 @@ func Module() fx.Option {
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
-					case node.ConfChangeEvent:
-						handleConfChangeEvent(e, defaultTransport, servicePool, logger)
 					case node.LeadershipChangeEvent:
 						// The backup orchestrator's OnLeadershipChange is cheap
 						// (it just swaps a context) and must observe leadership
@@ -1042,7 +1024,7 @@ func Module() fx.Option {
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
 				}))
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
+			},
 			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
 				var cancelRun context.CancelFunc
 
@@ -1481,52 +1463,6 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 		logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Failed to propose cluster config update")
-	}
-}
-
-// handleConfChangeEvent processes a single ConfChangeEvent by updating the
-// transport and service pool when a node joins or leaves the cluster.
-// Peer addresses are persisted in the Node (updated by processReady) and
-// included in Raft snapshots, so no separate PeerStore is needed.
-func handleConfChangeEvent(
-	e node.ConfChangeEvent,
-	defaultTransport *node.DefaultTransport,
-	servicePool *transport.ConnectionPool,
-	logger logging.Logger,
-) {
-	switch e.ChangeType {
-	case raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeAddNode:
-		if len(e.Context) == 0 {
-			return
-		}
-
-		ccCtx, err := node.UnmarshalConfChangeContext(e.Context)
-		if err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal ConfChange context")
-
-			return
-		}
-
-		logger.WithFields(map[string]any{
-			"node_id":         e.NodeID,
-			"raft_address":    ccCtx.RaftAddress,
-			"service_address": ccCtx.ServiceAddress,
-		}).Infof("Adding peer from ConfChange")
-		defaultTransport.AddPeer(e.NodeID, ccCtx.RaftAddress)
-
-		if err := servicePool.AddPeer(e.NodeID, ccCtx.ServiceAddress); err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool from ConfChange")
-		}
-	case raftpb.ConfChangeRemoveNode:
-		logger.WithFields(map[string]any{
-			"node_id": e.NodeID,
-		}).Infof("Removing peer from ConfChange")
-		defaultTransport.RemovePeer(context.Background(), e.NodeID)
-
-		err := servicePool.RemovePeer(e.NodeID)
-		if err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to remove peer from service pool")
-		}
 	}
 }
 
