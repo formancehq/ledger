@@ -1,8 +1,7 @@
 package admission
 
 import (
-	"net/url"
-	"strings"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -274,46 +273,40 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 
 	// The SigV4 token written to ConnConfig.Password is a short-lived bearer
 	// credential; admitting a mirror with a non-TLS sslmode would let it
-	// travel in cleartext. Mirror the runtime guard in internal/adapter/v2.
-	if mode := dsnSSLMode(pg.GetDsn()); !sslModeIsTLS(mode) {
+	// travel in cleartext. Use pgx's own parser to avoid string-level
+	// bypasses (e.g. quoted keyword=value DSN fragments). The same guard
+	// runs at the runtime layer for direct gRPC callers; this admission
+	// gate fails earlier, before the order touches the audit chain.
+	if !dsnEnforcesTLS(pg.GetDsn()) {
 		return ErrMirrorIAMRequiresTLS
 	}
 
 	return nil
 }
 
-// dsnSSLMode extracts the libpq sslmode parameter from a Postgres DSN
-// (URI or keyword=value), returning the empty string when unset.
-func dsnSSLMode(dsn string) string {
-	if u, err := url.Parse(dsn); err == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") {
-		return u.Query().Get("sslmode")
+// dsnEnforcesTLS parses dsn through pgxpool and reports whether every
+// connection attempt would use TLS. Mirrors the runtime helper in
+// internal/adapter/v2 (poolConfigEnforcesTLS); duplicated to keep admission
+// independent of the v2 adapter package and to use the same pgx parser as
+// the actual connect path. On parse error returns false -- the runtime
+// guard will surface a more precise error when the mirror worker starts.
+func dsnEnforcesTLS(dsn string) bool {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return false
 	}
 
-	for kv := range strings.FieldsSeq(dsn) {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || k != "sslmode" {
-			continue
+	if cfg.ConnConfig.TLSConfig == nil {
+		return false
+	}
+
+	for _, fb := range cfg.ConnConfig.Fallbacks {
+		if fb == nil || fb.TLSConfig == nil {
+			return false
 		}
-		v = strings.TrimPrefix(v, "'")
-		v = strings.TrimSuffix(v, "'")
-		v = strings.TrimPrefix(v, `"`)
-		v = strings.TrimSuffix(v, `"`)
-
-		return v
 	}
 
-	return ""
-}
-
-// sslModeIsTLS reports whether the libpq sslmode value forces TLS for every
-// connection attempt (i.e. never falls back to cleartext).
-func sslModeIsTLS(mode string) bool {
-	switch mode {
-	case "require", "verify-ca", "verify-full":
-		return true
-	}
-
-	return false
+	return true
 }
 
 // validateMetadataMap validates all keys and values in a metadata map.

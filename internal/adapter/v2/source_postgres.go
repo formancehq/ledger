@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -164,10 +162,13 @@ func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceC
 	// sslmode in {disable, allow, prefer} would let it travel in cleartext
 	// (allow/prefer fall back to non-TLS). libpq's documented default is
 	// "prefer", which is unsafe here, so an unset sslmode is also rejected.
-	// Defense-in-depth -- the operator CRD's XValidation enforces the same
-	// rule, but a direct gRPC caller could bypass it.
-	if mode := dsnSSLMode(cfg.GetDsn()); !sslModeIsTLS(mode) {
-		return nil, fmt.Errorf("aws_iam_auth requires sslmode in {require, verify-ca, verify-full}, got %q", mode)
+	// Inspect the parsed pgx config rather than the raw DSN string -- a
+	// crafted libpq keyword=value DSN (e.g. application_name='x sslmode=require'
+	// sslmode=disable) would defeat naive whitespace tokenisation but cannot
+	// fool pgx's own parser, which is the representation actually used at
+	// connect time.
+	if !poolConfigEnforcesTLS(poolCfg) {
+		return nil, errors.New("aws_iam_auth requires sslmode in {require, verify-ca, verify-full}")
 	}
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
@@ -223,39 +224,27 @@ func iamBeforeConnect(awsCfg aws.Config) func(context.Context, *pgx.ConnConfig) 
 	}
 }
 
-// dsnSSLMode extracts the sslmode parameter from a Postgres DSN (URI or
-// libpq keyword=value format). Returns the empty string when sslmode is
-// unset.
-func dsnSSLMode(dsn string) string {
-	if u, err := url.Parse(dsn); err == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") {
-		return u.Query().Get("sslmode")
+// poolConfigEnforcesTLS reports whether the parsed pgxpool config forces TLS
+// on every connection attempt (i.e. matches libpq sslmode in {require,
+// verify-ca, verify-full}). It inspects the actual pgx config -- the same
+// representation that drives connect attempts at runtime -- so adversarial
+// DSN strings (e.g. quoted libpq keyword=value values containing fake
+// sslmode= substrings) cannot fool a string-level parser.
+//
+// pgx encodes sslmode as: primary ConnConfig.TLSConfig + Fallbacks. A non-nil
+// TLSConfig on every entry means TLS is the only attempt path. disable/allow
+// produce a nil TLSConfig somewhere; prefer puts a nil-TLS fallback after a
+// TLS primary.
+func poolConfigEnforcesTLS(cfg *pgxpool.Config) bool {
+	if cfg == nil || cfg.ConnConfig == nil || cfg.ConnConfig.TLSConfig == nil {
+		return false
 	}
 
-	// Best-effort keyword=value parser. libpq tolerates quoted values; we
-	// strip a single layer of quotes for the common case.
-	for kv := range strings.FieldsSeq(dsn) {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || k != "sslmode" {
-			continue
+	for _, fb := range cfg.ConnConfig.Fallbacks {
+		if fb == nil || fb.TLSConfig == nil {
+			return false
 		}
-		v = strings.TrimPrefix(v, "'")
-		v = strings.TrimSuffix(v, "'")
-		v = strings.TrimPrefix(v, `"`)
-		v = strings.TrimSuffix(v, `"`)
-
-		return v
 	}
 
-	return ""
-}
-
-// sslModeIsTLS reports whether the libpq sslmode value forces TLS for every
-// connection attempt (i.e. never falls back to cleartext).
-func sslModeIsTLS(mode string) bool {
-	switch mode {
-	case "require", "verify-ca", "verify-full":
-		return true
-	}
-
-	return false
+	return true
 }

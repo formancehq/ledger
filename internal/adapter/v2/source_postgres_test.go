@@ -32,6 +32,23 @@ func TestBuildPgxPoolConfig_IAMRegionRequired(t *testing.T) {
 	require.Contains(t, err.Error(), "region is required")
 }
 
+func TestBuildPgxPoolConfig_IAMRejectsAdversarialKeywordDSN(t *testing.T) {
+	t.Parallel()
+
+	// Bypass attempt flagged by NumaryBot: a libpq keyword=value DSN with
+	// a quoted application_name embedding "sslmode=require" but the real
+	// sslmode is "disable". A naive whitespace-split scanner would pick
+	// the embedded value; pgxpool.ParseConfig sees the actual sslmode.
+	dsn := `host=db.example.com user=iam-user dbname=ledger application_name='x sslmode=require y' sslmode=disable`
+
+	_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		Dsn:        dsn,
+		AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+	})
+	require.Error(t, err, "adversarial keyword=value DSN with embedded sslmode= substring must not bypass the TLS gate")
+	require.Contains(t, err.Error(), "sslmode")
+}
+
 func TestBuildPgxPoolConfig_IAMRejectsNonTLSSSLMode(t *testing.T) {
 	t.Parallel()
 
