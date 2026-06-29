@@ -136,6 +136,19 @@ spec:
                           shared across every mirror in the LedgerService, so its policy must
                           cover every RDS endpoint addressed by Ledger CRDs in that service.
                         properties:
+                          assumeRoleArn:
+                            description: |-
+                              AssumeRoleArn is an optional STS role ARN to assume before minting the
+                              RDS IAM token. When set, the mirror calls sts:AssumeRole on this ARN
+                              using the pod's ambient credentials and signs the RDS token with the
+                              assumed credentials. This decouples each mirror's IAM identity from the
+                              pod's base role, so a single LedgerService can mirror RDS instances
+                              across multiple AWS accounts or tenants: the pod's base role only needs
+                              sts:AssumeRole on the listed targets (no direct rds-db:connect grant).
+
+                              When left empty, the pod's ambient credentials are used directly and
+                              must hold rds-db:connect on the target db-user ARN.
+                            type: string
                           region:
                             description: |-
                               Region is the AWS region of the RDS instance (e.g. "eu-west-1").

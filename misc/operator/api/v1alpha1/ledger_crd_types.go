@@ -161,6 +161,19 @@ type AWSIAMAuthSpec struct {
 	// Required to sign the IAM authentication token (SigV4).
 	// +kubebuilder:validation:Required
 	Region string `json:"region"`
+
+	// AssumeRoleArn is an optional STS role ARN to assume before minting the
+	// RDS IAM token. When set, the mirror calls sts:AssumeRole on this ARN
+	// using the pod's ambient credentials and signs the RDS token with the
+	// assumed credentials. This decouples each mirror's IAM identity from the
+	// pod's base role, so a single LedgerService can mirror RDS instances
+	// across multiple AWS accounts or tenants: the pod's base role only needs
+	// sts:AssumeRole on the listed targets (no direct rds-db:connect grant).
+	//
+	// When left empty, the pod's ambient credentials are used directly and
+	// must hold rds-db:connect on the target db-user ARN.
+	// +optional
+	AssumeRoleArn string `json:"assumeRoleArn,omitempty"`
 }
 
 // LedgerCRDStatus defines the observed state of a Ledger.

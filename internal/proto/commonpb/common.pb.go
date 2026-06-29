@@ -7041,8 +7041,15 @@ func (x *PostgresMirrorSourceConfig) GetAwsIamAuth() *PostgresAwsIamAuth {
 }
 
 type PostgresAwsIamAuth struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Region        string                 `protobuf:"bytes,1,opt,name=region,proto3" json:"region,omitempty"` // AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Region string                 `protobuf:"bytes,1,opt,name=region,proto3" json:"region,omitempty"` // AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing
+	// Optional STS role ARN to assume before minting the RDS IAM token. When
+	// set, the mirror calls sts:AssumeRole on this ARN and signs the RDS token
+	// with the assumed credentials, decoupling the per-mirror IAM identity from
+	// the pod's ambient credentials. Enables multi-account / multi-tenant
+	// mirrors from a single LedgerService whose base role only needs
+	// sts:AssumeRole on these targets (no direct rds-db:connect grant).
+	AssumeRoleArn string `protobuf:"bytes,2,opt,name=assume_role_arn,json=assumeRoleArn,proto3" json:"assume_role_arn,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7080,6 +7087,13 @@ func (*PostgresAwsIamAuth) Descriptor() ([]byte, []int) {
 func (x *PostgresAwsIamAuth) GetRegion() string {
 	if x != nil {
 		return x.Region
+	}
+	return ""
+}
+
+func (x *PostgresAwsIamAuth) GetAssumeRoleArn() string {
+	if x != nil {
+		return x.AssumeRoleArn
 	}
 	return ""
 }
@@ -11053,9 +11067,10 @@ const file_common_proto_rawDesc = "" +
 	"\x1aPostgresMirrorSourceConfig\x12\x10\n" +
 	"\x03dsn\x18\x01 \x01(\tR\x03dsn\x12<\n" +
 	"\faws_iam_auth\x18\x02 \x01(\v2\x1a.common.PostgresAwsIamAuthR\n" +
-	"awsIamAuth\",\n" +
+	"awsIamAuth\"T\n" +
 	"\x12PostgresAwsIamAuth\x12\x16\n" +
-	"\x06region\x18\x01 \x01(\tR\x06region\"_\n" +
+	"\x06region\x18\x01 \x01(\tR\x06region\x12&\n" +
+	"\x0fassume_role_arn\x18\x02 \x01(\tR\rassumeRoleArn\"_\n" +
 	"\x0fMirrorSyncError\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x122\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x11.common.TimestampR\n" +

@@ -212,6 +212,7 @@ ledgerctl ledgers create [flags]
 | `--mirror-oauth2-scopes` | | OAuth2 scopes (for `http` source, repeatable) |
 | `--mirror-dsn` | | PostgreSQL DSN (required for `postgres` source) |
 | `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
+| `--mirror-aws-iam-assume-role-arn` | | Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors). Requires `--mirror-aws-iam-region`. |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |

@@ -6958,6 +6958,7 @@ func NewPostgresMirrorSourceConfigListReader(s []*PostgresMirrorSourceConfig) Po
 // Call Mutate() to obtain a mutable clone.
 type PostgresAwsIamAuthReader interface {
 	GetRegion() string
+	GetAssumeRoleArn() string
 	Mutate() *PostgresAwsIamAuth
 }
 
@@ -6965,6 +6966,10 @@ type postgresAwsIamAuthReadonly struct{ v *PostgresAwsIamAuth }
 
 func (r *postgresAwsIamAuthReadonly) GetRegion() string {
 	return r.v.GetRegion()
+}
+
+func (r *postgresAwsIamAuthReadonly) GetAssumeRoleArn() string {
+	return r.v.GetAssumeRoleArn()
 }
 
 func (r *postgresAwsIamAuthReadonly) Mutate() *PostgresAwsIamAuth {

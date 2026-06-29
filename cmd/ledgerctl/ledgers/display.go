@@ -53,6 +53,10 @@ func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 
 		if iam := s.Postgres.GetAwsIamAuth(); iam != nil {
 			pterm.Printf("  IAM:     AWS RDS IAM auth (region=%s)\n", iam.GetRegion())
+
+			if role := iam.GetAssumeRoleArn(); role != "" {
+				pterm.Printf("  Role:    %s\n", role)
+			}
 		}
 	}
 
@@ -108,6 +112,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 		cmd.Flags().Changed("mirror-oauth2-scopes") ||
 		cmd.Flags().Changed("mirror-dsn") ||
 		cmd.Flags().Changed("mirror-aws-iam-region") ||
+		cmd.Flags().Changed("mirror-aws-iam-assume-role-arn") ||
 		cmd.Flags().Changed("mirror-batch-size")
 
 	if hasMirrorFlags && !cmd.Flags().Changed("mode") {
@@ -186,6 +191,13 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			pgCfg.AwsIamAuth = &commonpb.PostgresAwsIamAuth{
 				Region: iamRegion,
 			}
+		}
+
+		if assumeRoleArn, _ := cmd.Flags().GetString("mirror-aws-iam-assume-role-arn"); assumeRoleArn != "" {
+			if pgCfg.GetAwsIamAuth() == nil {
+				return 0, nil, errors.New("--mirror-aws-iam-assume-role-arn requires --mirror-aws-iam-region to be set")
+			}
+			pgCfg.AwsIamAuth.AssumeRoleArn = assumeRoleArn
 		}
 
 		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{

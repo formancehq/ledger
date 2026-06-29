@@ -327,6 +327,36 @@ func TestBuildCreateArgs_MirrorPostgresAWSIAMAuth(t *testing.T) {
 	}, args)
 }
 
+func TestBuildCreateArgs_MirrorPostgresAWSIAMAuthWithAssumeRole(t *testing.T) {
+	t.Parallel()
+
+	r := newTestLedgerReconciler()
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
+			Host:     "db.region.rds.amazonaws.com",
+			User:     "iam-user",
+			Database: "ledger",
+			AWSIAMAuth: &ledgerv1alpha1.AWSIAMAuthSpec{
+				Region:        "eu-west-1",
+				AssumeRoleArn: "arn:aws:iam::222222222222:role/cross-tenant-mirror",
+			},
+		},
+	}
+
+	args, err := r.buildCreateArgs(context.Background(), ledger)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"ledgers", "create", "--name", "ledger1",
+		"--mode", "mirror",
+		"--mirror-source-type", "postgres",
+		"--mirror-dsn", "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require",
+		"--mirror-aws-iam-region", "eu-west-1",
+		"--mirror-aws-iam-assume-role-arn", "arn:aws:iam::222222222222:role/cross-tenant-mirror",
+	}, args)
+}
+
 func TestBuildCreateArgs_MirrorPostgresMissingAuth(t *testing.T) {
 	t.Parallel()
 

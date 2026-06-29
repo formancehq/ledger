@@ -436,6 +436,10 @@ func (r *LedgerReconciler) buildPostgresMirrorArgs(ctx context.Context, namespac
 
 	if pg.AWSIAMAuth != nil {
 		args = append(args, "--mirror-aws-iam-region", pg.AWSIAMAuth.Region)
+
+		if pg.AWSIAMAuth.AssumeRoleArn != "" {
+			args = append(args, "--mirror-aws-iam-assume-role-arn", pg.AWSIAMAuth.AssumeRoleArn)
+		}
 	}
 
 	return args, nil

@@ -10,7 +10,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
@@ -161,6 +163,16 @@ func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceC
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("loading AWS config for IAM auth: %w", err)
+	}
+
+	if roleArn := iam.GetAssumeRoleArn(); roleArn != "" {
+		// Wrap the ambient credentials with an STS AssumeRole provider so the
+		// RDS token is signed with the assumed-role's identity instead of the
+		// pod's base identity. NewCredentialsCache memoizes the STS response
+		// until ~5 minutes before expiry; each fresh AssumeRole costs one STS
+		// call, not one per pgxpool BeforeConnect.
+		stsClient := sts.NewFromConfig(awsCfg)
+		awsCfg.Credentials = aws.NewCredentialsCache(stscreds.NewAssumeRoleProvider(stsClient, roleArn))
 	}
 
 	poolCfg.BeforeConnect = iamBeforeConnect(awsCfg)
