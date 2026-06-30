@@ -78,8 +78,9 @@ var (
 	metaNullOriginalPool = []string{"", "null", "030"}
 )
 
-// Field types declared by SetMetadataFieldType (string, bool, every
-// signed/unsigned int width), exercising the schema declare/retype apply path.
+// Field types declared by SetMetadataFieldType (string, bool, datetime, and
+// every signed/unsigned int width), exercising the schema declare/retype apply
+// path across the full MetadataType set.
 var metaTypePool = []commonpb.MetadataType{
 	commonpb.MetadataType_METADATA_TYPE_STRING,
 	commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -91,6 +92,7 @@ var metaTypePool = []commonpb.MetadataType{
 	commonpb.MetadataType_METADATA_TYPE_UINT8,
 	commonpb.MetadataType_METADATA_TYPE_UINT16,
 	commonpb.MetadataType_METADATA_TYPE_UINT32,
+	commonpb.MetadataType_METADATA_TYPE_DATETIME,
 }
 
 // Targets whose metadata schema the model tracks.
