@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/uptrace/bun"
 
@@ -35,6 +36,18 @@ func (l Ledger) HasFeature(feature, value string) bool {
 	}
 
 	return l.Features[feature] == value
+}
+
+// GetIndexedMetadataKeys returns the list of metadata keys for which the query
+// builder will emit a functional-index-compatible predicate (metadata ->> 'key' = 'value')
+// instead of the default JSONB containment form. The list is stored as a comma-separated
+// string in Features[FeatureIndexedMetadataKeys].
+func (l Ledger) GetIndexedMetadataKeys() []string {
+	val := l.Features[features.FeatureIndexedMetadataKeys]
+	if val == "" {
+		return nil
+	}
+	return strings.Split(val, ",")
 }
 
 func (l Ledger) WithMetadata(m metadata.Metadata) Ledger {

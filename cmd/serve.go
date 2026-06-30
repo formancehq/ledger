@@ -42,6 +42,7 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/formancehq/ledger/internal/worker"
@@ -66,6 +67,21 @@ type ServeCommandConfig struct {
 	AuditAsyncQueueCapacity int    `mapstructure:"audit-async-queue-capacity"`
 	AuditAsyncWorkerCount   int    `mapstructure:"audit-async-worker-count"`
 
+	// TxListAdaptiveFallback enables the hedged-request strategy for the
+	// transactions-list SELECT. Default true. When enabled, the original query
+	// races against a delayed chaser with GIN plan override; whichever finishes
+	// first wins. Dense/fast wallets finish before the chaser fires and see no
+	// behaviour change. See ledgerstore.TransactionListConfig for details.
+	TxListAdaptiveFallback bool `mapstructure:"tx-list-adaptive-fallback"`
+
+	// TxListChaserDelayMs is the delay before firing the chaser query (ms).
+	// Default 5000. If the original finishes within this budget, no chaser fires.
+	TxListChaserDelayMs int64 `mapstructure:"tx-list-chaser-delay-ms"`
+
+	// TxListChaserTimeoutMs is the statement_timeout for the chaser query (ms).
+	// The original query has no timeout. Default 40000.
+	TxListChaserTimeoutMs int64 `mapstructure:"tx-list-chaser-timeout-ms"`
+
 	DisableLedgerScopeOptimization bool `mapstructure:"disable-ledger-scope-optimization"`
 }
 
@@ -86,6 +102,13 @@ const (
 	AuditAsyncEnabledFlag       = "audit-async-enabled"
 	AuditAsyncQueueCapacityFlag = "audit-async-queue-capacity"
 	AuditAsyncWorkerCountFlag   = "audit-async-worker-count"
+
+	// TxListAdaptiveFallbackFlag enables the hedged-request strategy.
+	TxListAdaptiveFallbackFlag = "tx-list-adaptive-fallback"
+	// TxListChaserDelayMsFlag sets the delay before the chaser fires (ms).
+	TxListChaserDelayMsFlag = "tx-list-chaser-delay-ms"
+	// TxListChaserTimeoutMsFlag sets the chaser's statement_timeout (ms).
+	TxListChaserTimeoutMsFlag = "tx-list-chaser-timeout-ms"
 
 	DisableLedgerScopeOptimizationFlag = "disable-ledger-scope-optimization"
 )
@@ -118,7 +141,12 @@ func NewServeCommand() *cobra.Command {
 				fx.Supply(connectionOptions),
 				storagefx.BunConnectModule(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
-					AutoUpgrade:                     cfg.AutoUpgrade,
+					AutoUpgrade: cfg.AutoUpgrade,
+					TransactionListConfig: ledgerstore.TransactionListConfig{
+						EnableAdaptiveFallback: cfg.TxListAdaptiveFallback,
+						ChaserDelayMs:          cfg.TxListChaserDelayMs,
+						ChaserTimeoutMs:        cfg.TxListChaserTimeoutMs,
+					},
 					DisableScopedSelectOptimization: cfg.DisableLedgerScopeOptimization,
 				}),
 				drivers.NewFXModule(),
@@ -221,6 +249,18 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(AuditAsyncEnabledFlag, true, "Publish HTTP audit events asynchronously")
 	cmd.Flags().Int(AuditAsyncQueueCapacityFlag, api.DefaultAuditAsyncQueueCapacity, "HTTP audit async publish queue capacity")
 	cmd.Flags().Int(AuditAsyncWorkerCountFlag, api.DefaultAuditAsyncWorkerCount, "HTTP audit async publish worker count")
+	cmd.Flags().Bool(TxListAdaptiveFallbackFlag, true,
+		"Enable the hedged-request strategy for the transactions-list SELECT. "+
+			"When enabled (default), the original query runs with no timeout; "+
+			"after --tx-list-chaser-delay-ms a parallel chaser fires with GIN plan override. "+
+			"Whichever finishes first wins, the other is cancelled. "+
+			"Dense/fast wallets finish before the chaser fires and see no behaviour change.")
+	cmd.Flags().Int64(TxListChaserDelayMsFlag, 5_000,
+		"Delay in ms before firing the chaser query for the transactions-list SELECT. "+
+			"If the original finishes within this budget, no chaser fires.")
+	cmd.Flags().Int64(TxListChaserTimeoutMsFlag, 40_000,
+		"Statement timeout in ms for the chaser query of the transactions-list SELECT. "+
+			"The original query has no timeout.")
 	cmd.Flags().Bool(DisableLedgerScopeOptimizationFlag, false, "Always emit the `ledger = ?` predicate on read queries, disabling the alone-in-bucket optimization that skips it when a ledger is the only one in its bucket")
 
 	addWorkerFlags(cmd)
