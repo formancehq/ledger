@@ -34,8 +34,8 @@ func TestLedgersCreate(t *testing.T) {
 		systemstore.NewStoreFactory(),
 	)
 
-	prefix := uuid.NewString()[:8]
-	buckets := []string{prefix + "b1", prefix + "b2"}
+	prefix := uuid.NewString()
+	buckets := []string{prefix + "-b1", prefix + "-b2"}
 	const countLedgers = 30
 
 	wg := sync.WaitGroup{}
@@ -88,7 +88,7 @@ func TestLedgersList(t *testing.T) {
 		systemstore.NewStoreFactory(),
 	)
 
-	bucket := uuid.NewString()[:8]
+	bucket := uuid.NewString()
 
 	l1, err := ledger.New(uuid.NewString(), ledger.Configuration{
 		Bucket: bucket,
