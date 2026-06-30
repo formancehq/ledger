@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
+	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -111,6 +112,14 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 		}).Infof("Applying cluster config change: resetting cache and purging 0xFF")
 
 		fsm.Registry.Cache.ResetWithThreshold(newThreshold)
+		// ResetWithThreshold leaves currentGeneration=0, but the Raft log is
+		// long past index 0 — admission's CheckCache would compute
+		// Gen(nextIndex, newThreshold) - 0, a large value that erroneously
+		// trips the CacheUnreachable horizon and rejects every incoming
+		// proposal until the next FSM apply moves currentGeneration forward.
+		// Set it to the post-reset truth immediately so admission queries
+		// see a consistent (currentGeneration, threshold) pair.
+		fsm.Registry.Cache.SetCurrentGeneration(cache.Gen(raftIndex, newThreshold))
 
 		// Purge both generation byte positions (0 and 1) in the 0xFF cache zone.
 		// We can't use a single DeleteRange from [0xFF] to [0xFF+1] because
