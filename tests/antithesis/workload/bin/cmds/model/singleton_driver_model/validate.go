@@ -23,6 +23,7 @@ import (
 // forward model. Caller holds c.mu.
 func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
 	dbg("BULK OK: ledgers=%s reqKinds=%s logSeqs=%s meta=%s", bulkLedgers(bulk), requestKinds(bulk), logSeqs(resp.GetLogs()), bulkMeta(bulk))
+	dumpBatch(minLogSequence(resp.GetLogs()), applyRequest(bulk))
 
 	c.crossCheckCommit(bulk, resp)
 }

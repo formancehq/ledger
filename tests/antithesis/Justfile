@@ -9,6 +9,11 @@ tag := "antithesis"
 # to cohabit with other forks pushed under the same Antithesis registry.
 ledger_image_name := env_var_or_default("LEDGER_IMAGE_NAME", "ledger")
 
+# Set MODEL_DUMP_BATCHES=1 to make the singleton_driver_model dump every
+# committed ApplyRequest (base64) into the workload logs, for exact
+# deterministic replay through the oracle (see tests/oracle/cmd/replay).
+# e.g.  MODEL_DUMP_BATCHES=1 just k8s-run 1
+
 # --- Docker Compose mode (legacy) ---
 
 # include: optional comma-separated list of <template>/<driver> paths to ship

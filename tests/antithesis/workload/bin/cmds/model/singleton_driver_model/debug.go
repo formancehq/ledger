@@ -1,8 +1,8 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
-	"github.com/formancehq/ledger/v3/tests/oracle"
 	"log"
 	"os"
 	"sort"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 // MODEL_DEBUG=1 enables verbose per-transaction logging.
@@ -19,6 +20,24 @@ func dbg(format string, args ...any) {
 	if modelDebug {
 		log.Printf("[model-debug] "+format, args...)
 	}
+}
+
+// MODEL_DUMP_BATCHES=1 dumps each committed ApplyRequest (base64 vtproto) keyed
+// by its min committed log sequence, so the exact full sequence can be replayed
+// deterministically through the oracle (see tests/oracle/cmd/replay).
+var dumpBatches = os.Getenv("MODEL_DUMP_BATCHES") != ""
+
+func dumpBatch(seq uint64, req *servicepb.ApplyRequest) {
+	if !dumpBatches {
+		return
+	}
+
+	b, err := req.MarshalVT()
+	if err != nil {
+		return
+	}
+
+	log.Printf("[batch-dump] seq=%d b64=%s", seq, base64.StdEncoding.EncodeToString(b))
 }
 
 // Distinct ledgers a bulk touches, sorted — for debug lines.
