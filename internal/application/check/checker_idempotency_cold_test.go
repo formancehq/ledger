@@ -3,6 +3,7 @@ package check
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"sort"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -262,6 +264,147 @@ func TestCompareIdempotencyOutcomes_NeverExpireScansFullArchivedHistory(t *testi
 		"never-expire must scan the full archived history and flag a tampered ancient entry")
 	require.Contains(t, got[0].GetMessage(), "500",
 		"the flagged mismatch should reference the ancient created_at")
+}
+
+// TestReDeriveArchivedIdempotency_Bounds exercises the branch behaviour of the
+// cold re-derivation directly: coverage of archived data, the no-cold-reader and
+// failed-read fallbacks, the newest-first scan stopping at the first chapter
+// entirely below the window, and skipping non-keyed entries.
+func TestReDeriveArchivedIdempotency_Bounds(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "test-bucket"
+
+	store := createTestStore(t)
+	ctx := context.Background()
+
+	archived := func(id, closeAuditSeq uint64) *commonpb.Chapter {
+		return &commonpb.Chapter{Id: id, Status: commonpb.ChapterStatus_CHAPTER_ARCHIVED, CloseAuditSequence: closeAuditSeq}
+	}
+
+	t.Run("no archived chapters is fully covered without a cold reader", func(t *testing.T) {
+		t.Parallel()
+
+		c := NewChecker(store, attributes.New(), "x", nil, logging.Testing())
+		require.True(t, c.reDeriveArchivedIdempotency(ctx, nil, 0, map[idemExpectedKey]expectedIdempotency{}))
+	})
+
+	t.Run("archived data with no cold reader is not covered", func(t *testing.T) {
+		t.Parallel()
+
+		c := NewChecker(store, attributes.New(), "x", nil, logging.Testing())
+		require.False(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(1, 2)}, 0, map[idemExpectedKey]expectedIdempotency{}))
+	})
+
+	t.Run("a missing archive is a read failure, not coverage", func(t *testing.T) {
+		t.Parallel()
+
+		// Cold reader over an empty store: GetReader fails for the chapter.
+		reader := coldReaderWithChapters(t, bucketID, nil)
+		c := NewChecker(store, attributes.New(), "x", reader, logging.Testing())
+		require.False(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(99, 2)}, 0, map[idemExpectedKey]expectedIdempotency{}))
+	})
+
+	t.Run("scan stops at the first chapter below the window and skips non-keyed entries", func(t *testing.T) {
+		t.Parallel()
+
+		const cutoff = 2000
+
+		serialized := (&raftcmdpb.Order{}).MarshalDeterministicVT(nil)
+
+		// Newer chapter: one keyed entry in-window + one non-keyed entry.
+		newer := buildColdAuditSST(t, []*auditpb.AuditEntry{
+			{Sequence: 5, Timestamp: &commonpb.Timestamp{Data: 3000}, Idempotency: &commonpb.Idempotency{Key: "k"}, Outcome: idemAuditFailure("m", nil)},
+			{Sequence: 6, Timestamp: &commonpb.Timestamp{Data: 4000}, Outcome: idemAuditFailure("no-key", nil)},
+		}, map[uint64][]*auditpb.AuditItem{5: {{OrderIndex: 0, SerializedOrder: serialized}}})
+
+		// Older chapter: entirely below the cutoff — must not be scanned for items.
+		older := buildColdAuditSST(t, []*auditpb.AuditEntry{
+			{Sequence: 3, Timestamp: &commonpb.Timestamp{Data: 500}, Idempotency: &commonpb.Idempotency{Key: "old"}, Outcome: idemAuditFailure("x", nil)},
+			{Sequence: 4, Timestamp: &commonpb.Timestamp{Data: 1000}, Idempotency: &commonpb.Idempotency{Key: "old2"}, Outcome: idemAuditFailure("y", nil)},
+		}, map[uint64][]*auditpb.AuditItem{4: {{OrderIndex: 0, SerializedOrder: serialized}}})
+
+		reader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{20: newer, 10: older})
+		c := NewChecker(store, attributes.New(), "x", reader, logging.Testing())
+
+		expected := map[idemExpectedKey]expectedIdempotency{}
+		require.True(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(20, 6), archived(10, 4)}, cutoff, expected))
+
+		// Only the in-window keyed entry was re-derived: the non-keyed entry was
+		// skipped, and the older chapter (below the window) was never scanned.
+		require.Len(t, expected, 1)
+		_, ok := expected[idemExpectedKey{keyHash: state.HashIdempotencyKey("k"), createdAt: 3000}]
+		require.True(t, ok, "the in-window keyed entry must be re-derived")
+	})
+}
+
+// TestCheck_DerivesIdempotencyTTLWindowFromPersistedConfig exercises the
+// end-to-end path in Check that reads the persisted idempotency TTL and the
+// last-applied timestamp and computes the window cutoff. A clean store with a
+// non-zero TTL configured must still pass.
+func TestCheck_DerivesIdempotencyTTLWindowFromPersistedConfig(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("test"))
+	engine.processAndCommit(createTransactionOrder("test", true,
+		newPosting("world", "user:alice", "USD", 100)))
+
+	// Non-zero TTL + a last-applied timestamp ahead of it, so Check computes a
+	// bounded (non-zero) cutoff.
+	writeGlobalUint64(t, engine.store, dal.SubGlobLastAppliedTimestamp, 1_700_000_100_000_000)
+	writePersistedConfig(t, engine.store, &commonpb.PersistedConfig{
+		ClusterId:             engine.clusterID,
+		IdempotencyTtlSeconds: 3600,
+	})
+
+	require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs),
+		"a clean store with a persisted idempotency TTL must pass Check")
+}
+
+// writePersistedConfig stores the PersistedConfig at its Global-zone key, the
+// layout query.ReadPersistedConfig reads.
+func writePersistedConfig(t *testing.T, store *dal.Store, cfg *commonpb.PersistedConfig) {
+	t.Helper()
+
+	data, err := cfg.MarshalVT()
+	require.NoError(t, err)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, data))
+	require.NoError(t, batch.Commit())
+}
+
+// writeGlobalUint64 stores a big-endian uint64 under a Global-zone sub-key, the
+// encoding dal.ReadUint64 expects.
+func writeGlobalUint64(t *testing.T, store *dal.Store, sub byte, v uint64) {
+	t.Helper()
+
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, v)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, sub}, buf))
+	require.NoError(t, batch.Commit())
+}
+
+// coldReaderWithChapters builds a ColdReader backed by a filesystem store
+// holding the given chapter SSTs (chapterID -> SST bytes).
+func coldReaderWithChapters(t *testing.T, bucketID string, sstByChapter map[uint64][]byte) *coldstorage.ColdReader {
+	t.Helper()
+
+	fs := coldstorage.NewFilesystemStorage(t.TempDir())
+
+	for id, sst := range sstByChapter {
+		checksum, err := coldstorage.ComputeSHA256(bytes.NewReader(sst))
+		require.NoError(t, err)
+		require.NoError(t, fs.Archive(context.Background(), bucketID, id, bytes.NewReader(sst), checksum))
+	}
+
+	reader := coldstorage.NewColdReader(fs, bucketID, t.TempDir(), 8, 0, logging.Testing())
+	t.Cleanup(func() { _ = reader.Close() })
+
+	return reader
 }
 
 // idemAuditFailure builds a freezable-failure outcome for an archived audit
