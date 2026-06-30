@@ -14,9 +14,10 @@
 //
 // Layout:
 //
-//   - model.go: LedgerState (per-ledger sub-state) + GlobalState + the pure
-//     forward Apply that predicts the server's outcome for a bulk — the model. A
-//     bulk may span ledgers; Apply is atomic across them.
+//   - the model itself is the oracle package (tests/oracle): LedgerState
+//     (per-ledger sub-state) + GlobalState + the pure forward Apply that predicts
+//     the server's outcome for a bulk. A bulk may span ledgers; Apply is atomic
+//     across them. This driver imports it as `oracle`.
 //   - checker.go: Checker — the harness bookkeeping (in-flight/pending re-order
 //     buffer, modelState).
 //   - processor.go: one goroutine; re-orders observed responses by log sequence
@@ -44,7 +45,9 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -164,7 +167,7 @@ func runWorker(
 		ticket := c.registerInflight(bulk)
 		c.mu.Unlock()
 
-		resp, err := client.Apply(ctx, bulk.ApplyRequest())
+		resp, err := client.Apply(ctx, applyRequest(bulk))
 
 		// Snapshot the ticket high-water at observe (lock-free, atomic counter);
 		// the drain gate compares outstanding tickets against it (see tryDrain).

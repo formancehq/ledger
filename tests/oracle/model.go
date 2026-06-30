@@ -1,8 +1,9 @@
-package main
+package oracle
 
 import (
 	"fmt"
 	"io"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,8 +35,8 @@ type MetaKey struct {
 	Key     string
 }
 
-// compareMetaKey compares MetaKeys by address, then key.
-func compareMetaKey(a, b MetaKey) int {
+// CompareMetaKey compares MetaKeys by address, then key.
+func CompareMetaKey(a, b MetaKey) int {
 	if c := strings.Compare(a.Address, b.Address); c != 0 {
 		return c
 	}
@@ -52,8 +53,8 @@ type TxMetaKey struct {
 	Key       string
 }
 
-// compareTxMetaKey compares TxMetaKeys by reference, then key.
-func compareTxMetaKey(a, b TxMetaKey) int {
+// CompareTxMetaKey compares TxMetaKeys by reference, then key.
+func CompareTxMetaKey(a, b TxMetaKey) int {
 	if c := strings.Compare(a.Reference, b.Reference); c != 0 {
 		return c
 	}
@@ -67,8 +68,8 @@ type VolumePair struct {
 	Output uint256.Int
 }
 
-// compareVolumeKey compares VolumeKeys by address, then asset.
-func compareVolumeKey(a, b VolumeKey) int {
+// CompareVolumeKey compares VolumeKeys by address, then asset.
+func CompareVolumeKey(a, b VolumeKey) int {
 	if c := strings.Compare(a.Address, b.Address); c != 0 {
 		return c
 	}
@@ -131,56 +132,36 @@ func NewLedgerState() LedgerState {
 // never mutated in place (a set replaces the entry, a delete removes it).
 func (s LedgerState) clone() LedgerState {
 	types := make(map[string]TypeState, len(s.types))
-	for k, v := range s.types {
-		types[k] = v
-	}
+	maps.Copy(types, s.types)
 
 	volumes := make(map[VolumeKey]VolumePair, len(s.volumes))
-	for k, v := range s.volumes {
-		volumes[k] = v
-	}
+	maps.Copy(volumes, s.volumes)
 
 	metadata := make(map[MetaKey]*commonpb.MetadataValue, len(s.metadata))
-	for k, v := range s.metadata {
-		metadata[k] = v
-	}
+	maps.Copy(metadata, s.metadata)
 
 	ledgerMeta := make(map[string]*commonpb.MetadataValue, len(s.ledgerMeta))
-	for k, v := range s.ledgerMeta {
-		ledgerMeta[k] = v
-	}
+	maps.Copy(ledgerMeta, s.ledgerMeta)
 
 	accountFieldTypes := make(map[string]commonpb.MetadataType, len(s.accountFieldTypes))
-	for k, v := range s.accountFieldTypes {
-		accountFieldTypes[k] = v
-	}
+	maps.Copy(accountFieldTypes, s.accountFieldTypes)
 
 	ledgerFieldTypes := make(map[string]commonpb.MetadataType, len(s.ledgerFieldTypes))
-	for k, v := range s.ledgerFieldTypes {
-		ledgerFieldTypes[k] = v
-	}
+	maps.Copy(ledgerFieldTypes, s.ledgerFieldTypes)
 
 	// Records are replaced (not mutated in place) on a revert, so clones can
 	// share the pointer.
 	txRefs := make(map[string]*txRecord, len(s.txRefs))
-	for k, v := range s.txRefs {
-		txRefs[k] = v
-	}
+	maps.Copy(txRefs, s.txRefs)
 
 	txMeta := make(map[TxMetaKey]*commonpb.MetadataValue, len(s.txMeta))
-	for k, v := range s.txMeta {
-		txMeta[k] = v
-	}
+	maps.Copy(txMeta, s.txMeta)
 
 	txIDToRef := make(map[uint64]string, len(s.txIDToRef))
-	for k, v := range s.txIDToRef {
-		txIDToRef[k] = v
-	}
+	maps.Copy(txIDToRef, s.txIDToRef)
 
 	transactionFieldTypes := make(map[string]commonpb.MetadataType, len(s.transactionFieldTypes))
-	for k, v := range s.transactionFieldTypes {
-		transactionFieldTypes[k] = v
-	}
+	maps.Copy(transactionFieldTypes, s.transactionFieldTypes)
 
 	return LedgerState{
 		types:                 types,
@@ -223,7 +204,7 @@ func (s *LedgerState) match(addr string, compiled []accounttype.CompiledType) *T
 }
 
 // hash writes a canonical identity of the ledger's state into h.
-func (s LedgerState) hash(h io.Writer) {
+func (s LedgerState) Hash(h io.Writer) {
 	names := make([]string, 0, len(s.types))
 	for n := range s.types {
 		names = append(names, n)
@@ -231,26 +212,26 @@ func (s LedgerState) hash(h io.Writer) {
 	sort.Strings(names)
 	for _, n := range names {
 		t := s.types[n]
-		fmt.Fprintf(h, "T|%s|%s|%d\n", t.Name, t.Pattern, t.Persistence)
+		_, _ = fmt.Fprintf(h, "T|%s|%s|%d\n", t.Name, t.Pattern, t.Persistence)
 	}
 
 	keys := make([]VolumeKey, 0, len(s.volumes))
 	for k := range s.volumes {
 		keys = append(keys, k)
 	}
-	sort.Slice(keys, func(i, j int) bool { return compareVolumeKey(keys[i], keys[j]) < 0 })
+	sort.Slice(keys, func(i, j int) bool { return CompareVolumeKey(keys[i], keys[j]) < 0 })
 	for _, k := range keys {
 		v := s.volumes[k]
-		fmt.Fprintf(h, "V|%s|%s|%s|%s\n", k.Address, k.Asset, v.Input.Dec(), v.Output.Dec())
+		_, _ = fmt.Fprintf(h, "V|%s|%s|%s|%s\n", k.Address, k.Asset, v.Input.Dec(), v.Output.Dec())
 	}
 
 	mkeys := make([]MetaKey, 0, len(s.metadata))
 	for k := range s.metadata {
 		mkeys = append(mkeys, k)
 	}
-	sort.Slice(mkeys, func(i, j int) bool { return compareMetaKey(mkeys[i], mkeys[j]) < 0 })
+	sort.Slice(mkeys, func(i, j int) bool { return CompareMetaKey(mkeys[i], mkeys[j]) < 0 })
 	for _, k := range mkeys {
-		fmt.Fprintf(h, "M|%s|%s|%s\n", k.Address, k.Key, metaValueString(s.metadata[k]))
+		_, _ = fmt.Fprintf(h, "M|%s|%s|%s\n", k.Address, k.Key, MetaValueString(s.metadata[k]))
 	}
 
 	lkeys := make([]string, 0, len(s.ledgerMeta))
@@ -259,7 +240,7 @@ func (s LedgerState) hash(h io.Writer) {
 	}
 	sort.Strings(lkeys)
 	for _, k := range lkeys {
-		fmt.Fprintf(h, "LM|%s|%s\n", k, metaValueString(s.ledgerMeta[k]))
+		_, _ = fmt.Fprintf(h, "LM|%s|%s\n", k, MetaValueString(s.ledgerMeta[k]))
 	}
 
 	hashFieldTypes(h, "AF", s.accountFieldTypes)
@@ -276,16 +257,16 @@ func (s LedgerState) hash(h io.Writer) {
 		if s.txRefs[r].reverted {
 			rev = "R"
 		}
-		fmt.Fprintf(h, "TR|%s|%s\n", r, rev)
+		_, _ = fmt.Fprintf(h, "TR|%s|%s\n", r, rev)
 	}
 
 	tkeys := make([]TxMetaKey, 0, len(s.txMeta))
 	for k := range s.txMeta {
 		tkeys = append(tkeys, k)
 	}
-	sort.Slice(tkeys, func(i, j int) bool { return compareTxMetaKey(tkeys[i], tkeys[j]) < 0 })
+	sort.Slice(tkeys, func(i, j int) bool { return CompareTxMetaKey(tkeys[i], tkeys[j]) < 0 })
 	for _, k := range tkeys {
-		fmt.Fprintf(h, "TM|%s|%s|%s\n", k.Reference, k.Key, metaValueString(s.txMeta[k]))
+		_, _ = fmt.Fprintf(h, "TM|%s|%s|%s\n", k.Reference, k.Key, MetaValueString(s.txMeta[k]))
 	}
 }
 
@@ -297,14 +278,14 @@ func hashFieldTypes(h io.Writer, tag string, types map[string]commonpb.MetadataT
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		fmt.Fprintf(h, "%s|%s|%d\n", tag, k, types[k])
+		_, _ = fmt.Fprintf(h, "%s|%s|%d\n", tag, k, types[k])
 	}
 }
 
-// metaValueString renders a metadata value as a canonical, type-tagged string,
+// MetaValueString renders a metadata value as a canonical, type-tagged string,
 // used for both hashing and equality: two values are equal iff their renderings
 // match. The type tag keeps a string "5" distinct from an int 5.
-func metaValueString(v *commonpb.MetadataValue) string {
+func MetaValueString(v *commonpb.MetadataValue) string {
 	switch t := v.GetType().(type) {
 	case *commonpb.MetadataValue_StringValue:
 		return "s:" + t.StringValue
@@ -323,7 +304,7 @@ func metaValueString(v *commonpb.MetadataValue) string {
 
 // matchAddress resolves addr to its account type in this state (compiling the
 // chart fresh), or nil. Convenience for callers that match a single address.
-func (s *LedgerState) matchAddress(addr string) *TypeState {
+func (s *LedgerState) MatchAddress(addr string) *TypeState {
 	return s.match(addr, s.compiled())
 }
 
@@ -333,7 +314,7 @@ func (s *LedgerState) vol(key VolumeKey) VolumePair {
 }
 
 // accountMetadata returns addr's metadata as a key→value map (empty if none).
-func (s *LedgerState) accountMetadata(addr string) map[string]*commonpb.MetadataValue {
+func (s *LedgerState) AccountMetadata(addr string) map[string]*commonpb.MetadataValue {
 	out := map[string]*commonpb.MetadataValue{}
 	for mk, v := range s.metadata {
 		if mk.Address == addr {
@@ -372,7 +353,7 @@ func (g GlobalState) clone() GlobalState {
 }
 
 // ledger returns the named ledger's state, or an empty one if untouched.
-func (g GlobalState) ledger(name string) LedgerState {
+func (g GlobalState) Ledger(name string) LedgerState {
 	if ls, ok := g.ledgers[name]; ok {
 		return ls
 	}
@@ -383,7 +364,7 @@ func (g GlobalState) ledger(name string) LedgerState {
 // hash writes a canonical identity across all non-empty ledgers into h.
 // candidateBases dedups on the resulting 64-bit hash, collapsing bases reached
 // via different (commutative) serializations.
-func (g GlobalState) hash(h io.Writer) {
+func (g GlobalState) Hash(h io.Writer) {
 	names := make([]string, 0, len(g.ledgers))
 	for n := range g.ledgers {
 		names = append(names, n)
@@ -396,8 +377,8 @@ func (g GlobalState) hash(h io.Writer) {
 			len(ls.accountFieldTypes) == 0 && len(ls.ledgerFieldTypes) == 0 {
 			continue
 		}
-		fmt.Fprintf(h, "L|%s\n", n)
-		ls.hash(h)
+		_, _ = fmt.Fprintf(h, "L|%s\n", n)
+		ls.Hash(h)
 	}
 }
 
@@ -458,8 +439,8 @@ type ApplyResult struct {
 	Orders []OrderResult
 }
 
-// ledgerOf returns the ledger a request targets.
-func ledgerOf(req *servicepb.Request) string {
+// LedgerOf returns the ledger a request targets.
+func LedgerOf(req *servicepb.Request) string {
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_Apply:
 		return r.Apply.GetLedger()
@@ -476,7 +457,7 @@ func ledgerOf(req *servicepb.Request) string {
 	case *servicepb.Request_RemoveMetadataFieldType:
 		return r.RemoveMetadataFieldType.GetLedger()
 	default:
-		panic(fmt.Sprintf("ledgerOf: unmodeled request type %T", req.GetType()))
+		panic(fmt.Sprintf("LedgerOf: unmodeled request type %T", req.GetType()))
 	}
 }
 
@@ -491,7 +472,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	touched := map[string]map[VolumeKey]bool{}
 
 	for _, req := range bulk.Requests {
-		name := ledgerOf(req)
+		name := LedgerOf(req)
 
 		ls, ok := next.ledgers[name]
 		if !ok {
@@ -523,7 +504,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	// cells are purged.
 	for name, cells := range touched {
 		ls := next.ledgers[name]
-		base := g.ledger(name)
+		base := g.Ledger(name)
 
 		if reason, violated := ls.transientViolation(&base, cells); violated {
 			return ApplyResult{OK: false, Reason: reason, State: g, Orders: orders}

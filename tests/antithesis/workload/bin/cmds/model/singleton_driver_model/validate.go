@@ -4,10 +4,13 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/holiman/uint256"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"github.com/holiman/uint256"
 )
 
 // The model-conformance checks: every observed server outcome — a committed
@@ -18,7 +21,7 @@ import (
 
 // validateBulkSuccess records a committed bulk and cross-checks it against the
 // forward model. Caller holds c.mu.
-func (c *Checker) validateBulkSuccess(bulk Bulk, resp *servicepb.ApplyResponse) {
+func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
 	dbg("BULK OK: ledgers=%s reqKinds=%s logSeqs=%s meta=%s", bulkLedgers(bulk), requestKinds(bulk), logSeqs(resp.GetLogs()), bulkMeta(bulk))
 
 	c.crossCheckCommit(bulk, resp)
@@ -31,7 +34,7 @@ func (c *Checker) validateBulkSuccess(bulk Bulk, resp *servicepb.ApplyResponse) 
 // post-commit volumes. A disagreement is a finding — the server accepted
 // something the model rejects, or the volumes diverged. modelState advances
 // only on agreement. Caller holds c.mu.
-func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
+func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
 	res := c.modelState.Apply(bulk)
 
 	if !res.OK {
@@ -92,13 +95,13 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 
 		gotSaved := responseMetaEffect(bulk.Requests[i], logs[i])
 
-		if !metaMapEqual(order.Meta.saved, gotSaved) {
-			dbg("MODEL META SAVED MISMATCH: model=%s server=%s", renderMetaMap(order.Meta.saved), renderMetaMap(gotSaved))
+		if !metaMapEqual(order.Meta.Saved(), gotSaved) {
+			dbg("MODEL META SAVED MISMATCH: model=%s server=%s", renderMetaMap(order.Meta.Saved()), renderMetaMap(gotSaved))
 			assert.Unreachable("singleton_driver_model: response metadata value mismatch", internal.Details{
-				"ledger":      ledgerOf(bulk.Requests[i]),
+				"ledger":      oracle.LedgerOf(bulk.Requests[i]),
 				"kinds":       requestKinds(bulk),
 				"meta":        bulkMeta(bulk),
-				"modelSaved":  renderMetaMap(order.Meta.saved),
+				"modelSaved":  renderMetaMap(order.Meta.Saved()),
 				"serverSaved": renderMetaMap(gotSaved),
 			})
 
@@ -127,7 +130,7 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 
 			if revTx.GetId() != order.TxID {
 				assert.Unreachable("singleton_driver_model: revert transaction id mismatch", internal.Details{
-					"ledger":   ledgerOf(req),
+					"ledger":   oracle.LedgerOf(req),
 					"modelId":  fmt.Sprintf("%d", order.TxID),
 					"serverId": fmt.Sprintf("%d", revTx.GetId()),
 				})
@@ -135,20 +138,20 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 				return
 			}
 
-			if rt.GetRevertedTransactionId() != order.Revert.revertedID {
+			if rt.GetRevertedTransactionId() != order.Revert.RevertedID() {
 				assert.Unreachable("singleton_driver_model: reverted transaction id mismatch", internal.Details{
-					"ledger":   ledgerOf(req),
-					"modelId":  fmt.Sprintf("%d", order.Revert.revertedID),
+					"ledger":   oracle.LedgerOf(req),
+					"modelId":  fmt.Sprintf("%d", order.Revert.RevertedID()),
 					"serverId": fmt.Sprintf("%d", rt.GetRevertedTransactionId()),
 				})
 
 				return
 			}
 
-			if !postingsEqual(order.Revert.postings, revTx.GetPostings()) {
+			if !postingsEqual(order.Revert.Postings(), revTx.GetPostings()) {
 				assert.Unreachable("singleton_driver_model: revert postings mismatch", internal.Details{
-					"ledger":   ledgerOf(req),
-					"model":    renderPostings(order.Revert.postings),
+					"ledger":   oracle.LedgerOf(req),
+					"model":    renderPostings(order.Revert.Postings()),
 					"returned": renderPostings(revTx.GetPostings()),
 				})
 
@@ -160,7 +163,7 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 
 			if tx.GetId() != order.TxID {
 				assert.Unreachable("singleton_driver_model: transaction id mismatch", internal.Details{
-					"ledger":   ledgerOf(req),
+					"ledger":   oracle.LedgerOf(req),
 					"modelId":  fmt.Sprintf("%d", order.TxID),
 					"serverId": fmt.Sprintf("%d", tx.GetId()),
 				})
@@ -170,7 +173,7 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 
 			if tx.GetReference() != ct.GetReference() {
 				assert.Unreachable("singleton_driver_model: transaction reference mismatch", internal.Details{
-					"ledger":    ledgerOf(req),
+					"ledger":    oracle.LedgerOf(req),
 					"requested": ct.GetReference(),
 					"returned":  tx.GetReference(),
 				})
@@ -180,7 +183,7 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 
 			if !postingsEqual(ct.GetPostings(), tx.GetPostings()) {
 				assert.Unreachable("singleton_driver_model: transaction postings mismatch", internal.Details{
-					"ledger":    ledgerOf(req),
+					"ledger":    oracle.LedgerOf(req),
 					"requested": renderPostings(ct.GetPostings()),
 					"returned":  renderPostings(tx.GetPostings()),
 				})
@@ -194,7 +197,7 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 			lg, rq := data.GetSetMetadataFieldType(), r.SetMetadataFieldType
 			if lg.GetTargetType() != rq.GetTargetType() || lg.GetKey() != rq.GetKey() || lg.GetType() != rq.GetType() {
 				assert.Unreachable("singleton_driver_model: set-field-type response mismatch", internal.Details{
-					"ledger":    ledgerOf(req),
+					"ledger":    oracle.LedgerOf(req),
 					"requested": fmt.Sprintf("tgt%d/%s=%v", rq.GetTargetType(), rq.GetKey(), rq.GetType()),
 					"returned":  fmt.Sprintf("tgt%d/%s=%v", lg.GetTargetType(), lg.GetKey(), lg.GetType()),
 				})
@@ -206,7 +209,7 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 			lg, rq := data.GetRemovedMetadataFieldType(), r.RemoveMetadataFieldType
 			if lg.GetTargetType() != rq.GetTargetType() || lg.GetKey() != rq.GetKey() {
 				assert.Unreachable("singleton_driver_model: remove-field-type response mismatch", internal.Details{
-					"ledger":    ledgerOf(req),
+					"ledger":    oracle.LedgerOf(req),
 					"requested": fmt.Sprintf("tgt%d/%s", rq.GetTargetType(), rq.GetKey()),
 					"returned":  fmt.Sprintf("tgt%d/%s", lg.GetTargetType(), lg.GetKey()),
 				})
@@ -218,7 +221,7 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 			// never report dropping one.
 			if lg.GetDroppedIndex() != nil {
 				assert.Unreachable("singleton_driver_model: remove-field-type unexpectedly dropped an index", internal.Details{
-					"ledger": ledgerOf(req),
+					"ledger": oracle.LedgerOf(req),
 					"key":    rq.GetKey(),
 				})
 
@@ -229,7 +232,7 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 			lg, rq := data.GetAddedAccountType().GetAccountType(), r.AddAccountType.GetAccountType()
 			if lg.GetName() != rq.GetName() || lg.GetPattern() != rq.GetPattern() || lg.GetPersistence() != rq.GetPersistence() {
 				assert.Unreachable("singleton_driver_model: add-account-type response mismatch", internal.Details{
-					"ledger":    ledgerOf(req),
+					"ledger":    oracle.LedgerOf(req),
 					"requested": fmt.Sprintf("%s=%s/p%d", rq.GetName(), rq.GetPattern(), rq.GetPersistence()),
 					"returned":  fmt.Sprintf("%s=%s/p%d", lg.GetName(), lg.GetPattern(), lg.GetPersistence()),
 				})
@@ -241,7 +244,7 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 			lg := data.GetRemovedAccountType()
 			if lg.GetName() != r.RemoveAccountType.GetName() {
 				assert.Unreachable("singleton_driver_model: remove-account-type response mismatch", internal.Details{
-					"ledger":    ledgerOf(req),
+					"ledger":    oracle.LedgerOf(req),
 					"requested": r.RemoveAccountType.GetName(),
 					"returned":  lg.GetName(),
 				})
@@ -260,11 +263,11 @@ func (c *Checker) crossCheckCommit(bulk Bulk, resp *servicepb.ApplyResponse) {
 // server would reject failedBulk exactly this way. Because failedBulk is applied
 // fresh on each base, its own requests can never "explain" its own rejection.
 // Caller holds c.mu.
-func (c *Checker) validateFailure(maxTicket uint64, failedBulk Bulk, reqErr error) {
+func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqErr error) {
 	var reason string
 
 	matched := false
-	c.candidateBases(maxTicket, func(base GlobalState) bool {
+	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
 		res := base.Apply(failedBulk)
 		if !res.OK && internal.HasErrorReason(reqErr, res.Reason) {
 			reason = res.Reason
@@ -299,7 +302,7 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk Bulk, reqErr erro
 // with no log means the server committed, or reported committing, without
 // returning the log reference the checker needs to linearize the bulk. Caller
 // holds c.mu.
-func (c *Checker) validateEmptyCommit(bulk Bulk) {
+func (c *Checker) validateEmptyCommit(bulk oracle.Bulk) {
 	dbg("BULK OK (empty): ledgers=%s kinds=%s", bulkLedgers(bulk), requestKinds(bulk))
 
 	assert.Unreachable("singleton_driver_model: successful bulk returned no committed log", internal.Details{
@@ -316,12 +319,12 @@ func (c *Checker) validateEmptyCommit(bulk Bulk) {
 // returned — to enumerate what the server could have returned. The caller asserts
 // on a false result — each assert needs its own callsite with a literal message
 // for Antithesis cataloguing, so this helper never asserts. Acquires c.mu.
-func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(GlobalState) bool) bool {
+func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(oracle.GlobalState) bool) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	matched := false
-	c.candidateBases(maxTicket, func(base GlobalState) bool {
+	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
 		matched = matcher(base)
 		return matched
 	})
@@ -340,10 +343,10 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(Glob
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
 func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, gotIn, gotOut uint256.Int, found bool, serverMeta map[string]*commonpb.MetadataValue) {
-	key := VolumeKey{Address: addr, Asset: asset}
+	key := oracle.VolumeKey{Address: addr, Asset: asset}
 
-	if c.matchesModel(maxTicket, "READ", func(base GlobalState) bool {
-		ls := base.ledger(ledger)
+	if c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
+		ls := base.Ledger(ledger)
 		return volumeCellMatches(ls, key, gotIn, gotOut, found) && metadataMatches(ls, addr, serverMeta)
 	}) {
 		return
@@ -366,8 +369,8 @@ func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset stri
 // returned no row (the base's purge sweep already removed zero-balance
 // EPHEMERAL/TRANSIENT cells). An empty asset — a metadata-only pick — is never a
 // present cell, so it imposes no volume constraint.
-func volumeCellMatches(ls LedgerState, key VolumeKey, gotIn, gotOut uint256.Int, found bool) bool {
-	vp, present := ls.volumes[key]
+func volumeCellMatches(ls oracle.LedgerState, key oracle.VolumeKey, gotIn, gotOut uint256.Int, found bool) bool {
+	vp, present := ls.Volumes()[key]
 	switch {
 	case found && present && vp.Input.Cmp(&gotIn) == 0 && vp.Output.Cmp(&gotOut) == 0:
 		return true
@@ -381,15 +384,15 @@ func volumeCellMatches(ls LedgerState, key VolumeKey, gotIn, gotOut uint256.Int,
 // metadataMatches reports whether ls holds exactly serverMeta for addr — same
 // keys, same verbatim values. Reads surface the stored value as-written; the
 // declared type is an index hint, not applied on read.
-func metadataMatches(ls LedgerState, addr string, serverMeta map[string]*commonpb.MetadataValue) bool {
-	modelMeta := ls.accountMetadata(addr)
+func metadataMatches(ls oracle.LedgerState, addr string, serverMeta map[string]*commonpb.MetadataValue) bool {
+	modelMeta := ls.AccountMetadata(addr)
 	if len(modelMeta) != len(serverMeta) {
 		return false
 	}
 
 	for k, v := range modelMeta {
 		sv, ok := serverMeta[k]
-		if !ok || metaValueString(sv) != metaValueString(v) {
+		if !ok || oracle.MetaValueString(sv) != oracle.MetaValueString(v) {
 			return false
 		}
 	}
@@ -402,8 +405,8 @@ func metadataMatches(ls LedgerState, addr string, serverMeta map[string]*commonp
 // the server's ledger metadata. Both must hold on the SAME base — the read is one
 // atomic snapshot.
 func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue) {
-	if c.matchesModel(maxTicket, "LEDGER", func(base GlobalState) bool {
-		ls := base.ledger(ledger)
+	if c.matchesModel(maxTicket, "LEDGER", func(base oracle.GlobalState) bool {
+		ls := base.Ledger(ledger)
 		return chartMatches(ls, serverTypes) && ledgerMetaMatches(ls, serverMeta)
 	}) {
 		return
@@ -419,12 +422,12 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 
 // chartMatches reports whether ls's chart equals the server's account types
 // exactly — same names, patterns, and persistence.
-func chartMatches(ls LedgerState, serverTypes map[string]*commonpb.AccountType) bool {
-	if len(ls.types) != len(serverTypes) {
+func chartMatches(ls oracle.LedgerState, serverTypes map[string]*commonpb.AccountType) bool {
+	if len(ls.Types()) != len(serverTypes) {
 		return false
 	}
 
-	for name, t := range ls.types {
+	for name, t := range ls.Types() {
 		st, ok := serverTypes[name]
 		if !ok || st.GetPattern() != t.Pattern || st.GetPersistence() != t.Persistence {
 			return false
@@ -437,14 +440,14 @@ func chartMatches(ls LedgerState, serverTypes map[string]*commonpb.AccountType) 
 // ledgerMetaMatches reports whether ls's ledger metadata equals serverMeta
 // exactly — same keys, same verbatim values. Reads surface the stored value
 // as-written; the declared type is an index hint, not applied on read.
-func ledgerMetaMatches(ls LedgerState, serverMeta map[string]*commonpb.MetadataValue) bool {
-	if len(ls.ledgerMeta) != len(serverMeta) {
+func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.MetadataValue) bool {
+	if len(ls.LedgerMeta()) != len(serverMeta) {
 		return false
 	}
 
-	for k, v := range ls.ledgerMeta {
+	for k, v := range ls.LedgerMeta() {
 		sv, ok := serverMeta[k]
-		if !ok || metaValueString(sv) != metaValueString(v) {
+		if !ok || oracle.MetaValueString(sv) != oracle.MetaValueString(v) {
 			return false
 		}
 	}
@@ -520,7 +523,7 @@ func metaMapEqual(a, b map[string]*commonpb.MetadataValue) bool {
 
 	for k, v := range a {
 		bv, ok := b[k]
-		if !ok || metaValueString(v) != metaValueString(bv) {
+		if !ok || oracle.MetaValueString(v) != oracle.MetaValueString(bv) {
 			return false
 		}
 	}
@@ -531,7 +534,7 @@ func metaMapEqual(a, b map[string]*commonpb.MetadataValue) bool {
 // postCommitVolume extracts (input, output) for one cell from a server response,
 // parsing the decimal-string volumes into uint256 — the ledger's native volume
 // type. ok is false when the cell is absent or the values don't parse.
-func postCommitVolume(pcv *commonpb.PostCommitVolumes, key VolumeKey) (in, out uint256.Int, ok bool) {
+func postCommitVolume(pcv *commonpb.PostCommitVolumes, key oracle.VolumeKey) (in, out uint256.Int, ok bool) {
 	byAsset, found := pcv.GetVolumesByAccount()[key.Address]
 	if !found {
 		return in, out, false

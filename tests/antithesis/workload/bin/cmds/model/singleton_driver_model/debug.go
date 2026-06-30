@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 	"log"
 	"os"
 	"sort"
@@ -21,11 +22,11 @@ func dbg(format string, args ...any) {
 }
 
 // Distinct ledgers a bulk touches, sorted — for debug lines.
-func bulkLedgers(b Bulk) string {
+func bulkLedgers(b oracle.Bulk) string {
 	seen := map[string]bool{}
 	var names []string
 	for _, r := range b.Requests {
-		l := ledgerOf(r)
+		l := oracle.LedgerOf(r)
 		if !seen[l] {
 			seen[l] = true
 			names = append(names, l)
@@ -36,7 +37,7 @@ func bulkLedgers(b Bulk) string {
 	return "[" + strings.Join(names, ",") + "]"
 }
 
-func requestKinds(b Bulk) string {
+func requestKinds(b oracle.Bulk) string {
 	parts := make([]string, len(b.Requests))
 
 	for i, r := range b.Requests {
@@ -76,7 +77,7 @@ func requestKinds(b Bulk) string {
 
 // Metadata targets a bulk touches, for debug: account (add addr{k=v,...} /
 // del addr/key) and ledger (saveL ledger{k=v,...} / delL ledger/key).
-func bulkMeta(b Bulk) string {
+func bulkMeta(b oracle.Bulk) string {
 	kvList := func(m map[string]*commonpb.MetadataValue) string {
 		kvs := make([]string, 0, len(m))
 		for k, v := range m {
@@ -134,7 +135,7 @@ func metaTargetLabel(target *commonpb.Target) string {
 func renderMetaMap(m map[string]*commonpb.MetadataValue) string {
 	parts := make([]string, 0, len(m))
 	for k, v := range m {
-		parts = append(parts, k+"="+metaValueString(v))
+		parts = append(parts, k+"="+oracle.MetaValueString(v))
 	}
 	sort.Strings(parts)
 
@@ -147,15 +148,15 @@ func (c *Checker) modelAccountMetaDump(ledger, addr string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	ls := c.modelState.ledger(ledger)
+	ls := c.modelState.Ledger(ledger)
 
 	var parts []string
-	for k, v := range ls.accountMetadata(addr) {
+	for k, v := range ls.AccountMetadata(addr) {
 		ft := "none"
-		if t, ok := ls.accountFieldTypes[k]; ok {
+		if t, ok := ls.AccountFieldTypes()[k]; ok {
 			ft = fmt.Sprintf("%d", t)
 		}
-		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, metaValueString(v), ft))
+		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, oracle.MetaValueString(v), ft))
 	}
 	sort.Strings(parts)
 
@@ -167,15 +168,15 @@ func (c *Checker) modelLedgerMetaDump(ledger string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	ls := c.modelState.ledger(ledger)
+	ls := c.modelState.Ledger(ledger)
 
 	var parts []string
-	for k, v := range ls.ledgerMeta {
+	for k, v := range ls.LedgerMeta() {
 		ft := "none"
-		if t, ok := ls.ledgerFieldTypes[k]; ok {
+		if t, ok := ls.LedgerFieldTypes()[k]; ok {
 			ft = fmt.Sprintf("%d", t)
 		}
-		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, metaValueString(v), ft))
+		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, oracle.MetaValueString(v), ft))
 	}
 	sort.Strings(parts)
 

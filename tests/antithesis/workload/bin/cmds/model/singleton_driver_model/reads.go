@@ -6,13 +6,16 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/holiman/uint256"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // runRead picks a known account, issues a linearizable GetAccount, and validates
@@ -81,24 +84,24 @@ func isShutdownError(err error) bool {
 // candidate (carrying its asset); each metadata-bearing address is also a
 // candidate with an empty asset, so a metadata-only account is still reachable —
 // the read validates that account's metadata regardless of the asset.
-func pickCell(g GlobalState) (ledger, addr, asset string, ok bool) {
+func pickCell(g oracle.GlobalState) (ledger, addr, asset string, ok bool) {
 	type cellRef struct {
 		ledger string
-		key    VolumeKey
+		key    oracle.VolumeKey
 	}
 
 	var cells []cellRef
-	for name, ls := range g.ledgers {
-		for k := range ls.volumes {
+	for name, ls := range g.Ledgers() {
+		for k := range ls.Volumes() {
 			cells = append(cells, cellRef{ledger: name, key: k})
 		}
 
 		metaAddrs := map[string]bool{}
-		for mk := range ls.metadata {
+		for mk := range ls.Metadata() {
 			metaAddrs[mk.Address] = true
 		}
 		for a := range metaAddrs {
-			cells = append(cells, cellRef{ledger: name, key: VolumeKey{Address: a}})
+			cells = append(cells, cellRef{ledger: name, key: oracle.VolumeKey{Address: a}})
 		}
 	}
 
@@ -113,7 +116,7 @@ func pickCell(g GlobalState) (ledger, addr, asset string, ok bool) {
 			}
 			return 1
 		}
-		return compareVolumeKey(a.key, b.key)
+		return oracle.CompareVolumeKey(a.key, b.key)
 	})
 
 	c := random.RandomChoice(cells)

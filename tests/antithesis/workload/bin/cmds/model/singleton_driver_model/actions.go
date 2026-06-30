@@ -7,23 +7,22 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/random"
+	"github.com/holiman/uint256"
+
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"github.com/holiman/uint256"
 )
 
-// Bulk is one Apply call's worth of requests.
-type Bulk struct {
-	Requests []*servicepb.Request
-}
-
-func (b Bulk) ApplyRequest() *servicepb.ApplyRequest {
-	// One fresh idempotency key for the whole batch (idempotency is per
-	// ApplyBatch). Generated once per Apply call and reused across the
-	// client's internal retries, so an ambiguous UNAVAILABLE replays the
-	// committed batch instead of re-applying it.
+// applyRequest renders a bulk into a sendable ApplyRequest. One fresh
+// idempotency key for the whole batch (idempotency is per ApplyBatch),
+// generated once per Apply call and reused across the client's internal
+// retries, so an ambiguous UNAVAILABLE replays the committed batch instead of
+// re-applying it.
+func applyRequest(b oracle.Bulk) *servicepb.ApplyRequest {
 	return servicepb.UnsignedApplyRequest(idempotencyKey(), b.Requests...)
 }
 
@@ -46,22 +45,22 @@ func poolAddress() string {
 // occasionally a bulk spreads its requests across a few, exercising the
 // server's atomic-across-ledgers semantics. Reads the committed state but
 // never mutates it.
-func generateBulk(g GlobalState, ledgers []string) Bulk {
+func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 	picks := pickLedgers(ledgers)
 
 	// Whole-bulk transient shapes fund and drain the same cell, so they only
 	// make sense single-ledger.
 	if len(picks) == 1 {
 		ledger := picks[0]
-		ls := g.ledger(ledger)
+		ls := g.Ledger(ledger)
 		switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}) {
 		case 0:
 			if reqs := generateTransientBalancedBulk(ledger, ls); reqs != nil {
-				return Bulk{Requests: reqs}
+				return oracle.Bulk{Requests: reqs}
 			}
 		case 1:
 			if reqs := generateTransientUnbalancedBulk(ledger, ls); reqs != nil {
-				return Bulk{Requests: reqs}
+				return oracle.Bulk{Requests: reqs}
 			}
 		}
 	}
@@ -71,7 +70,7 @@ func generateBulk(g GlobalState, ledgers []string) Bulk {
 
 	for i := 0; i < size; i++ {
 		ledger := random.RandomChoice(picks)
-		ls := g.ledger(ledger)
+		ls := g.Ledger(ledger)
 
 		if rollChartOp() {
 			if req := generateChartOp(ledger); req != nil {
@@ -116,14 +115,14 @@ func generateBulk(g GlobalState, ledgers []string) Bulk {
 		}
 	}
 
-	return Bulk{Requests: requests}
+	return oracle.Bulk{Requests: requests}
 }
 
 // rollTransaction reports whether to create a new transaction, tapering with the
 // ledger's committed-transaction count (see the txEmit* knobs) so tracked
 // references don't grow without bound.
-func rollTransaction(ls LedgerState) bool {
-	switch n := len(ls.txRefs); {
+func rollTransaction(ls oracle.LedgerState) bool {
+	switch n := len(ls.TxRefs()); {
 	case n < txEmitFull:
 		return true
 	case n < txEmitTaper:
@@ -208,9 +207,9 @@ func bulkSize() int {
 }
 
 // randomTransientType returns a random TRANSIENT type from ls's chart, or nil.
-func randomTransientType(ls LedgerState) *TypeState {
-	names := make([]string, 0, len(ls.types))
-	for name, t := range ls.types {
+func randomTransientType(ls oracle.LedgerState) *oracle.TypeState {
+	names := make([]string, 0, len(ls.Types()))
+	for name, t := range ls.Types() {
 		if t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 			names = append(names, name)
 		}
@@ -222,7 +221,7 @@ func randomTransientType(ls LedgerState) *TypeState {
 
 	slices.Sort(names)
 
-	t := ls.types[random.RandomChoice(names)]
+	t := ls.Types()[random.RandomChoice(names)]
 
 	return &t
 }
@@ -232,7 +231,7 @@ func randomTransientType(ls LedgerState) *TypeState {
 // Either a chaos posting (world → pool address, picked blindly so the
 // server resolves typing) or — ~1/4 of the time — a deliberate drain
 // of an EPHEMERAL cell to exercise the zero-balance purge sweep.
-func generateTransaction(ledger string, ls LedgerState) *servicepb.Request {
+func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 		if req := generateDrainTransaction(ledger, ls); req != nil {
 			return req
@@ -334,17 +333,17 @@ func txRequest(ledger, src, dest, asset string, amount *big.Int, force bool) *se
 // Drains the exact balance of some EPHEMERAL cell to "world" with
 // Force=true so the cell lands at input==output and gets purged.
 // Returns nil if no eligible cell exists.
-func generateDrainTransaction(ledger string, ls LedgerState) *servicepb.Request {
+func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	// Collect every drainable cell, then pick via the Antithesis RNG over a
 	// sorted slice — replayable / steerable, unlike map-iteration order.
 	type drainCandidate struct {
-		key     VolumeKey
+		key     oracle.VolumeKey
 		balance uint256.Int
 	}
 
 	var candidates []drainCandidate
-	for key, vp := range ls.volumes {
-		t := ls.matchAddress(key.Address)
+	for key, vp := range ls.Volumes() {
+		t := ls.MatchAddress(key.Address)
 		if t == nil {
 			continue
 		}
@@ -368,7 +367,7 @@ func generateDrainTransaction(ledger string, ls LedgerState) *servicepb.Request 
 	}
 
 	slices.SortFunc(candidates, func(a, b drainCandidate) int {
-		return compareVolumeKey(a.key, b.key)
+		return oracle.CompareVolumeKey(a.key, b.key)
 	})
 
 	chosen := random.RandomChoice(candidates)
@@ -419,7 +418,7 @@ func metaKey() string {
 // account when no transaction exists yet), or an account-level op — each Add
 // (~2/3) vs Delete (~1/3). A delete falls back to its add when the model holds no
 // metadata of that kind yet.
-func generateMetadataOp(ledger string, ls LedgerState) *servicepb.Request {
+func generateMetadataOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4}) {
 	case 0:
 		if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
@@ -483,9 +482,9 @@ func generateAddMetadata(ledger string) *servicepb.Request {
 // DeleteMetadata of an existing (address, key) from the model — occasionally a
 // freshly-rolled key on that address to exercise METADATA_NOT_FOUND. Returns nil
 // when the model holds no metadata.
-func generateDeleteMetadata(ledger string, ls LedgerState) *servicepb.Request {
-	keys := make([]MetaKey, 0, len(ls.metadata))
-	for mk := range ls.metadata {
+func generateDeleteMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
+	keys := make([]oracle.MetaKey, 0, len(ls.Metadata()))
+	for mk := range ls.Metadata() {
 		keys = append(keys, mk)
 	}
 
@@ -493,7 +492,7 @@ func generateDeleteMetadata(ledger string, ls LedgerState) *servicepb.Request {
 		return nil
 	}
 
-	slices.SortFunc(keys, compareMetaKey)
+	slices.SortFunc(keys, oracle.CompareMetaKey)
 	chosen := random.RandomChoice(keys)
 
 	addr, key := chosen.Address, chosen.Key
@@ -521,7 +520,7 @@ func generateDeleteMetadata(ledger string, ls LedgerState) *servicepb.Request {
 // generateTxMetadataOp targets a committed transaction by reference: Delete
 // (~1/3) of an existing (reference, key), else Add. Returns nil when the model
 // holds no transactions yet (caller falls back to account metadata).
-func generateTxMetadataOp(ledger string, ls LedgerState) *servicepb.Request {
+func generateTxMetadataOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
 		if req := generateDeleteTxMetadata(ledger, ls); req != nil {
 			return req
@@ -533,7 +532,7 @@ func generateTxMetadataOp(ledger string, ls LedgerState) *servicepb.Request {
 
 // generateAddTxMetadata sets 1-2 metadata keys on a committed transaction picked
 // by reference. Returns nil when no transaction exists yet.
-func generateAddTxMetadata(ledger string, ls LedgerState) *servicepb.Request {
+func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	ref := pickTxRef(ls)
 	if ref == "" {
 		return nil
@@ -546,7 +545,7 @@ func generateAddTxMetadata(ledger string, ls LedgerState) *servicepb.Request {
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
 						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target:   txTarget(ls.txRefs[ref].id),
+							Target:   txTarget(ls.TxRefs()[ref].Id()),
 							Metadata: randomMetaMap(),
 						},
 					},
@@ -559,9 +558,9 @@ func generateAddTxMetadata(ledger string, ls LedgerState) *servicepb.Request {
 // generateDeleteTxMetadata deletes a metadata key from a committed transaction —
 // occasionally a freshly-rolled key on a known reference to exercise
 // METADATA_NOT_FOUND. Returns nil when the model holds no transaction metadata.
-func generateDeleteTxMetadata(ledger string, ls LedgerState) *servicepb.Request {
-	keys := make([]TxMetaKey, 0, len(ls.txMeta))
-	for tk := range ls.txMeta {
+func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
+	keys := make([]oracle.TxMetaKey, 0, len(ls.TxMeta()))
+	for tk := range ls.TxMeta() {
 		keys = append(keys, tk)
 	}
 
@@ -569,7 +568,7 @@ func generateDeleteTxMetadata(ledger string, ls LedgerState) *servicepb.Request 
 		return nil
 	}
 
-	slices.SortFunc(keys, compareTxMetaKey)
+	slices.SortFunc(keys, oracle.CompareTxMetaKey)
 	chosen := random.RandomChoice(keys)
 
 	ref, key := chosen.Reference, chosen.Key
@@ -584,7 +583,7 @@ func generateDeleteTxMetadata(ledger string, ls LedgerState) *servicepb.Request 
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_DeleteMetadata{
 						DeleteMetadata: &commonpb.DeleteMetadataCommand{
-							Target: txTarget(ls.txRefs[ref].id),
+							Target: txTarget(ls.TxRefs()[ref].Id()),
 							Key:    key,
 						},
 					},
@@ -601,7 +600,7 @@ func generateDeleteTxMetadata(ledger string, ls LedgerState) *servicepb.Request 
 // committed reference exercises both the success path and the
 // TRANSACTION_ALREADY_REVERTED rejection (a reference picked after a prior
 // revert committed).
-func generateRevert(ledger string, ls LedgerState) *servicepb.Request {
+func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	ref := pickTxRef(ls)
 	if ref == "" {
 		return nil
@@ -614,7 +613,7 @@ func generateRevert(ledger string, ls LedgerState) *servicepb.Request {
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_RevertTransaction{
 						RevertTransaction: &servicepb.RevertTransactionPayload{
-							TransactionId: ls.txRefs[ref].id,
+							TransactionId: ls.TxRefs()[ref].Id(),
 							Force:         true,
 							ExpandVolumes: true,
 						},
@@ -627,9 +626,9 @@ func generateRevert(ledger string, ls LedgerState) *servicepb.Request {
 
 // pickTxRef returns a deterministically-chosen committed transaction reference,
 // or "" when the model holds none.
-func pickTxRef(ls LedgerState) string {
-	refs := make([]string, 0, len(ls.txRefs))
-	for r := range ls.txRefs {
+func pickTxRef(ls oracle.LedgerState) string {
+	refs := make([]string, 0, len(ls.TxRefs()))
+	for r := range ls.TxRefs() {
 		refs = append(refs, r)
 	}
 
@@ -680,9 +679,9 @@ func generateSaveLedgerMetadata(ledger string) *servicepb.Request {
 // DeleteLedgerMetadata of an existing key from the model — occasionally a
 // freshly-rolled key to exercise METADATA_NOT_FOUND. Returns nil when the ledger
 // holds no metadata.
-func generateDeleteLedgerMetadata(ledger string, ls LedgerState) *servicepb.Request {
-	keys := make([]string, 0, len(ls.ledgerMeta))
-	for k := range ls.ledgerMeta {
+func generateDeleteLedgerMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
+	keys := make([]string, 0, len(ls.LedgerMeta()))
+	for k := range ls.LedgerMeta() {
 		keys = append(keys, k)
 	}
 
@@ -708,7 +707,7 @@ func generateDeleteLedgerMetadata(ledger string, ls LedgerState) *servicepb.Requ
 
 // Picks Set (~3/4) vs Remove (~1/4) of a metadata field type. Remove falls back
 // to Set when the model declares no field types yet.
-func generateSchemaOp(ledger string, ls LedgerState) *servicepb.Request {
+func generateSchemaOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 		if req := generateRemoveMetadataFieldType(ledger, ls); req != nil {
 			return req
@@ -737,20 +736,20 @@ func generateSetMetadataFieldType(ledger string) *servicepb.Request {
 // RemoveMetadataFieldType for a declared (target, key) from the model —
 // occasionally a freshly-rolled one (a no-op on the server). Returns nil when the
 // model declares no field types.
-func generateRemoveMetadataFieldType(ledger string, ls LedgerState) *servicepb.Request {
+func generateRemoveMetadataFieldType(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	type fieldRef struct {
 		target commonpb.TargetType
 		key    string
 	}
 
 	var fields []fieldRef
-	for k := range ls.accountFieldTypes {
+	for k := range ls.AccountFieldTypes() {
 		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_ACCOUNT, k})
 	}
-	for k := range ls.ledgerFieldTypes {
+	for k := range ls.LedgerFieldTypes() {
 		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_LEDGER, k})
 	}
-	for k := range ls.transactionFieldTypes {
+	for k := range ls.TransactionFieldTypes() {
 		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_TRANSACTION, k})
 	}
 
@@ -786,7 +785,7 @@ func generateRemoveMetadataFieldType(ledger string, ls LedgerState) *servicepb.R
 // 2-request fund+drain pair against a TRANSIENT-typed cell — exercises
 // the end-of-batch transient zero check. Returns nil if no TRANSIENT
 // type exists (other generators still cover other surfaces).
-func generateTransientBalancedBulk(ledger string, ls LedgerState) []*servicepb.Request {
+func generateTransientBalancedBulk(ledger string, ls oracle.LedgerState) []*servicepb.Request {
 	t := randomTransientType(ls)
 	if t == nil {
 		return nil
@@ -808,7 +807,7 @@ func generateTransientBalancedBulk(ledger string, ls LedgerState) []*servicepb.R
 
 // Single fund of a TRANSIENT cell, no drain — server is expected to
 // reject the bulk with ErrTransientAccountNonZero.
-func generateTransientUnbalancedBulk(ledger string, ls LedgerState) []*servicepb.Request {
+func generateTransientUnbalancedBulk(ledger string, ls oracle.LedgerState) []*servicepb.Request {
 	t := randomTransientType(ls)
 	if t == nil {
 		return nil

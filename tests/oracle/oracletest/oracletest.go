@@ -1,0 +1,65 @@
+// Package oracletest provides request builders shared by the oracle's own tests
+// and the driver's tests, so both construct model inputs identically. Builders
+// default to ledger "L"; the *L variants take an explicit ledger.
+package oracletest
+
+import (
+	"math/big"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+)
+
+func AddTypeReqP(name string, p commonpb.AccountTypePersistence) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_AddAccountType{
+			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+				Ledger: "L",
+				AccountType: &commonpb.AccountType{
+					Name:        name,
+					Pattern:     name + ":{id}",
+					Persistence: p,
+				},
+			},
+		},
+	}
+}
+
+func AddTypeReq(name string) *servicepb.Request {
+	return AddTypeReqP(name, commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL)
+}
+
+func RemoveReqL(ledger, name string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_RemoveAccountType{
+			RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{Ledger: ledger, Name: name},
+		},
+	}
+}
+
+func RemoveTypeReq(name string) *servicepb.Request {
+	return RemoveReqL("L", name)
+}
+
+func TxReqL(ledger, src, dest, asset string, amount int64) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledger,
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings: []*commonpb.Posting{
+								commonpb.NewPosting(src, dest, asset, big.NewInt(amount)),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TxReq(src, dest, asset string, amount int64) *servicepb.Request {
+	return TxReqL("L", src, dest, asset, amount)
+}

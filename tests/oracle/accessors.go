@@ -1,0 +1,31 @@
+package oracle
+
+import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+
+// Exported read accessors over the model's internal state. The driver and the
+// replay tool inspect a committed state (chart, volumes, metadata, declared
+// field types) to generate operations and compare against the SUT; the maps are
+// never mutated through these — every model mutation goes through Apply.
+
+func (g GlobalState) Ledgers() map[string]LedgerState { return g.ledgers }
+
+func (s LedgerState) Types() map[string]TypeState                         { return s.types }
+func (s LedgerState) Volumes() map[VolumeKey]VolumePair                   { return s.volumes }
+func (s LedgerState) Metadata() map[MetaKey]*commonpb.MetadataValue       { return s.metadata }
+func (s LedgerState) LedgerMeta() map[string]*commonpb.MetadataValue      { return s.ledgerMeta }
+func (s LedgerState) AccountFieldTypes() map[string]commonpb.MetadataType { return s.accountFieldTypes }
+func (s LedgerState) LedgerFieldTypes() map[string]commonpb.MetadataType  { return s.ledgerFieldTypes }
+func (s LedgerState) TxRefs() map[string]*txRecord                        { return s.txRefs }
+func (s LedgerState) TxMeta() map[TxMetaKey]*commonpb.MetadataValue       { return s.txMeta }
+func (s LedgerState) TransactionFieldTypes() map[string]commonpb.MetadataType {
+	return s.transactionFieldTypes
+}
+
+// txRecord.Id is the server-assigned id of a committed transaction tracked by
+// reference — the generator resolves a reference to its id to target it.
+func (t *txRecord) Id() uint64 { return t.id }
+
+func (m *metaEffect) Saved() map[string]*commonpb.MetadataValue { return m.saved }
+
+func (r *revertEffect) RevertedID() uint64            { return r.revertedID }
+func (r *revertEffect) Postings() []*commonpb.Posting { return r.postings }

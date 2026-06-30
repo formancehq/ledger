@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 // Checker drives validation against the model: it owns the in-flight/pending
@@ -31,7 +32,7 @@ type Checker struct {
 	// inflight: dispatched bulks whose response hasn't been observed yet, keyed
 	// by ticket (their dispatch order). The value is what the serialization
 	// search (candidateBases) folds.
-	inflight map[uint64]Bulk
+	inflight map[uint64]oracle.Bulk
 
 	// pending: observed successes not yet drained, sorted by minSeq.
 	pending []*pendingObservation
@@ -47,7 +48,7 @@ type Checker struct {
 	// drain in global log-sequence order, so it is always the exact predecessor
 	// of the next bulk to validate, and the base candidateBases folds the
 	// in-flight set onto.
-	modelState GlobalState
+	modelState oracle.GlobalState
 }
 
 // One worker → processor message. observeTicket is the ticket high-water mark
@@ -55,7 +56,7 @@ type Checker struct {
 // outstanding ops were dispatched after this bulk was observed.
 type observation struct {
 	ticket        uint64
-	bulk          Bulk
+	bulk          oracle.Bulk
 	resp          *servicepb.ApplyResponse
 	err           error
 	observeTicket uint64
@@ -72,9 +73,9 @@ type pendingObservation struct {
 func NewChecker(ledgerNames []string) *Checker {
 	return &Checker{
 		ledgerNames: ledgerNames,
-		inflight:    map[uint64]Bulk{},
+		inflight:    map[uint64]oracle.Bulk{},
 		reads:       map[uint64]struct{}{},
 		incoming:    make(chan observation, incomingBuffer),
-		modelState:  NewGlobalState(),
+		modelState:  oracle.NewGlobalState(),
 	}
 }
