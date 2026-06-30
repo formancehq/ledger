@@ -129,7 +129,7 @@ const (
 	AuditFieldLedger        byte = 0x02 // string value (match-any over AuditEntry.Ledgers)
 	AuditFieldCallerSubject byte = 0x03 // string value
 	AuditFieldOrderType     byte = 0x04 // string token (match-any over items)
-	AuditFieldTimestamp     byte = 0x05 // BE uint64 unix nanos (range)
+	AuditFieldTimestamp     byte = 0x05 // BE uint64 raw HLC Timestamp.Data (unix microseconds) (range)
 	AuditFieldProposalID    byte = 0x06 // BE uint64 (range)
 	AuditFieldLogSeq        byte = 0x07 // BE uint64 (range, match-any over items)
 )

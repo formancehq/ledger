@@ -139,7 +139,7 @@ field-code byte; empty values.
 | `ledger`         | `AuditEntry.Ledgers[]`              | UTF-8 + `0x00` terminator                 | match-any (one key per name) |
 | `caller_subject` | `CallerSnapshot.Identity.Subject`   | UTF-8 + `0x00` terminator                 | equality (skip when nil) |
 | `order_type`     | `AuditItem.SerializedOrder` → token | token + `0x00` terminator                 | match-any (one key per distinct token) |
-| `timestamp`      | `AuditEntry.Timestamp`              | BE `uint64` unix nanos                    | range |
+| `timestamp`      | `AuditEntry.Timestamp`              | BE `uint64` raw HLC `Timestamp.Data` (unix microseconds) | range |
 | `proposal_id`    | `AuditEntry.ProposalId`             | BE `uint64`                               | range |
 | `log_seq`        | `AuditItem.LogSequence` (`> 0`)     | BE `uint64`                               | range, match-any (one key per item) |
 

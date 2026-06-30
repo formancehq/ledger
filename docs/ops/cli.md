@@ -2150,7 +2150,6 @@ ledgerctl store rebuild-audit-index --data-dir /path/to/data [flags]
 1. Opens the Pebble data directory in read-only mode
 2. Opens or creates the Pebble read index database
 3. Drops the existing audit secondary index, then replays all entries from the Audit zone, rebuilding the index from scratch
-4. Reports the last processed audit sequence on completion
 
 **Example:**
 
