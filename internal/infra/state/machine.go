@@ -664,7 +664,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		queryCheckpointCreated := result.QueryCheckpointCreated > 0
 
 		if (sealReqBase != nil || queryCheckpointCreated) && i != len(decoded)-1 {
-			assert.Unreachable("checkpoint trigger entry not last in PrepareEntries batch", map[string]any{
+			assert.Unreachable("checkpoint trigger entry not last in PrepareDecodedEntries batch", map[string]any{
 				"raftIndex":  entry.Index,
 				"proposalID": cmd.GetId(),
 				"position":   i,
@@ -674,7 +674,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			_ = batch.Cancel()
 
 			return nil, fmt.Errorf(
-				"checkpoint trigger entry at position %d/%d in PrepareEntries batch (raft index %d) — applier must pre-split",
+				"checkpoint trigger entry at position %d/%d in PrepareDecodedEntries batch (raft index %d) — applier must pre-split",
 				i, len(decoded), entry.Index,
 			)
 		}
