@@ -355,6 +355,49 @@ func TestStore_CleanupOldCheckpoints_RemovesOrphansBelowTracker(t *testing.T) {
 	require.Contains(t, remaining, "102", "newly-created 102 must be kept")
 }
 
+// TestStore_LegacyIncomingMigration asserts the boot-time cleanup of the
+// legacy follower-sync staging path (dataDir/checkpoints/incoming) used by
+// older builds. Newer builds stage at dataDir/incoming-checkpoint; the
+// legacy path is volatile-only so it can be removed unconditionally.
+func TestStore_LegacyIncomingMigration(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dataDir := t.TempDir()
+	legacyIncoming := filepath.Join(dataDir, "checkpoints", "incoming")
+	require.NoError(t, os.MkdirAll(legacyIncoming, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(legacyIncoming, "junk"), []byte("x"), 0o644))
+
+	s, err := NewStore(dataDir, logger, meter, DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err = os.Stat(legacyIncoming)
+	require.True(t, os.IsNotExist(err), "legacy checkpoints/incoming must be removed at boot")
+
+	_, err = os.Stat(filepath.Join(dataDir, "incoming-checkpoint"))
+	require.True(t, os.IsNotExist(err), "new staging path must not be pre-created")
+}
+
+// TestStore_PrepareIncomingRestoreLocation pins the new staging path so a
+// future move is caught by tests, not by surprise on production restore.
+func TestStore_PrepareIncomingRestoreLocation(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	dir, err := s.PrepareIncomingRestore()
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(s.DataDir(), "incoming-checkpoint"), dir)
+
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+}
+
 func TestStore_IterateColdKVPairs(t *testing.T) {
 	t.Parallel()
 

@@ -50,7 +50,11 @@ const (
 	checkpointsDir          = "checkpoints"
 	temporaryCheckpointsDir = "tmp"
 	baselineCheckpointsDir  = "baseline"
-	incomingRestoreDir      = "incoming" // inside checkpointsDir, non-numeric to avoid ID collision
+	// incomingCheckpointDir sits at the dataDir top level (sibling of
+	// checkpointsDir) so that checkpointsDir contains only numbered
+	// checkpoint dirs. Same filesystem → ActivateIncomingRestore's
+	// Rename(incoming, checkpoints/<id>) stays atomic.
+	incomingCheckpointDir = "incoming-checkpoint"
 )
 
 // ScanLatestCheckpointID scans the checkpoints directory and returns the highest
@@ -74,7 +78,10 @@ func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err er
 
 		id, err := strconv.ParseUint(entry.Name(), 10, 64)
 		if err != nil {
-			continue // skip non-numeric dirs (e.g. "incoming")
+			// Defensive: no producer writes non-numeric children to
+			// checkpointsDir, but tolerate foreign artifacts (.DS_Store,
+			// editor scratch files) instead of failing boot.
+			continue
 		}
 
 		if !found || id > latestID {
@@ -728,8 +735,9 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 // exit otherwise preserves the live checkpoint set as untouchable orphans,
 // permanently leaking `maxCheckpoints * checkpoint_size` per crash.
 //
-// Non-numeric child dirs (e.g. "incoming" used by follower sync) are
-// skipped; only positive-integer dirs are considered checkpoints.
+// Non-numeric children are skipped defensively (no producer writes them
+// after the layout split that moved follower-sync staging out of
+// checkpointsDir); only numeric dirs are considered checkpoints.
 func (s *Store) cleanupOldCheckpoints() error {
 	newCheckpoint := s.currentCheckPoint + 1
 
@@ -742,12 +750,12 @@ func (s *Store) cleanupOldCheckpoints() error {
 	oldestToKeep := newCheckpoint - uint64(s.maxCheckpoints) + 1
 	checkpointsPath := filepath.Join(s.dataDir, checkpointsDir)
 
+	// cleanupOldCheckpoints runs only after CreateSnapshot's db.Checkpoint()
+	// has succeeded, which (re)creates the checkpoints/ parent — so ENOENT
+	// here would signal filesystem tampering or a broken invariant, not a
+	// benign empty state. Per CLAUDE.md invariant #7, surface it loudly.
 	entries, err := os.ReadDir(checkpointsPath)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-
 		return fmt.Errorf("listing checkpoints directory: %w", err)
 	}
 
@@ -758,7 +766,7 @@ func (s *Store) cleanupOldCheckpoints() error {
 
 		id, err := strconv.ParseUint(entry.Name(), 10, 64)
 		if err != nil {
-			continue // skip non-numeric children (e.g. "incoming")
+			continue // defensive: see ScanLatestCheckpointID
 		}
 
 		if id >= oldestToKeep {
@@ -936,14 +944,23 @@ func (s *Store) cleanupTemporaryCheckpoints() {
 // cleanupIncomingRestore removes the incoming restore directory on startup.
 // A partial incoming checkpoint can be left if the node crashed during follower sync
 // (between PrepareIncomingRestore and RestoreCheckpoint). It is safe to delete.
+//
+// Also drops the legacy path (dataDir/checkpoints/incoming) used by older
+// builds that placed staging inside checkpointsDir; migration is one-way
+// because the dir is always volatile staging.
 func (s *Store) cleanupIncomingRestore() {
-	path := filepath.Join(s.dataDir, checkpointsDir, incomingRestoreDir)
+	paths := []string{
+		filepath.Join(s.dataDir, incomingCheckpointDir),
+		filepath.Join(s.dataDir, checkpointsDir, "incoming"),
+	}
 
-	err := os.RemoveAll(path)
-	if err != nil {
-		s.logger.WithFields(map[string]any{
-			"error": err,
-		}).Errorf("Failed to clean up incoming restore directory")
+	for _, path := range paths {
+		if err := os.RemoveAll(path); err != nil {
+			s.logger.WithFields(map[string]any{
+				"path":  path,
+				"error": err,
+			}).Errorf("Failed to clean up incoming restore directory")
+		}
 	}
 }
 
@@ -968,11 +985,12 @@ func (s *Store) PrepareCheckpointRestore(checkpointID uint64) (string, error) {
 }
 
 // PrepareIncomingRestore creates a staging directory for an incoming checkpoint
-// from a leader. The directory is "checkpoints/incoming/" — a non-numeric name
-// that cannot collide with the numbered checkpoints created by CreateSnapshot
-// or the background checkpoint goroutine.
+// from a leader. The directory lives outside checkpointsDir so that
+// checkpointsDir holds only numbered checkpoints and the staging path cannot
+// collide with the numbered checkpoints created by CreateSnapshot or the
+// background checkpoint goroutine.
 func (s *Store) PrepareIncomingRestore() (string, error) {
-	dir := filepath.Join(s.dataDir, checkpointsDir, incomingRestoreDir)
+	dir := filepath.Join(s.dataDir, incomingCheckpointDir)
 
 	if err := os.RemoveAll(dir); err != nil {
 		return "", fmt.Errorf("removing existing incoming directory: %w", err)
@@ -993,8 +1011,17 @@ func (s *Store) ActivateIncomingRestore() (uint64, error) {
 	defer s.snapshotMu.Unlock()
 
 	newID := s.currentCheckPoint + 1
-	incomingDir := filepath.Join(s.dataDir, checkpointsDir, incomingRestoreDir)
-	targetDir := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(newID, 10))
+	incomingDir := filepath.Join(s.dataDir, incomingCheckpointDir)
+	targetParent := filepath.Join(s.dataDir, checkpointsDir)
+	targetDir := filepath.Join(targetParent, strconv.FormatUint(newID, 10))
+
+	// Ensure the checkpoints parent exists. Before the staging-dir split it
+	// was created as a side effect of PrepareIncomingRestore; now staging
+	// lives elsewhere and the parent may not exist on a freshly initialised
+	// follower whose first checkpoint comes from the leader.
+	if err := os.MkdirAll(targetParent, 0755); err != nil {
+		return 0, fmt.Errorf("creating checkpoints directory: %w", err)
+	}
 
 	if err := os.RemoveAll(targetDir); err != nil {
 		return 0, fmt.Errorf("removing target checkpoint directory: %w", err)
