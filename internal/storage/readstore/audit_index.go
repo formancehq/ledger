@@ -104,6 +104,10 @@ func (s *Store) auditSeqsForPrefix(lower, upper []byte) ([]uint64, error) {
 
 // AuditSeqsByString returns audit sequences indexed under a string field for an
 // exact value (equality match).
+//
+// Matching is a prefix scan over [field][value\x00]; it is unambiguous only
+// while indexed values contain no NUL byte (see AuditIndexStringKey). EN-1305
+// must add NUL disambiguation before exposing arbitrary caller.subject filters.
 func (s *Store) AuditSeqsByString(field byte, value string) ([]uint64, error) {
 	kb := dal.NewKeyBuilder()
 	lower := kb.Reset().

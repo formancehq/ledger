@@ -552,6 +552,15 @@ func AuditIndexPrefix() []byte {
 
 // AuditIndexStringKey builds [0xFE][0x05][field][value\x00][seq BE8] for a
 // string-valued field (ledger, caller_subject, order_type).
+//
+// The value is NUL-terminated and matched by prefix scan (AuditSeqsByString),
+// so the encoding is unambiguous only while indexed values are themselves
+// NUL-free — true today for order_type (fixed vocabulary), ledger (validated
+// names) and caller.subject (auth subject). EN-1305, which wires the
+// equality/range filter path over arbitrary caller subjects, MUST disambiguate
+// before relying on it (an exact-length check len(key) == len(prefix)+8, or a
+// length-prefixed string encoding); otherwise an "alice" lookup would also
+// match a value indexed as "alice\x00evil".
 func AuditIndexStringKey(kb *dal.KeyBuilder, field byte, value string, seq uint64) []byte {
 	return kb.Reset().
 		PutByte(PrefixInternal).
