@@ -10,7 +10,6 @@ package main
 
 import (
 	"fmt"
-	"path"
 	"strings"
 
 	"google.golang.org/protobuf/compiler/protogen"
@@ -78,18 +77,27 @@ func poolVarName(filePoolPrefix string, kind protoreflect.Kind) string {
 }
 
 // filePoolPrefix derives a Go-identifier-safe, capitalized suffix from a
-// proto file's GeneratedFilenamePrefix (which is the proto file path
-// minus its extension, e.g. "common" or "misc/proto/common"). It is used
-// as a per-file disambiguator in pool variable names. Non-alphanumeric
-// runes are replaced with '_'; the result is title-cased so the final
-// pool identifier reads as `_dethashKeyPool<File><Kind>`.
+// proto file's GeneratedFilenamePrefix (the proto file path minus its
+// extension, e.g. "common" with `protoc -I misc/proto` or
+// "misc/proto/common" with `protoc -I .`). The full prefix is consumed —
+// not just the basename — so two .proto files that happen to share a
+// basename in different directories (e.g. `a/common.proto` and
+// `b/common.proto`) but compile into the same go_package still produce
+// distinct pool identifiers (`ACommon` vs `BCommon`). Stripping to
+// `path.Base` first would re-introduce the per-file collision the
+// per-file scheme exists to prevent.
+//
+// Non-identifier runes (including the path separator `/`) are dropped
+// and the next letter is re-capitalized, yielding a CamelCase suffix
+// that reads naturally inside the final `_dethashKeyPool<File><Kind>`
+// pool variable name.
 func filePoolPrefix(file *protogen.File) string {
-	base := path.Base(file.GeneratedFilenamePrefix)
+	prefix := file.GeneratedFilenamePrefix
 
 	var b strings.Builder
-	b.Grow(len(base) + 1)
+	b.Grow(len(prefix) + 1)
 	upper := true
-	for _, r := range base {
+	for _, r := range prefix {
 		switch {
 		case r >= 'a' && r <= 'z':
 			if upper {

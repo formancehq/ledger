@@ -17,7 +17,7 @@ import (
 // a given kind warms the pool with a 16-cap slice; larger maps grow it
 // once and the grown capacity persists.
 var (
-	_dethashKeyPoolAuditString = sync.Pool{
+	_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoAuditpbAuditString = sync.Pool{
 		New: func() any { s := make([]string, 0, 16); return &s },
 	}
 )
@@ -179,7 +179,7 @@ func (m *AuditFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Context) > 0 {
-		keysPtr := _dethashKeyPoolAuditString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoAuditpbAuditString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Context {
 			keys = append(keys, k)
@@ -204,7 +204,7 @@ func (m *AuditFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolAuditString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoAuditpbAuditString.Put(keysPtr)
 	}
 	if len(m.Message) > 0 {
 		i -= len(m.Message)
