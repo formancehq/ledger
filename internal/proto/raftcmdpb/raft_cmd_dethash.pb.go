@@ -17,7 +17,7 @@ import (
 // a given kind warms the pool with a 16-cap slice; larger maps grow it
 // once and the grown capacity persists.
 var (
-	_dethashKeyPoolRaftCmdString = sync.Pool{
+	_dethashKeyPool_raft_cmd_String = sync.Pool{
 		New: func() any { s := make([]string, 0, 16); return &s },
 	}
 )
@@ -474,7 +474,7 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		dAtA[i] = 0x28
 	}
 	if len(m.AccountTypes) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountTypes {
 			keys = append(keys, k)
@@ -499,7 +499,7 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if m.MirrorSource != nil {
 		size, _ := m.MirrorSource.MarshalToSizedBufferVT(dAtA[:i])
@@ -655,7 +655,7 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.AccountMetadata) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountMetadata {
 			keys = append(keys, k)
@@ -680,7 +680,7 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if len(m.Reference) > 0 {
 		i -= len(m.Reference)
@@ -697,7 +697,7 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		dAtA[i] = 0x22
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -722,7 +722,7 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if len(m.Postings) > 0 {
 		for iNdEx := len(m.Postings) - 1; iNdEx >= 0; iNdEx-- {
@@ -762,7 +762,7 @@ func (m *MirrorSavedMetadata) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -787,7 +787,7 @@ func (m *MirrorSavedMetadata) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if m.Target != nil {
 		size, _ := m.Target.MarshalToSizedBufferVT(dAtA[:i])
@@ -826,7 +826,7 @@ func (m *MirrorRevertedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []b
 		dAtA[i] = 0x2a
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -851,7 +851,7 @@ func (m *MirrorRevertedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []b
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if len(m.ReversePostings) > 0 {
 		for iNdEx := len(m.ReversePostings) - 1; iNdEx >= 0; iNdEx-- {
@@ -1164,7 +1164,7 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		dAtA[i] = 0x38
 	}
 	if len(m.AccountMetadata) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountMetadata {
 			keys = append(keys, k)
@@ -1189,10 +1189,10 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -1217,7 +1217,7 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if len(m.Reference) > 0 {
 		i -= len(m.Reference)
@@ -1272,7 +1272,7 @@ func (m *NumscriptReference) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Vars) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Vars {
 			keys = append(keys, k)
@@ -1297,7 +1297,7 @@ func (m *NumscriptReference) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if len(m.Version) > 0 {
 		i -= len(m.Version)
@@ -1336,7 +1336,7 @@ func (m *SaveMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -1361,7 +1361,7 @@ func (m *SaveMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if m.Target != nil {
 		size, _ := m.Target.MarshalToSizedBufferVT(dAtA[:i])
@@ -1412,7 +1412,7 @@ func (m *RevertTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		}
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -1437,7 +1437,7 @@ func (m *RevertTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	if m.AtEffectiveDate {
 		i--
@@ -1499,7 +1499,7 @@ func (m *SaveLedgerMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byt
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolRaftCmdString.Get().(*[]string)
+		keysPtr := _dethashKeyPool_raft_cmd_String.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -1524,7 +1524,7 @@ func (m *SaveLedgerMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byt
 		}
 		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolRaftCmdString.Put(keysPtr)
+		_dethashKeyPool_raft_cmd_String.Put(keysPtr)
 	}
 	return len(dAtA) - i, nil
 }
