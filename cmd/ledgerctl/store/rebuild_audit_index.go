@@ -56,7 +56,10 @@ func runRebuildAuditIndex(cmd *cobra.Command, _ []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start("Opening Pebble store (read-only)...")
 
-	pebbleStore, err := dal.OpenReadOnly(dataDir, logger)
+	// The server keeps the live Pebble DB under <data-dir>/live (see dal.NewStore),
+	// while the read index lives at <data-dir>/read-indexes. Open the live subdir,
+	// not the data root.
+	pebbleStore, err := dal.OpenReadOnly(filepath.Join(dataDir, "live"), logger)
 	if err != nil {
 		spinner.Fail("Failed to open Pebble store")
 
