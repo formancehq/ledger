@@ -369,18 +369,36 @@ func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
 	})
 }
 
-// sweepBelowTerm computes the max term across the supplied raft entries and
-// fails every pending future whose stored term is strictly smaller. Callers
-// should invoke this AFTER per-commandID resolution for the same batch, so
-// committed older-term entries get their futures resolved first.
-func (a *Applier) sweepBelowTerm(entries []raftpb.Entry) {
-	var maxTerm uint64
-
-	for i := range entries {
-		if entries[i].Term > maxTerm {
-			maxTerm = entries[i].Term
-		}
+// batchMaxTerm returns the highest Raft term in entries.
+//
+// Within any batch of committed entries delivered by raft, terms are
+// monotonically non-decreasing: raft delivers entries in log order, and a
+// new leader can only append at a term strictly higher than any preceding
+// entry's. The last entry's term is therefore the max. Returns 0 for an
+// empty slice — callers skip the sweep when maxTerm == 0.
+func batchMaxTerm(entries []raftpb.Entry) uint64 {
+	if len(entries) == 0 {
+		return 0
 	}
+
+	return entries[len(entries)-1].Term
+}
+
+// batchMaxTermDecoded is the DecodedEntry variant of batchMaxTerm.
+func batchMaxTermDecoded(decoded []state.DecodedEntry) uint64 {
+	if len(decoded) == 0 {
+		return 0
+	}
+
+	return decoded[len(decoded)-1].Entry.Term
+}
+
+// sweepBelowTerm fails every pending future whose stored term is strictly
+// smaller than the max term in entries. Callers should invoke this AFTER
+// per-commandID resolution for the same batch, so committed older-term
+// entries get their futures resolved first.
+func (a *Applier) sweepBelowTerm(entries []raftpb.Entry) {
+	maxTerm := batchMaxTerm(entries)
 
 	if maxTerm > 0 {
 		a.FailFuturesBelowTerm(maxTerm, ErrLeadershipLost)
@@ -865,17 +883,7 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, decoded ..
 
 	a.resolveFutures(result)
 
-	// sweepBelowTerm needs only entry terms; compute the max in-place
-	// instead of materializing a []raftpb.Entry slice from decoded.
-	var maxTerm uint64
-
-	for i := range decoded {
-		if decoded[i].Entry.Term > maxTerm {
-			maxTerm = decoded[i].Entry.Term
-		}
-	}
-
-	if maxTerm > 0 {
+	if maxTerm := batchMaxTermDecoded(decoded); maxTerm > 0 {
 		a.FailFuturesBelowTerm(maxTerm, ErrLeadershipLost)
 	}
 
@@ -1048,14 +1056,8 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, decoded ...state.De
 	pfs := a.extractBatchFutures(pb.Result)
 
 	// Highest term seen in this batch, used by the post-resolve sweep
-	// (issue #172). Computed once and reused below.
-	var maxTerm uint64
-
-	for i := range decoded {
-		if decoded[i].Entry.Term > maxTerm {
-			maxTerm = decoded[i].Entry.Term
-		}
-	}
+	// (issue #172). See batchMaxTermDecoded for the monotonic-term shortcut.
+	maxTerm := batchMaxTermDecoded(decoded)
 
 	// Send to the committer goroutine. Futures are resolved when the
 	// commit completes. No need to wait for the next batch.
