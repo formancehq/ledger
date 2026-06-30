@@ -17,7 +17,7 @@ import (
 // a given kind warms the pool with a 16-cap slice; larger maps grow it
 // once and the grown capacity persists.
 var (
-	_dethashKeyPoolString = sync.Pool{
+	_dethashKeyPoolProposalString = sync.Pool{
 		New: func() any { s := make([]string, 0, 16); return &s },
 	}
 )
@@ -42,7 +42,7 @@ func (m *AppliedProposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.TransientVolumes) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolProposalString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.TransientVolumes {
 			keys = append(keys, k)
@@ -65,8 +65,9 @@ func (m *AppliedProposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 			i--
 			dAtA[i] = 0x22
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolProposalString.Put(keysPtr)
 	}
 	if m.MaxLogSequence != 0 {
 		i -= 8
