@@ -1,6 +1,6 @@
 ---
 name: antithesis-run
-description: Trigger an Antithesis cloud run for ledger-v3-poc by building and pushing per-branch tagged images to ECR and POSTing to the Antithesis launch API. Default mode is k8s (`just k8s-run`, duration in hours, exercises the operator); compose mode (`just run`, duration in minutes) is available on request. Use this skill when the user wants to "lance un run antithesis", "trigger antithesis", "fire antithesis", "test sur antithesis", or any phrasing about kicking off a cloud Antithesis test for this repo.
+description: Trigger an Antithesis cloud run for ledger by building and pushing per-branch tagged images to ECR and POSTing to the Antithesis launch API. Default mode is k8s (`just k8s-run`, duration in hours, exercises the operator); compose mode (`just run`, duration in minutes) is available on request. Use this skill when the user wants to "lance un run antithesis", "trigger antithesis", "fire antithesis", "test sur antithesis", or any phrasing about kicking off a cloud Antithesis test for this repo.
 ---
 
 # /antithesis-run — Launch an Antithesis cloud run
