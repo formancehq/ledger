@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 
 	"github.com/pterm/pterm"
@@ -268,26 +269,80 @@ func renderAccountsTable(accounts []*commonpb.Account) {
 
 	const (
 		metadataColWidth   = 8
+		balanceColWidth    = 28
 		separatorWidth     = 3
 		continuationIndent = "  "
 	)
 
-	maxAddressWidth := max(termWidth-metadataColWidth-separatorWidth-len(continuationIndent), 20)
+	// Two extra separators now (ADDRESS | BALANCES | METADATA).
+	maxAddressWidth := max(termWidth-balanceColWidth-metadataColWidth-2*separatorWidth-len(continuationIndent), 20)
 
 	tableData := pterm.TableData{
-		{"ADDRESS", "METADATA"},
+		{"ADDRESS", "BALANCES", "METADATA"},
 	}
 
 	for _, account := range accounts {
 		metadataCount := strconv.Itoa(len(account.GetMetadata()))
 
-		lines := cmdutil.WrapText(account.GetAddress(), maxAddressWidth, ":")
+		addressLines := cmdutil.WrapText(account.GetAddress(), maxAddressWidth, ":")
+		balanceLines := formatAccountBalances(account.GetVolumes())
 
-		tableData = append(tableData, []string{lines[0], metadataCount})
-		for _, line := range lines[1:] {
-			tableData = append(tableData, []string{continuationIndent + line, ""})
+		// An account row spans as many lines as its longest column so wrapped
+		// addresses and multi-asset balances stay vertically aligned.
+		rowCount := max(len(addressLines), len(balanceLines))
+		for i := range rowCount {
+			var address, balance, metadata string
+
+			if i < len(addressLines) {
+				if i == 0 {
+					address = addressLines[0]
+				} else {
+					address = continuationIndent + addressLines[i]
+				}
+			}
+
+			if i < len(balanceLines) {
+				balance = balanceLines[i]
+			}
+
+			if i == 0 {
+				metadata = metadataCount
+			}
+
+			tableData = append(tableData, []string{address, balance, metadata})
 		}
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+}
+
+// formatAccountBalances renders one "ASSET balance" line per asset, sorted by
+// asset, coloring negative balances red and the rest green (matching the
+// accounts get view). Returns a single muted placeholder when there are no
+// volumes.
+func formatAccountBalances(volumes map[string]*commonpb.VolumesWithBalance) []string {
+	if len(volumes) == 0 {
+		return []string{pterm.Gray("—")}
+	}
+
+	assets := make([]string, 0, len(volumes))
+	for asset := range volumes {
+		assets = append(assets, asset)
+	}
+
+	sort.Strings(assets)
+
+	lines := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		balance := volumes[asset].GetBalance()
+
+		balanceColor := pterm.Green
+		if balance != "" && balance[0] == '-' {
+			balanceColor = pterm.Red
+		}
+
+		lines = append(lines, fmt.Sprintf("%s %s", asset, balanceColor(balance)))
+	}
+
+	return lines
 }
