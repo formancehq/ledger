@@ -6,8 +6,20 @@ package auditpb
 import (
 	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	maps "maps"
 	slices "slices"
+	sync "sync"
+)
+
+// Map-key scratch pools. Each MarshalToSizedBufferDeterministicVT that
+// encodes a map<K, V> grabs a *[]K from the matching pool, fills it,
+// sorts it in place, and returns it. Steady-state allocations are zero:
+// the pool reuses the slice across marshal calls. The first marshal of
+// a given kind warms the pool with a 16-cap slice; larger maps grow it
+// once and the grown capacity persists.
+var (
+	_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoAuditpbAuditString = sync.Pool{
+		New: func() any { s := make([]string, 0, 16); return &s },
+	}
 )
 
 func (m *AuditEntry) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -167,7 +179,13 @@ func (m *AuditFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Context) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Context)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoAuditpbAuditString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Context {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Context[k]
 			baseI := i
 			i -= len(v)
@@ -184,6 +202,9 @@ func (m *AuditFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 			i--
 			dAtA[i] = 0x1a
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoAuditpbAuditString.Put(keysPtr)
 	}
 	if len(m.Message) > 0 {
 		i -= len(m.Message)
