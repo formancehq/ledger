@@ -36,9 +36,12 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Per-element scope check: verify the caller has the required scope for each element.
-	effective := internalauth.ExpandedScopesFromContext(r.Context())
-	if effective != nil {
+	// Per-element scope check: each element may require a different granular
+	// scope. Enforcement keys off auth being enabled — same as RequireScope and
+	// the gRPC Apply handler — so an anonymous request with an empty or nil scope
+	// set is denied by HasScope rather than skipped.
+	if s.authCfg.Enabled {
+		effective := internalauth.ExpandedScopesFromContext(r.Context())
 		authPresented := internalauth.AuthPresentedFromContext(r.Context())
 
 		for i, elem := range elements {

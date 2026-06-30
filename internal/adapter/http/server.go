@@ -5,6 +5,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -15,14 +16,16 @@ import (
 type Server struct {
 	logger      logging.Logger
 	backend     Backend
+	authCfg     internalauth.AuthConfig
 	bulkMaxSize int
 }
 
 // NewServer creates a new server instance (used by handlers).
-func NewServer(logger logging.Logger, backend Backend, bulkMaxSize int) *Server {
+func NewServer(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig, bulkMaxSize int) *Server {
 	return &Server{
 		logger:      logger,
 		backend:     backend,
+		authCfg:     authCfg,
 		bulkMaxSize: bulkMaxSize,
 	}
 }
