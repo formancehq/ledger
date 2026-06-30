@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -83,9 +84,22 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 	}
 
 	if !retryDisabled {
+		// MUST use the Chain* dial options: WithUnaryInterceptor (singular)
+		// stores ONE interceptor per dial and a second call overwrites the
+		// first silently. Order inside the chain matters: gRPC applies
+		// interceptors left-to-right (retry runs first, classify wraps the
+		// final post-retry error). The classify interceptor stays here even
+		// in retry-on mode because it asserts the workload's classification
+		// map is complete.
 		opts = append(opts,
-			grpc.WithUnaryInterceptor(retryUnaryInterceptor(interceptorAttempts)),
-			grpc.WithStreamInterceptor(retryStreamInterceptor(interceptorAttempts)),
+			grpc.WithChainUnaryInterceptor(
+				retryUnaryInterceptor(interceptorAttempts),
+				classifyUnaryInterceptor(),
+			),
+			grpc.WithChainStreamInterceptor(
+				retryStreamInterceptor(interceptorAttempts),
+				classifyStreamInterceptor(),
+			),
 		)
 
 		if retryForever {
@@ -94,6 +108,13 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 			// retry-forever mode so the default path matches master exactly.
 			opts = append(opts, grpc.WithMaxCallAttempts(maxAttempts))
 		}
+	} else {
+		// Retry disabled (LEDGER_NO_RETRY) — classify stays on; same Chain*
+		// option for consistency, even with a single member.
+		opts = append(opts,
+			grpc.WithChainUnaryInterceptor(classifyUnaryInterceptor()),
+			grpc.WithChainStreamInterceptor(classifyStreamInterceptor()),
+		)
 	}
 
 	// When multiple addresses are provided, use a manual resolver so gRPC
@@ -133,15 +154,18 @@ func retryDelay(attempt int) time.Duration {
 	return d
 }
 
-// retryUnaryInterceptor retries unary RPCs on the transient set (IsTransient) to
-// a definitive outcome — each code either clears (no leader → elected, lagging
-// read → caught up) or is an ambiguous commit (Unavailable / DeadlineExceeded /
-// Aborted / ExternalServiceError can follow a commit) that a retry resolves via
-// the idempotency cache. None is a permanent business answer, so retrying is safe
-// and cannot loop forever. The retried set and the set the processor drops are
-// the same predicate, so they cannot drift. maxAttempts bounds the loop
-// (~infinite in retry-forever mode); ctx cancellation (shutdown /
-// MODEL_MAX_SECONDS) ends it regardless.
+// retryUnaryInterceptor retries unary RPCs on the transient set (IsTransient)
+// to a definitive outcome — each code either clears (Unavailable: no leader
+// → elected; ReadIndexNotCaughtUp: lagging read catches up; ExternalServiceError:
+// external service recovers) or is an ambiguous commit (DeadlineExceeded — see
+// IsAmbiguousCommit) that a retry resolves via the idempotency cache. None is
+// a permanent business answer, so retrying is safe and cannot loop forever.
+// maxAttempts bounds the loop (~infinite in retry-forever mode); ctx
+// cancellation (shutdown / MODEL_MAX_SECONDS) ends it regardless.
+//
+// Aborted is NOT retried (see IsAborted): the gRPC spec allows business
+// "please retry" semantics there, and we want to see it surface in the
+// classify interceptor rather than silently spinning the retry loop.
 func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
@@ -164,6 +188,61 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 			}
 		}
 		return err
+	}
+}
+
+// classifyUnaryInterceptor asserts that every error escaping an RPC is
+// recognized by IsClassified. An unrecognized code (Internal panic from the
+// server, ResourceExhausted from a future rate limiter, a brand-new gRPC
+// status …) flips an Unreachable — the workload's classification map is
+// incomplete and silent code paths exist somewhere downstream. The Details
+// pin the RPC method and the actual code so triage finds the orphan quickly.
+//
+// Single global assertion name on purpose: one alarm whose Details vary, not
+// one alarm per RPC method (which would explode the Antithesis triage UI).
+func classifyUnaryInterceptor() grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply any,
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		err := invoker(ctx, method, req, reply, cc, opts...)
+		assert.Always(IsClassified(err),
+			"every RPC error must be classified (workload predicate set complete)",
+			map[string]any{
+				"method": method,
+				"code":   status.Code(err).String(),
+				"err":    fmt.Sprintf("%v", err),
+			})
+		return err
+	}
+}
+
+// classifyStreamInterceptor mirrors classifyUnaryInterceptor for the
+// stream-creation error. Mid-stream Recv() errors are NOT covered here —
+// each driver classifies its own stream loop (see the convention in
+// tests/antithesis/README.md).
+func classifyStreamInterceptor() grpc.StreamClientInterceptor {
+	return func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		streamer grpc.Streamer,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		stream, err := streamer(ctx, desc, cc, method, opts...)
+		assert.Always(IsClassified(err),
+			"every RPC error must be classified (workload predicate set complete)",
+			map[string]any{
+				"method": method,
+				"code":   status.Code(err).String(),
+				"err":    fmt.Sprintf("%v", err),
+			})
+		return stream, err
 	}
 }
 
@@ -223,17 +302,48 @@ func IsDeadlineExceeded(err error) bool {
 	return ok && st.Code() == codes.DeadlineExceeded
 }
 
-// IsAborted returns true if the error is a gRPC Aborted status. The
-// codebase's own retry classifier
-// (internal/application/ctrl/snapshot_fetcher.go) treats Aborted on the
-// same footing as Unavailable / DeadlineExceeded, so the workload follows
-// the same convention.
+// IsAborted returns true if the error is a gRPC Aborted status.
+//
+// Deliberately NOT part of IsTransient: the gRPC spec allows business-level
+// concurrency errors to map to Aborted ("Concurrency issue, please retry"),
+// and we have no audited guarantee that no current or future server path
+// uses Aborted as a business answer. Surfacing it loud (via the classify
+// interceptor's Unreachable) is intentional — if Aborted shows up in a
+// real chaos run, that is a finding worth triaging, not silently
+// retried-then-skipped.
 func IsAborted(err error) bool {
 	if err == nil {
 		return false
 	}
 	st, ok := status.FromError(err)
 	return ok && st.Code() == codes.Aborted
+}
+
+// IsCanceled returns true if the error is a gRPC Canceled status. Emitted
+// when the local ctx is dead — the parent driver is shutting down (global
+// deadline reached, composer kill propagated). Not retry-safe (the next
+// retry would see ctx.Done() immediately) and not a finding: the driver
+// just exits.
+func IsCanceled(err error) bool {
+	if err == nil {
+		return false
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.Canceled
+}
+
+// IsAmbiguousCommit returns true if the error indicates the request may have
+// committed despite the error code — the retry resolves the ambiguity via
+// the idempotency cache. Today: DeadlineExceeded only (Unavailable surfaces
+// before the server sees the request, ReadIndexNotCaughtUp is a read-only
+// answer, ExternalServiceError happens before the audit ack).
+//
+// IsAmbiguousCommit is a STRICT SUBSET of IsTransient — every member is
+// already retried by the interceptors. The separation exists so drivers
+// asserting on post-commit state can decide whether to verify
+// read-after-write even on the "error" branch.
+func IsAmbiguousCommit(err error) bool {
+	return IsDeadlineExceeded(err)
 }
 
 // IsReadIndexNotCaughtUp returns true if the error is the server's
@@ -311,32 +421,87 @@ func IsNotFound(err error) bool {
 // only so existing callers keep compiling.
 func IsLedgerNotFound(err error) bool { return IsNotFound(err) }
 
-// IsTransient returns true for a genuinely transient infrastructure error — not a
-// definitive business answer. Retrying it reaches a definitive outcome: the
-// condition clears (no leader → elected, lagging read → caught up), or — since
-// Unavailable / DeadlineExceeded / Aborted / ExternalServiceError can follow a
-// commit — an ambiguous commit a retry resolves via the idempotency cache. The
-// retry interceptors retry exactly this set, and the model processor drops
-// exactly this set as "did not happen" (sound because retry resolves it first, so
-// the processor only sees one on shutdown); keeping them one predicate is why
-// they cannot drift. Covers:
+// IsTransient returns true for a retry-safe infrastructure error — not a
+// definitive business answer, not a local-lifecycle event. Retrying reaches a
+// definitive outcome: the condition clears (no leader → elected, lagging read
+// → caught up) or — since DeadlineExceeded can follow a commit — the retry
+// resolves the ambiguity via the idempotency cache. The retry interceptors
+// retry exactly this set. Covers:
 //   - Unavailable (cluster unhealthy / no leader / Raft transients)
-//   - DeadlineExceeded (server unreachable, fault window)
-//   - Aborted (no domain error maps to it; only Raft / transport transients)
+//   - DeadlineExceeded (wire-level timeout, also see IsAmbiguousCommit)
 //   - FailedPrecondition + READ_INDEX_NOT_CAUGHT_UP (read store catching up)
-//   - ExternalServiceError (S3 down etc.)
+//   - ExternalServiceError (S3 / NATS down, etc.)
 //
-// Business outcomes are deliberately excluded — definitive, never-clearing, and
-// validated rather than retried or dropped: NotFound and LedgerDeleted.
-// Deletable-ledger prefixes are restricted from the shared pool (see
-// restrictedPrefixes), so only the drivers that delete their own ledgers ever
-// legitimately see LedgerDeleted; for anything drawn from the pool it's a finding.
+// NOT in IsTransient:
+//   - Aborted (see IsAborted comment — surfaced loud, not retried)
+//   - Canceled (see IsCanceled — local lifecycle, not a server transient)
+//   - All business outcomes (NotFound, AlreadyExists, LedgerDeleted, generic
+//     FailedPrecondition) — definitive, validated rather than skipped.
 func IsTransient(err error) bool {
 	return IsUnavailable(err) ||
 		IsDeadlineExceeded(err) ||
-		IsAborted(err) ||
 		IsReadIndexNotCaughtUp(err) ||
 		IsExternalServiceError(err)
+}
+
+// IsTolerated returns true for any error the workload should NOT surface as
+// a finding: nil, retry-safe transient, or local-lifecycle Canceled. This is
+// the predicate the Sometimes() probes use (`assert.Sometimes(IsTolerated(err),
+// ...)`) so that a context cancellation late in the run doesn't flip a
+// per-driver Sometimes signal to "never true".
+func IsTolerated(err error) bool {
+	return err == nil || IsTransient(err) || IsCanceled(err)
+}
+
+// isBusinessError returns true for a definitive business answer the server
+// returns when the request was syntactically valid but the requested action
+// cannot apply (NotFound, AlreadyExists, InvalidArgument, FailedPrecondition
+// minus the two reasons that IsTransient already covers).
+//
+// Unexported because it is only used by IsClassified — drivers that need to
+// validate a specific business outcome check the precise reason via
+// HasErrorReason (e.g. domain.ErrReasonInsufficientFunds), never this coarse
+// "is it a known business code at all" predicate.
+func isBusinessError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if IsReadIndexNotCaughtUp(err) || IsExternalServiceError(err) {
+		// These are FailedPrecondition codes but already classified as transient.
+		return false
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	switch st.Code() {
+	case codes.NotFound,
+		codes.AlreadyExists,
+		codes.InvalidArgument,
+		codes.FailedPrecondition:
+		return true
+	}
+	return false
+}
+
+// IsClassified returns true if the error is nil, retry-safe, locally
+// canceled, or a known business code. The classify interceptor uses this
+// to flag any OTHER code (Internal panic, ResourceExhausted from a future
+// rate-limiter, an unhandled new gRPC code, Aborted from an unaudited
+// server path, …) as an Unreachable assertion. A finding here means the
+// workload's classification map is incomplete and silent paths exist —
+// expand the predicates above (or, for Aborted specifically, audit the
+// server path that produced it).
+//
+// Aborted is DELIBERATELY NOT classified: the gRPC spec allows business
+// "please retry" semantics there, and we have no audited guarantee the
+// server keeps Aborted as a pure transport transient. Surfacing it loud
+// via the classify interceptor is the entire point — see IsAborted.
+func IsClassified(err error) bool {
+	return err == nil ||
+		IsTransient(err) ||
+		IsCanceled(err) ||
+		isBusinessError(err)
 }
 
 // NewClient creates a BucketServiceClient connected to the ledger service.

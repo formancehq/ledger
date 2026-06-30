@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_concurrent_revert", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_revert_concurrent", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		// 1. Create a transaction to revert.
 		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
@@ -30,20 +30,22 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"should be able to create a transaction for concurrent revert",
 			internal.Details{"ledger": ledger, "error": err})
 		if err != nil {
 			return
 		}
 
-		createdTx := internal.ExtractCreatedTransaction(resp)
+		details := internal.Details{"ledger": ledger}
+
+		createdTx := internal.CheckCreatedTransaction(resp, details)
 		if createdTx == nil {
 			return
 		}
 
 		txID := createdTx.Transaction.Id
-		details := internal.Details{"ledger": ledger, "txId": txID}
+		details["txId"] = txID
 
 		// 2. Fire two reverts concurrently.
 		revertReq := servicepb.UnsignedApplyRequest("", &servicepb.Request{

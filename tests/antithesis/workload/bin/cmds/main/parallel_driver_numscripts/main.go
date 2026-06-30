@@ -28,7 +28,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to save numscript", details.With(internal.Details{"error": err}))
+		assert.Sometimes(internal.IsTolerated(err), "should be able to save numscript", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}
@@ -50,7 +50,7 @@ func main() {
 			"amount": fmt.Sprintf("COIN %v", internal.RandomBigInt().String()),
 		}
 
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
@@ -67,7 +67,10 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to use saved numscript in transaction", details.With(internal.Details{"error": err}))
+		assert.Sometimes(internal.IsTolerated(err), "should be able to use saved numscript in transaction", details.With(internal.Details{"error": err}))
+		if err == nil {
+			internal.CheckCreatedTransaction(resp, details)
+		}
 	})
 }
 

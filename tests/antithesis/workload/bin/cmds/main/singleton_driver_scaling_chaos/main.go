@@ -33,8 +33,8 @@ const recoveryTimeout = 15 * time.Minute
 func main() {
 	log.Println("composer: singleton_driver_scaling_chaos")
 
-	ctx := context.Background()
-
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
 		log.Printf("cannot build k8s client: %s", err)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -25,7 +24,8 @@ func s3Storage() *commonpb.BackupStorage {
 func main() {
 	log.Println("composer: parallel_driver_incremental_backup")
 
-	ctx := context.Background()
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	conn, err := internal.NewGRPCConn()
 	if err != nil {
 		log.Printf("error creating connection: %s", err)

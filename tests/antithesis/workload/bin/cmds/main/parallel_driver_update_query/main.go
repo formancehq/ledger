@@ -41,9 +41,16 @@ func main() {
 				},
 			},
 		}))
-		if err != nil && !internal.IsTransient(err) {
+		if err != nil {
+			if internal.IsTolerated(err) {
+				return
+			}
+
 			st, _ := status.FromError(err)
 			if st.Code() != codes.AlreadyExists {
+				assert.Unreachable("prepared query creation returned unexpected error",
+					details.With(internal.Details{"error": err}))
+
 				return
 			}
 		}
@@ -67,7 +74,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"should be able to update prepared query",
 			details.With(internal.Details{"error": err}))
 		if err != nil {

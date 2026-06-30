@@ -93,7 +93,7 @@ func main() {
 		r := internal.Rand()
 
 		run := r.Uint64()
-		ledger := fmt.Sprintf("minseq-%d", run%1_000_000)
+		ledger := internal.PrefixMinLogSeq.WithSeed(run)
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}

@@ -18,7 +18,7 @@ func main() {
 
 		// Create a dedicated ledger so account type patterns don't interfere
 		// with other drivers using the shared default ledger.
-		ledger := fmt.Sprintf("accttype-%d", r.Uint64()%1_000_000)
+		ledger := internal.PrefixAccountTypes.New()
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
@@ -40,7 +40,7 @@ func main() {
 				},
 			},
 		}))
-		assert.Sometimes(err == nil || internal.IsTransient(err) || status.Code(err) == codes.AlreadyExists,
+		assert.Sometimes(internal.IsTolerated(err) || status.Code(err) == codes.AlreadyExists,
 			"should be able to add account type", details.With(internal.Details{"error": err}))
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
@@ -66,7 +66,7 @@ func main() {
 
 		// 3. Create a transaction using an address matching the pattern.
 		matchingAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		typedTxResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
@@ -85,9 +85,12 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"should be able to create tx with typed account address",
 			details.With(internal.Details{"address": matchingAddr, "error": err}))
+		if err == nil {
+			internal.CheckCreatedTransaction(typedTxResp, details.With(internal.Details{"address": matchingAddr}))
+		}
 
 		// 4. Set enforcement mode to AUDIT (permissive logging).
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -99,7 +102,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"should be able to set enforcement mode", details.With(internal.Details{"error": err}))
 
 		// 5. Remove the account type.
@@ -112,7 +115,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"should be able to remove account type", details.With(internal.Details{"error": err}))
 
 		// 6. Reset enforcement mode to STRICT. This ledger is selectable by other

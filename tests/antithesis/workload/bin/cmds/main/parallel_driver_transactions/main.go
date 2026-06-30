@@ -87,7 +87,7 @@ func randomTransactionRequest(ledger string) *servicepb.Request {
 func createRandomTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", randomTransactionRequest(ledger)))
 
-	assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create a transaction", internal.Details{
+	assert.Sometimes(internal.IsTolerated(err), "should be able to create a transaction", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})
@@ -95,13 +95,12 @@ func createRandomTransaction(ctx context.Context, client servicepb.BucketService
 		return
 	}
 
-	createdTx := internal.ExtractCreatedTransaction(resp)
+	createdTx := internal.CheckCreatedTransaction(resp, internal.Details{"ledger": ledger})
 	if createdTx == nil {
 		return
 	}
 
 	checkReadAfterWrite(ctx, client, ledger, createdTx)
-	internal.CheckPostCommitVolumes(createdTx.PostCommitVolumes, internal.Details{"ledger": ledger})
 }
 
 func createRandomBulkTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
@@ -113,7 +112,7 @@ func createRandomBulkTransactions(ctx context.Context, client servicepb.BucketSe
 
 	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", requests...))
 
-	assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create bulk transactions", internal.Details{
+	assert.Sometimes(internal.IsTolerated(err), "should be able to create bulk transactions", internal.Details{
 		"ledger": ledger,
 		"size":   size,
 		"error":  err,

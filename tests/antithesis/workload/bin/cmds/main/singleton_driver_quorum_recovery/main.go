@@ -30,8 +30,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+var qrSentinelLedger = internal.PrefixSentinel.WithSuffix("quorum-recovery")
+
 const (
-	qrSentinelLedger   = "sentinel-quorum-recovery"
 	qrCooldown         = 5 * time.Minute
 	qrScaleDownTimeout = 8 * time.Minute
 	qrScaleUpTimeout   = 15 * time.Minute
@@ -40,8 +41,8 @@ const (
 func main() {
 	log.Println("composer: singleton_driver_quorum_recovery")
 
-	ctx := context.Background()
-
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
 		log.Printf("cannot build k8s client: %s", err)

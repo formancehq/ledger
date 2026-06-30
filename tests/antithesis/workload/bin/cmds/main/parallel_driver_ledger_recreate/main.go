@@ -115,7 +115,7 @@ func main() {
 		r := internal.Rand()
 
 		run := r.Uint64()
-		ledger := fmt.Sprintf("lrecreate-%d", run%1_000_000)
+		ledger := internal.PrefixLedgerRecreate.WithSeed(run)
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}

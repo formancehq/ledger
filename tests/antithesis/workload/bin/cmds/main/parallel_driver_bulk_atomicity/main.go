@@ -52,7 +52,7 @@ import (
 // isDefinitiveBulkRejection reports whether the error conclusively means the
 // proposal did not and will never take effect.
 func isDefinitiveBulkRejection(err error) bool {
-	if err == nil || internal.IsTransient(err) {
+	if internal.IsTolerated(err) {
 		return false
 	}
 
@@ -113,7 +113,7 @@ func main() {
 		r := internal.Rand()
 
 		run := r.Uint64()
-		ledger := fmt.Sprintf("bulkatom-%d", run%1_000_000)
+		ledger := internal.PrefixBulkAtomicity.WithSeed(run)
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
