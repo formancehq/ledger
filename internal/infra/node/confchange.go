@@ -67,3 +67,47 @@ func unmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error
 
 	return cc, true, nil
 }
+
+// walkConfChangeContexts iterates the Changes in cc and invokes fn once
+// per change with (type, nodeID, ctx). ctx is non-nil for Add /
+// AddLearnerNode when cc.Context carries a payload (PromoteLearner sends
+// AddNode with empty Context — ctx is nil there); ctx is always nil for
+// RemoveNode. The Context payload is unmarshalled at most once per cc,
+// even when multiple changes share it. Other ConfChange types (UpdateNode,
+// etc.) are silently skipped — callers only react to add/remove today.
+//
+// Used by both Membership.WriteConfChange (FSM Pebble write) and
+// Node.finishReady (post-commit cache + transport wiring) so the decode +
+// dispatch shape stays in one place.
+func walkConfChangeContexts(cc raftpb.ConfChangeV2, fn func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error) error {
+	var cached *ConfChangeContext
+
+	for _, change := range cc.Changes {
+		switch change.Type {
+		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+			var ctx *ConfChangeContext
+			if len(cc.Context) > 0 {
+				if cached == nil {
+					decoded, err := UnmarshalConfChangeContext(cc.Context)
+					if err != nil {
+						return fmt.Errorf("invariant: unmarshal ConfChange context for node %d: %w", change.NodeID, err)
+					}
+
+					cached = &decoded
+				}
+
+				ctx = cached
+			}
+
+			if err := fn(change.Type, change.NodeID, ctx); err != nil {
+				return err
+			}
+		case raftpb.ConfChangeRemoveNode:
+			if err := fn(change.Type, change.NodeID, nil); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}

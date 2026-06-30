@@ -95,7 +95,7 @@ func NewMembership(store *PeerStore, transport peerTransport, pool peerPool, sel
 	}
 
 	for nodeID, addr := range addresses {
-		m.wireAddLocked(nodeID, addr.RaftAddress, addr.ServiceAddress)
+		m.wireAdd(nodeID, addr.RaftAddress, addr.ServiceAddress)
 	}
 
 	logger.WithFields(map[string]any{
@@ -105,9 +105,9 @@ func NewMembership(store *PeerStore, transport peerTransport, pool peerPool, sel
 	return m, nil
 }
 
-// wireAddLocked pushes a peer into the transport + service pool. Self
+// wireAdd pushes a peer into the transport + service pool. Self
 // is skipped because a node never dials itself.
-func (m *Membership) wireAddLocked(nodeID uint64, raftAddr, serviceAddr string) {
+func (m *Membership) wireAdd(nodeID uint64, raftAddr, serviceAddr string) {
 	if nodeID == m.selfNodeID {
 		return
 	}
@@ -122,10 +122,10 @@ func (m *Membership) wireAddLocked(nodeID uint64, raftAddr, serviceAddr string) 
 	}
 }
 
-// wireRemoveLocked removes a peer from the transport + service pool.
+// wireRemove removes a peer from the transport + service pool.
 // Self is skipped (would not be there). context.Background is fine: the
 // transport's RemovePeer is internal bookkeeping, not a network call.
-func (m *Membership) wireRemoveLocked(nodeID uint64) {
+func (m *Membership) wireRemove(nodeID uint64) {
 	if nodeID == m.selfNodeID {
 		return
 	}
@@ -165,7 +165,7 @@ func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string) {
 	}
 	m.mu.Unlock()
 
-	m.wireAddLocked(nodeID, raftAddr, serviceAddr)
+	m.wireAdd(nodeID, raftAddr, serviceAddr)
 }
 
 // Remove deletes a peer from the cache AND from the transport +
@@ -177,7 +177,7 @@ func (m *Membership) Remove(nodeID uint64) {
 	delete(m.addresses, nodeID)
 	m.mu.Unlock()
 
-	m.wireRemoveLocked(nodeID)
+	m.wireRemove(nodeID)
 }
 
 // Register writes a peer through Pebble (own session) AND the cache, in
@@ -337,16 +337,16 @@ func (m *Membership) Rehydrate() error {
 	// Wire side effects outside the lock — these may dial, close
 	// connections, or otherwise be slow.
 	for _, e := range toReadd {
-		m.wireRemoveLocked(e.id)
-		m.wireAddLocked(e.id, e.raftAddr, e.svcAddr)
+		m.wireRemove(e.id)
+		m.wireAdd(e.id, e.raftAddr, e.svcAddr)
 	}
 
 	for _, e := range toAdd {
-		m.wireAddLocked(e.id, e.raftAddr, e.svcAddr)
+		m.wireAdd(e.id, e.raftAddr, e.svcAddr)
 	}
 
 	for _, id := range toRemove {
-		m.wireRemoveLocked(id)
+		m.wireRemove(id)
 	}
 
 	m.logger.WithFields(map[string]any{
@@ -415,31 +415,26 @@ func (m *Membership) WriteConfChange(entry raftpb.Entry, session *dal.WriteSessi
 		return nil
 	}
 
-	for _, change := range cc.Changes {
-		switch change.Type {
+	return walkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
+		switch t {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
-			if len(cc.Context) == 0 {
-				continue
+			if ctx == nil {
+				return nil
 			}
 
-			ccCtx, err := UnmarshalConfChangeContext(cc.Context)
-			if err != nil {
-				return fmt.Errorf("invariant: unmarshal ConfChange context for node %d: %w", change.NodeID, err)
-			}
-
-			if err := session.SetProto(peerKey(change.NodeID), &raftcmdpb.PeerAddress{
-				NodeId:         change.NodeID,
-				RaftAddress:    ccCtx.RaftAddress,
-				ServiceAddress: ccCtx.ServiceAddress,
+			if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
+				NodeId:         nodeID,
+				RaftAddress:    ctx.RaftAddress,
+				ServiceAddress: ctx.ServiceAddress,
 			}); err != nil {
-				return fmt.Errorf("session write peer %d: %w", change.NodeID, err)
+				return fmt.Errorf("session write peer %d: %w", nodeID, err)
 			}
 		case raftpb.ConfChangeRemoveNode:
-			if err := session.DeleteKey(peerKey(change.NodeID)); err != nil {
-				return fmt.Errorf("session delete peer %d: %w", change.NodeID, err)
+			if err := session.DeleteKey(peerKey(nodeID)); err != nil {
+				return fmt.Errorf("session delete peer %d: %w", nodeID, err)
 			}
 		}
-	}
 
-	return nil
+		return nil
+	})
 }

@@ -1170,40 +1170,42 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 			Infof("Applying configuration change")
 		node.confState.Store(node.rawNode.ApplyConfChange(cc))
 
-		// Update the in-memory peer-address cache so the transport sees
-		// the new membership on the next Raft tick. The durable Pebble
-		// write happens inside the FSM batch when the applier processes
-		// these entries (see node.writeConfChangeToSession registered
-		// on the FSM); that path is atomic with the surrounding
-		// business writes and idempotent across spool/WAL replay.
-		// Updating the cache here too means the transport doesn't have
-		// to wait for the applier tick to learn the new address.
-		for _, change := range cc.Changes {
-			switch change.Type {
+		// Mirror the committed ConfChange into the in-memory cache +
+		// transport so the next Raft tick already sees the new address.
+		// The durable Pebble row was written by WriteConfChange inside
+		// the FSM batch — atomic with the surrounding business writes,
+		// idempotent across spool/WAL replay. Updating the cache here
+		// too means the transport doesn't have to wait for the applier
+		// tick to learn the new address. (rawNode.ApplyConfChange above
+		// makes Raft start replicating to the new peer immediately, so
+		// the transport must be wired by then.)
+		err := walkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
+			switch t {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
-				if len(cc.Context) > 0 {
-					ccCtx, err := UnmarshalConfChangeContext(cc.Context)
-					if err != nil {
-						return fmt.Errorf("invariant: unmarshal ConfChange context for node %d: %w", change.NodeID, err)
-					}
-
-					node.membership.Set(change.NodeID, ccCtx.RaftAddress, ccCtx.ServiceAddress)
+				if ctx != nil {
+					node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress)
 				}
 			case raftpb.ConfChangeRemoveNode:
-				node.membership.Remove(change.NodeID)
+				node.membership.Remove(nodeID)
 			}
 
-			// Collect pending ConfChange future (if any) — resolved below after WAL update.
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
+		// Collect pending ConfChange futures (resolved below after WAL
+		// update) and emit the antithesis lifecycle ping for the
+		// fault-injector. Loops over every change.NodeID — including
+		// PromoteLearner and UpdateNode types that walkConfChangeContexts
+		// skips — because pending futures are keyed by NodeID regardless
+		// of transition type.
+		for _, change := range cc.Changes {
 			if f, ok := node.pendingConfChanges.LoadAndDelete(change.NodeID); ok {
 				pendingFutures = append(pendingFutures, f)
 			}
-		}
 
-		// Notify observers about configuration changes.
-		// Membership owns the transport / service-pool side effects;
-		// only the antithesis lifecycle ping remains here for the
-		// fault-injector to observe membership transitions.
-		for _, change := range cc.Changes {
 			lifecycle.SendEvent("conf_change_committed", map[string]any{
 				"nodeID":     node.config.NodeID,
 				"targetNode": change.NodeID,
@@ -2283,10 +2285,4 @@ func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
 	}
 
 	return slices.Contains(cs.Learners, nodeID)
-}
-
-// PeerAddresses returns a defensive copy of the current peer-address
-// cache. Delegates to the Membership which owns the cache + Pebble layer.
-func (node *Node) PeerAddresses() map[uint64]ConfChangeContext {
-	return node.membership.PeerAddresses()
 }
