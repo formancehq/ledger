@@ -5,10 +5,9 @@ package driver_test
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"testing"
-
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
