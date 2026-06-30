@@ -33,6 +33,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -504,6 +505,7 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 		errors.Is(err, node.ErrNodeSyncing) ||
 		errors.Is(err, node.ErrTransferLeaderTimeout) ||
 		errors.Is(err, commonpb.ErrNoLeader) ||
+		errors.Is(err, plan.ErrCacheHorizonExceeded) ||
 		errors.Is(err, ErrNodeNotReachable) {
 		return status.Error(codes.Unavailable, err.Error())
 	}

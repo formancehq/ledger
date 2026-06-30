@@ -149,6 +149,15 @@ const (
 	CacheNeedsTouch
 	// CacheMiss means the key is not in cache at all — a full preload from store is needed.
 	CacheMiss
+	// CacheUnreachable means the target index is 2+ generations ahead of the
+	// current FSM-applied generation: any preload value computed now would be
+	// invalidated by the rotations that must run before apply (gen0 -> gen1 ->
+	// discarded). The admission cannot guarantee that the proposal will read a
+	// consistent cache horizon, so the order must be rejected and re-admitted
+	// once the FSM apply has caught up. This is an operational signal — under
+	// a correctly tuned rotation threshold and a healthy apply rate it should
+	// not occur.
+	CacheUnreachable
 )
 
 // CheckCache determines whether a key will survive in cache until the future raft
@@ -205,8 +214,12 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 
 		return CacheMiss
 	default:
-		// 2+ generations ahead — data will be lost regardless.
-		return CacheMiss
+		// 2+ generations ahead — any preload value computed now would be
+		// rotated out (gen0 -> gen1 -> discarded) before apply. Signal an
+		// unreachable horizon so admission can reject the proposal with a
+		// transient error; the client retries and admission re-admits with
+		// a fresh prediction once the FSM apply has caught up.
+		return CacheUnreachable
 	}
 }
 

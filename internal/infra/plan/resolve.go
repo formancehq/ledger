@@ -122,6 +122,22 @@ func resolveAttributePreload[K interface {
 		id, tag := attributes.MakeKey(canonicalKey)
 
 		switch attrCache.CheckCache(nextIndex, id) {
+		case cache.CacheUnreachable:
+			// Admission predicts ≥2 rotations between propose and apply: a
+			// preload computed now would be rotated out before the FSM read.
+			// Reject the whole proposal — the client retries against a fresh
+			// admission snapshot once the FSM has caught up. See plan.errors.
+			if logger.Enabled(logging.TraceLevel) {
+				logger.WithFields(map[string]any{
+					"type":      typeName,
+					"key":       hex.EncodeToString(canonicalKey),
+					"nextIndex": nextIndex,
+					"boundary":  boundary,
+				}).Tracef("Cache horizon exceeded: admission rejection")
+			}
+
+			return &resolveResult{tracker: tracker}, ErrCacheHorizonExceeded
+
 		case cache.CacheGuaranteed:
 			// Record the declaration so the FSM-side preload.View admits
 			// reads on this key. The apply path triggers no cache mutation

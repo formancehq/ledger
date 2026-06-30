@@ -334,9 +334,20 @@ func TestAttributeCache_IsGuaranteedInCache_TwoGenerationsAhead(t *testing.T) {
 	key := attributes.NewU128(1, 1)
 	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
 
-	// Index 25 is in generation 2 (two generations ahead)
-	// Data will be lost after two rotations -> false
+	// Index 25 is in generation 2 (two generations ahead): any preload
+	// computed now would be rotated out before apply. CheckCache surfaces
+	// this as CacheUnreachable so admission can reject the proposal with a
+	// transient error — Guaranteed must be false and the explicit status
+	// must be CacheUnreachable (not CacheMiss, which would mistakenly drive
+	// a stale preload).
 	assert.False(t, ac.IsGuaranteedInCache(25, key))
+	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, key),
+		"≥2 generations ahead must report CacheUnreachable")
+
+	// Same regime for a key absent from the cache: still Unreachable; the
+	// admission-level reject takes precedence over the per-key miss path.
+	absent := attributes.NewU128(9, 9)
+	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, absent))
 }
 
 func TestCache_NewCache(t *testing.T) {
