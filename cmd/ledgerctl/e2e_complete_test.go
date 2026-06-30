@@ -17,6 +17,7 @@ import (
 
 type namedBucketServer struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	ledger string
 }
 
@@ -32,6 +33,7 @@ func startServer(t *testing.T, ledgerName string) string {
 	servicepb.RegisterBucketServiceServer(srv, namedBucketServer{ledger: ledgerName})
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
+
 	return lis.Addr().String()
 }
 
