@@ -5,16 +5,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	fdom "github.com/formancehq/invariants"
+	"github.com/formancehq/invariants"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // TestValidateWrapping pins the wrapper contract: each Validate* function in
-// this package calls fdom.Validate* and maps the primitive sentinel back to
-// the matching local Describable sentinel by pointer identity. The exhaustive
-// case coverage lives in github.com/formancehq/invariants; here we only verify
-// that the bridge is wired correctly.
+// this package calls invariants.Validate* and maps the primitive sentinel
+// back to the matching local Describable sentinel by pointer identity. The
+// exhaustive case coverage lives in github.com/formancehq/invariants; here
+// we only verify that the bridge is wired correctly.
 func TestValidateWrapping(t *testing.T) {
 	t.Parallel()
 
@@ -105,12 +105,12 @@ func TestValidateMetadataValue(t *testing.T) {
 }
 
 // TestValidateWrapping_UnwrapsToPrimitive ensures the local Describable
-// sentinel still satisfies errors.Is against the fdom primitive — important
-// for any caller that wants to react on the cross-service contract rather
-// than on the in-process identity.
+// sentinel still satisfies errors.Is against the invariants primitive —
+// important for any caller that wants to react on the cross-service contract
+// rather than on the in-process identity.
 func TestValidateWrapping_UnwrapsToPrimitive(t *testing.T) {
 	t.Parallel()
 
-	require.ErrorIs(t, ValidateLedgerName(""), fdom.ErrLedgerNameRequired)
-	require.ErrorIs(t, ValidateAsset("lowercase"), fdom.ErrAssetInvalid)
+	require.ErrorIs(t, ValidateLedgerName(""), invariants.ErrLedgerNameRequired)
+	require.ErrorIs(t, ValidateAsset("lowercase"), invariants.ErrAssetInvalid)
 }

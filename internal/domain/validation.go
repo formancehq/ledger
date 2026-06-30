@@ -3,7 +3,7 @@ package domain
 import (
 	"errors"
 
-	invariants "github.com/formancehq/invariants"
+	"github.com/formancehq/invariants"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -99,14 +99,14 @@ func wrapValidationErr(err error) Describable {
 		return ErrAssetInvalid
 	}
 
-	// Any unrecognized error from txdom would indicate the lib introduced a
-	// sentinel this wrapper hasn't mapped yet — surface loudly instead of
+	// Any unrecognized error from invariants would indicate the lib introduced
+	// a sentinel this wrapper hasn't mapped yet — surface loudly instead of
 	// silently degrading.
 	return &errValidation{err: err}
 }
 
-// ValidateLedgerName delegates to txdom and maps the primitive sentinel back
-// to the local Describable counterpart.
+// ValidateLedgerName delegates to invariants and maps the primitive sentinel
+// back to the local Describable counterpart.
 func ValidateLedgerName(name string) Describable {
 	return wrapValidationErr(invariants.ValidateLedgerName(name))
 }
@@ -185,8 +185,8 @@ func ValidateSigningKeyID(id string) Describable {
 
 // isPrintableASCII reports whether every byte of s is in the printable ASCII
 // range 0x20–0x7E. Kept local for the numscript / prepared-query /
-// signing-key name checks (the txdom lib has its own copy used for ledger
-// name validation).
+// signing-key name checks (the invariants lib has its own copy used for
+// ledger name validation).
 func isPrintableASCII(s string) bool {
 	for i := range len(s) {
 		b := s[i]
@@ -198,22 +198,22 @@ func isPrintableASCII(s string) bool {
 	return true
 }
 
-// ValidateAccountAddress delegates to txdom and maps the primitive sentinel
-// back to the local Describable counterpart.
+// ValidateAccountAddress delegates to invariants and maps the primitive
+// sentinel back to the local Describable counterpart.
 func ValidateAccountAddress(address string) Describable {
 	return wrapValidationErr(invariants.ValidateLedgerAccountAddress(address))
 }
 
-// ValidateMetadataKey delegates to txdom and maps the primitive sentinel back
-// to the local Describable counterpart.
+// ValidateMetadataKey delegates to invariants and maps the primitive sentinel
+// back to the local Describable counterpart.
 func ValidateMetadataKey(key string) Describable {
 	return wrapValidationErr(invariants.ValidateMetadataKey(key))
 }
 
 // ValidateMetadataString validates a string-bearing metadata payload (e.g. a
 // numscript-emitted string value before it is wrapped in a MetadataValue).
-// It delegates to txdom and maps the primitive sentinel back to the local
-// Describable counterpart.
+// It delegates to invariants and maps the primitive sentinel back to the
+// local Describable counterpart.
 func ValidateMetadataString(value string) Describable {
 	return wrapValidationErr(invariants.ValidateMetadataString(value))
 }
@@ -236,8 +236,8 @@ func ValidateMetadataValue(value *commonpb.MetadataValue) Describable {
 	}
 }
 
-// ValidateAsset delegates to txdom and maps the primitive sentinel back to
-// the local Describable counterpart.
+// ValidateAsset delegates to invariants and maps the primitive sentinel back
+// to the local Describable counterpart.
 func ValidateAsset(asset string) Describable {
 	return wrapValidationErr(invariants.ValidateAsset(asset))
 }
