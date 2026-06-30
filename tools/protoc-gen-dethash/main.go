@@ -11,6 +11,7 @@ package main
 import (
 	"fmt"
 	"path"
+	"strings"
 
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -68,48 +69,46 @@ var supportedKeyKinds = map[protoreflect.Kind]keyKindInfo{
 }
 
 // poolVarName builds the unique package-level pool variable name for a
-// given (file, kind) pair. The file segment prevents collisions when two
+// given (file, kind) pair. The file suffix prevents collisions when two
 // .proto files share the same `go_package` — each generated file would
 // otherwise emit the same `_dethashKeyPool<Kind>` identifier, producing
 // a "redeclared in this block" compile error.
 func poolVarName(filePoolPrefix string, kind protoreflect.Kind) string {
-	return "_dethashKeyPool_" + filePoolPrefix + "_" + supportedKeyKinds[kind].kindSuffix
+	return "_dethashKeyPool" + filePoolPrefix + supportedKeyKinds[kind].kindSuffix
 }
 
-// filePoolPrefix returns the .proto file's basename (path stripped, ".proto"
-// extension already stripped by protogen) verbatim, after validating that
-// every rune is Go-identifier-safe. It is embedded literally into pool
-// variable names — preserving underscores rather than collapsing them —
-// so two distinct proto basenames produce two distinct pool identifiers.
-//
-// Earlier revisions sanitized non-alphanumeric runes (dropping them or
-// folding them into capitalization), but any lossy mapping re-introduces
-// the very collision the per-file scheme is meant to prevent — e.g.
-// `foo-bar.proto` and `foo_bar.proto` collapsing onto the same prefix.
-// The filesystem already guarantees basenames are unique inside a
-// directory; preserving them verbatim makes pool identifier uniqueness
-// rely on that single guarantee, with no fuzzy sanitization step in
-// between. Basenames containing runes outside [A-Za-z0-9_] (or a leading
-// digit) are rejected here at generate time so the failure is immediate
-// and obvious instead of silently producing invalid Go.
+// filePoolPrefix derives a Go-identifier-safe, capitalized suffix from a
+// proto file's GeneratedFilenamePrefix (which is the proto file path
+// minus its extension, e.g. "common" or "misc/proto/common"). It is used
+// as a per-file disambiguator in pool variable names. Non-alphanumeric
+// runes are replaced with '_'; the result is title-cased so the final
+// pool identifier reads as `_dethashKeyPool<File><Kind>`.
 func filePoolPrefix(file *protogen.File) string {
 	base := path.Base(file.GeneratedFilenamePrefix)
-	if base == "" {
-		panic(fmt.Sprintf("protoc-gen-dethash: empty file base name for %q", file.Desc.Path()))
-	}
 
-	for i, r := range base {
-		isLetter := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
-		isDigit := r >= '0' && r <= '9'
-		isUnderscore := r == '_'
-		if !isLetter && !isUnderscore && !(isDigit && i > 0) {
-			panic(fmt.Sprintf(
-				"protoc-gen-dethash: proto file %q basename %q contains rune %q at offset %d outside [A-Za-z0-9_] (leading digits not allowed); rename the file or extend filePoolPrefix to encode it unambiguously",
-				file.Desc.Path(), base, r, i,
-			))
+	var b strings.Builder
+	b.Grow(len(base) + 1)
+	upper := true
+	for _, r := range base {
+		switch {
+		case r >= 'a' && r <= 'z':
+			if upper {
+				r -= 'a' - 'A'
+				upper = false
+			}
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z' || r >= '0' && r <= '9':
+			b.WriteRune(r)
+			upper = false
+		default:
+			// Non-identifier rune (e.g. '-' in a hypothetical "my-proto"
+			// file). Drop and re-capitalize the next letter so we don't
+			// emit '_' inside what is otherwise a CamelCase identifier.
+			upper = true
 		}
 	}
-	return base
+
+	return b.String()
 }
 
 func main() {
