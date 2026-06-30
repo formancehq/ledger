@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
@@ -34,8 +36,8 @@ func TestLedgersCreate(t *testing.T) {
 		systemstore.NewStoreFactory(),
 	)
 
-	prefix := uuid.NewString()
-	buckets := []string{prefix + "-b1", prefix + "-b2"}
+	prefix := strings.ReplaceAll(uuid.NewString(), "-", "")
+	buckets := []string{prefix + "b1", prefix + "b2"}
 	const countLedgers = 30
 
 	wg := sync.WaitGroup{}
@@ -45,7 +47,7 @@ func TestLedgersCreate(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			l, err := ledger.New(fmt.Sprintf("%s-l%d", prefix, i), ledger.Configuration{
+			l, err := ledger.New(fmt.Sprintf("%sl%d", prefix, i), ledger.Configuration{
 				Bucket: buckets[rand.Int31n(int32(len(buckets)))],
 			})
 			if err != nil {
@@ -88,7 +90,7 @@ func TestLedgersList(t *testing.T) {
 		systemstore.NewStoreFactory(),
 	)
 
-	bucket := uuid.NewString()
+	bucket := strings.ReplaceAll(uuid.NewString(), "-", "")
 
 	l1, err := ledger.New(uuid.NewString(), ledger.Configuration{
 		Bucket: bucket,
