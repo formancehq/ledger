@@ -66,7 +66,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	)
 
 	// Create server instance for handlers
-	server := NewServer(logger, backend, defaultBulkMaxSize)
+	server := NewServer(logger, backend, authCfg, defaultBulkMaxSize)
 
 	// Ops routes: not versioned (K8s probes, monitoring, profiling).
 	// /health, /livez, /readyz, /_info are also exempted from auth in

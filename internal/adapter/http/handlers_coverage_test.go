@@ -1138,7 +1138,7 @@ func TestNewServer(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	srv := NewServer(logging.Testing(), backend, 100)
+	srv := NewServer(logging.Testing(), backend, internalauth.AuthConfig{}, 100)
 
 	require.NotNil(t, srv)
 	require.Equal(t, 100, srv.bulkMaxSize)

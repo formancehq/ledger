@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
@@ -18,14 +19,14 @@ import (
 func newTestServer(t *testing.T, backend Backend) *Server {
 	t.Helper()
 
-	return NewServer(logging.Testing(), backend, 0)
+	return NewServer(logging.Testing(), backend, internalauth.AuthConfig{}, 0)
 }
 
 // newTestServerWithBulkLimit creates a Server with a mock backend and bulk limit for testing.
 func newTestServerWithBulkLimit(t *testing.T, backend Backend, bulkMaxSize int) *Server {
 	t.Helper()
 
-	return NewServer(logging.Testing(), backend, bulkMaxSize)
+	return NewServer(logging.Testing(), backend, internalauth.AuthConfig{}, bulkMaxSize)
 }
 
 // newRequest creates an http.Request with chi URL params.
