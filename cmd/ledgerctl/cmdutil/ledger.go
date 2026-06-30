@@ -82,6 +82,14 @@ func SelectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient, ledg
 // unreachable, auth missing, slow network) returns no suggestions rather than
 // surfacing an error: a broken connection must never disrupt tab completion.
 func CompleteLedgerNames(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	// cobra does not run the root PersistentPreRunE during `__complete`, so the
+	// connection flags still hold their defaults here. Resolve --profile/env
+	// ourselves or we would list ledgers from the default server instead of the
+	// one the active profile points at.
+	if err := ResolveConnectionFlags(cmd); err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
 	client, conn, err := GetClient(cmd)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
