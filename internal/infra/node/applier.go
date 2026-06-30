@@ -78,6 +78,17 @@ type Applier struct {
 	// from Pebble at boot). nil is a no-op for tests that don't wire it.
 	onSnapshotInstalled func()
 
+	// onSpoolReplayed is invoked after replaySpool completes. Spool
+	// entries hit Pebble through the same FSM path as WAL replay
+	// (WriteConfChange writes peer rows directly into the batch) so a
+	// ConfChange landed via the spool leaves the in-memory Membership
+	// cache stale — finishReady, which mirrors committed ConfChanges
+	// into the cache during the normal Ready cycle, never fires for
+	// spool-replayed entries. The hook lets the Node rehydrate the
+	// cache + transport from Pebble after each replay. nil is a no-op
+	// for tests that don't wire it. (EN-1413)
+	onSpoolReplayed func()
+
 	// Metrics
 	applyEntriesHistogram           metric.Int64Histogram
 	applyEntriesBatchSizeCounter    metric.Int64Counter
@@ -142,12 +153,14 @@ func NewApplier(
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
 	onSnapshotInstalled func(),
+	onSpoolReplayed func(),
 ) (*Applier, error) {
 	initialStatus := atomic.Int32{}
 	initialStatus.Store(statusNormal)
 
 	a := &Applier{
 		onSnapshotInstalled:     onSnapshotInstalled,
+		onSpoolReplayed:         onSpoolReplayed,
 		fsm:                     fsm,
 		recovery:                recovery,
 		synchronizer:            synchronizer,
@@ -1426,6 +1439,10 @@ func (a *Applier) startMaintenanceTask(
 			return err
 		}
 
+		if a.onSpoolReplayed != nil {
+			a.onSpoolReplayed()
+		}
+
 		a.maintenanceReplaySpoolHistogram.Record(context.Background(), float64(time.Since(replayStart).Microseconds()))
 
 		// End gating before post-gating work (e.g. WAL compaction).
@@ -1456,6 +1473,10 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 	replayed, err := a.replaySpool(ctx, lastAppliedIndex)
 	if err != nil {
 		return fmt.Errorf("replaying spool: %w", err)
+	}
+
+	if a.onSpoolReplayed != nil {
+		a.onSpoolReplayed()
 	}
 
 	// Non-vacuity probe: proves the gated-window -> unspool path is exercised
