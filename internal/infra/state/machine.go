@@ -397,18 +397,43 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 	return nil
 }
 
-// PrepareEntries processes Raft entries and builds a Pebble batch without
-// committing it. All in-memory state (cache, KeyStore, counters) is updated.
-// The caller must either call CommitPreparedBatch or PreparedBatch.Close.
-//
-// This is the first half of the pipelining split: PrepareEntries is CPU-bound
-// and can run while a previous batch's commit is in-flight.
+// PrepareEntries decodes the raw Raft entries and delegates to
+// PrepareDecodedEntries. Convenience wrapper for callers (tests, replay)
+// that do not already hold decoded proposals. Hot-path callers should
+// decode once at the applier boundary and call PrepareDecodedEntries
+// directly so the apply pipeline never re-unmarshals the same payload.
 func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessionFactory, entries ...raftpb.Entry) (*PreparedBatch, error) {
+	decoded, err := DecodeEntries(entries)
+	if err != nil {
+		return nil, err
+	}
+
+	// Safe to release after PrepareDecodedEntries returns: the returned
+	// *PreparedBatch does not retain any Proposal pointer — every per-entry
+	// effect is captured by-value into ApplyResult / WriteSession during
+	// the apply loop. See the post-loop assembly of pb below.
+	defer ReleaseDecodedEntries(decoded)
+
+	return fsm.PrepareDecodedEntries(ctx, sessions, decoded...)
+}
+
+// PrepareDecodedEntries processes pre-decoded Raft entries and builds a
+// Pebble batch without committing it. All in-memory state (cache,
+// KeyStore, counters) is updated. The caller must either call
+// CommitPreparedBatch or PreparedBatch.Close.
+//
+// This is the first half of the pipelining split: PrepareDecodedEntries
+// is CPU-bound and can run while a previous batch's commit is in-flight.
+//
+// The caller owns the lifetime of decoded[].Proposal pointers and must
+// keep them valid for the duration of this call; they may be released
+// immediately after return (see PrepareEntries for the canonical pattern).
+func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.WriteSessionFactory, decoded ...DecodedEntry) (*PreparedBatch, error) {
 	// Validate checkpoint trigger positions BEFORE taking the lock or mutating
 	// any in-memory state. A malformed batch (trigger not last) is rejected
 	// here so the FSM cannot be left with lastAppliedIndex bumped and proposal
 	// side effects applied for an entry that will never be committed.
-	if err := ValidateCheckpointEntryPositions(entries); err != nil {
+	if err := ValidateCheckpointEntryPositionsDecoded(decoded); err != nil {
 		return nil, err
 	}
 
@@ -428,17 +453,17 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 	// With pipelining, lastPersistedIndex may lag lastAppliedIndex by one batch
 	// (the pending commit). This is expected and safe.
 	persistedIdx := fsm.lastPersistedIndex.Load()
-	if persistedIdx != fsm.State.LastAppliedIndex && len(entries) > 0 && fsm.logger.Enabled(logging.TraceLevel) {
+	if persistedIdx != fsm.State.LastAppliedIndex && len(decoded) > 0 && fsm.logger.Enabled(logging.TraceLevel) {
 		fsm.logger.WithFields(map[string]any{
 			"lastPersistedIndex": persistedIdx,
 			"lastAppliedIndex":   fsm.State.LastAppliedIndex,
 			"snapshotIndex":      fsm.State.SnapshotIndex,
-			"entryCount":         len(entries),
-			"firstEntryIndex":    entries[0].Index,
+			"entryCount":         len(decoded),
+			"firstEntryIndex":    decoded[0].Entry.Index,
 			"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
 			"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
 			"currentGeneration":  fsm.Registry.Cache.CurrentGeneration(),
-		}).Tracef("PrepareEntries: lastPersistedIndex lags (pending commit in-flight)")
+		}).Tracef("PrepareDecodedEntries: lastPersistedIndex lags (pending commit in-flight)")
 	}
 
 	if fsm.State.SnapshotIndex > fsm.State.LastAppliedIndex {
@@ -455,18 +480,18 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 
 	batch := sessions.OpenWriteSession()
 
-	cmd := raftcmdpb.ProposalFromVTPool()
-	defer func() { cmd.ReturnToVTPool() }()
-
 	ret := &ApplyEntriesResult{
-		Results: make([]ApplyResult, 0, len(entries)),
+		Results: make([]ApplyResult, 0, len(decoded)),
 	}
 	sinkConfigChanged := false
 	mirrorConfigChanged := false
 	needsArchiveDispatch := false
 	needsColdCompaction := false
 
-	for i, entry := range entries {
+	for i := range decoded {
+		entry := decoded[i].Entry
+		cmd := decoded[i].Proposal
+
 		if entry.Index <= fsm.State.LastAppliedIndex {
 			ret.Results = append(ret.Results, ApplyResult{})
 
@@ -552,13 +577,18 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 			continue
 		}
 
-		cmd.ReturnToVTPool()
-		cmd = raftcmdpb.ProposalFromVTPool()
+		// cmd was set from decoded[i].Proposal at the top of the iteration:
+		// DecodeEntries unmarshalled it once at the applier boundary, so the
+		// hot path never re-decodes the same raft payload. The caller owns
+		// the *Proposal lifetime (VT pool); the FSM only reads from it.
+		if cmd == nil {
+			assert.Unreachable("normal entry with non-empty Data but nil Proposal", map[string]any{
+				"raftIndex": entry.Index,
+			})
 
-		if err := cmd.UnmarshalVT(entry.Data); err != nil {
 			_ = batch.Cancel()
 
-			return nil, err
+			return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entry.Index)
 		}
 
 		if len(cmd.GetOrders()) == 0 && len(cmd.GetTechnicalUpdates()) == 0 {
@@ -633,19 +663,19 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		sealReqBase := fsm.checkCloseChapter(result)
 		queryCheckpointCreated := result.QueryCheckpointCreated > 0
 
-		if (sealReqBase != nil || queryCheckpointCreated) && i != len(entries)-1 {
+		if (sealReqBase != nil || queryCheckpointCreated) && i != len(decoded)-1 {
 			assert.Unreachable("checkpoint trigger entry not last in PrepareEntries batch", map[string]any{
 				"raftIndex":  entry.Index,
 				"proposalID": cmd.GetId(),
 				"position":   i,
-				"entryCount": len(entries),
+				"entryCount": len(decoded),
 			})
 
 			_ = batch.Cancel()
 
 			return nil, fmt.Errorf(
 				"checkpoint trigger entry at position %d/%d in PrepareEntries batch (raft index %d) — applier must pre-split",
-				i, len(entries), entry.Index,
+				i, len(decoded), entry.Index,
 			)
 		}
 
@@ -689,7 +719,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		needsColdCompaction:  needsColdCompaction,
 		sinkConfigChanged:    sinkConfigChanged,
 		mirrorConfigChanged:  mirrorConfigChanged,
-		entryCount:           len(entries),
+		entryCount:           len(decoded),
 	}
 
 	// Capture sentinel data before releasing the lock.

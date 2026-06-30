@@ -19,7 +19,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
@@ -844,21 +843,41 @@ func (a *Applier) GetSyncProgress() *state.SyncProgress {
 // futures. Used by replay paths (spool, WAL) that do not need pipelining.
 //
 // Callers must ensure no checkpoint trigger appears mid-slice; use
-// applyReplayEntries when iterating an arbitrary slice.
-func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
+// applyReplayEntries when iterating an arbitrary slice. The caller owns
+// the lifetime of decoded[].Proposal — this method does not release them.
+func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, decoded ...state.DecodedEntry) (*state.ApplyEntriesResult, error) {
 	start := time.Now()
 
-	result, err := a.fsm.ApplyEntries(ctx, a.store, entries...)
+	pb, err := a.fsm.PrepareDecodedEntries(ctx, a.store, decoded...)
 	if err != nil {
-		return nil, fmt.Errorf("applying entries to Machine: %w", err)
+		return nil, fmt.Errorf("preparing entries on Machine: %w", err)
 	}
+
+	if err := a.fsm.CommitPreparedBatch(ctx, pb); err != nil {
+		return nil, fmt.Errorf("committing entries on Machine: %w", err)
+	}
+
+	result := pb.Result
 
 	a.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
 	a.applyEntriesBatchSizeCounter.Add(ctx, int64(len(result.Results)))
 	a.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(result.Results)))
 
 	a.resolveFutures(result)
-	a.sweepBelowTerm(entries)
+
+	// sweepBelowTerm needs only entry terms; compute the max in-place
+	// instead of materializing a []raftpb.Entry slice from decoded.
+	var maxTerm uint64
+
+	for i := range decoded {
+		if decoded[i].Entry.Term > maxTerm {
+			maxTerm = decoded[i].Entry.Term
+		}
+	}
+
+	if maxTerm > 0 {
+		a.FailFuturesBelowTerm(maxTerm, ErrLeadershipLost)
+	}
 
 	return result, nil
 }
@@ -869,15 +888,19 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 // (createReplayCheckpoint / createMainStoreCheckpoint) before continuing.
 // Cascading checkpoints in the same slice are handled by the loop.
 func (a *Applier) applyReplayEntries(ctx context.Context, entries []raftpb.Entry) error {
-	for offset := 0; offset < len(entries); {
-		boundary, err := findCheckpointBoundary(entries[offset:])
-		if err != nil {
-			return fmt.Errorf("classifying replay batch: %w", err)
-		}
+	decoded, err := state.DecodeEntries(entries)
+	if err != nil {
+		return fmt.Errorf("decoding replay entries: %w", err)
+	}
+
+	defer state.ReleaseDecodedEntries(decoded)
+
+	for offset := 0; offset < len(decoded); {
+		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
 
 		end := offset + boundary
 
-		result, err := a.applyEntriesAndResolveCommands(ctx, entries[offset:end]...)
+		result, err := a.applyEntriesAndResolveCommands(ctx, decoded[offset:end]...)
 		if err != nil {
 			return err
 		}
@@ -992,10 +1015,13 @@ func (a *Applier) runCommitter(ctx context.Context) {
 // applyEntriesPipelined prepares entries (CPU-bound) and starts the commit
 // asynchronously. The previous batch's commit runs concurrently with this
 // batch's prepare. Used by the hot path in Run (statusNormal).
-func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
+//
+// The caller (applyEntriesToFSM) owns the lifetime of decoded[].Proposal
+// pointers — this method does not release them.
+func (a *Applier) applyEntriesPipelined(ctx context.Context, decoded ...state.DecodedEntry) (*state.ApplyEntriesResult, error) {
 	prepareStart := time.Now()
 
-	pb, err := a.fsm.PrepareEntries(ctx, a.store, entries...)
+	pb, err := a.fsm.PrepareDecodedEntries(ctx, a.store, decoded...)
 	if err != nil {
 		_ = a.waitPendingCommit(ctx)
 
@@ -1025,9 +1051,9 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.E
 	// (issue #172). Computed once and reused below.
 	var maxTerm uint64
 
-	for i := range entries {
-		if entries[i].Term > maxTerm {
-			maxTerm = entries[i].Term
+	for i := range decoded {
+		if decoded[i].Entry.Term > maxTerm {
+			maxTerm = decoded[i].Entry.Term
 		}
 	}
 
@@ -1079,15 +1105,22 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 // batches; dropping it produces an "entry index gap detected" panic in the
 // next PrepareEntries call. Hence the loop.
 func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
-	for offset := 0; offset < len(entries); {
-		boundary, err := findCheckpointBoundary(entries[offset:])
-		if err != nil {
-			return fmt.Errorf("classifying checkpoint boundary: %w", err)
-		}
+	// Decode once at the applier boundary so every downstream stage
+	// (checkpoint boundary scan, FSM apply, position validation) reads the
+	// already-decoded proposal instead of re-unmarshalling the raw payload.
+	decoded, err := state.DecodeEntries(entries)
+	if err != nil {
+		return fmt.Errorf("decoding entries: %w", err)
+	}
+
+	defer state.ReleaseDecodedEntries(decoded)
+
+	for offset := 0; offset < len(decoded); {
+		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
 
 		end := offset + boundary
-		head := entries[offset:end]
-		tail := entries[end:]
+		head := decoded[offset:end]
+		tail := decoded[end:]
 
 		result, err := a.applyEntriesPipelined(ctx, head...)
 		if err != nil {
@@ -1109,19 +1142,34 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		// agnostic of "leftover entries" and makes the pre-split contract
 		// explicit at the call site.
 		if len(tail) > 0 {
-			if err := a.spool.AppendCommittedEntries(ctx, tail...); err != nil {
+			if err := a.spool.AppendCommittedEntries(ctx, rawEntriesFromDecoded(tail)...); err != nil {
 				return fmt.Errorf("spooling entries past checkpoint trigger: %w", err)
 			}
 		}
 
+		headRaw := rawEntriesFromDecoded(head)
+
 		if result.QueryCheckpointID > 0 {
-			return a.handleQueryCheckpointRequired(ctx, head, result)
+			return a.handleQueryCheckpointRequired(ctx, headRaw, result)
 		}
 
-		return a.handleCheckpointRequired(ctx, head, result)
+		return a.handleCheckpointRequired(ctx, headRaw, result)
 	}
 
 	return nil
+}
+
+// rawEntriesFromDecoded extracts the underlying raftpb.Entry values from a
+// slice of DecodedEntry for APIs that take raw entries (spool, replay
+// fallbacks, maintenance handoff). The returned slice is freshly allocated
+// and does not share storage with the input.
+func rawEntriesFromDecoded(decoded []state.DecodedEntry) []raftpb.Entry {
+	out := make([]raftpb.Entry, len(decoded))
+	for i := range decoded {
+		out[i] = decoded[i].Entry
+	}
+
+	return out
 }
 
 // findCheckpointBoundary returns the length of the prefix of entries that
@@ -1132,37 +1180,33 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 //
 // Returns len(entries) when no trigger is present (apply the whole slice as
 // one batch).
+//
+// Convenience wrapper around findCheckpointBoundaryDecoded: decodes
+// entries, scans, and releases. Hot-path callers should decode once at the
+// applier boundary and use findCheckpointBoundaryDecoded directly so the
+// pipeline never re-unmarshals the same payload.
 func findCheckpointBoundary(entries []raftpb.Entry) (int, error) {
-	for i := range entries {
-		hasTrigger, err := entryRequiresCheckpoint(&entries[i])
-		if err != nil {
-			return 0, fmt.Errorf("inspecting entry index %d: %w", entries[i].Index, err)
-		}
-
-		if hasTrigger {
-			return i + 1, nil
-		}
+	decoded, err := state.DecodeEntries(entries)
+	if err != nil {
+		return 0, err
 	}
 
-	return len(entries), nil
+	defer state.ReleaseDecodedEntries(decoded)
+
+	return findCheckpointBoundaryDecoded(decoded), nil
 }
 
-// entryRequiresCheckpoint reports whether the proposal carried by entry
-// contains a checkpoint trigger order. Returns false for non-normal entries
-// (raftpb.EntryConfChange*, empty entries) which never carry a proposal.
-func entryRequiresCheckpoint(entry *raftpb.Entry) (bool, error) {
-	if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
-		return false, nil
+// findCheckpointBoundaryDecoded is the no-unmarshal variant used on the
+// hot path. It mirrors findCheckpointBoundary but operates on entries that
+// have already been decoded once at the applier boundary.
+func findCheckpointBoundaryDecoded(decoded []state.DecodedEntry) int {
+	for i := range decoded {
+		if state.DecodedEntryRequiresCheckpoint(decoded[i]) {
+			return i + 1
+		}
 	}
 
-	cmd := raftcmdpb.ProposalFromVTPool()
-	defer cmd.ReturnToVTPool()
-
-	if err := cmd.UnmarshalVT(entry.Data); err != nil {
-		return false, fmt.Errorf("unmarshaling proposal: %w", err)
-	}
-
-	return state.ProposalRequiresCheckpoint(cmd), nil
+	return len(decoded)
 }
 
 // maintenanceTask is the body of a gated maintenance task. It receives the
