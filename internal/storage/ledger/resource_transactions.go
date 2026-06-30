@@ -146,10 +146,25 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		}
 	case common.MetadataRegex.Match([]byte(property)):
 		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
+		key := match[0][1]
 
-		return "metadata @> ?", []any{map[string]any{
-			match[0][1]: value,
-		}}, nil
+		if slices.Contains(h.store.IndexedMetadataKeys(), key) {
+			// Key is validated to match [a-zA-Z0-9_]+ so it is safe to embed as a literal.
+			// The literal form is required: Postgres matches functional indexes by exact expression
+			// equality, so `metadata ->> 'key'` matches the index but `metadata ->> ?` does not.
+			//
+			// We always prepend ledger = ? even when newScopedSelect already adds it, because the
+			// partial index is defined as WHERE ledger = '...'. Without the predicate in the query,
+			// Postgres cannot use the partial index (alone-in-bucket optimisation omits it).
+			//
+			// We include metadata \? 'key' (key-existence check) before the ->> equality so the
+			// composite expression evaluates to false (not NULL) when the key is absent.
+			// Without it, metadata ->> 'key' = ? is NULL for absent-key rows, which means
+			// NOT(...) remains NULL instead of TRUE, silently changing result sets for negated
+			// metadata filters compared to the NOT (metadata @> ...) path.
+			return fmt.Sprintf("ledger = ? AND metadata \\? '%s' AND metadata ->> '%s' = ?", key, key), []any{h.store.GetLedger().Name, value}, nil
+		}
+		return "metadata @> ?", []any{map[string]any{key: value}}, nil
 
 	case property == "metadata":
 		return "metadata -> ? is not null", []any{value}, nil

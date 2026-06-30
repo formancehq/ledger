@@ -2,11 +2,16 @@ package features
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 )
+
+// indexedMetadataKeyRe matches valid key names for INDEXED_METADATA_KEYS.
+// Keys are embedded as SQL literals, so only alphanumeric + underscore are allowed.
+var indexedMetadataKeyRe = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 const (
 	// FeatureMovesHistory is used to define if the ledger has to save funds movements history.
@@ -23,6 +28,12 @@ const (
 	FeatureAccountMetadataHistory = "ACCOUNT_METADATA_HISTORY"
 	// FeatureTransactionMetadataHistory is used to defined it the transaction metadata must be historized.
 	FeatureTransactionMetadataHistory = "TRANSACTION_METADATA_HISTORY"
+	// FeatureIndexedMetadataKeys is a comma-separated list of metadata keys for which the query builder
+	// emits a functional-index-compatible predicate (metadata ->> 'key' = 'value') instead of the default
+	// JSONB containment form (metadata @> '{"key":"value"}'). A matching partial functional index must
+	// exist on the ledger's transactions table for the rewrite to actually speed up the query.
+	// Value: comma-separated key names, e.g. "source_wallet_id,destination_wallet_id". Empty = disabled.
+	FeatureIndexedMetadataKeys = "INDEXED_METADATA_KEYS"
 )
 
 var (
@@ -47,6 +58,7 @@ var (
 		FeatureHashLogs:                               {"SYNC", "ASYNC", "DISABLED"},
 		FeatureAccountMetadataHistory:                 {"SYNC", "DISABLED"},
 		FeatureTransactionMetadataHistory:             {"SYNC", "DISABLED"},
+		FeatureIndexedMetadataKeys:                    nil, // nil = any comma-separated list of key names is valid
 	}
 )
 
@@ -55,8 +67,17 @@ func ValidateFeatureWithValue(feature, value string) error {
 	if !ok {
 		return fmt.Errorf("feature %q not exists", feature)
 	}
-	if !slices.Contains(possibleConfigurations, value) {
+	// nil/empty set means the value is open-ended; apply feature-specific validation.
+	if len(possibleConfigurations) > 0 && !slices.Contains(possibleConfigurations, value) {
 		return fmt.Errorf("configuration %s it not possible for feature %s", value, feature)
+	}
+
+	if feature == FeatureIndexedMetadataKeys && value != "" {
+		for _, key := range strings.Split(value, ",") {
+			if !indexedMetadataKeyRe.MatchString(key) {
+				return fmt.Errorf("INDEXED_METADATA_KEYS: key %q is invalid (only [a-zA-Z0-9_] allowed)", key)
+			}
+		}
 	}
 
 	return nil

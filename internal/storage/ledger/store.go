@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
@@ -59,6 +60,9 @@ type Store struct {
 	beginTXHistogram                   metric.Int64Histogram
 	commitTXHistogram                  metric.Int64Histogram
 	rollbackTXHistogram                metric.Int64Histogram
+
+	indexedMetadataKeys []string
+	indexedKeysResolved bool
 }
 
 func (store *Store) Volumes() common.PaginatedResource[
@@ -146,6 +150,76 @@ func (store *Store) Rollback(ctx context.Context) error {
 
 func (store *Store) GetLedger() ledger.Ledger {
 	return store.ledger
+}
+
+func (store *Store) IndexedMetadataKeys() []string {
+	if store.indexedKeysResolved {
+		return store.indexedMetadataKeys
+	}
+	return store.ledger.GetIndexedMetadataKeys()
+}
+
+func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) {
+	store.indexedKeysResolved = true
+	requested := store.ledger.GetIndexedMetadataKeys()
+	if len(requested) == 0 {
+		return
+	}
+	schema := store.ledger.Bucket
+	logger := logging.FromContext(ctx).WithFields(map[string]any{
+		"ledger": store.ledger.Name,
+	})
+	confirmed := make([]string, 0, len(requested))
+	for _, key := range requested {
+		// Use pg_get_expr so we match the exact functional expression rather than
+		// substring-matching the full CREATE INDEX text.  Key names are validated
+		// as [a-zA-Z0-9_]+, so embedding in the LIKE pattern is safe.
+		//
+		// The partial-predicate filter ensures we only confirm indexes usable by
+		// this ledger: either a non-partial index (indpred IS NULL, covers all rows)
+		// or a partial index whose WHERE clause mentions the current ledger name.
+		// Without this check, a partial index created for ledger A would be confirmed
+		// for ledger B, yet ledger B's queries cannot satisfy ledger A's partial
+		// predicate — causing a sequential scan instead of an index scan.
+		var count int
+		err := store.db.NewSelect().
+			TableExpr("pg_index i").
+			Join("JOIN pg_class c ON c.oid = i.indrelid").
+			Join("JOIN pg_namespace n ON n.oid = c.relnamespace").
+			ColumnExpr("COUNT(*)").
+			Where("n.nspname = ?", schema).
+			Where("c.relname = ?", "transactions").
+			Where("i.indexprs IS NOT NULL").
+			// Only accept valid indexes; CONCURRENTLY-failed builds leave an entry
+			// with indisvalid=false that the planner will not use.
+			Where("i.indisvalid = true").
+			// Use an exact IN match against the two canonical forms that pg_get_expr
+			// produces for (metadata->>'key'): the variant with an explicit ::text cast
+			// (Postgres 14+) and the variant without. A substring/position check would
+			// also match derived expressions such as lower(metadata->>'key') or
+			// (metadata->>'key') || '', which the production filter cannot use.
+			Where("pg_get_expr(i.indexprs, i.indrelid) IN (?)", bun.In([]string{
+				fmt.Sprintf("(metadata ->> '%s'::text)", key),
+				fmt.Sprintf("(metadata ->> '%s')", key),
+			})).
+			// Search for '= ''ledger_name''' rather than 'ledger = ''ledger_name''' because
+			// pg_get_expr renders varchar predicates with explicit casts, e.g.
+			// ((ledger)::text = 'name'::text).  The column-side cast varies by Postgres
+			// version; the '= ''name''' substring is present in all observed forms.
+			Where("(i.indpred IS NULL OR position(? IN pg_get_expr(i.indpred, i.indrelid)) > 0)", "= '"+store.ledger.Name+"'").
+			Scan(ctx, &count)
+		if err != nil {
+			logger.Errorf("INDEXED_METADATA_KEYS: pg_index query failed for key %q, all keys fall back to @>: %s", key, err)
+			store.indexedMetadataKeys = nil
+			return
+		}
+		if count > 0 {
+			confirmed = append(confirmed, key)
+		} else {
+			logger.Infof("INDEXED_METADATA_KEYS: no functional index found for key %q — rewrite disabled, falling back to @>", key)
+		}
+	}
+	store.indexedMetadataKeys = confirmed
 }
 
 func (store *Store) GetDB() bun.IDB {
