@@ -43,7 +43,7 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrLedgerNameContainsNullByte,
+			wantErr: domain.ErrLedgerNameInvalidChar,
 		},
 		{
 			name: "empty CreateLedger name",
@@ -71,7 +71,7 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrLedgerNameContainsNullByte,
+			wantErr: domain.ErrLedgerNameInvalidChar,
 		},
 		{
 			name: "null byte in SaveNumscript ledger",
@@ -85,7 +85,7 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrLedgerNameContainsNullByte,
+			wantErr: domain.ErrLedgerNameInvalidChar,
 		},
 		{
 			name: "valid order without ledger (CloseChapter)",
@@ -278,7 +278,7 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrMetadataKeyContainsNullByte,
+			wantErr: domain.ErrMetadataKeyInvalidChar,
 		},
 		{
 			name: "null byte in SaveLedgerMetadata key",
@@ -295,7 +295,7 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrMetadataKeyContainsNullByte,
+			wantErr: domain.ErrMetadataKeyInvalidChar,
 		},
 		{
 			name: "empty metadata key in DeleteMetadata",
@@ -337,7 +337,7 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrMetadataKeyContainsNullByte,
+			wantErr: domain.ErrMetadataKeyInvalidChar,
 		},
 		// #322: revert orders silently bypassed validateApplyMetadataKeys
 		// (no case for LedgerApplyOrder_RevertTransaction). A client could
@@ -363,7 +363,7 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrMetadataKeyContainsNullByte,
+			wantErr: domain.ErrMetadataKeyInvalidChar,
 		},
 		{
 			name: "empty metadata key in RevertTransaction",

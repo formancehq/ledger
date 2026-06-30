@@ -99,6 +99,8 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/formancehq/go-libs/v5 v5.3.0 h1:1+rXYjCNGZG0tQayESllEassrejzI/vc4Gz3p568tnU=
 github.com/formancehq/go-libs/v5 v5.3.0/go.mod h1:ms6tCGw1yqB4qtEbAuqPOQegWo4rU48vDobNkK7Ak6U=
+github.com/formancehq/invariants v0.10.0 h1:9iHrUBfPA3kV0bMA6LqYL0D2vtuXn4Gx6jeuDCm178Y=
+github.com/formancehq/invariants v0.10.0/go.mod h1:ywzSexCUdhw2dC9Njiv0t4u2KfPVKj6SecFujPgmXno=
 github.com/formancehq/numscript v0.0.24 h1:YBiDZ9zLVxTZVhtQ+taRcb6q2jArAvznWMfoWRVYGT0=
 github.com/formancehq/numscript v0.0.24/go.mod h1:hC/VY5Vg04F5QkgdPPc6z/YsS/vh8V1qVJVa1VWnYMA=
 github.com/fxamacker/cbor/v2 v2.9.0 h1:NpKPmjDBgUfBms6tr6JZkTHtfFGcMKsw3eGcmD/sapM=

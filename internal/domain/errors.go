@@ -379,13 +379,32 @@ var ErrNoChapterOpen Describable = errNoChapterOpen{}
 var (
 	ErrTargetRequired             = newValidationSentinel("target is required")
 	ErrMetadataKeyRequired        = newValidationSentinel("key is required")
-	ErrNumscriptNameRequired      = newValidationSentinel("numscript name is required")
 	ErrNumscriptContentRequired   = newValidationSentinel("numscript content is required")
 	ErrScriptAndReferenceConflict = newValidationSentinel("cannot specify both script and scriptReference")
 	ErrEmptyTransaction           = newValidationSentinel("transaction must produce at least one posting")
 	ErrPostingsAndScriptConflict  = newValidationSentinel("postings cannot be combined with script or scriptReference")
 	ErrScriptRequired             = newValidationSentinel("numscript: script is required")
-	ErrLedgerNameRequired         = newValidationSentinel("ledger name is required")
+	// Numscript identifier sentinels stay local: numscript is a
+	// ledger-internal DSL, not part of the Formance-wide invariants in
+	// github.com/formancehq/invariants.
+	ErrNumscriptNameRequired    = newValidationSentinel("numscript name is required")
+	ErrNumscriptNameInvalidChar = newValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
+	ErrNumscriptNameTooLong     = newValidationSentinel("numscript name exceeds maximum length of 256 bytes")
+	// Prepared-query identifier sentinels stay local: prepared queries are
+	// a ledger-internal feature (CQRS read-side), not part of the
+	// Formance-wide invariants in github.com/formancehq/invariants.
+	ErrPreparedQueryRequired        = newValidationSentinel("prepared query payload is required")
+	ErrPreparedQueryNameRequired    = newValidationSentinel("prepared query name is required")
+	ErrPreparedQueryNameInvalidChar = newValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
+	ErrPreparedQueryNameTooLong     = newValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
+	// Signing-key identifier sentinels stay local: request signing is a
+	// ledger-internal feature, not part of the Formance-wide invariants in
+	// github.com/formancehq/invariants.
+	ErrSigningKeyIDRequired    = newValidationSentinel("signing key id is required")
+	ErrSigningKeyIDInvalidChar = newValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
+	ErrSigningKeyIDTooLong     = newValidationSentinel("signing key id exceeds maximum length of 256 bytes")
+	// ErrLedgerNameRequired moved to validation.go; it wraps the
+	// github.com/formancehq/invariants sentinel.
 )
 
 // ──────────────────────────────────────────────────────────────────────────

@@ -321,6 +321,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		// package-level Describable var (ErrColdStorageDisabled, etc.)
 		// and must implement the interface.
 		"validationSentinel":        &validationSentinel{},
+		"errValidation":             &errValidation{},
 		"errColdStorageDisabled":    errColdStorageDisabled{},
 		"errAuditDisabled":          errAuditDisabled{},
 		"errMaintenanceMode":        errMaintenanceMode{},
