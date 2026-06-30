@@ -81,6 +81,8 @@ type ServeCommandConfig struct {
 	// TxListChaserTimeoutMs is the statement_timeout for the chaser query (ms).
 	// The original query has no timeout. Default 40000.
 	TxListChaserTimeoutMs int64 `mapstructure:"tx-list-chaser-timeout-ms"`
+
+	DisableLedgerScopeOptimization bool `mapstructure:"disable-ledger-scope-optimization"`
 }
 
 const (
@@ -107,6 +109,8 @@ const (
 	TxListChaserDelayMsFlag = "tx-list-chaser-delay-ms"
 	// TxListChaserTimeoutMsFlag sets the chaser's statement_timeout (ms).
 	TxListChaserTimeoutMsFlag = "tx-list-chaser-timeout-ms"
+
+	DisableLedgerScopeOptimizationFlag = "disable-ledger-scope-optimization"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -143,6 +147,7 @@ func NewServeCommand() *cobra.Command {
 						ChaserDelayMs:          cfg.TxListChaserDelayMs,
 						ChaserTimeoutMs:        cfg.TxListChaserTimeoutMs,
 					},
+					DisableScopedSelectOptimization: cfg.DisableLedgerScopeOptimization,
 				}),
 				drivers.NewFXModule(),
 				fx.Invoke(alldrivers.Register),
@@ -256,6 +261,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Int64(TxListChaserTimeoutMsFlag, 40_000,
 		"Statement timeout in ms for the chaser query of the transactions-list SELECT. "+
 			"The original query has no timeout.")
+	cmd.Flags().Bool(DisableLedgerScopeOptimizationFlag, false, "Always emit the `ledger = ?` predicate on read queries, disabling the alone-in-bucket optimization that skips it when a ledger is the only one in its bucket")
 
 	addWorkerFlags(cmd)
 	connect.AddFlags(cmd.Flags())

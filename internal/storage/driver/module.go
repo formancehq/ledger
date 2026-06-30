@@ -16,10 +16,12 @@ import (
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
-// ModuleConfig carries per-module configuration forwarded to the ledger store
-// factory. Add fields here rather than growing NewFXModule's parameter list.
 type ModuleConfig struct {
 	TransactionListConfig ledgerstore.TransactionListConfig
+
+	// DisableScopedSelectOptimization disables the alone-in-bucket optimization,
+	// forcing the `ledger = ?` predicate to always be emitted on scoped selects.
+	DisableScopedSelectOptimization bool
 }
 
 func NewFXModule(cfg ModuleConfig) fx.Option {
@@ -51,6 +53,7 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 				options = append(options, ledgerstore.WithMeter(params.MeterProvider.Meter("store")))
 			}
 			options = append(options, ledgerstore.WithTransactionListConfig(cfg.TransactionListConfig))
+			options = append(options, ledgerstore.WithDisableScopedSelectOptimization(cfg.DisableScopedSelectOptimization))
 			return ledgerstore.NewFactory(params.DB, options...)
 		}),
 		fx.Provide(func(

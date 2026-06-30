@@ -78,6 +78,11 @@ type Store struct {
 	// SELECT path. See TransactionListConfig for the full rationale.
 	txListConfig TransactionListConfig
 
+	// disableScopedSelectOptimization, when true, forces newScopedSelect to always
+	// emit the `ledger = ?` predicate, ignoring the aloneInBucket hint. It is a
+	// kill switch for the alone-in-bucket optimization (see newScopedSelect).
+	disableScopedSelectOptimization bool
+
 	tracer                             trace.Tracer
 	meter                              metric.Meter
 	checkBucketSchemaHistogram         metric.Int64Histogram
@@ -538,9 +543,12 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 // name to use the composite index (ledger, id) efficiently.
 //
 // This relies on aloneInBucket being up to date (shared across the bucket).
+//
+// When disableScopedSelectOptimization is set, the optimization is bypassed and
+// the `ledger = ?` predicate is always emitted.
 func (store *Store) newScopedSelect() *bun.SelectQuery {
 	q := store.db.NewSelect()
-	if store.aloneInBucket == nil || !store.aloneInBucket.Load() {
+	if store.disableScopedSelectOptimization || store.aloneInBucket == nil || !store.aloneInBucket.Load() {
 		q = q.Where("ledger = ?", store.ledger.Name)
 	}
 	return q
@@ -713,6 +721,15 @@ func DefaultTransactionListConfig() TransactionListConfig {
 func WithTransactionListConfig(cfg TransactionListConfig) Option {
 	return func(s *Store) {
 		s.txListConfig = cfg
+	}
+}
+
+// WithDisableScopedSelectOptimization, when set to true, forces every scoped
+// select to emit the `ledger = ?` predicate, disabling the alone-in-bucket
+// optimization (see newScopedSelect).
+func WithDisableScopedSelectOptimization(disable bool) Option {
+	return func(s *Store) {
+		s.disableScopedSelectOptimization = disable
 	}
 }
 

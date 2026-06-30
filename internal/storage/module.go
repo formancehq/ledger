@@ -21,11 +21,11 @@ const HealthCheckName = `storage-driver-up-to-date`
 
 type ModuleConfig struct {
 	AutoUpgrade bool
-
-	// TransactionListConfig carries the optional planner overrides for the
-	// transactions-list SELECT path. Forwarded to each ledger Store via the
-	// driver factory. See ledgerstore.TransactionListConfig for full context.
 	TransactionListConfig ledgerstore.TransactionListConfig
+
+	// DisableScopedSelectOptimization disables the alone-in-bucket optimization,
+	// forcing the `ledger = ?` predicate to always be emitted on scoped selects.
+	DisableScopedSelectOptimization bool
 }
 
 func NewFXModule(config ModuleConfig) fx.Option {
@@ -35,7 +35,8 @@ func NewFXModule(config ModuleConfig) fx.Option {
 			return store
 		}),
 		driver.NewFXModule(driver.ModuleConfig{
-			TransactionListConfig: config.TransactionListConfig,
+			TransactionListConfig:           config.TransactionListConfig,
+			DisableScopedSelectOptimization: config.DisableScopedSelectOptimization,
 		}),
 		servicefx.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
 			hasReachedMinimalVersion := false
