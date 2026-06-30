@@ -18,8 +18,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Set up Docker Buildx
         uses: namespacelabs/nscloud-setup-buildx-action@v0
       - name: Login to GitHub Container Registry

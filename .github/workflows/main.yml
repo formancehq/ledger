@@ -42,8 +42,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
           nix develop --command just pre-commit
       - name: Get changed files
@@ -69,8 +67,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Run unit tests with coverage
         run: >
           nix develop --command just test-coverage
@@ -94,8 +90,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Run E2E tests with coverage
         run: >
           nix develop --command just test-e2e-coverage
@@ -119,8 +113,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Run scenario tests with coverage
         run: >
           nix develop --command just test-scenarios-coverage
@@ -144,8 +136,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Run in-memory model checker (3-node cluster, rolling restarts)
         run: >
           nix develop --command just test-model-cluster 180
@@ -163,8 +153,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Download all coverage profiles
         uses: actions/download-artifact@v4
         with:
@@ -211,8 +199,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
           nix develop --command go build ./...
       - name: Build operator
@@ -230,8 +216,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Run Schemathesis API conformity tests
         continue-on-error: true
         run: >
@@ -272,8 +256,6 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Set up Docker Buildx
         uses: namespacelabs/nscloud-setup-buildx-action@v0
       - name: Login to GitHub Container Registry
@@ -340,8 +322,6 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Setup Env
         uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Set up Docker Buildx
         uses: namespacelabs/nscloud-setup-buildx-action@v0
       - name: Login to GitHub Container Registry
