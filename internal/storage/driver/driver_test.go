@@ -8,7 +8,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -74,9 +73,9 @@ func TestLedgersList(t *testing.T) {
 
 	d := newTestDriver(t)
 
-	bucket := uuid.NewString()[:8]
+	bucket := "testbucket"
 
-	l1, err := ledger.New(uuid.NewString()[:8], ledger.Configuration{
+	l1, err := ledger.New("ledger1", ledger.Configuration{
 		Bucket: bucket,
 	})
 	require.NoError(t, err)
@@ -84,7 +83,7 @@ func TestLedgersList(t *testing.T) {
 	_, err = d.CreateLedger(ctx, l1)
 	require.NoError(t, err)
 
-	l2, err := ledger.New(uuid.NewString()[:8], ledger.Configuration{
+	l2, err := ledger.New("ledger2", ledger.Configuration{
 		Bucket: bucket,
 	})
 	require.NoError(t, err)
@@ -111,7 +110,7 @@ func TestLedgerUpdateMetadata(t *testing.T) {
 
 	d := newTestDriver(t)
 
-	l := ledger.MustNewWithDefault(uuid.NewString()[:8])
+	l := ledger.MustNewWithDefault("testledger")
 	_, err := d.CreateLedger(ctx, &l)
 	require.NoError(t, err)
 
@@ -129,7 +128,7 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 
 	d := newTestDriver(t)
 
-	l := ledger.MustNewWithDefault(uuid.NewString()[:8]).WithMetadata(metadata.Metadata{
+	l := ledger.MustNewWithDefault("testledger").WithMetadata(metadata.Metadata{
 		"foo": "bar",
 	})
 	_, err := d.CreateLedger(ctx, &l)
