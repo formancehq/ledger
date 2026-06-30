@@ -116,3 +116,33 @@ func ValidateCheckpointEntryPositions(entries []raftpb.Entry) error {
 
 	return nil
 }
+
+// ValidateCheckpointEntryPositionsDecoded is the no-unmarshal variant of
+// ValidateCheckpointEntryPositions used on the hot path: it inspects the
+// pre-decoded proposals attached to each DecodedEntry instead of decoding
+// raw entry.Data. Same semantics as ValidateCheckpointEntryPositions: an
+// error if any non-last entry carries a checkpoint-trigger order.
+func ValidateCheckpointEntryPositionsDecoded(decoded []DecodedEntry) error {
+	if len(decoded) == 0 {
+		return nil
+	}
+
+	last := len(decoded) - 1
+
+	for i := range last {
+		if decoded[i].Proposal == nil {
+			continue
+		}
+
+		if ClassifyCheckpointOrderPosition(decoded[i].Proposal.GetOrders()) == CheckpointOrderAbsent {
+			continue
+		}
+
+		return fmt.Errorf(
+			"checkpoint trigger entry at position %d/%d (raft index %d) — applier must pre-split",
+			i, len(decoded), decoded[i].Entry.Index,
+		)
+	}
+
+	return nil
+}
