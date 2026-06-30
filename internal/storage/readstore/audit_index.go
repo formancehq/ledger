@@ -78,8 +78,16 @@ func prefixUpperBound(prefix []byte) []byte {
 	return nil
 }
 
-// auditSeqsForPrefix iterates the half-open range [lower, upper) and
-// extracts the trailing 8-byte big-endian audit sequence from each key.
+// auditSeqsForPrefix iterates the half-open range [lower, upper) and extracts
+// the trailing 8-byte big-endian audit sequence from each key, deduplicated.
+//
+// A single audit entry can produce several keys carrying the same sequence
+// within one scan range — match-any fields emit one key per value (e.g. one
+// AuditFieldLogSeq key per item, or one AuditFieldLedger key per ledger). The
+// caller wants each matching entry once, so duplicates are collapsed. They are
+// not necessarily adjacent (keys sort by value then seq, so the same seq can
+// appear at different value positions), hence a seen-set rather than a
+// previous-value comparison. First-occurrence order is preserved.
 func (s *Store) auditSeqsForPrefix(lower, upper []byte) ([]uint64, error) {
 	iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
@@ -88,12 +96,18 @@ func (s *Store) auditSeqsForPrefix(lower, upper []byte) ([]uint64, error) {
 	defer func() { _ = iter.Close() }()
 
 	var seqs []uint64
+	seen := make(map[uint64]struct{})
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 		if len(k) < 8 {
 			return nil, fmt.Errorf("audit index key too short: %d", len(k))
 		}
-		seqs = append(seqs, binary.BigEndian.Uint64(k[len(k)-8:]))
+		seq := binary.BigEndian.Uint64(k[len(k)-8:])
+		if _, ok := seen[seq]; ok {
+			continue
+		}
+		seen[seq] = struct{}{}
+		seqs = append(seqs, seq)
 	}
 	if err := iter.Error(); err != nil {
 		return nil, fmt.Errorf("iterating audit index: %w", err)

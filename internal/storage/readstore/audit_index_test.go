@@ -57,6 +57,29 @@ func bytesCompare(a, b []byte) int {
 	return len(a) - len(b)
 }
 
+// TestAuditSeqsByUint64RangeDedupes verifies that a range scan returns each
+// audit sequence at most once even when an entry emitted several keys carrying
+// the same sequence (e.g. multiple items' log sequences). The duplicate keys
+// are non-adjacent — keys sort by value then seq — so dedup must not rely on
+// neighbouring keys.
+func TestAuditSeqsByUint64RangeDedupes(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	kb := dal.NewKeyBuilder()
+	batch := s.NewBatch()
+	// seq 5 indexed at two distinct log-seq values, with seq 6 sorting in
+	// between, so the two seq-5 keys are not adjacent in the scan.
+	require.NoError(t, batch.SetBytes(AuditIndexUint64Key(kb, AuditFieldLogSeq, 100, 5), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexUint64Key(kb, AuditFieldLogSeq, 150, 6), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexUint64Key(kb, AuditFieldLogSeq, 200, 5), nil))
+	require.NoError(t, batch.Commit())
+
+	seqs, err := s.AuditSeqsByUint64Range(AuditFieldLogSeq, 0, 1000)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{5, 6}, seqs, "each matching audit sequence returned once, first-occurrence order")
+}
+
 func TestAuditProgressRoundTrip(t *testing.T) {
 	t.Parallel()
 
