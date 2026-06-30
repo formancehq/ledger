@@ -185,6 +185,197 @@ func TestCollectAddressFilters(t *testing.T) {
 	})
 }
 
+func TestEscapeSQL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"world", "world"},
+		{"it's", "it''s"},
+		{"a'b'c", "a''b''c"},
+		{"no quotes here", "no quotes here"},
+		{"' OR '1'='1", "'' OR ''1''=''1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.expected, escapeSQL(tc.input))
+		})
+	}
+}
+
+func TestEscapeJSONPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"plain segment", "foo", "foo"},
+		{"double quote", `fo"o`, `fo\"o`},
+		{"backslash", `fo\o`, `fo\\o`},
+		{"backslash then double quote", `\""`, `\\\"` + `\"`},
+		{"single quote", "fo'o", "fo''o"},
+		{"double quote and single quote", `f"o'b`, `f\"o''b`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.expected, escapeJSONPath(tc.input))
+		})
+	}
+}
+
+func TestFilterAccountAddress_NormalCases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("exact address produces equality condition", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("world", "address")
+		assert.Equal(t, "address = 'world'", result)
+	})
+
+	t.Run("two-segment exact address", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("users:alice", "address")
+		assert.Equal(t, "address = 'users:alice'", result)
+	})
+
+	t.Run("partial address with trailing colon matches on segment", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("users:", "address")
+		assert.Equal(t, `address_array @@ ('$[0] == "users"')::jsonpath`, result)
+	})
+
+	t.Run("partial address with two fixed segments", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("users:alice:", "address")
+		assert.Contains(t, result, `$[0] == "users"`)
+		assert.Contains(t, result, `$[1] == "alice"`)
+	})
+
+	t.Run("wildcard suffix constrains length and segment", func(t *testing.T) {
+		t.Parallel()
+		// "users:..." means exactly 2 segments with "users" at position 0
+		result := filterAccountAddress("users:...", "address")
+		assert.Contains(t, result, "jsonb_array_length(address_array) = 2")
+		assert.Contains(t, result, `$[0] == "users"`)
+	})
+
+	t.Run("key prefix is applied correctly", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("world", "destination")
+		assert.Equal(t, "destination = 'world'", result)
+	})
+}
+
+func TestFilterAccountAddressOnTransactions_NormalCases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("exact address source only", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("world", true, false)
+		assert.Equal(t, `sources @> '["world"]'`, result)
+	})
+
+	t.Run("exact address destination only", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("world", false, true)
+		assert.Equal(t, `destinations @> '["world"]'`, result)
+	})
+
+	t.Run("exact address source and destination joined with or", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("world", true, true)
+		assert.Equal(t, `sources @> '["world"]' or destinations @> '["world"]'`, result)
+	})
+
+	t.Run("partial address uses array containment", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("users:", true, false)
+		assert.Contains(t, result, "sources_arrays @> '")
+		assert.NotContains(t, result, "sources @> '")
+	})
+}
+
+func TestFilterAccountAddress_SQLInjection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("exact address with single quote is escaped", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("it's:me", "address")
+		// Must not contain an unescaped lone single quote that would break the literal
+		assert.Contains(t, result, "''s")
+		assert.NotContains(t, result, "address = 'it's")
+	})
+
+	t.Run("injection payload in exact address is neutralised", func(t *testing.T) {
+		t.Parallel()
+		payload := "doesnt_exist' OR '1'='1"
+		result := filterAccountAddress(payload, "address")
+		assert.Equal(t, "address = 'doesnt_exist'' OR ''1''=''1'", result)
+	})
+
+	t.Run("partial address segment with double quote is escaped in jsonpath", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress(`users:"admin":`, "address")
+		assert.Contains(t, result, `$[1] == "\"admin\""`)
+	})
+
+	t.Run("partial address segment with backslash is escaped", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress(`users:\foo:`, "address")
+		assert.Contains(t, result, `$[1] == "\\foo"`)
+	})
+
+	t.Run("partial address segment with single quote is escaped", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("users:it's:", "address")
+		assert.Contains(t, result, "''s")
+	})
+}
+
+func TestFilterAccountAddressOnTransactions_SQLInjection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("exact address with single quote is escaped", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("it's", true, true)
+		assert.NotContains(t, result, `'it's'`)
+		assert.Contains(t, result, `it''s`)
+	})
+
+	t.Run("injection payload in exact address is neutralised", func(t *testing.T) {
+		t.Parallel()
+		payload := "world' OR '1'='1"
+		result := filterAccountAddressOnTransactions(payload, true, false)
+		assert.NotContains(t, result, "OR '1'='1")
+		assert.Contains(t, result, `''`)
+	})
+
+	t.Run("partial address segment with single quote is escaped", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("users:it's:", true, false)
+		assert.NotContains(t, result, `'it's'`)
+		assert.Contains(t, result, `it''s`)
+	})
+
+	t.Run("injection payload in partial address segment is neutralised", func(t *testing.T) {
+		t.Parallel()
+		// The single quote that would close the SQL string literal must be doubled.
+		// The text may still appear inside the (now-safe) JSON string value.
+		payload := "users:x' OR '1'='1:"
+		result := filterAccountAddressOnTransactions(payload, true, false)
+		// Unescaped closing-quote pattern must not appear
+		assert.NotContains(t, result, "' OR '1'='1")
+		// But the escaped form must be present
+		assert.Contains(t, result, `'' OR ''1''=''1`)
+	})
+}
+
 // mockUseFilter implements the interface expected by collectAddressFilters.
 // It simulates RepositoryHandlerBuildContext.UseFilter behavior:
 // iterates all values for the given key and calls each matcher.

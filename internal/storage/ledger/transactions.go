@@ -294,11 +294,12 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 			panic(err)
 		}
 
+		escaped := escapeSQL(string(data))
 		if source {
-			parts = append(parts, fmt.Sprintf("sources_arrays @> '%s'", string(data)))
+			parts = append(parts, fmt.Sprintf("sources_arrays @> '%s'", escaped))
 		}
 		if destination {
-			parts = append(parts, fmt.Sprintf("destinations_arrays @> '%s'", string(data)))
+			parts = append(parts, fmt.Sprintf("destinations_arrays @> '%s'", escaped))
 		}
 		return strings.Join(parts, " or ")
 	}
@@ -308,12 +309,13 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 		panic(err)
 	}
 
+	escaped := escapeSQL(string(data))
 	parts := make([]string, 0)
 	if source {
-		parts = append(parts, fmt.Sprintf("sources @> '%s'", string(data)))
+		parts = append(parts, fmt.Sprintf("sources @> '%s'", escaped))
 	}
 	if destination {
-		parts = append(parts, fmt.Sprintf("destinations @> '%s'", string(data)))
+		parts = append(parts, fmt.Sprintf("destinations @> '%s'", escaped))
 	}
 	return strings.Join(parts, " or ")
 }
