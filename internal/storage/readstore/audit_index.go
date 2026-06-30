@@ -37,14 +37,24 @@ func (s *Store) WriteAuditProgress(batch *dal.WriteSession, sequence uint64) err
 	return batch.SetBytes(AuditProgressKey(), buf[:])
 }
 
+// DropAuditIndexInBatch stages deletion of every audit-index key (but NOT the
+// cursor) into batch so a rebuild can repopulate from scratch. The caller owns
+// the commit, allowing the drop to be made atomic with a cursor reset.
+func (s *Store) DropAuditIndexInBatch(batch *dal.WriteSession) error {
+	start := AuditIndexPrefix()
+	if err := batch.DeleteRange(start, prefixUpperBound(start), nil); err != nil {
+		return fmt.Errorf("dropping audit index: %w", err)
+	}
+
+	return nil
+}
+
 // DropAuditIndex removes every audit-index key (but NOT the cursor) so a
 // rebuild can repopulate from scratch.
 func (s *Store) DropAuditIndex() error {
-	start := AuditIndexPrefix()
-	end := prefixUpperBound(start)
 	batch := s.NewBatch()
-	if err := batch.DeleteRange(start, end, nil); err != nil {
-		return fmt.Errorf("dropping audit index: %w", err)
+	if err := s.DropAuditIndexInBatch(batch); err != nil {
+		return err
 	}
 
 	return batch.Commit()

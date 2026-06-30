@@ -27,7 +27,9 @@ type Config struct {
 	// Defaults to DefaultBatchSize when zero.
 	BatchSize int
 
-	// RebuildThreshold is reserved for future use (full-rebuild triggering).
+	// RebuildThreshold triggers a full drop+rebuild on boot when the cursor
+	// lags the last audit sequence by more than this many entries (0 disables
+	// gap-based rebuild). See shouldRebuildOnBoot.
 	RebuildThreshold uint64
 
 	// Disabled prevents ProcessOnce from doing any work when true.
@@ -123,15 +125,20 @@ func (i *Indexer) ProcessOnce(ctx context.Context) (uint64, error) {
 // Rebuild drops the audit index and the cursor, then replays from the earliest
 // surviving audit entry. Used by ledgerctl and by boot auto-rebuild.
 func (i *Indexer) Rebuild(ctx context.Context) error {
-	if err := i.readStore.DropAuditIndex(); err != nil {
+	// Drop the index and reset the cursor in a single batch so the operation is
+	// crash-atomic: a torn write leaves either (old index, old cursor) or (empty
+	// index, cursor 0). The latter deterministically re-triggers boot rebuild
+	// (shouldRebuildOnBoot) and steady-state ProcessOnce self-heals from 0, so
+	// the index can never be left permanently empty with a stale high cursor.
+	batch := i.readStore.NewBatch()
+	if err := i.readStore.DropAuditIndexInBatch(batch); err != nil {
 		return err
 	}
-	batch := i.readStore.NewBatch()
 	if err := i.readStore.WriteAuditProgress(batch, 0); err != nil {
 		return err
 	}
 	if err := batch.Commit(); err != nil {
-		return fmt.Errorf("resetting audit cursor: %w", err)
+		return fmt.Errorf("resetting audit index: %w", err)
 	}
 	i.lastIndexed.Store(0)
 

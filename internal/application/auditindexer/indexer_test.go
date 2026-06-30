@@ -103,6 +103,51 @@ func TestShouldRebuildOnBoot(t *testing.T) {
 	require.False(t, idx.shouldRebuildOnBoot(5, 1_000_000), "threshold 0 disables gap-based rebuild")
 }
 
+// TestBootRebuildOnStaleCursor drives the boot path (loop -> shouldRebuildOnBoot
+// -> Rebuild): entries present and the persisted cursor lagging the last audit
+// sequence beyond RebuildThreshold must trigger a drop+rebuild on Start, leaving
+// the index fully repopulated and the cursor at the latest sequence.
+func TestBootRebuildOnStaleCursor(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	idx, mainStore, rs := newIndexerForTest(t)
+	idx.cfg.RebuildThreshold = 1
+	idx.batchSize = 1
+
+	for s := uint64(1); s <= 3; s++ {
+		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Ledgers: []string{"main"},
+		})
+	}
+
+	// Index the first entry only, then write a stale low cursor so the boot gap
+	// (last=3, cursor=1) exceeds the threshold and forces a rebuild branch.
+	_, _, err := idx.processBatch(ctx, 0)
+	require.NoError(t, err)
+	cursor, err := rs.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), cursor)
+
+	last, err := idx.lastAuditSequence()
+	require.NoError(t, err)
+	require.True(t, idx.shouldRebuildOnBoot(cursor, last), "stale cursor beyond threshold must rebuild on boot")
+
+	idx.Start()
+	t.Cleanup(idx.Stop)
+
+	require.Eventually(t, func() bool {
+		c, err := rs.ReadAuditProgress()
+
+		return err == nil && c == 3
+	}, 5*time.Second, 20*time.Millisecond)
+
+	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1, 2, 3}, seqs)
+}
+
 func TestIndexerCatchUpAndResume(t *testing.T) {
 	t.Parallel()
 
@@ -148,7 +193,7 @@ func TestIndexerCatchUpAndResume(t *testing.T) {
 		Ledgers:    []string{"main"},
 	})
 
-	processed, err = idx2.ProcessOnce(ctx)
+	processed, err = idx2.ProcessOnce(ctx2)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), processed)
 

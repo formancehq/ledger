@@ -108,3 +108,57 @@ func TestSeekAuditEqualityAndRangeAndDrop(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, seqs)
 }
+
+// TestDropAuditIndexPreservesCursor guards the 0x05/0x06 sub-prefix adjacency:
+// DropAuditIndex must clear the index keys (0x05) without touching the progress
+// cursor (0x06), which it relies on the exclusive prefix upper bound to achieve.
+func TestDropAuditIndexPreservesCursor(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	batch := s.NewBatch()
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldLedger, "a", 1), nil))
+	require.NoError(t, s.WriteAuditProgress(batch, 42))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, s.DropAuditIndex())
+
+	seqs, err := s.AuditSeqsByString(AuditFieldLedger, "a")
+	require.NoError(t, err)
+	require.Empty(t, seqs, "index keys must be dropped")
+
+	cursor, err := s.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(42), cursor, "drop must leave the progress cursor untouched")
+}
+
+// TestDropAndResetCursorAtomic covers the primitive the crash-atomic Rebuild
+// relies on: staging the index drop and the cursor reset into a single batch
+// clears both together, so a torn write can never leave an empty index with a
+// stale high cursor.
+func TestDropAndResetCursorAtomic(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	batch := s.NewBatch()
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldLedger, "a", 1), nil))
+	require.NoError(t, s.WriteAuditProgress(batch, 42))
+	require.NoError(t, batch.Commit())
+
+	rebuild := s.NewBatch()
+	require.NoError(t, s.DropAuditIndexInBatch(rebuild))
+	require.NoError(t, s.WriteAuditProgress(rebuild, 0))
+	require.NoError(t, rebuild.Commit())
+
+	seqs, err := s.AuditSeqsByString(AuditFieldLedger, "a")
+	require.NoError(t, err)
+	require.Empty(t, seqs, "index keys must be dropped")
+
+	cursor, err := s.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Zero(t, cursor, "cursor must reset to 0 in the same batch as the drop")
+}
