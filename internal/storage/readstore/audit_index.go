@@ -53,6 +53,7 @@ func (s *Store) DropAuditIndexInBatch(batch *dal.WriteSession) error {
 // rebuild can repopulate from scratch.
 func (s *Store) DropAuditIndex() error {
 	batch := s.NewBatch()
+	defer func() { _ = batch.Cancel() }()
 	if err := s.DropAuditIndexInBatch(batch); err != nil {
 		return err
 	}

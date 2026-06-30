@@ -131,6 +131,7 @@ func (i *Indexer) Rebuild(ctx context.Context) error {
 	// (shouldRebuildOnBoot) and steady-state ProcessOnce self-heals from 0, so
 	// the index can never be left permanently empty with a stale high cursor.
 	batch := i.readStore.NewBatch()
+	defer func() { _ = batch.Cancel() }()
 	if err := i.readStore.DropAuditIndexInBatch(batch); err != nil {
 		return err
 	}
@@ -178,6 +179,11 @@ func (i *Indexer) processBatch(ctx context.Context, after uint64) (uint64, bool,
 	defer func() { _ = cur.Close() }()
 
 	batch := i.readStore.NewBatch()
+	// Cancel releases the underlying Pebble batch on every early return (caught
+	// up with count == 0, or any read/build error). It is a no-op once the batch
+	// is committed, so the success path below is unaffected. Without this, the
+	// steady-state idle tick (count == 0, every TickInterval) leaks a batch.
+	defer func() { _ = batch.Cancel() }()
 	kb := dal.NewKeyBuilder()
 	emit := func(key []byte) error { return batch.SetBytes(key, nil) }
 
