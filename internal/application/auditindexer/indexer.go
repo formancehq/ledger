@@ -163,6 +163,13 @@ func (i *Indexer) shouldRebuildOnBoot(cursor, last uint64) bool {
 	if cursor == 0 && last > 0 {
 		return true
 	}
+	if cursor > last {
+		// Cursor ahead of the audit head: only possible after a main-store
+		// restore/rollback to an earlier checkpoint with the read index retained.
+		// Steady-state ProcessOnce would scan past the surviving (lower-seq)
+		// entries forever, so force a full rebuild (which resets the cursor to 0).
+		return true
+	}
 	if i.cfg.RebuildThreshold > 0 && last > cursor && last-cursor > i.cfg.RebuildThreshold {
 		return true
 	}

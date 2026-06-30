@@ -98,6 +98,8 @@ func TestShouldRebuildOnBoot(t *testing.T) {
 	require.False(t, idx.shouldRebuildOnBoot(0, 0), "empty store -> no rebuild")
 	require.False(t, idx.shouldRebuildOnBoot(5, 10), "small gap -> no rebuild")
 	require.True(t, idx.shouldRebuildOnBoot(5, 200), "gap beyond threshold -> rebuild")
+	require.True(t, idx.shouldRebuildOnBoot(10, 5), "cursor ahead of audit head (post-restore) -> rebuild")
+	require.True(t, idx.shouldRebuildOnBoot(10, 0), "cursor set but store emptied below it -> rebuild")
 
 	idx.cfg.RebuildThreshold = 0
 	require.False(t, idx.shouldRebuildOnBoot(5, 1_000_000), "threshold 0 disables gap-based rebuild")
