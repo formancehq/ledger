@@ -58,14 +58,6 @@ func TestCompareIdempotencyOutcomes_ArchivedFreezeWithinTTLWindow(t *testing.T) 
 	serialized := orders[0].MarshalDeterministicVT(nil)
 	proposalHash := processing.HashOrders(orders)
 
-	failure := func(message string, ctx map[string]string) *auditpb.AuditEntry_Failure {
-		return &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
-			Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-			Message: message,
-			Context: ctx,
-		}}
-	}
-
 	// Archived audit entries, both living in the newer chapter's SST: seq 3 is
 	// below the cutoff (skipped), seq 4 is inside the window (re-derived).
 	coldEntries := []*auditpb.AuditEntry{
@@ -73,13 +65,13 @@ func TestCompareIdempotencyOutcomes_ArchivedFreezeWithinTTLWindow(t *testing.T) 
 			Sequence: 3, Timestamp: &commonpb.Timestamp{Data: tsExpired}, ProposalId: 1, OrderCount: 1,
 			HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 			Idempotency: &commonpb.Idempotency{Key: expiredKey},
-			Outcome:     failure("old", map[string]string{"a": "1"}),
+			Outcome:     idemAuditFailure("old", map[string]string{"a": "1"}),
 		},
 		{
 			Sequence: 4, Timestamp: &commonpb.Timestamp{Data: tsLive}, ProposalId: 2, OrderCount: 1,
 			HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 			Idempotency: &commonpb.Idempotency{Key: liveKey},
-			Outcome:     failure("balance too low", map[string]string{"account": "bank"}),
+			Outcome:     idemAuditFailure("balance too low", map[string]string{"account": "bank"}),
 		},
 	}
 	coldItems := map[uint64][]*auditpb.AuditItem{
@@ -105,7 +97,7 @@ func TestCompareIdempotencyOutcomes_ArchivedFreezeWithinTTLWindow(t *testing.T) 
 	hot := &auditpb.AuditEntry{
 		Sequence: 5, Timestamp: &commonpb.Timestamp{Data: tsHot}, ProposalId: 9,
 		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-		Outcome:     failure("unrelated", nil),
+		Outcome:     idemAuditFailure("unrelated", nil),
 	}
 	persistAuditEntry(t, store, hot, nil, clusterID)
 
@@ -162,6 +154,124 @@ func TestCompareIdempotencyOutcomes_ArchivedFreezeWithinTTLWindow(t *testing.T) 
 		"a tampered outcome on a live entry whose freeze is archived within the TTL window must be flagged")
 	require.Contains(t, got[0].GetMessage(), "3000",
 		"the flagged mismatch should reference the in-window created_at")
+}
+
+// TestCompareIdempotencyOutcomes_NeverExpireScansFullArchivedHistory pins the
+// idempotency-ttl=0 (never expire) behavior: the cold re-derivation scans the
+// full archived history (ttlCutoff 0), so even a freeze far older than any
+// finite window is verified, and the report floor of 0 reports every unmatched
+// entry. It also pins the documented non-goal: a frozen key with no stored
+// entry (a deletion) is not flagged, because eviction is unaudited and a missing
+// entry can't be told apart from a legitimately evicted one.
+func TestCompareIdempotencyOutcomes_NeverExpireScansFullArchivedHistory(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterID  = "idem-never-expire-cluster"
+		bucketID   = "test-bucket"
+		ancientKey = "ancient-key"
+
+		tsAncient = 500  // far below any finite TTL window
+		tsHot     = 5000 // surviving post-archive entry => verifiedRangeStartTs
+
+		chapterAncient = 11
+	)
+
+	store := createTestStore(t)
+
+	orders := []*raftcmdpb.Order{{}}
+	serialized := orders[0].MarshalDeterministicVT(nil)
+	proposalHash := processing.HashOrders(orders)
+
+	coldEntries := []*auditpb.AuditEntry{
+		{
+			Sequence: 1, Timestamp: &commonpb.Timestamp{Data: tsAncient}, ProposalId: 1, OrderCount: 1,
+			HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+			Idempotency: &commonpb.Idempotency{Key: ancientKey},
+			Outcome:     idemAuditFailure("ancient", map[string]string{"k": "v"}),
+		},
+	}
+	coldItems := map[uint64][]*auditpb.AuditItem{1: {{OrderIndex: 0, SerializedOrder: serialized}}}
+
+	fs := coldstorage.NewFilesystemStorage(t.TempDir())
+	sstBytes := buildColdAuditSST(t, coldEntries, coldItems)
+
+	checksum, err := coldstorage.ComputeSHA256(bytes.NewReader(sstBytes))
+	require.NoError(t, err)
+	require.NoError(t, fs.Archive(context.Background(), bucketID, chapterAncient, bytes.NewReader(sstBytes), checksum))
+
+	coldReader := coldstorage.NewColdReader(fs, bucketID, t.TempDir(), 4, 0, logging.Testing())
+	t.Cleanup(func() { _ = coldReader.Close() })
+
+	hot := &auditpb.AuditEntry{
+		Sequence: 5, Timestamp: &commonpb.Timestamp{Data: tsHot}, ProposalId: 9,
+		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Outcome:     idemAuditFailure("unrelated", nil),
+	}
+	persistAuditEntry(t, store, hot, nil, clusterID)
+
+	chapters := []*commonpb.Chapter{
+		{Id: chapterAncient, Status: commonpb.ChapterStatus_CHAPTER_ARCHIVED, StartAuditSequence: 1, CloseAuditSequence: 2},
+	}
+
+	collectMismatches := func() []*servicepb.CheckStoreError {
+		checker := NewChecker(store, attributes.New(), clusterID, coldReader, logging.Testing())
+
+		handle, err := store.NewReadHandle()
+		require.NoError(t, err)
+
+		defer func() { _ = handle.Close() }()
+
+		var got []*servicepb.CheckStoreError
+
+		// ttlCutoff == 0 is the never-expire window: the cold pass scans the
+		// full archived history.
+		require.NoError(t, checker.verifyAuditHashChain(context.Background(), handle, chapters, nil, 0,
+			func(event *servicepb.CheckStoreEvent) {
+				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
+					e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
+					got = append(got, e.Error)
+				}
+			}))
+
+		return got
+	}
+
+	// Deletion non-goal: the audit froze ancientKey, but with no stored entry
+	// the pass reports nothing — a missing entry is indistinguishable from a
+	// legitimately evicted one.
+	require.Empty(t, collectMismatches(),
+		"a frozen key with no stored entry must not be flagged (deletion is out of scope)")
+
+	faithful := &commonpb.IdempotencyKeyValue{
+		CreatedAt: tsAncient,
+		Hash:      proposalHash,
+		Failure:   &commonpb.IdempotencyFailure{Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS, Message: "ancient", Metadata: map[string]string{"k": "v"}},
+	}
+	writeIdempotencyEntry(t, store, ancientKey, faithful)
+
+	require.Empty(t, collectMismatches(),
+		"never-expire must scan the full archived history and pass a faithful ancient entry")
+
+	tampered := faithful.CloneVT()
+	tampered.Failure.Message = "tampered"
+	writeIdempotencyEntry(t, store, ancientKey, tampered)
+
+	got := collectMismatches()
+	require.NotEmpty(t, got,
+		"never-expire must scan the full archived history and flag a tampered ancient entry")
+	require.Contains(t, got[0].GetMessage(), "500",
+		"the flagged mismatch should reference the ancient created_at")
+}
+
+// idemAuditFailure builds a freezable-failure outcome for an archived audit
+// entry under test.
+func idemAuditFailure(message string, ctx map[string]string) *auditpb.AuditEntry_Failure {
+	return &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
+		Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+		Message: message,
+		Context: ctx,
+	}}
 }
 
 // buildColdAuditSST builds the SST an archived chapter would hold for the given
