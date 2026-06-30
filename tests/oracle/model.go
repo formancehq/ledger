@@ -297,6 +297,8 @@ func MetaValueString(v *commonpb.MetadataValue) string {
 		return "b:" + strconv.FormatBool(t.BoolValue)
 	case *commonpb.MetadataValue_NullValue:
 		return "n:" + t.NullValue.GetOriginal()
+	case *commonpb.MetadataValue_DatetimeValue:
+		return "d:" + strconv.FormatInt(t.DatetimeValue, 10)
 	default:
 		return "<nil>"
 	}

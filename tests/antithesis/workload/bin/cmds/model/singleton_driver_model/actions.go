@@ -443,14 +443,35 @@ func generateMetadataOp(ledger string, ls oracle.LedgerState) *servicepb.Request
 	return generateAddMetadata(ledger)
 }
 
-// randomMetaMap builds a 1-2 key metadata map from the small value pool. Small
-// pools make concurrent sets of the same key to different values frequent — the
-// ordering chaos. Values are written as strings; a declared field type coerces.
+// randomMetaValue picks a value across every MetadataValue wire kind — string,
+// int64, uint64, bool, null, datetime — from the small pools. The server stores
+// values verbatim, so each kind must round-trip unchanged regardless of any
+// declared field type.
+func randomMetaValue() *commonpb.MetadataValue {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
+	case 0:
+		return commonpb.NewIntValue(random.RandomChoice(metaIntPool))
+	case 1:
+		return commonpb.NewUintValue(random.RandomChoice(metaUintPool))
+	case 2:
+		return commonpb.NewBoolValue(random.RandomChoice([]uint8{0, 1}) == 0)
+	case 3:
+		return commonpb.NewNullValue(random.RandomChoice(metaNullOriginalPool))
+	case 4:
+		return commonpb.NewDatetimeValue(random.RandomChoice(metaDatetimePool))
+	default:
+		return commonpb.NewStringValue(random.RandomChoice(metaValuePool))
+	}
+}
+
+// randomMetaMap builds a 1-2 key metadata map from the small key/value pools.
+// Small pools make concurrent sets of the same key to different values frequent
+// — the ordering chaos the model exists to check.
 func randomMetaMap() map[string]*commonpb.MetadataValue {
 	n := 1 + int(random.RandomChoice([]uint8{0, 1}))
 	md := make(map[string]*commonpb.MetadataValue, n)
 	for i := 0; i < n; i++ {
-		md[metaKey()] = commonpb.NewStringValue(random.RandomChoice(metaValuePool))
+		md[metaKey()] = randomMetaValue()
 	}
 
 	return md
@@ -660,11 +681,7 @@ func txTarget(id uint64) *commonpb.Target {
 // across all workers on the ledger, so concurrent sets of the same key to
 // different values are frequent — the ledger-level ordering chaos.
 func generateSaveLedgerMetadata(ledger string) *servicepb.Request {
-	n := 1 + int(random.RandomChoice([]uint8{0, 1}))
-	md := make(map[string]*commonpb.MetadataValue, n)
-	for i := 0; i < n; i++ {
-		md[metaKey()] = commonpb.NewStringValue(random.RandomChoice(metaValuePool))
-	}
+	md := randomMetaMap()
 
 	return &servicepb.Request{
 		Type: &servicepb.Request_SaveLedgerMetadata{

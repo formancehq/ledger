@@ -177,3 +177,22 @@ func TestGlobalState_Apply_EphemeralPurge(t *testing.T) {
 	require.True(t, zeroed.OK)
 	require.NotContains(t, zeroed.State.Ledger("L").volumes, VolumeKey{"e:1", "USD"})
 }
+
+// MetaValueString must render every MetadataValue wire kind with a distinct,
+// type-tagged prefix, so the checker compares stored values exactly across all
+// kinds (the server stores them verbatim).
+func TestMetaValueString(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]*commonpb.MetadataValue{
+		"s:hi":    commonpb.NewStringValue("hi"),
+		"i:-42":   commonpb.NewIntValue(-42),
+		"u:42":    commonpb.NewUintValue(42),
+		"b:true":  commonpb.NewBoolValue(true),
+		"n:orig":  commonpb.NewNullValue("orig"),
+		"d:-1000": commonpb.NewDatetimeValue(-1000),
+	}
+	for want, v := range cases {
+		require.Equal(t, want, MetaValueString(v))
+	}
+}

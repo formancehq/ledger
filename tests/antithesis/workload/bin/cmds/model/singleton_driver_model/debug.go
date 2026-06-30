@@ -100,7 +100,7 @@ func bulkMeta(b oracle.Bulk) string {
 	kvList := func(m map[string]*commonpb.MetadataValue) string {
 		kvs := make([]string, 0, len(m))
 		for k, v := range m {
-			kvs = append(kvs, k+"="+v.GetStringValue())
+			kvs = append(kvs, k+"="+oracle.MetaValueString(v))
 		}
 		sort.Strings(kvs)
 		return strings.Join(kvs, ",")
