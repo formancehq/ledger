@@ -286,3 +286,40 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	require.Equal(t, "new:3", got[3].RaftAddress)
 	require.NotContains(t, got, uint64(7))
 }
+
+// TestMembership_RehydrateAfterReplay covers the EN-1413 follow-up gap:
+// WAL replay applies ConfChange entries to Pebble via WriteConfChange
+// (FSM hot path) but does NOT touch the in-memory cache — finishReady,
+// which owns that side effect on the normal Ready path, never runs for
+// replayed entries. NewNode therefore calls Rehydrate after
+// RecoverAndReplay so the recovered cache + transport match Pebble
+// before the Raft node starts.
+//
+// This simulates the scenario: cache loaded at boot from Pebble (peer
+// 7), then "WAL replay" mutates Pebble out-of-band (peer 7 removed,
+// peers 1 and 3 added), then Rehydrate must catch the cache up.
+func TestMembership_RehydrateAfterReplay(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+
+	require.NoError(t, ps.Put(7, "before:1", "before:2"))
+
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, 0, "", "", logging.Testing())
+	require.NoError(t, err)
+	require.Equal(t, "before:1", m.PeerAddresses()[7].RaftAddress)
+
+	// Simulate WAL replay: WriteConfChange wrote these rows directly to
+	// Pebble without touching the cache.
+	require.NoError(t, ps.Delete(7))
+	require.NoError(t, ps.Put(1, "after:1", "after:2"))
+	require.NoError(t, ps.Put(3, "after:3", "after:4"))
+
+	require.NoError(t, m.Rehydrate())
+
+	got := m.PeerAddresses()
+	require.Len(t, got, 2, "replayed removal of peer 7 + additions of 1 and 3 must reflect in cache")
+	require.Equal(t, "after:1", got[1].RaftAddress)
+	require.Equal(t, "after:3", got[3].RaftAddress)
+	require.NotContains(t, got, uint64(7))
+}

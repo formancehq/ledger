@@ -263,36 +263,30 @@ func (m *Membership) PersistInitialPeers(cfg NodeConfig, includeSelf bool) error
 	return nil
 }
 
-// OnSnapshotInstalled refreshes the cache from Pebble after a leader
-// checkpoint restore overwrites it AND reconciles the transport +
-// service pool to match (added peers wired in, removed peers wired out).
-// Wired on Applier; runs synchronously inside the maintenance task so
-// the next Raft tick already sees the up-to-date cache + transport.
+// Rehydrate re-reads the peer rows from Pebble, computes the diff
+// against the in-memory cache, publishes the new cache, and reconciles
+// the transport + service pool to match (added peers wired in, removed
+// peers wired out, address changes modeled as remove+add). Pebble is
+// considered authoritative — this method does NOT touch self; callers
+// that need to force the local self row write it through Register or
+// the store directly before invoking Rehydrate.
 //
-// LoadAll failure is logged but not fatal: state stays at its pre-
-// restore values and the next leadership/restart resyncs. Crashing the
-// apply loop on a transient read failure is worse than a slightly stale
-// view.
-func (m *Membership) OnSnapshotInstalled() {
+// Two call sites:
+//
+//   - NewNode, after Applier.RecoverAndReplay: WAL replay applied
+//     ConfChange entries to Pebble through WriteConfChange (FSM hot
+//     path), but the FSM intentionally does not touch the in-memory
+//     cache — that side effect lives in finishReady, which does not
+//     run during replay. Without this catch-up the recovered node
+//     would dial the pre-crash peer set until the next snapshot
+//     install or restart.
+//
+//   - OnSnapshotInstalled: a leader checkpoint restore has just
+//     overwritten Pebble; reload to match.
+func (m *Membership) Rehydrate() error {
 	fresh, err := m.store.LoadAll()
 	if err != nil {
-		m.logger.WithFields(map[string]any{
-			"error": err,
-		}).Errorf("Reloading peers from Pebble after snapshot install failed; cache left stale")
-
-		return
-	}
-
-	// The leader's checkpoint may carry a stale self row (e.g. our
-	// previous AdvertiseAddr before a pod restart with a new endpoint).
-	// Overwrite it with the locally-known truth before publishing. The
-	// empty-string check filters out the test path that constructs a
-	// Membership without a real self identity.
-	if m.selfRaftAddr != "" {
-		fresh[m.selfNodeID] = ConfChangeContext{
-			RaftAddress:    m.selfRaftAddr,
-			ServiceAddress: m.selfServiceAddr,
-		}
+		return fmt.Errorf("loading peers from pebble: %w", err)
 	}
 
 	// Compute the diff (toAdd / toRemove) BEFORE publishing fresh to
@@ -355,21 +349,48 @@ func (m *Membership) OnSnapshotInstalled() {
 		m.wireRemoveLocked(id)
 	}
 
-	// Make the locally-authoritative self row durable in Pebble too,
-	// so the next checkpoint we serve carries the fresh address. The
-	// in-memory cache is already correct (set above before publishing).
-	// Same empty-string guard as above for the test path.
+	m.logger.WithFields(map[string]any{
+		"peerCount": len(fresh),
+	}).Infof("Rehydrated cluster membership from Pebble")
+
+	return nil
+}
+
+// OnSnapshotInstalled refreshes the cache from Pebble after a leader
+// checkpoint restore overwrites it AND reconciles the transport +
+// service pool to match. The leader's checkpoint may carry a stale
+// self row (e.g. our previous AdvertiseAddr before a pod restart with
+// a new endpoint), so we first overwrite the self row in Pebble with
+// the locally-known truth and only then reload — that way the upcoming
+// LoadAll already returns the correct self and the next checkpoint we
+// serve carries the fresh address. Wired on Applier; runs synchronously
+// inside the maintenance task so the next Raft tick already sees the
+// up-to-date cache + transport.
+//
+// Failures are logged but not fatal: state stays at its pre-restore
+// values and the next leadership/restart resyncs. Crashing the apply
+// loop on a transient read failure is worse than a slightly stale view.
+func (m *Membership) OnSnapshotInstalled() {
+	// Force-write the locally-authoritative self row to Pebble BEFORE
+	// the reload, so LoadAll pulls our address rather than the leader's
+	// potentially-stale view and the next checkpoint we serve is
+	// already correct. The empty-string check filters out the test
+	// path that constructs a Membership without a real self identity.
 	if m.selfRaftAddr != "" {
 		if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr); err != nil {
 			m.logger.WithFields(map[string]any{
 				"error": err,
-			}).Errorf("Refreshing self in Pebble after snapshot install failed; checkpoint may carry stale address")
+			}).Errorf("Refreshing self in Pebble before snapshot reload failed; cache left stale")
+
+			return
 		}
 	}
 
-	m.logger.WithFields(map[string]any{
-		"peerCount": len(fresh),
-	}).Infof("Reloaded cluster membership from Pebble post-snapshot")
+	if err := m.Rehydrate(); err != nil {
+		m.logger.WithFields(map[string]any{
+			"error": err,
+		}).Errorf("Reloading peers from Pebble after snapshot install failed; cache left stale")
+	}
 }
 
 // WriteConfChange is the FSM ConfChange handler: invoked from

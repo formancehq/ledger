@@ -519,6 +519,20 @@ func NewNode(
 	}
 
 	if storeUpToDate {
+		// EN-1413: WAL replay applied ConfChange entries directly to
+		// Pebble via WriteConfChange (FSM hot path) but did NOT update
+		// the in-memory Membership cache or transport — finishReady,
+		// which owns those side effects on the normal Ready path, does
+		// not run during replay. Without this catch-up the recovered
+		// node would dial the pre-crash peer set (or miss a newly
+		// added peer) until the next snapshot install or restart.
+		// Skipped when the store is not up to date: SynchronizeWithLeader
+		// will install a leader checkpoint and OnSnapshotInstalled will
+		// rehydrate then.
+		if err := membership.Rehydrate(); err != nil {
+			return nil, fmt.Errorf("rehydrating membership after replay: %w", err)
+		}
+
 		// Early compaction: if the WAL has accumulated far more entries than the
 		// compaction margin, create a snapshot and compact now to release memory
 		// before the Raft node starts. Without this, the leader would try to
