@@ -222,6 +222,40 @@ func TestStartStopIndexes(t *testing.T) {
 	}, 5*time.Second, 20*time.Millisecond)
 }
 
+// TestProcessOnceHonorsContextCancellation asserts the drain loop checks the
+// context between batches: with a backlog present and an already-cancelled
+// context, ProcessOnce must abort immediately (returning context.Canceled)
+// instead of draining to completion, so worker.Stop() cannot hang on a large
+// backlog or sustained write stream during shutdown.
+func TestProcessOnceHonorsContextCancellation(t *testing.T) {
+	t.Parallel()
+	idx, mainStore, rs := newIndexerForTest(t)
+	idx.batchSize = 1 // a full drain would take several iterations
+
+	for s := uint64(1); s <= 5; s++ {
+		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Ledgers: []string{"main"},
+		})
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancelled before any draining begins
+
+	cursor, err := idx.ProcessOnce(ctx)
+	require.ErrorIs(t, err, context.Canceled, "a cancelled context must abort the drain loop")
+	require.Equal(t, uint64(0), cursor, "no batch should be committed after cancellation")
+
+	persisted, err := rs.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), persisted, "cursor must not advance when cancelled")
+
+	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
+	require.NoError(t, err)
+	require.Empty(t, seqs, "nothing should be indexed when cancelled before draining")
+}
+
 func TestIndexerKeepsUpUnderLoad(t *testing.T) {
 	t.Parallel()
 	idx, mainStore, rs := newIndexerForTest(t)

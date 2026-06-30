@@ -106,6 +106,14 @@ func (i *Indexer) ProcessOnce(ctx context.Context) (uint64, error) {
 	}
 
 	for {
+		// Honor shutdown between batches: worker.Stop() blocks on this loop
+		// returning, so without this check draining a large backlog (or a
+		// sustained write stream, where advanced stays true) would stall
+		// graceful shutdown until fully caught up.
+		if err := ctx.Err(); err != nil {
+			return cursor, err
+		}
+
 		next, advanced, err := i.processBatch(ctx, cursor)
 		if err != nil {
 			return cursor, err
@@ -278,7 +286,7 @@ func (i *Indexer) loop(ctx context.Context) {
 		i.auditLast.Store(last)
 		if i.shouldRebuildOnBoot(cursor, last) {
 			i.logger.WithFields(map[string]any{"cursor": cursor, "last": last}).Infof("Audit index rebuild on boot")
-			if err := i.Rebuild(ctx); err != nil {
+			if err := i.Rebuild(ctx); err != nil && !errors.Is(err, context.Canceled) {
 				i.logger.Errorf("audit index boot rebuild: %v", err)
 			}
 		}
@@ -295,7 +303,7 @@ func (i *Indexer) loop(ctx context.Context) {
 		if last, err := i.lastAuditSequence(); err == nil {
 			i.auditLast.Store(last)
 		}
-		if _, err := i.ProcessOnce(ctx); err != nil {
+		if _, err := i.ProcessOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			i.logger.Errorf("audit indexing: %v", err)
 		}
 	}
