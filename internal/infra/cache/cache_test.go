@@ -614,32 +614,20 @@ func TestAttributeCache_Gen0Gen1_Accessors(t *testing.T) {
 	require.NotSame(t, ac.Gen0(), ac.Gen1())
 }
 
-func TestCache_CheckRotationNeeded_ZeroThreshold(t *testing.T) {
-	t.Parallel()
-
-	// Create a cache and forcibly set threshold to 0
-	cache, err := New(10, nil)
-	require.NoError(t, err)
-
-	cache.SetGenerationThreshold(0)
-
-	rotated, _ := cache.CheckRotationNeeded(100)
-	assert.False(t, rotated)
-}
-
-func TestAttributeCache_IsGuaranteedInCache_ZeroThreshold(t *testing.T) {
+// TestCache_SetGenerationThresholdRejectsZero locks the invariant that a
+// running cache never observes threshold=0. cache.New rejects it, and every
+// setter (SetGenerationThreshold, ResetWithThreshold) panics loudly rather
+// than silently disabling rotations.
+func TestCache_SetGenerationThresholdRejectsZero(t *testing.T) {
 	t.Parallel()
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
 
-	cache.SetGenerationThreshold(0)
-
-	key := attributes.NewU128(1, 1)
-	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
-
-	// Should return false when threshold is 0
-	assert.False(t, cache.Volumes.IsGuaranteedInCache(5, key))
+	require.PanicsWithValue(t,
+		"cache.SetGenerationThreshold: threshold must be > 0 (invariant enforced by cache.New)",
+		func() { cache.SetGenerationThreshold(0) },
+	)
 }
 
 func TestAttributeCache_Touch_DoesNotOverwriteGen0(t *testing.T) {

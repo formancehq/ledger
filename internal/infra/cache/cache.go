@@ -185,11 +185,11 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 	// reads and leave us with a (threshold=old, currentGeneration=new)
 	// snapshot. Such a torn view would classify a valid admission as
 	// CacheUnreachable during the threshold-change transition window.
+	//
+	// threshold > 0 is a cluster-wide invariant: cache.New rejects 0 and
+	// ResetWithThreshold panics on 0 — no legitimate call path can observe
+	// threshold=0 here.
 	threshold := a.Cache.GenerationThreshold()
-	if threshold == 0 {
-		return CacheMiss
-	}
-
 	actualGeneration := a.Cache.currentGeneration.Load()
 	futureGeneration := Gen(at, threshold)
 
@@ -416,10 +416,9 @@ func (c *Cache) clearLocked() {
 // and performs it atomically if necessary.
 // Returns whether a rotation occurred and the old Gen1 base index (compaction threshold).
 func (c *Cache) CheckRotationNeeded(index uint64) (rotated bool, oldGen1BaseIndex uint64) {
+	// threshold > 0 is a cluster-wide invariant (see CheckCache / New /
+	// ResetWithThreshold) — no dead-code guard here.
 	threshold := c.generationThreshold.Load()
-	if threshold == 0 {
-		return false, 0
-	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -533,7 +532,12 @@ func (c *Cache) GenerationThreshold() uint64 {
 }
 
 // SetGenerationThreshold updates the cache rotation threshold atomically.
+// Panics on 0 — threshold > 0 is a cluster-wide invariant enforced by
+// cache.New and ResetWithThreshold.
 func (c *Cache) SetGenerationThreshold(v uint64) {
+	if v == 0 {
+		panic("cache.SetGenerationThreshold: threshold must be > 0 (invariant enforced by cache.New)")
+	}
 	c.generationThreshold.Store(v)
 }
 
