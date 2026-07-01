@@ -170,8 +170,7 @@ type Machine struct {
 	// SAME Pebble batch as the surrounding business writes. This keeps
 	// cluster membership atomic with FSM state and makes the spool/WAL
 	// replay path naturally idempotent — every replay of the entry
-	// re-asserts the membership row. nil is a no-op for tests that do
-	// not wire a Node. EN-1413.
+	// re-asserts the membership row. EN-1413.
 	confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error
 }
 
@@ -184,7 +183,7 @@ type Machine struct {
 //
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
-// Machine). Pass nil for tests that don't wire a Node.
+// Machine). Must be non-nil.
 func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
@@ -598,8 +597,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			// registers a handler that writes the peer entry via the
 			// supplied session; replay (boot WAL replay or post-
 			// snapshot spool replay) re-asserts the same row.
-			if fsm.confChangeHandler != nil &&
-				(entry.Type == raftpb.EntryConfChange || entry.Type == raftpb.EntryConfChangeV2) {
+			if entry.Type == raftpb.EntryConfChange || entry.Type == raftpb.EntryConfChangeV2 {
 				if err := fsm.confChangeHandler(entry, batch); err != nil {
 					_ = batch.Cancel()
 

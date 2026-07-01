@@ -56,7 +56,7 @@ func TestPipelinedApplyWithCheckpointDoesNotDiverge(t *testing.T) {
 		keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil,
 		"test-cluster",
 		0,
-		nil,
+		noopConfChangeHandler,
 	)
 	require.NoError(t, err)
 	require.NoError(t, NewRecovery(machine, dataStore).RecoverState())

@@ -77,8 +77,7 @@ type Applier struct {
 	// ConfChanges and drop those peers from the Membership cache. The
 	// hook fires inside the maintenance goroutine, synchronously with
 	// the restore, so the next Raft tick already sees the up-to-date
-	// cache + transport. nil is a no-op for tests that don't wire it.
-	// (EN-1413)
+	// cache + transport. (EN-1413)
 	onSnapshotInstalled func()
 
 	// Metrics
@@ -1444,7 +1443,7 @@ func (a *Applier) startMaintenanceTask(
 		// cache (Rehydrate treats Pebble as authoritative and finds
 		// them missing), leaving the node with a stale transport view
 		// until the next rehydrate. (EN-1413)
-		if taskResult.snapshotInstalled && a.onSnapshotInstalled != nil {
+		if taskResult.snapshotInstalled {
 			a.onSnapshotInstalled()
 		}
 
