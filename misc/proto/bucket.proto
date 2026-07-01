@@ -82,6 +82,10 @@ service BucketService {
   rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo);
   // ListNumscripts streams all numscripts (latest version of each)
   rpc ListNumscripts(ListNumscriptsRequest) returns (stream common.NumscriptInfo);
+  // GetTemplateUsage returns per-template invocation usage populated by the
+  // usagebuilder subsystem. Eventually consistent — may lag the live FSM
+  // by up to one usagebuilder tick interval.
+  rpc GetTemplateUsage(GetTemplateUsageRequest) returns (common.TemplateUsage);
   // InspectIndex scans a metadata index and returns distinct values, facets, or a summary
   rpc InspectIndex(InspectIndexRequest) returns (InspectIndexResponse);
   // Barrier proposes a no-op through Raft consensus. When it returns, all
@@ -431,6 +435,15 @@ message GetNumscriptRequest {
 message ListNumscriptsRequest {
   string ledger = 1;
   common.ListOptions options = 2;
+}
+
+// GetTemplateUsageRequest retrieves the invocation counter + last-used
+// timestamp for a Numscript template. The counter is materialised
+// asynchronously by the usagebuilder from the audit chain — expect up to
+// one tick interval of lag behind the live FSM.
+message GetTemplateUsageRequest {
+  string ledger = 1;
+  string name = 2;
 }
 
 // ScriptReference references a numscript from the library by name and optional version.

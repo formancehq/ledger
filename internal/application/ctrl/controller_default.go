@@ -29,6 +29,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
+	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
 const (
@@ -98,6 +99,7 @@ type DefaultController struct {
 	store      *dal.Store
 	attrs      *attributes.Attributes
 	readStore  *readstore.Store
+	usageStore *usagestore.Store
 	coldReader *coldstorage.ColdReader
 
 	applyDuration metric.Int64Histogram
@@ -110,6 +112,7 @@ func NewDefaultController(
 	logger logging.Logger,
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
+	usageStore *usagestore.Store,
 	coldReader *coldstorage.ColdReader,
 	meter metric.Meter,
 ) *DefaultController {
@@ -131,6 +134,7 @@ func NewDefaultController(
 		store:         store,
 		attrs:         attrs,
 		readStore:     readStore,
+		usageStore:    usageStore,
 		coldReader:    coldReader,
 		applyDuration: applyDuration,
 	}
@@ -488,7 +492,12 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 }
 
 // GetLedgerStats returns aggregate statistics for a ledger.
-// All counters are O(1) reads from the LedgerBoundaries attribute.
+// TransactionCount, LogCount, VolumeCount, MetadataCount, EphemeralEvictedCount
+// and TransientUsedCount come from the LedgerBoundaries attribute. The
+// event-count fields (PostingCount, RevertCount, NumscriptExecutionCount,
+// ReferenceCount) are derived from the audit chain by the usagebuilder and
+// read from the usagestore side-store — expect up to one usagebuilder tick
+// interval of lag behind the live FSM (see EN-1420).
 func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
 	_, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
@@ -519,16 +528,30 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 		stats.VolumeCount = boundaries.GetVolumeCount()
 		stats.MetadataCount = boundaries.GetMetadataCount()
-		stats.ReferenceCount = boundaries.GetReferenceCount()
-		stats.PostingCount = boundaries.GetPostingCount()
 		stats.EphemeralEvictedCount = boundaries.GetEphemeralEvictedCount()
 		stats.TransientUsedCount = boundaries.GetTransientUsedCount()
-		stats.RevertCount = boundaries.GetRevertCount()
-		stats.NumscriptExecutionCount = boundaries.GetNumscriptExecutionCount()
 
 		if nextLogID := boundaries.GetNextLogId(); nextLogID > 0 {
 			stats.LogCount = nextLogID - 1
 		}
+	}
+
+	// Event-count fields from the usagebuilder side-store. Missing keys read
+	// as 0 (fresh ledger, or usagebuilder has not caught up yet).
+	if stats.PostingCount, err = ctrl.usageStore.GetCounter(ledgerName, usagestore.CounterPosting); err != nil {
+		return nil, fmt.Errorf("reading posting counter: %w", err)
+	}
+
+	if stats.RevertCount, err = ctrl.usageStore.GetCounter(ledgerName, usagestore.CounterRevert); err != nil {
+		return nil, fmt.Errorf("reading revert counter: %w", err)
+	}
+
+	if stats.NumscriptExecutionCount, err = ctrl.usageStore.GetCounter(ledgerName, usagestore.CounterNumscriptExecution); err != nil {
+		return nil, fmt.Errorf("reading numscript execution counter: %w", err)
+	}
+
+	if stats.ReferenceCount, err = ctrl.usageStore.GetCounter(ledgerName, usagestore.CounterReference); err != nil {
+		return nil, fmt.Errorf("reading reference counter: %w", err)
 	}
 
 	return &stats, nil
@@ -1291,6 +1314,25 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 	}
 
 	return info, nil
+}
+
+// GetTemplateUsage returns the invocation counter and last-used timestamp
+// for a Numscript template. Values are populated by the usagebuilder
+// subsystem asynchronously from the audit chain: a template that was just
+// invoked may not yet be reflected here for up to one usagebuilder tick
+// (100 ms). Returns a zero-valued TemplateUsage (never nil) when the
+// template has never been invoked.
+func (ctrl *DefaultController) GetTemplateUsage(_ context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+	usage, err := ctrl.usageStore.GetTemplateUsage(ledger, name)
+	if err != nil {
+		return nil, fmt.Errorf("reading template usage %q/%q: %w", ledger, name, err)
+	}
+
+	if usage == nil {
+		return &commonpb.TemplateUsage{}, nil
+	}
+
+	return usage, nil
 }
 
 // ListNumscripts returns the latest version of all numscripts for a ledger.

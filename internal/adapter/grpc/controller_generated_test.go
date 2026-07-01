@@ -628,6 +628,45 @@ func (c *MockControllerGetNumscriptCall) DoAndReturn(f func(context.Context, str
 	return c
 }
 
+// GetTemplateUsage mocks base method.
+func (m *MockController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTemplateUsage", ctx, ledger, name)
+	ret0, _ := ret[0].(*commonpb.TemplateUsage)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTemplateUsage indicates an expected call of GetTemplateUsage.
+func (mr *MockControllerMockRecorder) GetTemplateUsage(ctx, ledger, name any) *MockControllerGetTemplateUsageCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTemplateUsage", reflect.TypeOf((*MockController)(nil).GetTemplateUsage), ctx, ledger, name)
+	return &MockControllerGetTemplateUsageCall{Call: call}
+}
+
+// MockControllerGetTemplateUsageCall wrap *gomock.Call
+type MockControllerGetTemplateUsageCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockControllerGetTemplateUsageCall) Return(arg0 *commonpb.TemplateUsage, arg1 error) *MockControllerGetTemplateUsageCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockControllerGetTemplateUsageCall) Do(f func(context.Context, string, string) (*commonpb.TemplateUsage, error)) *MockControllerGetTemplateUsageCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockControllerGetTemplateUsageCall) DoAndReturn(f func(context.Context, string, string) (*commonpb.TemplateUsage, error)) *MockControllerGetTemplateUsageCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetTransaction mocks base method.
 func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	m.ctrl.T.Helper()

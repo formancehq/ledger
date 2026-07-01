@@ -76,13 +76,17 @@ func countVolumeDeltas(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.
 
 // updateBoundaryCounters computes attribute key deltas and updates LedgerBoundaries
 // for each affected ledger. Must be called before Derived.Boundaries.Merge().
+//
+// Only the attribute-derived counters (volume_count, metadata_count,
+// ephemeral_evicted_count, transient_used_count) live here — reference_count
+// moved to the usagebuilder (see EN-1420) which derives it from the audit
+// chain instead. The 4 remaining are covered by EN-1422.
 func (b *WriteSet) updateBoundaryCounters(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	purgedVolumes []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	transientVolumes []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	metadataUpdates []attributes.Update[domain.MetadataKey, *commonpb.MetadataValue],
 	metadataDeletions []attributes.Deletion[domain.MetadataKey],
-	referenceUpdates []attributes.Update[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue],
 ) {
 	volumeDeltas := countVolumeDeltas(volumeUpdates)
 
@@ -104,7 +108,6 @@ func (b *WriteSet) updateBoundaryCounters(
 	}
 
 	metadataDeltas := countKeyDeltas(metadataUpdates, metadataDeletions, func(k domain.MetadataKey) string { return k.LedgerName })
-	referenceDeltas := countKeyDeltas(referenceUpdates, nil, func(k domain.TransactionReferenceKey) string { return k.LedgerName })
 
 	// Collect all affected ledgers.
 	affected := make(map[string]struct{})
@@ -112,9 +115,6 @@ func (b *WriteSet) updateBoundaryCounters(
 		affected[ledger] = struct{}{}
 	}
 	for ledger := range metadataDeltas {
-		affected[ledger] = struct{}{}
-	}
-	for ledger := range referenceDeltas {
 		affected[ledger] = struct{}{}
 	}
 	for ledger := range ephemeralEvicted {
@@ -133,7 +133,6 @@ func (b *WriteSet) updateBoundaryCounters(
 		boundaries := boundariesReader.Mutate()
 		boundaries.VolumeCount = applyDelta(boundaries.GetVolumeCount(), volumeDeltas[ledgerName])
 		boundaries.MetadataCount = applyDelta(boundaries.GetMetadataCount(), metadataDeltas[ledgerName])
-		boundaries.ReferenceCount = applyDelta(boundaries.GetReferenceCount(), referenceDeltas[ledgerName])
 		boundaries.EphemeralEvictedCount += ephemeralEvicted[ledgerName]
 		boundaries.TransientUsedCount += transientUsed[ledgerName]
 		b.Boundaries().Put(domain.LedgerKey{Name: ledgerName}, boundaries)

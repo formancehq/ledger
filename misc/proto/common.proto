@@ -498,6 +498,14 @@ message DeletedNumscriptLog {
   string ledger = 2;
 }
 
+// TemplateUsage tracks per-template invocation usage. Persisted as a
+// projection of the audit log by the usagebuilder subsystem — NOT part of
+// the FSM authoritative state. Rebuildable from cursor=0 on demand.
+message TemplateUsage {
+  fixed64 count = 1;
+  Timestamp last_used = 2;
+}
+
 // SetQueryCheckpointScheduleLog records a query checkpoint schedule change.
 message SetQueryCheckpointScheduleLog {
   string cron = 1;

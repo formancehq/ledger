@@ -40,6 +40,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
 	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/application/mirror"
+	"github.com/formancehq/ledger/v3/internal/application/usagebuilder"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
@@ -70,6 +71,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
+	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
@@ -372,6 +374,7 @@ func Module() fx.Option {
 				eventNotifications *signal.Notifications,
 				mirrorNotifications *signal.Notifications,
 				indexNotifications *signal.Notifications,
+				usageNotifications *signal.Notifications,
 				bloomFilters *bloom.FilterSet,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
@@ -379,8 +382,8 @@ func Module() fx.Option {
 				idempotencyTTLMicros := uint64(cfg.IdempotencyTTL.Microseconds())
 
 				// Fan-out: Machine emits to a single Notifier; FanOut dispatches
-				// to the per-consumer Notifications (events, mirror, index).
-				fanOut := signal.NewFanOut(eventNotifications, mirrorNotifications, indexNotifications)
+				// to the per-consumer Notifications (events, mirror, index, usage).
+				fanOut := signal.NewFanOut(eventNotifications, mirrorNotifications, indexNotifications, usageNotifications)
 
 				// Sub-objects built in-line so NewMachine receives them pre-built.
 				registry := state.NewStateRegistry(c, attrs, idempotencyTTLMicros)
@@ -409,7 +412,7 @@ func Module() fx.Option {
 				}).Infof("FSM Machine created")
 
 				return m, nil
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`)),
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`, `name:"usage"`)),
 			func(
 				params struct {
 					fx.In
@@ -592,6 +595,7 @@ func Module() fx.Option {
 			fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, ``, ``, `name:"events"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"mirror"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"index"`)),
+			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"usage"`)),
 			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
 				return mirror.NewManager(store, proposer, builder, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
 			}, fx.ParamTags(``, ``, ``, ``, `name:"mirror"`, ``, ``)),
@@ -623,6 +627,21 @@ func Module() fx.Option {
 					store, rs, logger, meterProvider.Meter("audit.index"),
 				)
 			},
+			// Usage store (Pebble) — dedicated secondary store for the
+			// usagebuilder projections. Kept physically separate from the
+			// readstore so operational rebuild (`ledgerctl store rebuild-usage`)
+			// is just a directory drop.
+			func(cfg Config, logger logging.Logger) (*usagestore.Store, error) {
+				dir := filepath.Join(cfg.DataDir, "usage")
+
+				return usagestore.New(dir, logger, usagestore.DefaultConfig())
+			},
+			// Usage builder — tails the FSM audit chain to populate the usage
+			// store (template usage + per-ledger event counters). Notifications
+			// arrive via the dedicated `name:"usage"` FanOut target.
+			fx.Annotate(func(store *dal.Store, us *usagestore.Store, notifications *signal.Notifications, logger logging.Logger, meterProvider metric.MeterProvider) *usagebuilder.Builder {
+				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0)
+			}, fx.ParamTags(``, ``, `name:"usage"`, ``, ``)),
 			httpcompat.NewServer,
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
 				return httpcompat.NewHandler(logger, backend, authCfg, info)
@@ -745,17 +764,18 @@ func Module() fx.Option {
 				logger logging.Logger,
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
+				us *usagestore.Store,
 				coldReader *coldstorage.ColdReader,
 				meterProvider metric.MeterProvider,
 			) (ctrl.Controller, *ctrl.DefaultController) {
-				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader, meterProvider.Meter("ctrl"))
+				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, us, coldReader, meterProvider.Meter("ctrl"))
 
 				return NewRoutedController(
 					defaultCtrl,
 					raftNode,
 					servicePool,
 				), defaultCtrl
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, `optional:"true"`, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
@@ -792,6 +812,7 @@ func Module() fx.Option {
 				runtime *dal.Store,
 				wal *wal.DefaultWAL,
 				rs *readstore.Store,
+				us *usagestore.Store,
 				sp *spool.Default,
 				cfg Config,
 				logger logging.Logger,
@@ -809,6 +830,11 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStop: func(_ context.Context) error {
 						return rs.Close()
+					},
+				})
+				lc.Append(fx.Hook{
+					OnStop: func(_ context.Context) error {
+						return us.Close()
 					},
 				})
 			},
@@ -1328,6 +1354,21 @@ func Module() fx.Option {
 
 				return nil
 			},
+			// Register Pebble usage store metrics and unregister on stop.
+			func(lc fx.Lifecycle, us *usagestore.Store, meterProvider metric.MeterProvider) error {
+				reg, err := us.RegisterMetrics(meterProvider.Meter("usagestore"))
+				if err != nil {
+					return fmt.Errorf("registering usagestore metrics: %w", err)
+				}
+
+				lc.Append(fx.Hook{
+					OnStop: func(_ context.Context) error {
+						return reg.Unregister()
+					},
+				})
+
+				return nil
+			},
 			// Start and stop the index builder.
 			// The builder has its own dedicated Notifications signal to receive
 			// log-committed events from the FSM without competing with other consumers.
@@ -1338,6 +1379,12 @@ func Module() fx.Option {
 			// Start and stop the audit indexer.
 			func(lc fx.Lifecycle, auditIndexer *auditindexer.Indexer) {
 				lc.Append(worker.FxHook(auditIndexer))
+			},
+			// Start and stop the usage builder. Notifications are already
+			// wired at construction time (constructor injection), so this
+			// hook only needs the lifecycle wiring.
+			func(lc fx.Lifecycle, usageBuilder *usagebuilder.Builder) {
+				lc.Append(worker.FxHook(usageBuilder))
 			},
 		),
 	)
