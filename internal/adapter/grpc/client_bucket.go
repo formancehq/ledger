@@ -416,6 +416,13 @@ func (g *BucketGrpcClient) GetNumscript(ctx context.Context, ledger, name string
 	})
 }
 
+func (g *BucketGrpcClient) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+	return g.client.GetTemplateUsage(ctx, &servicepb.GetTemplateUsageRequest{
+		Ledger: ledger,
+		Name:   name,
+	})
+}
+
 func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
 	// Follow x-next-cursor across pages — see ListSigningKeys for the
 	// rationale (this client may wrap a routed leader controller whose

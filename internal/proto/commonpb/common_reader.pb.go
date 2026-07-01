@@ -3965,6 +3965,82 @@ func NewDeletedNumscriptLogListReader(s []*DeletedNumscriptLog) DeletedNumscript
 	return deletedNumscriptLogListReadonly(s)
 }
 
+// TemplateUsageReader provides read-only access to TemplateUsage.
+// Call Mutate() to obtain a mutable clone.
+type TemplateUsageReader interface {
+	GetCount() uint64
+	GetLastUsed() TimestampReader
+	Mutate() *TemplateUsage
+}
+
+type templateUsageReadonly TemplateUsage
+
+func (r *templateUsageReadonly) GetCount() uint64 {
+	return (*TemplateUsage)(r).GetCount()
+}
+
+func (r *templateUsageReadonly) GetLastUsed() TimestampReader {
+	v := (*TemplateUsage)(r).GetLastUsed()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *templateUsageReadonly) Mutate() *TemplateUsage {
+	return (*TemplateUsage)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this TemplateUsage.
+func (m *TemplateUsage) AsReader() TemplateUsageReader {
+	if m == nil {
+		return nil
+	}
+	return (*templateUsageReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this TemplateUsage.
+func (m *TemplateUsage) Mutate() *TemplateUsage {
+	return m.CloneVT()
+}
+
+// TemplateUsageListReader provides read-only iteration over []*TemplateUsage.
+type TemplateUsageListReader interface {
+	Len() int
+	Get(i int) TemplateUsageReader
+	Range(yield func(int, TemplateUsageReader) bool)
+}
+
+type templateUsageListReadonly []*TemplateUsage
+
+func (l templateUsageListReadonly) Len() int { return len(l) }
+
+func (l templateUsageListReadonly) Get(i int) TemplateUsageReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l templateUsageListReadonly) Range(yield func(int, TemplateUsageReader) bool) {
+	for i, v := range l {
+		var r TemplateUsageReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTemplateUsageListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTemplateUsageListReader(s []*TemplateUsage) TemplateUsageListReader {
+	return templateUsageListReadonly(s)
+}
+
 // SetQueryCheckpointScheduleLogReader provides read-only access to SetQueryCheckpointScheduleLog.
 // Call Mutate() to obtain a mutable clone.
 type SetQueryCheckpointScheduleLogReader interface {

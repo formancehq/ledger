@@ -268,6 +268,21 @@ func (mr *MockControllerMockRecorder) GetNumscript(ctx, ledger, name, version an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscript", reflect.TypeOf((*MockController)(nil).GetNumscript), ctx, ledger, name, version)
 }
 
+// GetTemplateUsage mocks base method.
+func (m *MockController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTemplateUsage", ctx, ledger, name)
+	ret0, _ := ret[0].(*commonpb.TemplateUsage)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTemplateUsage indicates an expected call of GetTemplateUsage.
+func (mr *MockControllerMockRecorder) GetTemplateUsage(ctx, ledger, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTemplateUsage", reflect.TypeOf((*MockController)(nil).GetTemplateUsage), ctx, ledger, name)
+}
+
 // GetTransaction mocks base method.
 func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error) {
 	m.ctrl.T.Helper()

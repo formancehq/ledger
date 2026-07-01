@@ -342,6 +342,7 @@ The numscript library allows saving, retrieving, and managing reusable numscript
 **Endpoints:**
 - `GET /v3/{ledgerName}/numscripts` - List all saved numscripts for a ledger
 - `GET /v3/{ledgerName}/numscripts/{name}?version=` - Get a numscript by name (optional version query param)
+- `GET /v3/{ledgerName}/numscripts/{name}/usage` - Get invocation count and last-used timestamp for a template
 - `PUT /v3/{ledgerName}/numscripts/{name}` - Save a numscript (create new version or overwrite latest)
 - `DELETE /v3/{ledgerName}/numscripts/{name}` - Delete a numscript
 
@@ -363,6 +364,16 @@ When retrieving a numscript via `GET /v3/{ledgerName}/numscripts/{name}`, the `v
 - `content` (string): Numscript source code
 - `version` (string): Semver version (e.g. `"1.0.0"`)
 - `createdAt` (string, date-time): Timestamp
+
+**Usage tracking (`GET /v3/{ledgerName}/numscripts/{name}/usage`):**
+
+Returns per-template invocation counters and the timestamp of the most recent invocation. Populated asynchronously by the `usagebuilder` subsystem, which tails the FSM audit chain and writes to a dedicated secondary Pebble store (`<data-dir>/usage/`). Values are eventually consistent with the FSM and may lag by up to one usagebuilder tick interval (~100 ms).
+
+A never-invoked template returns a zero-valued response (not 404), so clients handle "never used" uniformly:
+- `count` (uint64): Number of times the template has been invoked. `0` means not yet invoked (or the usagebuilder has not caught up).
+- `lastUsed` (string, date-time, nullable): Timestamp of the most recent invocation. Absent when count is 0.
+
+On a fresh ledger the counter builds up organically from cursor=0. On an existing ledger whose audit chain has been partially archived to cold storage, only invocations still present in the primary Pebble store are counted — use `ledgerctl store rebuild-usage` to replay from the reachable start.
 
 ### 10. Prepared Queries and User-Configurable Indexes
 
@@ -663,6 +674,7 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
 | `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List all numscripts for a ledger |
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (semver version, empty = latest) |
+| `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp |
 | `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save numscript (semver versioned) |
 | `DELETE /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Delete numscript |
 | `GET /v3/{ledgerName}/account-types` | ✅ | ❌ | List account types |

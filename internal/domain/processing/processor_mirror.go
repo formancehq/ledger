@@ -157,7 +157,9 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 	if boundaries.GetNextTransactionId() <= txID {
 		boundaries.NextTransactionId = txID + 1
 	}
-	boundaries.PostingCount += uint64(len(ct.GetPostings()))
+
+	// posting_count is no longer maintained on LedgerBoundaries — the
+	// usagebuilder derives it from the audit chain. See EN-1420.
 
 	timestamp := ct.GetTimestamp()
 	if timestamp == nil {
@@ -339,8 +341,10 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	if boundaries.GetNextTransactionId() <= revertTxID {
 		boundaries.NextTransactionId = revertTxID + 1
 	}
-	boundaries.PostingCount += uint64(len(rt.GetReversePostings()))
-	boundaries.RevertCount++
+
+	// posting_count and revert_count are no longer maintained on
+	// LedgerBoundaries — the usagebuilder derives them from the audit
+	// chain. See EN-1420.
 
 	timestamp := rt.GetTimestamp()
 	if timestamp == nil {

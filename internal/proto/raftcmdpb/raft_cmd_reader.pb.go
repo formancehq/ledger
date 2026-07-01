@@ -5251,12 +5251,8 @@ type LedgerBoundariesReader interface {
 	GetNextLogId() uint64
 	GetVolumeCount() uint64
 	GetMetadataCount() uint64
-	GetReferenceCount() uint64
-	GetPostingCount() uint64
 	GetEphemeralEvictedCount() uint64
 	GetTransientUsedCount() uint64
-	GetRevertCount() uint64
-	GetNumscriptExecutionCount() uint64
 	Mutate() *LedgerBoundaries
 }
 
@@ -5278,28 +5274,12 @@ func (r *ledgerBoundariesReadonly) GetMetadataCount() uint64 {
 	return (*LedgerBoundaries)(r).GetMetadataCount()
 }
 
-func (r *ledgerBoundariesReadonly) GetReferenceCount() uint64 {
-	return (*LedgerBoundaries)(r).GetReferenceCount()
-}
-
-func (r *ledgerBoundariesReadonly) GetPostingCount() uint64 {
-	return (*LedgerBoundaries)(r).GetPostingCount()
-}
-
 func (r *ledgerBoundariesReadonly) GetEphemeralEvictedCount() uint64 {
 	return (*LedgerBoundaries)(r).GetEphemeralEvictedCount()
 }
 
 func (r *ledgerBoundariesReadonly) GetTransientUsedCount() uint64 {
 	return (*LedgerBoundaries)(r).GetTransientUsedCount()
-}
-
-func (r *ledgerBoundariesReadonly) GetRevertCount() uint64 {
-	return (*LedgerBoundaries)(r).GetRevertCount()
-}
-
-func (r *ledgerBoundariesReadonly) GetNumscriptExecutionCount() uint64 {
-	return (*LedgerBoundaries)(r).GetNumscriptExecutionCount()
 }
 
 func (r *ledgerBoundariesReadonly) Mutate() *LedgerBoundaries {
