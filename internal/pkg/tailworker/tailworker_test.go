@@ -23,8 +23,14 @@ func TestBootRunsOnceThenTicks(t *testing.T) {
 		Name:   "test",
 		Logger: testLogger(),
 		Ticker: 5 * time.Millisecond,
-		Boot:   func(context.Context) error { boots.Add(1); return nil },
-		Tick:   func(context.Context) error { ticks.Add(1); return nil },
+		Boot: func(context.Context) error {
+			boots.Add(1)
+			return nil
+		},
+		Tick: func(context.Context) error {
+			ticks.Add(1)
+			return nil
+		},
 	})
 	tw.Start()
 	t.Cleanup(tw.Stop)
@@ -43,7 +49,10 @@ func TestBootErrorAbortsLoop(t *testing.T) {
 		Logger: testLogger(),
 		Ticker: 5 * time.Millisecond,
 		Boot:   func(context.Context) error { return errors.New("boom") },
-		Tick:   func(context.Context) error { ticks.Add(1); return nil },
+		Tick: func(context.Context) error {
+			ticks.Add(1)
+			return nil
+		},
 	})
 	tw.Start()
 	t.Cleanup(tw.Stop)
@@ -62,6 +71,7 @@ func TestTickCanceledErrorSwallowedOthersContinue(t *testing.T) {
 		Ticker: 5 * time.Millisecond,
 		Tick: func(context.Context) error {
 			ticks.Add(1)
+
 			return errors.New("transient")
 		},
 	})
@@ -82,7 +92,10 @@ func TestWakeTriggersTick(t *testing.T) {
 		Logger: testLogger(),
 		Ticker: time.Hour,
 		Wake:   wake,
-		Tick:   func(context.Context) error { ticks.Add(1); return nil },
+		Tick: func(context.Context) error {
+			ticks.Add(1)
+			return nil
+		},
 	})
 	tw.Start()
 	t.Cleanup(tw.Stop)
@@ -106,6 +119,7 @@ func TestStopReturnsWhileTickBlocksOnCtx(t *testing.T) {
 			default:
 			}
 			<-ctx.Done()
+
 			return ctx.Err()
 		},
 	})
