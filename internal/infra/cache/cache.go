@@ -188,6 +188,17 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 	actualGeneration := a.Cache.currentGeneration.Load()
 	futureGeneration := Gen(at, threshold)
 
+	// Stale-behind build: an admission build sampled `at` before the FSM
+	// applied entries past that index, so its `at` maps to a generation the
+	// FSM has already left behind. Not a horizon violation — the higher-level
+	// staleness guard (checkStaleProposal / AcquireProposalGuard) will
+	// reject or rebuild. Report CacheMiss so the caller loads from store and
+	// the concurrent apply resolves the outcome; do NOT let the uint64
+	// subtraction underflow into the CacheUnreachable default branch.
+	if futureGeneration < actualGeneration {
+		return CacheMiss
+	}
+
 	switch futureGeneration - actualGeneration {
 	case 0:
 		// Same generation — no rotation expected.
