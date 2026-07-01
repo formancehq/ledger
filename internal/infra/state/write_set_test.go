@@ -783,7 +783,7 @@ func TestSortedDirtyVolumeKeys(t *testing.T) {
 		mk("l2", "beta", "USD"),
 	}
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		require.Equal(t, want, sortedDirtyVolumeKeys(dirty), "iteration %d", i)
 	}
 }
@@ -858,7 +858,7 @@ func TestValidateTransientVolumesReturnsSmallestOffender(t *testing.T) {
 	).NewProposalScope()
 	require.NoError(t, err)
 
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		describ := buf.ValidateTransientVolumes(scope)
 		require.NotNil(t, describ, "iteration %d: expected an offender", i)
 
