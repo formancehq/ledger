@@ -27,6 +27,34 @@ type noopPool struct{}
 func (noopPool) AddPeer(uint64, string) error { return nil }
 func (noopPool) RemovePeer(uint64) error      { return nil }
 
+// countingTransport / countingPool count Add / Remove calls. Used to
+// verify the Start-gated wiring — pre-Start counts must stay at zero,
+// post-Start Set / Remove / Rehydrate must increment.
+type countingTransport struct {
+	adds    int
+	removes int
+}
+
+func (c *countingTransport) AddPeer(uint64, string)             { c.adds++ }
+func (c *countingTransport) RemovePeer(context.Context, uint64) { c.removes++ }
+
+type countingPool struct {
+	adds    int
+	removes int
+}
+
+func (c *countingPool) AddPeer(uint64, string) error {
+	c.adds++
+
+	return nil
+}
+
+func (c *countingPool) RemovePeer(uint64) error {
+	c.removes++
+
+	return nil
+}
+
 // newTestPeerStore returns a fresh PeerStore backed by an in-memory Pebble
 // store in a temp directory, cleaned up at test end.
 func newTestPeerStore(t *testing.T) *PeerStore {
@@ -44,13 +72,17 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 }
 
 // newTestMembership returns a Membership backed by a fresh in-memory
-// Pebble store and noop transport/pool. Used to seed a minimal Node
-// in tests that only touch peer state.
+// Pebble store and noop transport/pool, in the post-Start state so
+// that Set / Remove / Rehydrate exercise the wire path (against the
+// noops). Tests that need the pre-Start behavior should construct
+// NewMembership directly.
 func newTestMembership(t *testing.T) *Membership {
 	t.Helper()
 
 	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, 0, "", "", logging.Testing())
 	require.NoError(t, err)
+
+	m.Start()
 
 	return m
 }
@@ -269,6 +301,7 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 
 	m, err := NewMembership(ps, noopTransport{}, noopPool{}, 0, "", "", logging.Testing())
 	require.NoError(t, err)
+	m.Start()
 	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
 
 	// Simulate a leader checkpoint restore: Pebble now has peers 1 + 3,
@@ -307,6 +340,7 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 
 	m, err := NewMembership(ps, noopTransport{}, noopPool{}, 0, "", "", logging.Testing())
 	require.NoError(t, err)
+	m.Start()
 	require.Equal(t, "before:1", m.PeerAddresses()[7].RaftAddress)
 
 	// Simulate WAL replay: WriteConfChange wrote these rows directly to
@@ -322,4 +356,46 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 	require.Equal(t, "after:1", got[1].RaftAddress)
 	require.Equal(t, "after:3", got[3].RaftAddress)
 	require.NotContains(t, got, uint64(7))
+}
+
+// TestMembership_StartGate pins the Start-gated wiring behavior: any
+// Set / Remove / Rehydrate that fires BEFORE Start mutates only the
+// cache; the transport + service pool see no calls. Once Start fires,
+// the current cache is flushed to the transport + pool, and subsequent
+// Set / Remove wire inline. This gate exists because the initial
+// construction runs during Fx wiring, before the local Raft gRPC
+// server is listening — a pool.AddPeer in that window would probe a
+// non-listening remote peer under --tls-mode=optional and fail
+// permanently.
+func TestMembership_StartGate(t *testing.T) {
+	t.Parallel()
+
+	transport := &countingTransport{}
+	pool := &countingPool{}
+	ps := newTestPeerStore(t)
+
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888"))
+
+	m, err := NewMembership(ps, transport, pool, 0, "", "", logging.Testing())
+	require.NoError(t, err)
+
+	require.Equal(t, 0, transport.adds, "no wire before Start (cache-only construction)")
+	require.Equal(t, 0, pool.adds, "no wire before Start (cache-only construction)")
+
+	m.Set(2, "pod-1:7777", "pod-1:8888")
+	require.Equal(t, 0, transport.adds, "Set pre-Start must be cache-only")
+	require.Equal(t, 0, pool.adds, "Set pre-Start must be cache-only")
+	require.Len(t, m.PeerAddresses(), 2, "cache must still reflect the Set")
+
+	m.Start()
+	require.Equal(t, 2, transport.adds, "Start flushes the cache to the transport")
+	require.Equal(t, 2, pool.adds, "Start flushes the cache to the service pool")
+
+	m.Set(3, "pod-2:7777", "pod-2:8888")
+	require.Equal(t, 3, transport.adds, "Set post-Start wires inline")
+	require.Equal(t, 3, pool.adds, "Set post-Start wires inline")
+
+	m.Remove(1)
+	require.Equal(t, 1, transport.removes, "Remove post-Start wires inline")
+	require.Equal(t, 1, pool.removes, "Remove post-Start wires inline")
 }

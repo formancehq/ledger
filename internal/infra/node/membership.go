@@ -65,14 +65,27 @@ type Membership struct {
 
 	mu        sync.RWMutex
 	addresses map[uint64]ConfChangeContext
+	// started gates transport / service-pool wiring. Until Start fires
+	// (OnStart hook, after the local Raft gRPC server is listening),
+	// Set / Remove / Register / Rehydrate mutate only the cache — the
+	// transport side effect is deferred. Wiring at construction time
+	// would race with the remote pods not yet listening: in
+	// --tls-mode=optional, pool.AddPeer probes the peer's TLS handshake
+	// and returns an error if the peer isn't up, and my earlier logs-
+	// and-move-on handling made those failures permanent. Deferring
+	// the initial wire to Start solves this: Start fires only after
+	// the local Raft server is up, by which point the peer pods have
+	// had a chance to listen. Runtime Set / Remove (from finishReady,
+	// long after Start) wire inline as before.
+	started bool
 }
 
-// NewMembership loads the in-memory cache from Pebble and wires the
-// transport + service pool to match. self is skipped from transport /
-// pool registration — a node never dials itself — but its raft +
-// service addresses are kept on the Membership so OnSnapshotInstalled
-// can re-upsert the local row whenever a leader checkpoint overwrites
-// it with a stale value.
+// NewMembership loads the in-memory cache from Pebble. The transport +
+// service pool are NOT wired here — see the started field's comment.
+// self is skipped from transport / pool wiring — a node never dials
+// itself — but its raft + service addresses are kept on the Membership
+// so OnSnapshotInstalled can re-upsert the local row whenever a leader
+// checkpoint overwrites it with a stale value.
 //
 // Failure to read the peer rows is fatal: without them the node would
 // boot with an empty cache while the WAL ConfState still claims the
@@ -83,7 +96,11 @@ func NewMembership(store *PeerStore, transport peerTransport, pool peerPool, sel
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
 	}
 
-	m := &Membership{
+	logger.WithFields(map[string]any{
+		"peerCount": len(addresses),
+	}).Infof("Loaded cluster membership from Pebble")
+
+	return &Membership{
 		store:           store,
 		transport:       transport,
 		pool:            pool,
@@ -92,23 +109,39 @@ func NewMembership(store *PeerStore, transport peerTransport, pool peerPool, sel
 		selfServiceAddr: selfServiceAddr,
 		logger:          logger,
 		addresses:       addresses,
-	}
-
-	for nodeID, addr := range addresses {
-		m.wireAdd(nodeID, addr.RaftAddress, addr.ServiceAddress)
-	}
-
-	logger.WithFields(map[string]any{
-		"peerCount": len(addresses),
-	}).Infof("Loaded cluster membership from Pebble")
-
-	return m, nil
+	}, nil
 }
 
-// wireAdd pushes a peer into the transport + service pool. Self
-// is skipped because a node never dials itself.
+// Start wires every peer currently in the cache into the transport +
+// service pool. Called from an fx OnStart hook that fires AFTER the
+// local Raft gRPC server is listening, so remote pods have had a chance
+// to listen too (avoiding a --tls-mode=optional probe failure that
+// would silently drop the peer from the pool).
+//
+// After Start returns, subsequent Set / Remove / Register / Rehydrate
+// calls wire the transport inline. Start is idempotent — a second call
+// is a plain re-wire of the current cache (all AddPeer calls are no-op
+// when the peer is already registered with the same address).
+func (m *Membership) Start() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.started = true
+
+	for nodeID, addr := range m.addresses {
+		m.wireAdd(nodeID, addr.RaftAddress, addr.ServiceAddress)
+	}
+}
+
+// wireAdd pushes a peer into the transport + service pool. Self is
+// skipped because a node never dials itself. Deferred to Start when
+// invoked before the local Raft gRPC server is listening (see the
+// started field's comment).
+//
+// Caller must hold m.mu — wire mutations must stay in lockstep with
+// the cache to avoid drift under concurrent Rehydrate / finishReady.
 func (m *Membership) wireAdd(nodeID uint64, raftAddr, serviceAddr string) {
-	if nodeID == m.selfNodeID {
+	if nodeID == m.selfNodeID || !m.started {
 		return
 	}
 
@@ -122,11 +155,16 @@ func (m *Membership) wireAdd(nodeID uint64, raftAddr, serviceAddr string) {
 	}
 }
 
-// wireRemove removes a peer from the transport + service pool.
-// Self is skipped (would not be there). context.Background is fine: the
+// wireRemove removes a peer from the transport + service pool. Self is
+// skipped (would not be there). context.Background is fine: the
 // transport's RemovePeer is internal bookkeeping, not a network call.
+// Deferred to Start when invoked before the local Raft gRPC server is
+// listening (though a remove before Start is a corner case — the peer
+// wasn't wired in the first place, so this becomes a no-op either way).
+//
+// Caller must hold m.mu.
 func (m *Membership) wireRemove(nodeID uint64) {
-	if nodeID == m.selfNodeID {
+	if nodeID == m.selfNodeID || !m.started {
 		return
 	}
 

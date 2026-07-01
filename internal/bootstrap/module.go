@@ -943,13 +943,17 @@ func Module() fx.Option {
 				})
 			},
 			// Start Raft server (internal). Peer wiring (transport +
-			// service pool) is now owned by Membership, which sets it up
-			// at construction from the Pebble peer rows — no explicit
-			// loop here. (EN-1413)
-			fx.Annotate(func(
+			// service pool) is owned by Membership; the initial wire
+			// runs here in OnStart AFTER the local Raft gRPC server is
+			// listening — that way ConnectionPool.AddPeer's optional-
+			// TLS probe against a remote pod has a fair chance to
+			// succeed. Post-Start, runtime Set / Remove wire inline.
+			// (EN-1413)
+			func(
 				lc fx.Lifecycle,
 				raftServer *grpcadp.RaftServer,
 				logger logging.Logger,
+				membership *node.Membership,
 			) {
 				var waitRaft func()
 
@@ -974,6 +978,8 @@ func Module() fx.Option {
 
 						logger.Infof("Raft gRPC server started successfully")
 
+						membership.Start()
+
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
@@ -985,7 +991,7 @@ func Module() fx.Option {
 						return err
 					},
 				})
-			}),
+			},
 			// Wire Observer: handle LeadershipChange and LeaderReady events.
 			// ConfChange events are no longer dispatched here — Membership
 			// owns the transport / service-pool wiring and reacts directly
