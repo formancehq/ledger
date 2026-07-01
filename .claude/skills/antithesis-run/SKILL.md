@@ -36,13 +36,12 @@ Run from the repo root (`git rev-parse --show-toplevel`). Verify:
 
 - `tests/antithesis/k8s/` (k8s mode) or `tests/antithesis/config/` (compose mode) exists. If not, abort — wrong repo.
 - `snouty --version` succeeds. If not, install per `https://github.com/antithesishq/snouty` and abort.
-- These environment variables are set in the shell:
-  - `ANTITHESIS_TENANT` (the tenant slug — `formance` for this repo; embedded in the launch URL `formance.antithesis.com`)
-  - `ANTITHESIS_API_KEY` — **required** for triage / analysis (`snouty runs …`); the launcher accepts basic auth as a fallback, but every downstream skill (`antithesis-triage`, `antithesis-query-logs`, etc.) needs the API key.
-  - `ANTITHESIS_USERNAME` + `ANTITHESIS_PASSWORD` — accepted by `snouty launch`/`snouty debug` only.
-  - `ANTITHESIS_REPOSITORY` (registry for SUT images)
-  - `ANTITHESIS_REPORT_RECIPIENT` (used as `--recipients`)
-  If any are missing, list which and abort. Run `snouty doctor` to surface what's missing in one shot.
+- These environment variables are set in the shell (abort if any **required** value is missing; run `snouty doctor` to surface everything in one shot):
+  - `ANTITHESIS_TENANT` — **required**. The tenant slug (`formance` for this repo; embedded in the launch URL `formance.antithesis.com`).
+  - `ANTITHESIS_API_KEY` — **required**. Needed by both the launcher and every downstream triage skill (`snouty runs …`, `antithesis-triage`, `antithesis-query-logs`, …).
+  - `ANTITHESIS_REPOSITORY` — **required**. Registry for SUT images.
+  - `ANTITHESIS_REPORT_RECIPIENT` — **required**. Used as `--recipients` on the run.
+  - `ANTITHESIS_USERNAME` + `ANTITHESIS_PASSWORD` — *optional* fallback. Only relevant when `ANTITHESIS_API_KEY` is absent, and only for `snouty launch`/`snouty debug` (the `runs` subcommand rejects basic auth). Do **not** abort on their absence when `ANTITHESIS_API_KEY` is set.
 - `docker info` succeeds (daemon reachable). If not, abort.
 
 Auth to `$ANTITHESIS_REPOSITORY` is set up once by the user via `docker login`; this skill does not re-do it.
