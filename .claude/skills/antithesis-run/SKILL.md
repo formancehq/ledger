@@ -36,12 +36,12 @@ Run from the repo root (`git rev-parse --show-toplevel`). Verify:
 
 - `tests/antithesis/k8s/` (k8s mode) or `tests/antithesis/config/` (compose mode) exists. If not, abort — wrong repo.
 - `snouty --version` succeeds. If not, install per `https://github.com/antithesishq/snouty` and abort.
-- These environment variables are set in the shell:
-  - `ANTITHESIS_TENANT` (the tenant slug — `formance` for this repo; embedded in the launch URL `formance.antithesis.com`)
-  - `ANTITHESIS_API_KEY` **or** (`ANTITHESIS_USERNAME` + `ANTITHESIS_PASSWORD`)
-  - `ANTITHESIS_REPOSITORY` (registry for SUT images)
-  - `ANTITHESIS_REPORT_RECIPIENT` (used as `--recipients`)
-  If any are missing, list which and abort. Run `snouty doctor` to surface what's missing in one shot.
+- These environment variables are set in the shell (abort if any **required** value is missing; run `snouty doctor` to surface everything in one shot):
+  - `ANTITHESIS_TENANT` — **required**. The tenant slug (`formance` for this repo; embedded in the launch URL `formance.antithesis.com`).
+  - `ANTITHESIS_API_KEY` — **required**. Needed by both the launcher and every downstream triage skill (`snouty runs …`, `antithesis-triage`, `antithesis-query-logs`, …).
+  - `ANTITHESIS_REPOSITORY` — **required**. Registry for SUT images.
+  - `ANTITHESIS_REPORT_RECIPIENT` — **required**. Used as `--recipients` on the run.
+  - `ANTITHESIS_USERNAME` + `ANTITHESIS_PASSWORD` — *optional* fallback. Only relevant when `ANTITHESIS_API_KEY` is absent, and only for `snouty launch`/`snouty debug` (the `runs` subcommand rejects basic auth). Do **not** abort on their absence when `ANTITHESIS_API_KEY` is set.
 - `docker info` succeeds (daemon reachable). If not, abort.
 
 Auth to `$ANTITHESIS_REPOSITORY` is set up once by the user via `docker login`; this skill does not re-do it.
@@ -127,6 +127,9 @@ These steps replace the legacy `just k8s-push-images` / `just push-images`. Buil
 **K8s mode**:
 
 ```bash
+# Force amd64 for the config image snouty builds internally (see note below).
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
+
 snouty launch \
   --webhook basic_k8s_test \
   --config tests/antithesis/k8s \
@@ -137,6 +140,7 @@ snouty launch \
 ```
 
 Notes:
+- **`export DOCKER_DEFAULT_PLATFORM=linux/amd64` before invoking snouty on Apple Silicon.** When you pass `--config <dir>`, snouty builds the config image locally without forcing `--platform linux/amd64`; on an M-series Mac this yields an arm64 image, which Antithesis rejects at boot with `antithesis_error code=4005 "Unsupported container type"` — the run finishes as `Incomplete` at `input_hash=0 vtime=0` about two minutes in. Setting the env var is the smallest fix. Fallback if it does not stick: pre-build the config image manually (`docker build --platform linux/amd64 -f tests/antithesis/k8s/Dockerfile.config -t <ref>:$TAG tests/antithesis/k8s && docker push <ref>:$TAG`) and pass `--config-image <ref>:$TAG` to snouty instead of `--config`.
 - **Do NOT pass `--param antithesis.images=...`** — snouty 0.5.x rejects it (`do not specify antithesis.images as --param, use api webhook instead`). In k8s mode the platform reads image refs straight out of the manifests, so the param is unnecessary anyway.
 - **Always pass `--source <branch-slug>`** so the run is *not* marked ephemeral; ephemeral runs (`is_ephemeral=true`) do not appear in property history reports. The slug is the same per-branch slug used in the tag.
 
