@@ -129,7 +129,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
-		0, 1000, nil, nil, nil,
+		0, 1000, nil, nil,
 	)
 	require.NoError(t, err)
 

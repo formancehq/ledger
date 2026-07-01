@@ -315,20 +315,6 @@ func Module() fx.Option {
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
 					membership.OnSnapshotInstalled,
-					func() {
-						// Spool replay applies ConfChanges directly to
-						// Pebble via WriteConfChange but cannot trigger
-						// finishReady, so the in-memory cache + transport
-						// stay stale until we rehydrate from Pebble. Self
-						// row is already correct here (Register at boot,
-						// OnSnapshotInstalled before the spool ran), so a
-						// plain Rehydrate is enough — no self overwrite.
-						if err := membership.Rehydrate(); err != nil {
-							logger.WithFields(map[string]any{
-								"error": err,
-							}).Errorf("Rehydrating membership after spool replay failed; cache may be stale")
-						}
-					},
 				)
 			},
 			// Recovery owns the Pebble read capability for boot/post-sync rehydrate.

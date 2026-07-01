@@ -157,13 +157,18 @@ func (m *Membership) PeerAddresses() map[uint64]ConfChangeContext {
 // post-commit; the matching Pebble row was already written by the FSM
 // handler (WriteConfChange) in the same batch as the surrounding
 // business writes.
+//
+// Cache mutation and transport wiring both happen inside the lock so
+// they stay in lockstep with a concurrent Rehydrate. See Rehydrate's
+// locking note.
 func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.addresses[nodeID] = ConfChangeContext{
 		RaftAddress:    raftAddr,
 		ServiceAddress: serviceAddr,
 	}
-	m.mu.Unlock()
 
 	m.wireAdd(nodeID, raftAddr, serviceAddr)
 }
@@ -172,10 +177,14 @@ func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string) {
 // service pool. Pebble was already updated by the FSM handler
 // (WriteConfChange) in the same batch as the surrounding business
 // writes.
+//
+// Cache mutation and transport wiring both happen inside the lock —
+// see Set / Rehydrate.
 func (m *Membership) Remove(nodeID uint64) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	delete(m.addresses, nodeID)
-	m.mu.Unlock()
 
 	m.wireRemove(nodeID)
 }
@@ -283,35 +292,33 @@ func (m *Membership) PersistInitialPeers(cfg NodeConfig, includeSelf bool) error
 //
 //   - OnSnapshotInstalled: a leader checkpoint restore has just
 //     overwritten Pebble; reload to match.
+//
+// Locking: cache mutation AND transport/pool wiring both happen inside
+// the write lock. Releasing the lock between the two would let a
+// concurrent finishReady Set/Remove slip in and observe an inconsistent
+// snapshot — e.g. Rehydrate publishes a new cache without peer X,
+// unlocks, then a fresh Set(X) fires (cache re-adds X, transport wired
+// in). Rehydrate's deferred wireRemove(X) would then unwire the
+// transport while the cache still holds X, and the node would be
+// unable to dial X until the next rehydrate. Holding the lock through
+// wire calls is safe: transport.AddPeer / RemovePeer and pool.AddPeer /
+// RemovePeer are internal bookkeeping (no network round trip on the
+// hot path), and Rehydrate only fires from lifecycle hooks — not the
+// per-tick path.
 func (m *Membership) Rehydrate() error {
 	fresh, err := m.store.LoadAll()
 	if err != nil {
 		return fmt.Errorf("loading peers from pebble: %w", err)
 	}
 
-	// Compute the diff (toAdd / toRemove) BEFORE publishing fresh to
-	// m.addresses. Once published, a concurrent Set/Remove could mutate
-	// the same map under us — Go map reads concurrent with writes panic.
-	// Holding the lock for the whole computation also ensures no Set
-	// lands "in between" the diff and the publish.
-	//
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	old := m.addresses
+	m.addresses = fresh
+
 	// AddPeer / pool.AddPeer are no-ops on existing entries, so an
 	// address change is modelled as RemovePeer + AddPeer.
-	type entry struct {
-		id       uint64
-		raftAddr string
-		svcAddr  string
-	}
-
-	var (
-		toReadd  []entry
-		toAdd    []entry
-		toRemove []uint64
-	)
-
-	m.mu.Lock()
-	old := m.addresses
-
 	for nodeID, addr := range fresh {
 		oldAddr, existed := old[nodeID]
 		if existed && oldAddr == addr {
@@ -319,34 +326,16 @@ func (m *Membership) Rehydrate() error {
 		}
 
 		if existed {
-			toReadd = append(toReadd, entry{nodeID, addr.RaftAddress, addr.ServiceAddress})
-		} else {
-			toAdd = append(toAdd, entry{nodeID, addr.RaftAddress, addr.ServiceAddress})
+			m.wireRemove(nodeID)
 		}
+
+		m.wireAdd(nodeID, addr.RaftAddress, addr.ServiceAddress)
 	}
 
 	for nodeID := range old {
 		if _, kept := fresh[nodeID]; !kept {
-			toRemove = append(toRemove, nodeID)
+			m.wireRemove(nodeID)
 		}
-	}
-
-	m.addresses = fresh
-	m.mu.Unlock()
-
-	// Wire side effects outside the lock — these may dial, close
-	// connections, or otherwise be slow.
-	for _, e := range toReadd {
-		m.wireRemove(e.id)
-		m.wireAdd(e.id, e.raftAddr, e.svcAddr)
-	}
-
-	for _, e := range toAdd {
-		m.wireAdd(e.id, e.raftAddr, e.svcAddr)
-	}
-
-	for _, id := range toRemove {
-		m.wireRemove(id)
 	}
 
 	m.logger.WithFields(map[string]any{
