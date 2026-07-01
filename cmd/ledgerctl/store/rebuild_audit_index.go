@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -11,41 +12,40 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
-	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/application/auditindexer"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// NewRebuildIndexesCommand creates the store rebuild-indexes command.
-func NewRebuildIndexesCommand() *cobra.Command {
+// NewRebuildAuditIndexCommand creates the store rebuild-audit-index command.
+func NewRebuildAuditIndexCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "rebuild-indexes",
-		Short: "Rebuild the Pebble read indexes from system logs (offline)",
-		Long: `Replay all system logs from Pebble and rebuild the read index
-from scratch. This is a purely offline operation — no server needed.
+		Use:   "rebuild-audit-index",
+		Short: "Rebuild the audit secondary index from the Audit zone (offline)",
+		Long: `Drop the audit secondary index and replay every audit entry from
+the Audit zone to rebuild it from scratch. Purely offline — no server needed.
 
-Use this after restoring from a backup or when the read index becomes
-corrupted or out of date.`,
-		RunE:              runRebuildIndexes,
+Use this after restoring from a backup or when the audit secondary index
+becomes corrupted or out of date.`,
+		RunE:              runRebuildAuditIndex,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
 	cmd.Flags().String("data-dir", "", "Pebble data directory (required)")
-	cmd.Flags().String("read-index-dir", "", "Read index output directory (default: <data-dir>/read-indexes/)")
-	cmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per Pebble batch commit (0 = default 1000)")
+	cmd.Flags().String("read-index-dir", "", "Read index directory (default: <data-dir>/read-indexes/)")
+	cmd.Flags().Int("audit-index-batch-size", 0, "Audit entries per Pebble batch commit (0 = default 1000)")
 
 	_ = cmd.MarkFlagRequired("data-dir")
 
 	return cmd
 }
 
-func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
+func runRebuildAuditIndex(cmd *cobra.Command, _ []string) error {
 	var (
 		dataDir, _      = cmd.Flags().GetString("data-dir")
 		readIndexDir, _ = cmd.Flags().GetString("read-index-dir")
-		batchSize, _    = cmd.Flags().GetInt("read-index-batch-size")
+		batchSize, _    = cmd.Flags().GetInt("audit-index-batch-size")
 	)
 
 	if readIndexDir == "" {
@@ -54,11 +54,11 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 
 	logger := logging.NopZap()
 
-	// Open Pebble read-only. The server keeps the live DB under <data-dir>/live
-	// (see dal.NewStore); the read index lives at <data-dir>/read-indexes. Open
-	// the live subdir, not the data root.
 	spinner, _ := pterm.DefaultSpinner.Start("Opening Pebble store (read-only)...")
 
+	// The server keeps the live Pebble DB under <data-dir>/live (see dal.NewStore),
+	// while the read index lives at <data-dir>/read-indexes. Open the live subdir,
+	// not the data root.
 	pebbleStore, err := dal.OpenReadOnly(filepath.Join(dataDir, "live"), logger)
 	if err != nil {
 		spinner.Fail("Failed to open Pebble store")
@@ -70,7 +70,6 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Pebble store opened")
 
-	// Open or create Pebble read index.
 	spinner, _ = pterm.DefaultSpinner.Start("Opening read index store...")
 
 	rs, err := readstore.New(readIndexDir, logger, readstore.DefaultConfig())
@@ -84,19 +83,16 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Read index store opened at " + rs.Path())
 
-	// Rebuild.
-	spinner, _ = pterm.DefaultSpinner.Start("Rebuilding indexes from system logs...")
+	spinner, _ = pterm.DefaultSpinner.Start("Rebuilding audit index...")
 
-	builder := indexbuilder.NewBuilder(pebbleStore, rs, attributes.New(), logger, noop.Meter{}, batchSize)
-
-	lastSeq, err := builder.RebuildAll()
-	if err != nil {
+	idx := auditindexer.New(auditindexer.Config{BatchSize: batchSize}, pebbleStore, rs, logger, noop.Meter{})
+	if err := idx.Rebuild(context.Background()); err != nil {
 		spinner.Fail("Rebuild failed")
 
-		return cmdutil.Displayed(fmt.Errorf("rebuilding indexes: %w", err))
+		return cmdutil.Displayed(fmt.Errorf("rebuilding audit index: %w", err))
 	}
 
-	spinner.Success(fmt.Sprintf("Rebuild complete (last log sequence: %d)", lastSeq))
+	spinner.Success("Audit index rebuild complete")
 
 	return nil
 }
