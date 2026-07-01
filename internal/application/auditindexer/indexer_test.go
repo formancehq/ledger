@@ -283,3 +283,57 @@ func TestIndexerKeepsUpUnderLoad(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, seqs, total)
 }
+
+// TestProcessTickRebuildsWhenCursorAheadOfHead reproduces the runtime main-store
+// restore scenario: SynchronizeWithLeader/RestoreCheckpoint replaces the main
+// store in place and can drop the audit head below the persisted readstore
+// cursor (a separate DB, untouched by restore). The boot shouldRebuildOnBoot
+// check runs only once, before the ticker, so the already-running loop must
+// self-heal via processTick — a bare ProcessOnce would scan past every surviving
+// lower-sequence entry forever, leaving them permanently unindexed.
+func TestProcessTickRebuildsWhenCursorAheadOfHead(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	idx, mainStore, rs := newIndexerForTest(t)
+
+	// Surviving audit head after the (simulated) rollback: entries 1..3.
+	for s := uint64(1); s <= 3; s++ {
+		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Ledgers: []string{"main"},
+		})
+	}
+
+	// Persist a stale-high cursor (as if the pre-rollback head was 5) with the
+	// surviving entries unindexed — the state a runtime restore leaves behind.
+	batch := rs.NewBatch()
+	require.NoError(t, rs.WriteAuditProgress(batch, 5))
+	require.NoError(t, batch.Commit())
+
+	last, err := idx.lastAuditSequence()
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), last)
+	require.True(t, cursorAheadOfHead(5, last))
+
+	// A bare ProcessOnce scans from the stale cursor (5), finds nothing after it,
+	// and strands entries 1..3 with the cursor still at 5 — the bug this fixes.
+	reached, err := idx.ProcessOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), reached)
+	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
+	require.NoError(t, err)
+	require.Empty(t, seqs, "bare ProcessOnce cannot self-heal a stale-high cursor")
+
+	// processTick detects cursor > head and rebuilds, resetting the cursor to the
+	// surviving head and re-indexing every entry at/below it.
+	require.NoError(t, idx.processTick(ctx))
+
+	cursor, err := rs.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), cursor, "rebuild resets the cursor to the surviving audit head")
+
+	seqs, err = rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1, 2, 3}, seqs, "surviving entries must be re-indexed after rollback")
+}

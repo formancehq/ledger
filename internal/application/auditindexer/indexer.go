@@ -163,11 +163,7 @@ func (i *Indexer) shouldRebuildOnBoot(cursor, last uint64) bool {
 	if cursor == 0 && last > 0 {
 		return true
 	}
-	if cursor > last {
-		// Cursor ahead of the audit head: only possible after a main-store
-		// restore/rollback to an earlier checkpoint with the read index retained.
-		// Steady-state ProcessOnce would scan past the surviving (lower-seq)
-		// entries forever, so force a full rebuild (which resets the cursor to 0).
+	if cursorAheadOfHead(cursor, last) {
 		return true
 	}
 	if i.cfg.RebuildThreshold > 0 && last > cursor && last-cursor > i.cfg.RebuildThreshold {
@@ -176,6 +172,15 @@ func (i *Indexer) shouldRebuildOnBoot(cursor, last uint64) bool {
 
 	return false
 }
+
+// cursorAheadOfHead reports the post-restore rollback signature: the persisted
+// cursor sits beyond the current audit head. This is only possible after a
+// main-store restore/rollback to an earlier checkpoint with the read index
+// retained (e.g. follower sync via SynchronizeWithLeader/RestoreCheckpoint).
+// Steady-state ProcessOnce would scan past the surviving (lower-seq) entries
+// forever, so both boot and the steady-state tick force a full rebuild here
+// (which resets the cursor to 0 and re-indexes from the earliest survivor).
+func cursorAheadOfHead(cursor, last uint64) bool { return cursor > last }
 
 // processBatch indexes up to batchSize audit entries whose sequence is strictly
 // greater than after, commits a single readstore batch, and returns the new
@@ -307,13 +312,39 @@ func (i *Indexer) loop(ctx context.Context) {
 			return
 		case <-ticker.C:
 		}
-		if last, err := i.lastAuditSequence(); err == nil {
-			i.auditLast.Store(last)
-		}
-		if _, err := i.ProcessOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := i.processTick(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			i.logger.Errorf("audit indexing: %v", err)
 		}
 	}
+}
+
+// processTick runs one steady-state iteration: refresh the audit-head gauge,
+// rebuild if the persisted cursor has overtaken the audit head, otherwise index
+// incrementally. The cursor-ahead check is what catches a runtime main-store
+// restore (SynchronizeWithLeader/RestoreCheckpoint) that drops the audit head
+// below the persisted cursor while this loop is already running — the boot
+// shouldRebuildOnBoot check runs only once, before the ticker, so without this
+// re-check ProcessOnce would scan past every surviving entry forever. Only the
+// cursor-ahead condition is re-evaluated per tick, not the full
+// shouldRebuildOnBoot: its RebuildThreshold branch is a boot-only heuristic that
+// would spuriously trigger a full rebuild whenever a normal burst exceeds the
+// threshold between ticks.
+func (i *Indexer) processTick(ctx context.Context) error {
+	if last, err := i.lastAuditSequence(); err == nil {
+		i.auditLast.Store(last)
+
+		cursor, cursorErr := i.readStore.ReadAuditProgress()
+		if cursorErr == nil && cursorAheadOfHead(cursor, last) {
+			i.logger.WithFields(map[string]any{"cursor": cursor, "last": last}).
+				Infof("Audit index rebuild: cursor overtook audit head")
+
+			return i.Rebuild(ctx)
+		}
+	}
+
+	_, err := i.ProcessOnce(ctx)
+
+	return err
 }
 
 func (i *Indexer) registerMetrics() (metric.Registration, error) {
