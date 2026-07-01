@@ -401,8 +401,7 @@ func (m *Membership) OnSnapshotInstalled() {
 	// Force-write the locally-authoritative self row to Pebble BEFORE
 	// the reload, so LoadAll pulls our address rather than the leader's
 	// potentially-stale view and the next checkpoint we serve is
-	// already correct. The empty-string check filters out the test
-	// path that constructs a Membership without a real self identity.
+	// already correct.
 	//
 	// A self-Put failure is logged but does NOT short-circuit the
 	// Rehydrate below: the checkpoint restore has already swapped
@@ -413,12 +412,10 @@ func (m *Membership) OnSnapshotInstalled() {
 	// Better to fall through and let Rehydrate reload from Pebble
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
-	if m.selfRaftAddr != "" {
-		if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr); err != nil {
-			m.logger.WithFields(map[string]any{
-				"error": err,
-			}).Errorf("Refreshing self in Pebble before snapshot reload failed; next checkpoint we serve may carry a stale self address")
-		}
+	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr); err != nil {
+		m.logger.WithFields(map[string]any{
+			"error": err,
+		}).Errorf("Refreshing self in Pebble before snapshot reload failed; next checkpoint we serve may carry a stale self address")
 	}
 
 	if err := m.Rehydrate(); err != nil {

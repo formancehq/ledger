@@ -71,6 +71,16 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 	return NewPeerStore(store)
 }
 
+// testSelfNodeID / testSelfRaftAddr / testSelfServiceAddr identify the
+// synthetic "self" used by Membership tests. Kept far away from the
+// peer IDs the tests exercise (1, 2, 3, 7, ...) so a `self.NodeID`
+// row in Pebble never collides with the peers under assertion.
+const (
+	testSelfNodeID      = 42
+	testSelfRaftAddr    = "self:7777"
+	testSelfServiceAddr = "self:8888"
+)
+
 // newTestMembership returns a Membership backed by a fresh in-memory
 // Pebble store and noop transport/pool, in the post-Start state so
 // that Set / Remove / Rehydrate exercise the wire path (against the
@@ -79,7 +89,7 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 func newTestMembership(t *testing.T) *Membership {
 	t.Helper()
 
-	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, 0, "", "", logging.Testing())
+	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, logging.Testing())
 	require.NoError(t, err)
 
 	m.Start()
@@ -299,7 +309,7 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	// Pre-swap state: cluster A had peer 7.
 	require.NoError(t, ps.Put(7, "old:1", "old:2"))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, 0, "", "", logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, logging.Testing())
 	require.NoError(t, err)
 	m.Start()
 	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
@@ -314,9 +324,12 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	m.OnSnapshotInstalled()
 
 	got := m.PeerAddresses()
-	require.Len(t, got, 2, "stale peer 7 must be gone, peers 1+3 must be present")
+	// Cache holds peers 1 + 3 from the leader's checkpoint, plus self
+	// which OnSnapshotInstalled re-upserts to the locally-known truth.
+	require.Len(t, got, 3, "stale peer 7 must be gone, peers 1+3 + self must be present")
 	require.Equal(t, "new:1", got[1].RaftAddress)
 	require.Equal(t, "new:3", got[3].RaftAddress)
+	require.Equal(t, testSelfRaftAddr, got[testSelfNodeID].RaftAddress, "self must be re-upserted with local truth")
 	require.NotContains(t, got, uint64(7))
 }
 
@@ -338,7 +351,7 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 
 	require.NoError(t, ps.Put(7, "before:1", "before:2"))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, 0, "", "", logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, logging.Testing())
 	require.NoError(t, err)
 	m.Start()
 	require.Equal(t, "before:1", m.PeerAddresses()[7].RaftAddress)
@@ -376,7 +389,7 @@ func TestMembership_StartGate(t *testing.T) {
 
 	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888"))
 
-	m, err := NewMembership(ps, transport, pool, 0, "", "", logging.Testing())
+	m, err := NewMembership(ps, transport, pool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, logging.Testing())
 	require.NoError(t, err)
 
 	require.Equal(t, 0, transport.adds, "no wire before Start (cache-only construction)")
