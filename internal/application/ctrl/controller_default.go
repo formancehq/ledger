@@ -492,12 +492,12 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 }
 
 // GetLedgerStats returns aggregate statistics for a ledger.
-// TransactionCount, LogCount, VolumeCount, MetadataCount, EphemeralEvictedCount
-// and TransientUsedCount come from the LedgerBoundaries attribute. The
-// event-count fields (PostingCount, RevertCount, NumscriptExecutionCount,
-// ReferenceCount) are derived from the audit chain by the usagebuilder and
-// read from the usagestore side-store — expect up to one usagebuilder tick
-// interval of lag behind the live FSM (see EN-1420).
+// TransactionCount, LogCount, VolumeCount and MetadataCount come from the
+// LedgerBoundaries attribute. Every event-count field (PostingCount,
+// RevertCount, NumscriptExecutionCount, ReferenceCount, EphemeralEvictedCount,
+// TransientUsedCount) is derived from the audit chain by the usagebuilder
+// and read from the usagestore side-store — expect up to one usagebuilder
+// tick interval of lag behind the live FSM (see EN-1420).
 func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
 	_, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
@@ -528,30 +528,40 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 		stats.VolumeCount = boundaries.GetVolumeCount()
 		stats.MetadataCount = boundaries.GetMetadataCount()
-		stats.EphemeralEvictedCount = boundaries.GetEphemeralEvictedCount()
-		stats.TransientUsedCount = boundaries.GetTransientUsedCount()
 
 		if nextLogID := boundaries.GetNextLogId(); nextLogID > 0 {
 			stats.LogCount = nextLogID - 1
 		}
 	}
 
-	// Event-count fields from the usagebuilder side-store. Missing keys read
-	// as 0 (fresh ledger, or usagebuilder has not caught up yet).
-	if stats.PostingCount, err = ctrl.usageStore.GetCounter(ledgerName, usagestore.CounterPosting); err != nil {
+	// Event-count fields from the usagebuilder side-store. All six reads go
+	// against a single Pebble snapshot so a concurrent usagebuilder commit
+	// cannot land a partial view between them. Missing keys read as 0.
+	usageSnap := ctrl.usageStore.NewSnapshot()
+	defer func() { _ = usageSnap.Close() }()
+
+	if stats.PostingCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterPosting); err != nil {
 		return nil, fmt.Errorf("reading posting counter: %w", err)
 	}
 
-	if stats.RevertCount, err = ctrl.usageStore.GetCounter(ledgerName, usagestore.CounterRevert); err != nil {
+	if stats.RevertCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterRevert); err != nil {
 		return nil, fmt.Errorf("reading revert counter: %w", err)
 	}
 
-	if stats.NumscriptExecutionCount, err = ctrl.usageStore.GetCounter(ledgerName, usagestore.CounterNumscriptExecution); err != nil {
+	if stats.NumscriptExecutionCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterNumscriptExecution); err != nil {
 		return nil, fmt.Errorf("reading numscript execution counter: %w", err)
 	}
 
-	if stats.ReferenceCount, err = ctrl.usageStore.GetCounter(ledgerName, usagestore.CounterReference); err != nil {
+	if stats.ReferenceCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterReference); err != nil {
 		return nil, fmt.Errorf("reading reference counter: %w", err)
+	}
+
+	if stats.EphemeralEvictedCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterEphemeralEvicted); err != nil {
+		return nil, fmt.Errorf("reading ephemeral evicted counter: %w", err)
+	}
+
+	if stats.TransientUsedCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterTransientUsed); err != nil {
+		return nil, fmt.Errorf("reading transient used counter: %w", err)
 	}
 
 	return &stats, nil

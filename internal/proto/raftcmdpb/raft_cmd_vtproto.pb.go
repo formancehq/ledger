@@ -1962,8 +1962,6 @@ func (m *LedgerBoundaries) CloneVT() *LedgerBoundaries {
 	r.NextLogId = m.NextLogId
 	r.VolumeCount = m.VolumeCount
 	r.MetadataCount = m.MetadataCount
-	r.EphemeralEvictedCount = m.EphemeralEvictedCount
-	r.TransientUsedCount = m.TransientUsedCount
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5864,12 +5862,6 @@ func (this *LedgerBoundaries) EqualVT(that *LedgerBoundaries) bool {
 		return false
 	}
 	if this.MetadataCount != that.MetadataCount {
-		return false
-	}
-	if this.EphemeralEvictedCount != that.EphemeralEvictedCount {
-		return false
-	}
-	if this.TransientUsedCount != that.TransientUsedCount {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11239,18 +11231,6 @@ func (m *LedgerBoundaries) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.TransientUsedCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransientUsedCount))
-		i--
-		dAtA[i] = 0x41
-	}
-	if m.EphemeralEvictedCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.EphemeralEvictedCount))
-		i--
-		dAtA[i] = 0x39
-	}
 	if m.MetadataCount != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataCount))
@@ -14659,12 +14639,6 @@ func (m *LedgerBoundaries) SizeVT() (n int) {
 		n += 9
 	}
 	if m.MetadataCount != 0 {
-		n += 9
-	}
-	if m.EphemeralEvictedCount != 0 {
-		n += 9
-	}
-	if m.TransientUsedCount != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -25896,26 +25870,6 @@ func (m *LedgerBoundaries) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.MetadataCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 7:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EphemeralEvictedCount", wireType)
-			}
-			m.EphemeralEvictedCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.EphemeralEvictedCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 8:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TransientUsedCount", wireType)
-			}
-			m.TransientUsedCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TransientUsedCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex
