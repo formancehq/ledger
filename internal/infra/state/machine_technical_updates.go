@@ -138,14 +138,38 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 			}
 		}
 
-		// Reset the cache metadata sentinel to currentGeneration=0 (post-reset state).
-		// We must NOT delete it — RestoreFromStore tolerates a missing sentinel
-		// but other code paths may depend on it being present.
+		// Persist the post-reset in-memory state — CurrentGeneration AND both
+		// per-gen BaseIndex sentinels — so a node restart before the next
+		// organic rotation reconstructs the same (currentGeneration,
+		// BaseIndex.Gen0, BaseIndex.Gen1) tuple CheckRotationNeeded set here.
+		// Without this the disk still says currentGeneration=0, RestoreFromStore
+		// loads that, and admission's CheckCache re-observes a stale
+		// currentGeneration far behind Gen(nextIndex) — falsely tripping the
+		// CacheUnreachable horizon until another apply event catches the
+		// generation forward.
+		postResetGen := fsm.Registry.Cache.CurrentGeneration()
+		gen0Byte := byte(postResetGen % 2)
+		gen1Byte := byte((postResetGen + 1) % 2)
+
 		if err := batch.SetProto(
 			[]byte{dal.ZoneCache, dal.SubCacheMeta},
-			&raftcmdpb.CacheSnapshotMeta{CurrentGeneration: 0},
+			&raftcmdpb.CacheSnapshotMeta{CurrentGeneration: postResetGen},
 		); err != nil {
-			return fmt.Errorf("resetting cache snapshot meta: %w", err)
+			return fmt.Errorf("persisting cache snapshot meta: %w", err)
+		}
+
+		if err := batch.SetProto(
+			[]byte{dal.ZoneCache, gen0Byte, dal.SubCacheGenMeta},
+			&raftcmdpb.CacheGenerationMeta{BaseIndex: fsm.Registry.Cache.BaseIndex.Gen0},
+		); err != nil {
+			return fmt.Errorf("persisting gen0 meta: %w", err)
+		}
+
+		if err := batch.SetProto(
+			[]byte{dal.ZoneCache, gen1Byte, dal.SubCacheGenMeta},
+			&raftcmdpb.CacheGenerationMeta{BaseIndex: fsm.Registry.Cache.BaseIndex.Gen1},
+		); err != nil {
+			return fmt.Errorf("persisting gen1 meta: %w", err)
 		}
 	}
 
