@@ -77,10 +77,17 @@ func countVolumeDeltas(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.
 // updateBoundaryCounters computes attribute key deltas and updates LedgerBoundaries
 // for each affected ledger. Must be called before Derived.Boundaries.Merge().
 //
-// Only the attribute-derived counters (volume_count, metadata_count,
-// ephemeral_evicted_count, transient_used_count) live here — reference_count
-// moved to the usagebuilder (see EN-1420) which derives it from the audit
-// chain instead. The 4 remaining are covered by EN-1422.
+// Only the two attribute-derived counters (volume_count, metadata_count) live
+// here now — reference_count, posting_count, revert_count, numscript_execution_count,
+// ephemeral_evicted_count and transient_used_count all migrated to the
+// usagebuilder (EN-1420) which derives them from the audit chain instead.
+// The two remaining counters are covered by EN-1422.
+//
+// purgedVolumes and transientVolumes are still consumed here — not to feed
+// their own counter (that lives in the usagebuilder), but to correctly
+// subtract them from volume_count: an ephemeral volume that never survives
+// commit and a transient volume that never persists must not count as a live
+// volume-store entry.
 func (b *WriteSet) updateBoundaryCounters(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	purgedVolumes []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
@@ -90,21 +97,13 @@ func (b *WriteSet) updateBoundaryCounters(
 ) {
 	volumeDeltas := countVolumeDeltas(volumeUpdates)
 
-	// Per-ledger ephemeral/transient counters (monotonic).
-	ephemeralEvicted := make(map[string]uint64)
-	transientUsed := make(map[string]uint64)
-
 	// Ephemeral volumes are purged after commit — subtract from volume count.
 	for i := range purgedVolumes {
-		ledger := purgedVolumes[i].Key.LedgerName
-		volumeDeltas[ledger]--
-		ephemeralEvicted[ledger]++
+		volumeDeltas[purgedVolumes[i].Key.LedgerName]--
 	}
 	// Transient volumes are never persisted — subtract from volume count.
 	for i := range transientVolumes {
-		ledger := transientVolumes[i].Key.LedgerName
-		volumeDeltas[ledger]--
-		transientUsed[ledger]++
+		volumeDeltas[transientVolumes[i].Key.LedgerName]--
 	}
 
 	metadataDeltas := countKeyDeltas(metadataUpdates, metadataDeletions, func(k domain.MetadataKey) string { return k.LedgerName })
@@ -117,12 +116,6 @@ func (b *WriteSet) updateBoundaryCounters(
 	for ledger := range metadataDeltas {
 		affected[ledger] = struct{}{}
 	}
-	for ledger := range ephemeralEvicted {
-		affected[ledger] = struct{}{}
-	}
-	for ledger := range transientUsed {
-		affected[ledger] = struct{}{}
-	}
 
 	for ledgerName := range affected {
 		boundariesReader, err := b.Boundaries().Get(domain.LedgerKey{Name: ledgerName})
@@ -133,8 +126,6 @@ func (b *WriteSet) updateBoundaryCounters(
 		boundaries := boundariesReader.Mutate()
 		boundaries.VolumeCount = applyDelta(boundaries.GetVolumeCount(), volumeDeltas[ledgerName])
 		boundaries.MetadataCount = applyDelta(boundaries.GetMetadataCount(), metadataDeltas[ledgerName])
-		boundaries.EphemeralEvictedCount += ephemeralEvicted[ledgerName]
-		boundaries.TransientUsedCount += transientUsed[ledgerName]
 		b.Boundaries().Put(domain.LedgerKey{Name: ledgerName}, boundaries)
 	}
 }

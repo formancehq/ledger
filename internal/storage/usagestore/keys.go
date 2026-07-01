@@ -28,10 +28,12 @@ const (
 // Counter IDs identify each per-ledger event counter mirrored by the
 // usagebuilder. Values are stable on-disk identifiers — never renumber.
 const (
-	CounterPosting            byte = 0x01 // posting_count
-	CounterRevert             byte = 0x02 // revert_count
-	CounterNumscriptExecution byte = 0x03 // numscript_execution_count
-	CounterReference          byte = 0x04 // reference_count
+	CounterPosting            byte = 0x01 // posting_count            — sum len(Transaction.Postings) per CreatedTransaction / RevertedTransaction log
+	CounterRevert             byte = 0x02 // revert_count             — count RevertTransactionOrder + MirrorRevertTransactionOrder
+	CounterNumscriptExecution byte = 0x03 // numscript_execution_count — count CreateTransactionOrder with Script or NumscriptReference
+	CounterReference          byte = 0x04 // reference_count          — count CreateTransactionOrder with non-empty Reference
+	CounterEphemeralEvicted   byte = 0x05 // ephemeral_evicted_count  — sum len(LedgerLog.PurgedVolumes) per log
+	CounterTransientUsed      byte = 0x06 // transient_used_count     — sum len(AppliedProposal.TransientVolumes[ledger].Volumes) per proposal
 )
 
 // ProgressKey returns the full key for the usagebuilder progress entry.

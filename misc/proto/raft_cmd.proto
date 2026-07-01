@@ -668,8 +668,6 @@ message LedgerBoundaries {
   fixed64 next_log_id = 2;
   fixed64 volume_count = 3;
   fixed64 metadata_count = 4;
-  fixed64 ephemeral_evicted_count = 7;
-  fixed64 transient_used_count = 8;
 }
 
 message VolumePair {

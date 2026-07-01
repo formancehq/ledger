@@ -158,6 +158,23 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 				continue
 			}
 
+			// TransientVolumes live on the AppliedProposal projection (keyed by
+			// audit sequence — 1:1 with AuditEntry). Batch-scoped, not per-log:
+			// transientness depends on the WriteSet's final aggregate state,
+			// so it cannot be split per item.
+			proposal, err := query.ReadAppliedProposal(ctx, handle, entry.GetSequence())
+			if err != nil {
+				return cursor, fmt.Errorf("reading applied proposal for seq %d: %w", entry.GetSequence(), err)
+			}
+
+			if proposal != nil {
+				for ledger, tvList := range proposal.GetTransientVolumes() {
+					if n := len(tvList.GetVolumes()); n > 0 {
+						state.addCounter(ledger, usagestore.CounterTransientUsed, counterDelta(n))
+					}
+				}
+			}
+
 			items, err := query.ReadAuditItems(ctx, handle, entry.GetSequence())
 			if err != nil {
 				return cursor, fmt.Errorf("reading audit items for seq %d: %w", entry.GetSequence(), err)
@@ -267,7 +284,7 @@ func (b *Builder) dispatchOrder(
 }
 
 // dispatchCreateTransaction increments posting, reference, numscript-exec,
-// and template usage counters for a create-tx order.
+// ephemeral-evicted and template usage counters for a create-tx order.
 func (b *Builder) dispatchCreateTransaction(
 	ctx context.Context,
 	handle dal.PebbleGetter,
@@ -276,15 +293,20 @@ func (b *Builder) dispatchCreateTransaction(
 	logSeq uint64,
 	state *batchState,
 ) error {
-	// Resolved posting count lives on the log — the order carries raw
-	// postings only for the non-scripted path.
-	postings, err := b.postingsFromLog(ctx, handle, logSeq)
+	// Resolved posting count and purged-volume count live on the log — the
+	// order carries raw postings only for the non-scripted path, and never
+	// carries purge info.
+	counts, err := b.countsFromLog(ctx, handle, logSeq)
 	if err != nil {
 		return err
 	}
 
-	if postings > 0 {
-		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(postings))
+	if counts.postings > 0 {
+		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(counts.postings))
+	}
+
+	if counts.purged > 0 {
+		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.purged))
 	}
 
 	if order.GetReference() != "" {
@@ -305,8 +327,9 @@ func (b *Builder) dispatchCreateTransaction(
 	return nil
 }
 
-// dispatchRevertTransaction increments revert and posting counters for a
-// revert-tx order. The resolved reverse-postings live on the log.
+// dispatchRevertTransaction increments revert, posting and ephemeral-evicted
+// counters for a revert-tx order. The resolved reverse-postings + purged
+// volumes live on the produced log.
 func (b *Builder) dispatchRevertTransaction(
 	ctx context.Context,
 	handle dal.PebbleGetter,
@@ -316,50 +339,71 @@ func (b *Builder) dispatchRevertTransaction(
 ) error {
 	state.addCounter(ledger, usagestore.CounterRevert, 1)
 
-	postings, err := b.postingsFromLog(ctx, handle, logSeq)
+	counts, err := b.countsFromLog(ctx, handle, logSeq)
 	if err != nil {
 		return err
 	}
 
-	if postings > 0 {
-		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(postings))
+	if counts.postings > 0 {
+		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(counts.postings))
+	}
+
+	if counts.purged > 0 {
+		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.purged))
 	}
 
 	return nil
 }
 
-// postingsFromLog fetches the log at logSeq and returns the resolved posting
-// count. Handles both CreatedTransaction and RevertedTransaction payloads.
-// Returns 0 if the log does not exist or carries no transaction (e.g.
-// metadata-only logs).
-func (b *Builder) postingsFromLog(ctx context.Context, handle dal.PebbleGetter, logSeq uint64) (int, error) {
+// logCounts is the tuple of per-log counter deltas extracted from a single
+// LedgerLog payload.
+type logCounts struct {
+	postings int
+	purged   int
+}
+
+// countsFromLog fetches the log at logSeq and returns the resolved posting
+// count plus the number of ephemerally-purged volumes attached to this
+// specific log. Both are zero if the log does not exist or carries no
+// relevant payload.
+func (b *Builder) countsFromLog(ctx context.Context, handle dal.PebbleGetter, logSeq uint64) (logCounts, error) {
 	log, err := query.ReadLogBySequence(ctx, handle, logSeq)
 	if err != nil {
-		return 0, fmt.Errorf("reading log at seq %d: %w", logSeq, err)
+		return logCounts{}, fmt.Errorf("reading log at seq %d: %w", logSeq, err)
 	}
 
 	if log == nil {
-		return 0, nil
+		return logCounts{}, nil
 	}
 
 	apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	if !ok || apply.Apply == nil {
-		return 0, nil
+		return logCounts{}, nil
 	}
 
 	ledgerLog := apply.Apply.GetLog()
-	if ledgerLog == nil || ledgerLog.GetData() == nil {
-		return 0, nil
+	if ledgerLog == nil {
+		return logCounts{}, nil
+	}
+
+	// PurgedVolumes lives on LedgerLog directly (not on the payload variant),
+	// so we can extract it independently of the payload type.
+	result := logCounts{
+		purged: len(ledgerLog.GetPurgedVolumes()),
+	}
+
+	if ledgerLog.GetData() == nil {
+		return result, nil
 	}
 
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return len(p.CreatedTransaction.GetTransaction().GetPostings()), nil
+		result.postings = len(p.CreatedTransaction.GetTransaction().GetPostings())
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return len(p.RevertedTransaction.GetRevertTransaction().GetPostings()), nil
+		result.postings = len(p.RevertedTransaction.GetRevertTransaction().GetPostings())
 	}
 
-	return 0, nil
+	return result, nil
 }
 
 // commitBatch applies the accumulated counter / template deltas to the
