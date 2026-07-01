@@ -53,7 +53,10 @@ func (t *TailWorker) Start() {
 	t.w.RunCtx(t.loop)
 }
 
-// Stop signals the loop to stop and waits for it to finish.
+// Stop signals the loop to stop and waits for it to finish. It must only be
+// called after Start (mirrors worker.Worker): calling it on a TailWorker that
+// was never started panics on a nil channel close. Consumers that start
+// conditionally must guard Stop with the same condition.
 func (t *TailWorker) Stop() {
 	t.w.Stop()
 }
