@@ -780,6 +780,22 @@ func (a *Applier) SyncSnapshot(leader uint64, stop chan struct{}) {
 	}
 }
 
+// TrySyncSnapshot is a non-blocking variant of SyncSnapshot: returns true
+// if the sync request was enqueued, false if the work channel is full
+// (another item is already pending). Callers that fire from a per-Ready
+// polling loop (e.g. the out-of-sync fallback in processReady) MUST use
+// this variant — blocking would stall the raft-ready goroutine and enqueuing
+// duplicate syncLeader items causes startMaintenanceTask to interrupt its
+// own in-flight fetch, restarting checkpoint download from scratch.
+func (a *Applier) TrySyncSnapshot(leader uint64) bool {
+	select {
+	case a.ch <- applyWork{syncLeader: leader}:
+		return true
+	default:
+		return false
+	}
+}
+
 // startSyncSnapshot is called from Run to perform the actual sync.
 func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 	syncDetails := map[string]any{
