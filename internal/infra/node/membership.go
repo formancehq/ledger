@@ -403,13 +403,21 @@ func (m *Membership) OnSnapshotInstalled() {
 	// potentially-stale view and the next checkpoint we serve is
 	// already correct. The empty-string check filters out the test
 	// path that constructs a Membership without a real self identity.
+	//
+	// A self-Put failure is logged but does NOT short-circuit the
+	// Rehydrate below: the checkpoint restore has already swapped
+	// Pebble to the leader's peer set, so skipping Rehydrate would
+	// leave the in-memory cache holding pre-restore peers while Pebble
+	// holds the post-restore set — a durable cache-vs-Pebble
+	// divergence that persists until the next leadership change.
+	// Better to fall through and let Rehydrate reload from Pebble
+	// (with the leader's possibly-stale self); the next OnSnapshot
+	// or restart will re-attempt the self-Put.
 	if m.selfRaftAddr != "" {
 		if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr); err != nil {
 			m.logger.WithFields(map[string]any{
 				"error": err,
-			}).Errorf("Refreshing self in Pebble before snapshot reload failed; cache left stale")
-
-			return
+			}).Errorf("Refreshing self in Pebble before snapshot reload failed; next checkpoint we serve may carry a stale self address")
 		}
 	}
 

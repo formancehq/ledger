@@ -399,3 +399,118 @@ func TestMembership_StartGate(t *testing.T) {
 	require.Equal(t, 1, transport.removes, "Remove post-Start wires inline")
 	require.Equal(t, 1, pool.removes, "Remove post-Start wires inline")
 }
+
+// TestMembership_ReconcileAgainstConfState pins the boot-time cleanup
+// pass that drops peers whose NodeID is no longer in the durable
+// ConfState. This covers two crash windows: interrupted ForceRemoveNode
+// (ConfState updated, Unregister not committed) and a restored backup
+// carrying source-cluster peers without matching ConfState entries.
+// Self is always kept, learners are honored, an empty ConfState clears
+// everything except self, and a repeat call is a no-op.
+func TestMembership_ReconcileAgainstConfState(t *testing.T) {
+	t.Parallel()
+
+	newSeeded := func(t *testing.T) *Membership {
+		ps := newTestPeerStore(t)
+		require.NoError(t, ps.Put(7, "self:1", "self:2"))
+		require.NoError(t, ps.Put(1, "voter1:1", "voter1:2"))
+		require.NoError(t, ps.Put(2, "voter2:1", "voter2:2"))
+		require.NoError(t, ps.Put(3, "learner:1", "learner:2"))
+		require.NoError(t, ps.Put(99, "stale:1", "stale:2"))
+
+		m, err := NewMembership(ps, noopTransport{}, noopPool{}, 7, "self:1", "self:2", logging.Testing())
+		require.NoError(t, err)
+		m.Start()
+
+		return m
+	}
+
+	t.Run("drops stale voter", func(t *testing.T) {
+		t.Parallel()
+		m := newSeeded(t)
+
+		require.NoError(t, m.ReconcileAgainstConfState(raftpb.ConfState{
+			Voters:   []uint64{1, 2, 7},
+			Learners: []uint64{3},
+		}))
+
+		got := m.PeerAddresses()
+		require.NotContains(t, got, uint64(99), "peer not in ConfState must be dropped")
+		require.Contains(t, got, uint64(1))
+		require.Contains(t, got, uint64(2))
+		require.Contains(t, got, uint64(3), "learner must be kept")
+		require.Contains(t, got, uint64(7), "self must be kept")
+	})
+
+	t.Run("keeps self even when not in ConfState", func(t *testing.T) {
+		t.Parallel()
+		m := newSeeded(t)
+
+		require.NoError(t, m.ReconcileAgainstConfState(raftpb.ConfState{
+			Voters: []uint64{1, 2},
+		}))
+
+		require.Contains(t, m.PeerAddresses(), uint64(7), "self must never be dropped by reconcile")
+	})
+
+	t.Run("empty ConfState keeps only self", func(t *testing.T) {
+		t.Parallel()
+		m := newSeeded(t)
+
+		require.NoError(t, m.ReconcileAgainstConfState(raftpb.ConfState{}))
+
+		got := m.PeerAddresses()
+		require.Len(t, got, 1, "empty ConfState must clear everything except self")
+		require.Contains(t, got, uint64(7))
+	})
+
+	t.Run("idempotent second call", func(t *testing.T) {
+		t.Parallel()
+		m := newSeeded(t)
+
+		cs := raftpb.ConfState{Voters: []uint64{1, 2, 7}, Learners: []uint64{3}}
+		require.NoError(t, m.ReconcileAgainstConfState(cs))
+		before := m.PeerAddresses()
+
+		require.NoError(t, m.ReconcileAgainstConfState(cs))
+		require.Equal(t, before, m.PeerAddresses(), "second call must be a no-op")
+	})
+}
+
+// TestWalkConfChangeContexts_MultiAddSafeguard pins the guard that
+// refuses to interpret cc.Context when a single ConfChangeV2 carries
+// more than one Add / AddLearner change. cc.Context encodes exactly
+// one peer address, so applying it to every added node would silently
+// persist the wrong address for all but one — a corruption in the
+// FSM's Pebble write path. Local propose paths only emit single-Add
+// batches, so this branch is a defense against future misuse.
+func TestWalkConfChangeContexts_MultiAddSafeguard(t *testing.T) {
+	t.Parallel()
+
+	ctx, err := MarshalConfChangeContext(ConfChangeContext{
+		RaftAddress:    "pod-1:7777",
+		ServiceAddress: "pod-1:8888",
+	})
+	require.NoError(t, err)
+
+	cc := raftpb.ConfChangeV2{
+		Changes: []raftpb.ConfChangeSingle{
+			{Type: raftpb.ConfChangeAddNode, NodeID: 1},
+			{Type: raftpb.ConfChangeAddNode, NodeID: 2},
+		},
+		Context: ctx,
+	}
+
+	seen := map[uint64]*ConfChangeContext{}
+
+	err = walkConfChangeContexts(cc, func(_ raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
+		seen[nodeID] = ctx
+
+		return nil
+	})
+	require.NoError(t, err)
+
+	require.Len(t, seen, 2)
+	require.Nil(t, seen[1], "multi-Add safeguard must NOT propagate the shared Context")
+	require.Nil(t, seen[2], "multi-Add safeguard must NOT propagate the shared Context")
+}

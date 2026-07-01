@@ -14,7 +14,14 @@ import (
 // CurrentStorageSchemaVersion is the storage schema version that this binary
 // expects. Increment this when the Pebble key layout or value encoding changes
 // in a way that is not backward-compatible.
-const CurrentStorageSchemaVersion uint32 = 1
+//
+// v2 (EN-1413): Raft cluster membership moved from the WAL snapshot payload
+// to Pebble under [ZoneGlobal][SubGlobPeers]. Data written by a v1 binary
+// carries peer addresses inside snapshot.Data (which this binary now ignores)
+// and has no SubGlobPeers rows — booting on top of it would leave the peer
+// cache empty while the WAL ConfState still lists voters, so the node cannot
+// contact its peers. Operators must wipe the data directory before upgrading.
+const CurrentStorageSchemaVersion uint32 = 2
 
 // SchemaVersionError is returned when the persisted storage schema version is
 // incompatible with the running binary. This is NOT bypassable with
