@@ -112,6 +112,57 @@ func TestPipeline(t *testing.T) {
 	require.Eventually(t, ctrl.Satisfied, time.Second, 10*time.Millisecond)
 }
 
+// TestPipelineFetchRetryThenSuccess covers pipeline.go lines 107-108:
+// ListLogs errors once, the jittered retry timer fires, and the next ListLogs
+// call succeeds.
+func TestPipelineFetchRetryThenSuccess(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	ctrl := gomock.NewController(t)
+	logFetcher := NewMockLogFetcher(ctrl)
+	driver := drivers.NewMockDriver(ctrl)
+
+	log := ledger.NewLog(ledger.CreatedTransaction{Transaction: ledger.NewTransaction()})
+	log.ID = pointer.For(uint64(1))
+
+	fetchCount := 0
+	logFetcher.EXPECT().
+		ListLogs(gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(func(_ context.Context, _ common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error) {
+			fetchCount++
+			if fetchCount == 1 {
+				return nil, errors.New("store unavailable")
+			}
+			if fetchCount == 2 {
+				return &paginate.Cursor[ledger.Log]{Data: []ledger.Log{log}}, nil
+			}
+			return &paginate.Cursor[ledger.Log]{}, nil
+		})
+
+	driver.EXPECT().
+		Accept(gomock.Any(), drivers.NewLogWithLedger("testing", log)).
+		Return([]error{nil}, nil)
+
+	pipelineConfiguration := ledger.NewPipelineConfiguration("testing", "testing")
+	pipeline := ledger.NewPipeline(pipelineConfiguration)
+
+	handler := NewPipelineHandler(
+		pipeline, logFetcher, driver, logging.Testing(),
+		WithPullPeriod(2),
+	)
+
+	lastLogIDChannel := make(chan uint64, 1)
+	go handler.Run(ctx, lastLogIDChannel)
+	t.Cleanup(func() {
+		require.NoError(t, handler.Shutdown(ctx))
+	})
+
+	ShouldReceive(t, uint64(1), lastLogIDChannel)
+	require.Eventually(t, ctrl.Satisfied, time.Second, 10*time.Millisecond)
+}
+
 // TestPipelineStopDuringFetchRetry covers pipeline.go lines 104-106:
 // stop signal received while waiting in the fetch-retry select after a ListLogs error.
 func TestPipelineStopDuringFetchRetry(t *testing.T) {

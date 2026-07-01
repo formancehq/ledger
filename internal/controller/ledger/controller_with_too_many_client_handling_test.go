@@ -79,6 +79,36 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 	})
 
+	t.Run("retry with sub-nanosecond delay exercises max guard", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		underlyingLedgerController := NewMockController(ctrl)
+		delayCalculator := NewMockDelayCalculator(ctrl)
+		ctx := logging.TestingContext()
+
+		parameters := Parameters[CreateTransaction]{}
+
+		underlyingLedgerController.EXPECT().
+			CreateTransaction(gomock.Any(), parameters).
+			Return(nil, nil, false, postgres.ErrTooManyClient{})
+
+		underlyingLedgerController.EXPECT().
+			CreateTransaction(gomock.Any(), parameters).
+			Return(&ledger.Log{}, &ledger.CreatedTransaction{
+				Transaction: ledger.NewTransaction(),
+			}, false, nil)
+
+		// 1ns delay: int64(1/2) == 0, so max(0, 1) kicks in
+		delayCalculator.EXPECT().
+			Next(0).
+			Return(time.Duration(1))
+
+		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
+		_, _, _, err := ledgerController.CreateTransaction(ctx, parameters)
+		require.NoError(t, err)
+	})
+
 	t.Run("finally failing", func(t *testing.T) {
 		t.Parallel()
 

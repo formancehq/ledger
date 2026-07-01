@@ -98,6 +98,58 @@ func TestDriverFacadeStopContextExpiresDuringStart(t *testing.T) {
 	close(blockStart)
 }
 
+// TestDriverFacadeRetryThenSuccess covers the retry-timer branch in
+// DriverFacade.Run: Start fails with a non-context error, the jittered timer
+// fires, and Start succeeds on the second attempt.
+func TestDriverFacadeRetryThenSuccess(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockDriver := drivers.NewMockDriver(ctrl)
+
+	gomock.InOrder(
+		mockDriver.EXPECT().Start(gomock.Any()).Return(errors.New("transient")),
+		mockDriver.EXPECT().Start(gomock.Any()).Return(nil),
+	)
+
+	facade := newDriverFacade(mockDriver, logging.Testing(), 2)
+	facade.Run(context.Background())
+
+	select {
+	case <-facade.Ready():
+	case <-time.After(time.Second):
+		require.Fail(t, "facade should become ready after retry")
+	}
+
+	require.Eventually(t, ctrl.Satisfied, time.Second, 10*time.Millisecond)
+}
+
+// TestDriverFacadeAcceptNotReady covers the "not ready exporter" branch in
+// DriverFacade.Accept (driver_facade.go line 86): calling Accept before the
+// driver has started returns an error.
+func TestDriverFacadeAcceptNotReady(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockDriver := drivers.NewMockDriver(ctrl)
+
+	// Start blocks forever so readyChan is never closed.
+	mockDriver.EXPECT().Start(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}).AnyTimes()
+
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+
+	facade := newDriverFacade(mockDriver, logging.Testing(), time.Minute)
+	facade.Run(runCtx)
+
+	_, err := facade.Accept(context.Background())
+	require.Error(t, err)
+	require.Equal(t, "not ready exporter", err.Error())
+}
+
 func TestManagerExportersNominal(t *testing.T) {
 	t.Parallel()
 
@@ -491,4 +543,45 @@ func TestManagerSynchronizePipelinesError(t *testing.T) {
 
 	require.NoError(t, manager.Stop(ctx))
 	require.Eventually(t, ctrl.Satisfied, time.Second, 10*time.Millisecond)
+}
+
+// TestManagerPeriodicSync covers the time.After branch in manager.go Run loop
+// (line 278): the sync timer fires and triggers synchronizePipelines again.
+func TestManagerPeriodicSync(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	ctrl := gomock.NewController(t)
+	storage := NewMockStorage(ctrl)
+	exporterConfigValidator := NewMockConfigValidator(ctrl)
+	driverFactory := drivers.NewMockFactory(ctrl)
+
+	syncCount := make(chan struct{}, 10)
+	storage.EXPECT().
+		ListEnabledPipelines(gomock.Any()).
+		AnyTimes().
+		DoAndReturn(func(_ context.Context) ([]ledger.Pipeline, error) {
+			select {
+			case syncCount <- struct{}{}:
+			default:
+			}
+			return nil, nil
+		})
+
+	manager := NewManager(
+		storage,
+		driverFactory,
+		logging.Testing(),
+		exporterConfigValidator,
+		WithSyncPeriod(2),
+	)
+	go manager.Run(ctx)
+
+	<-manager.Started()
+
+	// First sync happened at startup. Wait for at least one periodic sync.
+	<-syncCount // initial
+	<-syncCount // periodic
+
+	require.NoError(t, manager.Stop(ctx))
 }
