@@ -38,7 +38,8 @@ Run from the repo root (`git rev-parse --show-toplevel`). Verify:
 - `snouty --version` succeeds. If not, install per `https://github.com/antithesishq/snouty` and abort.
 - These environment variables are set in the shell:
   - `ANTITHESIS_TENANT` (the tenant slug — `formance` for this repo; embedded in the launch URL `formance.antithesis.com`)
-  - `ANTITHESIS_API_KEY` **or** (`ANTITHESIS_USERNAME` + `ANTITHESIS_PASSWORD`)
+  - `ANTITHESIS_API_KEY` — **required** for triage / analysis (`snouty runs …`); the launcher accepts basic auth as a fallback, but every downstream skill (`antithesis-triage`, `antithesis-query-logs`, etc.) needs the API key.
+  - `ANTITHESIS_USERNAME` + `ANTITHESIS_PASSWORD` — accepted by `snouty launch`/`snouty debug` only.
   - `ANTITHESIS_REPOSITORY` (registry for SUT images)
   - `ANTITHESIS_REPORT_RECIPIENT` (used as `--recipients`)
   If any are missing, list which and abort. Run `snouty doctor` to surface what's missing in one shot.
@@ -127,6 +128,9 @@ These steps replace the legacy `just k8s-push-images` / `just push-images`. Buil
 **K8s mode**:
 
 ```bash
+# Force amd64 for the config image snouty builds internally (see note below).
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
+
 snouty launch \
   --webhook basic_k8s_test \
   --config tests/antithesis/k8s \
@@ -137,6 +141,7 @@ snouty launch \
 ```
 
 Notes:
+- **`export DOCKER_DEFAULT_PLATFORM=linux/amd64` before invoking snouty on Apple Silicon.** When you pass `--config <dir>`, snouty builds the config image locally without forcing `--platform linux/amd64`; on an M-series Mac this yields an arm64 image, which Antithesis rejects at boot with `antithesis_error code=4005 "Unsupported container type"` — the run finishes as `Incomplete` at `input_hash=0 vtime=0` about two minutes in. Setting the env var is the smallest fix. Fallback if it does not stick: pre-build the config image manually (`docker build --platform linux/amd64 -f tests/antithesis/k8s/Dockerfile.config -t <ref>:$TAG tests/antithesis/k8s && docker push <ref>:$TAG`) and pass `--config-image <ref>:$TAG` to snouty instead of `--config`.
 - **Do NOT pass `--param antithesis.images=...`** — snouty 0.5.x rejects it (`do not specify antithesis.images as --param, use api webhook instead`). In k8s mode the platform reads image refs straight out of the manifests, so the param is unnecessary anyway.
 - **Always pass `--source <branch-slug>`** so the run is *not* marked ephemeral; ephemeral runs (`is_ephemeral=true`) do not appear in property history reports. The slug is the same per-branch slug used in the tag.
 
