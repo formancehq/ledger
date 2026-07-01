@@ -1079,21 +1079,6 @@ func (b *WriteSet) BeginOrder(orderIndex int) {
 	b.volumes.BeginSlot(orderIndex)
 }
 
-// ValidateTransientVolumes checks that all transient account volumes have zero balance.
-// Must be called after ProcessOrders and before Commit, so that failures are
-// treated as business errors (rejected proposals) rather than fatal FSM errors.
-//
-// The end-of-batch zero-balance check only applies when the base volume (before
-// this batch) is itself zero-balance or absent — the steady-state transient case.
-// Pre-existing non-zero volumes (from before the transient pattern started matching
-// the account) are exempt: partitionVolumes routes those batches to the ephemeral-
-// mirror lifecycle (kept while unbalanced, purged once the running cumulative
-// returns to zero), so a balance check here would double-up with that flow.
-//
-// The scope parameter is the gated processing.Scope the rest of the proposal
-// used — coverage checks on ledger reads here go through the same gate as
-// every handler-level read so a missing ledger declaration surfaces as
-// *ErrCoverageMiss instead of an opaque "ledger not found" skip.
 // sortedDirtyVolumeKeys returns the dirty-volume keys in a deterministic
 // (Account, Asset, LedgerName) order. ValidateTransientVolumes runs on the FSM
 // apply path, which must be byte-deterministic across nodes (invariant #2).
@@ -1121,6 +1106,21 @@ func sortedDirtyVolumeKeys(dirty map[domain.VolumeKey]*raftcmdpb.VolumePair) []d
 	return keys
 }
 
+// ValidateTransientVolumes checks that all transient account volumes have zero balance.
+// Must be called after ProcessOrders and before Commit, so that failures are
+// treated as business errors (rejected proposals) rather than fatal FSM errors.
+//
+// The end-of-batch zero-balance check only applies when the base volume (before
+// this batch) is itself zero-balance or absent — the steady-state transient case.
+// Pre-existing non-zero volumes (from before the transient pattern started matching
+// the account) are exempt: partitionVolumes routes those batches to the ephemeral-
+// mirror lifecycle (kept while unbalanced, purged once the running cumulative
+// returns to zero), so a balance check here would double-up with that flow.
+//
+// The scope parameter is the gated processing.Scope the rest of the proposal
+// used — coverage checks on ledger reads here go through the same gate as
+// every handler-level read so a missing ledger declaration surfaces as
+// *ErrCoverageMiss instead of an opaque "ledger not found" skip.
 func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Describable {
 	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
