@@ -70,12 +70,15 @@ type Applier struct {
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
 	pending *pendingCommit
 
-	// onSnapshotInstalled is invoked from startSyncSnapshot after
-	// SynchronizeWithLeader has restored the leader's Pebble checkpoint.
-	// The hook runs inside the Run goroutine, synchronously with the
-	// restore, so the Node can refresh state that depends on the new
-	// Pebble contents (EN-1413: the peer-address cache, which is seeded
-	// from Pebble at boot). nil is a no-op for tests that don't wire it.
+	// onSnapshotInstalled is invoked by the maintenance-task wrapper
+	// AFTER a leader-checkpoint sync + subsequent replaySpool have both
+	// landed on Pebble. Running it post-replay is deliberate: an
+	// earlier position would race with the still-spooled post-snapshot
+	// ConfChanges and drop those peers from the Membership cache. The
+	// hook fires inside the maintenance goroutine, synchronously with
+	// the restore, so the next Raft tick already sees the up-to-date
+	// cache + transport. nil is a no-op for tests that don't wire it.
+	// (EN-1413)
 	onSnapshotInstalled func()
 
 	// Metrics
@@ -828,16 +831,15 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 
 		a.syncProgress.Store(nil)
 
-		// EN-1413: the leader's Pebble checkpoint is now in place. Notify
-		// the Node so it can reload anything that is seeded from Pebble
-		// (currently: the peer-address cache). Running it here — inside
-		// the maintenance task, synchronously with the restore — means
-		// the next Raft tick already sees the up-to-date cache.
-		if a.onSnapshotInstalled != nil {
-			a.onSnapshotInstalled()
-		}
-
-		return maintenanceTaskResult{frozenAtIndex: syncedIndex}, nil
+		// The onSnapshotInstalled hook is deliberately NOT fired here.
+		// The outer maintenance wrapper fires it AFTER replaySpool so
+		// any post-snapshot ConfChange sitting in the spool has landed
+		// in Pebble before Rehydrate reads it (EN-1413). See
+		// maintenanceTaskResult.snapshotInstalled.
+		return maintenanceTaskResult{
+			frozenAtIndex:     syncedIndex,
+			snapshotInstalled: true,
+		}, nil
 	}, nil)
 }
 
@@ -1378,6 +1380,15 @@ func slicesEqual(a, b []uint64) bool {
 type maintenanceTaskResult struct {
 	frozenAtIndex uint64
 	syncFailed    bool // if true, skip spool replay and mark node out-of-sync
+	// snapshotInstalled is set by startSyncSnapshot when a leader
+	// checkpoint has just replaced our Pebble. The outer wrapper fires
+	// onSnapshotInstalled AFTER replaySpool has drained the spool onto
+	// the fresh Pebble — if the hook fired inside the sync task
+	// (i.e., BEFORE replaySpool), Rehydrate would see leader's Pebble
+	// without the post-snapshot ConfChanges still sitting in the spool
+	// and would remove those peers from the cache, leaving the node
+	// unable to dial them until the next rehydrate. (EN-1413)
+	snapshotInstalled bool
 }
 
 // startMaintenanceTask creates a gating channel and runs the maintenance task
@@ -1424,6 +1435,17 @@ func (a *Applier) startMaintenanceTask(
 
 		if _, err := a.replaySpool(ctx, taskResult.frozenAtIndex); err != nil {
 			return err
+		}
+
+		// Fire the snapshot-installed hook now — post-replaySpool — so
+		// the node's rehydrate sees a Pebble that already reflects any
+		// post-snapshot ConfChanges we spooled during the sync. Firing
+		// before the spool drained would remove those peers from the
+		// cache (Rehydrate treats Pebble as authoritative and finds
+		// them missing), leaving the node with a stale transport view
+		// until the next rehydrate. (EN-1413)
+		if taskResult.snapshotInstalled && a.onSnapshotInstalled != nil {
+			a.onSnapshotInstalled()
 		}
 
 		a.maintenanceReplaySpoolHistogram.Record(context.Background(), float64(time.Since(replayStart).Microseconds()))
