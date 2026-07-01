@@ -1,8 +1,10 @@
 package state
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -1092,10 +1094,39 @@ func (b *WriteSet) BeginOrder(orderIndex int) {
 // used — coverage checks on ledger reads here go through the same gate as
 // every handler-level read so a missing ledger declaration surfaces as
 // *ErrCoverageMiss instead of an opaque "ledger not found" skip.
+// sortedDirtyVolumeKeys returns the dirty-volume keys in a deterministic
+// (Account, Asset, LedgerName) order. ValidateTransientVolumes runs on the FSM
+// apply path, which must be byte-deterministic across nodes (invariant #2).
+// DirtyValues() returns a raw Go map whose iteration order is randomized per
+// process, so ranging it directly makes the selection of the reported offending
+// transient (account, asset) nondeterministic — that identity is hashed into
+// the AuditFailure and would fork the audit hash chain across nodes (EN-1423).
+// LedgerName is a final tiebreaker for a total order; because the returned error
+// carries only account+asset, it never changes the error's identity, only makes
+// the selection fully defined when two ledgers share an (account, asset).
+func sortedDirtyVolumeKeys(dirty map[domain.VolumeKey]*raftcmdpb.VolumePair) []domain.VolumeKey {
+	keys := make([]domain.VolumeKey, 0, len(dirty))
+	for key := range dirty {
+		keys = append(keys, key)
+	}
+
+	slices.SortFunc(keys, func(a, b domain.VolumeKey) int {
+		return cmp.Or(
+			cmp.Compare(a.Account, b.Account),
+			cmp.Compare(a.Asset, b.Asset),
+			cmp.Compare(a.LedgerName, b.LedgerName),
+		)
+	})
+
+	return keys
+}
+
 func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Describable {
 	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
-	for key, vol := range b.Derived.Volumes.DirtyValues() {
+	dirty := b.Derived.Volumes.DirtyValues()
+	for _, key := range sortedDirtyVolumeKeys(dirty) {
+		vol := dirty[key]
 		compiled, ok := ledgerTypes[key.LedgerName]
 		if !ok {
 			info, err := scope.Ledgers().Get(domain.LedgerKey{Name: key.LedgerName})

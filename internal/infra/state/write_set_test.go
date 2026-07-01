@@ -751,3 +751,39 @@ func TestWriteSetPreparedQueryBloomFilterTracksKeys(t *testing.T) {
 	require.NotEqual(t, keys[0], absent)
 	require.False(t, pqFilter.MayContain(absent), "never-inserted key must be reported absent")
 }
+
+// TestSortedDirtyVolumeKeys pins the deterministic (Account, Asset, LedgerName)
+// ordering that ValidateTransientVolumes relies on to avoid forking the audit
+// hash chain (EN-1423). The 100-iteration loop is the point: a single sort of a
+// Go map can pass by luck; only repeated sorts of the same map-random input
+// prove the ordering is stable.
+func TestSortedDirtyVolumeKeys(t *testing.T) {
+	t.Parallel()
+
+	mk := func(ledger, account, asset string) domain.VolumeKey {
+		return domain.VolumeKey{
+			AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
+			Asset:      asset,
+		}
+	}
+
+	dirty := map[domain.VolumeKey]*raftcmdpb.VolumePair{
+		mk("l2", "beta", "USD"):  {},
+		mk("l1", "alpha", "USD"): {},
+		mk("l1", "alpha", "EUR"): {},
+		mk("l1", "beta", "USD"):  {},
+		mk("l3", "alpha", "USD"): {}, // same (account,asset) as l1/alpha/USD, different ledger
+	}
+
+	want := []domain.VolumeKey{
+		mk("l1", "alpha", "EUR"),
+		mk("l1", "alpha", "USD"),
+		mk("l3", "alpha", "USD"),
+		mk("l1", "beta", "USD"),
+		mk("l2", "beta", "USD"),
+	}
+
+	for i := 0; i < 100; i++ {
+		require.Equal(t, want, sortedDirtyVolumeKeys(dirty), "iteration %d", i)
+	}
+}
