@@ -787,3 +787,84 @@ func TestSortedDirtyVolumeKeys(t *testing.T) {
 		require.Equal(t, want, sortedDirtyVolumeKeys(dirty), "iteration %d", i)
 	}
 }
+
+// TestValidateTransientVolumesReturnsSmallestOffender exercises the real
+// ValidateTransientVolumes through a gated proposal scope. With three offending
+// transient (account, asset) tuples across two ledgers, the returned error must
+// always name the (account, asset)-smallest offender — never a map-random one
+// (EN-1423). The loop guards against a lucky single pass.
+func TestValidateTransientVolumesReturnsSmallestOffender(t *testing.T) {
+	t.Parallel()
+
+	buf, machine, _ := newTestBuffer(t)
+
+	newLedger := func(name string, id uint32) *commonpb.LedgerInfo {
+		return &commonpb.LedgerInfo{
+			Name: name,
+			Id:   id,
+			AccountTypes: map[string]*commonpb.AccountType{
+				"staging": {
+					Name:        "staging",
+					Pattern:     "staging:{id}",
+					Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+				},
+			},
+		}
+	}
+
+	ledgers := []*commonpb.LedgerInfo{newLedger("l-a", 1), newLedger("l-b", 2)}
+	for _, li := range ledgers {
+		_, _, err := machine.Registry.Ledgers.KeyStore().Put(
+			(&domain.LedgerKey{Name: li.GetName()}).Bytes(),
+			li,
+		)
+		require.NoError(t, err)
+		buf.Derived.Ledgers.Put(domain.LedgerKey{Name: li.GetName()}, li)
+	}
+
+	// Three offenders. Smallest by (account, asset) is ("staging:a", "USD").
+	offenders := []domain.VolumeKey{
+		domain.NewVolumeKey("l-a", "staging:z", "USD"),
+		domain.NewVolumeKey("l-a", "staging:a", "USD"),
+		domain.NewVolumeKey("l-b", "staging:m", "EUR"),
+	}
+	// Non-zero balance (input != output) => offending. Reused read-only.
+	nonZero := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(200),
+		Output: commonpb.NewUint256FromUint64(50),
+	}
+	for _, k := range offenders {
+		buf.Derived.Volumes.Put(k, nonZero)
+	}
+
+	// Coverage: declare each ledger key (Ledgers().Get) and each volume key
+	// (CheckCoverage before the base-volume read).
+	attrPlans := make([]*raftcmdpb.AttributePlan, 0, len(ledgers)+len(offenders))
+	for _, li := range ledgers {
+		lid, _ := attributes.MakeKey((&domain.LedgerKey{Name: li.GetName()}).Bytes())
+		attrPlans = append(attrPlans, declareTestPlan(lid, dal.SubAttrLedger))
+	}
+	for _, k := range offenders {
+		vid, _ := attributes.MakeKey(k.Bytes())
+		attrPlans = append(attrPlans, declareTestPlan(vid, dal.SubAttrVolume))
+	}
+
+	scope, err := NewScopeFactory(
+		buf,
+		&raftcmdpb.ExecutionPlan{Attributes: attrPlans},
+		machine.logger,
+		machine.preloadMissCounter,
+		1,
+	).NewProposalScope()
+	require.NoError(t, err)
+
+	for i := 0; i < 50; i++ {
+		describ := buf.ValidateTransientVolumes(scope)
+		require.NotNil(t, describ, "iteration %d: expected an offender", i)
+
+		e, ok := describ.(*domain.ErrTransientAccountNonZero)
+		require.True(t, ok, "iteration %d: got %T", i, describ)
+		require.Equal(t, "staging:a", e.Account, "iteration %d", i)
+		require.Equal(t, "USD", e.Asset, "iteration %d", i)
+	}
+}
