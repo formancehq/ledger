@@ -1,6 +1,9 @@
 package admission
 
 import (
+	"net/url"
+	"strings"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -284,13 +287,24 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	return nil
 }
 
-// dsnEnforcesTLS parses dsn through pgxpool and reports whether every
-// connection attempt would use TLS. Mirrors the runtime helper in
-// internal/adapter/v2 (poolConfigEnforcesTLS); duplicated to keep admission
-// independent of the v2 adapter package and to use the same pgx parser as
-// the actual connect path. On parse error returns false -- the runtime
-// guard will surface a more precise error when the mirror worker starts.
+// dsnEnforcesTLS reports whether the DSN meets the admission gate for IAM
+// auth: URI form, explicit sslmode in the raw string, and TLS on every
+// pgx connect attempt. Mirrors the runtime gate in internal/adapter/v2 —
+// see the comment on buildPgxPoolConfig for the full rationale.
+//
+// Duplicated in-file to keep admission independent of the v2 adapter
+// package. On parse error, returns false; the runtime gate surfaces a more
+// precise error when the mirror worker actually starts.
 func dsnEnforcesTLS(dsn string) bool {
+	if !strings.HasPrefix(dsn, "postgres://") && !strings.HasPrefix(dsn, "postgresql://") {
+		return false
+	}
+
+	u, err := url.Parse(dsn)
+	if err != nil || !u.Query().Has("sslmode") {
+		return false
+	}
+
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return false

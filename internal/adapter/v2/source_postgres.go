@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -159,16 +161,32 @@ func buildPgxPoolConfig(ctx context.Context, cfg *commonpb.PostgresMirrorSourceC
 
 	// Refuse to install the IAM hook on a non-TLS sslmode: the SigV4 token
 	// written to ConnConfig.Password is a 15-minute bearer credential, and
-	// sslmode in {disable, allow, prefer} would let it travel in cleartext
-	// (allow/prefer fall back to non-TLS). libpq's documented default is
-	// "prefer", which is unsafe here, so an unset sslmode is also rejected.
-	// Inspect the parsed pgx config rather than the raw DSN string -- a
-	// crafted libpq keyword=value DSN (e.g. application_name='x sslmode=require'
-	// sslmode=disable) would defeat naive whitespace tokenisation but cannot
-	// fool pgx's own parser, which is the representation actually used at
-	// connect time.
-	if !poolConfigEnforcesTLS(poolCfg) {
-		return nil, errors.New("aws_iam_auth requires sslmode in {require, verify-ca, verify-full}")
+	// sslmode in {disable, allow, prefer} would let it travel in cleartext.
+	//
+	// Three-layer gate:
+	//   1. `dsnIsURIForm` rejects libpq keyword=value DSNs. IAM only accepts
+	//      the postgres:// URI form; that lets us parse via net/url and
+	//      removes the need for a hand-rolled libpq tokenizer to defend
+	//      against tricks like quoted values embedding fake sslmode=
+	//      substrings.
+	//   2. `dsnHasExplicitSSLMode` requires sslmode= to be present in the
+	//      raw DSN. pgxpool.ParseConfig folds ambient libpq env vars
+	//      (PGSSLMODE, ...) into its effective config, so a persisted
+	//      mirror without sslmode would inherit PGSSLMODE from the pod env
+	//      at admission time and later fail (or downgrade to cleartext) on
+	//      any pod that lacks that env var. Anchoring the check in the raw
+	//      DSN makes the TLS guarantee a property of the stored config
+	//      alone, independent of pod environment.
+	//   3. `poolConfigEnforcesTLS` inspects the parsed pgx config —
+	//      the representation actually used at connect time — so an
+	//      explicitly set sslmode of disable/allow/prefer is still
+	//      rejected.
+	if !dsnIsURIForm(cfg.GetDsn()) {
+		return nil, errors.New("aws_iam_auth requires a URI-form DSN (postgres:// or postgresql://)")
+	}
+
+	if !dsnHasExplicitSSLMode(cfg.GetDsn()) || !poolConfigEnforcesTLS(poolCfg) {
+		return nil, errors.New("aws_iam_auth requires an explicit sslmode in {require, verify-ca, verify-full} in the DSN")
 	}
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
@@ -222,6 +240,40 @@ func iamBeforeConnect(awsCfg aws.Config) func(context.Context, *pgx.ConnConfig) 
 
 		return nil
 	}
+}
+
+// dsnHasExplicitSSLMode reports whether a URI-form DSN carries an explicit
+// sslmode query parameter. Returns false for non-URI (libpq keyword=value)
+// DSNs — with IAM auth we require URI form up-front (see the guard in
+// buildPgxPoolConfig) so this helper never sees anything else.
+//
+// Reason for looking at the raw DSN rather than the parsed pgxpool config:
+// pgxpool.ParseConfig folds ambient libpq env vars (PGSSLMODE, ...) into
+// its effective config. A persisted mirror without sslmode= would inherit
+// e.g. PGSSLMODE=require from the pod env at admission time, then fail
+// (or downgrade to cleartext) on any pod that lacks the env var. Anchoring
+// the TLS gate in the raw DSN makes it a property of the stored config
+// alone, independent of pod environment.
+func dsnHasExplicitSSLMode(dsn string) bool {
+	if !dsnIsURIForm(dsn) {
+		return false
+	}
+
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return false
+	}
+
+	return u.Query().Has("sslmode")
+}
+
+// dsnIsURIForm reports whether the DSN uses the libpq URI form
+// (postgres:// or postgresql://). Non-URI (keyword=value) DSNs are
+// rejected up-front when IAM auth is enabled: enforcing URI form removes
+// the need for a hand-rolled libpq tokenizer to defend against tricks
+// like quoted values embedding fake sslmode= substrings.
+func dsnIsURIForm(dsn string) bool {
+	return strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://")
 }
 
 // poolConfigEnforcesTLS reports whether the parsed pgxpool config forces TLS

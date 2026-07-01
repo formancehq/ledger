@@ -32,20 +32,41 @@ func TestBuildPgxPoolConfig_IAMRegionRequired(t *testing.T) {
 	require.Contains(t, err.Error(), "region is required")
 }
 
-func TestBuildPgxPoolConfig_IAMRejectsAdversarialKeywordDSN(t *testing.T) {
+func TestBuildPgxPoolConfig_IAMRejectsKeywordValueDSN(t *testing.T) {
 	t.Parallel()
 
-	// Bypass attempt flagged by NumaryBot: a libpq keyword=value DSN with
-	// a quoted application_name embedding "sslmode=require" but the real
-	// sslmode is "disable". A naive whitespace-split scanner would pick
-	// the embedded value; pgxpool.ParseConfig sees the actual sslmode.
-	dsn := `host=db.example.com user=iam-user dbname=ledger application_name='x sslmode=require y' sslmode=disable`
+	// IAM auth requires the URI form. Rejecting libpq keyword=value up-front
+	// closes two attack surfaces at once:
+	//   - the adversarial quoted-value bypass flagged by NumaryBot (e.g.
+	//     application_name='x sslmode=require' sslmode=disable) — the DSN
+	//     never reaches the sslmode parser because the URI check fires first.
+	//   - it lets the raw-DSN sslmode check use net/url instead of a
+	//     hand-rolled libpq tokenizer.
+	dsn := `host=db.example.com user=iam-user dbname=ledger sslmode=require`
 
 	_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
 		Dsn:        dsn,
 		AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
 	})
-	require.Error(t, err, "adversarial keyword=value DSN with embedded sslmode= substring must not bypass the TLS gate")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "URI-form")
+}
+
+func TestBuildPgxPoolConfig_IAMRejectsDSNWithoutExplicitSSLMode(t *testing.T) {
+	// Cannot run in parallel: this test sets PGSSLMODE=require to exercise
+	// the exact bypass NumaryBot reported (env-var-driven TLS with no
+	// sslmode= in the persisted DSN). With PGSSLMODE=require, pgx's parsed
+	// config reports TLS on every attempt — the raw-DSN check is the only
+	// thing that keeps admission independent of pod env.
+	t.Setenv("PGSSLMODE", "require")
+
+	dsn := "postgres://iam-user@host:5432/db" // no sslmode= in the URI
+
+	_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		Dsn:        dsn,
+		AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+	})
+	require.Error(t, err, "PGSSLMODE=require in the env must not satisfy the IAM TLS gate — the persisted DSN must carry sslmode= itself")
 	require.Contains(t, err.Error(), "sslmode")
 }
 
