@@ -403,6 +403,23 @@ func TestCache_ResetWithThresholdAtNonZeroIndex(t *testing.T) {
 	assert.Equal(t, uint64(2), cache.Epoch())
 }
 
+// TestCache_ResetWithThresholdRejectsZero: threshold=0 is a config invariant
+// violation — cache.New rejects it up front, and no legitimate call path can
+// reach ResetWithThreshold with 0. Panicking makes the violation impossible
+// to silently mask by disabling rotations (which would freeze
+// currentGeneration=0 forever and break the CacheUnreachable contract).
+func TestCache_ResetWithThresholdRejectsZero(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(100, nil)
+	require.NoError(t, err)
+
+	require.PanicsWithValue(t,
+		"cache.ResetWithThreshold: threshold must be > 0 (invariant enforced by cache.New)",
+		func() { cache.ResetWithThreshold(0, 0) },
+	)
+}
+
 func TestCache_CheckRotationNeeded_SameGeneration(t *testing.T) {
 	t.Parallel()
 

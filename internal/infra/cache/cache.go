@@ -355,11 +355,21 @@ func (c *Cache) Reset() {
 // caller-provided raftIndex is the entry the FSM is applying, so
 // Gen(raftIndex, threshold) is the correct post-reset horizon.
 //
-// Callers that persist the reset to Pebble must read the returned tuple
-// (or Cache.CurrentGeneration + Cache.BaseIndex.{Gen0,Gen1}) so the
-// on-disk sentinels reflect the same in-memory state a RestoreFromStore
-// would reconstruct.
+// A zero threshold is a config invariant violation — cache.New already
+// rejects it, and every code path that reaches this method has validated
+// the config upstream. Panics loudly rather than silently disabling
+// rotations, which would leave currentGeneration frozen at 0 forever and
+// break the CacheUnreachable / CheckRotationNeeded contracts.
+//
+// Callers that persist the reset to Pebble must read
+// Cache.CurrentGeneration + Cache.BaseIndex.{Gen0,Gen1} after the call so
+// the on-disk sentinels reflect the same in-memory state a
+// RestoreFromStore would reconstruct.
 func (c *Cache) ResetWithThreshold(threshold, raftIndex uint64) {
+	if threshold == 0 {
+		panic("cache.ResetWithThreshold: threshold must be > 0 (invariant enforced by cache.New)")
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -367,13 +377,9 @@ func (c *Cache) ResetWithThreshold(threshold, raftIndex uint64) {
 	c.epoch.Add(1)
 	c.generationThreshold.Store(threshold)
 
-	// Skip the alignment when the threshold is 0 (rotations disabled) or
-	// the target generation is 0 (raftIndex within the first gen — the
-	// post-clearLocked state already matches).
-	if threshold == 0 {
-		return
-	}
-
+	// clearLocked already set currentGeneration=0 and BaseIndex={0,0}. If
+	// raftIndex falls inside the first generation, that's the final state.
+	// Otherwise realign under the same lock.
 	if g := Gen(raftIndex, threshold); g != 0 {
 		boundary := genEndIndex(g-1, threshold)
 		c.rotateLocked(boundary, g)
