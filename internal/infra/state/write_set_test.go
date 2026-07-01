@@ -752,12 +752,11 @@ func TestWriteSetPreparedQueryBloomFilterTracksKeys(t *testing.T) {
 	require.False(t, pqFilter.MayContain(absent), "never-inserted key must be reported absent")
 }
 
-// TestSortedDirtyVolumeKeys pins the deterministic (Account, Asset, LedgerName)
-// ordering that ValidateTransientVolumes relies on to avoid forking the audit
-// hash chain (EN-1423). The 100-iteration loop is the point: a single sort of a
-// Go map can pass by luck; only repeated sorts of the same map-random input
-// prove the ordering is stable.
-func TestSortedDirtyVolumeKeys(t *testing.T) {
+// TestCompareVolumeKeys pins the (Account, Asset, LedgerName) precedence that
+// ValidateTransientVolumes relies on to pick a deterministic offender and avoid
+// forking the audit hash chain (EN-1423). Account dominates, Asset breaks ties,
+// LedgerName is the final tiebreaker; equal keys compare 0.
+func TestCompareVolumeKeys(t *testing.T) {
 	t.Parallel()
 
 	mk := func(ledger, account, asset string) domain.VolumeKey {
@@ -767,33 +766,33 @@ func TestSortedDirtyVolumeKeys(t *testing.T) {
 		}
 	}
 
-	dirty := map[domain.VolumeKey]*raftcmdpb.VolumePair{
-		mk("l2", "beta", "USD"):  {},
-		mk("l1", "alpha", "USD"): {},
-		mk("l1", "alpha", "EUR"): {},
-		mk("l1", "beta", "USD"):  {},
-		mk("l3", "alpha", "USD"): {}, // same (account,asset) as l1/alpha/USD, different ledger
+	tests := []struct {
+		name string
+		a, b domain.VolumeKey
+		want int
+	}{
+		{"account dominates asset", mk("l1", "alpha", "USD"), mk("l1", "beta", "EUR"), -1},
+		{"account dominates ledger", mk("l9", "alpha", "USD"), mk("l1", "beta", "USD"), -1},
+		{"asset breaks account tie", mk("l1", "alpha", "EUR"), mk("l1", "alpha", "USD"), -1},
+		{"ledger is final tiebreaker", mk("l1", "alpha", "USD"), mk("l3", "alpha", "USD"), -1},
+		{"equal keys compare 0", mk("l1", "alpha", "USD"), mk("l1", "alpha", "USD"), 0},
 	}
 
-	want := []domain.VolumeKey{
-		mk("l1", "alpha", "EUR"),
-		mk("l1", "alpha", "USD"),
-		mk("l3", "alpha", "USD"),
-		mk("l1", "beta", "USD"),
-		mk("l2", "beta", "USD"),
-	}
-
-	for i := range 100 {
-		require.Equal(t, want, sortedDirtyVolumeKeys(dirty), "iteration %d", i)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, compareVolumeKeys(tc.a, tc.b))
+			require.Equal(t, -tc.want, compareVolumeKeys(tc.b, tc.a), "comparison must be antisymmetric")
+		})
 	}
 }
 
-// TestValidateTransientVolumesReturnsSmallestOffender exercises the real
-// ValidateTransientVolumes through a gated proposal scope. With three offending
-// transient (account, asset) tuples across two ledgers, the returned error must
-// always name the (account, asset)-smallest offender — never a map-random one
-// (EN-1423). The loop guards against a lucky single pass.
-func TestValidateTransientVolumesReturnsSmallestOffender(t *testing.T) {
+// TestValidateTransientVolumesListsAllOffendersSorted exercises the real
+// ValidateTransientVolumes through a gated proposal scope. Every offending
+// transient (account, asset) tuple must appear in the returned error, sorted by
+// (Account, Asset) and deduplicated across ledgers — never a map-random subset
+// or order (EN-1423). The loop guards against a lucky single pass.
+func TestValidateTransientVolumesListsAllOffendersSorted(t *testing.T) {
 	t.Parallel()
 
 	buf, machine, _ := newTestBuffer(t)
@@ -822,11 +821,13 @@ func TestValidateTransientVolumesReturnsSmallestOffender(t *testing.T) {
 		buf.Derived.Ledgers.Put(domain.LedgerKey{Name: li.GetName()}, li)
 	}
 
-	// Three offenders. Smallest by (account, asset) is ("staging:a", "USD").
+	// Four offenders across two ledgers. The last shares (account, asset) with
+	// the second — a cross-ledger repeat that must dedup to a single entry.
 	offenders := []domain.VolumeKey{
 		domain.NewVolumeKey("l-a", "staging:z", "USD"),
 		domain.NewVolumeKey("l-a", "staging:a", "USD"),
 		domain.NewVolumeKey("l-b", "staging:m", "EUR"),
+		domain.NewVolumeKey("l-b", "staging:a", "USD"),
 	}
 	// Non-zero balance (input != output) => offending. Reused read-only.
 	nonZero := &raftcmdpb.VolumePair{
@@ -858,13 +859,85 @@ func TestValidateTransientVolumesReturnsSmallestOffender(t *testing.T) {
 	).NewProposalScope()
 	require.NoError(t, err)
 
+	// Sorted by (Account, Asset); the l-b/staging:a/USD repeat is deduped out.
+	want := []domain.AccountAssetKey{
+		{Account: "staging:a", Asset: "USD"},
+		{Account: "staging:m", Asset: "EUR"},
+		{Account: "staging:z", Asset: "USD"},
+	}
+
 	for i := range 50 {
 		describ := buf.ValidateTransientVolumes(scope)
-		require.NotNil(t, describ, "iteration %d: expected an offender", i)
+		require.NotNil(t, describ, "iteration %d: expected offenders", i)
 
 		e, ok := describ.(*domain.ErrTransientAccountNonZero)
 		require.True(t, ok, "iteration %d: got %T", i, describ)
-		require.Equal(t, "staging:a", e.Account, "iteration %d", i)
-		require.Equal(t, "USD", e.Asset, "iteration %d", i)
+		require.Equal(t, want, e.Accounts, "iteration %d", i)
+	}
+}
+
+// TestValidateTransientVolumesStorageFaultTakesPrecedence pins that a
+// should-not-happen storage/coverage fault surfaces ahead of any business
+// offender: the check could not run correctly for that key, so the aggregated
+// ErrTransientAccountNonZero must not mask it. Here one transient volume has no
+// declared volume coverage (CheckCoverage fails => ErrStorageOperation) while
+// another is a plain non-zero business offender.
+func TestValidateTransientVolumesStorageFaultTakesPrecedence(t *testing.T) {
+	t.Parallel()
+
+	buf, machine, _ := newTestBuffer(t)
+
+	ledger := &commonpb.LedgerInfo{
+		Name: "l-a",
+		Id:   1,
+		AccountTypes: map[string]*commonpb.AccountType{
+			"staging": {
+				Name:        "staging",
+				Pattern:     "staging:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+			},
+		},
+	}
+	_, _, err := machine.Registry.Ledgers.KeyStore().Put(
+		(&domain.LedgerKey{Name: ledger.GetName()}).Bytes(),
+		ledger,
+	)
+	require.NoError(t, err)
+	buf.Derived.Ledgers.Put(domain.LedgerKey{Name: ledger.GetName()}, ledger)
+
+	businessOffender := domain.NewVolumeKey("l-a", "staging:a", "USD")
+	uncoveredOffender := domain.NewVolumeKey("l-a", "staging:z", "USD")
+	nonZero := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(200),
+		Output: commonpb.NewUint256FromUint64(50),
+	}
+	buf.Derived.Volumes.Put(businessOffender, nonZero)
+	buf.Derived.Volumes.Put(uncoveredOffender, nonZero)
+
+	// Declare the ledger and ONLY the business offender's volume coverage.
+	// uncoveredOffender is deliberately left undeclared so its CheckCoverage
+	// fails inside ValidateTransientVolumes.
+	lid, _ := attributes.MakeKey((&domain.LedgerKey{Name: ledger.GetName()}).Bytes())
+	vid, _ := attributes.MakeKey(businessOffender.Bytes())
+	attrPlans := []*raftcmdpb.AttributePlan{
+		declareTestPlan(lid, dal.SubAttrLedger),
+		declareTestPlan(vid, dal.SubAttrVolume),
+	}
+
+	scope, err := NewScopeFactory(
+		buf,
+		&raftcmdpb.ExecutionPlan{Attributes: attrPlans},
+		machine.logger,
+		machine.preloadMissCounter,
+		1,
+	).NewProposalScope()
+	require.NoError(t, err)
+
+	for i := range 50 {
+		describ := buf.ValidateTransientVolumes(scope)
+		require.NotNil(t, describ, "iteration %d: expected a fault", i)
+
+		_, ok := describ.(*domain.ErrStorageOperation)
+		require.True(t, ok, "iteration %d: storage fault must win over business offender, got %T", i, describ)
 	}
 }

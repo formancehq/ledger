@@ -1079,31 +1079,26 @@ func (b *WriteSet) BeginOrder(orderIndex int) {
 	b.volumes.BeginSlot(orderIndex)
 }
 
-// sortedDirtyVolumeKeys returns the dirty-volume keys in a deterministic
-// (Account, Asset, LedgerName) order. ValidateTransientVolumes runs on the FSM
-// apply path, which must be byte-deterministic across nodes (invariant #2).
-// DirtyValues() returns a raw Go map whose iteration order is randomized per
-// process, so ranging it directly makes the selection of the reported offending
-// transient (account, asset) nondeterministic — that identity is hashed into
-// the AuditFailure and would fork the audit hash chain across nodes (EN-1423).
-// LedgerName is a final tiebreaker for a total order; because the returned error
-// carries only account+asset, it never changes the error's identity, only makes
-// the selection fully defined when two ledgers share an (account, asset).
-func sortedDirtyVolumeKeys(dirty map[domain.VolumeKey]*raftcmdpb.VolumePair) []domain.VolumeKey {
-	keys := make([]domain.VolumeKey, 0, len(dirty))
-	for key := range dirty {
-		keys = append(keys, key)
-	}
+// storageFault pairs a "should-not-happen" storage/coverage failure hit during
+// transient validation with the dirty-volume key that produced it, so
+// ValidateTransientVolumes can pick a deterministic one (smallest key) to
+// surface even though DirtyValues() ranges in Go's randomized map order.
+type storageFault struct {
+	key domain.VolumeKey
+	err domain.Describable
+}
 
-	slices.SortFunc(keys, func(a, b domain.VolumeKey) int {
-		return cmp.Or(
-			cmp.Compare(a.Account, b.Account),
-			cmp.Compare(a.Asset, b.Asset),
-			cmp.Compare(a.LedgerName, b.LedgerName),
-		)
-	})
-
-	return keys
+// compareVolumeKeys orders volume keys by (Account, Asset, LedgerName). Account
+// and Asset are what the returned error carries; LedgerName is a final
+// tiebreaker giving a total order (map keys are unique on all three, so ties
+// never occur) so the winner is fully defined when two ledgers share an
+// (account, asset).
+func compareVolumeKeys(a, b domain.VolumeKey) int {
+	return cmp.Or(
+		cmp.Compare(a.Account, b.Account),
+		cmp.Compare(a.Asset, b.Asset),
+		cmp.Compare(a.LedgerName, b.LedgerName),
+	)
 }
 
 // ValidateTransientVolumes checks that all transient account volumes have zero balance.
@@ -1124,9 +1119,11 @@ func sortedDirtyVolumeKeys(dirty map[domain.VolumeKey]*raftcmdpb.VolumePair) []d
 func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Describable {
 	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
-	dirty := b.Derived.Volumes.DirtyValues()
-	for _, key := range sortedDirtyVolumeKeys(dirty) {
-		vol := dirty[key]
+	var (
+		storageFaults []storageFault
+		offenders     []domain.VolumeKey
+	)
+	for key, vol := range b.Derived.Volumes.DirtyValues() {
 		compiled, ok := ledgerTypes[key.LedgerName]
 		if !ok {
 			info, err := scope.Ledgers().Get(domain.LedgerKey{Name: key.LedgerName})
@@ -1135,7 +1132,9 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 			}
 
 			if err != nil {
-				return &domain.ErrStorageOperation{Operation: "loading ledger for transient volume validation", Cause: err}
+				storageFaults = append(storageFaults, storageFault{key, &domain.ErrStorageOperation{Operation: "loading ledger for transient volume validation", Cause: err}})
+
+				continue
 			}
 
 			compiled = accounttype.CompileTypes(info.Mutate().GetAccountTypes())
@@ -1157,7 +1156,9 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 		// preserve the coverage invariant on this otherwise-engine-
 		// internal read.
 		if err := scope.CheckCoverage(dal.SubAttrVolume, key.Bytes()); err != nil {
-			return &domain.ErrStorageOperation{Operation: "coverage check on transient base volume", Cause: err}
+			storageFaults = append(storageFaults, storageFault{key, &domain.ErrStorageOperation{Operation: "coverage check on transient base volume", Cause: err}})
+
+			continue
 		}
 
 		baseVol, _, baseErr := b.Derived.Volumes.Parent().GetKey(key)
@@ -1166,14 +1167,39 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 		}
 
 		if !isVolumeZeroBalance(vol) {
-			return &domain.ErrTransientAccountNonZero{
-				Account: key.Account,
-				Asset:   key.Asset,
-			}
+			offenders = append(offenders, key)
 		}
 	}
 
-	return nil
+	// A storage/coverage fault means the check could not run correctly for at
+	// least one key, so surface it ahead of any business offender. Pick the
+	// (Account, Asset, LedgerName)-smallest so the choice is deterministic.
+	if len(storageFaults) > 0 {
+		return slices.MinFunc(storageFaults, func(a, b storageFault) int {
+			return compareVolumeKeys(a.key, b.key)
+		}).err
+	}
+
+	if len(offenders) == 0 {
+		return nil
+	}
+
+	// One error listing every offending account, sorted by (Account, Asset,
+	// LedgerName) and deduplicated to (Account, Asset) granularity — the
+	// identity the error exposes. Sorting only the offenders (usually zero)
+	// keeps the byte-determinism guarantee off the happy path.
+	slices.SortFunc(offenders, compareVolumeKeys)
+	accounts := make([]domain.AccountAssetKey, 0, len(offenders))
+	for _, key := range offenders {
+		account := domain.AccountAssetKey{Account: key.Account, Asset: key.Asset}
+		if n := len(accounts); n > 0 && accounts[n-1] == account {
+			continue
+		}
+
+		accounts = append(accounts, account)
+	}
+
+	return &domain.ErrTransientAccountNonZero{Accounts: accounts}
 }
 
 // GetReverted is the bool-valued reversion probe — stays discrete (no Reader).

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"strconv"
+	"strings"
 )
 
 // ErrNotFound is a sentinel error for missing records in storage lookups. It
@@ -982,18 +983,34 @@ func (e *ErrBalanceNotPreloaded) Metadata() map[string]string {
 	return map[string]string{"account": e.Account, "asset": e.Asset}
 }
 
-// ErrTransientAccountNonZero — transient account has non-zero balance at end of batch.
+// ErrTransientAccountNonZero — one or more transient accounts held a non-zero
+// balance at end of batch. Accounts lists every offender; the producer
+// (state.ValidateTransientVolumes) sorts it by (Account, Asset) and dedups
+// cross-ledger repeats, so Error()/Metadata() render byte-identically across
+// nodes. That identity is hashed into the AuditFailure, so a nondeterministic
+// order would fork the audit hash chain (invariant #2 / #8, EN-1423).
 type ErrTransientAccountNonZero struct {
-	Account string
-	Asset   string
+	Accounts []AccountAssetKey
 }
 
 func (e *ErrTransientAccountNonZero) Error() string {
-	return fmt.Sprintf("transient account %s/%s has non-zero balance at end of batch (input != output)", e.Account, e.Asset)
+	return "transient accounts with non-zero balance at end of batch (input != output): " + e.joinedAccounts()
 }
 func (*ErrTransientAccountNonZero) Reason() string { return ErrReasonTransientAccountNonZero }
 func (e *ErrTransientAccountNonZero) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset}
+	return map[string]string{"accounts": e.joinedAccounts()}
+}
+
+// joinedAccounts renders the offenders as a deterministic, comma-separated
+// "account/asset" list. The slice is pre-sorted by the producer, so the output
+// is stable; a nil slice yields "".
+func (e *ErrTransientAccountNonZero) joinedAccounts() string {
+	parts := make([]string, len(e.Accounts))
+	for i, a := range e.Accounts {
+		parts[i] = a.Account + "/" + a.Asset
+	}
+
+	return strings.Join(parts, ", ")
 }
 
 // RemoteError is the client-side Describable produced by cmdutil's
