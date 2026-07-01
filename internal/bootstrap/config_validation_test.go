@@ -148,15 +148,12 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	require.Equal(t, "cluster-b", persisted.GetClusterId())
 }
 
-func TestValidateOrPersistConfig_SchemaVersionBackfillTooOld(t *testing.T) {
+func TestValidateOrPersistConfig_SchemaVersionBackfill(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)
 	logger := logging.Testing()
 
 	// Simulate a pre-versioning persisted config (schema_version == 0).
-	// It backfills to version 1, which is now too old vs the current
-	// version — the EN-1413 bump broke compatibility with data written
-	// before Raft membership moved to Pebble.
 	batch := store.OpenWriteSession()
 	require.NoError(t, SavePersistedConfig(batch, &commonpb.PersistedConfig{
 		NodeId:    1,
@@ -164,18 +161,17 @@ func TestValidateOrPersistConfig_SchemaVersionBackfillTooOld(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
+	// Boot with current code should backfill to version 1 and succeed.
 	cfg := Config{
 		RaftConfig: node.NodeConfig{NodeID: 1},
 		ClusterID:  "test",
 	}
 	err := ValidateOrPersistConfig(store, cfg, logger, false)
-	require.Error(t, err)
+	require.NoError(t, err)
 
-	var schemaErr *SchemaVersionError
-	require.ErrorAs(t, err, &schemaErr)
-	require.Equal(t, uint32(1), schemaErr.Persisted, "backfilled from v0 to v1")
-	require.Equal(t, CurrentStorageSchemaVersion, schemaErr.Current)
-	require.False(t, schemaErr.Downgrade)
+	persisted, err := LoadPersistedConfig(store)
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), persisted.GetStorageSchemaVersion())
 }
 
 func TestValidateOrPersistConfig_SchemaVersionTooNew(t *testing.T) {
