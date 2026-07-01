@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -32,6 +34,20 @@ func TestHandleError(t *testing.T) {
 			err:            commonpb.ErrNoLeader,
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedCode:   "NO_LEADER",
+			checkRetry:     true,
+		},
+		{
+			name:           "cache horizon exceeded — infrastructure rejection, retryable",
+			err:            plan.ErrCacheHorizonExceeded,
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedCode:   "CACHE_HORIZON_EXCEEDED",
+			checkRetry:     true,
+		},
+		{
+			name:           "cache horizon exceeded wrapped by admission",
+			err:            fmt.Errorf("building preloads: %w", plan.ErrCacheHorizonExceeded),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedCode:   "CACHE_HORIZON_EXCEEDED",
 			checkRetry:     true,
 		},
 		{

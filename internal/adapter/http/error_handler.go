@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -52,6 +53,19 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, commonpb.ErrNoLeader) {
 		w.Header().Set("Retry-After", "1")
 		writeErrorResponse(w, http.StatusServiceUnavailable, "NO_LEADER", err)
+
+		return
+	}
+
+	// plan.ErrCacheHorizonExceeded is an infrastructure-level admission
+	// rejection (not a domain business outcome, hence not a Describable):
+	// admission predicted 2+ cache rotations between propose and apply so
+	// any preload would be discarded before FSM read. Retry against a fresh
+	// admission snapshot. Mirrors the gRPC adapter's codes.Unavailable
+	// mapping (see internal/adapter/grpc/server.go).
+	if errors.Is(err, plan.ErrCacheHorizonExceeded) {
+		w.Header().Set("Retry-After", "1")
+		writeErrorResponse(w, http.StatusServiceUnavailable, "CACHE_HORIZON_EXCEEDED", err)
 
 		return
 	}

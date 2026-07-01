@@ -173,5 +173,6 @@ If you find yourself wanting to bypass a layer (e.g. read from Pebble inside a h
 ## Related
 
 - [deterministic-fsm.md](deterministic-fsm.md) — generation rotation, Preload building (admission side), AttributeLoader concurrency
+- [admission-cache-horizon.md](admission-cache-horizon.md) — admission-side rejection when ≥ 2 generations are predicted between propose and apply
 - [attributes.md](../storage/attributes.md) — Pebble layout (0xF1 attribute zone, 0xFF cache mirror)
 - [attribute-key-hashing.md](../storage/attribute-key-hashing.md) — U128 derivation and collision tag scheme
