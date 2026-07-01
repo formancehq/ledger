@@ -129,7 +129,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
-		0, 1000, nil,
+		0, 1000, nil, nil,
 	)
 	require.NoError(t, err)
 
@@ -209,7 +209,7 @@ func TestApplierRunAppliesEntries(t *testing.T) {
 	// Submit 3 CreateLedger entries.
 	for i := uint64(1); i <= 3; i++ {
 		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
-		setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+		setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
 	}
 
 	// Drain to ensure all entries are processed.
@@ -283,7 +283,7 @@ func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 	// Submit 3 CreateLedger entries.
 	for i := uint64(1); i <= 3; i++ {
 		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
-		setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+		setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
 	}
 
 	// Drain to ensure all entries are processed.
@@ -351,7 +351,7 @@ func TestApplierSubmitAbortsOnStop(t *testing.T) {
 
 	go func() {
 		entry2, _ := makeCreateLedgerEntry(t, 2, "blocked")
-		setup.applier.Submit([]raftpb.Entry{entry2}, nil, setup.stop)
+		setup.applier.Submit([]raftpb.Entry{entry2}, nil, nil, setup.stop)
 		close(submitDone)
 	}()
 
@@ -406,7 +406,7 @@ func TestApplierFutureResolution(t *testing.T) {
 	}()
 
 	// Submit the entry.
-	setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+	setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
 
 	// Wait for the future to resolve.
 	resultCh := make(chan state.ApplyResult, 1)
@@ -553,7 +553,7 @@ func TestApplierTermOlderThanBatchFails(t *testing.T) {
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+	setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
 	setup.applier.Drain(setup.stop)
 
 	gotErr, resolved := waitFutureBounded(orphanFuture, 2*time.Second)
@@ -584,7 +584,7 @@ func TestApplierMixedTermBatchV1RaceFixed(t *testing.T) {
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	setup.applier.Submit([]raftpb.Entry{committedEntry, advanceEntry}, nil, setup.stop)
+	setup.applier.Submit([]raftpb.Entry{committedEntry, advanceEntry}, nil, nil, setup.stop)
 	setup.applier.Drain(setup.stop)
 
 	// committed future resolves with success (commandID match, leader-completeness).
@@ -908,7 +908,7 @@ func TestApplierRejectedTriggerDoesNotDropTail(t *testing.T) {
 	// the entry being dropped by the bug.
 	tail, _ := makeCreateLedgerEntry(t, 2, "tail-ledger")
 
-	setup.applier.Submit([]raftpb.Entry{stale, tail}, setup.confState, setup.stop)
+	setup.applier.Submit([]raftpb.Entry{stale, tail}, setup.confState, nil, setup.stop)
 	setup.applier.Drain(setup.stop)
 
 	require.True(t, listLedgerContains(setup.store, "tail-ledger"),
@@ -943,7 +943,7 @@ func TestApplierSnapshotGatingCycle(t *testing.T) {
 	// Entries 6-8 are spooled during gating, then replayed after unspool.
 	for i := uint64(1); i <= 8; i++ {
 		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("gating-ledger-%d", i))
-		setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, setup.stop)
+		setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, nil, setup.stop)
 	}
 
 	// Eventually all 8 ledgers should exist (after unspool replays the spooled entries).

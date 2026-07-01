@@ -42,7 +42,7 @@ func (s *testApplierSetup) applyEntry(t *testing.T, ctx context.Context, entry r
 		runDone <- s.applier.Run(ctx, s.stop)
 	}()
 
-	s.applier.Submit([]raftpb.Entry{entry}, nil, s.stop)
+	s.applier.Submit([]raftpb.Entry{entry}, nil, nil, s.stop)
 	s.applier.Drain(s.stop)
 
 	close(s.stop)

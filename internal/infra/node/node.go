@@ -105,6 +105,20 @@ func (node *Node) execClusterCommand(ctx context.Context, fn func() error) error
 	}
 }
 
+// LocalResponses is the channel through which the Applier signals to the
+// orchestrate goroutine that a batch of MsgStorageAppendResp /
+// MsgStorageApplyResp messages should be Step()-ed back into rawNode
+// (closing the loop on async-storage writes). Owned by an fx provider so
+// both NewApplier (writer) and NewNode (reader) receive the same instance
+// via constructor injection — no setters.
+type LocalResponses chan []raftpb.Message
+
+// NewLocalResponses constructs the LocalResponses channel. Buffered at 64 to
+// absorb a few Ready cycles' worth of responses without blocking processReady.
+func NewLocalResponses() LocalResponses {
+	return make(LocalResponses, 64)
+}
+
 // readyResult is sent from processReadies to orchestrate after a Ready has been
 // persisted. It carries deferred rawNode operations that must execute in the
 // orchestrate goroutine (rawNode is not thread-safe).
@@ -116,6 +130,13 @@ type readyResult struct {
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
 	// orchestrate must call rawNode.ApplyConfChange for each.
 	confChanges []raftpb.ConfChangeV2
+	// applyResponses are MsgStorageApplyResp messages collected from
+	// LocalApplyThread messages in rd.Messages. They are handed to
+	// applier.Submit in finishReady and Step()-ed back into rawNode by the
+	// applier AFTER applyEntriesToFSM (or spool append) completes — bumping
+	// raft.Applied in lockstep with FSM-applied. Used only when
+	// AsyncStorageWrites is enabled.
+	applyResponses []raftpb.Message
 }
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft.
@@ -144,6 +165,12 @@ type Node struct {
 
 	readies            chan raft.Ready
 	readyTerminated    chan readyResult
+	// localResponseCh receives MsgStorageAppendResp / MsgStorageApplyResp
+	// messages (and any msgsAfterAppend responses they carry) produced by the
+	// async-storage path. The orchestrate goroutine drains it and Step()s each
+	// message into rawNode (rawNode is not thread-safe; only orchestrate may
+	// touch it). Used only when raft.Config.AsyncStorageWrites is true.
+	localResponseCh LocalResponses
 	tasks              *taskSet
 	stopChannel        chan chan struct{}
 	runDone            chan struct{} // closed when Run() exits
@@ -207,6 +234,7 @@ func NewNode(
 	fsm *state.Machine,
 	recovery *state.Recovery,
 	synchronizer *state.Synchronizer,
+	localResponses LocalResponses,
 ) (*Node, error) {
 	cfg.SetDefaults()
 
@@ -463,6 +491,7 @@ func NewNode(
 		applier:          applier,
 		readies:          make(chan raft.Ready, 1),
 		readyTerminated:  make(chan readyResult, 1),
+		localResponseCh:  localResponses,
 		tasks:            newTaskSet(),
 		stopChannel:      make(chan chan struct{}),
 		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
@@ -847,6 +876,13 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		// IndexTracker double-counts non-proposal WAL entries (ConfChange, no-ops)
 		// because they are already accounted for by initialIndex(wal).
 		Applied: applied,
+		// AsyncStorageWrites: local storage messages ride in rd.Messages
+		// (MsgStorageAppend for LocalAppendThread, MsgStorageApply for
+		// LocalApplyThread) instead of the Ready's legacy fields. Their
+		// embedded response messages must be Step()-ed back into rawNode
+		// after the storage work completes; rawNode.Advance MUST NOT be
+		// called.
+		AsyncStorageWrites: true,
 	}
 
 	node.logger.WithFields(map[string]any{
@@ -1192,7 +1228,49 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 	}
 
-	node.transport.Send(rd.Messages)
+	// Async-storage dispatch. rd.Messages contains three flavors:
+	//   - MsgStorageAppend (To == LocalAppendThread): payload already processed
+	//     via the legacy fields (wal.Append + snapshot install above); relay
+	//     Responses back. Responses mix self-directed acks (MsgStorageAppendResp
+	//     + leader's self-MsgAppResp) with peer-directed acks that were held
+	//     back until durable (follower's MsgAppResp, vote responses — see
+	//     raft.go's msgsAfterAppend path). Self → localResponseCh, peer →
+	//     transport.Send.
+	//   - MsgStorageApply (To == LocalApplyThread): committed entries. Their
+	//     Responses ride via readyResult.applyResponses and are fired by the
+	//     applier AFTER applyEntriesToFSM (or spool append) completes, aligning
+	//     raft.Applied with FSM-applied. MsgStorageApply.Responses are always
+	//     self-directed (newStorageApplyRespMsg sets To: r.id), so no split.
+	//   - Other → outbound peer message, hand to transport.
+	var (
+		appendResponses []raftpb.Message
+		outbound        []raftpb.Message
+	)
+	for _, m := range rd.Messages {
+		switch m.To {
+		case raft.LocalAppendThread:
+			for _, resp := range m.Responses {
+				if resp.To == node.config.NodeID {
+					appendResponses = append(appendResponses, resp)
+				} else {
+					outbound = append(outbound, resp)
+				}
+			}
+		case raft.LocalApplyThread:
+			result.applyResponses = append(result.applyResponses, m.Responses...)
+		default:
+			outbound = append(outbound, m)
+		}
+	}
+
+	node.transport.Send(outbound)
+
+	if len(appendResponses) > 0 {
+		select {
+		case node.localResponseCh <- appendResponses:
+		case <-stop:
+		}
+	}
 
 	// Extract conf changes from committed entries. The actual rawNode.ApplyConfChange
 	// calls are deferred to the orchestrate goroutine (rawNode is not thread-safe).
@@ -1331,9 +1409,12 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		}
 	}
 
-	// Submit committed entries to the Applier for async FSM application
-	if len(rd.CommittedEntries) > 0 {
-		node.applier.Submit(rd.CommittedEntries, node.confState.Load(), stop)
+	// Submit committed entries to the Applier for async FSM application.
+	// applyResponses (MsgStorageApplyResp) are deferred to the applier: they
+	// are Step()-ed back into rawNode only after applyEntriesToFSM (or the
+	// spool append) completes, so raft.Applied tracks FSM-applied.
+	if len(rd.CommittedEntries) > 0 || len(result.applyResponses) > 0 {
+		node.applier.Submit(rd.CommittedEntries, node.confState.Load(), result.applyResponses, stop)
 	}
 
 	return nil
@@ -1463,6 +1544,13 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			}
 
 			maybeCreateReady()
+		case msgs := <-node.localResponseCh:
+			err := stepMessages(msgs)
+			if err != nil {
+				return err
+			}
+
+			maybeCreateReady()
 		case <-stop:
 			node.logger.Infof("Stopping readyLoop as context was cancelled")
 			node.applier.Interrupt()
@@ -1471,6 +1559,13 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		default:
 			select {
 			case msgs := <-node.transport.RecvHighPriority():
+				err := stepMessages(msgs)
+				if err != nil {
+					return err
+				}
+
+				maybeCreateReady()
+			case msgs := <-node.localResponseCh:
 				err := stepMessages(msgs)
 				if err != nil {
 					return err
@@ -1511,7 +1606,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 						}).Tracef("Pre-Advance diagnostic")
 					}
 
-					node.rawNode.Advance(result.rd)
+					// AsyncStorageWrites: Advance must not be called (panics).
+					// Raft tracks ready acceptance via the response messages
+					// Step()-ed back through localResponseCh.
 
 					if node.rawNode.HasReady() {
 						node.readies <- node.rawNode.Ready()
@@ -1538,6 +1635,13 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				case nodeID := <-node.transport.Unreachable():
 					node.rawNode.ReportUnreachable(nodeID)
 				case msgs := <-node.transport.RecvHighPriority():
+					err := stepMessages(msgs)
+					if err != nil {
+						return err
+					}
+
+					maybeCreateReady()
+				case msgs := <-node.localResponseCh:
 					err := stepMessages(msgs)
 					if err != nil {
 						return err

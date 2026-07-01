@@ -33,6 +33,12 @@ type applyWork struct {
 	barrier         chan struct{} // non-nil = drain; closed when processed
 	syncLeader      uint64        // non-zero = trigger SyncSnapshot from Run goroutine
 	installSnapshot chan struct{} // non-nil = prepare for snapshot install; closed when ready
+	// responses are MsgStorageApplyResp messages attached to the
+	// MsgStorageApply that carried these entries. They must be Step()-ed back
+	// into rawNode AFTER the entries are applied to the FSM — that is what
+	// bumps raft.Applied and aligns it with FSM-applied. Used only when
+	// raft.Config.AsyncStorageWrites is true.
+	responses []raftpb.Message
 }
 
 // gatingResult carries the outcome of a maintenance task back to the Run
@@ -69,6 +75,12 @@ type Applier struct {
 	// pending holds the in-flight commit result channel, if any.
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
 	pending *pendingCommit
+
+	// responseSink receives MsgStorageApplyResp messages after the apply (or
+	// spool append) completes for a batch. Same channel instance the Node
+	// drains in its orchestrate loop. Nil-safe (no-op when the channel is
+	// unwired in tests).
+	responseSink LocalResponses
 
 	// Metrics
 	applyEntriesHistogram           metric.Int64Histogram
@@ -133,6 +145,7 @@ func NewApplier(
 	compactionMargin uint64,
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
+	responseSink LocalResponses,
 ) (*Applier, error) {
 	initialStatus := atomic.Int32{}
 	initialStatus.Store(statusNormal)
@@ -150,6 +163,7 @@ func NewApplier(
 		compactionMargin:        compactionMargin,
 		replayBatchSize:         replayBatchSize,
 		snapshotFetcherProvider: snapshotFetcherProvider,
+		responseSink:            responseSink,
 		status:                  &initialStatus,
 		ch:                      make(chan applyWork, 1),
 		commitCh:                make(chan commitWork, 1),
@@ -560,9 +574,13 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 
 // Submit sends committed entries to the Applier goroutine for asynchronous
 // FSM application (or spooling if the node is in a non-normal state).
-func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, stop chan struct{}) {
+//
+// responses (AsyncStorageWrites only) are MsgStorageApplyResp messages that
+// must be Step()-ed back into rawNode after the apply completes for this
+// batch. Pass nil in tests / sync mode.
+func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, responses []raftpb.Message, stop chan struct{}) {
 	select {
-	case a.ch <- applyWork{entries: entries, confState: confState}:
+	case a.ch <- applyWork{entries: entries, confState: confState, responses: responses}:
 	case <-stop:
 	}
 }
@@ -711,6 +729,19 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				err := a.spool.AppendCommittedEntries(ctx, work.entries...)
 				if err != nil {
 					return fmt.Errorf("spooling committed entries: %w", err)
+				}
+			}
+
+			// Deliver MsgStorageApplyResp now that the batch has either been
+			// applied to the FSM (statusNormal) or durably staged in the spool
+			// for later unspool-replay (other statuses). In both cases the
+			// entries are guaranteed to make it to the FSM eventually without
+			// further raft involvement, so it is safe to acknowledge Applied.
+			if len(work.responses) > 0 && a.responseSink != nil {
+				select {
+				case a.responseSink <- work.responses:
+				case <-stop:
+					return nil
 				}
 			}
 
