@@ -398,6 +398,39 @@ func TestStore_PrepareIncomingRestoreLocation(t *testing.T) {
 	require.True(t, info.IsDir())
 }
 
+// TestStore_ActivateIncomingRestore_FreshFollower pins the safety net that
+// makes follower-sync work when the follower has never taken a local
+// snapshot: the leader delivers the first checkpoint before `checkpoints/`
+// exists on disk, so ActivateIncomingRestore must MkdirAll the parent
+// before renaming staging into place. A refactor that drops the MkdirAll
+// would silently reintroduce the fresh-follower failure — this test
+// catches it.
+func TestStore_ActivateIncomingRestore_FreshFollower(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	// Precondition: checkpoints/ must not exist on a fresh store.
+	_, err := os.Stat(filepath.Join(s.DataDir(), "checkpoints"))
+	require.True(t, os.IsNotExist(err), "fresh store must not have a checkpoints/ dir yet")
+
+	stagingDir, err := s.PrepareIncomingRestore()
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(stagingDir, "marker"), []byte("leader-data"), 0o644))
+
+	checkpointID, err := s.ActivateIncomingRestore()
+	require.NoError(t, err, "must succeed even without a pre-existing checkpoints/ parent")
+	require.Equal(t, uint64(1), checkpointID)
+
+	// Staging dir was renamed (not copied) into checkpoints/<id>/.
+	marker, err := os.ReadFile(filepath.Join(s.DataDir(), "checkpoints", "1", "marker"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("leader-data"), marker)
+
+	_, err = os.Stat(stagingDir)
+	require.True(t, os.IsNotExist(err), "staging dir must be renamed away, not left behind")
+}
+
 func TestStore_IterateColdKVPairs(t *testing.T) {
 	t.Parallel()
 
