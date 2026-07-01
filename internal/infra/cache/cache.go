@@ -177,13 +177,18 @@ const (
 // raft index `at`. Takes a read lock on the cache to ensure a consistent view
 // of currentGeneration and the gen0/gen1 data during the check.
 func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus {
+	a.Cache.mu.RLock()
+	defer a.Cache.mu.RUnlock()
+
+	// Threshold + currentGeneration are read INSIDE the RLock so a concurrent
+	// ResetWithThreshold (write-lock holder) cannot bump one between our
+	// reads and leave us with a (threshold=old, currentGeneration=new)
+	// snapshot. Such a torn view would classify a valid admission as
+	// CacheUnreachable during the threshold-change transition window.
 	threshold := a.Cache.GenerationThreshold()
 	if threshold == 0 {
 		return CacheMiss
 	}
-
-	a.Cache.mu.RLock()
-	defer a.Cache.mu.RUnlock()
 
 	actualGeneration := a.Cache.currentGeneration.Load()
 	futureGeneration := Gen(at, threshold)
