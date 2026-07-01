@@ -110,20 +110,13 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 			"raftIndex":    raftIndex,
 		}).Infof("Applying cluster config change: resetting cache and purging 0xFF")
 
-		fsm.Registry.Cache.ResetWithThreshold(newThreshold)
-		// ResetWithThreshold leaves currentGeneration=0 and BaseIndex={0,0},
-		// but the Raft log is long past index 0. Admission's CheckCache would
-		// then compute Gen(nextIndex, newThreshold) - 0, a large value that
-		// erroneously trips the CacheUnreachable horizon. And any proposal
-		// admitted after the reset with the new epoch would carry a
-		// LastPersistedIndex that doesn't match BaseIndex.{Gen0,Gen1}=0 —
-		// triggering the FSM-side preload boundary mismatch panic on apply.
-		//
-		// CheckRotationNeeded jumps currentGeneration AND BaseIndex to
-		// Gen(raftIndex, newThreshold) atomically (rotateLocked under the
-		// same cache.mu as the reset), so admission's next snapshot sees a
-		// consistent (currentGeneration, threshold, BaseIndex) tuple.
-		fsm.Registry.Cache.CheckRotationNeeded(raftIndex)
+		// ResetWithThreshold atomically resets caches, bumps the epoch, sets
+		// the new threshold, AND realigns currentGeneration + BaseIndex to
+		// Gen(raftIndex, newThreshold) — all under the same cache.mu so
+		// admission's next snapshot never observes a transient
+		// (currentGeneration=0, threshold=new) window that would falsely
+		// trip the CacheUnreachable horizon (2+ predicted rotations).
+		fsm.Registry.Cache.ResetWithThreshold(newThreshold, raftIndex)
 
 		// Purge both generation byte positions (0 and 1) in the 0xFF cache zone.
 		// We can't use a single DeleteRange from [0xFF] to [0xFF+1] because

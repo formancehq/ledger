@@ -375,11 +375,32 @@ func TestCache_ResetWithThresholdIncrementsEpoch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), cache.Epoch())
 
-	cache.ResetWithThreshold(200)
+	cache.ResetWithThreshold(200, 0)
 	assert.Equal(t, uint64(2), cache.Epoch())
 
-	cache.ResetWithThreshold(300)
+	cache.ResetWithThreshold(300, 0)
 	assert.Equal(t, uint64(3), cache.Epoch())
+}
+
+// TestCache_ResetWithThresholdAtNonZeroIndex covers the atomic realignment
+// path: when the caller passes a raftIndex that falls into a non-zero
+// generation under the new threshold, ResetWithThreshold must set
+// currentGeneration and BaseIndex accordingly in the SAME critical section
+// so admission's next CheckCache never observes a transient
+// (currentGeneration=0, threshold=new) window.
+func TestCache_ResetWithThresholdAtNonZeroIndex(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(100, nil)
+	require.NoError(t, err)
+
+	// raftIndex=25 with newThreshold=10 → Gen=2, BaseIndex.Gen0=genEndIndex(1, 10)=20.
+	cache.ResetWithThreshold(10, 25)
+
+	assert.Equal(t, uint64(2), cache.CurrentGeneration())
+	assert.Equal(t, uint64(20), cache.BaseIndex.Gen0)
+	assert.Equal(t, uint64(0), cache.BaseIndex.Gen1)
+	assert.Equal(t, uint64(2), cache.Epoch())
 }
 
 func TestCache_CheckRotationNeeded_SameGeneration(t *testing.T) {

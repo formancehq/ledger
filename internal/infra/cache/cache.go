@@ -342,17 +342,42 @@ func (c *Cache) Reset() {
 	c.clearLocked()
 }
 
-// ResetWithThreshold atomically resets the cache, increments the epoch, and
-// sets a new generation threshold. Called by the FSM when a cluster config
-// change is applied — the epoch increment is deterministic (all nodes apply
-// the same Raft entry).
-func (c *Cache) ResetWithThreshold(threshold uint64) {
+// ResetWithThreshold atomically resets the cache, increments the epoch, sets
+// a new generation threshold, AND realigns currentGeneration + BaseIndex to
+// the generation that raftIndex falls into under the new threshold. Called
+// by the FSM when a cluster config change is applied.
+//
+// The epoch increment is deterministic (all nodes apply the same Raft
+// entry). Realigning currentGeneration and BaseIndex in the same critical
+// section closes the race window where admission's CheckCache would
+// otherwise observe currentGeneration=0 against the new threshold and
+// falsely trip the CacheUnreachable horizon (2+ predicted rotations); the
+// caller-provided raftIndex is the entry the FSM is applying, so
+// Gen(raftIndex, threshold) is the correct post-reset horizon.
+//
+// Callers that persist the reset to Pebble must read the returned tuple
+// (or Cache.CurrentGeneration + Cache.BaseIndex.{Gen0,Gen1}) so the
+// on-disk sentinels reflect the same in-memory state a RestoreFromStore
+// would reconstruct.
+func (c *Cache) ResetWithThreshold(threshold, raftIndex uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.clearLocked()
 	c.epoch.Add(1)
 	c.generationThreshold.Store(threshold)
+
+	// Skip the alignment when the threshold is 0 (rotations disabled) or
+	// the target generation is 0 (raftIndex within the first gen — the
+	// post-clearLocked state already matches).
+	if threshold == 0 {
+		return
+	}
+
+	if g := Gen(raftIndex, threshold); g != 0 {
+		boundary := genEndIndex(g-1, threshold)
+		c.rotateLocked(boundary, g)
+	}
 }
 
 // clearLocked clears all cache data without incrementing the epoch.
