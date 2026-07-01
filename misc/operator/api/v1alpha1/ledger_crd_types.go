@@ -98,10 +98,90 @@ type SecretKeyRef struct {
 }
 
 // PostgresMirrorSource configures PostgreSQL-based mirror replication.
+//
+// The connection target is described by explicit fields (Host/Port/User/Database/SSLMode).
+// Exactly one of PasswordFrom (static credentials via Secret) or AWSIAMAuth (RDS IAM
+// token minted per connection) must be set. The operator assembles the DSN before
+// invoking ledgerctl on the target pod.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.passwordFrom) != has(self.awsIamAuth)",message="exactly one of passwordFrom or awsIamAuth must be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.awsIamAuth) || !has(self.sslMode) || self.sslMode in ['require','verify-ca','verify-full']",message="awsIamAuth requires sslMode in {require, verify-ca, verify-full}; non-TLS sslmodes would let the SigV4 bearer token travel in cleartext"
 type PostgresMirrorSource struct {
-	// DSNFrom references a Kubernetes Secret containing the PostgreSQL connection string.
+	// Host is the PostgreSQL endpoint hostname (e.g. RDS DB cluster endpoint).
 	// +kubebuilder:validation:Required
-	DSNFrom SecretKeyRef `json:"dsnFrom"`
+	// +kubebuilder:validation:MinLength=1
+	Host string `json:"host"`
+
+	// Port is the PostgreSQL port. Defaults to 5432.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +kubebuilder:default=5432
+	// +optional
+	Port int32 `json:"port,omitempty"`
+
+	// User is the PostgreSQL user.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	User string `json:"user"`
+
+	// Database is the PostgreSQL database name.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Database string `json:"database"`
+
+	// SSLMode is the libpq sslmode parameter (disable, allow, prefer, require,
+	// verify-ca, verify-full). Defaults to "require".
+	// +kubebuilder:validation:Enum=disable;allow;prefer;require;verify-ca;verify-full
+	// +kubebuilder:default=require
+	// +optional
+	SSLMode string `json:"sslMode,omitempty"`
+
+	// PasswordFrom references a Kubernetes Secret containing the PostgreSQL password.
+	// Mutually exclusive with AWSIAMAuth.
+	// +optional
+	PasswordFrom *SecretKeyRef `json:"passwordFrom,omitempty"`
+
+	// AWSIAMAuth enables AWS RDS IAM authentication: the mirror mints a
+	// short-lived (15 min) SigV4 token per connection from the ambient AWS
+	// credential chain on the ledger pod (IRSA, instance profile, env, profile).
+	// Mutually exclusive with PasswordFrom.
+	//
+	// In a typical EKS deployment, IRSA is wired by annotating the
+	// LedgerService ServiceAccount with eks.amazonaws.com/role-arn, e.g.:
+	//   kind: LedgerService
+	//   spec:
+	//     serviceAccount:
+	//       annotations:
+	//         eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/mirror-rds-iam
+	// The bound IAM role must allow rds-db:connect on the RDS db-user ARN
+	// (arn:aws:rds-db:REGION:ACCOUNT:dbuser:DB-RESOURCE-ID/USER). The role is
+	// shared across every mirror in the LedgerService, so its policy must
+	// cover every RDS endpoint addressed by Ledger CRDs in that service.
+	// +optional
+	AWSIAMAuth *AWSIAMAuthSpec `json:"awsIamAuth,omitempty"`
+}
+
+// AWSIAMAuthSpec configures AWS RDS IAM authentication for a Postgres mirror source.
+type AWSIAMAuthSpec struct {
+	// Region is the AWS region of the RDS instance (e.g. "eu-west-1").
+	// Required to sign the IAM authentication token (SigV4).
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Region string `json:"region"`
+
+	// AssumeRoleArn is an optional STS role ARN to assume before minting the
+	// RDS IAM token. When set, the mirror calls sts:AssumeRole on this ARN
+	// using the pod's ambient credentials and signs the RDS token with the
+	// assumed credentials. This decouples each mirror's IAM identity from the
+	// pod's base role, so a single LedgerService can mirror RDS instances
+	// across multiple AWS accounts or tenants: the pod's base role only needs
+	// sts:AssumeRole on the listed targets (no direct rds-db:connect grant).
+	//
+	// When left empty, the pod's ambient credentials are used directly and
+	// must hold rds-db:connect on the target db-user ARN.
+	// +kubebuilder:validation:MinLength=1
+	// +optional
+	AssumeRoleArn string `json:"assumeRoleArn,omitempty"`
 }
 
 // LedgerCRDStatus defines the observed state of a Ledger.

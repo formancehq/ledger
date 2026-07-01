@@ -90,14 +90,16 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.Equal(t, "/bin/sh", c.Command[0])
 	require.Equal(t, "-c", c.Command[1])
 	shell := c.Command[2]
-	require.Contains(t, shell, "./ledgerctl store backup")
+	// Caller-supplied args are single-quoted by ledgerctlCommand to neutralize
+	// shell metacharacters from CRD fields or Secret values.
+	require.Contains(t, shell, "./ledgerctl 'store' 'backup'")
 	require.Contains(t, shell, `--server "ledger-ledger.ledger-v3.svc.cluster.local:8888"`)
 	require.Contains(t, shell, `--tls-ca-cert "$TLS_CA_CERT_FILE"`)
 	require.Contains(t, shell, `--auth-token "$CLUSTER_SECRET"`)
-	require.Contains(t, shell, "--driver s3")
-	require.Contains(t, shell, "--s3-bucket my-bucket")
-	require.Contains(t, shell, "--s3-region eu-west-1")
-	require.Contains(t, shell, "--json")
+	require.Contains(t, shell, "'--driver' 's3'")
+	require.Contains(t, shell, "'--s3-bucket' 'my-bucket'")
+	require.Contains(t, shell, "'--s3-region' 'eu-west-1'")
+	require.Contains(t, shell, "'--json'")
 
 	// TLS volume must be present with the ledger-tls secret.
 	require.Len(t, job.Spec.Template.Spec.Volumes, 1)
@@ -180,7 +182,7 @@ func TestBuildBackupJob_Incremental(t *testing.T) {
 	require.NoError(t, err)
 
 	shell := job.Spec.Template.Spec.Containers[0].Command[2]
-	require.Contains(t, shell, "./ledgerctl store incremental-backup")
+	require.Contains(t, shell, "./ledgerctl 'store' 'incremental-backup'")
 	require.Contains(t, shell, "--insecure")
 	require.NotContains(t, shell, "--tls-ca-cert")
 	require.Empty(t, job.Spec.Template.Spec.Volumes, "disabled TLS must not mount the tls-certs volume")
@@ -223,7 +225,7 @@ func TestBuildBackupJob_Timeout(t *testing.T) {
 		}
 		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
 		require.NoError(t, err)
-		require.Contains(t, job.Spec.Template.Spec.Containers[0].Command[2], "--timeout 30m0s")
+		require.Contains(t, job.Spec.Template.Spec.Containers[0].Command[2], "'--timeout' '30m0s'")
 	})
 
 	t.Run("missing timeout means no --timeout flag", func(t *testing.T) {
@@ -469,6 +471,6 @@ func TestBuildBackupJob_DeclaresTerminationMessagePath(t *testing.T) {
 	require.Len(t, c.Command, 3)
 	require.Equal(t, "/bin/sh", c.Command[0])
 	require.Equal(t, "-c", c.Command[1])
-	require.Contains(t, c.Command[2], "--result-file "+corev1.TerminationMessagePathDefault,
+	require.Contains(t, c.Command[2], "'--result-file' '"+corev1.TerminationMessagePathDefault+"'",
 		"ledgerctl must mirror the JSON to terminationMessagePath; otherwise the kubelet never sees the result")
 }

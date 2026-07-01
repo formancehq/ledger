@@ -1,55 +1,155 @@
 package v2
 
 import (
+	"context"
+	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-func TestEncodeDSNPassword(t *testing.T) {
+func TestBuildPgxPoolConfig_NoIAMLeavesBeforeConnectNil(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "no special chars",
-			input:    "postgres://user:simple@host:5432/db",
-			expected: "postgres://user:simple@host:5432/db",
-		},
-		{
-			name:     "password with pipe and question mark",
-			input:    "postgres://formance:YCA[sRR-~X]Pqdv|Ms3?hzc0u#f_@host:5432/db",
-			expected: "postgres://formance:YCA%5BsRR-~X%5DPqdv%7CMs3%3Fhzc0u%23f_@host:5432/db",
-		},
-		{
-			name:     "keyword value format unchanged",
-			input:    "host=localhost user=admin password=secret dbname=mydb",
-			expected: "host=localhost user=admin password=secret dbname=mydb",
-		},
-		{
-			name:     "no password",
-			input:    "postgres://user@host:5432/db",
-			expected: "postgres://user@host:5432/db",
-		},
-		{
-			name:     "no credentials",
-			input:    "postgres://host:5432/db",
-			expected: "postgres://host:5432/db",
-		},
-		{
-			name:     "postgresql scheme",
-			input:    "postgresql://user:p@ss|word@host:5432/db",
-			expected: "postgresql://user:p%40ss%7Cword@host:5432/db",
-		},
-	}
+	cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		Dsn: "postgres://user:pass@host:5432/db?sslmode=disable",
+	})
+	require.NoError(t, err)
+	require.Nil(t, cfg.BeforeConnect, "BeforeConnect must remain nil when IAM auth is not configured")
+	require.Equal(t, "host", cfg.ConnConfig.Host)
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+func TestBuildPgxPoolConfig_IAMRegionRequired(t *testing.T) {
+	t.Parallel()
+
+	_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		Dsn:        "postgres://iam-user@host:5432/db?sslmode=require",
+		AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: ""},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "region is required")
+}
+
+func TestBuildPgxPoolConfig_IAMRejectsKeywordValueDSN(t *testing.T) {
+	t.Parallel()
+
+	// IAM auth requires the URI form. Rejecting libpq keyword=value up-front
+	// closes two attack surfaces at once:
+	//   - the adversarial quoted-value bypass flagged by NumaryBot (e.g.
+	//     application_name='x sslmode=require' sslmode=disable) — the DSN
+	//     never reaches the sslmode parser because the URI check fires first.
+	//   - it lets the raw-DSN sslmode check use net/url instead of a
+	//     hand-rolled libpq tokenizer.
+	dsn := `host=db.example.com user=iam-user dbname=ledger sslmode=require`
+
+	_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		Dsn:        dsn,
+		AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "URI-form")
+}
+
+func TestBuildPgxPoolConfig_IAMRejectsDSNWithoutExplicitSSLMode(t *testing.T) {
+	// Cannot run in parallel: this test sets PGSSLMODE=require to exercise
+	// the exact bypass NumaryBot reported (env-var-driven TLS with no
+	// sslmode= in the persisted DSN). With PGSSLMODE=require, pgx's parsed
+	// config reports TLS on every attempt — the raw-DSN check is the only
+	// thing that keeps admission independent of pod env.
+	t.Setenv("PGSSLMODE", "require")
+
+	dsn := "postgres://iam-user@host:5432/db" // no sslmode= in the URI
+
+	_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		Dsn:        dsn,
+		AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+	})
+	require.Error(t, err, "PGSSLMODE=require in the env must not satisfy the IAM TLS gate — the persisted DSN must carry sslmode= itself")
+	require.Contains(t, err.Error(), "sslmode")
+}
+
+func TestBuildPgxPoolConfig_IAMRejectsNonTLSSSLMode(t *testing.T) {
+	t.Parallel()
+
+	// The SigV4 token is a 15-min bearer credential; sslmode in
+	// {disable, allow, prefer, ""} would let it travel in cleartext.
+	for _, mode := range []string{"disable", "allow", "prefer", ""} {
+		t.Run("sslmode="+mode, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.expected, encodeDSNPassword(tt.input))
+
+			dsn := "postgres://iam-user@host:5432/db"
+			if mode != "" {
+				dsn += "?sslmode=" + mode
+			}
+
+			_, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+				Dsn:        dsn,
+				AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+			})
+			require.Error(t, err, "sslmode=%q must be rejected when awsIamAuth is set", mode)
+			require.Contains(t, err.Error(), "sslmode")
 		})
 	}
+}
+
+func TestBuildPgxPoolConfig_IAMAcceptsTLSSSLModes(t *testing.T) {
+	// Cannot run in parallel: t.Setenv mutates process env, and the AWS SDK
+	// default credential chain resolves env lazily inside BuildAuthToken.
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIATEST")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "SECRETTEST")
+	t.Setenv("AWS_REGION", "eu-west-1")
+
+	for _, mode := range []string{"require", "verify-ca", "verify-full"} {
+		cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+			Dsn:        "postgres://iam-user@host:5432/db?sslmode=" + mode,
+			AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+		})
+		require.NoError(t, err, "sslmode=%q must be accepted with awsIamAuth", mode)
+		require.NotNil(t, cfg.BeforeConnect, "BeforeConnect must be installed for sslmode=%q", mode)
+	}
+}
+
+func TestBuildPgxPoolConfig_IAMAssumeRoleInstallsBeforeConnect(t *testing.T) {
+	t.Parallel()
+
+	// AssumeRoleArn branch wires an STS-AssumeRole credentials provider before
+	// installing iamBeforeConnect. We only assert the hook is in place; the
+	// actual sts:AssumeRole call would only fire on connect (no real network
+	// here) and is mocked away by NewCredentialsCache's lazy semantics.
+	cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		Dsn: "postgres://iam-user@host:5432/db?sslmode=require",
+		AwsIamAuth: &commonpb.PostgresAwsIamAuth{
+			Region:        "eu-west-1",
+			AssumeRoleArn: "arn:aws:iam::222222222222:role/cross-tenant-mirror",
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cfg.BeforeConnect, "BeforeConnect must be installed even when AssumeRoleArn is set")
+}
+
+func TestBuildPgxPoolConfig_IAMWiresBeforeConnect(t *testing.T) {
+	// Cannot run in parallel: t.Setenv mutates process env, and the AWS SDK
+	// default credential chain resolves env lazily inside BuildAuthToken.
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIATEST")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "SECRETTEST")
+	t.Setenv("AWS_REGION", "eu-west-1")
+
+	cfg, err := buildPgxPoolConfig(context.Background(), &commonpb.PostgresMirrorSourceConfig{
+		Dsn: "postgres://iam-user@db.example.com:5432/app?sslmode=require",
+		AwsIamAuth: &commonpb.PostgresAwsIamAuth{
+			Region: "eu-west-1",
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cfg.BeforeConnect, "WithPgxPoolIAMAuth must install a BeforeConnect hook")
+
+	// Sanity-check the hook actually mints a SigV4-signed RDS IAM token and
+	// overrides the connection password.
+	require.NoError(t, cfg.BeforeConnect(context.Background(), cfg.ConnConfig))
+	pw := cfg.ConnConfig.Password
+	require.NotEmpty(t, pw, "expected BeforeConnect to set ConnConfig.Password")
+	require.True(t, strings.Contains(pw, "X-Amz-Signature"), "expected SigV4 signature, got %q", pw)
+	require.True(t, strings.Contains(pw, "DBUser=iam-user"), "expected DBUser claim, got %q", pw)
 }
