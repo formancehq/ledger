@@ -783,16 +783,47 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 
 	// If Pebble's durable applied index is below the WAL's first available
 	// entry, the entries needed to catch the FSM up to walSnap.Metadata.Index
-	// are gone from both Pebble and the Raft WAL. With Store.SyncWAL in the
-	// maintenance path this is unreachable in correct operation; if it
-	// triggers, something is very wrong — refuse to start rather than mask it.
+	// are gone from the Raft WAL — but that only means data loss when the
+	// entries are also missing everywhere else. Two distinct paths reach here:
+	//
+	//  1. Genuine data loss (applier status != statusOutOfSync). The maintenance
+	//     invariant (SyncWAL before Compact) was violated; Pebble's applied truly
+	//     lags the WAL and no external replica has the missing entries. Refuse
+	//     to start.
+	//
+	//  2. Crashed post-InstallSnapshot, pre-SynchronizeWithLeader (applier
+	//     status == statusOutOfSync). The follower processed a MsgSnap from the
+	//     leader: etcd-raft compacted the WAL to snapshotIndex synchronously
+	//     (node.go processReady), but the async SynchronizeWithLeader that
+	//     materialises the leader's checkpoint into Pebble had not completed
+	//     when the process died. RecoverAndReplay detected the gap
+	//     (LastAppliedIndex < SnapshotIndex) and flagged the applier
+	//     out-of-sync. This state is self-healing: processReady will re-trigger
+	//     SyncSnapshot on the next SoftState carrying a leader (node.go
+	//     ready-loop). Cap Applied to walSnap.Metadata.Index so etcd-raft can
+	//     boot — semantically consistent with State.SnapshotIndex, which
+	//     synchronizer.InstallSnapshot already set to the same value.
 	if applied+1 < walFirstIdx {
-		return fmt.Errorf(
-			"durability gap exceeds WAL retention: Pebble applied=%d, WAL firstIndex=%d, "+
-				"WAL snapshot=%d. The compaction margin was overrun before Pebble fsync'd. "+
-				"Restore from a Pebble checkpoint or contact ops",
-			applied, walFirstIdx, walSnap.Metadata.Index,
+		if node.applier.Status() != statusOutOfSync {
+			return fmt.Errorf(
+				"durability gap exceeds WAL retention: Pebble applied=%d, WAL firstIndex=%d, "+
+					"WAL snapshot=%d. The compaction margin was overrun before Pebble fsync'd. "+
+					"Restore from a Pebble checkpoint or contact ops",
+				applied, walFirstIdx, walSnap.Metadata.Index,
+			)
+		}
+
+		node.logger.WithFields(map[string]any{
+			"applied":          applied,
+			"walFirstIndex":    walFirstIdx,
+			"walSnapshotIndex": walSnap.Metadata.Index,
+		}).Errorf(
+			"Pebble applied lags WAL snapshot — previous process crashed between " +
+				"InstallSnapshot and SynchronizeWithLeader completion; applier is " +
+				"out-of-sync, will re-sync from leader",
 		)
+
+		applied = walSnap.Metadata.Index
 	}
 
 	if walSnap.Metadata.Index > applied {
