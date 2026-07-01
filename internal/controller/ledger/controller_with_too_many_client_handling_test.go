@@ -16,6 +16,17 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
+func TestDelayCalculatorFn(t *testing.T) {
+	t.Parallel()
+
+	fn := DelayCalculatorFn(func(iteration int) time.Duration {
+		return time.Duration(iteration) * time.Second
+	})
+	require.Equal(t, time.Duration(0), fn.Next(0))
+	require.Equal(t, time.Second, fn.Next(1))
+	require.Equal(t, 2*time.Second, fn.Next(2))
+}
+
 func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 	t.Parallel()
 

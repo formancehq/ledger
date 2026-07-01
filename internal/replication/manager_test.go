@@ -3,6 +3,7 @@ package replication
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -543,6 +544,47 @@ func TestManagerSynchronizePipelinesError(t *testing.T) {
 
 	require.NoError(t, manager.Stop(ctx))
 	require.Eventually(t, ctrl.Satisfied, time.Second, 10*time.Millisecond)
+}
+
+// TestManagerPeriodicSyncError covers manager.go line 280-282: the periodic
+// sync timer fires, synchronizePipelines returns an error, and the manager
+// logs the error and continues running.
+func TestManagerPeriodicSyncError(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	ctrl := gomock.NewController(t)
+	storage := NewMockStorage(ctrl)
+	exporterConfigValidator := NewMockConfigValidator(ctrl)
+	driverFactory := drivers.NewMockFactory(ctrl)
+
+	var callCount atomic.Int32
+	storage.EXPECT().
+		ListEnabledPipelines(gomock.Any()).
+		AnyTimes().
+		DoAndReturn(func(_ context.Context) ([]ledger.Pipeline, error) {
+			n := callCount.Add(1)
+			if n == 1 {
+				return nil, nil
+			}
+			return nil, errors.New("periodic sync failure")
+		})
+
+	manager := NewManager(
+		storage,
+		driverFactory,
+		logging.Testing(),
+		exporterConfigValidator,
+		WithSyncPeriod(2),
+	)
+	go manager.Run(ctx)
+	<-manager.Started()
+
+	require.Eventually(t, func() bool {
+		return callCount.Load() >= 2
+	}, time.Second, 10*time.Millisecond)
+
+	require.NoError(t, manager.Stop(ctx))
 }
 
 // TestManagerPeriodicSync covers the time.After branch in manager.go Run loop
