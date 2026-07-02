@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
 
@@ -15,6 +16,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// noopConfChangeHandler satisfies the confChangeHandler contract for
+// tests that don't wire a real Node. The FSM's PrepareEntries calls
+// this for every EntryConfChange* — a plain no-op is safe because
+// tests that don't exercise membership don't propose ConfChange
+// entries either.
+func noopConfChangeHandler(raftpb.Entry, *dal.WriteSession) error { return nil }
 
 func newNoopNotifier(t *testing.T) *MockNotifier {
 	t.Helper()

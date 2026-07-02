@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -48,6 +47,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
+	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
 	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
@@ -302,6 +302,7 @@ func Module() fx.Option {
 				machine *state.Machine,
 				recovery *state.Recovery,
 				synchronizer *state.Synchronizer,
+				membership *raftmembership.Membership,
 			) (*node.Applier, error) {
 				return node.NewApplier(
 					machine,
@@ -315,6 +316,7 @@ func Module() fx.Option {
 					cfg.CompactionMargin,
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
+					membership.OnSnapshotInstalled,
 				)
 			},
 			// Recovery owns the Pebble read capability for boot/post-sync rehydrate.
@@ -338,6 +340,22 @@ func Module() fx.Option {
 			func(machine *state.Machine, recovery *state.Recovery, store *dal.Store) *state.Synchronizer {
 				return state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 			},
+			// PeerStore persists Raft cluster membership in Pebble under
+			// [ZoneGlobal][SubGlobPeers] (EN-1413). Membership wraps it
+			// with the in-memory cache, owns the transport / service-pool
+			// wiring, and exposes the OnSnapshotInstalled /
+			// WriteConfChange callbacks injected into Applier and Machine
+			// via constructor.
+			raftmembership.NewPeerStore,
+			fx.Annotate(func(
+				store *raftmembership.PeerStore,
+				defaultTransport *node.DefaultTransport,
+				servicePool *transport.ConnectionPool,
+				cfg node.NodeConfig,
+				logger logging.Logger,
+			) (*raftmembership.Membership, error) {
+				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, logger)
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a
@@ -373,6 +391,7 @@ func Module() fx.Option {
 				mirrorNotifications *signal.Notifications,
 				indexNotifications *signal.Notifications,
 				bloomFilters *bloom.FilterSet,
+				membership *raftmembership.Membership,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 
@@ -399,6 +418,7 @@ func Module() fx.Option {
 					bloomFilters,
 					cfg.ClusterID,
 					cfg.NumscriptCacheSize,
+					membership.WriteConfChange,
 				)
 				if err != nil {
 					return nil, err
@@ -409,7 +429,7 @@ func Module() fx.Option {
 				}).Infof("FSM Machine created")
 
 				return m, nil
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`)),
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`, ``, ``)),
 			func(
 				params struct {
 					fx.In
@@ -423,6 +443,7 @@ func Module() fx.Option {
 					Machine       *state.Machine
 					Recovery      *state.Recovery
 					Synchronizer  *state.Synchronizer
+					Membership    *raftmembership.Membership
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -450,6 +471,7 @@ func Module() fx.Option {
 					params.Machine,
 					params.Recovery,
 					params.Synchronizer,
+					params.Membership,
 				)
 				if err != nil {
 					return nodeProvideResult{}, err
@@ -467,6 +489,7 @@ func Module() fx.Option {
 			buildResponseSigner,
 			func(cfg Config) node.NodeConfig {
 				cfg.RaftConfig.DataDir = cfg.DataDir
+				cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
 				cfg.RaftConfig.SetDefaults()
 
 				return cfg.RaftConfig
@@ -932,21 +955,19 @@ func Module() fx.Option {
 					},
 				})
 			},
-			// Start Raft server (internal) - must start before adding peers
-			fx.Annotate(func(
+			// Start Raft server (internal). Peer wiring (transport +
+			// service pool) is owned by Membership; the initial wire
+			// runs here in OnStart AFTER the local Raft gRPC server is
+			// listening — that way ConnectionPool.AddPeer's optional-
+			// TLS probe against a remote pod has a fair chance to
+			// succeed. Post-Start, runtime Set / Remove wire inline.
+			// (EN-1413)
+			func(
 				lc fx.Lifecycle,
 				raftServer *grpcadp.RaftServer,
 				logger logging.Logger,
-				defaultTransport *node.DefaultTransport,
-				servicePool *transport.ConnectionPool,
-				cfg node.NodeConfig,
-				n *node.Node,
-				fullCfg Config,
+				membership *raftmembership.Membership,
 			) {
-				// Store own address in Node so it gets included in the next snapshot.
-				// This ensures that after a snapshot cycle, all nodes know this node's address.
-				n.SetPeerAddress(cfg.NodeID, cfg.AdvertiseAddr, fullCfg.ServiceAdvertiseAddr())
-
 				var waitRaft func()
 
 				lc.Append(fx.Hook{
@@ -970,37 +991,7 @@ func Module() fx.Option {
 
 						logger.Infof("Raft gRPC server started successfully")
 
-						// Load peers from config (set during --join or --peers)
-						for _, peerEntry := range cfg.Peers {
-							logger := logger.WithFields(map[string]any{"peer": peerEntry})
-							logger.Infof("Adding peer to transport and service pool")
-							defaultTransport.AddPeer(peerEntry.ID, peerEntry.Address)
-
-							err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress)
-							if err != nil {
-								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
-							}
-						}
-
-						// Recover peers from snapshot + WAL (populated by NewNode during recovery).
-						for nodeID, addr := range n.RecoveredPeers() {
-							if nodeID == cfg.NodeID {
-								continue // skip self
-							}
-
-							logger := logger.WithFields(map[string]any{
-								"peer_id":      nodeID,
-								"raft_addr":    addr.RaftAddress,
-								"service_addr": addr.ServiceAddress,
-							})
-							logger.Infof("Restoring recovered peer")
-							defaultTransport.AddPeer(nodeID, addr.RaftAddress)
-
-							err := servicePool.AddPeer(nodeID, addr.ServiceAddress)
-							if err != nil {
-								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add recovered peer to service pool")
-							}
-						}
+						membership.Start()
 
 						return nil
 					},
@@ -1013,12 +1004,13 @@ func Module() fx.Option {
 						return err
 					},
 				})
-			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``, ``, ``)),
-			// Wire Observer: handle ConfChange, LeadershipChange, and LeaderReady events
-			fx.Annotate(func(
+			},
+			// Wire Observer: handle LeadershipChange and LeaderReady events.
+			// ConfChange events are no longer dispatched here — Membership
+			// owns the transport / service-pool wiring and reacts directly
+			// to peer mutations (EN-1413).
+			func(
 				n *node.Node,
-				defaultTransport *node.DefaultTransport,
-				servicePool *transport.ConnectionPool,
 				store *dal.Store,
 				builder *plan.Builder,
 				cfg Config,
@@ -1029,8 +1021,6 @@ func Module() fx.Option {
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
-					case node.ConfChangeEvent:
-						handleConfChangeEvent(e, defaultTransport, servicePool, logger)
 					case node.LeadershipChangeEvent:
 						// The backup orchestrator's OnLeadershipChange is cheap
 						// (it just swaps a context) and must observe leadership
@@ -1053,7 +1043,7 @@ func Module() fx.Option {
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
 				}))
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
+			},
 			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
 				var cancelRun context.CancelFunc
 
@@ -1192,12 +1182,29 @@ func Module() fx.Option {
 			// member (e.g. after a crash-restart where the initial WAL was written
 			// but the AddLearner RPC never reached the leader), the server returns
 			// AlreadyExists which we treat as success.
+			//
+			// Skip entirely on restart: the CLUSTER_JOINED marker is written
+			// after the initial join succeeds (see tryAddLearner). On any
+			// subsequent boot — even one where --join is still in the CLI
+			// (e.g. E2E test framework that reuses Instruments across restarts)
+			// — re-running tryAddLearner would propose a redundant AddLearner
+			// for a node that is already a voter, racing leadership state and
+			// stalling the test's "should become follower" Eventually. The
+			// operator's StatefulSet entrypoint already gates --join on the
+			// same marker; this check makes the safety hold regardless of how
+			// the binary is invoked.
 			func(
 				lc fx.Lifecycle,
 				cfg Config,
 				logger logging.Logger,
 			) {
 				if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
+					return
+				}
+
+				if wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
+					logger.Infof("CLUSTER_JOINED marker present, skipping learner registration")
+
 					return
 				}
 
@@ -1496,52 +1503,6 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 		logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Failed to propose cluster config update")
-	}
-}
-
-// handleConfChangeEvent processes a single ConfChangeEvent by updating the
-// transport and service pool when a node joins or leaves the cluster.
-// Peer addresses are persisted in the Node (updated by processReady) and
-// included in Raft snapshots, so no separate PeerStore is needed.
-func handleConfChangeEvent(
-	e node.ConfChangeEvent,
-	defaultTransport *node.DefaultTransport,
-	servicePool *transport.ConnectionPool,
-	logger logging.Logger,
-) {
-	switch e.ChangeType {
-	case raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeAddNode:
-		if len(e.Context) == 0 {
-			return
-		}
-
-		ccCtx, err := node.UnmarshalConfChangeContext(e.Context)
-		if err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal ConfChange context")
-
-			return
-		}
-
-		logger.WithFields(map[string]any{
-			"node_id":         e.NodeID,
-			"raft_address":    ccCtx.RaftAddress,
-			"service_address": ccCtx.ServiceAddress,
-		}).Infof("Adding peer from ConfChange")
-		defaultTransport.AddPeer(e.NodeID, ccCtx.RaftAddress)
-
-		if err := servicePool.AddPeer(e.NodeID, ccCtx.ServiceAddress); err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool from ConfChange")
-		}
-	case raftpb.ConfChangeRemoveNode:
-		logger.WithFields(map[string]any{
-			"node_id": e.NodeID,
-		}).Infof("Removing peer from ConfChange")
-		defaultTransport.RemovePeer(context.Background(), e.NodeID)
-
-		err := servicePool.RemovePeer(e.NodeID)
-		if err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to remove peer from service pool")
-		}
 	}
 }
 

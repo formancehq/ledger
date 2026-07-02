@@ -762,15 +762,6 @@ message ReloadIdempotencyKey {
   common.IdempotencyKeyValue value = 2;
 }
 
-// ============================================================================
-// Snapshot
-// ============================================================================
-
-// NodeSnapshot carries cluster-level metadata (peer addresses) for WAL snapshots.
-message NodeSnapshot {
-  repeated PeerAddress peer_addresses = 1;
-}
-
 // CacheGenerationMeta stores per-generation metadata in Pebble.
 message CacheGenerationMeta {
   fixed64 base_index = 1;

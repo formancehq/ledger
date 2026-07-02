@@ -19,11 +19,11 @@ func newTestMaintenanceNode(t *testing.T) (*Node, *testApplierSetup) {
 	setup := newTestApplierSetup(t)
 
 	node := &Node{
-		logger:        logging.Testing(),
-		wal:           setup.wal,
-		fsm:           setup.fsm,
-		applier:       setup.applier,
-		peerAddresses: map[uint64]ConfChangeContext{},
+		logger:     logging.Testing(),
+		wal:        setup.wal,
+		fsm:        setup.fsm,
+		applier:    setup.applier,
+		membership: newTestMembership(t),
 	}
 	node.confState.Store(setup.confState)
 

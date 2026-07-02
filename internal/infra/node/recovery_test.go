@@ -38,11 +38,11 @@ func TestRun_RefusesStartWhenGapExceedsWALRetention(t *testing.T) {
 	require.NoError(t, setup.wal.Compact(3))
 
 	node := &Node{
-		logger:        logging.Testing(),
-		wal:           setup.wal,
-		fsm:           setup.fsm,
-		applier:       setup.applier,
-		peerAddresses: map[uint64]ConfChangeContext{},
+		logger:     logging.Testing(),
+		wal:        setup.wal,
+		fsm:        setup.fsm,
+		applier:    setup.applier,
+		membership: newTestMembership(t),
 	}
 	node.confState.Store(setup.confState)
 
@@ -92,11 +92,11 @@ func TestRun_AllowsOutOfSyncRecoveryPastGap(t *testing.T) {
 	setup.applier.setOutOfSync()
 
 	node := &Node{
-		logger:        logging.Testing(),
-		wal:           setup.wal,
-		fsm:           setup.fsm,
-		applier:       setup.applier,
-		peerAddresses: map[uint64]ConfChangeContext{},
+		logger:     logging.Testing(),
+		wal:        setup.wal,
+		fsm:        setup.fsm,
+		applier:    setup.applier,
+		membership: newTestMembership(t),
 	}
 	node.confState.Store(setup.confState)
 

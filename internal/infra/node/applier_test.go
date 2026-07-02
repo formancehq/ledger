@@ -117,6 +117,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
 		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
+		func(raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)
 
@@ -129,7 +130,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
-		0, 1000, nil,
+		0, 1000, nil, func() {},
 	)
 	require.NoError(t, err)
 

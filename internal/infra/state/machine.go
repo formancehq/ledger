@@ -163,6 +163,15 @@ type Machine struct {
 	// without a sequence increment can only come from a bare Store that
 	// bypassed the wake protocol (#327 class).
 	publishSeq uint64
+
+	// confChangeHandler is invoked from PrepareEntries for every
+	// EntryConfChange* in the batch. The handler receives the entry and
+	// the in-flight WriteSession so it can land its peer mutation in the
+	// SAME Pebble batch as the surrounding business writes. This keeps
+	// cluster membership atomic with FSM state and makes the spool/WAL
+	// replay path naturally idempotent — every replay of the entry
+	// re-asserts the membership row. EN-1413.
+	confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error
 }
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
@@ -171,7 +180,11 @@ type Machine struct {
 // wiring those sub-objects up-front. NewMachine does NOT perform RecoverState;
 // callers must invoke Recovery.RecoverState() before the Machine applies
 // entries.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int) (*Machine, error) {
+//
+// confChangeHandler is invoked from PrepareEntries for every
+// EntryConfChange* in the in-flight batch (see the field comment on
+// Machine). Must be non-nil.
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -249,6 +262,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		coldCompactionCh:               make(chan struct{}, 1),
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
+		confChangeHandler:              confChangeHandler,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = cacheSnapshotter
@@ -572,6 +586,23 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
 			if fsm.sentinelMode {
 				fsm.sentinelTracer.SkipEntry(entry.Index, entry.Type.String(), len(entry.Data))
+			}
+
+			// EN-1413: ConfChange entries do not carry business state,
+			// but they carry cluster membership which must land in the
+			// same Pebble batch as the surrounding business writes.
+			// Otherwise a crash (or a snapshot restore that wipes
+			// Pebble) between the FSM commit and a separate peer-store
+			// commit would lose the membership change. The Node
+			// registers a handler that writes the peer entry via the
+			// supplied session; replay (boot WAL replay or post-
+			// snapshot spool replay) re-asserts the same row.
+			if entry.Type == raftpb.EntryConfChange || entry.Type == raftpb.EntryConfChangeV2 {
+				if err := fsm.confChangeHandler(entry, batch); err != nil {
+					_ = batch.Cancel()
+
+					return nil, fmt.Errorf("applying ConfChange at index %d: %w", entry.Index, err)
+				}
 			}
 
 			continue
