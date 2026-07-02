@@ -938,33 +938,6 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	// on node.Run's ready signal.
 	close(ready)
 
-	// Observational: log FSM catch-up progress asynchronously so it never
-	// blocks node.Run's main goroutine. If the wait errors (only realistic
-	// cause is ctx cancellation at shutdown), we log and return — the
-	// main select loop below handles the real error propagation.
-	initialCommit := status.Commit
-	if initialCommit > 0 {
-		node.logger.WithFields(map[string]any{
-			"from": node.fsm.LastPersistedIndex(),
-			"to":   initialCommit,
-		}).Infof("Replaying WAL...")
-
-		go func() {
-			if err := node.fsm.WaitForApplied(ctx, initialCommit); err != nil {
-				node.logger.WithFields(map[string]any{
-					"targetIndex": initialCommit,
-					"error":       err,
-				}).Errorf("WaitForApplied for initial commit did not complete")
-
-				return
-			}
-
-			node.logger.WithFields(map[string]any{
-				"appliedUpTo": initialCommit,
-			}).Infof("Initial WAL replay complete")
-		}()
-	}
-
 	select {
 	case ch := <-node.stopChannel:
 		err := node.tasks.stop()
