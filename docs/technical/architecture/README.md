@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-25 architecture documents organized into four topic areas.
+26 architecture documents organized into four topic areas.
 
 ## Core
 
@@ -14,6 +14,7 @@ Fundamental design: consensus, state machine, and timing guarantees.
 | [fsm-cache-layers.md](core/fsm-cache-layers.md) | FSM-side read/write layering: WriteSet → DerivedKeyStore → Plan → KeyStore → AttributeCache |
 | [global-log.md](core/global-log.md) | Two-level log architecture enabling system-level atomic bulk operations |
 | [hybrid-logical-clock.md](core/hybrid-logical-clock.md) | Monotonic HLC timestamps across leader changes and clock skew |
+| [read-snapshot-consistency.md](core/read-snapshot-consistency.md) | Single-snapshot rule for controller reads that stitch LedgerInfo with attribute data |
 
 ## Storage
 
