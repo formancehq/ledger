@@ -1,8 +1,6 @@
 package state
 
 import (
-	"sort"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -115,85 +113,6 @@ func (b *WriteSet) partitionVolumes(
 	}
 
 	return result
-}
-
-// makePurgedKeySet builds a lookup set over the (ledger, account, asset)
-// of every purged volume entry. Keeping the asset dimension matters: a
-// multi-asset account may have one asset purged while another stays kept —
-// dropping the asset would over-attribute purged state to orders touching
-// the still-kept asset.
-func makePurgedKeySet(purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[purgedVolumeKey]struct{} {
-	if len(purged) == 0 {
-		return nil
-	}
-	set := make(map[purgedVolumeKey]struct{}, len(purged))
-	for _, u := range purged {
-		set[purgedVolumeKey{Ledger: u.Key.LedgerName, Account: u.Key.Account, Asset: u.Key.Asset}] = struct{}{}
-	}
-
-	return set
-}
-
-// purgedVolumeKey is the (ledger, account, asset) tuple used by
-// makePurgedKeySet and buildPurgedByLog. The asset dimension is kept to
-// avoid over-attribution in multi-asset accounts.
-type purgedVolumeKey struct {
-	Ledger  string
-	Account string
-	Asset   string
-}
-
-// buildPurgedByLog produces, for each order index, the deduplicated list of
-// (account, asset) tuples that the order touched and that the proposal
-// classified as purged. Indexed by order_index; entries for orders that
-// touched nothing purged (or didn't touch volumes at all) are nil. Tuples
-// within an entry are sorted (by account then asset) to keep the log payload
-// deterministic across runs.
-func buildPurgedByLog(perOrderVolumeKeys [][]domain.VolumeKey, purged map[purgedVolumeKey]struct{}) [][]*commonpb.TouchedVolume {
-	if len(perOrderVolumeKeys) == 0 || len(purged) == 0 {
-		return nil
-	}
-
-	type accAsset struct{ Account, Asset string }
-
-	out := make([][]*commonpb.TouchedVolume, len(perOrderVolumeKeys))
-	for i, keys := range perOrderVolumeKeys {
-		if len(keys) == 0 {
-			continue
-		}
-
-		seen := make(map[accAsset]struct{}, len(keys))
-		for _, k := range keys {
-			if _, ok := purged[purgedVolumeKey{Ledger: k.LedgerName, Account: k.Account, Asset: k.Asset}]; !ok {
-				continue
-			}
-			seen[accAsset{Account: k.Account, Asset: k.Asset}] = struct{}{}
-		}
-
-		if len(seen) == 0 {
-			continue
-		}
-
-		ordered := make([]accAsset, 0, len(seen))
-		for k := range seen {
-			ordered = append(ordered, k)
-		}
-		sort.Slice(ordered, func(a, b int) bool {
-			if ordered[a].Account != ordered[b].Account {
-				return ordered[a].Account < ordered[b].Account
-			}
-
-			return ordered[a].Asset < ordered[b].Asset
-		})
-
-		vols := make([]*commonpb.TouchedVolume, len(ordered))
-		for j, k := range ordered {
-			vols[j] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset}
-		}
-		out[i] = vols
-	}
-
-	return out
 }
 
 // applyEphemeralPurge deletes purged volumes from 0xF1 then zeroes the cache.

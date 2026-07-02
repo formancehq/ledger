@@ -157,7 +157,13 @@ message LedgerBoundaries {
 }
 ```
 
-> Every per-ledger counter — postings, reverts, numscript executions, references, ephemeral evictions, transient volumes, **and volumes** — lives in the usagebuilder side-store (`internal/application/usagebuilder`, `internal/storage/usagestore`). All counters are derived from the audit chain: event counts (posting / revert / numscript-exec / reference) come from replaying orders; ephemeral / transient counts come from `LedgerLog.PurgedVolumes` and `AppliedProposal.TransientVolumes`; the volume count comes from the FSM-enriched `LedgerLog.NewVolumes` field paired with `PurgedVolumes` (delta = new − purged). `LedgerBoundaries` carries only the two ID generators that drive apply-time allocation decisions. `metadata_count` is intentionally not exposed — the admission preload no longer injects old metadata values so cardinality cannot be reliably derived at the FSM level; it will come back on a sound foundation later.
+> Every per-ledger counter — postings, reverts, numscript executions, references, ephemeral evictions, transient volumes, **and volumes** — lives in the usagebuilder side-store (`internal/application/usagebuilder`, `internal/storage/usagestore`). All counters are derived from the audit chain: event counts (posting / revert / numscript-exec / reference) come from replaying orders; transient counts come from `AppliedProposal.TransientVolumes`; ephemeral and volume counts come from three DISJOINT per-log lists that the FSM populates on every `LedgerLog`:
+>
+> - `purged_volumes` — draining evictions (was non-zero in Pebble, now zero, entry deleted at commit)
+> - `new_kept_volumes` — persistent-new (created + survives past commit)
+> - `ephemeral_volumes` — pure ephemeral (created + evicted same log)
+>
+> Volume count delta per log = `len(new_kept_volumes) − len(purged_volumes)`. Pure ephemeral tuples contribute +0 (was zero, is zero) and are tracked only for the index builder's skip logic and for the ephemeral-eviction counter. Splitting ephemeral out of `purged_volumes` avoids the 2× byte cost that a naive union-encoding would pay on ephemeral-heavy workloads. `LedgerBoundaries` carries only the two ID generators that drive apply-time allocation decisions. `metadata_count` is intentionally not exposed — the admission preload no longer injects old metadata values so cardinality cannot be reliably derived at the FSM level; it will come back on a sound foundation later.
 
 > **Note:** The `State` / `LedgerState` proto messages sometimes shown in older documentation are conceptual models, not actual proto definitions. The real FSM state is spread across the `Machine` struct fields and its `StateRegistry`.
 

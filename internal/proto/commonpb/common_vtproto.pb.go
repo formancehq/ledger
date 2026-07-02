@@ -1800,12 +1800,19 @@ func (m *LedgerLog) CloneVT() *LedgerLog {
 		}
 		r.PurgedVolumes = tmpContainer
 	}
-	if rhs := m.NewVolumes; rhs != nil {
+	if rhs := m.NewKeptVolumes; rhs != nil {
 		tmpContainer := make([]*TouchedVolume, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
-		r.NewVolumes = tmpContainer
+		r.NewKeptVolumes = tmpContainer
+	}
+	if rhs := m.EphemeralVolumes; rhs != nil {
+		tmpContainer := make([]*TouchedVolume, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.EphemeralVolumes = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -6687,11 +6694,28 @@ func (this *LedgerLog) EqualVT(that *LedgerLog) bool {
 			}
 		}
 	}
-	if len(this.NewVolumes) != len(that.NewVolumes) {
+	if len(this.NewKeptVolumes) != len(that.NewKeptVolumes) {
 		return false
 	}
-	for i, vx := range this.NewVolumes {
-		vy := that.NewVolumes[i]
+	for i, vx := range this.NewKeptVolumes {
+		vy := that.NewKeptVolumes[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &TouchedVolume{}
+			}
+			if q == nil {
+				q = &TouchedVolume{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
+	if len(this.EphemeralVolumes) != len(that.EphemeralVolumes) {
+		return false
+	}
+	for i, vx := range this.EphemeralVolumes {
+		vy := that.EphemeralVolumes[i]
 		if p, q := vx, vy; p != q {
 			if p == nil {
 				p = &TouchedVolume{}
@@ -14288,9 +14312,21 @@ func (m *LedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.NewVolumes) > 0 {
-		for iNdEx := len(m.NewVolumes) - 1; iNdEx >= 0; iNdEx-- {
-			size, err := m.NewVolumes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+	if len(m.EphemeralVolumes) > 0 {
+		for iNdEx := len(m.EphemeralVolumes) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.EphemeralVolumes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x32
+		}
+	}
+	if len(m.NewKeptVolumes) > 0 {
+		for iNdEx := len(m.NewKeptVolumes) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.NewKeptVolumes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
 			if err != nil {
 				return 0, err
 			}
@@ -20984,8 +21020,14 @@ func (m *LedgerLog) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
-	if len(m.NewVolumes) > 0 {
-		for _, e := range m.NewVolumes {
+	if len(m.NewKeptVolumes) > 0 {
+		for _, e := range m.NewKeptVolumes {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.EphemeralVolumes) > 0 {
+		for _, e := range m.EphemeralVolumes {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
@@ -34082,7 +34124,7 @@ func (m *LedgerLog) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 5:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NewVolumes", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NewKeptVolumes", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -34109,8 +34151,42 @@ func (m *LedgerLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.NewVolumes = append(m.NewVolumes, &TouchedVolume{})
-			if err := m.NewVolumes[len(m.NewVolumes)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			m.NewKeptVolumes = append(m.NewKeptVolumes, &TouchedVolume{})
+			if err := m.NewKeptVolumes[len(m.NewKeptVolumes)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EphemeralVolumes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.EphemeralVolumes = append(m.EphemeralVolumes, &TouchedVolume{})
+			if err := m.EphemeralVolumes[len(m.EphemeralVolumes)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
