@@ -158,6 +158,38 @@ The `ClusterID` is part of the persisted config validated on boot (`internal/boo
 
 A `HashVersion` field on every entry allows future rotation (an alternate algorithm like `HASH_ALGORITHM_XXH3` exists as a fallback, mapped to a different `HashGenerator` per entry).
 
+## Companion streams and their gaps
+
+The FSM writes up to four datasets per proposal, all in `ZoneCold`, but they diverge sharply between the possible proposal outcomes. Code that scans the audit range and iterates a companion stream in parallel MUST anchor on `SubColdAudit` and tolerate misses on the sibling — assuming lockstep cardinality is a recurring source of bugs (see EN-1424 for a case study).
+
+| Sub-zone | Key | Success (N orders) | Failure | Idempotent replay (success or failure) |
+|----------|-----|--------------------|---------|----------------------------------------|
+| `SubColdAudit = 0x02` — `AuditEntry` | `[seq BE 8]` | 1 | 1 | **0** |
+| `SubColdAuditItem = 0x03` — `AuditItem` | `[seq BE 8][order_idx BE 4]` | N (≥1) | **0** | **0** |
+| `SubColdAppliedProposal = 0x04` — `AppliedProposal` | `[seq BE 8]` | 1 | **0** | **0** |
+| `SubColdLog = 0x01` — `Log` | `[log_seq BE 8]` | 0..M (=`MaxLog-MinLog+1`) | 0 | 0 |
+
+**Idempotent replay is the one exception to "one AuditEntry per proposal":** when the proposal carries a previously-recorded idempotency key with a matching hash, `applyProposal` short-circuits (`internal/infra/state/machine.go:1313-1326`) and returns the recorded outcome verbatim — no new pipeline run, no new logs, no new audit entry. `audit_sequence` does **not** advance for that proposal. The first-time apply of that key is what's already recorded under the "Success" or "Failure" column; the replay is invisible to Pebble.
+
+A same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, no items, no applied proposal, no log).
+
+Two independent monotone counters, bridged per successful non-replayed proposal:
+
+- **`audit_sequence`** advances by 1 on every non-replayed proposal — success or failure alike (`AppendAuditEntry` in `internal/infra/state/fsmstate.go`). The `audit_sequence` values themselves are **dense** (no gaps in the numbering), but the proposal-to-sequence mapping is many-to-one: several replayed proposals can share the sequence number of the next non-replayed one.
+- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order is an in-batch idempotent reference contributes `[0, 0]`.
+
+Gaps live on the **companion streams**, not on `audit_sequence` itself:
+
+- `SubColdAppliedProposal` iteration shows a gap at every failed audit_seq.
+- `SubColdAuditItem[seq][…]` shows no items at every failed audit_seq.
+- A `Log` reader has no visibility into failures at all.
+
+### Implication for downstream code
+
+**`audit.count > 0` does NOT imply `auditItem.count > 0`.** An incremental range consisting of only failures has one AuditEntry per proposal (audit_seq advances) but zero AuditItems (nothing to hash into the per-item payload beyond an empty list). Anything that assumes the two rise together — a backup exporter that indexes segments by audit range, an indexer that scans AppliedProposal alongside AuditEntry, a mirror that assumes a log per audit — must guard on the companion stream's count independently, rather than deriving one count from the other.
+
+The `internal/infra/backup/manager.go` incremental export is the canonical example: each of the three companion segments (`audit`, `auditItem`, `appliedProposal`) is guarded on its own count when appended to the manifest. Failure-only ranges produce an `audit` segment with `count > 0`, an `auditItem` segment with `count == 0` (skipped from the manifest), and no `appliedProposal` segment at all.
+
 ## Tampering model — what the chain detects
 
 | Attack | Detected because |
