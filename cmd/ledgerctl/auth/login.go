@@ -189,6 +189,15 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 	scopes, _ := cmd.Flags().GetStringSlice("scopes")
 	signingKeyPath, _ := cmd.Flags().GetString("signing-key")
 
+	// Symmetric fallback so users who pass --signing-key-id on the CLI
+	// (matching the profile-config field name) don't need to also pass
+	// --key-id: the two identify the same key entry, and on a first-login
+	// bootstrap there is no profile yet for PersistentPreRunE's
+	// profile.signingKeyId -> --key-id resolveFlag to read from.
+	if keyID == "" {
+		keyID, _ = cmd.Flags().GetString("signing-key-id")
+	}
+
 	var seed []byte
 
 	if bundle != nil {

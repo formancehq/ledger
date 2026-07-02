@@ -2,6 +2,9 @@ package auth
 
 import (
 	"context"
+	"encoding/hex"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -45,6 +48,41 @@ func pinConfig(t *testing.T) {
 	t.Setenv("APPDATA", tmp)
 	t.Setenv("LOCALAPPDATA", tmp)
 	t.Setenv("LEDGERCTL_PROFILE", "")
+}
+
+// TestResolveLoginParams_FallsBackToSigningKeyIDForKeyID covers the bootstrap
+// path where the user passes --signing-key-id (matching the profile-config
+// field name) but not --key-id. On a first login there is no profile for
+// PersistentPreRunE's profile.signingKeyId -> --key-id fallback to read
+// from, so resolveLoginParams must accept --signing-key-id as the JWT key
+// ID; otherwise the command fails with `required flag "key-id" not set`
+// even though the user provided the equivalent information.
+func TestResolveLoginParams_FallsBackToSigningKeyIDForKeyID(t *testing.T) {
+	// Write a valid 32-byte seed so signing.LoadSeedFromFile succeeds.
+	seedPath := filepath.Join(t.TempDir(), "seed.hex")
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	require.NoError(t, os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)), 0o600))
+
+	cmd := newTestCmd(t)
+	cmd.Flags().StringSlice("scopes", nil, "")
+	cmd.Flags().Duration("expiration", 0, "")
+	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().String("subject", "", "")
+	cmd.Flags().String("bundle", "", "")
+
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--signing-key", seedPath,
+		"--signing-key-id", "prod-key",
+		"--subject", "svc",
+	}))
+
+	// Stdin is a terminal in `go test`, so readBundle returns (nil, nil).
+	p, err := resolveLoginParams(cmd)
+	require.NoError(t, err, "--signing-key-id alone must satisfy --key-id at bootstrap")
+	require.Equal(t, "prod-key", p.keyID)
 }
 
 func TestSyncProfile_BootstrapsMissingProfile(t *testing.T) {
