@@ -209,8 +209,11 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 		seed = decoded
 
 		// The bundle wins over env/profile-derived flag values, but explicit
-		// CLI flags (Changed=true) override the bundle.
-		if !cmd.Flags().Changed("key-id") && bundle.KeyID != "" {
+		// CLI flags (Changed=true) override the bundle. --signing-key-id is
+		// the sibling flag whose value we fall back to for keyID above, so
+		// an explicit --signing-key-id must protect keyID from the bundle
+		// too.
+		if !cmd.Flags().Changed("key-id") && !cmd.Flags().Changed("signing-key-id") && bundle.KeyID != "" {
 			keyID = bundle.KeyID
 		}
 
