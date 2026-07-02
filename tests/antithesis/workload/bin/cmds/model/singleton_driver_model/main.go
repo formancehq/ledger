@@ -154,16 +154,18 @@ func runWorker(
 		}
 
 		// 1-in-5: a read this iteration, split across the whole-ledger read
-		// (chart + ledger metadata), a single-account read, and a transaction
-		// read (id + postings + reverted + metadata). Reads validate against the
-		// in-flight bulk set, exercising cross-node freshness without needing
-		// quiescence.
+		// (chart + ledger metadata), a single-account read, a transaction read
+		// (id + postings + reverted + metadata), and a metadata-schema read
+		// (declared field types). Reads validate against the in-flight bulk set,
+		// exercising cross-node freshness without needing quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
 				runTransactionRead(ctx, client, c)
+			case 2:
+				runSchemaRead(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}

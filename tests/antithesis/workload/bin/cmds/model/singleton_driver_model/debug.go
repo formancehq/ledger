@@ -221,6 +221,29 @@ func (c *Checker) modelTxMetaDump(ledger, ref string) string {
 	return "{" + strings.Join(parts, ",") + "}"
 }
 
+// modelSchemaDump renders the committed model's declared field types per target
+// (a=account, t=transaction, l=ledger). Acquires c.mu.
+func (c *Checker) modelSchemaDump(ledger string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	ls := c.modelState.Ledger(ledger)
+
+	render := func(tag string, m map[string]commonpb.MetadataType) string {
+		parts := make([]string, 0, len(m))
+		for k, t := range m {
+			parts = append(parts, fmt.Sprintf("%s/%s=%d", tag, k, t))
+		}
+		sort.Strings(parts)
+
+		return strings.Join(parts, ",")
+	}
+
+	return "[" + render("a", ls.AccountFieldTypes()) +
+		" " + render("t", ls.TransactionFieldTypes()) +
+		" " + render("l", ls.LedgerFieldTypes()) + "]"
+}
+
 // Server log sequences — for verifying drain order vs commit order.
 func logSeqs(logs []*commonpb.Log) string {
 	ids := make([]string, len(logs))

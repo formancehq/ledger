@@ -525,6 +525,49 @@ func txMetaMatches(ls oracle.LedgerState, ref string, serverMeta map[string]*com
 	return true
 }
 
+// validateSchemaRead checks one GetMetadataSchemaStatus snapshot against the
+// model: legal iff some candidate base's declared field types — per target,
+// key-for-key — exactly match the server's. Field types are declared only by
+// SetMetadataFieldType and by initial_schema at ledger creation, both tracked by
+// the model, so this is the read-back that verifies the declared-schema
+// projection rather than just the per-op response echo.
+func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*servicepb.MetadataFieldStatus) {
+	if c.matchesModel(maxTicket, "SCHEMA", func(base oracle.GlobalState) bool {
+		ls := base.Ledger(ledger)
+
+		return fieldTypesMatch(ls.AccountFieldTypes(), acct) &&
+			fieldTypesMatch(ls.TransactionFieldTypes(), txn) &&
+			fieldTypesMatch(ls.LedgerFieldTypes(), ldg)
+	}) {
+		return
+	}
+
+	assert.Unreachable("singleton_driver_model: metadata schema read outside model", internal.Details{
+		"ledger":       ledger,
+		"serverAcct":   len(acct),
+		"serverTxn":    len(txn),
+		"serverLedger": len(ldg),
+		"modelSchema":  c.modelSchemaDump(ledger),
+	})
+}
+
+// fieldTypesMatch reports whether the model's declared field types equal the
+// server's for one target — same keys, same declared type.
+func fieldTypesMatch(model map[string]commonpb.MetadataType, server map[string]*servicepb.MetadataFieldStatus) bool {
+	if len(model) != len(server) {
+		return false
+	}
+
+	for k, t := range model {
+		st, ok := server[k]
+		if !ok || st.GetDeclaredType() != t {
+			return false
+		}
+	}
+
+	return true
+}
+
 // responseMetaEffect extracts the server's stored (as-written) values for a
 // committed metadata write from its response log, dispatching on the request
 // type. Returns nil for non-metadata requests and for deletes, whose log carries

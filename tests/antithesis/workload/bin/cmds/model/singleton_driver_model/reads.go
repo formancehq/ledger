@@ -259,3 +259,36 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 
 	c.validateTransactionRead(maxTicket, ledger, ref, resp.GetTransaction())
 }
+
+// runSchemaRead issues a GetMetadataSchemaStatus and checks the declared metadata
+// field types (account / transaction / ledger) against the model (see
+// validateSchemaRead) — the read-back that verifies the declared-schema
+// projection, not just the per-op SetMetadataFieldType echo.
+func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	ledger := random.RandomChoice(c.ledgerNames)
+
+	c.mu.Lock()
+	readID := c.registerRead()
+	c.mu.Unlock()
+	defer c.finishRead(readID)
+
+	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	resp, err := client.GetMetadataSchemaStatus(readCtx, &servicepb.GetMetadataSchemaStatusRequest{Ledger: ledger})
+	// High-water at the read's response: only bulks dispatched by now could be
+	// reflected in what the server returned.
+	maxTicket := c.ticketSeq.Load()
+	if err != nil {
+		if internal.IsTransient(err) || isShutdownError(err) {
+			return
+		}
+		// The fleet is created at setup and never deleted, so a definitive error
+		// on a linearizable schema read is a real finding.
+		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus returned unexpected error", internal.Details{
+			"ledger": ledger,
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	c.validateSchemaRead(maxTicket, ledger, resp.GetAccountFields(), resp.GetTransactionFields(), resp.GetLedgerFields())
+}
