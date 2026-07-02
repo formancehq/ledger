@@ -168,7 +168,7 @@ func TestVerifyExpectedSkipNotElided_RejectsTamperedCreatedTransaction(t *testin
 		},
 	}
 
-	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	events := captureDispatchEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -197,7 +197,7 @@ func TestVerifyExpectedSkipNotElided_AcceptsLegitimateCreatedTransaction(t *test
 		},
 	}
 
-	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	events := captureDispatchEvents(t, "L", 7, payload, expected, refs)
 	require.Empty(t, events, "first-claim CreatedTransaction must round-trip silently")
 }
 
@@ -213,7 +213,7 @@ func TestVerifyExpectedSkipNotElided_NoExpectedEntryStaysSilent(t *testing.T) {
 		},
 	}
 
-	events := captureEvents(t, "L", 7, payload, nil, nil, false)
+	events := captureDispatchEvents(t, "L", 7, payload, nil, nil)
 	require.Empty(t, events)
 }
 
@@ -244,9 +244,9 @@ func TestVerifyExpectedSkipNotElided_ArchiveDoesNotSuppressLiveProof(t *testing.
 		},
 	}
 
-	// archivedWithoutBaseline=true would previously suppress the check; the
-	// fix makes it inert once the live chain already proves the conflict.
-	events := captureEvents(t, "L", 7, payload, expected, refs, true)
+	// Dispatched via the outer elision check — the archive flag is not an
+	// input to verifyExpectedSkipNotElided anymore (see #1 fix).
+	events := captureDispatchEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -273,8 +273,100 @@ func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T
 		},
 	}
 
-	events := captureEvents(t, "L", 7, payload, expected, nil, true)
+	events := captureDispatchEvents(t, "L", 7, payload, expected, nil)
 	require.Empty(t, events, "the inverse check must stay permissive when the reference is not visible in the live chain")
+}
+
+// TestDispatchElisionCheck_FiresOnMalformedPayloadShapes pins the bypass
+// closure: the elision check must fire at every seq where a skip was
+// expected regardless of the actual log's shape. Previously the inline
+// call inside the Apply-branch payload switch made non-Apply, nil
+// Apply.Log, and nil Data payloads escape the check entirely — a tamperer
+// could then rewrite the LedgerLog to any of those shapes without
+// tripping Check().
+func TestDispatchElisionCheck_FiresOnMalformedPayloadShapes(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-claimed-earlier",
+		},
+	}
+	refs := map[string]map[string]uint64{
+		"L": {"ref-claimed-earlier": 3},
+	}
+
+	dispatchWithLog := func(log *commonpb.Log) []*servicepb.CheckStoreEvent {
+		events := []*servicepb.CheckStoreEvent{}
+		dispatchElisionCheck(7, log, expected, refs, func(e *servicepb.CheckStoreEvent) {
+			events = append(events, e)
+		})
+
+		return events
+	}
+
+	tampers := map[string]*commonpb.Log{
+		"nil payload":       {Sequence: 7},
+		"non-Apply payload": {Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: "L"}}}},
+		"nil Apply":         {Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{}}},
+		"nil Apply.Log":     {Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "L"}}}},
+		"nil Log.Data":      {Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "L", Log: &commonpb.LedgerLog{}}}}},
+	}
+
+	for name, log := range tampers {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			events := dispatchWithLog(log)
+			requireInvalidSkipEvent(t, events, 7)
+		})
+	}
+}
+
+// TestDispatchElisionCheck_SilentOnValidSkip pins that a well-formed
+// OrderSkipped projection is accepted by the outer dispatch — the forward
+// pass (verifySkippedOrder called from the Apply branch of the iteration)
+// owns the validation for skip payloads.
+func TestDispatchElisionCheck_SilentOnValidSkip(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-claimed-earlier",
+		},
+	}
+	refs := map[string]map[string]uint64{
+		"L": {"ref-claimed-earlier": 3},
+	}
+
+	log := &commonpb.Log{
+		Sequence: 7,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
+					LedgerName: "L",
+					Log: &commonpb.LedgerLog{
+						Data: &commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+								OrderSkipped: &commonpb.OrderSkippedLog{Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	events := []*servicepb.CheckStoreEvent{}
+	dispatchElisionCheck(7, log, expected, refs, func(e *servicepb.CheckStoreEvent) {
+		events = append(events, e)
+	})
+
+	require.Empty(t, events, "outer dispatch must defer to the forward-direction verifier for well-formed OrderSkipped projections")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsUnclaimedReference covers
@@ -786,6 +878,44 @@ func captureEvents(
 	events := []*servicepb.CheckStoreEvent{}
 
 	verifySkippedOrder(ledger, seq, payload, expected, refs, hasArchivedChapters, func(e *servicepb.CheckStoreEvent) {
+		events = append(events, e)
+	})
+
+	return events
+}
+
+// captureDispatchEvents wraps dispatchElisionCheck with a canonical Apply-
+// shaped Log so tests can exercise the outer-scope elision guard against a
+// LedgerLogPayload (the same input verifySkippedOrder receives). Tests that
+// need to model non-Apply / malformed log shapes construct the *commonpb.Log
+// directly and call dispatchElisionCheck.
+func captureDispatchEvents(
+	t *testing.T,
+	ledger string,
+	seq uint64,
+	payload *commonpb.LedgerLogPayload,
+	expected map[uint64]*expectedSkippableOrder,
+	refs map[string]map[string]uint64,
+) []*servicepb.CheckStoreEvent {
+	t.Helper()
+
+	log := &commonpb.Log{
+		Sequence: seq,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
+					LedgerName: ledger,
+					Log: &commonpb.LedgerLog{
+						Data: payload,
+					},
+				},
+			},
+		},
+	}
+
+	events := []*servicepb.CheckStoreEvent{}
+
+	dispatchElisionCheck(seq, log, expected, refs, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
