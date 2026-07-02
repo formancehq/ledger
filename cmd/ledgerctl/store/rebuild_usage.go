@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -16,6 +17,32 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
+
+// ensureDisjointDirs rejects overlapping --data-dir / --usage-dir values —
+// the rebuild command RemoveAlls the usage dir before opening the data dir,
+// so an operator who passes the same path (or a parent) would wipe the live
+// Pebble store. Comparison is done on cleaned absolute paths so relative
+// forms, trailing separators and symbolic paths all normalise before the
+// prefix check.
+func ensureDisjointDirs(dataDir, usageDir string) error {
+	absData, err := filepath.Abs(dataDir)
+	if err != nil {
+		return fmt.Errorf("resolving --data-dir: %w", err)
+	}
+	absUsage, err := filepath.Abs(usageDir)
+	if err != nil {
+		return fmt.Errorf("resolving --usage-dir: %w", err)
+	}
+
+	if absData == absUsage {
+		return fmt.Errorf("--usage-dir (%s) must not equal --data-dir — running this command would delete the primary Pebble store", absUsage)
+	}
+	if strings.HasPrefix(absData+string(filepath.Separator), absUsage+string(filepath.Separator)) {
+		return fmt.Errorf("--usage-dir (%s) must not be a parent of --data-dir (%s) — running this command would delete the primary Pebble store", absUsage, absData)
+	}
+
+	return nil
+}
 
 // NewRebuildUsageCommand creates the store rebuild-usage command.
 func NewRebuildUsageCommand() *cobra.Command {
@@ -57,6 +84,14 @@ func runRebuildUsage(cmd *cobra.Command, _ []string) error {
 
 	if usageDir == "" {
 		usageDir = filepath.Join(dataDir, "usage")
+	}
+
+	// Guard against an operator passing --usage-dir equal to or inside
+	// --data-dir: the RemoveAll below would then wipe (part of) the live
+	// Pebble store before we ever open it read-only. Same category of
+	// footgun as running `rm -rf` on a mount point.
+	if err := ensureDisjointDirs(dataDir, usageDir); err != nil {
+		return cmdutil.Displayed(err)
 	}
 
 	logger := logging.NopZap()

@@ -34,17 +34,33 @@ type templateDelta struct {
 type counterDelta = int64
 
 // batchState holds the in-flight aggregation for one batch: per-ledger
-// counter deltas + per-template usage deltas. Reset by newBatchState.
+// counter deltas, per-template usage deltas, and the set of ledger names
+// dropped by DeleteLedgerOrder entries in this batch. Reset by newBatchState.
 type batchState struct {
-	counters  map[string]map[byte]counterDelta
-	templates map[templateKey]templateDelta
+	counters       map[string]map[byte]counterDelta
+	templates      map[templateKey]templateDelta
+	deletedLedgers map[string]struct{}
 }
 
 func newBatchState() *batchState {
 	return &batchState{
-		counters:  make(map[string]map[byte]counterDelta),
-		templates: make(map[templateKey]templateDelta),
+		counters:       make(map[string]map[byte]counterDelta),
+		templates:      make(map[templateKey]templateDelta),
+		deletedLedgers: make(map[string]struct{}),
 	}
+}
+
+// markLedgerDeleted flags a ledger as dropped by this batch. commitBatch
+// range-deletes every counter / template row for the ledger AFTER the
+// counter / template mutations are staged — the final ordering is
+// (writes → range delete → cursor advance), inside a single Pebble batch,
+// so the range delete wipes both pre-existing rows and any writes the same
+// batch may have added just above for the same ledger. This matches the
+// FSM's own DeleteLedger cascade (which purges the ledger's Pebble rows
+// unconditionally, regardless of whether earlier orders in the same
+// proposal updated them).
+func (s *batchState) markLedgerDeleted(ledger string) {
+	s.deletedLedgers[ledger] = struct{}{}
 }
 
 // addCounter accumulates a delta on the (ledger, counterID) slot.
@@ -82,7 +98,7 @@ func timestampGreater(a, b *commonpb.Timestamp) bool {
 
 // empty reports whether the batch has no writes queued.
 func (s *batchState) empty() bool {
-	return len(s.counters) == 0 && len(s.templates) == 0
+	return len(s.counters) == 0 && len(s.templates) == 0 && len(s.deletedLedgers) == 0
 }
 
 // RebuildAll replays every audit entry from sequence 0, materialising the
@@ -251,8 +267,9 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 
 // dispatchOrder inspects a raw Order and accumulates counter / template
 // deltas into the batch state. Fetches the produced log when the resolved
-// posting count is required (revert txs, script-backed create txs). entry
-// carries the per-audit-entry dedup scratchpad — see applyVolumeAnnotations.
+// posting count is required (revert txs, script-backed create txs, mirror
+// ingests). entry carries the per-audit-entry dedup scratchpad — see
+// applyVolumeAnnotations.
 func (b *Builder) dispatchOrder(
 	ctx context.Context,
 	handle dal.PebbleGetter,
@@ -273,10 +290,28 @@ func (b *Builder) dispatchOrder(
 		return nil
 	}
 
+	// DeleteLedger orders MUST be projected — otherwise the usagestore
+	// keeps stale rows for the dropped ledger until an operator runs
+	// rebuild-usage. Same story as the readstore's DeleteLedgerIndexes.
+	if scoped.GetDeleteLedger() != nil {
+		state.markLedgerDeleted(ledger)
+
+		return nil
+	}
+
+	// Mirror ingests produce Created/Reverted transaction logs the same
+	// shape as the direct write path, so posting / revert / volume /
+	// ephemeral counters all apply. Numscript / reference metadata is
+	// absent on the mirror wire — no CounterReference /
+	// CounterNumscriptExecution / template usage contribution.
+	if mirror := scoped.GetMirrorIngest(); mirror != nil {
+		return b.dispatchMirrorIngest(ctx, handle, ledger, mirror.GetEntry(), logSeq, state, entry)
+	}
+
 	apply := scoped.GetApply()
 	if apply == nil {
-		// Non-apply orders (create/delete/promote/mirror-ingest) are not
-		// event-counted in this MVP.
+		// CreateLedger / PromoteLedger — no state deltas that concern
+		// usage counters.
 		return nil
 	}
 
@@ -285,6 +320,50 @@ func (b *Builder) dispatchOrder(
 		return b.dispatchCreateTransaction(ctx, handle, ledger, data.CreateTransaction, logSeq, state, entry)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		return b.dispatchRevertTransaction(ctx, handle, ledger, logSeq, state, entry)
+	}
+
+	return nil
+}
+
+// dispatchMirrorIngest projects a single MirrorLogEntry — the mirror worker
+// replays these on the destination ledger, producing the same CreatedTx /
+// RevertedTx logs the direct write path emits. We contribute the
+// downstream-observable counters (postings, reverts, volumes, ephemeral) but
+// skip client-driven metadata (reference / numscript) since it doesn't
+// travel across the mirror wire.
+func (b *Builder) dispatchMirrorIngest(
+	ctx context.Context,
+	handle dal.PebbleGetter,
+	ledger string,
+	mle *raftcmdpb.MirrorLogEntry,
+	logSeq uint64,
+	state *batchState,
+	entry *entryVolumeState,
+) error {
+	if mle == nil {
+		return nil
+	}
+
+	switch mle.GetData().(type) {
+	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
+		ann, err := b.readLog(ctx, handle, logSeq)
+		if err != nil {
+			return err
+		}
+		if ann.postings > 0 {
+			state.addCounter(ledger, usagestore.CounterPosting, counterDelta(ann.postings))
+		}
+		applyVolumeAnnotations(ledger, ann, state, entry)
+	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
+		state.addCounter(ledger, usagestore.CounterRevert, 1)
+		ann, err := b.readLog(ctx, handle, logSeq)
+		if err != nil {
+			return err
+		}
+		if ann.postings > 0 {
+			state.addCounter(ledger, usagestore.CounterPosting, counterDelta(ann.postings))
+		}
+		applyVolumeAnnotations(ledger, ann, state, entry)
 	}
 
 	return nil
@@ -393,7 +472,17 @@ func (b *Builder) dispatchCreateTransaction(
 	}
 
 	if ref := order.GetNumscriptReference(); ref != nil {
-		state.addTemplateUsage(ledger, ref.GetName(), order.GetTimestamp())
+		// Prefer the order's client-supplied timestamp so template usage
+		// tracks the wall clock the client cares about; when omitted, fall
+		// back to the effective timestamp the FSM stamped on the produced
+		// log (either the client value or the proposal date resolved by
+		// processor_transaction.go). Either way we end up with a
+		// deterministic non-nil timestamp on every replay.
+		ts := order.GetTimestamp()
+		if ts == nil {
+			ts = ann.txTimestamp
+		}
+		state.addTemplateUsage(ledger, ref.GetName(), ts)
 	}
 
 	return nil
@@ -427,14 +516,18 @@ func (b *Builder) dispatchRevertTransaction(
 }
 
 // logVolumeAnnotations bundles the three disjoint TouchedVolume lists that
-// LedgerLog carries plus the resolved posting count. The lists are kept as
-// slices (not lengths) because the counter dispatch needs per-tuple identity
-// for batch-scoped deduplication — see the applyVolumeDelta docstring.
+// LedgerLog carries plus the resolved posting count and the transaction
+// timestamp. The lists are kept as slices (not lengths) because the counter
+// dispatch needs per-tuple identity for batch-scoped deduplication — see
+// applyVolumeAnnotations. txTimestamp is the effective timestamp the FSM
+// stamped on the transaction (client-provided or falling back to the
+// proposal date). Nil for non-transaction logs.
 type logVolumeAnnotations struct {
-	postings  int
-	purged    []*commonpb.TouchedVolume // len — draining only
-	newKept   []*commonpb.TouchedVolume // new + kept
-	ephemeral []*commonpb.TouchedVolume // new + purged (pure ephemeral)
+	postings    int
+	purged      []*commonpb.TouchedVolume // len — draining only
+	newKept     []*commonpb.TouchedVolume // new + kept
+	ephemeral   []*commonpb.TouchedVolume // new + purged (pure ephemeral)
+	txTimestamp *commonpb.Timestamp       // Transaction.Timestamp on Created/Reverted logs
 }
 
 // readLog fetches the log at logSeq and returns its posting count plus the
@@ -478,9 +571,13 @@ func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq u
 
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		result.postings = len(p.CreatedTransaction.GetTransaction().GetPostings())
+		tx := p.CreatedTransaction.GetTransaction()
+		result.postings = len(tx.GetPostings())
+		result.txTimestamp = tx.GetTimestamp()
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		result.postings = len(p.RevertedTransaction.GetRevertTransaction().GetPostings())
+		tx := p.RevertedTransaction.GetRevertTransaction()
+		result.postings = len(tx.GetPostings())
+		result.txTimestamp = tx.GetTimestamp()
 	}
 
 	return result, nil
@@ -528,6 +625,19 @@ func (b *Builder) commitBatch(state *batchState, cursor uint64) error {
 			_ = batch.Cancel()
 
 			return fmt.Errorf("writing template usage %q/%q: %w", k.ledger, k.template, err)
+		}
+	}
+
+	// Ledger deletions come last inside the batch — the DeleteRange scoped
+	// to `[PrefixTemplate/Counter][ledger 64B]…` wipes every counter /
+	// template row for the deleted ledger, including any writes staged
+	// above by earlier orders in the same audit entry. Matches the FSM's
+	// DeleteLedger cascade semantics: post-commit, no trace remains.
+	for ledger := range state.deletedLedgers {
+		if err := usagestore.DeleteLedger(batch, ledger); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("dropping usage rows for deleted ledger %q: %w", ledger, err)
 		}
 	}
 

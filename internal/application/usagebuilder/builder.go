@@ -260,16 +260,15 @@ func (b *Builder) loop(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		// Fast path: skip Pebble iterator when nothing new has landed. The
-		// LastSequence atomic tracks the last LOG sequence — a strict lower
-		// bound on the last audit sequence (audit entries are written in
-		// the same batch as their logs). Comparing against our audit cursor
-		// is conservative: we may wake up spuriously if the last batch had
-		// only audit updates (rare), but we never miss real work.
-		if cached := b.notifications.LastSequence.Load(); cached != 0 && cached <= cursor {
-			continue
-		}
-
+		// No fast-path atomic gate here: `signal.Notifications.LastSequence`
+		// tracks the last LOG sequence, whereas our cursor tracks the last
+		// AUDIT sequence. The two counters advance together in the common
+		// case but a failed proposal advances the audit chain without
+		// producing a log — comparing them directly would leave audit
+		// entries un-projected. processAuditEntries opens a cursor at
+		// `lastProcessedAuditSeq + 1` and immediately hits EOF when nothing
+		// new has landed, so the pebble-side cost of a spurious wake-up is
+		// negligible (one iterator open + close, no snapshot pin).
 		if cursor, err = b.processAuditEntries(ctx, cursor, time.Time{}); err != nil {
 			b.logger.Errorf("Error processing audit entries: %v", err)
 		}
