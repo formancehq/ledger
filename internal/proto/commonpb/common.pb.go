@@ -7541,7 +7541,14 @@ type TransactionState struct {
 	// Effective timestamp of the transaction (user-provided or command date at
 	// creation). Required for at_effective_date reverts to be deterministic
 	// without re-reading the original log from Pebble.
-	Timestamp     *Timestamp `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Timestamp *Timestamp `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	// Postings captured at creation. Populated by processCreateTransaction (and
+	// the mirror equivalent) so a later revert reads them from the FSM cache
+	// without needing to scan the Pebble-backed log — invariant #3 (no Pebble
+	// reads on the hot path) and invariant #8 (business decisions belong in
+	// the audit chain, so a revert of a non-existent tx must reach the FSM
+	// apply loop rather than fail-fast at admission).
+	Postings      []*Posting `protobuf:"bytes,5,rep,name=postings,proto3" json:"postings,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7600,6 +7607,13 @@ func (x *TransactionState) GetMetadata() map[string]*MetadataValue {
 func (x *TransactionState) GetTimestamp() *Timestamp {
 	if x != nil {
 		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *TransactionState) GetPostings() []*Posting {
+	if x != nil {
+		return x.Postings
 	}
 	return nil
 }
@@ -11187,12 +11201,13 @@ const file_common_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"Q\n" +
 	"\x15DeleteMetadataCommand\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xb9\x02\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xe6\x02\n" +
 	"\x10TransactionState\x12$\n" +
 	"\x0ecreated_by_log\x18\x01 \x01(\x06R\fcreatedByLog\x126\n" +
 	"\x17reverted_by_transaction\x18\x02 \x01(\x06R\x15revertedByTransaction\x12B\n" +
 	"\bmetadata\x18\x03 \x03(\v2&.common.TransactionState.MetadataEntryR\bmetadata\x12/\n" +
-	"\ttimestamp\x18\x04 \x01(\v2\x11.common.TimestampR\ttimestamp\x1aR\n" +
+	"\ttimestamp\x18\x04 \x01(\v2\x11.common.TimestampR\ttimestamp\x12+\n" +
+	"\bpostings\x18\x05 \x03(\v2\x0f.common.PostingR\bpostings\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xec\x01\n" +
@@ -11891,81 +11906,82 @@ var file_common_proto_depIdxs = []int32{
 	32,  // 156: common.DeleteMetadataCommand.target:type_name -> common.Target
 	170, // 157: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
 	17,  // 158: common.TransactionState.timestamp:type_name -> common.Timestamp
-	110, // 159: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
-	11,  // 160: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
-	171, // 161: common.IdempotencyFailure.metadata:type_name -> common.IdempotencyFailure.MetadataEntry
-	114, // 162: common.SegmentType.uuid:type_name -> common.UUIDConstraint
-	115, // 163: common.SegmentType.uint64:type_name -> common.Uint64Constraint
-	116, // 164: common.SegmentType.bytes:type_name -> common.BytesConstraint
-	13,  // 165: common.AccountType.persistence:type_name -> common.AccountTypePersistence
-	172, // 166: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
-	117, // 167: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
-	12,  // 168: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
-	132, // 169: common.QueryFilter.field:type_name -> common.FieldCondition
-	138, // 170: common.QueryFilter.address:type_name -> common.AddressMatch
-	128, // 171: common.QueryFilter.and:type_name -> common.AndFilter
-	129, // 172: common.QueryFilter.or:type_name -> common.OrFilter
-	130, // 173: common.QueryFilter.not:type_name -> common.NotFilter
-	122, // 174: common.QueryFilter.reference:type_name -> common.ReferenceCondition
-	125, // 175: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
-	123, // 176: common.QueryFilter.ledger:type_name -> common.LedgerCondition
-	124, // 177: common.QueryFilter.log_id:type_name -> common.LogIdCondition
-	126, // 178: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
-	127, // 179: common.QueryFilter.account_has_asset:type_name -> common.AccountHasAssetCondition
-	133, // 180: common.ReferenceCondition.cond:type_name -> common.StringCondition
-	133, // 181: common.LedgerCondition.cond:type_name -> common.StringCondition
-	135, // 182: common.LogIdCondition.cond:type_name -> common.UintCondition
-	3,   // 183: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
-	135, // 184: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
-	5,   // 185: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
-	135, // 186: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
-	121, // 187: common.AndFilter.filters:type_name -> common.QueryFilter
-	121, // 188: common.OrFilter.filters:type_name -> common.QueryFilter
-	121, // 189: common.NotFilter.filter:type_name -> common.QueryFilter
-	131, // 190: common.FieldCondition.field:type_name -> common.FieldRef
-	133, // 191: common.FieldCondition.string_cond:type_name -> common.StringCondition
-	134, // 192: common.FieldCondition.int_cond:type_name -> common.IntCondition
-	135, // 193: common.FieldCondition.uint_cond:type_name -> common.UintCondition
-	136, // 194: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
-	137, // 195: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
-	14,  // 196: common.AddressMatch.role:type_name -> common.AddressRole
-	121, // 197: common.PreparedQuery.filter:type_name -> common.QueryFilter
-	15,  // 198: common.PreparedQuery.target:type_name -> common.QueryTarget
-	22,  // 199: common.AggregatedVolume.input:type_name -> common.Uint256
-	22,  // 200: common.AggregatedVolume.output:type_name -> common.Uint256
-	140, // 201: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
-	142, // 202: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
-	140, // 203: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
-	30,  // 204: common.PreparedQueryCursor.account_data:type_name -> common.Account
-	24,  // 205: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
-	146, // 206: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
-	148, // 207: common.BackupStorage.s3:type_name -> common.S3StorageConfig
-	149, // 208: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
-	151, // 209: common.ListOptions.read:type_name -> common.ReadOptions
-	121, // 210: common.ListOptions.filter:type_name -> common.QueryFilter
-	19,  // 211: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
-	19,  // 212: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
-	26,  // 213: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	28,  // 214: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	19,  // 215: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
-	27,  // 216: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	33,  // 217: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	33,  // 218: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	33,  // 219: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	19,  // 220: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
-	117, // 221: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
-	20,  // 222: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	19,  // 223: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	117, // 224: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	19,  // 225: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
-	19,  // 226: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
-	19,  // 227: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
-	113, // 228: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
-	229, // [229:229] is the sub-list for method output_type
-	229, // [229:229] is the sub-list for method input_type
-	229, // [229:229] is the sub-list for extension type_name
-	229, // [229:229] is the sub-list for extension extendee
-	0,   // [0:229] is the sub-list for field type_name
+	23,  // 159: common.TransactionState.postings:type_name -> common.Posting
+	110, // 160: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
+	11,  // 161: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
+	171, // 162: common.IdempotencyFailure.metadata:type_name -> common.IdempotencyFailure.MetadataEntry
+	114, // 163: common.SegmentType.uuid:type_name -> common.UUIDConstraint
+	115, // 164: common.SegmentType.uint64:type_name -> common.Uint64Constraint
+	116, // 165: common.SegmentType.bytes:type_name -> common.BytesConstraint
+	13,  // 166: common.AccountType.persistence:type_name -> common.AccountTypePersistence
+	172, // 167: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
+	117, // 168: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
+	12,  // 169: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
+	132, // 170: common.QueryFilter.field:type_name -> common.FieldCondition
+	138, // 171: common.QueryFilter.address:type_name -> common.AddressMatch
+	128, // 172: common.QueryFilter.and:type_name -> common.AndFilter
+	129, // 173: common.QueryFilter.or:type_name -> common.OrFilter
+	130, // 174: common.QueryFilter.not:type_name -> common.NotFilter
+	122, // 175: common.QueryFilter.reference:type_name -> common.ReferenceCondition
+	125, // 176: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
+	123, // 177: common.QueryFilter.ledger:type_name -> common.LedgerCondition
+	124, // 178: common.QueryFilter.log_id:type_name -> common.LogIdCondition
+	126, // 179: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
+	127, // 180: common.QueryFilter.account_has_asset:type_name -> common.AccountHasAssetCondition
+	133, // 181: common.ReferenceCondition.cond:type_name -> common.StringCondition
+	133, // 182: common.LedgerCondition.cond:type_name -> common.StringCondition
+	135, // 183: common.LogIdCondition.cond:type_name -> common.UintCondition
+	3,   // 184: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
+	135, // 185: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
+	5,   // 186: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
+	135, // 187: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
+	121, // 188: common.AndFilter.filters:type_name -> common.QueryFilter
+	121, // 189: common.OrFilter.filters:type_name -> common.QueryFilter
+	121, // 190: common.NotFilter.filter:type_name -> common.QueryFilter
+	131, // 191: common.FieldCondition.field:type_name -> common.FieldRef
+	133, // 192: common.FieldCondition.string_cond:type_name -> common.StringCondition
+	134, // 193: common.FieldCondition.int_cond:type_name -> common.IntCondition
+	135, // 194: common.FieldCondition.uint_cond:type_name -> common.UintCondition
+	136, // 195: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
+	137, // 196: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
+	14,  // 197: common.AddressMatch.role:type_name -> common.AddressRole
+	121, // 198: common.PreparedQuery.filter:type_name -> common.QueryFilter
+	15,  // 199: common.PreparedQuery.target:type_name -> common.QueryTarget
+	22,  // 200: common.AggregatedVolume.input:type_name -> common.Uint256
+	22,  // 201: common.AggregatedVolume.output:type_name -> common.Uint256
+	140, // 202: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
+	142, // 203: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
+	140, // 204: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
+	30,  // 205: common.PreparedQueryCursor.account_data:type_name -> common.Account
+	24,  // 206: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
+	146, // 207: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
+	148, // 208: common.BackupStorage.s3:type_name -> common.S3StorageConfig
+	149, // 209: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
+	151, // 210: common.ListOptions.read:type_name -> common.ReadOptions
+	121, // 211: common.ListOptions.filter:type_name -> common.QueryFilter
+	19,  // 212: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
+	19,  // 213: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
+	26,  // 214: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	28,  // 215: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	19,  // 216: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
+	27,  // 217: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	33,  // 218: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	33,  // 219: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	33,  // 220: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	19,  // 221: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
+	117, // 222: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
+	20,  // 223: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	19,  // 224: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	117, // 225: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	19,  // 226: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
+	19,  // 227: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
+	19,  // 228: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
+	113, // 229: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
+	230, // [230:230] is the sub-list for method output_type
+	230, // [230:230] is the sub-list for method input_type
+	230, // [230:230] is the sub-list for extension type_name
+	230, // [230:230] is the sub-list for extension extendee
+	0,   // [0:230] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }

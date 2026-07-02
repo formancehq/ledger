@@ -136,10 +136,15 @@ The cache and Pebble are mutated by two paths during apply, both honoring the sa
  (before processing)          (after all handlers — tech + orders)
  ┌──────────────────────┐    ┌──────────────────────────────────────────┐
  │ CacheSnapshotter     │    │ WriteSet.Merge                           │
- │ • MirrorTouch        │    │ • derived.Merge() → writer.Put →         │
- │   Gen1→Gen0          │    │   KeyStore.Put → Gen0 (immediate)        │
- │ • MirrorPreload      │    │ • mergeSimpleWithCache → batch 0xF1+0xFF │
- │   raw→Gen0+Gen1      │    │ • SaveLedger / chapter writes / …         │
+ │ • MirrorPreload      │    │ • derived.Merge() → writer.Put →         │
+ │   (seed entries only)│    │   KeyStore.Put → Gen0 (immediate)        │
+ │   raw→Gen0+Gen1      │    │ • mergeSimpleWithCache → batch 0xF1+0xFF │
+ │ Coverage-only entries│    │ • KeyStore.Delete → AttributeCache.Del   │
+ │ are skipped: Get     │    │   (Gen0-hit tombstones in place;         │
+ │ falls back Gen0→Gen1 │    │    Gen1-hit lazy-fabricates Gen0         │
+ │ and Del lazy-        │    │    tombstone with Gen1's tag) →          │
+ │ fabricates the       │    │    writeCacheTombstone → 0xFF gen0Byte   │
+ │ Gen0 tombstone.      │    │ • SaveLedger / chapter writes / …         │
  │                      │    │                                          │
  │                      │    │ One Merge drains BOTH tech-update writes │
  │                      │    │ AND order writes — single atomic batch.  │

@@ -895,6 +895,13 @@ message TransactionState {
   // creation). Required for at_effective_date reverts to be deterministic
   // without re-reading the original log from Pebble.
   Timestamp timestamp = 4;
+  // Postings captured at creation. Populated by processCreateTransaction (and
+  // the mirror equivalent) so a later revert reads them from the FSM cache
+  // without needing to scan the Pebble-backed log — invariant #3 (no Pebble
+  // reads on the hot path) and invariant #8 (business decisions belong in
+  // the audit chain, so a revert of a non-existent tx must reach the FSM
+  // apply loop rather than fail-fast at admission).
+  repeated Posting postings = 5;
 }
 
 // IdempotencyKeyValue stores the outcome associated with a proposal's

@@ -30,10 +30,12 @@ type Lookup interface {
 
 // IndexWriter is implemented by the FSM-apply Accessor returned from
 // Scope.Indexes(). Method names match Accessor so the same instance
-// satisfies both Lookup and IndexWriter without an adapter.
+// satisfies both Lookup and IndexWriter without an adapter. Delete
+// returns an error so a coverage miss (invariant #6) propagates rather
+// than silently dropping.
 type IndexWriter interface {
 	Put(key domain.IndexKey, idx *commonpb.Index)
-	Delete(key domain.IndexKey)
+	Delete(key domain.IndexKey) error
 }
 
 // KeyFor builds the registry key for an index. An empty ledgerName addresses
@@ -107,10 +109,12 @@ func Put(w IndexWriter, ledgerName string, idx *commonpb.Index) {
 
 // Remove deletes the Index entry matching (ledgerName, id). Silently no-ops on
 // nil ids so callers can pipe order payloads without explicit validation.
-func Remove(w IndexWriter, ledgerName string, id *commonpb.IndexID) {
+// Returns any error the underlying writer surfaces (e.g. *state.ErrCoverageMiss
+// on the FSM hot path when the proposer did not declare the deletion key).
+func Remove(w IndexWriter, ledgerName string, id *commonpb.IndexID) error {
 	if id == nil {
-		return
+		return nil
 	}
 
-	w.Delete(KeyFor(ledgerName, id))
+	return w.Delete(KeyFor(ledgerName, id))
 }

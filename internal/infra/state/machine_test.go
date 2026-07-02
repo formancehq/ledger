@@ -80,10 +80,10 @@ func makeProposal(id uint64, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 }
 
 // sealProposal stamps every order's CoverageBits to flag every
-// AttributePlan in the proposal's ExecutionPlan. This is the
+// AttributeCoverage in the proposal's ExecutionPlan. This is the
 // "admit-all per order" shortcut tests rely on: production goes
 // through plan.Builder.Run which derives per-order bits from each
-// order's declared Needs via plan.bitsForNeeds. Rebuilding that path
+// order's declared Coverage via plan.bitsForNeeds. Rebuilding that path
 // here would require pulling admission.extractPreloadNeeds (and its
 // 200+ lines of order-type switch) into a shared package. Tracked
 // for a follow-up. None of the existing tests exercise per-order
@@ -110,34 +110,24 @@ func sealProposal(p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
 	return p
 }
 
-// declareTestPlan builds a Declare-intent AttributePlan over an attribute
-// (code, U128) pair. Used by tests that simulate what admission's resolve
-// layer emits when a key is already CacheGuaranteed (Gen0).
-func declareTestPlan(id attributes.U128, attrCode byte) *raftcmdpb.AttributePlan {
-	return &raftcmdpb.AttributePlan{
+// declareTestPlan builds a coverage-only AttributeCoverage over an
+// attribute (code, U128) pair. Used by tests that simulate what
+// admission's resolve layer emits when a key is already CacheHit.
+func declareTestPlan(id attributes.U128, attrCode byte) *raftcmdpb.AttributeCoverage {
+	return &raftcmdpb.AttributeCoverage{
 		Id:       &raftcmdpb.AttributeID{Id: id[:]},
 		AttrCode: uint32(attrCode),
-		Intent:   &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 	}
 }
 
-// touchTestPlan builds a Touch-intent AttributePlan: Gen1→Gen0 promotion.
-func touchTestPlan(id attributes.U128, attrCode byte) *raftcmdpb.AttributePlan {
-	return &raftcmdpb.AttributePlan{
-		Id:       &raftcmdpb.AttributeID{Id: id[:]},
-		AttrCode: uint32(attrCode),
-		Intent:   &raftcmdpb.AttributePlan_Touch{Touch: &raftcmdpb.Touch{}},
-	}
-}
-
-// preloadTestPlan wraps an AttributeValue payload into an AttributePlan.
-// attrID carries the canonical U128 + xxh3 collision tag; attrCode
-// (dal.SubAttrXxx) drives the unmarshal dispatch.
-func preloadTestPlan(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) *raftcmdpb.AttributePlan {
-	return &raftcmdpb.AttributePlan{
+// preloadTestPlan wraps an AttributeValue payload into a seeded
+// AttributeCoverage. attrID carries the canonical U128 + xxh3 collision
+// tag; attrCode (dal.SubAttrXxx) drives the unmarshal dispatch.
+func preloadTestPlan(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) *raftcmdpb.AttributeCoverage {
+	return &raftcmdpb.AttributeCoverage{
 		Id:       attrID,
 		AttrCode: uint32(attrCode),
-		Intent:   &raftcmdpb.AttributePlan_Value{Value: value},
+		Value:    value,
 	}
 }
 
@@ -160,21 +150,21 @@ func rawPreloadNoT[V interface {
 		panic(fmt.Errorf("rawPreload: marshal attrCode=0x%x: %w", attrCode, err))
 	}
 
-	_ = attrCode // attr_code lives on the parent AttributePlan now
+	_ = attrCode // attr_code lives on the parent AttributeCoverage now
 
 	return &raftcmdpb.AttributeValue{
 		RawValue: raw,
 	}
 }
 
-// buildOrderDeclarations emits Declare-intent AttributePlans for the
+// buildOrderDeclarations emits Declare-intent AttributeCoverages for the
 // side-channel keys the FSM reads while applying orders but that
 // buildVolumePreloads does not cover: the ledger itself, its boundaries,
 // target transactions for reverts, and metadata keys.
 //
 // The ledger name comes from the order itself (apply.GetLedger()), matching
 // the LedgerName-based canonical key layout introduced by #469.
-func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePlan {
+func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCoverage {
 	type acctMetaKey struct {
 		ledgerName string
 		account    string
@@ -234,7 +224,7 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePla
 		}
 	}
 
-	var declared []*raftcmdpb.AttributePlan
+	var declared []*raftcmdpb.AttributeCoverage
 
 	for name := range ledgers {
 		ledgerKeyID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
@@ -266,14 +256,14 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePla
 // orders and creates zero-value volume preloads for each unique combination.
 // The second parameter is the default ledger name for orders that do not carry
 // one (none in practice today, but kept for callers passing a literal sentinel).
-func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePlan {
+func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCoverage {
 	type volumeKey struct {
 		ledger  string
 		account string
 		asset   string
 	}
 	seen := make(map[volumeKey]struct{})
-	var plans []*raftcmdpb.AttributePlan
+	var plans []*raftcmdpb.AttributeCoverage
 
 	zero := commonpb.NewUint256FromUint64(0)
 
@@ -324,7 +314,7 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributePlan {
 
 // makeEntry marshals a proposal into a raft entry at the given index.
 // sealProposal is applied first so every order's CoverageBits flags
-// every AttributePlan in the proposal, matching what the admission
+// every AttributeCoverage in the proposal, matching what the admission
 // runner does for production proposals — tests built inline would
 // otherwise hit *ErrCoverageMiss on the first cache read.
 func makeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) raftpb.Entry {

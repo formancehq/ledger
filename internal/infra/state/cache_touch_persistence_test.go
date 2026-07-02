@@ -12,23 +12,23 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// TestPreload_RejectsMalformedAttributePlan pins the gate that catches
-// forged or partially-decoded plans before any MirrorTouch / MirrorPreload
-// can mutate the cache. Without this, a Touch with a nil AttributeID
-// would silently land a zero-padded U128 in the cache and a 0xFF Pebble
-// write that the failure-audit batch would commit on later business
-// rejection.
-func TestPreload_RejectsMalformedAttributePlan(t *testing.T) {
+// TestPreload_RejectsMalformedAttributeCoverage pins the gate that catches
+// forged or partially-decoded plans before any MirrorPreload can mutate the
+// cache. Without this, a coverage-only entry with a nil AttributeID would
+// silently zero-pad through scope's applyPlans and admit a phantom U128 into
+// the coverage slot; a seed entry would land the zero-padded U128 in the
+// cache and a 0xFF Pebble write that the failure-audit batch would commit
+// on later business rejection.
+func TestPreload_RejectsMalformedAttributeCoverage(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
 
 	plan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{{
+		Attributes: []*raftcmdpb.AttributeCoverage{{
 			Id:       nil, // forged / decoded-incomplete envelope
 			AttrCode: uint32(dal.SubAttrLedger),
-			Intent:   &raftcmdpb.AttributePlan_Touch{Touch: &raftcmdpb.Touch{}},
 		}},
 	}
 
@@ -44,11 +44,11 @@ func TestPreload_RejectsMalformedAttributePlan(t *testing.T) {
 }
 
 // TestPreload_RejectsUnknownAttrCode pins that a forged ExecutionPlan
-// whose AttributePlan declares an attr_code the FSM does not handle is
-// caught at Preload entry. Without the gate, MirrorTouch / MirrorPreload
-// would route the write to an orphan 0xFF Pebble slot, and a
-// technical-only / no-read proposal would never reach a scope-level
-// validation that could catch it.
+// whose AttributeCoverage declares an attr_code the FSM does not handle is
+// caught at Preload entry. Without the gate, a seed intent's MirrorPreload
+// would route the write to an orphan 0xFF Pebble slot, and a technical-only
+// / no-read proposal would never reach a scope-level validation that could
+// catch it.
 func TestPreload_RejectsUnknownAttrCode(t *testing.T) {
 	t.Parallel()
 
@@ -57,10 +57,10 @@ func TestPreload_RejectsUnknownAttrCode(t *testing.T) {
 
 	plan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{{
+		Attributes: []*raftcmdpb.AttributeCoverage{{
 			Id:       &raftcmdpb.AttributeID{Id: u128[:]},
 			AttrCode: 0xff, // unknown attr_code
-			Intent:   &raftcmdpb.AttributePlan_Touch{Touch: &raftcmdpb.Touch{}},
+
 		}},
 	}
 
@@ -77,7 +77,7 @@ func TestPreload_RejectsUnknownAttrCode(t *testing.T) {
 }
 
 // TestPreload_IdempotencyOnlyProposalAppliesKeys pins the behaviour for a
-// proposal that ships only idempotency keys (no AttributePlan entries) —
+// proposal that ships only idempotency keys (no AttributeCoverage entries) —
 // the typical shape of an idempotent maintenance / signature order with no
 // attribute needs. The early-exit on `len(GetAttributes()) == 0` must NOT
 // short-circuit the IdempotencyStore restore, otherwise at-most-once
@@ -106,154 +106,8 @@ func TestPreload_IdempotencyOnlyProposalAppliesKeys(t *testing.T) {
 	require.NoError(t, machine.Preload(executionPlan, batch, gen0Byte))
 
 	got, ok := machine.Registry.Idempotency.Get("idem-only")
-	require.True(t, ok, "idempotency key must be present after Preload even with no AttributePlan entries")
+	require.True(t, ok, "idempotency key must be present after Preload even with no AttributeCoverage entries")
 	require.Equal(t, uint64(42), got.GetFirstLogSequence())
-}
-
-// Asserts a CacheTouch promotion lands at 0xFF gen0Byte and survives a
-// restart — without the mirror, RestoreFromStore would put the entry back
-// into gen1 and the next rotation would evict it.
-func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
-	t.Parallel()
-
-	machine, dataStore, _ := newTestMachine(t)
-	_ = dataStore
-	registry := machine.Registry
-
-	// gen0Byte / gen1Byte for currentGeneration=0.
-	const (
-		gen0Byte byte = 0
-		gen1Byte byte = 1
-	)
-
-	// Pre-touch shape: entry in gen1 in-memory and at 0xFF gen1Byte.
-	ledgerKey := domain.LedgerKey{Name: "gaming"}
-	id := attributes.HashU128(ledgerKey.Bytes())
-	info := &commonpb.LedgerInfo{Name: "gaming"}
-
-	registry.Cache.Ledgers.Gen1().Put(id, attributes.Entry[*commonpb.LedgerInfo]{Tag: 7, Data: info})
-
-	seedBatch := dataStore.OpenWriteSession()
-	infoBytes, err := info.MarshalVT()
-	require.NoError(t, err)
-	require.NoError(t,
-		writeCacheRaw(seedBatch, gen1Byte, dal.SubAttrLedger, id, 7, false, infoBytes))
-	require.NoError(t, seedBatch.Commit())
-
-	gen1Key := []byte{dal.ZoneCache, gen1Byte, dal.SubAttrLedger}
-	gen1Key = append(gen1Key, id[:]...)
-	gen0Key := []byte{dal.ZoneCache, gen0Byte, dal.SubAttrLedger}
-	gen0Key = append(gen0Key, id[:]...)
-
-	if val, closer, getErr := dataStore.Get(gen1Key); getErr == nil {
-		require.NotEmpty(t, val)
-		require.NoError(t, closer.Close())
-	} else {
-		t.Fatalf("seed: gen1 row missing: %v", getErr)
-	}
-
-	_, _, err = dataStore.Get(gen0Key)
-	require.Error(t, err, "seed: gen0 row should not exist yet")
-
-	applyBatch := dataStore.OpenWriteSession()
-	defer func() { _ = applyBatch.Cancel() }()
-
-	executionPlan := &raftcmdpb.ExecutionPlan{
-		LastPersistedIndex: registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{{
-			Id: &raftcmdpb.AttributeID{Id: id[:]}, AttrCode: uint32(dal.SubAttrLedger),
-			Intent: &raftcmdpb.AttributePlan_Touch{Touch: &raftcmdpb.Touch{}},
-		}},
-	}
-
-	require.NoError(t, machine.Preload(executionPlan, applyBatch, gen0Byte))
-	require.NoError(t, applyBatch.Commit())
-
-	// Touch is a copy, not a move — gen1 keeps the entry.
-	got, ok := registry.Cache.Ledgers.Gen0().Get(id)
-	require.True(t, ok, "after touch: gen0 must have the entry")
-	require.Equal(t, "gaming", got.Data.GetName())
-	require.Equal(t, uint64(7), got.Tag)
-
-	if val, closer, getErr := dataStore.Get(gen0Key); getErr != nil {
-		t.Fatalf("0xFF gen0 row missing after touch: %v", getErr)
-	} else {
-		require.NotEmpty(t, val)
-		require.NoError(t, closer.Close())
-	}
-
-	// Restart simulation.
-	registry.Cache.Reset()
-	require.NoError(t, machine.cacheSnapshotter.RestoreFromStore(dataStore))
-
-	restored, ok := registry.Cache.Ledgers.Gen0().Get(id)
-	require.True(t, ok, "gen0 must hold the entry after restore")
-	require.Equal(t, "gaming", restored.Data.GetName())
-}
-
-// Asserts a CacheTouch for a key already in gen0 is a no-op and doesn't
-// overwrite 0xFF gen0Byte (which may hold a fresher in-batch Merge value).
-func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
-	t.Parallel()
-
-	machine, dataStore, _ := newTestMachine(t)
-	_ = dataStore
-	registry := machine.Registry
-
-	const (
-		gen0Byte byte = 0
-		gen1Byte byte = 1
-	)
-
-	ledgerKey := domain.LedgerKey{Name: "gaming"}
-	id := attributes.HashU128(ledgerKey.Bytes())
-
-	staleInfo := &commonpb.LedgerInfo{Name: "gaming-stale"}
-	freshInfo := &commonpb.LedgerInfo{Name: "gaming-fresh"}
-
-	// Post-Merge shape: stale in gen1 + 0xFF gen1Byte; fresh in gen0 + 0xFF gen0Byte.
-	registry.Cache.Ledgers.Gen1().Put(id, attributes.Entry[*commonpb.LedgerInfo]{Tag: 1, Data: staleInfo})
-	registry.Cache.Ledgers.Gen0().Put(id, attributes.Entry[*commonpb.LedgerInfo]{Tag: 1, Data: freshInfo})
-
-	seedBatch := dataStore.OpenWriteSession()
-	staleBytes, err := staleInfo.MarshalVT()
-	require.NoError(t, err)
-
-	freshBytes, err := freshInfo.MarshalVT()
-	require.NoError(t, err)
-	require.NoError(t,
-		writeCacheRaw(seedBatch, gen1Byte, dal.SubAttrLedger, id, 1, false, staleBytes))
-	require.NoError(t,
-		writeCacheRaw(seedBatch, gen0Byte, dal.SubAttrLedger, id, 1, false, freshBytes))
-	require.NoError(t, seedBatch.Commit())
-
-	applyBatch := dataStore.OpenWriteSession()
-	defer func() { _ = applyBatch.Cancel() }()
-
-	executionPlan := &raftcmdpb.ExecutionPlan{
-		LastPersistedIndex: registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{{
-			Id: &raftcmdpb.AttributeID{Id: id[:]}, AttrCode: uint32(dal.SubAttrLedger),
-			Intent: &raftcmdpb.AttributePlan_Touch{Touch: &raftcmdpb.Touch{}},
-		}},
-	}
-	require.NoError(t, machine.Preload(executionPlan, applyBatch, gen0Byte))
-	require.NoError(t, applyBatch.Commit())
-
-	got, ok := registry.Cache.Ledgers.Gen0().Get(id)
-	require.True(t, ok)
-	require.Equal(t, "gaming-fresh", got.Data.GetName(), "touch must not overwrite fresh gen0 value")
-
-	gen0Key := []byte{dal.ZoneCache, gen0Byte, dal.SubAttrLedger}
-	gen0Key = append(gen0Key, id[:]...)
-	val, closer, err := dataStore.Get(gen0Key)
-	require.NoError(t, err)
-
-	defer func() { _ = closer.Close() }()
-
-	// Lean format: [8-byte tag LE][1-byte flag][value bytes].
-	require.Equal(t, cacheValueFlagLive, val[8], "0xFF gen0 row must be live")
-	require.Equal(t, freshBytes, val[cacheValueHeaderLen:], "0xFF gen0 row must not be clobbered with stale gen1 value")
 }
 
 // Asserts a CacheMiss preload for a key already in gen0 is a no-op for that
@@ -303,10 +157,10 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	// (stale wrt the in-batch merge).
 	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{{
+		Attributes: []*raftcmdpb.AttributeCoverage{{
 			Id:       &raftcmdpb.AttributeID{Id: hash[:], Tag: tag},
 			AttrCode: uint32(dal.SubAttrNumscriptContent),
-			Intent:   &raftcmdpb.AttributePlan_Value{Value: rawPreload(t, dal.SubAttrNumscriptContent, staleInfo)},
+			Value:    rawPreload(t, dal.SubAttrNumscriptContent, staleInfo),
 		}},
 		// NOTE: helper rawPreload defined at the bottom of this file.
 	}
@@ -371,10 +225,10 @@ func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {
 
 	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{{
+		Attributes: []*raftcmdpb.AttributeCoverage{{
 			Id:       &raftcmdpb.AttributeID{Id: hash[:], Tag: tag},
 			AttrCode: uint32(dal.SubAttrNumscriptContent),
-			Intent:   &raftcmdpb.AttributePlan_Value{Value: rawPreload(t, dal.SubAttrNumscriptContent, scriptInfo)},
+			Value:    rawPreload(t, dal.SubAttrNumscriptContent, scriptInfo),
 		}},
 	}
 

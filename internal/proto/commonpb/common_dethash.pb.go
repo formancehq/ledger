@@ -2400,6 +2400,15 @@ func (m *TransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Postings) > 0 {
+		for iNdEx := len(m.Postings) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.Postings[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
 	if m.Timestamp != nil {
 		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size

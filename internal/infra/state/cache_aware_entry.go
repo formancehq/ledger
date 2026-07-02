@@ -79,7 +79,7 @@ func (c *CacheAwareEntry[K, V]) PutWithCache(
 // PutCacheOnly writes a value to the in-memory KeyStore and the 0xFF cache zone
 // WITHOUT writing to the 0xF1 attribute zone. Used for the ephemeral purge
 // pattern where the 0xF1 entry is deleted separately but the cache must stay
-// populated for co-batched CacheGuaranteed proposals.
+// populated for co-batched CacheHit proposals.
 func (c *CacheAwareEntry[K, V]) PutCacheOnly(
 	batch *dal.WriteSession,
 	genByte byte,

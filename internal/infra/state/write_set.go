@@ -476,7 +476,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// batches: the next GetVolume would return the prior cumulative value,
 	// causing PCVs on re-touched transient cells to drift. A populated cache
 	// entry (rather than a delete) is still required for any co-batched
-	// proposal admitted with CacheGuaranteed.
+	// proposal admitted with CacheHit.
 	if err := b.zeroVolumeCache(batch, genByte, partResult.transient); err != nil {
 		return fmt.Errorf("failed zeroing transient volumes in cache: %w", err)
 	}

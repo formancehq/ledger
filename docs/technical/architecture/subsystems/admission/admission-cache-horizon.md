@@ -8,14 +8,15 @@
 
 When admission builds a proposal's preload plan, it queries the dual-generation
 cache (`AttributeCache.CheckCache(at, key)`) to decide, per key, whether to
-emit a `Declare`, a `Touch`, or a `Preload`. The decision compares the
-predicted apply-time generation `Gen(at, threshold)` against the FSM's current
-applied generation:
+emit a coverage-only `AttributeCoverage` (value nil) or a seed
+`AttributeCoverage` (value set). The decision compares the predicted
+apply-time generation `Gen(at, threshold)` against the FSM's current applied
+generation:
 
 | `Gen(at) − currentGen` | `CheckCache` result | Plan emitted |
 |---|---|---|
-| 0 | `CacheGuaranteed` / `CacheNeedsTouch` / `CacheMiss` | `Declare` / `Touch` / `Preload` |
-| 1 | `CacheGuaranteed` / `CacheMiss` | `Declare` / `Preload` |
+| 0 | `CacheHit` / `CacheMiss` | coverage-only (`value = nil`) / seed (`value` set) |
+| 1 | `CacheHit` (Gen0-hit only) / `CacheMiss` | coverage-only / seed |
 | **≥ 2** | **`CacheUnreachable`** | **proposal rejected at admission** |
 
 The ≥ 2 case is the "cache horizon exceeded" condition this document is about.

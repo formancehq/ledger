@@ -158,10 +158,22 @@ func (s *KeyStore[K, T]) GetEntry(canonical []byte) (Entry[T], bool) {
 	return entry, true
 }
 
-// Delete marks the entry as a tombstone instead of removing it.
-// The entry stays in the cache (surviving MirrorTouch during pipelined
-// proposals) but reads via Get return nil. Tombstones age out naturally
-// via cache generation rotation.
+// Delete tombstones the entry in the underlying store. On the dual-generation
+// AttributeCache the tombstone lands in Gen0 (in-place when Gen0 has the
+// entry, or lazily fabricated from Gen1's tag when only Gen1 has it) — this
+// mirrors the single-byte writeCacheTombstone the FSM issues in the same
+// batch, keeping the in-memory cache equal to disk for the same applied
+// index (invariant #1). Any pre-existing Gen1 entry is left untouched: the
+// Gen0 tombstone shadows it on every read, and the stale Gen1 row is
+// purged on the next rotation.
+//
+// Returns domain.ErrNotFound only when the key is absent from both
+// generations. The caller (DerivedKeyStore.Merge) treats this as an
+// idempotent no-op — legitimate for mirror-ingest paths that apply Delete
+// logs without a prior existence check, and safe under invariant #1 (no
+// downstream tombstone is written, so cache and disk stay aligned).
+//
+// Tombstones age out naturally via rotation.
 func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, tag uint64, err error) {
 	id, tag = s.hasher.MakeKey(canonical)
 
@@ -174,8 +186,9 @@ func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, tag uint64, err erro
 		return id, tag, newErrCollisionDetected(canonical, entry.Tag, tag)
 	}
 
-	entry.Deleted = true
-	s.M.Put(id, entry)
+	if delErr := s.M.Del(id); delErr != nil {
+		return id, tag, delErr
+	}
 
 	return id, tag, nil
 }
@@ -272,7 +285,20 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 		canonical := append([]byte(nil), s.scratch...)
 
 		id, tag, err := s.writer.Delete(canonical)
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		if err != nil {
+			// Genuinely absent: writer.Delete returns ErrNotFound when the
+			// underlying AttributeCache misses on the key in BOTH generations
+			// (Get uses a gen0→gen1 fallback, so ErrNotFound here is a "not
+			// anywhere" signal). Skip the deletion entirely — writing a
+			// downstream disk tombstone would drift the persisted state past
+			// the in-memory cache (invariant #1). Legitimate for mirror-
+			// ingest paths that apply Delete logs without a prior existence
+			// check; handlers that do a Get-first business check surface
+			// their own domain error before Delete is queued here.
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+
 			return nil, nil, err
 		}
 

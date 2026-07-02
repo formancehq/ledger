@@ -18,7 +18,7 @@ type Writer interface {
 	SetMetadata(canonicalKey []byte, value string) error
 	DeleteMetadata(canonicalKey []byte) error
 	MoveMetadata(oldKey, newKey []byte) error
-	CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue) error
+	CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting) error
 	SetRevertedBy(canonicalKey []byte, revertTxID uint64) error
 	SaveTxMetadata(canonicalKey []byte, metadata map[string]*commonpb.MetadataValue) error
 	DeleteTxMetadata(canonicalKey []byte, key string) error

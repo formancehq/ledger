@@ -100,6 +100,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	txState := &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Timestamp:    timestamp,
+		Postings:     result.Postings,
 	}
 
 	// Validate account addresses in resolved postings (covers Numscript-resolved addresses).

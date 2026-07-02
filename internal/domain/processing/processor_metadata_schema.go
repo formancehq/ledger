@@ -133,7 +133,9 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 	}
 
 	if existing != nil {
-		indexes.Remove(s.Indexes(), info.GetName(), id)
+		if err := indexes.Remove(s.Indexes(), info.GetName(), id); err != nil {
+			return nil, &domain.ErrStorageOperation{Operation: "removing metadata field index", Cause: err}
+		}
 		droppedIndex = id
 	}
 
