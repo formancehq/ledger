@@ -301,7 +301,7 @@ func TestBuildPreloads_DeclaresAbsentNonZeroKey(t *testing.T) {
 
 	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "fresh-ref"}
 	needs := NewNeeds()
-	needs.References[refKey] = struct{}{}
+	needs.Add(dal.SubAttrReference, refKey.Bytes())
 
 	build, err := p.Build([]WriteOperation{{Needs: needs}})
 	require.NoError(t, err)
@@ -357,7 +357,7 @@ func TestBuildPreloads_RejectsCacheHorizonExceeded(t *testing.T) {
 
 	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref"}
 	needs := NewNeeds()
-	needs.References[refKey] = struct{}{}
+	needs.Add(dal.SubAttrReference, refKey.Bytes())
 
 	build, buildErr := p.Build([]WriteOperation{{Needs: needs}})
 	defer build.ReleaseLoaders()
@@ -365,4 +365,138 @@ func TestBuildPreloads_RejectsCacheHorizonExceeded(t *testing.T) {
 	require.Error(t, buildErr, "admission must reject when 2+ rotations are predicted")
 	require.ErrorIs(t, buildErr, ErrCacheHorizonExceeded,
 		"reject must surface ErrCacheHorizonExceeded so the gRPC adapter maps to codes.Unavailable")
+}
+
+// TestBuildPreloads_EmitsDeclareOnCacheGuaranteed pins the CacheGuaranteed
+// branch: when admission's CheckCache verdict says the key is in Gen0 and
+// still will be at apply, the resolver emits Declare (coverage-only, no
+// Pebble read).
+func TestBuildPreloads_EmitsDeclareOnCacheGuaranteed(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"},
+		Key:        "label",
+	}
+	id, _ := attributes.MakeKey(metaKey.Bytes())
+	c.AccountMetadata.Put(id, attributes.Entry[*commonpb.MetadataValue]{
+		Data: &commonpb.MetadataValue{},
+	})
+
+	tracker := node.NewIndexTracker(1)
+	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
+
+	needs := NewNeeds()
+	needs.Add(dal.SubAttrMetadata, metaKey.Bytes())
+
+	build, err := p.Build([]WriteOperation{{Needs: needs}})
+	require.NoError(t, err)
+	defer build.ReleaseLoaders()
+
+	require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
+	plan := build.ExecutionPlan.GetAttributes()[0]
+
+	_, isDeclare := plan.GetIntent().(*raftcmdpb.AttributePlan_Declare)
+	require.True(t, isDeclare, "CacheGuaranteed must emit Declare — cache already has the value, no seed needed")
+	require.Equal(t, uint32(dal.SubAttrMetadata), plan.GetAttrCode())
+	require.Equal(t, id[:], plan.GetId().GetId())
+}
+
+// TestBuildPreloads_EmitsDeclareOnMissingKey confirms the CacheMiss +
+// Pebble-absent branch: nothing to seed, so the resolver emits Declare
+// (coverage-only).
+func TestBuildPreloads_EmitsDeclareOnMissingKey(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"},
+		Key:        "label",
+	}
+
+	tracker := node.NewIndexTracker(1)
+	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
+
+	needs := NewNeeds()
+	needs.Add(dal.SubAttrMetadata, metaKey.Bytes())
+
+	build, err := p.Build([]WriteOperation{{Needs: needs}})
+	require.NoError(t, err)
+	defer build.ReleaseLoaders()
+
+	require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
+	plan := build.ExecutionPlan.GetAttributes()[0]
+
+	_, isDeclare := plan.GetIntent().(*raftcmdpb.AttributePlan_Declare)
+	require.True(t, isDeclare, "CacheMiss + Pebble-absent must emit Declare (coverage-only)")
+}
+
+// TestBuildPreloads_EmitsDeclareOnBloomShortcut confirms the
+// bloom-shortcut path: when admission's bloom filter says "definitely
+// not", the resolver skips the Pebble read and emits Declare directly.
+func TestBuildPreloads_EmitsDeclareOnBloomShortcut(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	bfs := bloom.NewFilterSet(&commonpb.ClusterConfig{
+		BloomMetadata: &commonpb.BloomTypeConfig{ExpectedKeys: 1024, FpRate: 0.001},
+	}, meter)
+	require.NotNil(t, bfs)
+	bfs.SetReady(true)
+	require.True(t, bfs.IsReady())
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"},
+		Key:        "label",
+	}
+
+	tracker := node.NewIndexTracker(1)
+	p := NewBuilder(tracker, c, attrs, store, bfs, logger, 0)
+
+	needs := NewNeeds()
+	needs.Add(dal.SubAttrMetadata, metaKey.Bytes())
+
+	build, err := p.Build([]WriteOperation{{Needs: needs}})
+	require.NoError(t, err)
+	defer build.ReleaseLoaders()
+
+	require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
+	plan := build.ExecutionPlan.GetAttributes()[0]
+
+	_, isDeclare := plan.GetIntent().(*raftcmdpb.AttributePlan_Declare)
+	require.True(t, isDeclare, "bloom-shortcut must emit Declare — the fast path bypasses Pebble entirely")
 }
