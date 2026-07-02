@@ -102,6 +102,13 @@ type DefaultController struct {
 	usageStore *usagestore.Store
 	coldReader *coldstorage.ColdReader
 
+	// historical is true on clones produced by WithStores — reads are then
+	// served from a point-in-time checkpoint. usage counters are excluded
+	// from historical responses because the usagestore does not participate
+	// in the query-checkpoint mechanism; serving live values inside an
+	// otherwise historical response would produce a non-deterministic view.
+	historical bool
+
 	applyDuration metric.Int64Histogram
 }
 
@@ -182,6 +189,7 @@ func (ctrl *DefaultController) WithStores(store *dal.Store, readStore *readstore
 	clone := *ctrl
 	clone.store = store
 	clone.readStore = readStore
+	clone.historical = true
 
 	return &clone
 }
@@ -536,6 +544,18 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 		if nextLogID := boundaries.GetNextLogId(); nextLogID > 0 {
 			stats.LogCount = nextLogID - 1
 		}
+	}
+
+	// Historical (checkpoint-scoped) reads intentionally return zero
+	// usage counters: the usagestore is a projection of the LIVE audit
+	// chain and does not participate in query-checkpoint machinery, so
+	// serving live counters alongside checkpointed boundary values would
+	// produce a non-deterministic response for the same checkpoint id.
+	// This is the same trade-off that keeps read-index rebuild scoped to
+	// live state — future work can add checkpointed usage projections if
+	// clients need them.
+	if ctrl.historical {
+		return &stats, nil
 	}
 
 	// Projected counters from the usagebuilder side-store. All reads go
@@ -1339,8 +1359,20 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 // subsystem asynchronously from the audit chain: a template that was just
 // invoked may not yet be reflected here for up to one usagebuilder tick
 // (100 ms). Returns a zero-valued TemplateUsage (never nil) when the
-// template has never been invoked.
-func (ctrl *DefaultController) GetTemplateUsage(_ context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+// template has never been invoked on an existing ledger.
+//
+// Ledger existence is validated first so an unknown or soft-deleted ledger
+// surfaces a NotFound business error rather than a zero-valued 200 — the
+// same contract as GetLedgerStats / GetNumscript.
+func (ctrl *DefaultController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+	if _, err := query.GetLedgerByName(ctx, ctrl.store, ledger); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+		}
+
+		return nil, err
+	}
+
 	usage, err := ctrl.usageStore.GetTemplateUsage(ledger, name)
 	if err != nil {
 		return nil, fmt.Errorf("reading template usage %q/%q: %w", ledger, name, err)
