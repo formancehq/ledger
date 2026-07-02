@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -196,9 +197,44 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 	}
 
 	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId()); err != nil {
+		// EN-1436: a JoinAsLearner call reaches the leader only when the caller
+		// has no CLUSTER_JOINED marker on its WAL (see bootstrap/module.go
+		// tryAddLearner). If the leader's Progress already carries this
+		// nodeID, one of two things happened:
+		//
+		//   1. Legitimate previous member whose WAL was reprovisioned (chaos,
+		//      operator, GitOps drift). Local raftLog.lastIndex is 0.
+		//   2. Half-populated WAL from a crash between "initial snapshot
+		//      write" and "CLUSTER_JOINED marker write". Local raftLog may
+		//      have some entries but the marker did not persist.
+		//
+		// The old code returned AlreadyExists (mapped from
+		// ErrNodeAlreadyInCluster) and the client treated it as idempotent
+		// success. That works for shape 2 with a lucky lastIndex, and
+		// silently breaks shape 1: as soon as raft starts on the caller,
+		// the leader's next MsgApp/heartbeat carries Commit=Progress.Match,
+		// etcd-raft's commitTo guard fires ("tocommit out of range"), and
+		// the pod CrashLoopBackOffs indefinitely with no clue for the
+		// operator. We cannot distinguish the two shapes from server-side
+		// data (Progress.Match alone doesn't say whether the caller's log
+		// covers it).
+		//
+		// Rather than silently patch this by force-removing on the caller's
+		// behalf — which would mask real operational events (why did the
+		// WAL disappear? did GitOps drift the PVC?) — surface it as a
+		// FailedPrecondition with the exact remediation command in the
+		// message. Client-side, tryAddLearner treats FailedPrecondition as
+		// fatal-with-clear-message so the pod fails fast with an operator-
+		// actionable log line instead of crash-looping on tocommit.
+		if errors.Is(err, node.ErrNodeAlreadyInCluster) {
+			return nil, status.Errorf(codes.FailedPrecondition,
+				"node %d is already in the leader's raft Progress but the caller has no CLUSTER_JOINED marker — "+
+					"its local WAL cannot satisfy the leader's known match index. "+
+					"Reset membership first: `ledgerctl cluster remove-node %d --force` on the leader, then restart this pod.",
+				req.GetNodeId(), req.GetNodeId())
+		}
+
 		// Notably:
-		//   - ErrNodeAlreadyInCluster → AlreadyExists (idempotent join,
-		//     handled as success in tryAddLearner)
 		//   - ErrNotLeader / ErrProposalDropped / ErrNoLeader → Unavailable
 		//     (retried by the client)
 		return nil, convertToGRPCError(err, impl.logger)
