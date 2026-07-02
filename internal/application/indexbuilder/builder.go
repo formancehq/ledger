@@ -2,6 +2,7 @@ package indexbuilder
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -456,39 +457,32 @@ func (b *Builder) loop(ctx context.Context) {
 	// (same signal, same semantics).
 	stop := ctx.Done()
 
-	// Initialize index config cache from Pebble before processing any logs.
-	b.initIndexConfig(ctx)
+	// Boot init: rebuild the index-config cache and seed cursors. Any
+	// transient Pebble/read-store failure here must NOT advance the
+	// persisted cursor against an incomplete config, so retry with
+	// backoff until it succeeds or shutdown is requested. initIndexConfig
+	// resets its own state, so re-running it on retry is idempotent.
+	var (
+		cursor     uint64
+		pebbleLast uint64
+		err        error
+	)
+	worker.RetryWithBackoff(stop, b.logger, func() error {
+		cursor, pebbleLast, err = b.bootInit(ctx)
 
-	cursor, err := b.readStore.LastIndexedSequence()
-	if err != nil {
-		b.logger.Errorf("Failed to read progress: %v", err)
+		return err
+	})
 
+	// RetryWithBackoff returns only on success or when stop is closed. If
+	// the context was cancelled we never got a good init — return without
+	// processing any log.
+	if ctx.Err() != nil {
 		return
 	}
 
 	b.lastIndexedSeq.Store(cursor)
+	b.pebbleLastSeq.Store(pebbleLast)
 
-	// Recover AppliedProposal sync progress.
-	if seq, err := b.readStore.ReadAppliedProposalProgress(); err == nil {
-		b.lastAppliedProposalSeq = seq
-	}
-
-	// Seed pebble last sequence. The handle is closed immediately after use
-	// to release the RLock — keeping it open would deadlock with
-	// RestoreCheckpoint (write lock) when processLogs tries to take a new RLock.
-	var pebbleLast uint64
-	if handle, err := b.pebbleStore.NewDirectReadHandle(); err != nil {
-		b.logger.Errorf("Failed to create read handle: %v", err)
-
-		return
-	} else {
-		if v, err := query.ReadLastSequence(handle); err == nil {
-			pebbleLast = v
-			b.pebbleLastSeq.Store(v)
-		}
-
-		_ = handle.Close()
-	}
 	b.logger.WithFields(map[string]any{
 		"cursor":     cursor,
 		"pebbleLast": pebbleLast,
@@ -599,4 +593,45 @@ func (b *Builder) loop(ctx context.Context) {
 		// the broadcast and block until new logs arrive.
 		b.readStore.NotifyProgress()
 	}
+}
+
+// bootInit runs the index builder's boot prologue as a single retryable unit:
+// rebuild the index-config cache from Pebble/the read store, then read the
+// persisted indexed cursor and seed the last-known Pebble sequence. It returns
+// the recovered cursor and pebbleLast, or an error if any required read failed
+// — the caller (loop) retries with backoff so a transient failure never
+// advances the cursor against an incomplete config. ReadAppliedProposalProgress
+// and query.ReadLastSequence stay best-effort (they tolerate failure today);
+// only initIndexConfig, LastIndexedSequence, and NewDirectReadHandle are fatal.
+func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint64, err error) {
+	if err := b.initIndexConfig(ctx); err != nil {
+		return 0, 0, fmt.Errorf("initializing index config: %w", err)
+	}
+
+	cursor, err = b.readStore.LastIndexedSequence()
+	if err != nil {
+		return 0, 0, fmt.Errorf("reading last indexed sequence: %w", err)
+	}
+
+	// Recover AppliedProposal sync progress (best-effort: a miss leaves
+	// lastAppliedProposalSeq at 0, matching prior behavior).
+	if seq, err := b.readStore.ReadAppliedProposalProgress(); err == nil {
+		b.lastAppliedProposalSeq = seq
+	}
+
+	// Seed pebble last sequence. The handle is closed immediately after use
+	// to release the RLock — keeping it open would deadlock with
+	// RestoreCheckpoint (write lock) when processLogs tries to take a new RLock.
+	handle, err := b.pebbleStore.NewDirectReadHandle()
+	if err != nil {
+		return 0, 0, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	if v, err := query.ReadLastSequence(handle); err == nil {
+		pebbleLast = v
+	}
+
+	_ = handle.Close()
+
+	return cursor, pebbleLast, nil
 }
