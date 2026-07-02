@@ -234,4 +234,3 @@ func collectResponseIndices(t *testing.T, sink LocalResponses, want int) []uint6
 
 	return out
 }
-

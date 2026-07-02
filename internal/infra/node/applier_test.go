@@ -88,6 +88,7 @@ type testApplierSetup struct {
 // and no async-storage response sink.
 func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	t.Helper()
+
 	return newTestApplierSetupWithSink(t, nil)
 }
 

@@ -47,9 +47,9 @@ func TestSplitReadyMessages_AppendResponsesSelfPeerSplit(t *testing.T) {
 	const self = uint64(1)
 
 	selfAppendResp := raftpb.Message{Type: raftpb.MsgStorageAppendResp, To: self, From: raft.LocalAppendThread, Index: 42}
-	selfAppResp := raftpb.Message{Type: raftpb.MsgAppResp, To: self, From: self, Index: 42}      // leader's self-ack
-	peerVoteResp := raftpb.Message{Type: raftpb.MsgVoteResp, To: 2, From: self, Term: 3}         // held back until durable
-	peerAppResp := raftpb.Message{Type: raftpb.MsgAppResp, To: 3, From: self, Index: 42}        // follower→leader after append
+	selfAppResp := raftpb.Message{Type: raftpb.MsgAppResp, To: self, From: self, Index: 42} // leader's self-ack
+	peerVoteResp := raftpb.Message{Type: raftpb.MsgVoteResp, To: 2, From: self, Term: 3}    // held back until durable
+	peerAppResp := raftpb.Message{Type: raftpb.MsgAppResp, To: 3, From: self, Index: 42}    // follower→leader after append
 	peerAppRespReject := raftpb.Message{Type: raftpb.MsgAppResp, To: 4, From: self, Reject: true}
 
 	msgs := []raftpb.Message{
@@ -89,9 +89,9 @@ func TestSplitReadyMessages_ApplyResponsesNoSplit(t *testing.T) {
 
 	msgs := []raftpb.Message{
 		{
-			Type: raftpb.MsgStorageApply,
-			To:   raft.LocalApplyThread,
-			From: self,
+			Type:      raftpb.MsgStorageApply,
+			To:        raft.LocalApplyThread,
+			From:      self,
 			Responses: []raftpb.Message{applyResp},
 		},
 	}
@@ -119,15 +119,15 @@ func TestSplitReadyMessages_MixedRealisticReady(t *testing.T) {
 	msgs := []raftpb.Message{
 		outboundApp,
 		{
-			Type: raftpb.MsgStorageAppend,
-			To:   raft.LocalAppendThread,
-			From: self,
+			Type:      raftpb.MsgStorageAppend,
+			To:        raft.LocalAppendThread,
+			From:      self,
 			Responses: []raftpb.Message{selfAppendResp, selfAppResp},
 		},
 		{
-			Type: raftpb.MsgStorageApply,
-			To:   raft.LocalApplyThread,
-			From: self,
+			Type:      raftpb.MsgStorageApply,
+			To:        raft.LocalApplyThread,
+			From:      self,
 			Responses: []raftpb.Message{applyResp},
 		},
 	}
@@ -153,9 +153,9 @@ func TestSplitReadyMessages_FollowerAllPeer(t *testing.T) {
 
 	msgs := []raftpb.Message{
 		{
-			Type: raftpb.MsgStorageAppend,
-			To:   raft.LocalAppendThread,
-			From: self,
+			Type:      raftpb.MsgStorageAppend,
+			To:        raft.LocalAppendThread,
+			From:      self,
 			Responses: []raftpb.Message{selfAppendResp, appRespToLeader},
 		},
 	}
