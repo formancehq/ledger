@@ -763,5 +763,5 @@ When using Grafana Cloud or self-hosted Grafana with Pyroscope:
 ## Next Steps
 
 - [Deployment](./deployment.md) - Configure observability stack
-- [Architecture](../technical/architecture/core/architecture.md) - Understand system components
-- [Storage](../technical/architecture/storage/storage.md) - Storage configuration and tuning
+- [Architecture](../technical/architecture/overview.md) - Understand system components
+- [Storage](../technical/architecture/subsystems/storage/storage.md) - Storage configuration and tuning

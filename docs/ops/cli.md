@@ -4699,7 +4699,7 @@ ledgerctl events remove-sink --name primary
 | `--name` | *(required)* | Name of the sink to remove |
 | `--timeout` | `10s` | Request timeout |
 
-See [Event System Architecture](../technical/architecture/data-model/events.md) for details on the event system design.
+See [Event System Architecture](../technical/architecture/subsystems/events-mirror/events.md) for details on the event system design.
 
 ---
 

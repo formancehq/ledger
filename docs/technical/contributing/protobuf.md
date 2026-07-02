@@ -96,7 +96,7 @@ All monetary amounts use the `Uint256` protobuf message - a fixed-size 4 x `fixe
 
 **Key file**: `internal/proto/commonpb/uint256.go` (`IntoUint256()`, `SetFromUint256()`, `ToBigInt()`, `IsZero()`, `Dec()`)
 
-See [architecture/uint256-wire-format.md](../architecture/data-model/uint256-wire-format.md) for the full design rationale.
+See [architecture/uint256-wire-format.md](../architecture/primitives/uint256-wire-format.md) for the full design rationale.
 
 ## Mirror-Related Proto Types
 
