@@ -2714,6 +2714,9 @@ ledgerctl auth login [flags]
 - Stores the token in the OS keychain (macOS Keychain, Linux libsecret, Windows Credential Manager)
 - Displays a JWT summary (subject, expiry, scopes)
 - Accepts a JSON key bundle via `--bundle <path>`, `--bundle -`, or a piped stdin
+- When `--profile <name>` targets a profile that does not yet exist, bootstraps it from the current connection flags (`--server`, `--insecure`, `--tls-ca-cert`, `--signing-key`, `--signing-key-id`, `--response-verify-key`); the first profile created also becomes the active one
+- When `--profile <name>` targets an existing profile and `--server` is explicitly passed on the CLI, updates that profile's `server` so subsequent commands find the just-stored token
+- The active profile's `signingKeyId` is used as the default for `--key-id`
 
 **Bundle format:**
 
@@ -2752,6 +2755,14 @@ ledgerctl ledgers list
 ledgerctl --server prod:8888 auth login \
   --signing-key ./keys/seed.hex \
   --key-id my-key-id \
+  --subject ci-bot
+
+# Bootstrap a new connection profile in one shot (also stores the token
+# under the profile's server so later `--profile prod` calls just work).
+ledgerctl auth login --profile prod \
+  --server prod:8888 \
+  --signing-key ./keys/seed.hex \
+  --key-id prod-key-id \
   --subject ci-bot
 ```
 
