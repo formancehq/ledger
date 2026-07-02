@@ -47,3 +47,17 @@ spec:
                 name: ledger-migration-svc
               status:
                 readyReplicas: 1
+
+    - name: Verify StatefulSet ownerReference points to the Cluster (not the LedgerService)
+      try:
+        - script:
+            content: |
+              set -eu
+              OWNER=$(kubectl -n $NAMESPACE get statefulset ledger-migration-svc \
+                -o jsonpath='{.metadata.ownerReferences[?(@.controller==true)].kind}')
+              if [ "$OWNER" != "Cluster" ]; then
+                echo "FAIL: StatefulSet controller ownerRef is $OWNER, expected Cluster"
+                exit 1
+              fi
+              echo "OK: StatefulSet is owned by Cluster"
+            timeout: 30s
