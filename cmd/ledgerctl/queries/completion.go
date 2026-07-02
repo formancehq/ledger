@@ -15,6 +15,14 @@ func completeQueryNames(cmd *cobra.Command, args []string, _ string) ([]string, 
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
+	// cobra does not run the root PersistentPreRunE during `__complete`, so the
+	// connection flags still hold their defaults here. Resolve --profile/env
+	// ourselves or we would query the default server instead of the one the
+	// active profile points at.
+	if err := cmdutil.ResolveConnectionFlags(cmd); err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
