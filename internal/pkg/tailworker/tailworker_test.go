@@ -25,10 +25,12 @@ func TestBootRunsOnceThenTicks(t *testing.T) {
 		Ticker: 5 * time.Millisecond,
 		Boot: func(context.Context) error {
 			boots.Add(1)
+
 			return nil
 		},
 		Tick: func(context.Context) error {
 			ticks.Add(1)
+
 			return nil
 		},
 	})
@@ -51,6 +53,7 @@ func TestBootErrorAbortsLoop(t *testing.T) {
 		Boot:   func(context.Context) error { return errors.New("boom") },
 		Tick: func(context.Context) error {
 			ticks.Add(1)
+
 			return nil
 		},
 	})
@@ -94,6 +97,7 @@ func TestWakeTriggersTick(t *testing.T) {
 		Wake:   wake,
 		Tick: func(context.Context) error {
 			ticks.Add(1)
+
 			return nil
 		},
 	})

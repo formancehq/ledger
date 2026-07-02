@@ -450,8 +450,12 @@ func (b *Builder) loop(ctx context.Context) {
 
 	b.lastIndexedSeq.Store(cursor)
 
-	// Recover AppliedProposal sync progress.
-	if seq, err := b.readStore.ReadAppliedProposalProgress(); err == nil {
+	// Recover AppliedProposal sync progress. A corrupt cursor surfaces loudly
+	// and falls back to a full re-sync from 0 (the projection is rebuildable),
+	// rather than aborting the whole builder.
+	if seq, err := b.readStore.ReadAppliedProposalProgress(); err != nil {
+		b.logger.Errorf("read applied-proposal cursor (re-syncing from 0): %v", err)
+	} else {
 		b.lastAppliedProposalSeq = seq
 	}
 
