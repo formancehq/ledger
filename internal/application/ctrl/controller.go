@@ -18,7 +18,13 @@ type Controller interface {
 	GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
 
 	// Read operations
-	GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error)
+	// GetTransaction returns the transaction and the receipt the serving node
+	// signed. The receipt is nil when this layer produced none — a locally-served
+	// read, where the gRPC adapter signs it from the post-read snapshot. It is
+	// non-nil and authoritative (possibly an empty string, e.g. a reversal) when
+	// the read was forwarded to a signing node, and must be used as-is rather than
+	// recomputed against a possibly-stale local snapshot.
+	GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error)
 	ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error)
 	GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error)
 	ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error)
