@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/http"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -21,7 +20,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	auth "github.com/formancehq/go-libs/v5/pkg/authn/jwt"
-	"github.com/formancehq/go-libs/v5/pkg/fx/authnfx"
 	"github.com/formancehq/go-libs/v5/pkg/fx/observefx"
 	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -192,11 +190,11 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("auth-scope-mapping-file", "", "Path to JSON file mapping virtual scopes (e.g. ledger:read) to granular scopes")
 	runCmd.Flags().String("auth-anonymous-scopes", "", "Comma-separated granular scopes granted to requests without a bearer token (e.g. \"*:read\" for writes-only mode). Wildcards: *:read, *:write")
 
-	// OIDC discovery + JWKS HTTP timeout. A slow or blackholed issuer would
-	// otherwise hang startup indefinitely (go-libs supplies http.DefaultClient
-	// with no Timeout and discovery uses context.Background()). 0 keeps the
-	// legacy unbounded behavior for operators that need it.
-	runCmd.Flags().Duration("auth-discovery-timeout", 10*time.Second, "Bound the HTTP calls used for OIDC discovery and JWKS fetches at startup (0 = unbounded)")
+	// OIDC discovery + JWKS HTTP timeout, applied in buildAuthConfig. Bounds the
+	// otherwise-unbounded discovery context and JWKS keyset client so a slow or
+	// blackholed issuer cannot hang the process. 0 keeps the unbounded behavior
+	// for operators that need it.
+	runCmd.Flags().Duration("auth-discovery-timeout", 10*time.Second, "Bound the HTTP calls used for OIDC discovery and JWKS fetches (0 = unbounded)")
 
 	// Idempotency TTL and eviction
 	runCmd.Flags().Duration("idempotency-ttl", 24*time.Hour, "Idempotency key time-to-live (0 = never expire)")
@@ -327,29 +325,11 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		appModule = bootstrap.Module()
 	}
 
-	// Build authentication module.
-	// Only use go-libs OIDC module when an issuer is configured; otherwise
-	// skip OIDC discovery to avoid a crash on empty issuer URL.
-	// Ed25519-only auth works without OIDC (the KeySet parameter in
-	// buildAuthConfig is optional).
-	//
-	// fx.Decorate replaces the http.DefaultClient that authnfx.JWTModule
-	// supplies (no Timeout — would hang startup on a slow/blackholed issuer)
-	// with one bounded by cfg.AuthConfig.OIDCDiscoveryTimeout. go-libs'
-	// NewKeySets receives this client and feeds it to oidc client.Discover
-	// and NewRemoteKeySet, so both discovery and JWKS fetches are bounded.
-	var authModule fx.Option
-	if cfg.AuthConfig.Issuer != "" {
-		discoveryTimeout := cfg.AuthConfig.OIDCDiscoveryTimeout
-		authModule = fx.Options(
-			authnfx.JWTModuleFromFlags(cmd),
-			fx.Decorate(func(*http.Client) *http.Client {
-				return bootstrap.TimeoutHTTPClient(discoveryTimeout)
-			}),
-		)
-	} else {
-		authModule = fx.Module("auth")
-	}
+	// Auth (OIDC discovery + JWKS reads, bounded by OIDCDiscoveryTimeout) is built
+	// in bootstrap.buildAuthConfig. The go-libs authnfx JWT module is intentionally
+	// not wired in: nothing in this service consumes its map[string]oidc.KeySet or
+	// Authenticator, so its providers would never run.
+	authModule := fx.Module("auth")
 
 	info := version.Get()
 
@@ -359,7 +339,6 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		fx.Supply(*cfg),
 		// Provide build metadata for version reporting
 		fx.Supply(info),
-		// Add authentication module (OIDC discovery when issuer is configured)
 		authModule,
 		// Add OpenTelemetry modules from go-libs (using flags)
 		observefx.ResourceModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", info.Version, info.Commit))),
