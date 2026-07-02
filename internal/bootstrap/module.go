@@ -1410,10 +1410,33 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			st, ok := status.FromError(err)
+			// EN-1436: the leader detected this nodeID in its raft Progress but
+			// we (the caller) have no CLUSTER_JOINED marker on our WAL. This
+			// means the leader's Match for us points at state we don't have,
+			// and the next MsgApp/heartbeat would trigger etcd-raft's
+			// "tocommit out of range" panic. Fail fast with the operator-
+			// actionable server message rather than retry, mark, or silently
+			// crash-loop. The server message already contains the exact
+			// remediation command; surface it verbatim as the fatal reason.
+			if ok && st.Code() == codes.FailedPrecondition {
+				logger.WithFields(map[string]any{
+					"peer":   peer.ID,
+					"nodeID": cfg.RaftConfig.NodeID,
+					"reason": st.Message(),
+				}).Errorf("STALE MEMBERSHIP on leader — operator action required to unblock rejoin")
+
+				return fmt.Errorf("stale raft membership on the leader: %s", st.Message())
+			}
+
+			// AlreadyExists path kept for rolling-upgrade compatibility with
+			// leaders that predate EN-1436's server-side fail-fast. Once every
+			// live cluster is past that version, this branch can be dropped —
+			// the invariant it silently patches (idempotent join treating
+			// stale Progress as success) is exactly the bug EN-1436 fixes.
 			if ok && st.Code() == codes.AlreadyExists {
 				logger.WithFields(map[string]any{
 					"nodeID": cfg.RaftConfig.NodeID,
-				}).Infof("Already a cluster member, skipping learner registration")
+				}).Infof("Already a cluster member, skipping learner registration (deprecated pre-EN-1436 semantics)")
 
 				if markErr := wal.MarkClusterJoined(cfg.RaftConfig.WalDir); markErr != nil {
 					return fmt.Errorf("marking cluster joined after AlreadyExists: %w", markErr)
