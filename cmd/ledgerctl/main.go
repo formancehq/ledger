@@ -82,15 +82,7 @@ func newRootCommand() *cobra.Command {
 			}
 
 			// Resolve profile name: --profile flag > LEDGERCTL_PROFILE env > config activeProfile.
-			profileName, _ := cmd.Flags().GetString("profile")
-			profileExplicit := cmd.Flags().Changed("profile")
-
-			if profileName == "" {
-				if v, ok := os.LookupEnv("LEDGERCTL_PROFILE"); ok && v != "" {
-					profileName = strings.TrimSpace(v)
-					profileExplicit = true
-				}
-			}
+			profileName, profileExplicit := cmdutil.ResolveProfileName(cmd)
 
 			name, p := cmdutil.GetActiveProfile(cfg, profileName)
 			if profileExplicit && p == nil && !isProfileBootstrapCommand(cmd) {
@@ -107,6 +99,12 @@ func newRootCommand() *cobra.Command {
 			resolveFlag(cmd, "signing-key-id", "LEDGERCTL_SIGNING_KEY_ID", cmdutil.ProfileFlagValue(p, "signing-key-id"))
 			resolveFlag(cmd, "response-verify-key", "LEDGERCTL_RESPONSE_VERIFY_KEY", cmdutil.ProfileFlagValue(p, "response-verify-key"))
 			resolveFlag(cmd, "result-file", "LEDGERCTL_RESULT_FILE", "")
+
+			// Feed the profile's signingKeyId into the local --key-id flag
+			// exposed by auth login / auth generate-token: in practice the JWT
+			// key ID and the request-signing key ID are the same key entry.
+			// No-op on commands that do not declare --key-id.
+			resolveFlag(cmd, "key-id", "", cmdutil.ProfileFlagValue(p, "signing-key-id"))
 
 			return nil
 		},
@@ -206,20 +204,37 @@ func isProfileCommand(cmd *cobra.Command) bool {
 // resolveFlag sets a cobra flag's value using the first available source:
 // explicit CLI flag > environment variable > profile value > cobra default.
 // It only writes to the flag when it was not explicitly set on the command line.
+//
+// Env- and profile-derived values are applied through Flag.Value.Set instead of
+// FlagSet.Set so the flag's Changed bit stays false: Changed must keep meaning
+// "the user typed this on the CLI". auth login and cmdutil.ResolveTokenSource
+// both read Changed to distinguish CLI-passed from env/profile-derived values
+// — a Set() call here would light Changed even for env-only inputs and quietly
+// break both callers (e.g. LEDGERCTL_SERVER would silently overwrite the active
+// profile's server address on `auth login`).
 func resolveFlag(cmd *cobra.Command, flagName, envVar, profileValue string) {
 	if cmd.Flags().Changed(flagName) {
 		return
 	}
 
-	if v, ok := os.LookupEnv(envVar); ok && v != "" {
-		_ = cmd.Flags().Set(flagName, strings.TrimSpace(v))
+	var value string
 
+	switch {
+	case envVar != "" && os.Getenv(envVar) != "":
+		value = strings.TrimSpace(os.Getenv(envVar))
+	case profileValue != "":
+		value = profileValue
+	default:
 		return
 	}
 
-	if profileValue != "" {
-		_ = cmd.Flags().Set(flagName, profileValue)
+	f := cmd.Flags().Lookup(flagName)
+	if f == nil {
+		return
 	}
+
+	// Value.Set updates the underlying value without touching Flag.Changed.
+	_ = f.Value.Set(value)
 }
 
 // ledgerctlOwnedFlagNames are the profile/connection/security flags ledgerctl

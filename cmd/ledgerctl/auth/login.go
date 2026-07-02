@@ -69,13 +69,8 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("storing token in keychain: %w", err)
 	}
 
-	// If --server was explicitly passed and a profile is active, update the
-	// profile's server address so that subsequent commands use the same address
-	// (and find the keychain token keyed by the full address including port).
-	if cmd.Flags().Changed("server") {
-		if err := updateProfileServer(cmd, server); err != nil {
-			pterm.Warning.Printfln("Could not update profile server: %v", err)
-		}
+	if err := syncProfile(cmd, server); err != nil {
+		pterm.Warning.Printfln("Could not sync profile: %v", err)
 	}
 
 	pterm.Success.Printfln("Logged in to %s", pterm.Bold.Sprint(server))
@@ -84,31 +79,81 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// updateProfileServer updates the active profile's server address if a profile is in use.
-func updateProfileServer(cmd *cobra.Command, server string) error {
+// syncProfile keeps the referenced profile aligned with the login just
+// completed:
+//
+//   - If --profile <name> (or LEDGERCTL_PROFILE) points at a profile that
+//     does not exist yet, bootstrap it from the current connection flags so
+//     subsequent commands with --profile <name> find the token keyed by the
+//     same server address.
+//   - If the profile already exists and --server was explicitly passed on
+//     the CLI, update the profile's server address so subsequent commands
+//     look up the keychain under the address we just stored the token under.
+//   - Otherwise do nothing.
+//
+// Changed("server") is trusted to mean "user typed --server on the CLI":
+// resolveFlag in main.go applies env/profile values through Flag.Value.Set,
+// which does not touch the Changed bit.
+func syncProfile(cmd *cobra.Command, server string) error {
+	profileName, profileExplicit := cmdutil.ResolveProfileName(cmd)
+	if profileName == "" {
+		return nil
+	}
+
 	cfg, err := cmdutil.LoadConfig()
 	if err != nil {
 		return err
 	}
 
-	profileName, _ := cmd.Flags().GetString("profile")
+	if cfg.Profiles == nil {
+		cfg.Profiles = make(map[string]cmdutil.Profile)
+	}
 
-	name, profile := cmdutil.GetActiveProfile(cfg, profileName)
-	if profile == nil || profile.Server == server {
+	if existing, ok := cfg.Profiles[profileName]; ok {
+		if !cmd.Flags().Changed("server") || existing.Server == server {
+			return nil
+		}
+
+		existing.Server = server
+		cfg.Profiles[profileName] = existing
+
+		return cmdutil.SaveConfig(cfg)
+	}
+
+	if !profileExplicit {
+		// The name came from cfg.ActiveProfile but the entry was deleted from
+		// under us; do not silently recreate it.
 		return nil
 	}
 
-	profile.Server = server
-	cfg.Profiles[name] = *profile
+	insecure, _ := cmd.Flags().GetBool("insecure")
+	tlsCaCert, _ := cmd.Flags().GetString("tls-ca-cert")
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	signingKeyID, _ := cmd.Flags().GetString("signing-key-id")
+	responseVerifyKey, _ := cmd.Flags().GetString("response-verify-key")
+
+	cfg.Profiles[profileName] = cmdutil.Profile{
+		Server:            server,
+		Insecure:          insecure,
+		TLSCaCert:         tlsCaCert,
+		SigningKey:        signingKey,
+		SigningKeyID:      signingKeyID,
+		ResponseVerifyKey: responseVerifyKey,
+	}
+
+	if len(cfg.Profiles) == 1 {
+		cfg.ActiveProfile = profileName
+	}
 
 	return cmdutil.SaveConfig(cfg)
 }
 
-// resolveLoginParams builds tokenParams from a bundle (file, stdin pipe) and/or flags.
-// Flags explicitly passed on the command line override bundle values. Flags set
-// only via environment variables (BindEnvToCommand) do NOT override the bundle;
-// we use cmd.Flags().Changed() to distinguish explicitly-passed flags from
-// env-var-derived ones.
+// resolveLoginParams builds tokenParams from a bundle (file, stdin pipe) and/or
+// flags. Precedence for each field, highest to lowest: CLI flag > bundle field
+// > env/profile-derived flag value > zero value. cmd.Flags().Changed() is
+// trusted to mean "the user typed the flag on the CLI" — env-derived values
+// coming through cmdutil's owned-flag resolveFlag path leave Changed=false, so
+// they don't spuriously beat the bundle.
 func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 	bundle, err := readBundle(cmd)
 	if err != nil {
@@ -117,30 +162,17 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 
 	expiration, _ := cmd.Flags().GetDuration("expiration")
 
+	// Read flag values regardless of Changed: they may have been filled by
+	// PersistentPreRunE from the active profile (e.g. profile.signingKey ->
+	// --signing-key, profile.signingKeyId -> --key-id).
+	keyID, _ := cmd.Flags().GetString("key-id")
+	subject, _ := cmd.Flags().GetString("subject")
+	scopes, _ := cmd.Flags().GetStringSlice("scopes")
+	signingKeyPath, _ := cmd.Flags().GetString("signing-key")
+
 	var seed []byte
 
-	// Start with flag values only if explicitly passed on the command line.
-	var keyID, subject, signingKeyPath string
-	var scopes []string
-
-	if cmd.Flags().Changed("key-id") {
-		keyID, _ = cmd.Flags().GetString("key-id")
-	}
-
-	if cmd.Flags().Changed("subject") {
-		subject, _ = cmd.Flags().GetString("subject")
-	}
-
-	if cmd.Flags().Changed("scopes") {
-		scopes, _ = cmd.Flags().GetStringSlice("scopes")
-	}
-
-	if cmd.Flags().Changed("signing-key") {
-		signingKeyPath, _ = cmd.Flags().GetString("signing-key")
-	}
-
 	if bundle != nil {
-		// Decode the hex seed from the bundle.
 		decoded, err := hex.DecodeString(bundle.SigningKey)
 		if err != nil {
 			return tokenParams{}, fmt.Errorf("decoding bundle signingKey: %w", err)
@@ -148,21 +180,21 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 
 		seed = decoded
 
-		// Bundle values fill in anything not explicitly set on the command line.
-		if keyID == "" {
+		// The bundle wins over env/profile-derived flag values, but explicit
+		// CLI flags (Changed=true) override the bundle.
+		if !cmd.Flags().Changed("key-id") && bundle.KeyID != "" {
 			keyID = bundle.KeyID
 		}
 
-		if subject == "" {
+		if !cmd.Flags().Changed("subject") && bundle.Subject != "" {
 			subject = bundle.Subject
 		}
 
-		if len(scopes) == 0 {
+		if !cmd.Flags().Changed("scopes") && len(bundle.Scopes) > 0 {
 			scopes = bundle.Scopes
 		}
 	}
 
-	// If no bundle seed, fall back to --signing-key file.
 	if seed == nil {
 		if signingKeyPath == "" {
 			return tokenParams{}, errors.New("either --bundle/stdin or --signing-key is required")

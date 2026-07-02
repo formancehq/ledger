@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
 
 // TestLedgerFlagCompletionRegistered asserts that every command exposing a
@@ -47,23 +49,31 @@ func TestLedgerFlagCompletionRegistered(t *testing.T) {
 // persistent flags into the subcommand flag sets (that merge happens during
 // Execute), so --server is absent from every flag set the binder visits.
 //
+// The wantChanged column also asserts that resolveFlag does NOT light the
+// flag's Changed bit for env-derived values: auth login's syncProfile treats
+// Changed("server") as "the user typed --server on the CLI", and a spurious
+// Changed=true would silently rewrite the active profile's server whenever
+// LEDGERCTL_SERVER is set.
+//
 // These cases mutate process-wide environment (env vars + config dir), so they
 // cannot run in parallel.
 func TestServerFlagEnvResolution(t *testing.T) {
 	const defaultServer = "localhost:8888"
 
 	tests := []struct {
-		name       string
-		envName    string
-		envValue   string
-		cliServer  string // when non-empty, passed as --server on the command line
-		wantServer string
+		name        string
+		envName     string
+		envValue    string
+		cliServer   string // when non-empty, passed as --server on the command line
+		wantServer  string
+		wantChanged bool
 	}{
 		{
-			name:       "LEDGERCTL_SERVER env, no CLI flag, resolves to env value",
-			envName:    "LEDGERCTL_SERVER",
-			envValue:   "env.example.com:443",
-			wantServer: "env.example.com:443",
+			name:        "LEDGERCTL_SERVER env, no CLI flag, resolves to env value with Changed=false",
+			envName:     "LEDGERCTL_SERVER",
+			envValue:    "env.example.com:443",
+			wantServer:  "env.example.com:443",
+			wantChanged: false,
 		},
 		{
 			name:       "bare SERVER env, no CLI flag, is ignored and falls back to default",
@@ -72,11 +82,12 @@ func TestServerFlagEnvResolution(t *testing.T) {
 			wantServer: defaultServer,
 		},
 		{
-			name:       "CLI --server wins over LEDGERCTL_SERVER env",
-			envName:    "LEDGERCTL_SERVER",
-			envValue:   "env.example.com:443",
-			cliServer:  "cli.example.com:443",
-			wantServer: "cli.example.com:443",
+			name:        "CLI --server wins over LEDGERCTL_SERVER env with Changed=true",
+			envName:     "LEDGERCTL_SERVER",
+			envValue:    "env.example.com:443",
+			cliServer:   "cli.example.com:443",
+			wantServer:  "cli.example.com:443",
+			wantChanged: true,
 		},
 	}
 
@@ -118,6 +129,9 @@ func TestServerFlagEnvResolution(t *testing.T) {
 			got, err := root.Flags().GetString("server")
 			require.NoError(t, err)
 			require.Equal(t, tc.wantServer, got)
+
+			require.Equal(t, tc.wantChanged, root.Flags().Changed("server"),
+				"Changed(\"server\") must reflect CLI-passed intent, not env resolution")
 		})
 	}
 }
@@ -177,6 +191,55 @@ func TestSubcommandLocalFlagsIgnoreBareEnv(t *testing.T) {
 				"local --%s must not be marked changed by bare %s", tc.flag, tc.bareEnv)
 		})
 	}
+}
+
+// TestProfileSigningKeyIDFeedsKeyID exercises the profile.signingKeyId ->
+// auth login --key-id fallback added to PersistentPreRunE: when a profile
+// declares signingKeyId, `auth login --profile <name>` must not fail with
+// `required flag "key-id" not set` just because the caller trusted the
+// profile to provide it.
+//
+// Mutates process-wide environment, so it cannot run in parallel.
+func TestProfileSigningKeyIDFeedsKeyID(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+	t.Setenv("LOCALAPPDATA", tmp)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+	t.Setenv("KEY_ID", "")
+
+	require.NoError(t, cmdutil.SaveConfig(cmdutil.Config{
+		ActiveProfile: "prod",
+		Profiles: map[string]cmdutil.Profile{
+			"prod": {
+				Server:       "prod.example.com:8888",
+				SigningKeyID: "prod-key-id",
+			},
+		},
+	}))
+
+	root := newRootCommand()
+	root.SilenceErrors = true
+
+	bindSubcommandEnv(root)
+
+	// Stub RunE on `auth login` so we can trigger PersistentPreRunE
+	// without hitting the real login flow (which would try to sign a JWT).
+	loginCmd, _, err := root.Find([]string{"auth", "login"})
+	require.NoError(t, err)
+	loginCmd.RunE = func(_ *cobra.Command, _ []string) error { return nil }
+
+	root.SetArgs([]string{"auth", "login"})
+	require.NoError(t, root.Execute())
+
+	got, err := loginCmd.Flags().GetString("key-id")
+	require.NoError(t, err)
+	require.Equal(t, "prod-key-id", got,
+		"profile.signingKeyId must populate --key-id when the flag is not CLI-passed")
+
+	require.False(t, loginCmd.Flags().Changed("key-id"),
+		"profile-derived --key-id must leave Changed=false")
 }
 
 // TestBindEnvSkipsOwnedProfile guards that "profile" is in ledgerctlOwnedFlagNames.
