@@ -1957,12 +1957,27 @@ func (c *Checker) foldBaselineReferences(
 			chainBoundReferences[trk.LedgerName] = perLedger
 		}
 
-		// A live audit-derived sequence always wins over the baseline
-		// sentinel: if both layers know this reference, the live claim is
-		// the one verifySkippedOrder must compare against the skip seq.
-		if _, claimed := perLedger[trk.Reference]; !claimed {
-			perLedger[trk.Reference] = 0 // sentinel: precedes every live log seq
-		}
+		// Baseline references always win over any live-audit entry for the
+		// same reference. Two cases motivate the override:
+		//
+		//   1. A skipped order's OWN reference is recorded by
+		//      collectExpectedSkippable at its skip-log seq (AuditItem.
+		//      LogSequence carries the skip log's seq, not 0). Without the
+		//      override, verifySkippedOrder sees firstSeenSeq >= seq and
+		//      false-positives INVALID_SKIP on a legitimate archive-scoped
+		//      skip that a live baseline could otherwise confirm.
+		//   2. If the reference conflict enforcement is correct, only ONE
+		//      successful claim of a given reference can exist across the
+		//      ledger's lifetime. So a baseline entry ⇒ no successful live
+		//      claim ⇒ any live-audit record for this reference is either
+		//      the skipped order itself (case 1) or a mirror-ingest replay
+		//      of the archived source claim — both cases want the archived
+		//      claim (sentinel 0) as the effective firstSeenSeq.
+		//
+		// The check verifySkippedOrder runs is `firstSeenSeq < seq`, so 0 is
+		// the safest value: it always beats any live seq without changing
+		// the truth of the comparison.
+		perLedger[trk.Reference] = 0 // sentinel: precedes every live log seq
 	}
 
 	if err := iter.Close(); err != nil {
@@ -2015,7 +2030,7 @@ func verifySkippedOrder(
 		// symmetric check a tamperer could elide the skip and convince
 		// downstream readers a transaction landed when the FSM
 		// actually rolled it back.
-		verifyExpectedSkipNotElided(ledger, seq, expectedSkippable, chainBoundReferences, hasArchivedChapters, callback)
+		verifyExpectedSkipNotElided(ledger, seq, expectedSkippable, chainBoundReferences, callback)
 
 		return
 	}
@@ -2091,38 +2106,19 @@ func verifySkippedOrder(
 			return
 		}
 
-		// Look up the reference in the audit-derived map. firstSeenSeq is
-		// strictly less than seq because chainBoundReferences only retains
-		// the first claim for each reference (re-claims on the same ref
-		// later — including the very order producing this skip log — do
-		// not move it).
-		firstSeenSeq, claimed := chainBoundReferences[ledger][expected.reference]
-		if !claimed || firstSeenSeq >= seq {
-			// No earlier claim visible in the live audit range. If
-			// archived chapters exist, the claim may live in a purged
-			// range we cannot re-verify here; stay permissive to avoid
-			// flagging legitimate skips on archived references. If no
-			// archive boundary applies, the missing claim IS the
-			// fabrication we want to catch — fail loudly.
-			if hasArchivedChapters {
-				return
-			}
-
-			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
-				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but reference %q was not claimed on ledger %q before this sequence", seq, expected.reference, ledger),
-				seq, ledger, "", "",
-			))
-
-			return
-		}
-
 		// Verify the persisted OrderSkipped.context fields against the
-		// chain-bound order. The context surfaces to clients via the REST
-		// response and gRPC log payload, so tampering only the context
-		// (without flipping the reason or rewriting an unrelated log)
-		// would otherwise pass Check() with no other tripwire — the
-		// LedgerLog projection is not hash-bound.
+		// chain-bound order BEFORE the reference-claim lookup. Both
+		// `reference` and `ledger` come from expected (chain-bound), so
+		// their check is independent of whether the prior claim lives in
+		// the live audit range or an archived chapter — running them
+		// before the archive escape below closes a tampering vector where
+		// the context alone is edited on a legitimate archive-scoped skip.
+		//
+		// The context surfaces to clients via the REST response and gRPC
+		// log payload, so tampering only the context (without flipping
+		// the reason or rewriting an unrelated log) would otherwise pass
+		// Check() with no other tripwire — the LedgerLog projection is
+		// not hash-bound.
 		//
 		// ErrTransactionReferenceConflict.Metadata() ALWAYS writes both
 		// `ledger` and `reference`, so missing or empty values are also
@@ -2146,6 +2142,32 @@ func verifySkippedOrder(
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.ledger=%q but the chain-bound order targets ledger %q", seq, got, expected.ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		// Look up the reference in the audit-derived map. firstSeenSeq is
+		// strictly less than seq because chainBoundReferences only retains
+		// the first claim for each reference (re-claims on the same ref
+		// later — including the very order producing this skip log — do
+		// not move it).
+		firstSeenSeq, claimed := chainBoundReferences[ledger][expected.reference]
+		if !claimed || firstSeenSeq >= seq {
+			// No earlier claim visible in the live audit range. If
+			// archived chapters exist, the claim may live in a purged
+			// range we cannot re-verify here; stay permissive to avoid
+			// flagging legitimate skips on archived references. If no
+			// archive boundary applies, the missing claim IS the
+			// fabrication we want to catch — fail loudly.
+			if hasArchivedChapters {
+				return
+			}
+
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but reference %q was not claimed on ledger %q before this sequence", seq, expected.reference, ledger),
 				seq, ledger, "", "",
 			))
 
@@ -2198,18 +2220,18 @@ func idempotencyWindowCutoff(now, ttlMicros uint64) uint64 {
 // readers a transaction landed when the FSM actually rolled it back: the
 // LedgerLog is a projection of the audit chain, not hash-bound itself.
 //
-// The archive-presence escape hatch mirrors verifySkippedOrder: when archived
-// chapters exist, references claimed in purged ranges legitimately fail to
-// appear in chainBoundReferences and we cannot positively prove the
-// underlying conflict happened. Stay permissive then; otherwise the check
-// would flag legitimate non-skipped writes that simply never touched a
-// reference recently.
+// The `!claimed || firstSeenSeq >= seq` guard below already covers the
+// archive-boundary case: references claimed in purged chapters legitimately
+// fail to appear in chainBoundReferences (so `claimed=false`), and the
+// verifier stays permissive without any archive-flag branch. Once we DO see
+// a prior live claim (`firstSeenSeq < seq`), the elision is positively
+// proven by the hash-chained audit range — we must NOT downgrade this to a
+// silent pass just because archived chapters exist elsewhere in the log.
 func verifyExpectedSkipNotElided(
 	ledger string,
 	seq uint64,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBoundReferences map[string]map[string]uint64,
-	hasArchivedChapters bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	expected, ok := expectedSkippable[seq]
@@ -2239,17 +2261,11 @@ func verifyExpectedSkipNotElided(
 
 	firstSeenSeq, claimed := chainBoundReferences[ledger][expected.reference]
 	if !claimed || firstSeenSeq >= seq {
-		// No earlier claim visible. Either the reference was genuinely new
-		// at this sequence (legitimate non-skip) or the prior claim lives
-		// in a purged archive. Stay permissive on the archive boundary.
-		return
-	}
-
-	if hasArchivedChapters {
-		// Same archive escape verifySkippedOrder applies in the forward
-		// direction: with archived chapters the chain-bound view of the
-		// references is partial, so we cannot positively assert the FSM
-		// would have skipped here.
+		// No earlier claim visible in the live audit range. Either the
+		// reference is genuinely new at this sequence (legitimate non-skip)
+		// or the prior claim lives in a purged archive we cannot re-verify.
+		// Either way, stay permissive — the forward direction still catches
+		// a forged OrderSkipped if the projection is a skip.
 		return
 	}
 

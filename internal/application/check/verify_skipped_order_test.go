@@ -217,12 +217,14 @@ func TestVerifyExpectedSkipNotElided_NoExpectedEntryStaysSilent(t *testing.T) {
 	require.Empty(t, events)
 }
 
-// TestVerifyExpectedSkipNotElided_PermissiveWhenArchived covers the same
-// archive-boundary escape hatch as verifySkippedOrder: when archived chapters
-// exist, references claimed in purged ranges legitimately fail to appear in
-// chainBoundReferences. The verifier cannot positively prove the conflict
-// happened, so it must NOT flag a non-skip projection here.
-func TestVerifyExpectedSkipNotElided_PermissiveWhenArchived(t *testing.T) {
+// TestVerifyExpectedSkipNotElided_ArchiveDoesNotSuppressLiveProof pins the
+// fix for a false-negative in the inverse direction: when archived chapters
+// exist BUT the live audit range already proves the reference was claimed
+// before the skip's sequence (firstSeenSeq < seq), the elision is a
+// hash-chain-proven tamper — the archive-boundary permissiveness must NOT
+// downgrade it to a silent pass. The `!claimed || firstSeenSeq >= seq`
+// guard above already covers the genuinely archive-only case.
+func TestVerifyExpectedSkipNotElided_ArchiveDoesNotSuppressLiveProof(t *testing.T) {
 	t.Parallel()
 
 	expected := map[uint64]*expectedSkippableOrder{
@@ -242,8 +244,37 @@ func TestVerifyExpectedSkipNotElided_PermissiveWhenArchived(t *testing.T) {
 		},
 	}
 
+	// archivedWithoutBaseline=true would previously suppress the check; the
+	// fix makes it inert once the live chain already proves the conflict.
 	events := captureEvents(t, "L", 7, payload, expected, refs, true)
-	require.Empty(t, events, "the inverse check must stay permissive under the same archive escape as the forward direction")
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown pins the
+// legitimate archive-boundary permissiveness path: when the reference is
+// NOT in chainBoundReferences (no live proof of a prior claim), the
+// inverse check stays quiet — the prior claim may live in a purged
+// chapter we cannot re-verify, and the forward direction still catches a
+// forged skip.
+func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-archived-only",
+		},
+	}
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{},
+		},
+	}
+
+	events := captureEvents(t, "L", 7, payload, expected, nil, true)
+	require.Empty(t, events, "the inverse check must stay permissive when the reference is not visible in the live chain")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictRejectsUnclaimedReference covers
@@ -432,6 +463,10 @@ func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T
 // archivedWithoutBaseline=false), the fold has already injected
 // archived references into chainBoundReferences, so a missing reference
 // IS fabrication and must fail loud.
+//
+// The payload provides matching context fields so the check exercises
+// the reference-claim lookup path, not the (independently verified)
+// context-field validation.
 func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived(t *testing.T) {
 	t.Parallel()
 
@@ -443,7 +478,17 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived(t *testing.T
 		},
 	}
 
-	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{
+					"ledger":    "L",
+					"reference": "ref-archived",
+				},
+			},
+		},
+	}
 
 	// archivedWithoutBaseline=false (no archive OR baseline available) →
 	// strict: missing claim is fabrication.
@@ -454,6 +499,61 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived(t *testing.T
 	// the claim may live in a purged chapter we cannot verify.
 	events = captureEvents(t, "L", 7, payload, expected, nil, true)
 	require.Empty(t, events, "missing-claim skips must pass only when archived chapters AND no baseline")
+}
+
+// TestVerifySkippedOrder_ContextTamperingCaughtEvenUnderArchiveEscape pins
+// the fix for a tampering vector where the archive-escape (missing claim
+// + archived chapters) would suppress the context-field checks. The
+// expected `ledger` and `reference` are chain-bound and re-derivable
+// regardless of whether the prior claim is visible in the live chain,
+// so their validation must run BEFORE the archive escape.
+func TestVerifySkippedOrder_ContextTamperingCaughtEvenUnderArchiveEscape(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-archived",
+		},
+	}
+
+	// Context "reference" is tampered — should be "ref-archived" per the
+	// chain-bound order. archivedWithoutBaseline=true would previously
+	// early-return before the context check.
+	tamperedReference := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{
+					"ledger":    "L",
+					"reference": "ref-forged",
+				},
+			},
+		},
+	}
+
+	events := captureEvents(t, "L", 7, tamperedReference, expected, nil, true)
+	requireInvalidSkipEvent(t, events, 7)
+
+	// Same for a tampered ledger field.
+	tamperedLedger := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{
+					"ledger":    "L-forged",
+					"reference": "ref-archived",
+				},
+			},
+		},
+	}
+
+	// Note: expected.ledger != log's ledger triggers the top-level ledger
+	// cross-check first (line ~2002). To isolate the context-field path,
+	// keep expected.ledger==log ledger and only forge the context slot.
+	events = captureEvents(t, "L", 7, tamperedLedger, expected, nil, true)
+	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifySkippedOrder_ReferenceConflictBaselineSeededReference pins the
