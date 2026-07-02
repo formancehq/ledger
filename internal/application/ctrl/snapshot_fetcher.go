@@ -20,6 +20,17 @@ const (
 	sessionBackoff      = 1 * time.Second
 	sessionMaxBackoff   = 10 * time.Second
 	closeSessionTimeout = 5 * time.Second
+	// prepareSnapshotTimeout caps PrepareSnapshot — the metadata call that
+	// creates a Pebble checkpoint and builds a manifest on the leader.
+	// Without a cap the client goroutine can wait forever if the server
+	// hangs in the checkpoint or manifest step, and the outer sync task
+	// blocks along with it (node.Run's WaitForApplied → /readyz → pod stuck
+	// at 0/1 for the whole probe budget).
+	prepareSnapshotTimeout = 60 * time.Second
+	// prepareSnapshotHeartbeat drives the periodic "still waiting" log
+	// during PrepareSnapshot. It's short enough to be visible during a
+	// human operator's live look, long enough not to flood.
+	prepareSnapshotHeartbeat = 10 * time.Second
 )
 
 // grpcSnapshotFetcher implements state.SnapshotFetcher using the session-based gRPC protocol.
@@ -64,7 +75,17 @@ func isSessionExpired(err error) bool {
 }
 
 func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
+	logger := logging.FromContext(ctx)
+
 	for attempt := range f.retryCount {
+		if attempt > 0 {
+			logger.WithFields(map[string]any{
+				"attempt":         attempt + 1,
+				"maxAttempts":     f.retryCount,
+				"minAppliedIndex": minAppliedIndex,
+			}).Infof("Retrying snapshot fetch")
+		}
+
 		size, err := f.fetchWithSession(ctx, targetDir, progress, minAppliedIndex)
 		if err == nil {
 			return size, nil
@@ -78,6 +99,11 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 			return 0, err
 		}
 
+		logger.WithFields(map[string]any{
+			"attempt": attempt + 1,
+			"error":   err.Error(),
+		}).Errorf("Snapshot fetch attempt failed, will retry")
+
 		if attempt < f.retryCount-1 {
 			if waitErr := sessionBackoffWait(ctx, attempt); waitErr != nil {
 				return 0, waitErr
@@ -88,25 +114,101 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 	return 0, fmt.Errorf("snapshot fetch failed after %d attempts", f.retryCount)
 }
 
+// prepareSnapshotWithHeartbeat issues PrepareSnapshot with a bounded timeout
+// and a periodic "still waiting" heartbeat log. Without the timeout, a hung
+// server-side step (long checkpoint creation, deadlocked waitForApplied)
+// blocks the client goroutine indefinitely; without the heartbeat, an
+// operator watching the follower's logs sees only "Fetching fresh checkpoint
+// from leader" and nothing else for the duration.
+//
+// The select waits on both `done` and `callCtx.Done()` so the wrapper
+// returns as soon as the deadline expires — even if the underlying gRPC
+// stub does not observe context cancellation (a defence-in-depth against
+// grpc-go bugs). When we exit via ctx cancellation the inner goroutine may
+// briefly outlive the call while it drains gRPC internals; that is a
+// bounded leak, and the caller is unblocked to retry a fresh session.
+func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, minAppliedIndex uint64) (*snapshotpb.PrepareSnapshotResponse, error) {
+	logger := logging.FromContext(ctx)
+
+	callCtx, cancel := context.WithTimeout(ctx, prepareSnapshotTimeout)
+	defer cancel()
+
+	type result struct {
+		resp *snapshotpb.PrepareSnapshotResponse
+		err  error
+	}
+
+	done := make(chan result, 1)
+
+	go func() {
+		resp, err := f.client.PrepareSnapshot(callCtx, &snapshotpb.PrepareSnapshotRequest{
+			MinAppliedIndex: minAppliedIndex,
+		})
+		done <- result{resp: resp, err: err}
+	}()
+
+	started := time.Now()
+	ticker := time.NewTicker(prepareSnapshotHeartbeat)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case r := <-done:
+			return r.resp, r.err
+		case <-callCtx.Done():
+			return nil, fmt.Errorf("PrepareSnapshot did not return within %s: %w", prepareSnapshotTimeout, callCtx.Err())
+		case <-ticker.C:
+			logger.WithFields(map[string]any{
+				"minAppliedIndex": minAppliedIndex,
+				"elapsed":         time.Since(started).String(),
+				"timeout":         prepareSnapshotTimeout.String(),
+			}).Errorf("Still waiting for PrepareSnapshot response from leader")
+		}
+	}
+}
+
 func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
+	logger := logging.FromContext(ctx)
+
+	logger.WithFields(map[string]any{
+		"minAppliedIndex": minAppliedIndex,
+	}).Infof("Requesting snapshot session from leader")
+
+	prepareStart := time.Now()
+
 	// 1. Prepare session (create checkpoint + get manifest).
-	resp, err := f.client.PrepareSnapshot(ctx, &snapshotpb.PrepareSnapshotRequest{
-		MinAppliedIndex: minAppliedIndex,
-	})
+	resp, err := f.prepareSnapshotWithHeartbeat(ctx, minAppliedIndex)
 	if err != nil {
 		return 0, fmt.Errorf("preparing snapshot: %w", err)
 	}
 
 	sessionID := resp.GetSessionId()
 	manifest := resp.GetManifest()
+	totalSize := manifestTotalSize(manifest)
+
+	logger.WithFields(map[string]any{
+		"sessionId":  sessionID,
+		"filesTotal": len(manifest.GetFiles()),
+		"totalSize":  totalSize,
+		"duration":   time.Since(prepareStart).String(),
+	}).Infof("Snapshot session prepared")
 
 	// Always try to close the session on exit.
 	defer f.closeSession(sessionID)
 
 	// 2. Determine which files still need fetching (resume support).
+	scanStart := time.Now()
 	completedFiles, err := scanCompletedFiles(targetDir, manifest)
 	if err != nil {
 		return 0, fmt.Errorf("scanning completed files: %w", err)
+	}
+
+	if len(completedFiles) > 0 {
+		logger.WithFields(map[string]any{
+			"filesResumed": len(completedFiles),
+			"filesTotal":   len(manifest.GetFiles()),
+			"duration":     time.Since(scanStart).String(),
+		}).Infof("Resuming snapshot fetch from partial staging dir")
 	}
 
 	completedSet := make(map[string]struct{}, len(completedFiles))
@@ -133,8 +235,6 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 		sessionID:  sessionID,
 		maxRetries: f.fileRetryCount,
 	}
-
-	logger := logging.FromContext(ctx)
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(f.parallelism)
