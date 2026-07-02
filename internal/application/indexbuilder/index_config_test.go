@@ -959,7 +959,7 @@ func TestInitIndexConfig_ResumesRewriteFromPendingVersion(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fsmBatch.Commit())
 
-	b.initIndexConfig(context.Background())
+	require.NoError(t, b.initIndexConfig(context.Background()))
 
 	// The rewrite task is scheduled, mid-cursor, NOT a backfill task.
 	require.Len(t, b.schemaRewriteTasks, 1, "pending_version != 0 must schedule a rewrite task")

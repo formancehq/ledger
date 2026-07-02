@@ -245,7 +245,7 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fsmBatch.Commit())
 
-	b.initIndexConfig(context.Background())
+	require.NoError(t, b.initIndexConfig(context.Background()))
 
 	assertReadStoreMissing(t, b, fwdV1)
 	assertReadStoreMissing(t, b, rmapV1)
