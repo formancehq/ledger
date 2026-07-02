@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -98,6 +99,26 @@ func SaveConfig(cfg Config) error {
 	}
 
 	return nil
+}
+
+// ResolveProfileName returns the profile name the user selected via --profile
+// or LEDGERCTL_PROFILE, and whether it was explicitly set (as opposed to
+// falling back to cfg.ActiveProfile). Callers that need to distinguish
+// "user asked for this profile" from "we fell back to the active one" must
+// use the explicit flag: auth login uses it to bootstrap a new profile when
+// the referenced --profile does not exist yet.
+func ResolveProfileName(cmd *cobra.Command) (name string, explicit bool) {
+	name, _ = cmd.Flags().GetString("profile")
+	explicit = cmd.Flags().Changed("profile")
+
+	if name == "" {
+		if v := strings.TrimSpace(os.Getenv("LEDGERCTL_PROFILE")); v != "" {
+			name = v
+			explicit = true
+		}
+	}
+
+	return name, explicit
 }
 
 // GetActiveProfile resolves which profile to use. If overrideName is non-empty,
