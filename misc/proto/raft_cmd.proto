@@ -667,7 +667,6 @@ message LedgerBoundaries {
   fixed64 next_transaction_id = 1;
   fixed64 next_log_id = 2;
   fixed64 volume_count = 3;
-  fixed64 metadata_count = 4;
 }
 
 message VolumePair {

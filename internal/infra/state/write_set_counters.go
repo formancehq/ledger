@@ -3,31 +3,8 @@ package state
 import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
-
-// countKeyDeltas counts per-ledger new keys (+1) and deletions (-1) from merge results.
-// A new key is identified by Old not being defined (first time in the parent KeyStore).
-func countKeyDeltas[K attributes.Key, T any](
-	updates []attributes.Update[K, T],
-	deletions []attributes.Deletion[K],
-	getLedgerName func(K) string,
-) map[string]int64 {
-	deltas := make(map[string]int64)
-
-	for i := range updates {
-		if !updates[i].Old.IsDefined() {
-			deltas[getLedgerName(updates[i].Key)]++
-		}
-	}
-
-	for i := range deletions {
-		deltas[getLedgerName(deletions[i].Key)]--
-	}
-
-	return deltas
-}
 
 // applyDelta safely adds a signed delta to a uint64 counter, clamping at zero on underflow.
 func applyDelta(current uint64, delta int64) uint64 {
@@ -77,11 +54,14 @@ func countVolumeDeltas(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.
 // updateBoundaryCounters computes attribute key deltas and updates LedgerBoundaries
 // for each affected ledger. Must be called before Derived.Boundaries.Merge().
 //
-// Only the two attribute-derived counters (volume_count, metadata_count) live
-// here now — reference_count, posting_count, revert_count, numscript_execution_count,
-// ephemeral_evicted_count and transient_used_count all migrated to the
-// usagebuilder (EN-1420) which derives them from the audit chain instead.
-// The two remaining counters are covered by EN-1422.
+// Only volume_count lives here now — reference_count, posting_count,
+// revert_count, numscript_execution_count, ephemeral_evicted_count and
+// transient_used_count all migrated to the usagebuilder (EN-1420) which
+// derives them from the audit chain. metadata_count was dropped: the
+// admission preload no longer injects the old value for metadata keys,
+// so `Old.IsDefined()` no longer distinguishes "new key" from "overwrite"
+// — the counter drifted from cardinality to write-event-count. It will
+// come back on a sound foundation later.
 //
 // purgedVolumes and transientVolumes are still consumed here — not to feed
 // their own counter (that lives in the usagebuilder), but to correctly
@@ -92,8 +72,6 @@ func (b *WriteSet) updateBoundaryCounters(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	purgedVolumes []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	transientVolumes []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
-	metadataUpdates []attributes.Update[domain.MetadataKey, *commonpb.MetadataValue],
-	metadataDeletions []attributes.Deletion[domain.MetadataKey],
 ) {
 	volumeDeltas := countVolumeDeltas(volumeUpdates)
 
@@ -106,18 +84,7 @@ func (b *WriteSet) updateBoundaryCounters(
 		volumeDeltas[transientVolumes[i].Key.LedgerName]--
 	}
 
-	metadataDeltas := countKeyDeltas(metadataUpdates, metadataDeletions, func(k domain.MetadataKey) string { return k.LedgerName })
-
-	// Collect all affected ledgers.
-	affected := make(map[string]struct{})
-	for ledger := range volumeDeltas {
-		affected[ledger] = struct{}{}
-	}
-	for ledger := range metadataDeltas {
-		affected[ledger] = struct{}{}
-	}
-
-	for ledgerName := range affected {
+	for ledgerName := range volumeDeltas {
 		boundariesReader, err := b.Boundaries().Get(domain.LedgerKey{Name: ledgerName})
 		if err != nil {
 			continue
@@ -125,7 +92,6 @@ func (b *WriteSet) updateBoundaryCounters(
 
 		boundaries := boundariesReader.Mutate()
 		boundaries.VolumeCount = applyDelta(boundaries.GetVolumeCount(), volumeDeltas[ledgerName])
-		boundaries.MetadataCount = applyDelta(boundaries.GetMetadataCount(), metadataDeltas[ledgerName])
 		b.Boundaries().Put(domain.LedgerKey{Name: ledgerName}, boundaries)
 	}
 }

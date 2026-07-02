@@ -155,15 +155,10 @@ message LedgerBoundaries {
   fixed64 next_transaction_id = 1;
   fixed64 next_log_id = 2;
   fixed64 volume_count = 3;
-  fixed64 metadata_count = 4;
-  fixed64 reference_count = 5;
-  fixed64 posting_count = 6;
-  fixed64 ephemeral_evicted_count = 7;
-  fixed64 transient_used_count = 8;
-  fixed64 revert_count = 9;
-  fixed64 numscript_execution_count = 10;
 }
 ```
+
+> Event counters (postings, reverts, numscript executions, references, ephemeral evictions, transient volumes) live in the usagebuilder side-store (`internal/application/usagebuilder`, `internal/storage/usagestore`) — they are derived from the audit chain, not maintained on `LedgerBoundaries`. `metadata_count` is temporarily removed pending a sound foundation (the admission preload no longer injects old metadata values, breaking the cardinality delta logic).
 
 > **Note:** The `State` / `LedgerState` proto messages sometimes shown in older documentation are conceptual models, not actual proto definitions. The real FSM state is spread across the `Machine` struct fields and its `StateRegistry`.
 

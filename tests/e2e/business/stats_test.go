@@ -32,7 +32,6 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 			Expect(resp.TransactionCount).To(BeZero())
 			Expect(resp.PostingCount).To(BeZero())
 			Expect(resp.VolumeCount).To(BeZero())
-			Expect(resp.MetadataCount).To(BeZero())
 			Expect(resp.ReferenceCount).To(BeZero())
 		})
 	})
@@ -69,7 +68,6 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 				g.Expect(resp.PostingCount).To(Equal(uint64(3)))
 				// world/USD + bank:main/USD + bank:fees/USD + users:alice/USD = 4
 				g.Expect(resp.VolumeCount).To(Equal(uint64(4)))
-				g.Expect(resp.MetadataCount).To(BeZero())
 				g.Expect(resp.ReferenceCount).To(BeZero())
 			}).Should(Succeed())
 		})

@@ -502,12 +502,17 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 }
 
 // GetLedgerStats returns aggregate statistics for a ledger.
-// TransactionCount, LogCount, VolumeCount and MetadataCount come from the
-// LedgerBoundaries attribute. Every event-count field (PostingCount,
-// RevertCount, NumscriptExecutionCount, ReferenceCount, EphemeralEvictedCount,
+// TransactionCount, LogCount and VolumeCount come from the LedgerBoundaries
+// attribute. Every event-count field (PostingCount, RevertCount,
+// NumscriptExecutionCount, ReferenceCount, EphemeralEvictedCount,
 // TransientUsedCount) is derived from the audit chain by the usagebuilder
 // and read from the usagestore side-store — expect up to one usagebuilder
 // tick interval of lag behind the live FSM (see EN-1420).
+//
+// MetadataCount is intentionally not returned: the admission preload no
+// longer injects old metadata values, so the FSM-side counter can no longer
+// distinguish "new key" from "overwrite" and is disabled until it comes
+// back on a sound foundation.
 func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
@@ -536,7 +541,6 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 		}
 
 		stats.VolumeCount = boundaries.GetVolumeCount()
-		stats.MetadataCount = boundaries.GetMetadataCount()
 
 		if nextLogID := boundaries.GetNextLogId(); nextLogID > 0 {
 			stats.LogCount = nextLogID - 1

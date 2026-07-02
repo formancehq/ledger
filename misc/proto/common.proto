@@ -1492,7 +1492,6 @@ message PreparedQueryCursor {
 message LedgerStats {
   fixed64 transaction_count = 1;
   fixed64 volume_count = 2;
-  fixed64 metadata_count = 3;
   fixed64 reference_count = 4;
   fixed64 posting_count = 5;
   fixed64 ephemeral_evicted_count = 6;
