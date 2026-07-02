@@ -96,13 +96,22 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 // which does not touch the Changed bit.
 func syncProfile(cmd *cobra.Command, server string) error {
 	profileName, profileExplicit := cmdutil.ResolveProfileName(cmd)
-	if profileName == "" {
-		return nil
-	}
 
 	cfg, err := cmdutil.LoadConfig()
 	if err != nil {
 		return err
+	}
+
+	// Fall back to the active profile so `auth login --server new` (no
+	// --profile) still syncs the profile the rest of the session uses.
+	// Without this fallback the token gets stored under `new`, but subsequent
+	// commands resolve the active profile's old server and can't find it.
+	if profileName == "" {
+		profileName = cfg.ActiveProfile
+	}
+
+	if profileName == "" {
+		return nil
 	}
 
 	if cfg.Profiles == nil {
@@ -129,8 +138,18 @@ func syncProfile(cmd *cobra.Command, server string) error {
 	insecure, _ := cmd.Flags().GetBool("insecure")
 	tlsCaCert, _ := cmd.Flags().GetString("tls-ca-cert")
 	signingKey, _ := cmd.Flags().GetString("signing-key")
-	signingKeyID, _ := cmd.Flags().GetString("signing-key-id")
 	responseVerifyKey, _ := cmd.Flags().GetString("response-verify-key")
+
+	// signingKeyId identifies the same key entry as auth login's local
+	// --key-id, but the two flags rarely both get set: users typically pass
+	// one of them. Prefer --signing-key-id when present, fall back to
+	// --key-id so a `--profile prod --key-id prod-key` bootstrap persists a
+	// signingKeyId that the profile-derived --key-id fallback can read on
+	// subsequent logins.
+	signingKeyID, _ := cmd.Flags().GetString("signing-key-id")
+	if signingKeyID == "" {
+		signingKeyID, _ = cmd.Flags().GetString("key-id")
+	}
 
 	cfg.Profiles[profileName] = cmdutil.Profile{
 		Server:            server,
