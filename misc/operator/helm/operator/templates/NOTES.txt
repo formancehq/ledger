@@ -1,0 +1,20 @@
+Ledger operator installed.
+
+{{- if .Values.pvcProtection.enabled }}
+{{- if not (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy") }}
+
+WARNING: Volume deletion protection is enabled (pvcProtection.enabled=true, the
+default) but this cluster does not expose ValidatingAdmissionPolicy
+(admissionregistration.k8s.io/v1), which is GA only in Kubernetes >= 1.30.
+
+The protection policy was NOT installed. LedgerServices with
+spec.persistence.deletionProtection=true (the default) will report a
+DeletionProtectionInactive condition because no policy is acting on their
+volumes — their PVCs/PVs are NOT protected from accidental deletion.
+
+To resolve, either:
+  - upgrade the cluster to Kubernetes >= 1.30, then re-run helm upgrade, or
+  - set pvcProtection.enabled=false to acknowledge protection is unavailable and
+    silence the per-LedgerService warning.
+{{- end }}
+{{- end }}

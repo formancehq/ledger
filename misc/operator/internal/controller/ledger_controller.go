@@ -280,6 +280,12 @@ func (r *LedgerServiceReconciler) deletionProtectionPolicyInstalled(ctx context.
 	_, err := r.Clientset.AdmissionregistrationV1().
 		ValidatingAdmissionPolicyBindings().
 		Get(ctx, volumeProtectionPVCBindingName, metav1.GetOptions{})
+	// Not installed (binding absent) — or the cluster predates ValidatingAdmissionPolicy
+	// (GA in Kubernetes >= 1.30): the resource type is unregistered there, so the API
+	// server answers the GET with a 404, which IsNotFound also matches (unknown reason +
+	// code 404). Either way the policy is not acting on any volume, so report not-installed
+	// rather than erroring the reconcile — deletionProtection now defaults on, so this
+	// probe runs on every reconcile.
 	if apierrors.IsNotFound(err) {
 		return false, nil
 	}

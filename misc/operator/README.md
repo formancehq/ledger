@@ -109,11 +109,17 @@ opt out. Deletion protection has three independent layers, so the choice of
 
 1. **`pvcProtection.enabled` (Helm value, cluster-admin consent).** Installs two
    cluster-scoped `ValidatingAdmissionPolicy` objects (`failurePolicy: Fail`) that
-   reject `DELETE` of selected ledger PVCs/PVs. **On by default** and **requires
-   Kubernetes >= 1.30** (ValidatingAdmissionPolicy GA); on an older cluster set
-   `pvcProtection.enabled=false` or the install fails. Installing the policy does
-   **not** protect anything on its own — the policy bindings only select volumes
-   carrying the `ledger.formance.com/deletion-protection: enabled` label.
+   reject `DELETE` of selected ledger PVCs/PVs. **On by default** but **requires
+   Kubernetes >= 1.30** (ValidatingAdmissionPolicy GA). On an older cluster the
+   chart detects that the `ValidatingAdmissionPolicy` kind is absent and **skips
+   these objects** so the default install/upgrade still succeeds (it prints a
+   NOTES warning); a LedgerService with `deletionProtection: true` then reports the
+   runtime `DeletionProtectionInactive` warning because no policy acts on its
+   volumes. `helm template` run offline uses Helm's built-in capability list, so
+   pass `--api-versions admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy`
+   to force-render the policy there. Installing the policy does **not** protect
+   anything on its own — the policy bindings only select volumes carrying the
+   `ledger.formance.com/deletion-protection: enabled` label.
 
    The policy is a **cluster-wide singleton** — enable `pvcProtection.enabled` on
    **at most one** operator release per cluster. The cluster-scoped policy objects

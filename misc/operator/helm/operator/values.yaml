@@ -42,7 +42,10 @@ fullnameOverride: ""
 # spec.persistence.deletionProtection (also on by default; the operator then stamps
 # the `ledger.formance.com/deletion-protection: enabled` label the policy selects on).
 # Set enabled=false to opt the whole cluster out of the policy.
-# Requires Kubernetes >= 1.30. The operator ServiceAccount (scale-down deletes)
+# Requires Kubernetes >= 1.30 (ValidatingAdmissionPolicy GA). On an older cluster the
+# chart auto-skips the policy (the install still succeeds and prints a NOTES warning)
+# rather than failing on the unknown kind; deletionProtection CRs then report
+# DeletionProtectionInactive at runtime. The operator ServiceAccount (scale-down deletes)
 # and the kube-controller-manager garbage collector (retentionPolicy
 # whenScaled/whenDeleted=Delete) are exempt, so both deletion paths keep working.
 # allowDeletionAnnotation must be a valid Kubernetes annotation key (render fails
