@@ -120,6 +120,13 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 // blocks the client goroutine indefinitely; without the heartbeat, an
 // operator watching the follower's logs sees only "Fetching fresh checkpoint
 // from leader" and nothing else for the duration.
+//
+// The select waits on both `done` and `callCtx.Done()` so the wrapper
+// returns as soon as the deadline expires — even if the underlying gRPC
+// stub does not observe context cancellation (a defence-in-depth against
+// grpc-go bugs). When we exit via ctx cancellation the inner goroutine may
+// briefly outlive the call while it drains gRPC internals; that is a
+// bounded leak, and the caller is unblocked to retry a fresh session.
 func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, minAppliedIndex uint64) (*snapshotpb.PrepareSnapshotResponse, error) {
 	logger := logging.FromContext(ctx)
 
@@ -148,6 +155,8 @@ func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, 
 		select {
 		case r := <-done:
 			return r.resp, r.err
+		case <-callCtx.Done():
+			return nil, fmt.Errorf("PrepareSnapshot did not return within %s: %w", prepareSnapshotTimeout, callCtx.Err())
 		case <-ticker.C:
 			logger.WithFields(map[string]any{
 				"minAppliedIndex": minAppliedIndex,
