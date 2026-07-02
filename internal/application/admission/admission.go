@@ -360,12 +360,8 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 
 	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
 		trace.WithAttributes(
-			attribute.Int("preload.ledgers", len(needs.Ledgers)),
-			attribute.Int("preload.boundaries", len(needs.Boundaries)),
-			attribute.Int("preload.volumes", len(needs.Volumes)),
+			attribute.Int("preload.attributes_total", needs.AttributeKeysCount()),
 			attribute.Int("preload.idempotency_keys", len(needs.IdempotencyKeys)),
-			attribute.Int("preload.references", len(needs.References)),
-			attribute.Int("preload.metadata", len(needs.Metadata)),
 		))
 
 	// Build the per-order WriteOperation slice. Each operation carries
@@ -783,19 +779,19 @@ func wrapSystemScoped(order *raftcmdpb.Order, ss *raftcmdpb.SystemScopedOrder) {
 // (admission contract violation — need never declared) stays distinct
 // and propagates loud through `ErrStorageOperation{Cause: covErr}`.
 func addVolumeNeed(p *plan.Needs, ledgerName string, account, asset string) {
-	p.Volumes[domain.VolumeKey{
+	p.Add(dal.SubAttrVolume, domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Asset:      asset,
-	}] = struct{}{}
+	}.Bytes())
 }
 
 // addTransactionTargetNeeds preloads the TransactionState entry for a
 // TargetTransaction so the FSM can read it from cache.
 func addTransactionTargetNeeds(p *plan.Needs, ledgerName string, txID uint64) {
-	p.Transactions[domain.TransactionKey{
+	p.Add(dal.SubAttrTransaction, domain.TransactionKey{
 		LedgerName: ledgerName,
 		ID:         txID,
-	}] = struct{}{}
+	}.Bytes())
 }
 
 // extractLedgerScopedNeeds populates the preload Needs for a ledger-scoped
@@ -805,16 +801,23 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 	ledgerName := ls.GetLedger()
 	ledgerKey := domain.LedgerKey{Name: ledgerName}
 
+	ledgerBytes := ledgerKey.Bytes()
+
 	switch payload := ls.GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_CreateLedger:
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedger:
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		// LogPayload_DeleteLedger cascades into
+		// Derived.Boundaries.Delete → WriteSet.Merge → KeyStore.Delete
+		// → strict AttributeCache.Del. Preload the boundary attribute
+		// so Gen0 holds the entry at apply time (invariant #6).
+		p.Add(dal.SubAttrBoundary, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.Boundaries[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrBoundary, ledgerBytes)
 
 		mi := payload.MirrorIngest
 
@@ -833,10 +836,10 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
 			for account, mm := range ct.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					p.Metadata[domain.MetadataKey{
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 						Key:        key,
-					}] = struct{}{}
+					}.Bytes())
 				}
 			}
 		}
@@ -845,80 +848,82 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 			switch target := sm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
 				for key := range sm.GetMetadata() {
-					p.Metadata[domain.MetadataKey{
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 						Key:        key,
-					}] = struct{}{}
+					}.Bytes())
 				}
 			case *commonpb.Target_TransactionId:
-				p.Transactions[domain.TransactionKey{
-					LedgerName: ledgerName,
-					ID:         target.TransactionId,
-				}] = struct{}{}
+				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
 			}
 		}
 
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 			switch target := dm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
-				p.Metadata[domain.MetadataKey{
+				// Mirror-ingested v2 DELETE_METADATA log applies via
+				// processMirrorDeletedMetadata → AccountMetadata.Delete
+				// → strict AttributeCache.Del. Declare coverage so Gen0
+				// holds the entry at apply (invariant #6).
+				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 					Key:        dm.GetKey(),
-				}] = struct{}{}
+				}.Bytes())
 			case *commonpb.Target_TransactionId:
-				p.Transactions[domain.TransactionKey{
-					LedgerName: ledgerName,
-					ID:         target.TransactionId,
-				}] = struct{}{}
+				// Transaction metadata lives inside the TransactionState
+				// map — no strict-Del path, no extra coverage needed.
+				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
 			}
 		}
 
 		if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
-			p.Transactions[domain.TransactionKey{
-				LedgerName: ledgerName,
-				ID:         rt.GetRevertedTransactionId(),
-			}] = struct{}{}
+			addTransactionTargetNeeds(p, ledgerName, rt.GetRevertedTransactionId())
 		}
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.CreatePreparedQuery.GetQuery().GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.CreatePreparedQuery.GetQuery().GetName()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.UpdatePreparedQuery.GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.UpdatePreparedQuery.GetName()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.DeletePreparedQuery.GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		// processDeletePreparedQuery calls PreparedQueries.Delete →
+		// strict AttributeCache.Del. Declare coverage so Gen0 holds
+		// the entry at apply (invariant #6).
+		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.DeletePreparedQuery.GetName()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_SaveNumscript:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.NumscriptVersions[domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName()}.Bytes())
 
 		// For semver saves, preload the specific version content for immutability check.
 		version := payload.SaveNumscript.GetVersion()
 		if version != "" && version != "latest" {
-			p.NumscriptContents[domain.NumscriptEntryKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName(), Version: version}] = struct{}{}
+			p.Add(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName(), Version: version}.Bytes())
 		}
 	case *raftcmdpb.LedgerScopedOrder_DeleteNumscript:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.NumscriptVersions[domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.DeleteNumscript.GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.DeleteNumscript.GetName()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
 		for key := range payload.SaveLedgerMetadata.GetMetadata() {
-			p.LedgerMetadata[domain.LedgerMetadataKey{LedgerName: ledgerName, Key: key}] = struct{}{}
+			p.Add(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: ledgerName, Key: key}.Bytes())
 		}
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.LedgerMetadata[domain.LedgerMetadataKey{LedgerName: ledgerName, Key: payload.DeleteLedgerMetadata.GetKey()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		// Delete's apply calls strict-Del at KeyStore level (invariant #6).
+		// Declare coverage so Gen0 holds the entry at apply.
+		p.Add(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: ledgerName, Key: payload.DeleteLedgerMetadata.GetKey()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_Apply:
-		p.Boundaries[ledgerKey] = struct{}{}
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrBoundary, ledgerBytes)
+		p.Add(dal.SubAttrLedger, ledgerBytes)
 
 		switch applyData := payload.Apply.GetData().(type) {
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 			if applyData.CreateTransaction.GetReference() != "" {
-				p.References[domain.TransactionReferenceKey{
+				p.Add(dal.SubAttrReference, domain.TransactionReferenceKey{
 					LedgerName: ledgerName,
 					Reference:  applyData.CreateTransaction.GetReference(),
-				}] = struct{}{}
+				}.Bytes())
 			}
 
 			// Caller-supplied account metadata always preloads here,
@@ -929,10 +934,10 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 			// themselves are discovered later by the script pass.
 			for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					p.Metadata[domain.MetadataKey{
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 						Key:        key,
-					}] = struct{}{}
+					}.Bytes())
 				}
 			}
 
@@ -952,10 +957,7 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-			p.Transactions[domain.TransactionKey{
-				LedgerName: ledgerName,
-				ID:         applyData.RevertTransaction.GetTransactionId(),
-			}] = struct{}{}
+			addTransactionTargetNeeds(p, ledgerName, applyData.RevertTransaction.GetTransactionId())
 
 			for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
 				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
@@ -965,10 +967,10 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
 			if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 				for key := range applyData.AddMetadata.GetMetadata() {
-					p.Metadata[domain.MetadataKey{
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 						Key:        key,
-					}] = struct{}{}
+					}.Bytes())
 				}
 			}
 
@@ -978,42 +980,54 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 
 		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 			if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
-				p.Metadata[domain.MetadataKey{
+				// Account-metadata Delete's apply routes through
+				// KeyStore.Delete → strict AttributeCache.Del (requires Gen0
+				// to hold the entry — invariant #6). Declare coverage.
+				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 					Key:        applyData.DeleteMetadata.GetKey(),
-				}] = struct{}{}
+				}.Bytes())
 			}
 
 			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+				// Transaction metadata lives inside the transaction state
+				// (a TransactionState.Metadata map, not a separate cache
+				// attribute), so strict-Del does not apply.
 				addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_CreateIndex:
 			// processCreateIndex consults the registry to short-circuit on
 			// READY duplicates — preload the matching entry.
-			p.Indexes[domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.CreateIndex.GetId())}] = struct{}{}
+			p.Add(dal.SubAttrIndex, domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.CreateIndex.GetId())}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_DropIndex:
-			// processDropIndex calls DeleteIndex unconditionally, but
-			// preloading keeps the FSM read side consistent with invariant 3.
-			p.Indexes[domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.DropIndex.GetId())}] = struct{}{}
+			// processDropIndex calls DeleteIndex unconditionally.
+			// indexes.Remove → w.Delete → strict AttributeCache.Del.
+			// Declare coverage so Gen0 holds the entry at apply.
+			p.Add(dal.SubAttrIndex, domain.IndexKey{
+				LedgerName: ledgerName,
+				Canonical:  indexes.Canonical(applyData.DropIndex.GetId()),
+			}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
 			// Schema changes touch the matching metadata index entry to
 			// flip it back to BUILDING; preload so processSetMetadataFieldType
 			// finds the current state.
-			p.Indexes[domain.IndexKey{
+			p.Add(dal.SubAttrIndex, domain.IndexKey{
 				LedgerName: ledgerName,
 				Canonical:  indexes.Canonical(indexes.MetadataID(applyData.SetMetadataFieldType.GetTargetType(), applyData.SetMetadataFieldType.GetKey())),
-			}] = struct{}{}
+			}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
 			// Removing a schema field cascades into dropping the index;
 			// processRemoveMetadataFieldType probes the registry first.
-			p.Indexes[domain.IndexKey{
+			// The cascade Find→indexes.Remove reaches strict Del on hit —
+			// declare coverage.
+			p.Add(dal.SubAttrIndex, domain.IndexKey{
 				LedgerName: ledgerName,
 				Canonical:  indexes.Canonical(indexes.MetadataID(applyData.RemoveMetadataFieldType.GetTargetType(), applyData.RemoveMetadataFieldType.GetKey())),
-			}] = struct{}{}
+			}.Bytes())
 		}
 	default:
 		// Loud failure for an unmapped ledger-scoped payload. The processor
@@ -1040,9 +1054,12 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 func extractSystemScopedNeeds(p *plan.Needs, ss *raftcmdpb.SystemScopedOrder) {
 	switch payload := ss.GetPayload().(type) {
 	case *raftcmdpb.SystemScopedOrder_AddEventsSink:
-		p.SinkConfigs[domain.SinkConfigKey{Name: payload.AddEventsSink.GetConfig().GetName()}] = struct{}{}
+		p.Add(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: payload.AddEventsSink.GetConfig().GetName()}.Bytes())
 	case *raftcmdpb.SystemScopedOrder_RemoveEventsSink:
-		p.SinkConfigs[domain.SinkConfigKey{Name: payload.RemoveEventsSink.GetName()}] = struct{}{}
+		// LogPayload_RemovedEventsSink cascades into
+		// Derived.SinkConfigs.Delete → WriteSet.Merge → KeyStore.Delete
+		// → strict AttributeCache.Del. Declare coverage.
+		p.Add(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: payload.RemoveEventsSink.GetName()}.Bytes())
 
 	// Explicit no-op cases: every other system-scoped variant intentionally
 	// touches no cache attribute. Listed individually (not lumped into
@@ -1187,8 +1204,9 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			}
 
 			for key := range discovered.WrittenMetadata {
-				p.Metadata[key] = struct{}{}
-				orderNeeds.Metadata[key] = struct{}{}
+				canonical := key.Bytes()
+				p.Add(dal.SubAttrMetadata, canonical)
+				orderNeeds.Add(dal.SubAttrMetadata, canonical)
 			}
 		}
 
@@ -1201,9 +1219,9 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 				LedgerName: ledgerName,
 				Name:       ref.GetName(),
 				Version:    resolvedVersion,
-			}
-			p.NumscriptContents[contentKey] = struct{}{}
-			orderNeeds.NumscriptContents[contentKey] = struct{}{}
+			}.Bytes()
+			p.Add(dal.SubAttrNumscriptContent, contentKey)
+			orderNeeds.Add(dal.SubAttrNumscriptContent, contentKey)
 		}
 	}
 
