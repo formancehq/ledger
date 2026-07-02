@@ -82,6 +82,25 @@ test-e2e: e2e-cluster-up _ensure-chainsaw
 test-e2e-only: _ensure-chainsaw
     chainsaw test --config e2e/chainsaw-test.yaml --test-dir e2e/tests/ --kube-context kind-ledger-e2e
 
+# Verify the volume-protection policy renders only when the cluster supports
+# ValidatingAdmissionPolicy (K8s >= 1.30). Guards the default pvcProtection.enabled=true
+# against breaking helm install/upgrade on older clusters. No cluster required.
+test-helm-render:
+    #!/bin/bash
+    set -euo pipefail
+    helm dependency build helm/operator >/dev/null
+    vap="admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy"
+    # Old cluster (capability absent): the policy must be skipped so the install succeeds.
+    old=$(helm template t helm/operator --set pvcProtection.enabled=true \
+        | grep -c "^kind: ValidatingAdmissionPolicy" || true)
+    # New cluster (capability present): 2 policies + 2 bindings.
+    new=$(helm template t helm/operator --set pvcProtection.enabled=true --api-versions "$vap" \
+        | grep -c "^kind: ValidatingAdmissionPolicy" || true)
+    rm -rf helm/operator/charts
+    if [ "$old" -ne 0 ]; then echo "FAIL: expected 0 VAP objects on a pre-1.30 cluster, got $old"; exit 1; fi
+    if [ "$new" -ne 4 ]; then echo "FAIL: expected 4 VAP objects on a >=1.30 cluster, got $new"; exit 1; fi
+    echo "OK: VAP gated by ValidatingAdmissionPolicy capability (old=$old, new=$new)"
+
 helm-package version='' suffix='':
     #!/bin/bash
     set -euo pipefail
