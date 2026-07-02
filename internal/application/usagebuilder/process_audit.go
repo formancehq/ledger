@@ -283,8 +283,20 @@ func (b *Builder) dispatchOrder(
 	return nil
 }
 
+// applyVolumeDelta feeds CounterVolume with the new-minus-purged delta from
+// a single log. Ephemeral volumes cancel out because they appear in both
+// lists — same log, contribution +0 net. This is the counter's cardinality
+// semantics: sum(new_persistent) - sum(purged_persistent).
+func applyVolumeDelta(ledger string, counts logCounts, state *batchState) {
+	delta := counterDelta(counts.newVolumes) - counterDelta(counts.purged)
+	if delta != 0 {
+		state.addCounter(ledger, usagestore.CounterVolume, delta)
+	}
+}
+
 // dispatchCreateTransaction increments posting, reference, numscript-exec,
-// ephemeral-evicted and template usage counters for a create-tx order.
+// ephemeral-evicted, volume and template usage counters for a create-tx
+// order.
 func (b *Builder) dispatchCreateTransaction(
 	ctx context.Context,
 	handle dal.PebbleGetter,
@@ -309,6 +321,8 @@ func (b *Builder) dispatchCreateTransaction(
 		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.purged))
 	}
 
+	applyVolumeDelta(ledger, counts, state)
+
 	if order.GetReference() != "" {
 		state.addCounter(ledger, usagestore.CounterReference, 1)
 	}
@@ -327,9 +341,9 @@ func (b *Builder) dispatchCreateTransaction(
 	return nil
 }
 
-// dispatchRevertTransaction increments revert, posting and ephemeral-evicted
-// counters for a revert-tx order. The resolved reverse-postings + purged
-// volumes live on the produced log.
+// dispatchRevertTransaction increments revert, posting, ephemeral-evicted
+// and volume counters for a revert-tx order. The resolved reverse-postings,
+// purged volumes and newly-created volumes live on the produced log.
 func (b *Builder) dispatchRevertTransaction(
 	ctx context.Context,
 	handle dal.PebbleGetter,
@@ -352,14 +366,17 @@ func (b *Builder) dispatchRevertTransaction(
 		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.purged))
 	}
 
+	applyVolumeDelta(ledger, counts, state)
+
 	return nil
 }
 
 // logCounts is the tuple of per-log counter deltas extracted from a single
 // LedgerLog payload.
 type logCounts struct {
-	postings int
-	purged   int
+	postings   int
+	purged     int
+	newVolumes int
 }
 
 // countsFromLog fetches the log at logSeq and returns the resolved posting
@@ -386,10 +403,13 @@ func (b *Builder) countsFromLog(ctx context.Context, handle dal.PebbleGetter, lo
 		return logCounts{}, nil
 	}
 
-	// PurgedVolumes lives on LedgerLog directly (not on the payload variant),
-	// so we can extract it independently of the payload type.
+	// PurgedVolumes and NewVolumes live on LedgerLog directly (not on the
+	// payload variant), so we can extract them independently of the payload
+	// type. Ephemeral (account, asset) tuples appear in both lists — the
+	// caller cancels them out when computing the live VolumeCount delta.
 	result := logCounts{
-		purged: len(ledgerLog.GetPurgedVolumes()),
+		purged:     len(ledgerLog.GetPurgedVolumes()),
+		newVolumes: len(ledgerLog.GetNewVolumes()),
 	}
 
 	if ledgerLog.GetData() == nil {

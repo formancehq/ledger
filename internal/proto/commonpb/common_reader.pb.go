@@ -5327,6 +5327,7 @@ type LedgerLogReader interface {
 	GetDate() TimestampReader
 	GetId() uint64
 	GetPurgedVolumes() TouchedVolumeListReader
+	GetNewVolumes() TouchedVolumeListReader
 	Mutate() *LedgerLog
 }
 
@@ -5354,6 +5355,10 @@ func (r *ledgerLogReadonly) GetId() uint64 {
 
 func (r *ledgerLogReadonly) GetPurgedVolumes() TouchedVolumeListReader {
 	return NewTouchedVolumeListReader(r.v.GetPurgedVolumes())
+}
+
+func (r *ledgerLogReadonly) GetNewVolumes() TouchedVolumeListReader {
+	return NewTouchedVolumeListReader(r.v.GetNewVolumes())
 }
 
 func (r *ledgerLogReadonly) Mutate() *LedgerLog {

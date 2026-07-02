@@ -154,11 +154,10 @@ Per-ledger boundaries use the `LedgerBoundaries` protobuf message from `raft_cmd
 message LedgerBoundaries {
   fixed64 next_transaction_id = 1;
   fixed64 next_log_id = 2;
-  fixed64 volume_count = 3;
 }
 ```
 
-> Event counters (postings, reverts, numscript executions, references, ephemeral evictions, transient volumes) live in the usagebuilder side-store (`internal/application/usagebuilder`, `internal/storage/usagestore`) — they are derived from the audit chain, not maintained on `LedgerBoundaries`. `metadata_count` is temporarily removed pending a sound foundation (the admission preload no longer injects old metadata values, breaking the cardinality delta logic).
+> Every per-ledger counter — postings, reverts, numscript executions, references, ephemeral evictions, transient volumes, **and volumes** — lives in the usagebuilder side-store (`internal/application/usagebuilder`, `internal/storage/usagestore`). All counters are derived from the audit chain: event counts (posting / revert / numscript-exec / reference) come from replaying orders; ephemeral / transient counts come from `LedgerLog.PurgedVolumes` and `AppliedProposal.TransientVolumes`; the volume count comes from the FSM-enriched `LedgerLog.NewVolumes` field paired with `PurgedVolumes` (delta = new − purged). `LedgerBoundaries` carries only the two ID generators that drive apply-time allocation decisions. `metadata_count` is intentionally not exposed — the admission preload no longer injects old metadata values so cardinality cannot be reliably derived at the FSM level; it will come back on a sound foundation later.
 
 > **Note:** The `State` / `LedgerState` proto messages sometimes shown in older documentation are conceptual models, not actual proto definitions. The real FSM state is spread across the `Machine` struct fields and its `StateRegistry`.
 

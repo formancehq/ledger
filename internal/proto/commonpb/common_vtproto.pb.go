@@ -1800,6 +1800,13 @@ func (m *LedgerLog) CloneVT() *LedgerLog {
 		}
 		r.PurgedVolumes = tmpContainer
 	}
+	if rhs := m.NewVolumes; rhs != nil {
+		tmpContainer := make([]*TouchedVolume, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.NewVolumes = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6668,6 +6675,23 @@ func (this *LedgerLog) EqualVT(that *LedgerLog) bool {
 	}
 	for i, vx := range this.PurgedVolumes {
 		vy := that.PurgedVolumes[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &TouchedVolume{}
+			}
+			if q == nil {
+				q = &TouchedVolume{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
+	if len(this.NewVolumes) != len(that.NewVolumes) {
+		return false
+	}
+	for i, vx := range this.NewVolumes {
+		vy := that.NewVolumes[i]
 		if p, q := vx, vy; p != q {
 			if p == nil {
 				p = &TouchedVolume{}
@@ -14264,6 +14288,18 @@ func (m *LedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.NewVolumes) > 0 {
+		for iNdEx := len(m.NewVolumes) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.NewVolumes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
 	if len(m.PurgedVolumes) > 0 {
 		for iNdEx := len(m.PurgedVolumes) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.PurgedVolumes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -20944,6 +20980,12 @@ func (m *LedgerLog) SizeVT() (n int) {
 	}
 	if len(m.PurgedVolumes) > 0 {
 		for _, e := range m.PurgedVolumes {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.NewVolumes) > 0 {
+		for _, e := range m.NewVolumes {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
@@ -34035,6 +34077,40 @@ func (m *LedgerLog) UnmarshalVT(dAtA []byte) error {
 			}
 			m.PurgedVolumes = append(m.PurgedVolumes, &TouchedVolume{})
 			if err := m.PurgedVolumes[len(m.PurgedVolumes)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewVolumes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NewVolumes = append(m.NewVolumes, &TouchedVolume{})
+			if err := m.NewVolumes[len(m.NewVolumes)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
