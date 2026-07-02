@@ -224,6 +224,8 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		pterm.Printf("Timestamp:            %s\n", pterm.Gray(revertedTx.GetRevertTransaction().GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
+	rescale := cmdutil.RescaleTarget(cmd)
+
 	// Display postings of the revert transaction
 	if len(revertedTx.GetRevertTransaction().GetPostings()) > 0 {
 		pterm.Println()
@@ -234,17 +236,23 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		}
 
 		for i, posting := range revertedTx.GetRevertTransaction().GetPostings() {
+			amount, asset := posting.GetAmount().Dec(), posting.GetAsset()
+			if rescale != nil {
+				amount, asset = cmdutil.Rescale(amount, asset, *rescale)
+			}
+
 			color := posting.GetColor()
 			if color == "" {
 				color = "-"
 			}
+
 			postingsTable = append(postingsTable, []string{
 				strconv.Itoa(i + 1),
 				posting.GetSource(),
 				"→",
 				posting.GetDestination(),
-				posting.GetAmount().Dec(),
-				posting.GetAsset(),
+				amount,
+				asset,
 				color,
 			})
 		}
@@ -257,7 +265,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 
 	// Display post-commit volumes (carried on the revert transaction)
 	if pcv := revertedTx.GetRevertTransaction().GetPostCommitVolumes(); pcv != nil {
-		err := renderPostCommitVolumes(pcv)
+		err := renderPostCommitVolumes(pcv, rescale)
 		if err != nil {
 			return err
 		}

@@ -62,6 +62,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	prefix, _ := cmd.Flags().GetString("prefix")
 	filterExpr, _ := cmd.Flags().GetString("filter")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
+	rescale := cmdutil.RescaleTarget(cmd)
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
@@ -136,17 +137,43 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 	}
 
-	for _, vol := range result.GetVolumes() {
-		input := vol.GetInput().ToBigInt()
-		output := vol.GetOutput().ToBigInt()
-		balance := new(big.Int).Sub(input, output)
-		tableData = append(tableData, []string{
-			vol.GetAsset(),
-			vol.GetColor(),
-			input.String(),
-			output.String(),
-			formatBalance(balance),
-		})
+	// With --rescale, currencies that differ only in precision are summed into
+	// a single base-currency row per color, re-expressed at the requested scale.
+	// Colors stay segregated: they are distinct balance buckets.
+	if rescale != nil {
+		raw := make([]cmdutil.RawVolume, 0, len(result.GetVolumes()))
+		for _, vol := range result.GetVolumes() {
+			raw = append(raw, cmdutil.RawVolume{
+				Asset:  vol.GetAsset(),
+				Color:  vol.GetColor(),
+				Input:  vol.GetInput().ToBigInt().String(),
+				Output: vol.GetOutput().ToBigInt().String(),
+			})
+		}
+
+		for _, av := range cmdutil.AggregateVolumes(raw) {
+			tableData = append(tableData, []string{
+				cmdutil.AssetLabel(av.Asset, *rescale),
+				av.Color,
+				cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
+				cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
+				withSign(cmdutil.RescaleAmount(av.Balance, av.Precision, *rescale), av.Balance.Sign()),
+			})
+		}
+	} else {
+		for _, vol := range result.GetVolumes() {
+			input := vol.GetInput().ToBigInt()
+			output := vol.GetOutput().ToBigInt()
+			balance := new(big.Int).Sub(input, output)
+
+			tableData = append(tableData, []string{
+				vol.GetAsset(),
+				vol.GetColor(),
+				input.String(),
+				output.String(),
+				withSign(balance.String(), balance.Sign()),
+			})
+		}
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
@@ -154,11 +181,13 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// formatBalance formats a balance with a sign indicator.
-func formatBalance(b *big.Int) string {
-	if b.Sign() > 0 {
-		return "+" + b.String()
+// withSign prefixes a positive amount with '+' so credit/debit direction reads
+// at a glance; zero and negative values are returned unchanged (negatives
+// already carry '-').
+func withSign(s string, sign int) string {
+	if sign > 0 {
+		return "+" + s
 	}
 
-	return b.String()
+	return s
 }

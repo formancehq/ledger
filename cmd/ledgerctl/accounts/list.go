@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"strconv"
 
 	"github.com/pterm/pterm"
@@ -77,6 +76,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	flt := cmdutil.GetFilterFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
 	showProfile, _ := cmd.Flags().GetBool("analyze")
+	rescale := cmdutil.RescaleTarget(cmd)
 
 	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
@@ -84,13 +84,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if pgn.All {
-		return fetchAllAccounts(cmd, client, ledgerName, filter, pgn.Cursor, pgn.Reverse, cns, showProfile)
+		return fetchAllAccounts(cmd, client, ledgerName, filter, pgn.Cursor, pgn.Reverse, cns, showProfile, rescale)
 	}
 
-	return fetchAccountsWithPager(cmd, client, ledgerName, pgn, filter, cns, showProfile)
+	return fetchAccountsWithPager(cmd, client, ledgerName, pgn, filter, cns, showProfile, rescale)
 }
 
-func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool) error {
+func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -139,7 +139,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 		pterm.Info.Println("No accounts found.")
 		pterm.Println(pterm.Gray("Create transactions to populate accounts."))
 	default:
-		renderAccountsTable(accounts)
+		renderAccountsTable(accounts, rescale)
 	}
 
 	if showProfile && lastTrailer != nil {
@@ -149,7 +149,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	return nil
 }
 
-func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *commonpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool) error {
+func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *commonpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool, rescale *uint8) error {
 	page := pgn
 	pageNum := 1
 
@@ -221,7 +221,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			pterm.Println()
 			pterm.Printf("Accounts (Page %d)\n", pageNum)
 			pterm.Println(pterm.Gray("─────────────────────────────────"))
-			renderAccountsTable(accounts)
+			renderAccountsTable(accounts, rescale)
 		}
 
 		if showProfile {
@@ -264,7 +264,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 	}
 }
 
-func renderAccountsTable(accounts []*commonpb.Account) {
+func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8) {
 	termWidth := pterm.GetTerminalWidth()
 
 	const (
@@ -285,7 +285,7 @@ func renderAccountsTable(accounts []*commonpb.Account) {
 		metadataCount := strconv.Itoa(len(account.GetMetadata()))
 
 		addressLines := cmdutil.WrapText(account.GetAddress(), maxAddressWidth, ":")
-		balanceLines := formatAccountBalances(account.GetVolumes())
+		balanceLines := formatAccountBalances(account.GetVolumes(), rescale)
 
 		// An account row spans as many lines as its longest column so wrapped
 		// addresses and multi-asset balances stay vertically aligned.
@@ -316,33 +316,74 @@ func renderAccountsTable(accounts []*commonpb.Account) {
 	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
-// formatAccountBalances renders one "ASSET balance" line per asset, sorted by
-// asset, coloring negative balances red and the rest green (matching the
-// accounts get view). Returns a single muted placeholder when there are no
-// volumes.
-func formatAccountBalances(volumes map[string]*commonpb.VolumesWithBalance) []string {
+// formatAccountBalances renders one "ASSET balance" line per (asset, color)
+// bucket, coloring negative balances red and the rest green (matching the
+// accounts get view). Colored buckets carry a "[COLOR]" marker; the uncolored
+// bucket is labelled by its asset alone. Returns a single muted placeholder when
+// there are no volumes.
+func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) []string {
 	if len(volumes) == 0 {
 		return []string{pterm.Gray("—")}
 	}
 
-	assets := make([]string, 0, len(volumes))
-	for asset := range volumes {
-		assets = append(assets, asset)
+	// With --rescale, currencies that differ only in precision (USD/4, USD/8)
+	// collapse to a single base currency per color, their balances are summed,
+	// and the sum is re-expressed at the requested scale.
+	if rescale != nil {
+		raw := make([]cmdutil.RawVolume, 0, len(volumes))
+		for _, entry := range volumes {
+			vol := entry.GetVolumes()
+			raw = append(raw, cmdutil.RawVolume{
+				Asset:  entry.GetAsset(),
+				Color:  entry.GetColor(),
+				Input:  vol.GetInput(),
+				Output: vol.GetOutput(),
+			})
+		}
+
+		aggregated := cmdutil.AggregateVolumes(raw)
+
+		lines := make([]string, 0, len(aggregated))
+		for _, av := range aggregated {
+			balanceColor := pterm.Green
+			if av.Balance.Sign() < 0 {
+				balanceColor = pterm.Red
+			}
+
+			balance := cmdutil.RescaleAmount(av.Balance, av.Precision, *rescale)
+			label := balanceLabel(cmdutil.AssetLabel(av.Asset, *rescale), av.Color)
+			lines = append(lines, fmt.Sprintf("%s %s", label, balanceColor(balance)))
+		}
+
+		return lines
 	}
 
-	sort.Strings(assets)
+	// volumes is already sorted by (asset, color) ascending server-side, so we
+	// just render in-order.
+	lines := make([]string, 0, len(volumes))
 
-	lines := make([]string, 0, len(assets))
-	for _, asset := range assets {
-		balance := volumes[asset].GetBalance()
+	for _, entry := range volumes {
+		balance := entry.GetVolumes().GetBalance()
 
 		balanceColor := pterm.Green
 		if balance != "" && balance[0] == '-' {
 			balanceColor = pterm.Red
 		}
 
-		lines = append(lines, fmt.Sprintf("%s %s", asset, balanceColor(balance)))
+		label := balanceLabel(entry.GetAsset(), entry.GetColor())
+		lines = append(lines, fmt.Sprintf("%s %s", label, balanceColor(balance)))
 	}
 
 	return lines
+}
+
+// balanceLabel names a balance bucket: the asset alone for the uncolored bucket,
+// or the asset followed by a "[COLOR]" marker for a colored one. The BALANCES
+// column is a single column, so the color cannot get a header of its own.
+func balanceLabel(asset, color string) string {
+	if color == "" {
+		return asset
+	}
+
+	return fmt.Sprintf("%s[%s]", asset, color)
 }
