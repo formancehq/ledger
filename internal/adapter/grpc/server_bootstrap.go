@@ -2,6 +2,8 @@ package grpc
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -160,11 +162,43 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 	}
 
 	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress()); err != nil {
-		// Notably:
-		//   - ErrNodeAlreadyInCluster → AlreadyExists (idempotent join,
-		//     handled as success in tryAddLearner)
+		// EN-1436: if the node is already in the leader's Progress, its Match is
+		// stale w.r.t. the caller. JoinAsLearner is only invoked when the caller
+		// has no CLUSTER_JOINED marker on its WAL (see bootstrap/module.go); its
+		// local log is therefore either fresh (never joined) or half-populated
+		// from a previous life. Treating "already exists" as a no-op — as the
+		// old code did — leaves Progress[nodeID].Match pointing at state the
+		// caller doesn't have. As soon as raft starts on the caller it receives
+		// a MsgApp/heartbeat with Commit=Progress.Match, panics with
+		// "tocommit out of range" (raftLog.lastIndex < commit), and
+		// CrashLoopBackOffs indefinitely.
+		//
+		// Reset Progress by force-removing and re-adding. Both ConfChanges are
+		// cheap. The result on the caller is a fresh Progress with Match=0,
+		// State=Probe, which triggers a proper MsgSnap catch-up.
+		//
+		// The other cases fall through untouched:
 		//   - ErrNotLeader / ErrProposalDropped / ErrNoLeader → Unavailable
 		//     (retried by the client)
+		//   - anything else → propagated as-is
+		if errors.Is(err, node.ErrNodeAlreadyInCluster) {
+			impl.logger.WithFields(map[string]any{
+				"nodeID":         req.GetNodeId(),
+				"raftAddress":    req.GetRaftAddress(),
+				"serviceAddress": req.GetServiceAddress(),
+			}).Infof("JoinAsLearner: node already in cluster with stale Progress; force-removing before re-adding")
+
+			if rmErr := impl.membership.RemoveNode(ctx, req.GetNodeId(), true); rmErr != nil {
+				return nil, convertToGRPCError(fmt.Errorf("force-removing stale membership for rejoin: %w", rmErr), impl.logger)
+			}
+
+			if addErr := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress()); addErr != nil {
+				return nil, convertToGRPCError(fmt.Errorf("re-adding learner after stale-membership cleanup: %w", addErr), impl.logger)
+			}
+
+			return &clusterbootstrappb.JoinAsLearnerResponse{}, nil
+		}
+
 		return nil, convertToGRPCError(err, impl.logger)
 	}
 
