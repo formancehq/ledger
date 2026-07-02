@@ -81,9 +81,10 @@ func NewGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServi
 
 // MultiNodeOptions holds configuration options for SetupMultiNodeCluster.
 type MultiNodeOptions struct {
-	WithGateway      bool
-	RaftTickInterval time.Duration
-	ExtraInstruments []testservice.Instrumentation
+	WithGateway        bool
+	RaftTickInterval   time.Duration
+	ExtraInstruments   []testservice.Instrumentation
+	PerNodeInstruments map[int][]testservice.Instrumentation
 }
 
 // MultiNodeOption is a functional option for SetupMultiNodeCluster.
@@ -114,6 +115,17 @@ func WithCacheRotationThreshold(threshold uint64) MultiNodeOption {
 func WithSentinelMode() MultiNodeOption {
 	return func(o *MultiNodeOptions) {
 		o.ExtraInstruments = append(o.ExtraInstruments, testserver.WithSentinelMode())
+	}
+}
+
+// WithNodeInstruments applies instruments only to the node at the given 0-based
+// index (on top of the common ones), for heterogeneous per-node configuration.
+func WithNodeInstruments(nodeIndex int, instruments ...testservice.Instrumentation) MultiNodeOption {
+	return func(o *MultiNodeOptions) {
+		if o.PerNodeInstruments == nil {
+			o.PerNodeInstruments = make(map[int][]testservice.Instrumentation)
+		}
+		o.PerNodeInstruments[nodeIndex] = append(o.PerNodeInstruments[nodeIndex], instruments...)
 	}
 }
 
@@ -198,6 +210,7 @@ func SetupMultiNodeCluster(
 		})
 
 		instruments := commonInstruments(i, walTmpDir, dataTmpDir)
+		instruments = append(instruments, options.PerNodeInstruments[i]...)
 		instruments = append(instruments, extraInstruments...)
 
 		server := testservice.New(cmdserver.NewRunCommand,

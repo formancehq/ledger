@@ -629,12 +629,13 @@ func (c *MockControllerGetNumscriptCall) DoAndReturn(f func(context.Context, str
 }
 
 // GetTransaction mocks base method.
-func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, ledgerName, transactionID)
 	ret0, _ := ret[0].(*commonpb.Transaction)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(*string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // GetTransaction indicates an expected call of GetTransaction.
@@ -650,19 +651,19 @@ type MockControllerGetTransactionCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetTransactionCall) Return(arg0 *commonpb.Transaction, arg1 error) *MockControllerGetTransactionCall {
-	c.Call = c.Call.Return(arg0, arg1)
+func (c *MockControllerGetTransactionCall) Return(arg0 *commonpb.Transaction, arg1 *string, arg2 error) *MockControllerGetTransactionCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetTransactionCall) Do(f func(context.Context, string, uint64) (*commonpb.Transaction, error)) *MockControllerGetTransactionCall {
+func (c *MockControllerGetTransactionCall) Do(f func(context.Context, string, uint64) (*commonpb.Transaction, *string, error)) *MockControllerGetTransactionCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetTransactionCall) DoAndReturn(f func(context.Context, string, uint64) (*commonpb.Transaction, error)) *MockControllerGetTransactionCall {
+func (c *MockControllerGetTransactionCall) DoAndReturn(f func(context.Context, string, uint64) (*commonpb.Transaction, *string, error)) *MockControllerGetTransactionCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
