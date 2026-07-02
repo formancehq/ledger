@@ -2024,13 +2024,29 @@ func verifySkippedOrder(
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	skipped, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped)
-	if !ok || skipped.OrderSkipped == nil {
+	if !ok {
 		// The projection at `seq` is NOT an OrderSkippedLog. The elision
-		// check (inverse direction) is now dispatched at the outer log
-		// iteration scope by verifyExpectedSkipNotElided so it also fires
-		// for tampered projections that never reach this well-formed
-		// Apply-log path (non-Apply payload, nil Apply.Log, nil Data).
-		// Return silently here — the outer dispatch owns the alert.
+		// check (inverse direction) is dispatched at the outer log
+		// iteration scope by dispatchElisionCheck so it also fires for
+		// tampered projections that never reach this well-formed Apply-log
+		// path (non-Apply payload, nil Apply.Log, nil Data). Return
+		// silently here — the outer dispatch owns the alert.
+		return
+	}
+
+	if skipped.OrderSkipped == nil {
+		// OrderSkipped oneof is set but the inner OrderSkippedLog is nil.
+		// dispatchElisionCheck classifies "oneof set" as a valid skip
+		// projection and defers to this forward verifier, so a silent
+		// return here would let a malformed skip evade both checks. Flag
+		// it directly as invalid — a legitimate skip always carries a
+		// populated inner message (assignSkipLogIDAndDate + reason).
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d on ledger %q sets the OrderSkipped oneof but the inner OrderSkippedLog message is nil", seq, ledger),
+			seq, ledger, "", "",
+		))
+
 		return
 	}
 

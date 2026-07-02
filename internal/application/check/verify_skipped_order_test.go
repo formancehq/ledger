@@ -277,6 +277,37 @@ func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T
 	require.Empty(t, events, "the inverse check must stay permissive when the reference is not visible in the live chain")
 }
 
+// TestVerifySkippedOrder_RejectsNilInnerOrderSkipped catches the malformed
+// projection where the OrderSkipped oneof discriminant is set but the inner
+// OrderSkippedLog message is nil. dispatchElisionCheck classifies "oneof
+// set" as a valid skip projection and defers to the forward verifier, so a
+// silent return here would let a tampered log evade every check.
+func TestVerifySkippedOrder_RejectsNilInnerOrderSkipped(t *testing.T) {
+	t.Parallel()
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: nil,
+		},
+	}
+
+	// Fires regardless of whether the seq is expected — a nil inner message
+	// is always an invalid projection, not just when a skip was authorised.
+	events := captureEvents(t, "L", 7, payload, nil, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref-x",
+		},
+	}
+
+	events = captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
 // TestDispatchElisionCheck_FiresOnMalformedPayloadShapes pins the bypass
 // closure: the elision check must fire at every seq where a skip was
 // expected regardless of the actual log's shape. Previously the inline
