@@ -431,11 +431,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
 
-						// Accumulate the LedgerLog.PurgedVolumes side of the
-						// stored projection while we have the log in hand;
-						// AppliedProposal.TransientVolumes is added in a
-						// single pass below.
+						// Accumulate the LedgerLog eviction lists (draining
+						// = PurgedVolumes, pure ephemeral = EphemeralVolumes)
+						// into the stored projection while we have the log
+						// in hand; AppliedProposal.TransientVolumes is added
+						// in a single pass below. Both eviction lists share
+						// the same "excluded from normal state" semantics
+						// — the split exists to compact log payloads on
+						// ephemeral-heavy workloads (EN-1422).
 						for _, v := range payload.Apply.GetLog().GetPurgedVolumes() {
+							addStored(ledgerName, v.GetAccount(), v.GetAsset())
+						}
+						for _, v := range payload.Apply.GetLog().GetEphemeralVolumes() {
 							addStored(ledgerName, v.GetAccount(), v.GetAsset())
 						}
 					}

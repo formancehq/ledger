@@ -283,12 +283,14 @@ func (b *Builder) dispatchOrder(
 	return nil
 }
 
-// applyVolumeDelta feeds CounterVolume with the new-minus-purged delta from
-// a single log. Ephemeral volumes cancel out because they appear in both
-// lists — same log, contribution +0 net. This is the counter's cardinality
-// semantics: sum(new_persistent) - sum(purged_persistent).
+// applyVolumeDelta feeds CounterVolume with the new-kept minus draining
+// delta from a single log. Pure ephemeral volumes live in their own
+// EphemeralVolumes list on the log and contribute +0 to VolumeCount
+// (was zero, is zero after commit — never counted). draining volumes
+// (in PurgedVolumes) had a prior balance and are evicted from Pebble
+// at commit, so they subtract from the live cardinality.
 func applyVolumeDelta(ledger string, counts logCounts, state *batchState) {
-	delta := counterDelta(counts.newVolumes) - counterDelta(counts.purged)
+	delta := counterDelta(counts.newKept) - counterDelta(counts.purged)
 	if delta != 0 {
 		state.addCounter(ledger, usagestore.CounterVolume, delta)
 	}
@@ -317,8 +319,8 @@ func (b *Builder) dispatchCreateTransaction(
 		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(counts.postings))
 	}
 
-	if counts.purged > 0 {
-		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.purged))
+	if counts.ephemeral > 0 {
+		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.ephemeral))
 	}
 
 	applyVolumeDelta(ledger, counts, state)
@@ -362,8 +364,8 @@ func (b *Builder) dispatchRevertTransaction(
 		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(counts.postings))
 	}
 
-	if counts.purged > 0 {
-		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.purged))
+	if counts.ephemeral > 0 {
+		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.ephemeral))
 	}
 
 	applyVolumeDelta(ledger, counts, state)
@@ -372,11 +374,14 @@ func (b *Builder) dispatchRevertTransaction(
 }
 
 // logCounts is the tuple of per-log counter deltas extracted from a single
-// LedgerLog payload.
+// LedgerLog payload. purged / newKept / ephemeral are the three disjoint
+// volume-annotation lists on LedgerLog — see the proto comments for the
+// invariants they satisfy.
 type logCounts struct {
-	postings   int
-	purged     int
-	newVolumes int
+	postings  int
+	purged    int // len(LedgerLog.PurgedVolumes)   — draining only
+	newKept   int // len(LedgerLog.NewKeptVolumes)   — new + kept
+	ephemeral int // len(LedgerLog.EphemeralVolumes) — new + purged
 }
 
 // countsFromLog fetches the log at logSeq and returns the resolved posting
@@ -403,13 +408,16 @@ func (b *Builder) countsFromLog(ctx context.Context, handle dal.PebbleGetter, lo
 		return logCounts{}, nil
 	}
 
-	// PurgedVolumes and NewVolumes live on LedgerLog directly (not on the
-	// payload variant), so we can extract them independently of the payload
-	// type. Ephemeral (account, asset) tuples appear in both lists — the
-	// caller cancels them out when computing the live VolumeCount delta.
+	// PurgedVolumes / NewKeptVolumes / EphemeralVolumes live on LedgerLog
+	// directly (not on the payload variant), so we can extract them
+	// independently of the payload type. The three lists are DISJOINT: pure
+	// ephemeral tuples appear only in EphemeralVolumes (not duplicated
+	// across Purged + New), keeping the log payload compact on
+	// ephemeral-heavy workloads.
 	result := logCounts{
-		purged:     len(ledgerLog.GetPurgedVolumes()),
-		newVolumes: len(ledgerLog.GetNewVolumes()),
+		purged:    len(ledgerLog.GetPurgedVolumes()),
+		newKept:   len(ledgerLog.GetNewKeptVolumes()),
+		ephemeral: len(ledgerLog.GetEphemeralVolumes()),
 	}
 
 	if ledgerLog.GetData() == nil {

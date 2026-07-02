@@ -636,25 +636,31 @@ message LedgerLog {
   LedgerLogPayload data = 1;
   Timestamp date = 2;
   fixed64 id = 3;
-  // Volumes (account+asset) whose ephemeral state was purged (zero balance)
-  // by THIS log specifically. Subset of the proposal's purged universe —
-  // only volumes touched by the order that produced this log. Empty when
-  // the order did not contribute to any ephemeral purge. The index builder
-  // uses this to skip account->transaction mappings for the corresponding
-  // (account, asset) tuples without reading the audit zone. Carrying the
-  // asset dimension matters: a multi-asset account may have one asset
-  // purged while another stays kept; tagging the account as a whole would
-  // over-skip mappings for transactions that touched the kept asset.
+  // Volumes (account+asset) DRAINED to zero by THIS log — the entry had a
+  // pre-existing non-zero balance in Pebble and this log brought it back to
+  // zero, causing the volume to be evicted from the attribute store at
+  // commit. Purged is DISJOINT from ephemeral_volumes and new_kept_volumes.
+  // The index builder skips account->transaction mappings for
+  // purged ∪ ephemeral (both are evicted from Pebble). The usagebuilder
+  // subtracts len(purged_volumes) from VolumeCount — a draining eviction
+  // decreases the live cardinality by one.
   repeated TouchedVolume purged_volumes = 4;
-  // Volumes (account+asset) whose persistent entry was newly created (never
-  // seen in the attribute store before) by THIS log. Ephemeral volumes appear
-  // in BOTH new_volumes AND purged_volumes for the same log: they were
-  // persisted briefly then evicted after commit. Transient volumes (never
-  // persisted) are excluded by construction. The usagebuilder derives the
-  // VolumeCount projection as sum(new_volumes) - sum(purged_volumes) across
-  // the audit chain; the checker verifies the derived counter against the
-  // live attribute store.
-  repeated TouchedVolume new_volumes = 5;
+  // Volumes (account+asset) whose PERSISTENT entry was newly created by
+  // THIS log AND SURVIVED past commit. New + kept — disjoint from
+  // purged_volumes and ephemeral_volumes. The usagebuilder increments
+  // VolumeCount by len(new_kept_volumes) — a newly-persisted key raises
+  // the live cardinality by one.
+  repeated TouchedVolume new_kept_volumes = 5;
+  // Volumes (account+asset) that were both newly created AND purged by
+  // THIS log — pure ephemeral. Written to Pebble briefly then evicted at
+  // commit. Contributes +0 to VolumeCount (was zero, is zero after commit)
+  // and is tracked separately so:
+  //   - the index builder can skip acct->tx mappings for them (via
+  //     purged_volumes ∪ ephemeral_volumes);
+  //   - the log payload does not duplicate ephemeral tuples in two lists
+  //     (previous encoding carried them in both purged_volumes AND
+  //     new_volumes, doubling bytes on ephemeral-heavy workloads).
+  repeated TouchedVolume ephemeral_volumes = 6;
 }
 
 // TouchedVolume identifies a (ledger-local) volume cell — an account paired

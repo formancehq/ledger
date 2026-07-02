@@ -20,21 +20,24 @@ type rawPosting struct {
 
 // parsedLog holds the fields extracted by the protowire fast path.
 type parsedLog struct {
-	Sequence      uint64
-	Ledger        string
-	TxID          uint64
-	Postings      []rawPosting              // reused across iterations via truncate-to-zero
-	LogType       int32                     // LedgerLogPayload oneof tag: 1=created, 2=reverted, 0=skip
-	PurgedVolumes []*commonpb.TouchedVolume // LedgerLog.purged_volumes (field 4), reused across iterations
+	Sequence         uint64
+	Ledger           string
+	TxID             uint64
+	Postings         []rawPosting              // reused across iterations via truncate-to-zero
+	LogType          int32                     // LedgerLogPayload oneof tag: 1=created, 2=reverted, 0=skip
+	PurgedVolumes    []*commonpb.TouchedVolume // LedgerLog.purged_volumes    (field 4) — draining evictions, reused
+	EphemeralVolumes []*commonpb.TouchedVolume // LedgerLog.ephemeral_volumes (field 6) — pure ephemeral evictions, reused
 	// DeletedLedger is the name carried by a DeleteLedger log (LogPayload
 	// field 2); empty for every other log. It lets the backfill replay wipe
 	// the deleted ledger's readstore rows, mirroring the live processLogs path.
 	DeletedLedger string
 }
 
-// GetPurgedVolumes satisfies ledgerLogWithPurgedVolumes so extractPurgedVolumes
-// can consume the protowire fast path without going through commonpb.
-func (p *parsedLog) GetPurgedVolumes() []*commonpb.TouchedVolume { return p.PurgedVolumes }
+// GetPurgedVolumes / GetEphemeralVolumes satisfy ledgerLogWithPurgedVolumes
+// so extractPurgedVolumes can consume the protowire fast path without going
+// through commonpb.
+func (p *parsedLog) GetPurgedVolumes() []*commonpb.TouchedVolume    { return p.PurgedVolumes }
+func (p *parsedLog) GetEphemeralVolumes() []*commonpb.TouchedVolume { return p.EphemeralVolumes }
 
 // parsePostingsFromLog extracts only the fields needed for posting indexation
 // from the raw bytes of a serialized Log message. It skips ~70% of the payload
@@ -58,6 +61,7 @@ func parsePostingsFromLog(data []byte, out *parsedLog) error {
 	out.Ledger = ""
 	out.TxID = 0
 	out.PurgedVolumes = out.PurgedVolumes[:0]
+	out.EphemeralVolumes = out.EphemeralVolumes[:0]
 	out.DeletedLedger = ""
 
 	// --- Log level: extract sequence (field 1) and payload (field 2) ---
@@ -206,6 +210,18 @@ func parsePostingsFromLog(data []byte, out *parsedLog) error {
 				return fmt.Errorf("TouchedVolume: %w", perr)
 			}
 			out.PurgedVolumes = append(out.PurgedVolumes, vol)
+			ledgerLogBytes = ledgerLogBytes[bn:]
+		case num == 6 && typ == protowire.BytesType:
+			b, bn := protowire.ConsumeBytes(ledgerLogBytes)
+			if bn < 0 {
+				return errors.New("protowire: invalid bytes for LedgerLog.ephemeral_volumes")
+			}
+
+			vol, perr := parseTouchedVolume(b)
+			if perr != nil {
+				return fmt.Errorf("TouchedVolume: %w", perr)
+			}
+			out.EphemeralVolumes = append(out.EphemeralVolumes, vol)
 			ledgerLogBytes = ledgerLogBytes[bn:]
 		default:
 			n := protowire.ConsumeFieldValue(num, typ, ledgerLogBytes)

@@ -96,20 +96,26 @@ type WriteSet struct {
 	transientVolumes map[string][]*commonpb.TouchedVolume
 
 	// purgedByLog[i] is the deduplicated list of (account, asset) volumes
-	// that the log produced by order i touched and that the proposal-level
-	// partitionVolumes classified as purged. Computed during Merge from
-	// volumes.Slots() ∩ partResult.purged. Injected into each
+	// drained to zero (had a prior non-zero balance, now zero and evicted
+	// from Pebble) by the log produced by order i. DISJOINT from
+	// newKeptByLog and ephemeralByLog. Injected into each
 	// LedgerLog.purged_volumes before AppendLogs.
 	purgedByLog [][]*commonpb.TouchedVolume
 
-	// newByLog[i] is the deduplicated list of (account, asset) volumes
-	// whose persistent entry was newly created by the log produced by
-	// order i. Computed during Merge from volumes.Slots() intersected
-	// with the set of persistent updates whose preloaded prior value was
-	// undefined or the zero placeholder. Injected into each
-	// LedgerLog.new_volumes before AppendLogs. Feeds the usagebuilder's
-	// VolumeCount projection — see EN-1422.
-	newByLog [][]*commonpb.TouchedVolume
+	// newKeptByLog[i] is the deduplicated list of (account, asset) volumes
+	// whose persistent entry was newly created by order i AND survived
+	// past commit. DISJOINT from purgedByLog and ephemeralByLog. Injected
+	// into each LedgerLog.new_kept_volumes before AppendLogs. Feeds the
+	// usagebuilder's VolumeCount projection.
+	newKeptByLog [][]*commonpb.TouchedVolume
+
+	// ephemeralByLog[i] is the deduplicated list of (account, asset)
+	// volumes that were both newly created AND purged by order i — pure
+	// ephemeral. DISJOINT from purgedByLog and newKeptByLog. Injected
+	// into each LedgerLog.ephemeral_volumes before AppendLogs. Consumed
+	// by the index builder (skip acct->tx mappings) alongside
+	// purgedByLog; contributes 0 to VolumeCount.
+	ephemeralByLog [][]*commonpb.TouchedVolume
 
 	// bloomUpdates collects canonical keys per attribute type during Merge
 	// for bloom filter updates before batch.Commit().
@@ -412,20 +418,23 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 
 	// Build createdLogs (skipping idempotency replays) and inject the
-	// per-log purged_volumes + new_volumes subsets before persisting.
-	// purgedByLog and newByLog are indexed by ORDER index — same as
-	// logsOrRefs — so the mapping uses the loop's i, not the createdLogs
-	// append index.
-	purgedSet := makePurgedKeySet(partResult.purged)
-	b.purgedByLog = buildPurgedByLog(b.volumes.Slots(), purgedSet)
+	// per-log volume annotation lists before persisting. Three disjoint
+	// sets — draining-purged, new-kept, and pure-ephemeral — are
+	// intersected with each order's touched volume slots to produce the
+	// per-log subsets. Order-indexed so the mapping uses the loop's i,
+	// not the createdLogs append index.
+	//
+	// The three-way split (vs. the earlier two-list encoding that
+	// duplicated ephemeral tuples across new_volumes and purged_volumes)
+	// keeps ephemeral-heavy workloads from paying 2× bytes on the log
+	// payload — see EN-1422.
+	ephemeralSet, drainingSet := splitPurged(partResult.purged)
+	newKeptSet := makeNewKeptKeySet(partResult.kept)
 
-	// New persistent volumes = kept + purged filtered on "prior value
-	// undefined or zero placeholder". Transient volumes are excluded by
-	// construction — they never reach the attribute store. The
-	// usagebuilder computes CounterVolume = sum(new_volumes) - sum(purged_volumes)
-	// across the audit chain, so ephemeral volumes contribute +0 net.
-	newSet := makeNewKeySet(partResult.kept, partResult.purged)
-	b.newByLog = buildNewByLog(b.volumes.Slots(), newSet)
+	slots := b.volumes.Slots()
+	b.purgedByLog = buildTouchedByLog(slots, drainingSet)
+	b.newKeptByLog = buildTouchedByLog(slots, newKeptSet)
+	b.ephemeralByLog = buildTouchedByLog(slots, ephemeralSet)
 
 	createdLogs := make([]*commonpb.Log, 0, len(logsOrRefs))
 	for i, lr := range logsOrRefs {
@@ -438,9 +447,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		hasPurged := i < len(b.purgedByLog) && len(b.purgedByLog[i]) > 0
-		hasNew := i < len(b.newByLog) && len(b.newByLog[i]) > 0
+		hasNewKept := i < len(b.newKeptByLog) && len(b.newKeptByLog[i]) > 0
+		hasEphemeral := i < len(b.ephemeralByLog) && len(b.ephemeralByLog[i]) > 0
 
-		if hasPurged || hasNew {
+		if hasPurged || hasNewKept || hasEphemeral {
 			apply := log.GetPayload().GetApply()
 			if apply == nil {
 				return fmt.Errorf("invariant: order %d produced volume annotations but its log payload is not an ApplyLedgerLog (payload=%T)",
@@ -453,8 +463,11 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 			if hasPurged {
 				ledgerLog.PurgedVolumes = b.purgedByLog[i]
 			}
-			if hasNew {
-				ledgerLog.NewVolumes = b.newByLog[i]
+			if hasNewKept {
+				ledgerLog.NewKeptVolumes = b.newKeptByLog[i]
+			}
+			if hasEphemeral {
+				ledgerLog.EphemeralVolumes = b.ephemeralByLog[i]
 			}
 		}
 

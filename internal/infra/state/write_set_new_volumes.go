@@ -26,68 +26,84 @@ func isVolumePreloadZero(v *raftcmdpb.VolumePair) bool {
 		(out == nil || (out.GetV0() == 0 && out.GetV1() == 0 && out.GetV2() == 0 && out.GetV3() == 0))
 }
 
-// newPersistentVolumeKey is the (ledger, account, asset) tuple used by makeNewKeySet
-// and buildNewByLog. Mirrors purgedVolumeKey — see write_set_ephemeral_purge.go
-// for the asset-dimension rationale.
-type newPersistentVolumeKey struct {
+// isNewVolumeUpdate reports whether a volume update represents a
+// first-time write to that (account, asset) key. "New" is defined by the
+// preloaded prior value: absent or the zero placeholder → new; a defined
+// non-zero prior value → pre-existing.
+func isNewVolumeUpdate(u attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) bool {
+	if !u.Old.IsDefined() {
+		return true
+	}
+
+	return isVolumePreloadZero(u.Old.Value())
+}
+
+// volumeSetKey is the (ledger, account, asset) tuple used by the per-log
+// intersection helpers below. Mirrors purgedVolumeKey's asset-dimension
+// rationale — a multi-asset account may split across categories.
+type volumeSetKey struct {
 	Ledger  string
 	Account string
 	Asset   string
 }
 
-// makeNewKeySet builds a lookup set over the (ledger, account, asset) of every
-// PERSISTENT volume that was newly created by this proposal. A volume is
-// "new" iff its preloaded prior value was either undefined or the zero
-// placeholder — i.e. the attribute store did not yet carry an entry for that
-// (account, asset) tuple.
-//
-// Only persistent updates (kept + ephemeral) qualify. Transient volumes never
-// hit the attribute store, so they are never "new" in the persisted sense —
-// the caller passes only persistent slices.
-func makeNewKeySet(persistentUpdates ...[]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[newPersistentVolumeKey]struct{} {
-	total := 0
-	for _, updates := range persistentUpdates {
-		total += len(updates)
-	}
+// makeNewKeptKeySet builds the set of (ledger, account, asset) tuples that
+// were newly created AND survived past commit — i.e. persistent-new volumes
+// that are NOT ephemeral. Consumed by buildNewKeptByLog.
+func makeNewKeptKeySet(kept []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[volumeSetKey]struct{} {
+	set := make(map[volumeSetKey]struct{})
 
-	if total == 0 {
-		return nil
-	}
-
-	set := make(map[newPersistentVolumeKey]struct{}, total)
-
-	for _, updates := range persistentUpdates {
-		for i := range updates {
-			old := updates[i].Old
-			if old.IsDefined() && !isVolumePreloadZero(old.Value()) {
-				continue
-			}
-
-			set[newPersistentVolumeKey{
-				Ledger:  updates[i].Key.LedgerName,
-				Account: updates[i].Key.Account,
-				Asset:   updates[i].Key.Asset,
-			}] = struct{}{}
+	for i := range kept {
+		if !isNewVolumeUpdate(kept[i]) {
+			continue
 		}
+
+		set[volumeSetKey{
+			Ledger:  kept[i].Key.LedgerName,
+			Account: kept[i].Key.Account,
+			Asset:   kept[i].Key.Asset,
+		}] = struct{}{}
 	}
 
 	return set
 }
 
-// buildNewByLog produces, for each order index, the deduplicated list of
-// (account, asset) tuples that the order touched and that the proposal
-// classified as newly-created persistent volumes. Indexed by order_index;
-// entries for orders that produced no new persistent volume are nil. Tuples
-// within an entry are sorted (by account then asset) to keep the log payload
-// deterministic across runs.
+// splitPurged partitions partResult.purged into pure-ephemeral (was zero,
+// briefly touched, is zero at commit) and draining (was non-zero, back to
+// zero). The two sets are disjoint by definition — a purged update either
+// had a prior balance or did not.
+func splitPurged(purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) (ephemeral, draining map[volumeSetKey]struct{}) {
+	ephemeral = make(map[volumeSetKey]struct{})
+	draining = make(map[volumeSetKey]struct{})
+
+	for i := range purged {
+		key := volumeSetKey{
+			Ledger:  purged[i].Key.LedgerName,
+			Account: purged[i].Key.Account,
+			Asset:   purged[i].Key.Asset,
+		}
+
+		if isNewVolumeUpdate(purged[i]) {
+			ephemeral[key] = struct{}{}
+		} else {
+			draining[key] = struct{}{}
+		}
+	}
+
+	return ephemeral, draining
+}
+
+// buildTouchedByLog produces, for each order index, the deduplicated list of
+// (account, asset) tuples the order touched that fall in the given set.
+// Indexed by order_index; entries for orders with no matching keys are nil.
+// Tuples within an entry are sorted (by account then asset) so the log
+// payload is deterministic across nodes and runs.
 //
-// Semantically parallel to buildPurgedByLog. Ephemeral volumes appear in
-// BOTH new_volumes AND purged_volumes for the same log: they were persisted
-// (hence "new") and evicted after commit (hence "purged"). The usagebuilder's
-// VolumeCount = sum(new_volumes) - sum(purged_volumes) relies on that
-// symmetry.
-func buildNewByLog(perOrderVolumeKeys [][]domain.VolumeKey, newSet map[newPersistentVolumeKey]struct{}) [][]*commonpb.TouchedVolume {
-	if len(perOrderVolumeKeys) == 0 || len(newSet) == 0 {
+// This is the generalisation of buildPurgedByLog / buildNewByLog into one
+// helper — the caller supplies the intersection set (draining, ephemeral,
+// or new-kept).
+func buildTouchedByLog(perOrderVolumeKeys [][]domain.VolumeKey, set map[volumeSetKey]struct{}) [][]*commonpb.TouchedVolume {
+	if len(perOrderVolumeKeys) == 0 || len(set) == 0 {
 		return nil
 	}
 
@@ -101,7 +117,7 @@ func buildNewByLog(perOrderVolumeKeys [][]domain.VolumeKey, newSet map[newPersis
 
 		seen := make(map[accAsset]struct{}, len(keys))
 		for _, k := range keys {
-			if _, ok := newSet[newPersistentVolumeKey{Ledger: k.LedgerName, Account: k.Account, Asset: k.Asset}]; !ok {
+			if _, ok := set[volumeSetKey{Ledger: k.LedgerName, Account: k.Account, Asset: k.Asset}]; !ok {
 				continue
 			}
 			seen[accAsset{Account: k.Account, Asset: k.Asset}] = struct{}{}
