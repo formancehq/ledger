@@ -148,8 +148,11 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			Expect(logs).NotTo(BeEmpty())
 
 			// At least one of the two logs in the batch must carry
-			// {Account: clearing:ep1, Asset: USD} in its purged_volumes.
-			// The index builder uses this tuple to skip the matching
+			// {Account: clearing:ep1, Asset: USD} in its eviction lists.
+			// Pure ephemeral tuples (was zero, briefly touched, is zero)
+			// live in LedgerLog.EphemeralVolumes; draining evictions
+			// (was non-zero, back to zero) live in LedgerLog.PurgedVolumes.
+			// The index builder unions both to skip the matching
 			// account->transaction mapping while preserving any other
 			// asset's mappings on the same account.
 			type touched struct{ Account, Asset string }
@@ -163,10 +166,13 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 					for _, v := range ll.GetPurgedVolumes() {
 						purged = append(purged, touched{Account: v.GetAccount(), Asset: v.GetAsset()})
 					}
+					for _, v := range ll.GetEphemeralVolumes() {
+						purged = append(purged, touched{Account: v.GetAccount(), Asset: v.GetAsset()})
+					}
 				}
 			}
 			Expect(purged).To(ContainElement(touched{Account: "clearing:ep1", Asset: "USD"}),
-				"at least one log in the batch should list (clearing:ep1, USD) as purged")
+				"at least one log in the batch should list (clearing:ep1, USD) as evicted")
 		})
 	})
 

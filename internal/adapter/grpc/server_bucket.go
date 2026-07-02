@@ -1525,6 +1525,25 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *serv
 	return c.GetNumscript(ctx, req.GetLedger(), req.GetName(), req.GetVersion())
 }
 
+// GetTemplateUsage returns the invocation counter + last-used timestamp for
+// a Numscript template. Reads are served from the usagebuilder side-store,
+// which is eventually consistent with the FSM — no ReadOptions barrier is
+// honored on this endpoint (a min-log-sequence wait wouldn't help, since
+// the usagebuilder cursor is decoupled from the log cursor).
+func (impl *BucketServiceServerImpl) GetTemplateUsage(ctx context.Context, req *servicepb.GetTemplateUsageRequest) (*commonpb.TemplateUsage, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
+		return nil, err
+	}
+
+	c, cleanup, err := impl.readController(0)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return c.GetTemplateUsage(ctx, req.GetLedger(), req.GetName())
+}
+
 func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscriptsRequest, stream servicepb.BucketService_ListNumscriptsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListNumscripts")
 	defer span.End()

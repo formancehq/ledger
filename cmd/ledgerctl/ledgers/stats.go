@@ -75,7 +75,6 @@ func runStats(cmd *cobra.Command, _ []string) error {
 	pterm.Printf("Postings:           %d\n", stats.GetPostingCount())
 	pterm.Printf("Logs:               %d\n", stats.GetLogCount())
 	pterm.Printf("Volumes:            %d\n", stats.GetVolumeCount())
-	pterm.Printf("Metadata:           %d\n", stats.GetMetadataCount())
 	pterm.Printf("References:         %d\n", stats.GetReferenceCount())
 	pterm.Printf("Reverts:            %d\n", stats.GetRevertCount())
 	pterm.Printf("Numscript execs:    %d\n", stats.GetNumscriptExecutionCount())

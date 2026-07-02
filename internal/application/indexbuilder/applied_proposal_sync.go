@@ -238,17 +238,39 @@ func (s *appliedProposalSync) close() error {
 	return nil
 }
 
-// extractPurgedVolumes returns the set of purged ephemeral (account, asset)
-// volumes declared by THIS log. Empty when the order that produced the log
-// did not contribute to any ephemeral purge.
+// extractPurgedVolumes returns the set of (account, asset) volumes evicted
+// from Pebble at commit by THIS log — the UNION of draining (PurgedVolumes)
+// and pure ephemeral (EphemeralVolumes). Both categories share the same
+// downstream treatment: their acct->tx mappings must be skipped because
+// the volume entries no longer exist in the attribute store.
+//
+// Empty when the order that produced the log evicted nothing.
 func extractPurgedVolumes(ledgerLog ledgerLogWithPurgedVolumes) map[domain.AccountAssetKey]struct{} {
-	return domain.TouchedVolumeSet(ledgerLog.GetPurgedVolumes())
+	purged := ledgerLog.GetPurgedVolumes()
+	ephemeral := ledgerLog.GetEphemeralVolumes()
+
+	if len(purged) == 0 && len(ephemeral) == 0 {
+		return nil
+	}
+
+	out := make(map[domain.AccountAssetKey]struct{}, len(purged)+len(ephemeral))
+	for _, v := range purged {
+		out[domain.AccountAssetKey{Account: v.GetAccount(), Asset: v.GetAsset()}] = struct{}{}
+	}
+	for _, v := range ephemeral {
+		out[domain.AccountAssetKey{Account: v.GetAccount(), Asset: v.GetAsset()}] = struct{}{}
+	}
+
+	return out
 }
 
 // ledgerLogWithPurgedVolumes narrows what we need from commonpb.LedgerLog so
-// tests can pass either a real proto or a fake.
+// tests can pass either a real proto or a fake. Covers the two on-log
+// eviction lists (PurgedVolumes = draining, EphemeralVolumes = pure
+// ephemeral). See LedgerLog proto docs for the disjoint-set invariant.
 type ledgerLogWithPurgedVolumes interface {
 	GetPurgedVolumes() []*commonpb.TouchedVolume
+	GetEphemeralVolumes() []*commonpb.TouchedVolume
 }
 
 // excludedForLog returns the union of the transient (proposal-level) and

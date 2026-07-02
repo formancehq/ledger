@@ -82,11 +82,12 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 
 	nextTransactionID := boundaries.GetNextTransactionId()
 	boundaries.NextTransactionId = nextTransactionID + 1
-	boundaries.PostingCount += uint64(len(result.Postings))
 
-	if isNumscript {
-		boundaries.NumscriptExecutionCount++
-	}
+	// posting_count, numscript_execution_count, revert_count, reference_count
+	// are no longer maintained on LedgerBoundaries — they are derived from the
+	// audit chain by internal/application/usagebuilder and served by the
+	// LedgerStats handler out of usagestore. See EN-1420.
+	_ = isNumscript
 
 	// Use the user-provided timestamp, or fall back to the command date.
 	// The effective timestamp is recorded on TransactionState so reverts can

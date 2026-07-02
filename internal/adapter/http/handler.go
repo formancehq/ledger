@@ -106,6 +106,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/{ledgerName}/logs", server.handleListLedgerLogs)
 				r.Get("/{ledgerName}/numscripts", server.handleListNumscripts)
 				r.Get("/{ledgerName}/numscripts/{name}", server.handleGetNumscript)
+				r.Get("/{ledgerName}/numscripts/{name}/usage", server.handleGetNumscriptUsage)
 				r.Get("/{ledgerName}/indexes/{metadataKey}", server.handleInspectIndex)
 			})
 

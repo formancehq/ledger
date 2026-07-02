@@ -4882,19 +4882,11 @@ func (*CreatedLogOrReference_CreatedLog) isCreatedLogOrReference_Type() {}
 func (*CreatedLogOrReference_ReferenceSequence) isCreatedLogOrReference_Type() {}
 
 type LedgerBoundaries struct {
-	state                   protoimpl.MessageState `protogen:"open.v1"`
-	NextTransactionId       uint64                 `protobuf:"fixed64,1,opt,name=next_transaction_id,json=nextTransactionId,proto3" json:"next_transaction_id,omitempty"`
-	NextLogId               uint64                 `protobuf:"fixed64,2,opt,name=next_log_id,json=nextLogId,proto3" json:"next_log_id,omitempty"`
-	VolumeCount             uint64                 `protobuf:"fixed64,3,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
-	MetadataCount           uint64                 `protobuf:"fixed64,4,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
-	ReferenceCount          uint64                 `protobuf:"fixed64,5,opt,name=reference_count,json=referenceCount,proto3" json:"reference_count,omitempty"`
-	PostingCount            uint64                 `protobuf:"fixed64,6,opt,name=posting_count,json=postingCount,proto3" json:"posting_count,omitempty"`
-	EphemeralEvictedCount   uint64                 `protobuf:"fixed64,7,opt,name=ephemeral_evicted_count,json=ephemeralEvictedCount,proto3" json:"ephemeral_evicted_count,omitempty"`
-	TransientUsedCount      uint64                 `protobuf:"fixed64,8,opt,name=transient_used_count,json=transientUsedCount,proto3" json:"transient_used_count,omitempty"`
-	RevertCount             uint64                 `protobuf:"fixed64,9,opt,name=revert_count,json=revertCount,proto3" json:"revert_count,omitempty"`
-	NumscriptExecutionCount uint64                 `protobuf:"fixed64,10,opt,name=numscript_execution_count,json=numscriptExecutionCount,proto3" json:"numscript_execution_count,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	NextTransactionId uint64                 `protobuf:"fixed64,1,opt,name=next_transaction_id,json=nextTransactionId,proto3" json:"next_transaction_id,omitempty"`
+	NextLogId         uint64                 `protobuf:"fixed64,2,opt,name=next_log_id,json=nextLogId,proto3" json:"next_log_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *LedgerBoundaries) Reset() {
@@ -4937,62 +4929,6 @@ func (x *LedgerBoundaries) GetNextTransactionId() uint64 {
 func (x *LedgerBoundaries) GetNextLogId() uint64 {
 	if x != nil {
 		return x.NextLogId
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetVolumeCount() uint64 {
-	if x != nil {
-		return x.VolumeCount
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetMetadataCount() uint64 {
-	if x != nil {
-		return x.MetadataCount
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetReferenceCount() uint64 {
-	if x != nil {
-		return x.ReferenceCount
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetPostingCount() uint64 {
-	if x != nil {
-		return x.PostingCount
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetEphemeralEvictedCount() uint64 {
-	if x != nil {
-		return x.EphemeralEvictedCount
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetTransientUsedCount() uint64 {
-	if x != nil {
-		return x.TransientUsedCount
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetRevertCount() uint64 {
-	if x != nil {
-		return x.RevertCount
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetNumscriptExecutionCount() uint64 {
-	if x != nil {
-		return x.NumscriptExecutionCount
 	}
 	return 0
 }
@@ -6513,19 +6449,10 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\vcreated_log\x18\x01 \x01(\v2\v.common.LogH\x00R\n" +
 	"createdLog\x12/\n" +
 	"\x12reference_sequence\x18\x02 \x01(\x06H\x00R\x11referenceSequenceB\x06\n" +
-	"\x04type\"\xc3\x03\n" +
+	"\x04type\"b\n" +
 	"\x10LedgerBoundaries\x12.\n" +
 	"\x13next_transaction_id\x18\x01 \x01(\x06R\x11nextTransactionId\x12\x1e\n" +
-	"\vnext_log_id\x18\x02 \x01(\x06R\tnextLogId\x12!\n" +
-	"\fvolume_count\x18\x03 \x01(\x06R\vvolumeCount\x12%\n" +
-	"\x0emetadata_count\x18\x04 \x01(\x06R\rmetadataCount\x12'\n" +
-	"\x0freference_count\x18\x05 \x01(\x06R\x0ereferenceCount\x12#\n" +
-	"\rposting_count\x18\x06 \x01(\x06R\fpostingCount\x126\n" +
-	"\x17ephemeral_evicted_count\x18\a \x01(\x06R\x15ephemeralEvictedCount\x120\n" +
-	"\x14transient_used_count\x18\b \x01(\x06R\x12transientUsedCount\x12!\n" +
-	"\frevert_count\x18\t \x01(\x06R\vrevertCount\x12:\n" +
-	"\x19numscript_execution_count\x18\n" +
-	" \x01(\x06R\x17numscriptExecutionCount\"\\\n" +
+	"\vnext_log_id\x18\x02 \x01(\x06R\tnextLogId\"\\\n" +
 	"\n" +
 	"VolumePair\x12%\n" +
 	"\x05input\x18\x01 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +

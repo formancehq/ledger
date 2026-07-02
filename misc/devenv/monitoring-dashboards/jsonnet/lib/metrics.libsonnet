@@ -68,6 +68,14 @@
     lag: 'audit_index.lag',
   },
 
+  // usage.builder — internal/application/usagebuilder/builder.go
+  usage_builder:: {
+    last_processed_audit_sequence: 'usage.builder.last_processed_audit_sequence',
+    pebble_last_audit_sequence: 'usage.builder.pebble_last_audit_sequence',
+    lag: 'usage.builder.lag',
+    entries_processed_total: 'usage.builder.entries_processed_total',
+  },
+
   // numscript — internal/domain/processing/numscript/cache.go
   numscript:: {
     cache_size: 'numscript.cache.size',
@@ -152,6 +160,14 @@
     memtable_bytes: 'readindex.memtable.bytes',
     cache_hits: 'readindex.cache.hits',
     cache_misses: 'readindex.cache.misses',
+  },
+
+  // usagestore — internal/storage/usagestore/metrics.go
+  usagestore:: {
+    level_bytes: 'usagestore.level.bytes',
+    memtable_bytes: 'usagestore.memtable.bytes',
+    cache_hits: 'usagestore.cache.hits',
+    cache_misses: 'usagestore.cache.misses',
   },
 
   // health — internal/infra/health/healthcheck.go

@@ -1960,14 +1960,6 @@ func (m *LedgerBoundaries) CloneVT() *LedgerBoundaries {
 	r := new(LedgerBoundaries)
 	r.NextTransactionId = m.NextTransactionId
 	r.NextLogId = m.NextLogId
-	r.VolumeCount = m.VolumeCount
-	r.MetadataCount = m.MetadataCount
-	r.ReferenceCount = m.ReferenceCount
-	r.PostingCount = m.PostingCount
-	r.EphemeralEvictedCount = m.EphemeralEvictedCount
-	r.TransientUsedCount = m.TransientUsedCount
-	r.RevertCount = m.RevertCount
-	r.NumscriptExecutionCount = m.NumscriptExecutionCount
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5862,30 +5854,6 @@ func (this *LedgerBoundaries) EqualVT(that *LedgerBoundaries) bool {
 		return false
 	}
 	if this.NextLogId != that.NextLogId {
-		return false
-	}
-	if this.VolumeCount != that.VolumeCount {
-		return false
-	}
-	if this.MetadataCount != that.MetadataCount {
-		return false
-	}
-	if this.ReferenceCount != that.ReferenceCount {
-		return false
-	}
-	if this.PostingCount != that.PostingCount {
-		return false
-	}
-	if this.EphemeralEvictedCount != that.EphemeralEvictedCount {
-		return false
-	}
-	if this.TransientUsedCount != that.TransientUsedCount {
-		return false
-	}
-	if this.RevertCount != that.RevertCount {
-		return false
-	}
-	if this.NumscriptExecutionCount != that.NumscriptExecutionCount {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11255,54 +11223,6 @@ func (m *LedgerBoundaries) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.NumscriptExecutionCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.NumscriptExecutionCount))
-		i--
-		dAtA[i] = 0x51
-	}
-	if m.RevertCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertCount))
-		i--
-		dAtA[i] = 0x49
-	}
-	if m.TransientUsedCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransientUsedCount))
-		i--
-		dAtA[i] = 0x41
-	}
-	if m.EphemeralEvictedCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.EphemeralEvictedCount))
-		i--
-		dAtA[i] = 0x39
-	}
-	if m.PostingCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PostingCount))
-		i--
-		dAtA[i] = 0x31
-	}
-	if m.ReferenceCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ReferenceCount))
-		i--
-		dAtA[i] = 0x29
-	}
-	if m.MetadataCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataCount))
-		i--
-		dAtA[i] = 0x21
-	}
-	if m.VolumeCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.VolumeCount))
-		i--
-		dAtA[i] = 0x19
-	}
 	if m.NextLogId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.NextLogId))
@@ -14693,30 +14613,6 @@ func (m *LedgerBoundaries) SizeVT() (n int) {
 		n += 9
 	}
 	if m.NextLogId != 0 {
-		n += 9
-	}
-	if m.VolumeCount != 0 {
-		n += 9
-	}
-	if m.MetadataCount != 0 {
-		n += 9
-	}
-	if m.ReferenceCount != 0 {
-		n += 9
-	}
-	if m.PostingCount != 0 {
-		n += 9
-	}
-	if m.EphemeralEvictedCount != 0 {
-		n += 9
-	}
-	if m.TransientUsedCount != 0 {
-		n += 9
-	}
-	if m.RevertCount != 0 {
-		n += 9
-	}
-	if m.NumscriptExecutionCount != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -25928,86 +25824,6 @@ func (m *LedgerBoundaries) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.NextLogId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field VolumeCount", wireType)
-			}
-			m.VolumeCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.VolumeCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MetadataCount", wireType)
-			}
-			m.MetadataCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MetadataCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 5:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ReferenceCount", wireType)
-			}
-			m.ReferenceCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ReferenceCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 6:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PostingCount", wireType)
-			}
-			m.PostingCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.PostingCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 7:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EphemeralEvictedCount", wireType)
-			}
-			m.EphemeralEvictedCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.EphemeralEvictedCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 8:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TransientUsedCount", wireType)
-			}
-			m.TransientUsedCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TransientUsedCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 9:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RevertCount", wireType)
-			}
-			m.RevertCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.RevertCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 10:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptExecutionCount", wireType)
-			}
-			m.NumscriptExecutionCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.NumscriptExecutionCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

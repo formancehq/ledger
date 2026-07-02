@@ -29,6 +29,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
+	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
 const (
@@ -98,7 +99,15 @@ type DefaultController struct {
 	store      *dal.Store
 	attrs      *attributes.Attributes
 	readStore  *readstore.Store
+	usageStore *usagestore.Store
 	coldReader *coldstorage.ColdReader
+
+	// historical is true on clones produced by WithStores — reads are then
+	// served from a point-in-time checkpoint. usage counters are excluded
+	// from historical responses because the usagestore does not participate
+	// in the query-checkpoint mechanism; serving live values inside an
+	// otherwise historical response would produce a non-deterministic view.
+	historical bool
 
 	applyDuration metric.Int64Histogram
 }
@@ -110,6 +119,7 @@ func NewDefaultController(
 	logger logging.Logger,
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
+	usageStore *usagestore.Store,
 	coldReader *coldstorage.ColdReader,
 	meter metric.Meter,
 ) *DefaultController {
@@ -131,6 +141,7 @@ func NewDefaultController(
 		store:         store,
 		attrs:         attrs,
 		readStore:     readStore,
+		usageStore:    usageStore,
 		coldReader:    coldReader,
 		applyDuration: applyDuration,
 	}
@@ -178,6 +189,7 @@ func (ctrl *DefaultController) WithStores(store *dal.Store, readStore *readstore
 	clone := *ctrl
 	clone.store = store
 	clone.readStore = readStore
+	clone.historical = true
 
 	return &clone
 }
@@ -488,7 +500,19 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 }
 
 // GetLedgerStats returns aggregate statistics for a ledger.
-// All counters are O(1) reads from the LedgerBoundaries attribute.
+// TransactionCount and LogCount come from the LedgerBoundaries attribute —
+// they are ID-generator state used by the FSM itself. Every projected
+// counter (PostingCount, RevertCount, NumscriptExecutionCount,
+// ReferenceCount, EphemeralEvictedCount, TransientUsedCount, VolumeCount)
+// is derived from the audit chain by the usagebuilder and read from the
+// usagestore side-store through a single Pebble snapshot — expect up to
+// one usagebuilder tick interval of lag behind the live FSM. See EN-1420
+// and EN-1422.
+//
+// MetadataCount is intentionally not returned: the admission preload no
+// longer injects old metadata values, so the FSM-side counter could no
+// longer distinguish "new key" from "overwrite". It is disabled until it
+// comes back on a sound foundation (open question, no ticket yet).
 func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
 	_, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
@@ -517,18 +541,55 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 			stats.TransactionCount = nextTxID - 1
 		}
 
-		stats.VolumeCount = boundaries.GetVolumeCount()
-		stats.MetadataCount = boundaries.GetMetadataCount()
-		stats.ReferenceCount = boundaries.GetReferenceCount()
-		stats.PostingCount = boundaries.GetPostingCount()
-		stats.EphemeralEvictedCount = boundaries.GetEphemeralEvictedCount()
-		stats.TransientUsedCount = boundaries.GetTransientUsedCount()
-		stats.RevertCount = boundaries.GetRevertCount()
-		stats.NumscriptExecutionCount = boundaries.GetNumscriptExecutionCount()
-
 		if nextLogID := boundaries.GetNextLogId(); nextLogID > 0 {
 			stats.LogCount = nextLogID - 1
 		}
+	}
+
+	// Historical (checkpoint-scoped) reads intentionally return zero
+	// usage counters: the usagestore is a projection of the LIVE audit
+	// chain and does not participate in query-checkpoint machinery, so
+	// serving live counters alongside checkpointed boundary values would
+	// produce a non-deterministic response for the same checkpoint id.
+	// This is the same trade-off that keeps read-index rebuild scoped to
+	// live state — future work can add checkpointed usage projections if
+	// clients need them.
+	if ctrl.historical {
+		return &stats, nil
+	}
+
+	// Projected counters from the usagebuilder side-store. All reads go
+	// against a single Pebble snapshot so a concurrent usagebuilder commit
+	// cannot land a partial view between them. Missing keys read as 0.
+	usageSnap := ctrl.usageStore.NewSnapshot()
+	defer func() { _ = usageSnap.Close() }()
+
+	if stats.PostingCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterPosting); err != nil {
+		return nil, fmt.Errorf("reading posting counter: %w", err)
+	}
+
+	if stats.RevertCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterRevert); err != nil {
+		return nil, fmt.Errorf("reading revert counter: %w", err)
+	}
+
+	if stats.NumscriptExecutionCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterNumscriptExecution); err != nil {
+		return nil, fmt.Errorf("reading numscript execution counter: %w", err)
+	}
+
+	if stats.ReferenceCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterReference); err != nil {
+		return nil, fmt.Errorf("reading reference counter: %w", err)
+	}
+
+	if stats.EphemeralEvictedCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterEphemeralEvicted); err != nil {
+		return nil, fmt.Errorf("reading ephemeral evicted counter: %w", err)
+	}
+
+	if stats.TransientUsedCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterTransientUsed); err != nil {
+		return nil, fmt.Errorf("reading transient used counter: %w", err)
+	}
+
+	if stats.VolumeCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterVolume); err != nil {
+		return nil, fmt.Errorf("reading volume counter: %w", err)
 	}
 
 	return &stats, nil
@@ -1291,6 +1352,37 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 	}
 
 	return info, nil
+}
+
+// GetTemplateUsage returns the invocation counter and last-used timestamp
+// for a Numscript template. Values are populated by the usagebuilder
+// subsystem asynchronously from the audit chain: a template that was just
+// invoked may not yet be reflected here for up to one usagebuilder tick
+// (100 ms). Returns a zero-valued TemplateUsage (never nil) when the
+// template has never been invoked on an existing ledger.
+//
+// Ledger existence is validated first so an unknown or soft-deleted ledger
+// surfaces a NotFound business error rather than a zero-valued 200 — the
+// same contract as GetLedgerStats / GetNumscript.
+func (ctrl *DefaultController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+	if _, err := query.GetLedgerByName(ctx, ctrl.store, ledger); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+		}
+
+		return nil, err
+	}
+
+	usage, err := ctrl.usageStore.GetTemplateUsage(ledger, name)
+	if err != nil {
+		return nil, fmt.Errorf("reading template usage %q/%q: %w", ledger, name, err)
+	}
+
+	if usage == nil {
+		return &commonpb.TemplateUsage{}, nil
+	}
+
+	return usage, nil
 }
 
 // ListNumscripts returns the latest version of all numscripts for a ledger.

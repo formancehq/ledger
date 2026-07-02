@@ -149,6 +149,11 @@ linters:
     # (not OpenWriteSession on the main store).
     - path: internal/storage/readstore/
       linters: [forbidigo]
+    # The usagestore is a peer secondary store to readstore, dedicated to the
+    # usagebuilder projections. It manages its own Pebble DB and uses
+    # NewWriteSessionFromDB by the same rationale.
+    - path: internal/storage/usagestore/
+      linters: [forbidigo]
     # Tests use OpenWriteSession to seed data; the structural guarantee is on
     # production paths.
     - path: _test\.go$
