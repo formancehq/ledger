@@ -59,6 +59,26 @@ The server supports optional JWT/OIDC authentication with scope-based authorizat
 - `503 Service Unavailable`: No Leader available (with `Retry-After` header)
 - `500 Internal Server Error`: Server error
 
+### Internal Errors and Sanitization
+
+Business errors (validation, not-found, conflict, etc.) map to specific status codes and carry a machine-readable `errorCode` and a descriptive `errorMessage`, mirroring the gRPC adapter's `Describable` contract.
+
+Two paths, however, must never expose internal error text to clients — the raw value could contain filesystem paths, wrapped Pebble/storage errors, or internal invariant strings:
+
+1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
+2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Describable` or a known sentinel.
+
+Both paths are sanitized identically to the gRPC adapter: the raw cause (and, for panics, the stack) is logged **server-side** with a `correlation_id` field and recorded on the OTel span, while the client receives only a generic body:
+
+```json
+{
+  "errorCode": "INTERNAL_ERROR",
+  "errorMessage": "internal server error (correlation ID: <id>)"
+}
+```
+
+The correlation ID is the request's `X-Request-Id` (Chi `RequestID`) so operators can grep the server logs for the exact ID a caller reports. Adding a new persisted error path that reaches `handleError`'s fallthrough inherits this sanitization automatically; do not add a branch that serializes a raw non-domain error into the response body.
+
 ### Retry-After Header
 
 The `Retry-After` header is used to indicate when a client should retry a request after receiving a `503 Service Unavailable` response.
