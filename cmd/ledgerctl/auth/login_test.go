@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -83,6 +84,49 @@ func TestResolveLoginParams_FallsBackToSigningKeyIDForKeyID(t *testing.T) {
 	p, err := resolveLoginParams(cmd)
 	require.NoError(t, err, "--signing-key-id alone must satisfy --key-id at bootstrap")
 	require.Equal(t, "prod-key", p.keyID)
+}
+
+// TestResolveLoginParams_ExplicitSigningKeyIDBeatsBundle guards the "CLI
+// overrides bundle" precedence when the CLI-passed flag is --signing-key-id
+// (the sibling that also feeds keyID via the bootstrap fallback). Without
+// this, a user calling `auth login --bundle b.json --signing-key-id foo`
+// would silently get bundle.KeyID in the JWT because the bundle-override
+// guard only checked Changed("key-id").
+func TestResolveLoginParams_ExplicitSigningKeyIDBeatsBundle(t *testing.T) {
+	dir := t.TempDir()
+
+	seedBytes := make([]byte, 32)
+	for i := range seedBytes {
+		seedBytes[i] = byte(i + 1)
+	}
+	seedHex := hex.EncodeToString(seedBytes)
+
+	bundle := keyBundle{
+		SigningKey: seedHex,
+		KeyID:      "bundle-key-id",
+		Subject:    "bundle-subject",
+	}
+	bundlePath := filepath.Join(dir, "bundle.json")
+	payload, err := json.Marshal(bundle)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(bundlePath, payload, 0o600))
+
+	cmd := newTestCmd(t)
+	cmd.Flags().StringSlice("scopes", nil, "")
+	cmd.Flags().Duration("expiration", 0, "")
+	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().String("subject", "", "")
+	cmd.Flags().String("bundle", "", "")
+
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--bundle", bundlePath,
+		"--signing-key-id", "cli-key-id",
+	}))
+
+	p, err := resolveLoginParams(cmd)
+	require.NoError(t, err)
+	require.Equal(t, "cli-key-id", p.keyID,
+		"explicit --signing-key-id must beat bundle.KeyID (CLI over bundle)")
 }
 
 func TestSyncProfile_BootstrapsMissingProfile(t *testing.T) {
