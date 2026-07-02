@@ -39,8 +39,8 @@ func TestBitsForNeeds_SameCanonicalDifferentAttrCode(t *testing.T) {
 	}
 
 	needs := NewNeeds()
-	needs.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
-	needs.Boundaries[domain.LedgerKey{Name: ledgerName}] = struct{}{}
+	needs.Add(dal.SubAttrLedger, domain.LedgerKey{Name: ledgerName}.Bytes())
+	needs.Add(dal.SubAttrBoundary, domain.LedgerKey{Name: ledgerName}.Bytes())
 
 	require.Equal(t, []byte{0b11}, bitsForNeeds(needs, plans),
 		"both Ledger (bit 0) and Boundary (bit 1) plans must be flagged even though they share a U128")
@@ -64,70 +64,70 @@ func TestBitsForNeeds_CoversEveryNeedsKind(t *testing.T) {
 		{
 			attrCode:  dal.SubAttrLedger,
 			canonical: domain.LedgerKey{Name: "L"}.Bytes(),
-			add:       func(n *Needs) { n.Ledgers[domain.LedgerKey{Name: "L"}] = struct{}{} },
+			add:       func(n *Needs) { n.Add(dal.SubAttrLedger, domain.LedgerKey{Name: "L"}.Bytes()) },
 		},
 		{
 			attrCode:  dal.SubAttrBoundary,
 			canonical: domain.LedgerKey{Name: "L"}.Bytes(),
-			add:       func(n *Needs) { n.Boundaries[domain.LedgerKey{Name: "L"}] = struct{}{} },
+			add:       func(n *Needs) { n.Add(dal.SubAttrBoundary, domain.LedgerKey{Name: "L"}.Bytes()) },
 		},
 		{
 			attrCode:  dal.SubAttrVolume,
 			canonical: domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "a"}, Asset: "USD"}.Bytes(),
 			add: func(n *Needs) {
-				n.Volumes[domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "a"}, Asset: "USD"}] = struct{}{}
+				n.Add(dal.SubAttrVolume, domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "a"}, Asset: "USD"}.Bytes())
 			},
 		},
 		{
 			attrCode:  dal.SubAttrReference,
 			canonical: domain.TransactionReferenceKey{LedgerName: "L", Reference: "ref"}.Bytes(),
 			add: func(n *Needs) {
-				n.References[domain.TransactionReferenceKey{LedgerName: "L", Reference: "ref"}] = struct{}{}
+				n.Add(dal.SubAttrReference, domain.TransactionReferenceKey{LedgerName: "L", Reference: "ref"}.Bytes())
 			},
 		},
 		{
 			attrCode:  dal.SubAttrMetadata,
 			canonical: domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "a"}, Key: "k"}.Bytes(),
 			add: func(n *Needs) {
-				n.Metadata[domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "a"}, Key: "k"}] = struct{}{}
+				n.Add(dal.SubAttrMetadata, domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "a"}, Key: "k"}.Bytes())
 			},
 		},
 		{
 			attrCode:  dal.SubAttrTransaction,
 			canonical: domain.TransactionKey{LedgerName: "L", ID: 1}.Bytes(),
-			add:       func(n *Needs) { n.Transactions[domain.TransactionKey{LedgerName: "L", ID: 1}] = struct{}{} },
+			add:       func(n *Needs) { n.Add(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: "L", ID: 1}.Bytes()) },
 		},
 		{
 			attrCode:  dal.SubAttrSinkConfig,
 			canonical: domain.SinkConfigKey{Name: "s"}.Bytes(),
-			add:       func(n *Needs) { n.SinkConfigs[domain.SinkConfigKey{Name: "s"}] = struct{}{} },
+			add:       func(n *Needs) { n.Add(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: "s"}.Bytes()) },
 		},
 		{
 			attrCode:  dal.SubAttrNumscriptVersion,
 			canonical: domain.NumscriptVersionKey{LedgerName: "L", Name: "n"}.Bytes(),
 			add: func(n *Needs) {
-				n.NumscriptVersions[domain.NumscriptVersionKey{LedgerName: "L", Name: "n"}] = struct{}{}
+				n.Add(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: "L", Name: "n"}.Bytes())
 			},
 		},
 		{
 			attrCode:  dal.SubAttrNumscriptContent,
 			canonical: domain.NumscriptEntryKey{LedgerName: "L", Name: "n", Version: "v"}.Bytes(),
 			add: func(n *Needs) {
-				n.NumscriptContents[domain.NumscriptEntryKey{LedgerName: "L", Name: "n", Version: "v"}] = struct{}{}
+				n.Add(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: "L", Name: "n", Version: "v"}.Bytes())
 			},
 		},
 		{
 			attrCode:  dal.SubAttrPreparedQuery,
 			canonical: domain.PreparedQueryKey{LedgerName: "L", Name: "q"}.Bytes(),
 			add: func(n *Needs) {
-				n.PreparedQueries[domain.PreparedQueryKey{LedgerName: "L", Name: "q"}] = struct{}{}
+				n.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: "L", Name: "q"}.Bytes())
 			},
 		},
 		{
 			attrCode:  dal.SubAttrLedgerMetadata,
 			canonical: domain.LedgerMetadataKey{LedgerName: "L", Key: "k"}.Bytes(),
 			add: func(n *Needs) {
-				n.LedgerMetadata[domain.LedgerMetadataKey{LedgerName: "L", Key: "k"}] = struct{}{}
+				n.Add(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: "L", Key: "k"}.Bytes())
 			},
 		},
 	}
@@ -178,7 +178,7 @@ func TestBitsForNeeds_TracksPlanPosition(t *testing.T) {
 	}
 
 	needs := NewNeeds()
-	needs.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
+	needs.Add(dal.SubAttrLedger, domain.LedgerKey{Name: ledgerName}.Bytes())
 
 	// First plan order: ledger at index 0 → bit 0.
 	require.Equal(t, []byte{0b01}, bitsForNeeds(needs, []*raftcmdpb.AttributePlan{ledgerPlan, padding}))
@@ -221,14 +221,14 @@ func TestApplyBits_SharesPlanIndexAcrossOperations(t *testing.T) {
 	}
 
 	needsA := NewNeeds()
-	needsA.Ledgers[domain.LedgerKey{Name: ledgerA}] = struct{}{}
+	needsA.Add(dal.SubAttrLedger, domain.LedgerKey{Name: ledgerA}.Bytes())
 
 	needsB := NewNeeds()
-	needsB.Ledgers[domain.LedgerKey{Name: ledgerB}] = struct{}{}
+	needsB.Add(dal.SubAttrLedger, domain.LedgerKey{Name: ledgerB}.Bytes())
 
 	needsAB := NewNeeds()
-	needsAB.Ledgers[domain.LedgerKey{Name: ledgerA}] = struct{}{}
-	needsAB.Ledgers[domain.LedgerKey{Name: ledgerB}] = struct{}{}
+	needsAB.Add(dal.SubAttrLedger, domain.LedgerKey{Name: ledgerA}.Bytes())
+	needsAB.Add(dal.SubAttrLedger, domain.LedgerKey{Name: ledgerB}.Bytes())
 
 	var (
 		gotA  []byte

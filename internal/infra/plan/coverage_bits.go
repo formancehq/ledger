@@ -3,7 +3,6 @@ package plan
 import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // planLookupKey indexes the proposal's AttributePlan slice. Multiple plans
@@ -93,51 +92,9 @@ func setIDInBitset(bits []byte, indexByPlan map[planLookupKey]uint32, needs *Nee
 		bits[idx/8] |= 1 << (idx % 8)
 	}
 
-	for k := range needs.Ledgers {
-		mark(k.Bytes(), dal.SubAttrLedger)
-	}
-
-	for k := range needs.Boundaries {
-		mark(k.Bytes(), dal.SubAttrBoundary)
-	}
-
-	for k := range needs.Volumes {
-		mark(k.Bytes(), dal.SubAttrVolume)
-	}
-
-	for k := range needs.References {
-		mark(k.Bytes(), dal.SubAttrReference)
-	}
-
-	for k := range needs.Metadata {
-		mark(k.Bytes(), dal.SubAttrMetadata)
-	}
-
-	for k := range needs.Transactions {
-		mark(k.Bytes(), dal.SubAttrTransaction)
-	}
-
-	for k := range needs.SinkConfigs {
-		mark(k.Bytes(), dal.SubAttrSinkConfig)
-	}
-
-	for k := range needs.NumscriptVersions {
-		mark(k.Bytes(), dal.SubAttrNumscriptVersion)
-	}
-
-	for k := range needs.NumscriptContents {
-		mark(k.Bytes(), dal.SubAttrNumscriptContent)
-	}
-
-	for k := range needs.PreparedQueries {
-		mark(k.Bytes(), dal.SubAttrPreparedQuery)
-	}
-
-	for k := range needs.LedgerMetadata {
-		mark(k.Bytes(), dal.SubAttrLedgerMetadata)
-	}
-
-	for k := range needs.Indexes {
-		mark(k.Bytes(), dal.SubAttrIndex)
+	for attrCode, set := range needs.Attributes {
+		for canonical := range set.Keys {
+			mark([]byte(canonical), attrCode)
+		}
 	}
 }
