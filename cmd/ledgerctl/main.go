@@ -100,11 +100,18 @@ func newRootCommand() *cobra.Command {
 			resolveFlag(cmd, "response-verify-key", "LEDGERCTL_RESPONSE_VERIFY_KEY", cmdutil.ProfileFlagValue(p, "response-verify-key"))
 			resolveFlag(cmd, "result-file", "LEDGERCTL_RESULT_FILE", "")
 
-			// Feed the profile's signingKeyId into the local --key-id flag
-			// exposed by auth login / auth generate-token: in practice the JWT
-			// key ID and the request-signing key ID are the same key entry.
-			// No-op on commands that do not declare --key-id.
-			resolveFlag(cmd, "key-id", "", cmdutil.ProfileFlagValue(p, "signing-key-id"))
+			// Feed the profile's signingKeyId into --key-id, but only for
+			// commands under "auth": in practice the JWT key ID and the
+			// request-signing key ID are the same key entry, so `auth login`
+			// / `auth generate-token` benefit from the fallback. Signing
+			// management commands (`signing register-key`, `signing
+			// revoke-key`) also declare --key-id but must not default to the
+			// active profile's signing key — a silent default there could
+			// revoke the current key on `ledgerctl signing revoke-key` with
+			// no arguments.
+			if isAuthCommand(cmd) {
+				resolveFlag(cmd, "key-id", "", cmdutil.ProfileFlagValue(p, "signing-key-id"))
+			}
 
 			return nil
 		},
@@ -310,6 +317,20 @@ func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
 		// place, matching resolveFlag's best-effort env handling.
 		_ = set.Set(flag.Name, value)
 	})
+}
+
+// isAuthCommand returns true when cmd is a subcommand of "auth". Only these
+// commands get the profile.signingKeyId -> --key-id fallback; signing-key
+// management commands share the --key-id name but must not inherit a default
+// from the active profile.
+func isAuthCommand(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Name() == "auth" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isProfileBootstrapCommand returns true for commands that should work even

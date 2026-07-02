@@ -242,6 +242,55 @@ func TestProfileSigningKeyIDFeedsKeyID(t *testing.T) {
 		"profile-derived --key-id must leave Changed=false")
 }
 
+// TestProfileSigningKeyIDDoesNotFeedSigningKeyIDToSigningCommands guards the
+// scoping of the profile.signingKeyId -> --key-id fallback: `signing
+// revoke-key` and `signing register-key` share the --key-id flag name but
+// operate on the key store — silently defaulting them to the active
+// profile's signingKeyId would let `ledgerctl signing revoke-key` (no args)
+// revoke the current signing key.
+//
+// Mutates process-wide environment, so it cannot run in parallel.
+func TestProfileSigningKeyIDDoesNotFeedSigningCommands(t *testing.T) {
+	for _, path := range [][]string{
+		{"signing", "revoke-key"},
+		{"signing", "register-key"},
+	} {
+		t.Run(path[1], func(t *testing.T) {
+			tmp := t.TempDir()
+			t.Setenv("HOME", tmp)
+			t.Setenv("XDG_CONFIG_HOME", tmp)
+			t.Setenv("APPDATA", tmp)
+			t.Setenv("LOCALAPPDATA", tmp)
+			t.Setenv("LEDGERCTL_PROFILE", "")
+			t.Setenv("KEY_ID", "")
+
+			require.NoError(t, cmdutil.SaveConfig(cmdutil.Config{
+				ActiveProfile: "prod",
+				Profiles: map[string]cmdutil.Profile{
+					"prod": {Server: "prod.example.com:8888", SigningKeyID: "prod-key-id"},
+				},
+			}))
+
+			root := newRootCommand()
+			root.SilenceErrors = true
+
+			bindSubcommandEnv(root)
+
+			cmd, _, err := root.Find(path)
+			require.NoError(t, err)
+			cmd.RunE = func(_ *cobra.Command, _ []string) error { return nil }
+
+			root.SetArgs(path)
+			require.NoError(t, root.Execute())
+
+			got, err := cmd.Flags().GetString("key-id")
+			require.NoError(t, err)
+			require.Empty(t, got,
+				"signing/%s must not inherit --key-id from the active profile", path[1])
+		})
+	}
+}
+
 // TestBindEnvSkipsOwnedProfile guards that "profile" is in ledgerctlOwnedFlagNames.
 // ledgerctl owns --profile and resolves it exclusively via LEDGERCTL_PROFILE in
 // PersistentPreRunE; the bare go-libs PROFILE name must never feed a --profile
