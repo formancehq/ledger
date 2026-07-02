@@ -646,6 +646,15 @@ message LedgerLog {
   // purged while another stays kept; tagging the account as a whole would
   // over-skip mappings for transactions that touched the kept asset.
   repeated TouchedVolume purged_volumes = 4;
+  // Volumes (account+asset) whose persistent entry was newly created (never
+  // seen in the attribute store before) by THIS log. Ephemeral volumes appear
+  // in BOTH new_volumes AND purged_volumes for the same log: they were
+  // persisted briefly then evicted after commit. Transient volumes (never
+  // persisted) are excluded by construction. The usagebuilder derives the
+  // VolumeCount projection as sum(new_volumes) - sum(purged_volumes) across
+  // the audit chain; the checker verifies the derived counter against the
+  // live attribute store.
+  repeated TouchedVolume new_volumes = 5;
 }
 
 // TouchedVolume identifies a (ledger-local) volume cell — an account paired

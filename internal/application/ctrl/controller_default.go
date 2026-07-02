@@ -502,17 +502,19 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 }
 
 // GetLedgerStats returns aggregate statistics for a ledger.
-// TransactionCount, LogCount and VolumeCount come from the LedgerBoundaries
-// attribute. Every event-count field (PostingCount, RevertCount,
-// NumscriptExecutionCount, ReferenceCount, EphemeralEvictedCount,
-// TransientUsedCount) is derived from the audit chain by the usagebuilder
-// and read from the usagestore side-store — expect up to one usagebuilder
-// tick interval of lag behind the live FSM (see EN-1420).
+// TransactionCount and LogCount come from the LedgerBoundaries attribute —
+// they are ID-generator state used by the FSM itself. Every projected
+// counter (PostingCount, RevertCount, NumscriptExecutionCount,
+// ReferenceCount, EphemeralEvictedCount, TransientUsedCount, VolumeCount)
+// is derived from the audit chain by the usagebuilder and read from the
+// usagestore side-store through a single Pebble snapshot — expect up to
+// one usagebuilder tick interval of lag behind the live FSM. See EN-1420
+// and EN-1422.
 //
 // MetadataCount is intentionally not returned: the admission preload no
-// longer injects old metadata values, so the FSM-side counter can no longer
-// distinguish "new key" from "overwrite" and is disabled until it comes
-// back on a sound foundation.
+// longer injects old metadata values, so the FSM-side counter could no
+// longer distinguish "new key" from "overwrite". It is disabled until it
+// comes back on a sound foundation (open question, no ticket yet).
 func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
@@ -540,14 +542,12 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 			stats.TransactionCount = nextTxID - 1
 		}
 
-		stats.VolumeCount = boundaries.GetVolumeCount()
-
 		if nextLogID := boundaries.GetNextLogId(); nextLogID > 0 {
 			stats.LogCount = nextLogID - 1
 		}
 	}
 
-	// Event-count fields from the usagebuilder side-store. All six reads go
+	// Projected counters from the usagebuilder side-store. All reads go
 	// against a single Pebble snapshot so a concurrent usagebuilder commit
 	// cannot land a partial view between them. Missing keys read as 0.
 	usageSnap := ctrl.usageStore.NewSnapshot()
@@ -575,6 +575,10 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 	if stats.TransientUsedCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterTransientUsed); err != nil {
 		return nil, fmt.Errorf("reading transient used counter: %w", err)
+	}
+
+	if stats.VolumeCount, err = usageSnap.GetCounter(ledgerName, usagestore.CounterVolume); err != nil {
+		return nil, fmt.Errorf("reading volume counter: %w", err)
 	}
 
 	return &stats, nil

@@ -1960,7 +1960,6 @@ func (m *LedgerBoundaries) CloneVT() *LedgerBoundaries {
 	r := new(LedgerBoundaries)
 	r.NextTransactionId = m.NextTransactionId
 	r.NextLogId = m.NextLogId
-	r.VolumeCount = m.VolumeCount
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5800,9 +5799,6 @@ func (this *LedgerBoundaries) EqualVT(that *LedgerBoundaries) bool {
 		return false
 	}
 	if this.NextLogId != that.NextLogId {
-		return false
-	}
-	if this.VolumeCount != that.VolumeCount {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11054,12 +11050,6 @@ func (m *LedgerBoundaries) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.VolumeCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.VolumeCount))
-		i--
-		dAtA[i] = 0x19
-	}
 	if m.NextLogId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.NextLogId))
@@ -14323,9 +14313,6 @@ func (m *LedgerBoundaries) SizeVT() (n int) {
 		n += 9
 	}
 	if m.NextLogId != 0 {
-		n += 9
-	}
-	if m.VolumeCount != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -25494,16 +25481,6 @@ func (m *LedgerBoundaries) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.NextLogId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field VolumeCount", wireType)
-			}
-			m.VolumeCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.VolumeCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

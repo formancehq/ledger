@@ -102,6 +102,15 @@ type WriteSet struct {
 	// LedgerLog.purged_volumes before AppendLogs.
 	purgedByLog [][]*commonpb.TouchedVolume
 
+	// newByLog[i] is the deduplicated list of (account, asset) volumes
+	// whose persistent entry was newly created by the log produced by
+	// order i. Computed during Merge from volumes.Slots() intersected
+	// with the set of persistent updates whose preloaded prior value was
+	// undefined or the zero placeholder. Injected into each
+	// LedgerLog.new_volumes before AppendLogs. Feeds the usagebuilder's
+	// VolumeCount projection — see EN-1422.
+	newByLog [][]*commonpb.TouchedVolume
+
 	// bloomUpdates collects canonical keys per attribute type during Merge
 	// for bloom filter updates before batch.Commit().
 	bloomUpdates bloom.BloomUpdates
@@ -257,11 +266,13 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		return fmt.Errorf("failed to merge references: %w", err)
 	}
 
-	// Update per-ledger attribute counters in boundaries before merging them.
-	// metadataUpdates / metadataDeletions no longer contribute to any
-	// boundary counter (see write_set_counters.go) — they still flow through
-	// to the cache flush below.
-	b.updateBoundaryCounters(volumeUpdates, partResult.purged, partResult.transient)
+	// No boundary-counter mutation here anymore: every per-ledger counter
+	// moved to the usagebuilder subsystem (EN-1420 / EN-1422). LedgerBoundaries
+	// carries only the two ID generators now, and they are mutated by the
+	// posting producers directly on the boundaries reader.
+	//
+	// The `new_volumes` list is computed post-merge alongside `purged_volumes`
+	// — see the log-injection block below.
 
 	boundaryUpdates, boundaryDeletions, err := b.Derived.Boundaries.Merge()
 	if err != nil {
@@ -401,11 +412,20 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 
 	// Build createdLogs (skipping idempotency replays) and inject the
-	// per-log purged_volumes subset before persisting. purgedByLog is
-	// indexed by ORDER index — same as logsOrRefs — so the mapping uses
-	// the loop's i, not the createdLogs append index.
+	// per-log purged_volumes + new_volumes subsets before persisting.
+	// purgedByLog and newByLog are indexed by ORDER index — same as
+	// logsOrRefs — so the mapping uses the loop's i, not the createdLogs
+	// append index.
 	purgedSet := makePurgedKeySet(partResult.purged)
 	b.purgedByLog = buildPurgedByLog(b.volumes.Slots(), purgedSet)
+
+	// New persistent volumes = kept + purged filtered on "prior value
+	// undefined or zero placeholder". Transient volumes are excluded by
+	// construction — they never reach the attribute store. The
+	// usagebuilder computes CounterVolume = sum(new_volumes) - sum(purged_volumes)
+	// across the audit chain, so ephemeral volumes contribute +0 net.
+	newSet := makeNewKeySet(partResult.kept, partResult.purged)
+	b.newByLog = buildNewByLog(b.volumes.Slots(), newSet)
 
 	createdLogs := make([]*commonpb.Log, 0, len(logsOrRefs))
 	for i, lr := range logsOrRefs {
@@ -417,17 +437,25 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 			continue
 		}
 
-		if i < len(b.purgedByLog) && len(b.purgedByLog[i]) > 0 {
+		hasPurged := i < len(b.purgedByLog) && len(b.purgedByLog[i]) > 0
+		hasNew := i < len(b.newByLog) && len(b.newByLog[i]) > 0
+
+		if hasPurged || hasNew {
 			apply := log.GetPayload().GetApply()
 			if apply == nil {
-				return fmt.Errorf("invariant: order %d produced purged volumes %v but its log payload is not an ApplyLedgerLog (payload=%T)",
-					i, b.purgedByLog[i], log.GetPayload())
+				return fmt.Errorf("invariant: order %d produced volume annotations but its log payload is not an ApplyLedgerLog (payload=%T)",
+					i, log.GetPayload())
 			}
 			ledgerLog := apply.GetLog()
 			if ledgerLog == nil {
-				return fmt.Errorf("invariant: order %d produced purged volumes %v but its ApplyLedgerLog carries no LedgerLog", i, b.purgedByLog[i])
+				return fmt.Errorf("invariant: order %d produced volume annotations but its ApplyLedgerLog carries no LedgerLog", i)
 			}
-			ledgerLog.PurgedVolumes = b.purgedByLog[i]
+			if hasPurged {
+				ledgerLog.PurgedVolumes = b.purgedByLog[i]
+			}
+			if hasNew {
+				ledgerLog.NewVolumes = b.newByLog[i]
+			}
 		}
 
 		createdLogs = append(createdLogs, log)
