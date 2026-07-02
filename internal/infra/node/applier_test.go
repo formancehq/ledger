@@ -386,6 +386,37 @@ func TestApplierRunExitsOnStop(t *testing.T) {
 	}
 }
 
+// TestApplierTrySyncSnapshotIsNonBlocking verifies the EN-1431 follow-up
+// invariant: TrySyncSnapshot must never block. When the applier's work
+// channel is full (buffered size 1), a second call returns false rather
+// than blocking. The processReady out-of-sync fallback fires on every
+// Ready; blocking would stall the raft-ready goroutine, and enqueuing
+// duplicate syncLeader items causes startMaintenanceTask to interrupt
+// its own in-flight checkpoint fetch.
+func TestApplierTrySyncSnapshotIsNonBlocking(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+
+	// First call succeeds: channel has capacity 1.
+	require.True(t, setup.applier.TrySyncSnapshot(1),
+		"first TrySyncSnapshot must enqueue with an empty channel")
+
+	// Second call must return false immediately (channel is full — the
+	// Run goroutine isn't started in this test, so nothing drains it).
+	done := make(chan bool, 1)
+	go func() {
+		done <- setup.applier.TrySyncSnapshot(1)
+	}()
+
+	select {
+	case result := <-done:
+		require.False(t, result, "second TrySyncSnapshot on a full channel must return false")
+	case <-time.After(1 * time.Second):
+		t.Fatal("TrySyncSnapshot blocked instead of returning false when channel was full")
+	}
+}
+
 func TestApplierFutureResolution(t *testing.T) {
 	t.Parallel()
 

@@ -1002,15 +1002,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 	if rd.SoftState != nil {
 		ss := rd.SoftState
-		// Only trigger sync from SoftState if this Ready does NOT also contain
-		// a snapshot. When both are present, the snapshot processing below will
-		// trigger its own syncSnapshot. Doing it here too would start a background
-		// task that is immediately interrupted by the second syncSnapshot call,
-		// which corrupts the spool read cache (entries read but never applied).
-		if ss.Lead != 0 && node.applier.Status() == statusOutOfSync && raft.IsEmptySnap(rd.Snapshot) && !isStopping(stop) {
-			node.applier.SyncSnapshot(ss.Lead, stop)
-		}
-
 		actualNodeLastSoftState := node.lastSoftState.Load()
 		wasLeader := actualNodeLastSoftState != nil && actualNodeLastSoftState.RaftState == raft.StateLeader
 		isLeader := ss.RaftState == raft.StateLeader
@@ -1105,6 +1096,33 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
 
 		node.lastSoftState.Store(ss)
+	}
+
+	// Trigger SyncSnapshot when the applier is out-of-sync. Reads lastSoftState
+	// after the SoftState block above so both cases are covered by one
+	// site: this Ready carries a fresh SoftState (Lead learned or changed),
+	// or this Ready has none but a previous Ready already set lastSoftState.
+	//
+	// Without this fallback, a follower that booted through node.Run's
+	// durability-gap recovery branch (Pebble empty, WAL compacted past
+	// snapshot) stays statusOutOfSync forever: the applier spools every
+	// MsgApp without applying to Pebble, so LastPersistedIndex never
+	// advances, node.Run's WaitForApplied never returns, the readiness
+	// probe never succeeds, and the Raft WAL grows unbounded (no
+	// maintenance snapshot until LastPersistedIndex moves) until the WAL
+	// PVC runs out of space. EN-1431 follow-up.
+	//
+	// Guarded on IsEmptySnap so we don't collide with the snapshot-processing
+	// block below, which fires its own syncSnapshot for the leader that just
+	// sent this snapshot. TrySyncSnapshot is non-blocking so back-to-back
+	// Readies can't stack duplicate syncLeader items (which would interrupt
+	// an in-flight checkpoint fetch via taskExecutor.Interrupt()). The
+	// applier's own status transition (statusOutOfSync -> statusGated)
+	// makes subsequent Readies skip this block once the request is picked up.
+	if raft.IsEmptySnap(rd.Snapshot) && node.applier.Status() == statusOutOfSync && !isStopping(stop) {
+		if ss := node.lastSoftState.Load(); ss != nil && ss.Lead != 0 {
+			node.applier.TrySyncSnapshot(ss.Lead)
+		}
 	}
 
 	// Resolve pending ReadIndex requests from rd.ReadStates.
