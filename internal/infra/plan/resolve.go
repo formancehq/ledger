@@ -122,6 +122,31 @@ func resolveAttributePreload[K interface {
 		id, tag := attributes.MakeKey(canonicalKey)
 
 		switch attrCache.CheckCache(nextIndex, id) {
+		case cache.CacheUnreachable:
+			// Admission predicts ≥2 rotations between propose and apply: a
+			// preload computed now would be rotated out before the FSM read.
+			// Record the rejection but continue processing so the wg.Wait()
+			// below drains any CacheMiss loader goroutine earlier iterations
+			// already launched — an immediate return would race with those
+			// goroutines' appends to plans/tracker and leak their
+			// AttributeLoader entries past the caller's cleanup token.
+			if logger.Enabled(logging.TraceLevel) {
+				logger.WithFields(map[string]any{
+					"type":      typeName,
+					"key":       hex.EncodeToString(canonicalKey),
+					"nextIndex": nextIndex,
+					"boundary":  boundary,
+				}).Tracef("Cache horizon exceeded: admission rejection")
+			}
+
+			mu.Lock()
+			if firstErr == nil {
+				firstErr = ErrCacheHorizonExceeded
+			}
+			mu.Unlock()
+
+			continue
+
 		case cache.CacheGuaranteed:
 			// Record the declaration so the FSM-side preload.View admits
 			// reads on this key. The apply path triggers no cache mutation

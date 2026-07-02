@@ -16,7 +16,7 @@ This document contains rules and conventions for AI agents working on this codeb
 6. **Every FSM `Registry.X.Get(...)` must have a matching preload, declared by the component that proposes the command** — The FSM apply path reads from the in-memory cache; a cache miss turns the read into a silent no-op. Each component that emits a proposal (the metadata converter, the index builder, the cluster-config reconciler, the idempotency-eviction scheduler, the mirror worker, admission) is responsible for declaring its own `preload.Needs` covering every key its apply path will read. There is NO central proposal→needs registry — coupling the preload package to every proposal type creates a single point that easily falls behind. The component knows what it reads; the component declares it. The shared `proposeTechnical` helper takes a `*preload.Needs` parameter the caller fills in (pass nil or an empty `Needs` when the apply path has no cache-keyed reads, e.g. cluster config / idempotency eviction). The preload populates the cache via `MirrorPreload` with a fresh value read at propose time (Pebble fallback on cache miss), and `PredictedIndex` catches mutations between propose and apply.
 7. **Never silently skip a "should not happen" branch** — A branch that is reachable only if an invariant is violated (nil where the contract says non-nil, a state we believe unreachable, a cache miss after a guaranteed preload, etc.) MUST surface a loud signal: `return fmt.Errorf("invariant: ...")` so it bubbles up, or `assert.Unreachable(...)` for SUT-level invariants exercised under antithesis. A silent `return nil` / `continue` on these branches hides real bugs — particularly catastrophic in the FSM apply path, where a no-op desyncs nodes from each other. Branches that represent genuine runtime conditions (cache miss as an expected outcome, stale proposal, deleted entity) keep their soft `return nil`. The distinction is whether the case is *expected* (soft skip OK) or *impossible by design* (must fail loudly). The comment must say *why* the case is impossible so a reader can decide whether to add a hard fail or relax the rule.
 
-8. **The audit log is the only source of truth — every other persisted dataset is a projection and must be verified by the checker** — Only `AuditEntry` (zone `Cold`, sub `Audit`) is cryptographically bound, via the hash chain that `state.BuildHashedHeaderPayload` + `processing.HashGenerator` produce and `checker.verifyAuditHashChain` verifies on every Check() run. Everything else stored in Pebble — `Log`, `AuditItem`, `AppliedProposal`, `LedgerLog.PurgedVolumes`, attribute caches (`Volume`, `Metadata`, `Transaction`, `Reference`, `Boundary`, etc.), reversion bitsets, idempotency keys, mirror cursors, chapters, bloom filters, signing keys, the read-side index — is a *projection* of orders that already live in the audit chain. Projections are rebuildable from the audit on demand, so we deliberately do NOT extend the hash chain to cover them (refactor over hash binding — see `feedback_audit_is_source_of_truth`). In exchange, **`internal/application/check/checker.go` MUST verify every projection it persists**: re-derive the value the projection should hold by replaying the audit (`ReplayLedgerLog`, `SimulateEphemeralPurge`, `partitionVolumes`, etc.) and compare to what is stored, emitting the matching `CHECK_STORE_ERROR_TYPE_*` event on divergence. A projection that the checker does not verify is a tampering vector — adding a new persisted projection without a matching compare* / collect* pass in the checker is the violation. The current passes are `compareVolumes`, `compareMetadata`, `compareTransactions`, `compareExclusionProjections` (AppliedProposal.TransientVolumes + LedgerLog.PurgedVolumes), `checkReversionInvariants`, `verifySealingHash`, `compareIdempotencyOutcomes` (frozen idempotency outcomes in SubIdempKeys vs the hash-chained AuditFailure/AuditSuccess that wrote them — the failure kind is re-derived from the chain-bound reason via `domain.KindForReason`, never stored), and `compareIndexes` (SubAttrIndex registry vs CreateIndex/DropIndex/RemovedMetadataFieldType/DeleteLedger logs — covers presence + identity; BuildStatus is intentionally excluded because the BUILDING → READY flip rides on the non-audited IndexReady TechnicalUpdate); extend the list as new persisted projections land.
+8. **The audit log is the only source of truth — every other persisted dataset is a projection and must be verified by the checker** — Only `AuditEntry` (zone `Cold`, sub `Audit`) is cryptographically bound, via the hash chain that `state.BuildHashedHeaderPayload` + `processing.HashGenerator` produce and `checker.verifyAuditHashChain` verifies on every Check() run. Everything else stored in Pebble — `Log`, `AuditItem`, `AppliedProposal`, `LedgerLog.PurgedVolumes`, attribute caches (`Volume`, `Metadata`, `Transaction`, `Reference`, `Boundary`, etc.), reversion bitsets, idempotency keys, mirror cursors, chapters, bloom filters, signing keys, the read-side index — is a *projection* of orders that already live in the audit chain. Projections are rebuildable from the audit on demand, so we deliberately do NOT extend the hash chain to cover them (refactor over hash binding — see `feedback_audit_is_source_of_truth`). In exchange, **`internal/application/check/checker.go` MUST verify every projection it persists**: re-derive the value the projection should hold by replaying the audit (`ReplayLedgerLog`, `SimulateEphemeralPurge`, `partitionVolumes`, etc.) and compare to what is stored, emitting the matching `CHECK_STORE_ERROR_TYPE_*` event on divergence. A projection that the checker does not verify is a tampering vector — adding a new persisted projection without a matching compare* / collect* pass in the checker is the violation. The current passes are `compareVolumes`, `compareMetadata`, `compareTransactions`, `compareExclusionProjections` (AppliedProposal.TransientVolumes + LedgerLog.PurgedVolumes), `checkReversionInvariants`, `verifySealingHash`, `compareIdempotencyOutcomes` (frozen idempotency outcomes in SubIdempKeys vs the hash-chained AuditFailure/AuditSuccess that wrote them — the failure kind is re-derived from the chain-bound reason via `domain.KindForReason`, never stored), and `compareIndexes` (SubAttrIndex registry vs CreateIndex/DropIndex/RemovedMetadataFieldType/DeleteLedger logs — covers presence + identity; BuildStatus is intentionally excluded because it is purely informational on the cluster-wide registry entry — queries gate on the per-replica `IndexVersionState.CurrentVersion`, not on BuildStatus); extend the list as new persisted projections land.
 
 9. **Never bypass the FSM coverage gate** — Every cache-attribute read on the FSM hot path MUST go through `Scope.GetX(...)` so the per-order `coverage_bits` admit it. Reading the underlying `Registry.X.KeyStore().M` (or any other parent-cache iterator) directly skips the gate and produces non-deterministic FSM behavior: the gate is what binds the order to the admission-declared preload set, and a direct read silently sees keys the proposer never declared. There is NO documented exception — paths that need to iterate (e.g. cascade-on-delete) MUST either declare the relevant `preload.Needs` upfront, defer the work to a lifecycle path (`batch.deleteLedgerData` + `MarkLedgerForCleanup`), or be rejected at design review. New helpers that scan the parent KeyStore from inside an order/TU handler are the violation, even when wrapped in a method on `WriteSet`. The coverage gate exists precisely so admission's declared key set is the FSM's only legitimate read horizon — under no circumstances should the apply path widen it on the fly.
 
@@ -33,6 +33,7 @@ This document contains rules and conventions for AI agents working on this codeb
 
 **CRITICAL**: Always maintain documentation when making changes.
 
+- **Document new technical mechanisms** — when introducing a new technical mechanism, subsystem, or non-obvious invariant, add a dedicated page under `docs/technical/architecture/` and link it from the corresponding `README.md`
 - **Update `docs/technical/contributing/api-comparison.md`** when adding, modifying, or removing API endpoints
 - **Update `docs/ops/cli.md`** when modifying CLI commands, flags, or behavior
 - **Update `openapi.yml`** if HTTP endpoints change
@@ -89,7 +90,7 @@ Key rules:
 
 - **Server**: `cmd/server/` - main server binary entry point
 - **CLI**: `cmd/ledgerctl/` - one file per sub-command. See [docs/ops/cli.md](docs/ops/cli.md).
-- **Domain**: `internal/domain/` - value objects, errors, domain services (`processing/`, `accounttype/`, `analysis/`, `replay/`), and cryptographic primitives (`crypto/signing/`, `crypto/keystore/`)
+- **Domain**: `internal/domain/` - value objects, **business errors emitted by the FSM**, domain services (`processing/`, `accounttype/`, `analysis/`, `replay/`), and cryptographic primitives (`crypto/signing/`, `crypto/keystore/`). Errors in this package are FSM-generated business outcomes (e.g. `ErrInsufficientFund`, `ErrEmptyTransaction`, `ErrLedgerNameRequired`). Admission / integration / config validators live in `internal/application/<layer>/errors.go` and use `domain.NewValidationSentinel` to build their own sentinels — do NOT pile non-FSM errors into `internal/domain`.
 - **Bootstrap**: `internal/bootstrap/` - composition root (fx wiring, config, TLS, persisted config)
 - **Application**: `internal/application/` - use cases (`admission/`, `ctrl/`, `events/`, `check/`, `indexbuilder/`, `mirror/`)
 - **Infrastructure**: `internal/infra/` - consensus (`node/`, `state/`), caching (`cache/`, `attributes/`), transport, health, monitoring, `backup/`, `bloom/`, `coldstorage/`, `preload/`, `receipt/`
@@ -171,3 +172,48 @@ See [docs/technical/architecture/](docs/technical/architecture/) for detailed ar
 - **Formance go-libs** for service lifecycle, OTLP, HTTP server
 
 - I would like you to respect the concepts of DRY (Don't Repeat Yourself).
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **ledger** (41000 symbols, 142383 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
+- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
+- NEVER commit changes without running `detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/ledger/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/ledger/clusters` | All functional areas |
+| `gitnexus://repo/ledger/processes` | All execution flows |
+| `gitnexus://repo/ledger/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->

@@ -334,9 +334,20 @@ func TestAttributeCache_IsGuaranteedInCache_TwoGenerationsAhead(t *testing.T) {
 	key := attributes.NewU128(1, 1)
 	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
 
-	// Index 25 is in generation 2 (two generations ahead)
-	// Data will be lost after two rotations -> false
+	// Index 25 is in generation 2 (two generations ahead): any preload
+	// computed now would be rotated out before apply. CheckCache surfaces
+	// this as CacheUnreachable so admission can reject the proposal with a
+	// transient error — Guaranteed must be false and the explicit status
+	// must be CacheUnreachable (not CacheMiss, which would mistakenly drive
+	// a stale preload).
 	assert.False(t, ac.IsGuaranteedInCache(25, key))
+	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, key),
+		"≥2 generations ahead must report CacheUnreachable")
+
+	// Same regime for a key absent from the cache: still Unreachable; the
+	// admission-level reject takes precedence over the per-key miss path.
+	absent := attributes.NewU128(9, 9)
+	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, absent))
 }
 
 func TestCache_NewCache(t *testing.T) {
@@ -364,11 +375,69 @@ func TestCache_ResetWithThresholdIncrementsEpoch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), cache.Epoch())
 
-	cache.ResetWithThreshold(200)
+	cache.ResetWithThreshold(200, 0)
 	assert.Equal(t, uint64(2), cache.Epoch())
 
-	cache.ResetWithThreshold(300)
+	cache.ResetWithThreshold(300, 0)
 	assert.Equal(t, uint64(3), cache.Epoch())
+}
+
+// TestCache_ResetWithThresholdAtNonZeroIndex covers the atomic realignment
+// path: when the caller passes a raftIndex that falls into a non-zero
+// generation under the new threshold, ResetWithThreshold must set
+// currentGeneration and BaseIndex accordingly in the SAME critical section
+// so admission's next CheckCache never observes a transient
+// (currentGeneration=0, threshold=new) window.
+func TestCache_ResetWithThresholdAtNonZeroIndex(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(100, nil)
+	require.NoError(t, err)
+
+	// raftIndex=25 with newThreshold=10 → Gen=2, BaseIndex.Gen0=genEndIndex(1, 10)=20.
+	cache.ResetWithThreshold(10, 25)
+
+	assert.Equal(t, uint64(2), cache.CurrentGeneration())
+	assert.Equal(t, uint64(20), cache.BaseIndex.Gen0)
+	assert.Equal(t, uint64(0), cache.BaseIndex.Gen1)
+	assert.Equal(t, uint64(2), cache.Epoch())
+}
+
+// TestAttributeCache_CheckCache_StaleBehindReportsMiss: when the caller's
+// nextIndex maps to a generation the FSM has already left behind
+// (actualGeneration > futureGeneration), the uint64 subtraction would
+// otherwise underflow into the CacheUnreachable default branch. Guard
+// against that: report CacheMiss so higher-level staleness checks
+// (checkStaleProposal / AcquireProposalGuard) handle the actual mismatch,
+// instead of falsely returning a horizon violation.
+func TestAttributeCache_CheckCache_StaleBehindReportsMiss(t *testing.T) {
+	t.Parallel()
+
+	c, err := New(10, nil)
+	require.NoError(t, err)
+	c.SetCurrentGeneration(5) // FSM already at gen 5
+
+	// nextIndex=15 → Gen(15, 10) = 1 (behind actualGeneration=5). Would
+	// underflow: 1 - 5 = huge → default branch → CacheUnreachable.
+	assert.Equal(t, CacheMiss, c.Volumes.CheckCache(15, attributes.NewU128(1, 1)),
+		"stale-behind build must report CacheMiss, not underflow into CacheUnreachable")
+}
+
+// TestCache_ResetWithThresholdRejectsZero: threshold=0 is a config invariant
+// violation — cache.New rejects it up front, and no legitimate call path can
+// reach ResetWithThreshold with 0. Panicking makes the violation impossible
+// to silently mask by disabling rotations (which would freeze
+// currentGeneration=0 forever and break the CacheUnreachable contract).
+func TestCache_ResetWithThresholdRejectsZero(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(100, nil)
+	require.NoError(t, err)
+
+	require.PanicsWithValue(t,
+		"cache.ResetWithThreshold: threshold must be > 0 (invariant enforced by cache.New)",
+		func() { cache.ResetWithThreshold(0, 0) },
+	)
 }
 
 func TestCache_CheckRotationNeeded_SameGeneration(t *testing.T) {
@@ -545,32 +614,20 @@ func TestAttributeCache_Gen0Gen1_Accessors(t *testing.T) {
 	require.NotSame(t, ac.Gen0(), ac.Gen1())
 }
 
-func TestCache_CheckRotationNeeded_ZeroThreshold(t *testing.T) {
-	t.Parallel()
-
-	// Create a cache and forcibly set threshold to 0
-	cache, err := New(10, nil)
-	require.NoError(t, err)
-
-	cache.SetGenerationThreshold(0)
-
-	rotated, _ := cache.CheckRotationNeeded(100)
-	assert.False(t, rotated)
-}
-
-func TestAttributeCache_IsGuaranteedInCache_ZeroThreshold(t *testing.T) {
+// TestCache_SetGenerationThresholdRejectsZero locks the invariant that a
+// running cache never observes threshold=0. cache.New rejects it, and every
+// setter (SetGenerationThreshold, ResetWithThreshold) panics loudly rather
+// than silently disabling rotations.
+func TestCache_SetGenerationThresholdRejectsZero(t *testing.T) {
 	t.Parallel()
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
 
-	cache.SetGenerationThreshold(0)
-
-	key := attributes.NewU128(1, 1)
-	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
-
-	// Should return false when threshold is 0
-	assert.False(t, cache.Volumes.IsGuaranteedInCache(5, key))
+	require.PanicsWithValue(t,
+		"cache.SetGenerationThreshold: threshold must be > 0 (invariant enforced by cache.New)",
+		func() { cache.SetGenerationThreshold(0) },
+	)
 }
 
 func TestAttributeCache_Touch_DoesNotOverwriteGen0(t *testing.T) {

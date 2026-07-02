@@ -198,7 +198,7 @@ func createSource(cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
 
 		return v2.NewHTTPSource(s.Http.GetBaseUrl(), cfg.GetLedgerName(), httpClient), nil
 	case *commonpb.MirrorSourceConfig_Postgres:
-		return v2.NewPostgresSource(context.Background(), s.Postgres.GetDsn(), cfg.GetLedgerName())
+		return v2.NewPostgresSource(context.Background(), s.Postgres, cfg.GetLedgerName())
 	default:
 		return nil, fmt.Errorf("unsupported mirror source type: %T", s)
 	}

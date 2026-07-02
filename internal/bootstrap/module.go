@@ -32,6 +32,7 @@ import (
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	httpcompat "github.com/formancehq/ledger/v3/internal/adapter/http"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
+	"github.com/formancehq/ledger/v3/internal/application/auditindexer"
 	backupapp "github.com/formancehq/ledger/v3/internal/application/backup"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/events"
@@ -633,6 +634,17 @@ func Module() fx.Option {
 			// Index builder — tails the Raft log to populate the read index
 			func(store *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {
 				return indexbuilder.NewBuilder(store, rs, attrs, logger, meterProvider.Meter("index.builder"), cfg.ReadIndexConfig.BatchSize)
+			},
+			// Audit indexer — tails the Audit zone to populate the readstore audit index.
+			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *auditindexer.Indexer {
+				return auditindexer.New(
+					auditindexer.Config{
+						BatchSize:        cfg.AuditIndexConfig.BatchSize,
+						RebuildThreshold: cfg.AuditIndexConfig.RebuildThreshold,
+						Disabled:         cfg.AuditIndexConfig.Disabled,
+					},
+					store, rs, logger, meterProvider.Meter("audit.index"),
+				)
 			},
 			httpcompat.NewServer,
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
@@ -1330,6 +1342,10 @@ func Module() fx.Option {
 				indexBuilder.SetNotifications(notifications)
 				lc.Append(worker.FxHook(indexBuilder))
 			}, fx.ParamTags(``, ``, `name:"index"`)),
+			// Start and stop the audit indexer.
+			func(lc fx.Lifecycle, auditIndexer *auditindexer.Indexer) {
+				lc.Append(worker.FxHook(auditIndexer))
+			},
 		),
 	)
 }

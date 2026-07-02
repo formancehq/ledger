@@ -989,7 +989,7 @@ pulumi destroy
 
 To deepen your understanding:
 
-1. [General Architecture](../technical/architecture/core/architecture.md) - Understand the architecture
-2. [Consensus Raft](../technical/architecture/core/raft-consensus.md) - Optimize Raft parameters
-3. [Storage and Persistence](../technical/architecture/storage/storage.md) - Configure storage
+1. [General Architecture](../technical/architecture/overview.md) - Understand the architecture
+2. [Consensus Raft](../technical/architecture/subsystems/consensus/raft-consensus.md) - Optimize Raft parameters
+3. [Storage and Persistence](../technical/architecture/subsystems/storage/storage.md) - Configure storage
 4. [Metrics](./monitoring.md) - Available application metrics

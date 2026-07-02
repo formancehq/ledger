@@ -325,3 +325,44 @@ func TestBuildPreloads_DeclaresAbsentNonZeroKey(t *testing.T) {
 	expectedID, _ := attributes.MakeKey(refKey.Bytes())
 	require.Equal(t, expectedID[:], plan.GetId().GetId())
 }
+
+// TestBuildPreloads_RejectsCacheHorizonExceeded covers the admission-level
+// guard against ≥2 cache rotations between propose and apply. With a low
+// rotation threshold (10) and the tracker pinned past two boundaries, the
+// resolver must short-circuit and surface ErrCacheHorizonExceeded so the
+// proposal never reaches Raft (and the audit log records nothing — it is a
+// system-level rejection, not a business outcome).
+func TestBuildPreloads_RejectsCacheHorizonExceeded(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	// Threshold 10: every 10 indices crosses a generation. Tracker starts
+	// past the second boundary so Gen(nextIndex) - currentGeneration >= 2.
+	c, err := cache.New(10, meter)
+	require.NoError(t, err)
+	c.SetCurrentGeneration(0)
+
+	// Tracker at index 25 → Gen(25, 10) = 2, two rotations ahead of
+	// currentGeneration (0) → CheckCache returns CacheUnreachable.
+	tracker := node.NewIndexTracker(25)
+	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
+
+	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref"}
+	needs := NewNeeds()
+	needs.References[refKey] = struct{}{}
+
+	build, buildErr := p.Build([]WriteOperation{{Needs: needs}})
+	defer build.ReleaseLoaders()
+
+	require.Error(t, buildErr, "admission must reject when 2+ rotations are predicted")
+	require.ErrorIs(t, buildErr, ErrCacheHorizonExceeded,
+		"reject must surface ErrCacheHorizonExceeded so the gRPC adapter maps to codes.Unavailable")
+}

@@ -317,9 +317,9 @@ Use `pprof` for profiling by accessing the pprof endpoint at `/debug/pprof/profi
 ## References
 
 - [AGENTS.md](../../../CLAUDE.md): Project structure and conventions
-- [Architecture](../architecture/core/architecture.md): General architecture
-- [Raft Consensus](../architecture/core/raft-consensus.md): Raft details
-- [API](../architecture/api/api.md): API documentation
+- [Architecture](../architecture/overview.md): General architecture
+- [Raft Consensus](../architecture/subsystems/consensus/raft-consensus.md): Raft details
+- [API](../architecture/subsystems/api/http-api.md): API documentation
 - [CLI Reference](../../ops/cli.md): CLI client documentation
 - [Numscript Examples](../../../misc/numscript/examples/README.md): Example Numscript files
 

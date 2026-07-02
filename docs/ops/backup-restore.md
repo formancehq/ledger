@@ -583,7 +583,7 @@ Chapters partition the ledger's history into sealed segments. Each chapter cover
 - **Attributes are never purged**: volumes, metadata, reversions, idempotency keys, and references remain in Pebble permanently (and therefore in every backup), regardless of chapter archival.
 - To obtain a complete historical record, you need both the backup (hot data) and the cold storage archives (archived chapters).
 
-See [Chapters](../technical/architecture/data-model/chapters.md) for the full chapter lifecycle and cold storage documentation.
+See [Chapters](../technical/architecture/subsystems/chapters/lifecycle.md) for the full chapter lifecycle and cold storage documentation.
 
 ---
 

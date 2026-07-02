@@ -225,6 +225,11 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per Pebble batch commit (0 = default 1000)")
 	registerPebbleFlags(runCmd, "read-index", readstore.DefaultConfig())
 
+	// Audit index configuration
+	runCmd.Flags().Int("audit-index-batch-size", 0, "Audit entries per Pebble batch commit (0 = default 1000)")
+	runCmd.Flags().Uint64("audit-index-rebuild-threshold", 0, "Drop+rebuild the audit index on boot when the cursor is this far behind (0 = never)")
+	runCmd.Flags().Bool("disable-audit-index", false, "Disable the audit secondary index worker")
+
 	// Query profiling
 	runCmd.Flags().Duration("query-profile-threshold", 10*time.Millisecond, "Log and emit OTel attributes for queries exceeding this duration (0 to disable)")
 
@@ -665,6 +670,16 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		Dir:          getString("read-index-dir", ""),
 		BatchSize:    getInt("read-index-batch-size", 0),
 		PebbleConfig: loadReadIndexPebbleConfig(cmd),
+	}
+
+	// Audit index configuration
+	auditBatchSize, _ := cmd.Flags().GetInt("audit-index-batch-size")
+	auditRebuildThreshold, _ := cmd.Flags().GetUint64("audit-index-rebuild-threshold")
+	auditDisabled, _ := cmd.Flags().GetBool("disable-audit-index")
+	cfg.AuditIndexConfig = bootstrap.AuditIndexConfig{
+		BatchSize:        auditBatchSize,
+		RebuildThreshold: auditRebuildThreshold,
+		Disabled:         auditDisabled,
 	}
 
 	// Query profiling

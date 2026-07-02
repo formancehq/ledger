@@ -280,11 +280,7 @@ func NewNode(
 			case len(cfg.Peers) > 0:
 				// Join mode: existing peers are voters, self joins as learner.
 				// The leader will add us via ConfChange after we start.
-				voters = make([]uint64, 0, len(cfg.Peers))
-				for _, peerEntry := range cfg.Peers {
-					voters = append(voters, peerEntry.ID)
-				}
-
+				voters = initialJoinVoters(cfg.Peers, cfg.NodeID)
 				learners = []uint64{cfg.NodeID}
 				logger.WithFields(map[string]any{
 					"voters":   voters,
@@ -730,16 +726,47 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 
 	// If Pebble's durable applied index is below the WAL's first available
 	// entry, the entries needed to catch the FSM up to walSnap.Metadata.Index
-	// are gone from both Pebble and the Raft WAL. With Store.SyncWAL in the
-	// maintenance path this is unreachable in correct operation; if it
-	// triggers, something is very wrong — refuse to start rather than mask it.
+	// are gone from the Raft WAL — but that only means data loss when the
+	// entries are also missing everywhere else. Two distinct paths reach here:
+	//
+	//  1. Genuine data loss (applier status != statusOutOfSync). The maintenance
+	//     invariant (SyncWAL before Compact) was violated; Pebble's applied truly
+	//     lags the WAL and no external replica has the missing entries. Refuse
+	//     to start.
+	//
+	//  2. Crashed post-InstallSnapshot, pre-SynchronizeWithLeader (applier
+	//     status == statusOutOfSync). The follower processed a MsgSnap from the
+	//     leader: etcd-raft compacted the WAL to snapshotIndex synchronously
+	//     (node.go processReady), but the async SynchronizeWithLeader that
+	//     materialises the leader's checkpoint into Pebble had not completed
+	//     when the process died. RecoverAndReplay detected the gap
+	//     (LastAppliedIndex < SnapshotIndex) and flagged the applier
+	//     out-of-sync. This state is self-healing: processReady will re-trigger
+	//     SyncSnapshot on the next SoftState carrying a leader (node.go
+	//     ready-loop). Cap Applied to walSnap.Metadata.Index so etcd-raft can
+	//     boot — semantically consistent with State.SnapshotIndex, which
+	//     synchronizer.InstallSnapshot already set to the same value.
 	if applied+1 < walFirstIdx {
-		return fmt.Errorf(
-			"durability gap exceeds WAL retention: Pebble applied=%d, WAL firstIndex=%d, "+
-				"WAL snapshot=%d. The compaction margin was overrun before Pebble fsync'd. "+
-				"Restore from a Pebble checkpoint or contact ops",
-			applied, walFirstIdx, walSnap.Metadata.Index,
+		if node.applier.Status() != statusOutOfSync {
+			return fmt.Errorf(
+				"durability gap exceeds WAL retention: Pebble applied=%d, WAL firstIndex=%d, "+
+					"WAL snapshot=%d. The compaction margin was overrun before Pebble fsync'd. "+
+					"Restore from a Pebble checkpoint or contact ops",
+				applied, walFirstIdx, walSnap.Metadata.Index,
+			)
+		}
+
+		node.logger.WithFields(map[string]any{
+			"applied":          applied,
+			"walFirstIndex":    walFirstIdx,
+			"walSnapshotIndex": walSnap.Metadata.Index,
+		}).Errorf(
+			"Pebble applied lags WAL snapshot — previous process crashed between " +
+				"InstallSnapshot and SynchronizeWithLeader completion; applier is " +
+				"out-of-sync, will re-sync from leader",
 		)
+
+		applied = walSnap.Metadata.Index
 	}
 
 	if walSnap.Metadata.Index > applied {
@@ -830,26 +857,32 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	node.tasks.add(newTask(node.runBackgroundMaintenance))
 	node.tasks.run(ctx)
 
-	// Wait for the FSM to apply all initially committed entries before
-	// signaling ready. This ensures downstream consumers (index builder,
-	// event manager) see the complete Pebble state at startup.
-	initialCommit := status.Commit
-	if initialCommit > 0 {
-		node.logger.WithFields(map[string]any{
-			"from": node.fsm.LastPersistedIndex(),
-			"to":   initialCommit,
-		}).Infof("Replaying WAL...")
-
-		err := node.fsm.WaitForApplied(ctx, initialCommit)
-		if err != nil {
-			return fmt.Errorf("waiting for initial WAL replay: %w", err)
-		}
-
-		node.logger.WithFields(map[string]any{
-			"appliedUpTo": initialCommit,
-		}).Infof("Initial WAL replay complete")
-	}
-
+	// Signal ready as soon as the raft loop is up.
+	//
+	// /readyz is documented as intentionally permissive (see
+	// internal/adapter/http/handlers_health.go): "returns 200 once the local
+	// Raft loop has started, regardless of whether a leader has been elected".
+	// The signal here is what the fx OnStart hook wrapping node.Run is
+	// blocked on (see bootstrap/module.go); fx runs OnStart hooks serially,
+	// so nothing that comes after — most importantly the HTTP server hook
+	// that opens port 9000 — starts until this closes.
+	//
+	// Blocking `ready` on FSM catch-up produced a design bug: a follower
+	// booting with an out-of-sync applier (fresh Pebble, WAL compacted past
+	// its snapshot — see the EN-1431 series) never catches up until
+	// SynchronizeWithLeader completes, which for a 17 GiB checkpoint can
+	// take multiple minutes. During that window the HTTP server never
+	// started, /readyz refused connections, kubelet marked the pod
+	// permanently not-ready, and the StatefulSet's OrderedReady rollout
+	// stalled — even though raft, spool, and apply were all functioning
+	// exactly as designed. The syncing follower IS ready in every sense
+	// that matters at k8s scheduling level; write traffic is forwarded to
+	// the leader and reads that need FSM state have their own gating.
+	//
+	// Downstream consumers that legitimately need the FSM caught up to a
+	// specific index (index builder, event manager, cluster-config
+	// reconciler) call fsm.WaitForApplied on demand rather than piggybacking
+	// on node.Run's ready signal.
 	close(ready)
 
 	select {
@@ -918,15 +951,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 	if rd.SoftState != nil {
 		ss := rd.SoftState
-		// Only trigger sync from SoftState if this Ready does NOT also contain
-		// a snapshot. When both are present, the snapshot processing below will
-		// trigger its own syncSnapshot. Doing it here too would start a background
-		// task that is immediately interrupted by the second syncSnapshot call,
-		// which corrupts the spool read cache (entries read but never applied).
-		if ss.Lead != 0 && node.applier.Status() == statusOutOfSync && raft.IsEmptySnap(rd.Snapshot) && !isStopping(stop) {
-			node.applier.SyncSnapshot(ss.Lead, stop)
-		}
-
 		actualNodeLastSoftState := node.lastSoftState.Load()
 		wasLeader := actualNodeLastSoftState != nil && actualNodeLastSoftState.RaftState == raft.StateLeader
 		isLeader := ss.RaftState == raft.StateLeader
@@ -1021,6 +1045,33 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
 
 		node.lastSoftState.Store(ss)
+	}
+
+	// Trigger SyncSnapshot when the applier is out-of-sync. Reads lastSoftState
+	// after the SoftState block above so both cases are covered by one
+	// site: this Ready carries a fresh SoftState (Lead learned or changed),
+	// or this Ready has none but a previous Ready already set lastSoftState.
+	//
+	// Without this fallback, a follower that booted through node.Run's
+	// durability-gap recovery branch (Pebble empty, WAL compacted past
+	// snapshot) stays statusOutOfSync forever: the applier spools every
+	// MsgApp without applying to Pebble, so LastPersistedIndex never
+	// advances, node.Run's WaitForApplied never returns, the readiness
+	// probe never succeeds, and the Raft WAL grows unbounded (no
+	// maintenance snapshot until LastPersistedIndex moves) until the WAL
+	// PVC runs out of space. EN-1431 follow-up.
+	//
+	// Guarded on IsEmptySnap so we don't collide with the snapshot-processing
+	// block below, which fires its own syncSnapshot for the leader that just
+	// sent this snapshot. TrySyncSnapshot is non-blocking so back-to-back
+	// Readies can't stack duplicate syncLeader items (which would interrupt
+	// an in-flight checkpoint fetch via taskExecutor.Interrupt()). The
+	// applier's own status transition (statusOutOfSync -> statusGated)
+	// makes subsequent Readies skip this block once the request is picked up.
+	if raft.IsEmptySnap(rd.Snapshot) && node.applier.Status() == statusOutOfSync && !isStopping(stop) {
+		if ss := node.lastSoftState.Load(); ss != nil && ss.Lead != 0 {
+			node.applier.TrySyncSnapshot(ss.Lead)
+		}
 	}
 
 	// Resolve pending ReadIndex requests from rd.ReadStates.
@@ -2286,6 +2337,35 @@ func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
 	}
 
 	return slices.Contains(cs.Learners, nodeID)
+}
+
+// initialJoinVoters returns the voter list for the join-mode initial WAL
+// snapshot. It maps every peer discovered from the existing cluster to its
+// ID and excludes self.
+//
+// The exclusion matters when this node was previously a cluster member and
+// is now rejoining with fresh WAL — e.g. after a scale-down/scale-up cycle
+// that removed its Pod but left the leader's status.Progress carrying the
+// node ID from an earlier auto-promote. discoverPeersFromCluster echoes
+// whatever the leader's Progress contains, so self can appear in cfg.Peers.
+// Passing that ID both here (as voter) AND to cfg.NodeID's Learners entry
+// produces the raft-invalid ConfState `Voters=[..., self], Learners=[self]`:
+// on the next boot, raft.newRaft's assertConfStatesEquivalent detects the
+// mismatch between the snapshot's ConfState and the tracker-restored
+// equivalent (which normalises self into voters only) and panics with
+// "ConfStates not equivalent after sorting", producing a permanent
+// CrashLoopBackOff that no amount of retries recovers from.
+func initialJoinVoters(peers []Peer, selfID uint64) []uint64 {
+	voters := make([]uint64, 0, len(peers))
+	for _, p := range peers {
+		if p.ID == selfID {
+			continue
+		}
+
+		voters = append(voters, p.ID)
+	}
+
+	return voters
 }
 
 // registerInitialPeers writes cfg.Peers (and self when includeSelf is

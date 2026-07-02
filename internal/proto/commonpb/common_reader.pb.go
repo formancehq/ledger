@@ -6882,6 +6882,7 @@ func NewOAuth2ClientCredentialsListReader(s []*OAuth2ClientCredentials) OAuth2Cl
 // Call Mutate() to obtain a mutable clone.
 type PostgresMirrorSourceConfigReader interface {
 	GetDsn() string
+	GetAwsIamAuth() PostgresAwsIamAuthReader
 	Mutate() *PostgresMirrorSourceConfig
 }
 
@@ -6889,6 +6890,14 @@ type postgresMirrorSourceConfigReadonly struct{ v *PostgresMirrorSourceConfig }
 
 func (r *postgresMirrorSourceConfigReadonly) GetDsn() string {
 	return r.v.GetDsn()
+}
+
+func (r *postgresMirrorSourceConfigReadonly) GetAwsIamAuth() PostgresAwsIamAuthReader {
+	v := r.v.GetAwsIamAuth()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *postgresMirrorSourceConfigReadonly) Mutate() *PostgresMirrorSourceConfig {
@@ -6943,6 +6952,78 @@ func (l postgresMirrorSourceConfigListReadonly) Range(yield func(int, PostgresMi
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewPostgresMirrorSourceConfigListReader(s []*PostgresMirrorSourceConfig) PostgresMirrorSourceConfigListReader {
 	return postgresMirrorSourceConfigListReadonly(s)
+}
+
+// PostgresAwsIamAuthReader provides read-only access to PostgresAwsIamAuth.
+// Call Mutate() to obtain a mutable clone.
+type PostgresAwsIamAuthReader interface {
+	GetRegion() string
+	GetAssumeRoleArn() string
+	Mutate() *PostgresAwsIamAuth
+}
+
+type postgresAwsIamAuthReadonly struct{ v *PostgresAwsIamAuth }
+
+func (r *postgresAwsIamAuthReadonly) GetRegion() string {
+	return r.v.GetRegion()
+}
+
+func (r *postgresAwsIamAuthReadonly) GetAssumeRoleArn() string {
+	return r.v.GetAssumeRoleArn()
+}
+
+func (r *postgresAwsIamAuthReadonly) Mutate() *PostgresAwsIamAuth {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this PostgresAwsIamAuth.
+func (m *PostgresAwsIamAuth) AsReader() PostgresAwsIamAuthReader {
+	if m == nil {
+		return nil
+	}
+	return &postgresAwsIamAuthReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this PostgresAwsIamAuth.
+func (m *PostgresAwsIamAuth) Mutate() *PostgresAwsIamAuth {
+	return m.CloneVT()
+}
+
+// PostgresAwsIamAuthListReader provides read-only iteration over []*PostgresAwsIamAuth.
+type PostgresAwsIamAuthListReader interface {
+	Len() int
+	Get(i int) PostgresAwsIamAuthReader
+	Range(yield func(int, PostgresAwsIamAuthReader) bool)
+}
+
+type postgresAwsIamAuthListReadonly []*PostgresAwsIamAuth
+
+func (l postgresAwsIamAuthListReadonly) Len() int { return len(l) }
+
+func (l postgresAwsIamAuthListReadonly) Get(i int) PostgresAwsIamAuthReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l postgresAwsIamAuthListReadonly) Range(yield func(int, PostgresAwsIamAuthReader) bool) {
+	for i, v := range l {
+		var r PostgresAwsIamAuthReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPostgresAwsIamAuthListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPostgresAwsIamAuthListReader(s []*PostgresAwsIamAuth) PostgresAwsIamAuthListReader {
+	return postgresAwsIamAuthListReadonly(s)
 }
 
 // MirrorSyncErrorReader provides read-only access to MirrorSyncError.

@@ -155,19 +155,19 @@ The three data paths above handle the core read/write lifecycle. Several additio
 
 ### Event Sinks
 
-The leader node can stream ledger events to external systems (NATS JetStream, Kafka, ClickHouse, Databricks, HTTP webhooks). Each named sink runs an independent emitter that tails the global log from a persisted cursor, batches events, and publishes them with at-least-once delivery. Cursor advances are Raft-replicated; on failure, the emitter reports error status via Raft so it is visible cluster-wide. See [Event System](architecture/data-model/events.md).
+The leader node can stream ledger events to external systems (NATS JetStream, Kafka, ClickHouse, Databricks, HTTP webhooks). Each named sink runs an independent emitter that tails the global log from a persisted cursor, batches events, and publishes them with at-least-once delivery. Cursor advances are Raft-replicated; on failure, the emitter reports error status via Raft so it is visible cluster-wide. See [Event System](architecture/subsystems/events-mirror/events.md).
 
 ### Chapters and Archiving
 
-Ledger history is divided into chapters. A chapter progresses through five states: **open** (accepting writes) → **closing** (writes blocked, hash chain captured) → **closed** (sealed with a BLAKE3 state hash) → **archiving** (exporting to cold storage) → **archived** (logs purged from Pebble). Sealing produces a cryptographic proof that the chapter's data has not been tampered with. See [Chapters](architecture/data-model/chapters.md).
+Ledger history is divided into chapters. A chapter progresses through five states: **open** (accepting writes) → **closing** (writes blocked, hash chain captured) → **closed** (sealed with a BLAKE3 state hash) → **archiving** (exporting to cold storage) → **archived** (logs purged from Pebble). Sealing produces a cryptographic proof that the chapter's data has not been tampered with. See [Chapters](architecture/subsystems/chapters/lifecycle.md).
 
 ### Mirror Replication
 
-A ledger can be created in **mirror mode**, ingesting transactions from an external source (HTTP or PostgreSQL). A per-ledger worker on the leader polls the source, translates logs into `MirrorIngest` Raft commands, and replicates them through consensus. Mirror ledgers can later be promoted to normal mode. See [Architecture](architecture/core/architecture.md).
+A ledger can be created in **mirror mode**, ingesting transactions from an external source (HTTP or PostgreSQL). A per-ledger worker on the leader polls the source, translates logs into `MirrorIngest` Raft commands, and replicates them through consensus. Mirror ledgers can later be promoted to normal mode. See [Architecture](architecture/overview.md).
 
 ### Dual-Generation Cache
 
-The in-memory attribute cache uses two generations (gen0 and gen1) that rotate at Raft index intervals. During admission, a proposal guard ensures preloaded values remain consistent across generation boundaries -- if a rotation occurs between preload and proposal, the guard triggers a rebuild. This avoids stale balance reads without global locking. See [Attributes](architecture/storage/attributes.md) and [Deterministic FSM](architecture/core/deterministic-fsm.md).
+The in-memory attribute cache uses two generations (gen0 and gen1) that rotate at Raft index intervals. During admission, a proposal guard ensures preloaded values remain consistent across generation boundaries -- if a rotation occurs between preload and proposal, the guard triggers a rebuild. This avoids stale balance reads without global locking. See [Attributes](architecture/subsystems/attributes/attributes.md) and [Deterministic FSM](architecture/subsystems/fsm/deterministic-fsm.md).
 
 ### Bloom Filters
 
@@ -175,11 +175,11 @@ Per-attribute bloom filters sit in the preload path (`internal/infra/preload/`) 
 
 ### Query Checkpoints
 
-A query checkpoint freezes both the main store and read index at a specific Raft index, creating a consistent point-in-time snapshot. Clients can then execute queries against this frozen state, useful for reconciliation or auditing. See [Query Checkpoints](architecture/data-model/query-checkpoints.md).
+A query checkpoint freezes both the main store and read index at a specific Raft index, creating a consistent point-in-time snapshot. Clients can then execute queries against this frozen state, useful for reconciliation or auditing. See [Query Checkpoints](architecture/subsystems/read-path/query-checkpoints.md).
 
 ### Typed Metadata
 
-Accounts and transactions carry typed metadata with a schema per ledger. When a new type is declared for a metadata key, the system gradually converts existing values in the background. Queries can filter on metadata fields once indexed. See [Typed Metadata](architecture/data-model/typed-metadata.md).
+Accounts and transactions carry typed metadata with a schema per ledger. When a new type is declared for a metadata key, the system gradually converts existing values in the background. Queries can filter on metadata fields once indexed. See [Typed Metadata](architecture/subsystems/read-path/typed-metadata.md).
 
 ---
 
@@ -301,10 +301,10 @@ Each node persists its critical configuration (node ID, cluster ID, storage sche
 
 For detailed documentation on specific subsystems, see:
 
-- [Raft Consensus](architecture/core/raft-consensus.md) -- Raft lifecycle, leader election, log replication, and snapshot transfer.
-- [Deterministic FSM](architecture/core/deterministic-fsm.md) -- FSM design, determinism constraints, and the request processor.
-- [Attributes & Caching](architecture/storage/attributes.md) -- Ledger attribute tracking and the in-memory volume/metadata cache.
-- [Storage Engine](architecture/storage/storage.md) -- Pebble key layout, zone design, and the read store architecture.
-- [Data Flows](architecture/data-model/data-flows.md) -- Detailed data flow through the system, including event sinks and cold storage.
-- [gRPC API](architecture/api/grpc-api.md) -- API design, protobuf conventions, and streaming patterns.
+- [Raft Consensus](architecture/subsystems/consensus/raft-consensus.md) -- Raft lifecycle, leader election, log replication, and snapshot transfer.
+- [Deterministic FSM](architecture/subsystems/fsm/deterministic-fsm.md) -- FSM design, determinism constraints, and the request processor.
+- [Attributes & Caching](architecture/subsystems/attributes/attributes.md) -- Ledger attribute tracking and the in-memory volume/metadata cache.
+- [Storage Engine](architecture/subsystems/storage/storage.md) -- Pebble key layout, zone design, and the read store architecture.
+- [Data Flows](architecture/data-flows.md) -- Detailed data flow through the system, including event sinks and cold storage.
+- [gRPC API](architecture/subsystems/api/grpc-api.md) -- API design, protobuf conventions, and streaming patterns.
 - [Getting Started](contributing/getting-started.md) -- Development environment setup, build instructions, and testing guide.
