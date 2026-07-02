@@ -74,17 +74,27 @@ func listLedgerContains(s *dal.Store, name string) bool {
 
 // testApplierSetup holds all the infrastructure needed to test the Applier in isolation.
 type testApplierSetup struct {
-	applier   *Applier
-	store     *dal.Store
-	wal       wal.WAL
-	spool     *spool.Default
-	fsm       *state.Machine
-	stop      chan struct{}
-	confState *raftpb.ConfState
+	applier      *Applier
+	store        *dal.Store
+	wal          wal.WAL
+	spool        *spool.Default
+	fsm          *state.Machine
+	stop         chan struct{}
+	confState    *raftpb.ConfState
+	responseSink LocalResponses
 }
 
-// newTestApplierSetup creates a minimal Applier with real infrastructure (Pebble, WAL, spool, FSM).
+// newTestApplierSetup creates a minimal Applier with real infrastructure (Pebble, WAL, spool, FSM)
+// and no async-storage response sink.
 func newTestApplierSetup(t *testing.T) *testApplierSetup {
+	t.Helper()
+	return newTestApplierSetupWithSink(t, nil)
+}
+
+// newTestApplierSetupWithSink is newTestApplierSetup with a caller-provided
+// LocalResponses channel wired into the applier. Tests that assert on
+// MsgStorageApplyResp delivery use this variant.
+func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplierSetup {
 	t.Helper()
 
 	logger := logging.Testing()
@@ -129,7 +139,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
-		0, 1000, nil, nil,
+		0, 1000, nil, sink,
 	)
 	require.NoError(t, err)
 
@@ -142,13 +152,14 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	})
 
 	return &testApplierSetup{
-		applier:   applier,
-		store:     pebbleStore,
-		wal:       w,
-		spool:     defaultSpool,
-		fsm:       fsm,
-		stop:      stop,
-		confState: &confState,
+		applier:      applier,
+		store:        pebbleStore,
+		wal:          w,
+		spool:        defaultSpool,
+		fsm:          fsm,
+		stop:         stop,
+		confState:    &confState,
+		responseSink: sink,
 	}
 }
 

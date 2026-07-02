@@ -1228,40 +1228,8 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 	}
 
-	// Async-storage dispatch. rd.Messages contains three flavors:
-	//   - MsgStorageAppend (To == LocalAppendThread): payload already processed
-	//     via the legacy fields (wal.Append + snapshot install above); relay
-	//     Responses back. Responses mix self-directed acks (MsgStorageAppendResp
-	//     + leader's self-MsgAppResp) with peer-directed acks that were held
-	//     back until durable (follower's MsgAppResp, vote responses — see
-	//     raft.go's msgsAfterAppend path). Self → localResponseCh, peer →
-	//     transport.Send.
-	//   - MsgStorageApply (To == LocalApplyThread): committed entries. Their
-	//     Responses ride via readyResult.applyResponses and are fired by the
-	//     applier AFTER applyEntriesToFSM (or spool append) completes, aligning
-	//     raft.Applied with FSM-applied. MsgStorageApply.Responses are always
-	//     self-directed (newStorageApplyRespMsg sets To: r.id), so no split.
-	//   - Other → outbound peer message, hand to transport.
-	var (
-		appendResponses []raftpb.Message
-		outbound        []raftpb.Message
-	)
-	for _, m := range rd.Messages {
-		switch m.To {
-		case raft.LocalAppendThread:
-			for _, resp := range m.Responses {
-				if resp.To == node.config.NodeID {
-					appendResponses = append(appendResponses, resp)
-				} else {
-					outbound = append(outbound, resp)
-				}
-			}
-		case raft.LocalApplyThread:
-			result.applyResponses = append(result.applyResponses, m.Responses...)
-		default:
-			outbound = append(outbound, m)
-		}
-	}
+	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
+	result.applyResponses = applyResponses
 
 	node.transport.Send(outbound)
 
@@ -1418,6 +1386,49 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	}
 
 	return nil
+}
+
+// splitReadyMessages classifies rd.Messages under AsyncStorageWrites into
+// three flows:
+//
+//   - appendResponses: MsgStorageAppend.Responses whose To == nodeID (self-
+//     directed acks — MsgStorageAppendResp + the leader's self-MsgAppResp).
+//     They must be Step()-ed back into rawNode by the orchestrate goroutine
+//     once the WAL append is durable (which it already is by the time this
+//     runs).
+//   - applyResponses: MsgStorageApply.Responses. Always self-directed
+//     (newStorageApplyRespMsg sets To: r.id), so no split needed. They ride
+//     via readyResult.applyResponses through applier.Submit and fire from
+//     runCommitter after CommitPreparedBatch — aligning raft.Applied with
+//     FSM-applied.
+//   - outbound: everything else. This includes peer-directed messages that
+//     were held back until durable inside MsgStorageAppend.Responses (a
+//     follower's MsgAppResp, vote responses — see raft.go's msgsAfterAppend
+//     path), as well as regular MsgApp / MsgHeartbeat / MsgVote already in
+//     rd.Messages. All flow out through the transport.
+//
+// Pure function; called by processReady but split out so the self/peer
+// split invariant (missing it broke cluster formation on the first attempt)
+// stays testable without spinning up a full Node.
+func splitReadyMessages(nodeID uint64, msgs []raftpb.Message) (appendResponses, applyResponses, outbound []raftpb.Message) {
+	for _, m := range msgs {
+		switch m.To {
+		case raft.LocalAppendThread:
+			for _, resp := range m.Responses {
+				if resp.To == nodeID {
+					appendResponses = append(appendResponses, resp)
+				} else {
+					outbound = append(outbound, resp)
+				}
+			}
+		case raft.LocalApplyThread:
+			applyResponses = append(applyResponses, m.Responses...)
+		default:
+			outbound = append(outbound, m)
+		}
+	}
+
+	return appendResponses, applyResponses, outbound
 }
 
 // isStopping returns true if the stop channel has been closed or a signal is pending.
