@@ -396,3 +396,44 @@ func TestBindEnvSkipsOwnedProfile(t *testing.T) {
 	require.Equal(t, "bound-value", probe)
 	require.True(t, set.Changed("probe-only"))
 }
+
+// TestRescaleFlagValidation guards the --rescale scale bound: it is a uint8, so
+// pflag rejects values above an asset's max precision (255) at parse time, while
+// bare --rescale and explicit values in range parse cleanly. "version" is a
+// hermetic leaf that runs without opening a connection.
+func TestRescaleFlagValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		{"absent is fine", []string{"version"}, false},
+		{"bare --rescale means scale 0", []string{"version", "--rescale"}, false},
+		{"explicit zero", []string{"version", "--rescale=0"}, false},
+		{"max in range", []string{"version", "--rescale=255"}, false},
+		{"out of range", []string{"version", "--rescale=256"}, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Hermetic config: empty temp dir so LoadConfig() returns a zero
+			// Config on every platform (see TestServerFlagEnvResolution).
+			tmp := t.TempDir()
+			t.Setenv("HOME", tmp)
+			t.Setenv("XDG_CONFIG_HOME", tmp)
+			t.Setenv("APPDATA", tmp)
+			t.Setenv("LOCALAPPDATA", tmp)
+
+			root := newRootCommand()
+			root.SilenceErrors = true
+			root.SetArgs(tc.args)
+
+			err := root.Execute()
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

@@ -232,9 +232,36 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 		return err
 	}
 
-	if len(result.GetVolumes()) > 0 {
+	rescale := cmdutil.RescaleTarget(cmd)
+
+	// volumesTable builds the ASSET/INPUT/OUTPUT table for one set of aggregated
+	// volumes. With --rescale, same-currency rows that differ only in precision
+	// are summed and re-expressed at the requested scale (matching accounts
+	// aggregate-volumes); otherwise each row is rendered raw.
+	volumesTable := func(vols []*commonpb.AggregatedVolume) pterm.TableData {
 		tableData := pterm.TableData{{"ASSET", "INPUT", "OUTPUT"}}
-		for _, v := range result.GetVolumes() {
+
+		if rescale != nil {
+			raw := make(map[string]cmdutil.RawVolume, len(vols))
+			for _, v := range vols {
+				raw[v.GetAsset()] = cmdutil.RawVolume{
+					Input:  v.GetInput().ToBigInt().String(),
+					Output: v.GetOutput().ToBigInt().String(),
+				}
+			}
+
+			for _, av := range cmdutil.AggregateVolumes(raw) {
+				tableData = append(tableData, []string{
+					cmdutil.AssetLabel(av.Asset, *rescale),
+					cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
+					cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
+				})
+			}
+
+			return tableData
+		}
+
+		for _, v := range vols {
 			tableData = append(tableData, []string{
 				v.GetAsset(),
 				v.GetInput().ToBigInt().String(),
@@ -242,23 +269,18 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 			})
 		}
 
-		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		return tableData
+	}
+
+	if len(result.GetVolumes()) > 0 {
+		_ = pterm.DefaultTable.WithHasHeader().WithData(volumesTable(result.GetVolumes())).Render()
 	}
 
 	for _, g := range result.GetGroups() {
 		pterm.Println()
 		pterm.Printfln("Group: %s", g.GetPrefix())
 
-		tableData := pterm.TableData{{"ASSET", "INPUT", "OUTPUT"}}
-		for _, v := range g.GetVolumes() {
-			tableData = append(tableData, []string{
-				v.GetAsset(),
-				v.GetInput().ToBigInt().String(),
-				v.GetOutput().ToBigInt().String(),
-			})
-		}
-
-		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		_ = pterm.DefaultTable.WithHasHeader().WithData(volumesTable(g.GetVolumes())).Render()
 	}
 
 	return nil
