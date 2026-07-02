@@ -14,6 +14,7 @@ import (
 // Call Mutate() to obtain a mutable clone.
 type OrderReader interface {
 	GetCoverageBits() []byte
+	GetSkippableReasons() []commonpb.ErrorReason
 	GetType() isOrder_Type
 	Mutate() *Order
 }
@@ -22,6 +23,10 @@ type orderReadonly struct{ v *Order }
 
 func (r *orderReadonly) GetCoverageBits() []byte {
 	return bytes.Clone(r.v.GetCoverageBits())
+}
+
+func (r *orderReadonly) GetSkippableReasons() []commonpb.ErrorReason {
+	return slices.Clone(r.v.GetSkippableReasons())
 }
 
 func (r *orderReadonly) GetType() isOrder_Type {

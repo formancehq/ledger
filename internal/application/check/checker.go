@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
@@ -139,11 +140,53 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = replay.Close() }()
 
-	// Verify the audit hash chain before log replay.
-	// This iterates all non-archived audit entries and recomputes each hash
-	// from the stored orders, chaining from archiveLastAuditHash.
-	if err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, callback); err != nil {
+	// Verify the audit hash chain before log replay. This iterates all
+	// non-archived audit entries and recomputes each hash from the stored
+	// orders, chaining from archiveLastAuditHash. Returns:
+	//   - expectedSkippable: per-log-seq skippable_reasons + correlator
+	//   - chainBoundReferences: per-ledger references claimed in the audit
+	// Both feed verifySkippedOrder during the log iteration loop below.
+	expectedSkippable, chainBoundReferences, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, callback)
+	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
+	}
+
+	// Open baseline checkpoint for archived state comparison. The baseline
+	// is the pre-archive Pebble snapshot the checker consults to verify
+	// archived data (volumes, metadata, transactions, and now references
+	// to scope the OrderSkipped archive escape). Opening it here — before
+	// log iteration — lets foldBaselineReferences populate
+	// chainBoundReferences in time for verifySkippedOrder, while the
+	// later compareVolumes / compareMetadata / compareTransactions pass
+	// reuses the same handle.
+	var baselineDB *pebble.DB
+
+	if hasArchivedChapters {
+		baselinePath, exists := c.store.BaselineCheckpointPath()
+		if exists {
+			db, openErr := pebble.Open(baselinePath, &pebble.Options{
+				Logger:   dal.NewPebbleLogger(c.logger),
+				ReadOnly: true,
+			})
+			if openErr != nil {
+				c.logger.Infof("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr)
+			} else {
+				baselineDB = db
+
+				defer func() { _ = baselineDB.Close() }()
+			}
+		}
+	}
+
+	// Fold the baseline TransactionReference attribute into
+	// chainBoundReferences with a sentinel sequence of 0 (precedes every
+	// live log seq). This is what lets verifySkippedOrder validate skips
+	// that conflict with a reference claimed in a purged chapter without
+	// falling back to the broad archive escape hatch — the escape now
+	// scopes only to the "no baseline available" case.
+	baselineReferencesAvailable, err := c.foldBaselineReferences(baselineDB, chainBoundReferences)
+	if err != nil {
+		return fmt.Errorf("loading baseline references: %w", err)
 	}
 
 	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, chapters, archiveEndSeq)
@@ -431,6 +474,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
 
+						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, chainBoundReferences, hasArchivedChapters && !baselineReferencesAvailable, callback)
+
 						// Accumulate the LedgerLog.PurgedVolumes side of the
 						// stored projection while we have the log in hand;
 						// AppliedProposal.TransientVolumes is added in a
@@ -442,6 +487,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				}
 			}
 		}
+
+		// Elision guard: run at every seq (outside the payload switch) so
+		// it also fires for tampered projections that never reach the
+		// well-formed Apply branch above — non-Apply payloads, nil
+		// Apply.Log, or nil Data — where verifySkippedOrder is unreachable.
+		dispatchElisionCheck(seq, log, expectedSkippable, chainBoundReferences, callback)
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
@@ -496,27 +547,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// them via EXCLUSION_RECORD_MISMATCH for human review.
 	compareExclusionProjections(stored, excluded, callback)
 
-	// Open baseline checkpoint for archived state comparison.
-	var baselineDB *pebble.DB
-
-	if hasArchivedChapters {
-		baselinePath, exists := c.store.BaselineCheckpointPath()
-		if exists {
-			db, openErr := pebble.Open(baselinePath, &pebble.Options{
-				Logger:   dal.NewPebbleLogger(c.logger),
-				ReadOnly: true,
-			})
-			if openErr != nil {
-				c.logger.Infof("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr)
-			} else {
-				baselineDB = db
-
-				defer func() { _ = baselineDB.Close() }()
-			}
-		}
-	}
-
-	// If archived chapters exist but no baseline is available, we can't do
+	// baselineDB was opened earlier (before log iteration) so the
+	// reference-fold pass and the archived-state comparison passes share
+	// the same handle. If archived chapters exist but no baseline is
+	// available, we can't do
 	// entry-by-entry comparison (the replay only covers non-archived logs).
 	// This is expected after a restore. Warn and skip comparison passes.
 	if hasArchivedChapters && baselineDB == nil {
@@ -1453,13 +1487,28 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 // Archived audit entries have been purged from Pebble, so the chain starts
 // at archiveLastAuditHash (from the latest archived chapter) or nil if no
 // chapters have been archived.
+//
+// Returns:
+//
+//   - expectedSkippable: per-log-seq skippable_reasons whitelist + reason
+//     correlator re-derived from the chain-bound Orders. Consumed by
+//     verifySkippedOrder.
+//   - chainBoundReferences: per-ledger map of every CreateTransactionOrder
+//     reference seen in the audit chain, with the first sequence that
+//     claimed it. Built from chain-bound `serialized_order` so a tampered
+//     CreatedTransaction LedgerLog cannot forge a "prior claim" for a fake
+//     skip.
+//
+// The LedgerLog projection is not hash-chain bound, so without these
+// checks a tampered skip log could let a fabricated outcome slip past
+// Check().
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
 	reader dal.PebbleReader,
 	chapters []*commonpb.Chapter,
 	archiveLastAuditHash []byte,
 	callback func(*servicepb.CheckStoreEvent),
-) error {
+) (map[uint64]*expectedSkippableOrder, map[string]map[string]uint64, error) {
 	// Find the last archived audit sequence to start iteration after it.
 	//
 	// CloseAuditSequence is the last audit entry written BEFORE the CloseChapter
@@ -1481,7 +1530,7 @@ func (c *Checker) verifyAuditHashChain(
 
 	auditCursor, err := query.ReadAuditEntries(ctx, reader, afterAuditSeq)
 	if err != nil {
-		return fmt.Errorf("reading audit entries: %w", err)
+		return nil, nil, fmt.Errorf("reading audit entries: %w", err)
 	}
 
 	defer func() { _ = auditCursor.Close() }()
@@ -1494,6 +1543,21 @@ func (c *Checker) verifyAuditHashChain(
 		// Frozen idempotency outcomes the projection should hold, re-derived
 		// from each verified audit entry and compared to SubIdempKeys below.
 		expectedIdem = make(map[idemExpectedKey]expectedIdempotency)
+		// Per-log-sequence skippable_reasons whitelist plus reason-specific
+		// correlator (e.g. reference for TRANSACTION_REFERENCE_CONFLICT),
+		// re-derived from the chain-bound Order. Consumed by
+		// verifySkippedOrder during the log iteration loop.
+		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
+		// Per-ledger map of every CreateTransactionOrder reference seen in
+		// the audit chain (regardless of outcome), with the first log
+		// sequence that claimed it. Built from chain-bound serialized_order
+		// so the verifier never trusts a LedgerLog projection for the
+		// "prior claim" replay — a tampered CreatedTransaction log cannot
+		// inject a fake reference here. Limitation: references claimed by
+		// archived orders (audit purged) are NOT in this map; the caller
+		// pairs the lookup with hasArchivedChapters to avoid false
+		// positives on legitimate skips against archived references.
+		chainBoundReferences = make(map[string]map[string]uint64)
 		// Timestamp of the first (lowest-sequence) verified entry — the archive
 		// boundary. HLC timestamps are monotonic with sequence, so every freeze
 		// in the verified range is at/after it; a stored idempotency entry that
@@ -1513,7 +1577,7 @@ func (c *Checker) verifyAuditHashChain(
 			// here would let a corrupted audit entry partially-verify the
 			// hash chain and report "no mismatch" even though entries
 			// past the failure point were never checked.
-			return fmt.Errorf("reading audit entry for hash chain verification: %w", err)
+			return nil, nil, fmt.Errorf("reading audit entry for hash chain verification: %w", err)
 		}
 
 		if verifiedRangeStartTs == 0 {
@@ -1535,7 +1599,11 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			return nil
+			// Return the partially populated maps (not nil) so
+			// foldBaselineReferences does not panic on a nil-map write.
+			// Check() keeps running after a chain break to surface
+			// other projection errors.
+			return expectedSkippable, chainBoundReferences, nil
 		}
 
 		// Read the audit items for this entry, then rebuild the canonical
@@ -1546,7 +1614,7 @@ func (c *Checker) verifyAuditHashChain(
 		// re-marshalling, immune to vtprotobuf and Order schema drift.
 		items, itemsErr := query.ReadAuditItems(ctx, reader, entry.GetSequence())
 		if itemsErr != nil {
-			return fmt.Errorf("reading audit items for sequence %d: %w", entry.GetSequence(), itemsErr)
+			return nil, nil, fmt.Errorf("reading audit items for sequence %d: %w", entry.GetSequence(), itemsErr)
 		}
 
 		headerPayload, headerErr := state.BuildHashedHeaderPayload(entry)
@@ -1561,7 +1629,11 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			return nil
+			// Return the partially populated maps (not nil) so
+			// foldBaselineReferences does not panic on a nil-map write.
+			// Check() keeps running after a chain break to surface
+			// other projection errors.
+			return expectedSkippable, chainBoundReferences, nil
 		}
 
 		hashSlices := make([][]byte, 0, 1+len(items))
@@ -1592,7 +1664,11 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			return nil // Stop on first mismatch — chain is broken from here.
+			// Return the partially populated maps (not nil) so
+			// foldBaselineReferences does not panic on a nil-map write.
+			// Check() keeps running after a chain break to surface
+			// other projection errors.
+			return expectedSkippable, chainBoundReferences, nil // Stop on first mismatch — chain is broken from here.
 		}
 
 		lastHash = entry.GetHash()
@@ -1609,6 +1685,15 @@ func (c *Checker) verifyAuditHashChain(
 				}] = exp
 			}
 		}
+
+		// Per-order skippable_reasons whitelist + chain-bound references
+		// re-derived from each chain-verified order. Each item carries its
+		// own LogSequence (set by buildAuditItems from the fresh
+		// CreatedLog or the idempotency replay's ReferenceSequence).
+		// Failure-side entries get LogSequence=0 and contribute nothing.
+		if entry.GetSuccess() != nil {
+			collectExpectedSkippable(items, expectedSkippable, chainBoundReferences)
+		}
 	}
 
 	if checked > 0 {
@@ -1616,10 +1701,519 @@ func (c *Checker) verifyAuditHashChain(
 	}
 
 	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, verifiedRangeStartTs, callback); err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	return nil
+	return expectedSkippable, chainBoundReferences, nil
+}
+
+// expectedSkippableOrder captures the chain-verified fields the checker
+// needs to confirm a LedgerLogPayload.OrderSkipped projection is legitimate:
+// the audit-bound reasons whitelist (any skip must use one of these) and
+// the reason-specific correlator the verifier replays against the projection
+// stream. Today only TRANSACTION_REFERENCE_CONFLICT carries a correlator
+// (Reference + LedgerName); other reasons leave both empty.
+type expectedSkippableOrder struct {
+	reasons   []commonpb.ErrorReason
+	ledger    string
+	reference string
+}
+
+// collectExpectedSkippable populates two outputs from the chain-verified
+// items of a successful audit entry:
+//
+//   - expectedSkippable: per-log skippable_reasons whitelist + correlator for
+//     orders that opted into skip. Each item maps to the log at
+//     item.LogSequence (which buildAuditItems sets from either the fresh
+//     CreatedLog or the idempotency-replay ReferenceSequence). MinLogSequence
+//
+//   - i is the wrong formula when an item is a ReferenceSequence —
+//     succeeding indexes do not line up with seq + i.
+//
+//   - chainBoundReferences: per-ledger map of every CreateTransactionOrder
+//     reference seen in the audit chain, with the first sequence that
+//     claimed it. Built from chain-bound `serialized_order` (NOT the
+//     LedgerLog projection) so a tampered CreatedTransaction log cannot
+//     forge a "prior claim" for a fake skip — see
+//     verifySkippedOrder's TRANSACTION_REFERENCE_CONFLICT branch.
+func collectExpectedSkippable(
+	items []*auditpb.AuditItem,
+	expectedSkippable map[uint64]*expectedSkippableOrder,
+	chainBoundReferences map[string]map[string]uint64,
+) {
+	for _, item := range items {
+		order := &raftcmdpb.Order{}
+		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+			// An item that fails to unmarshal cannot tell us what its order
+			// authorised; verifySkippedOrder will see no whitelist and
+			// surface an INVALID_SKIP if a skip log claims this sequence.
+			continue
+		}
+
+		logSeq := item.GetLogSequence()
+		if logSeq == 0 {
+			// Failure-side audit items get LogSequence=0 (no log was
+			// produced); they do not feed either output map.
+			continue
+		}
+
+		ls := order.GetLedgerScoped()
+		if ls == nil {
+			continue
+		}
+
+		ledger := ls.GetLedger()
+
+		apply := ls.GetApply()
+		ct := apply.GetCreateTransaction()
+
+		// Track every chain-bound reference claim on this ledger, not just
+		// the ones from orders that opted into skip. Two order shapes can
+		// originate a reference write:
+		//   - LedgerApplyOrder_CreateTransaction (regular path)
+		//   - LedgerScopedOrder_MirrorIngest carrying a
+		//     MirrorCreatedTransaction (mirror ingestion after a mirror
+		//     promotion replays the source ledger's reference claims)
+		// processMirrorCreatedTransaction calls PutTransactionReference
+		// the same way processCreateTransaction does, so the verifier
+		// would otherwise false-positive on a legitimate skip that
+		// conflicts with a mirror-ingested reference.
+		if ref := ct.GetReference(); ref != "" {
+			rememberReferenceClaim(chainBoundReferences, ledger, ref, logSeq)
+		}
+
+		if mi := ls.GetMirrorIngest(); mi != nil {
+			if mct := mi.GetEntry().GetCreatedTransaction(); mct != nil {
+				if ref := mct.GetReference(); ref != "" {
+					rememberReferenceClaim(chainBoundReferences, ledger, ref, logSeq)
+				}
+			}
+		}
+
+		reasons := order.GetSkippableReasons()
+		if len(reasons) == 0 {
+			continue
+		}
+
+		exp := &expectedSkippableOrder{
+			reasons: reasons,
+			ledger:  ledger,
+		}
+
+		if ct != nil {
+			exp.reference = ct.GetReference()
+		}
+
+		expectedSkippable[logSeq] = exp
+	}
+}
+
+// rememberReferenceClaim records the first chain-bound claim of a
+// (ledger, reference) pair. Used by collectExpectedSkippable across the
+// two order shapes that produce references (CreateTransactionOrder and
+// MirrorIngestOrder.MirrorCreatedTransaction) to keep the
+// first-claim-wins semantic the verifier relies on (`firstSeenSeq < seq`).
+func rememberReferenceClaim(
+	chainBoundReferences map[string]map[string]uint64,
+	ledger, reference string,
+	logSeq uint64,
+) {
+	if ledger == "" || reference == "" {
+		return
+	}
+
+	perLedger := chainBoundReferences[ledger]
+	if perLedger == nil {
+		perLedger = make(map[string]uint64)
+		chainBoundReferences[ledger] = perLedger
+	}
+
+	if _, claimed := perLedger[reference]; claimed {
+		return
+	}
+
+	perLedger[reference] = logSeq
+}
+
+// foldBaselineReferences merges the TransactionReference attribute from
+// the baseline checkpoint into chainBoundReferences with a sentinel
+// sequence of 0 (always precedes any live log seq). The baseline is the
+// pre-archive Pebble snapshot the checker already consults for
+// volumes/metadata/transactions; without this fold, references claimed
+// in purged chapters would be invisible to verifySkippedOrder and the
+// archive escape hatch would have to ignore the entire live skip range.
+//
+// Returns true when baseline references were successfully loaded. The
+// caller scopes the archive escape to (hasArchivedChapters && !baselineLoaded)
+// so a fabricated skip on a fresh live reference still surfaces as
+// INVALID_SKIP whenever a baseline is available.
+//
+// baselineDB=nil short-circuits the load (no archived data, or baseline
+// unavailable — the caller already paid for the open if applicable).
+func (c *Checker) foldBaselineReferences(
+	baselineDB *pebble.DB,
+	chainBoundReferences map[string]map[string]uint64,
+) (bool, error) {
+	if baselineDB == nil {
+		return false, nil
+	}
+
+	iter, err := c.attrs.References.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return false, fmt.Errorf("iterating baseline references: %w", err)
+	}
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var trk domain.TransactionReferenceKey
+		if err := trk.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		if trk.LedgerName == "" || trk.Reference == "" {
+			continue
+		}
+
+		perLedger := chainBoundReferences[trk.LedgerName]
+		if perLedger == nil {
+			perLedger = make(map[string]uint64)
+			chainBoundReferences[trk.LedgerName] = perLedger
+		}
+
+		// Baseline references always win over any live-audit entry for the
+		// same reference. Two cases motivate the override:
+		//
+		//   1. A skipped order's OWN reference is recorded by
+		//      collectExpectedSkippable at its skip-log seq (AuditItem.
+		//      LogSequence carries the skip log's seq, not 0). Without the
+		//      override, verifySkippedOrder sees firstSeenSeq >= seq and
+		//      false-positives INVALID_SKIP on a legitimate archive-scoped
+		//      skip that a live baseline could otherwise confirm.
+		//   2. If the reference conflict enforcement is correct, only ONE
+		//      successful claim of a given reference can exist across the
+		//      ledger's lifetime. So a baseline entry ⇒ no successful live
+		//      claim ⇒ any live-audit record for this reference is either
+		//      the skipped order itself (case 1) or a mirror-ingest replay
+		//      of the archived source claim — both cases want the archived
+		//      claim (sentinel 0) as the effective firstSeenSeq.
+		//
+		// The check verifySkippedOrder runs is `firstSeenSeq < seq`, so 0 is
+		// the safest value: it always beats any live seq without changing
+		// the truth of the comparison.
+		perLedger[trk.Reference] = 0 // sentinel: precedes every live log seq
+	}
+
+	if err := iter.Close(); err != nil {
+		return false, fmt.Errorf("closing baseline references iterator: %w", err)
+	}
+
+	if err := iter.Err(); err != nil {
+		return false, fmt.Errorf("baseline references iterator error: %w", err)
+	}
+
+	return true, nil
+}
+
+// verifySkippedOrder flags an OrderSkippedLog projection whose reason was
+// not authorised by the chain-bound Order.skippable_reasons whitelist (or
+// is a structural KindInternal reason — defense in depth mirroring the
+// gate in matchOrderSkip). It then replays the reason-specific condition
+// against the AUDIT chain (not the LedgerLog projection) so a tampered
+// CreatedTransaction log cannot forge a "prior claim" for a fake skip.
+//
+// chainBoundReferences was built in verifyAuditHashChain from
+// chain-verified `serialized_order` payloads, so any reference appearing
+// in it was the subject of a real audit-bound write at the recorded
+// sequence. hasArchivedChapters acts as a presence escape hatch:
+// references claimed in archived chapters have their audit entries purged
+// and therefore are NOT in chainBoundReferences. To avoid false positives
+// on legitimate skips against archived references, the per-reason
+// presence check is downgraded to a silent pass when archived chapters
+// exist. This trade-off matches the same archive boundary
+// compareIdempotencyOutcomes uses.
+func verifySkippedOrder(
+	ledger string,
+	seq uint64,
+	payload *commonpb.LedgerLogPayload,
+	expectedSkippable map[uint64]*expectedSkippableOrder,
+	chainBoundReferences map[string]map[string]uint64,
+	hasArchivedChapters bool,
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	skipped, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped)
+	if !ok {
+		// The projection at `seq` is NOT an OrderSkippedLog. The elision
+		// check (inverse direction) is dispatched at the outer log
+		// iteration scope by dispatchElisionCheck so it also fires for
+		// tampered projections that never reach this well-formed Apply-log
+		// path (non-Apply payload, nil Apply.Log, nil Data). Return
+		// silently here — the outer dispatch owns the alert.
+		return
+	}
+
+	if skipped.OrderSkipped == nil {
+		// OrderSkipped oneof is set but the inner OrderSkippedLog is nil.
+		// dispatchElisionCheck classifies "oneof set" as a valid skip
+		// projection and defers to this forward verifier, so a silent
+		// return here would let a malformed skip evade both checks. Flag
+		// it directly as invalid — a legitimate skip always carries a
+		// populated inner message (assignSkipLogIDAndDate + reason).
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d on ledger %q sets the OrderSkipped oneof but the inner OrderSkippedLog message is nil", seq, ledger),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
+
+	reason := skipped.OrderSkipped.GetReason()
+
+	if reason == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records an OrderSkipped projection with UNSPECIFIED reason in ledger %q", seq, ledger),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
+
+	if domain.KindForReason(reason) == domain.KindInternal {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records an OrderSkipped projection with KindInternal reason %s in ledger %q (structural failures must never skip)", seq, reason, ledger),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
+
+	expected, ok := expectedSkippable[seq]
+	if !ok {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records an OrderSkipped projection (reason %s) but the originating order did not authorise any skippable reason", seq, reason),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
+
+	if !slices.Contains(expected.reasons, reason) {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records an OrderSkipped projection with reason %s that is not in the originating order's skippable_reasons whitelist", seq, reason),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
+
+	// Reason-specific replay: confirm the underlying condition was
+	// plausible at this sequence given the chain-bound order.
+	if reason == commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT {
+		// Empty reference means the original order had no reference set —
+		// TRANSACTION_REFERENCE_CONFLICT is structurally impossible.
+		if expected.reference == "" {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but the audited order on ledger %q has no reference set", seq, ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		// expected.ledger comes from the chain-bound order; cross-check it
+		// against the log's ledger to catch a tampered ApplyLedgerLog
+		// envelope that points the skip at a different ledger.
+		if expected.ledger != ledger {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records OrderSkipped on ledger %q but the chain-bound order targets ledger %q", seq, ledger, expected.ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		// Verify the persisted OrderSkipped.context fields against the
+		// chain-bound order BEFORE the reference-claim lookup. Both
+		// `reference` and `ledger` come from expected (chain-bound), so
+		// their check is independent of whether the prior claim lives in
+		// the live audit range or an archived chapter — running them
+		// before the archive escape below closes a tampering vector where
+		// the context alone is edited on a legitimate archive-scoped skip.
+		//
+		// The context surfaces to clients via the REST response and gRPC
+		// log payload, so tampering only the context (without flipping
+		// the reason or rewriting an unrelated log) would otherwise pass
+		// Check() with no other tripwire — the LedgerLog projection is
+		// not hash-bound.
+		//
+		// ErrTransactionReferenceConflict.Metadata() ALWAYS writes both
+		// `ledger` and `reference`, so missing or empty values are also
+		// tampering — flag them. ExistingTransactionId is not in the
+		// audit chain (tx ids are FSM-allocated and not re-derivable
+		// from the chain alone), so the verifier only pins the two
+		// fields it can re-derive.
+		ctx := skipped.OrderSkipped.GetContext()
+
+		if got := ctx["reference"]; got != expected.reference {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.reference=%q but the chain-bound order references %q", seq, got, expected.reference),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		if got := ctx["ledger"]; got != expected.ledger {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.ledger=%q but the chain-bound order targets ledger %q", seq, got, expected.ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		// Look up the reference in the audit-derived map. firstSeenSeq is
+		// strictly less than seq because chainBoundReferences only retains
+		// the first claim for each reference (re-claims on the same ref
+		// later — including the very order producing this skip log — do
+		// not move it).
+		firstSeenSeq, claimed := chainBoundReferences[ledger][expected.reference]
+		if !claimed || firstSeenSeq >= seq {
+			// No earlier claim visible in the live audit range. If
+			// archived chapters exist, the claim may live in a purged
+			// range we cannot re-verify here; stay permissive to avoid
+			// flagging legitimate skips on archived references. If no
+			// archive boundary applies, the missing claim IS the
+			// fabrication we want to catch — fail loudly.
+			if hasArchivedChapters {
+				return
+			}
+
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but reference %q was not claimed on ledger %q before this sequence", seq, expected.reference, ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+	}
+}
+
+// dispatchElisionCheck runs the elision guard at every seq where the audit
+// chain expected a skip, using expected.ledger (chain-bound) as the ledger
+// context. A "valid skip projection" is a well-formed Apply payload with a
+// non-nil Log/Data whose payload discriminant is LedgerLogPayload_OrderSkipped;
+// anything else — a non-Apply payload (e.g. LogPayload_DeleteLedger), nil
+// Apply.Log, nil Log.Data, or an Apply payload discriminant other than
+// OrderSkipped — is treated as an elision candidate and forwarded to
+// verifyExpectedSkipNotElided.
+//
+// Dispatching from the outer iteration (rather than from inside
+// verifySkippedOrder) closes a bypass path: the Apply case's inline call
+// only fires for well-formed Apply payloads with non-nil Log.Data, so a
+// tampered projection stored as any other shape would previously escape
+// the elision check entirely.
+func dispatchElisionCheck(
+	seq uint64,
+	log *commonpb.Log,
+	expectedSkippable map[uint64]*expectedSkippableOrder,
+	chainBoundReferences map[string]map[string]uint64,
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	expected, isExpected := expectedSkippable[seq]
+	if !isExpected {
+		return
+	}
+
+	if apl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply); ok &&
+		apl.Apply != nil &&
+		apl.Apply.GetLog() != nil &&
+		apl.Apply.GetLog().GetData() != nil {
+		if _, isSkip := apl.Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped); isSkip {
+			// Well-formed OrderSkipped projection: verifySkippedOrder
+			// (called from the Apply branch of the iteration) already
+			// validated the forward direction.
+			return
+		}
+	}
+
+	verifyExpectedSkipNotElided(expected.ledger, seq, expectedSkippable, chainBoundReferences, callback)
+}
+
+// verifyExpectedSkipNotElided is the inverse-direction sibling of
+// verifySkippedOrder: it fires when the audit chain says the FSM MUST have
+// emitted an OrderSkipped log at this sequence (the originating order opted
+// into skip AND the chain shows the skip condition was met) but the stored
+// LedgerLog projection says otherwise (typically a forged CreatedTransaction).
+//
+// Without this check a tamperer could elide a skip and convince downstream
+// readers a transaction landed when the FSM actually rolled it back: the
+// LedgerLog is a projection of the audit chain, not hash-bound itself.
+//
+// The `!claimed || firstSeenSeq >= seq` guard below already covers the
+// archive-boundary case: references claimed in purged chapters legitimately
+// fail to appear in chainBoundReferences (so `claimed=false`), and the
+// verifier stays permissive without any archive-flag branch. Once we DO see
+// a prior live claim (`firstSeenSeq < seq`), the elision is positively
+// proven by the hash-chained audit range — we must NOT downgrade this to a
+// silent pass just because archived chapters exist elsewhere in the log.
+func verifyExpectedSkipNotElided(
+	ledger string,
+	seq uint64,
+	expectedSkippable map[uint64]*expectedSkippableOrder,
+	chainBoundReferences map[string]map[string]uint64,
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	expected, ok := expectedSkippable[seq]
+	if !ok {
+		// The originating order did not authorise any skippable reason; any
+		// projection is fine (the FSM never had the option to skip).
+		return
+	}
+
+	if expected.ledger != ledger {
+		// Cross-ledger desync: the projection at this sequence is on a
+		// different ledger than the chain-bound order targets. Either the
+		// per-ledger LedgerLog routing is broken (a separate Check pass
+		// catches that) or the projection was tampered to land elsewhere;
+		// either way it is not the legitimate landing site of the audited
+		// order, so leave the call to the other verifier.
+		return
+	}
+
+	// Only TRANSACTION_REFERENCE_CONFLICT is whitelisted today. Reasons added
+	// later need their own re-derivation here — fail closed: skip the inverse
+	// check rather than guess, the forward direction still catches a forged
+	// OrderSkipped.
+	if !slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) || expected.reference == "" {
+		return
+	}
+
+	firstSeenSeq, claimed := chainBoundReferences[ledger][expected.reference]
+	if !claimed || firstSeenSeq >= seq {
+		// No earlier claim visible in the live audit range. Either the
+		// reference is genuinely new at this sequence (legitimate non-skip)
+		// or the prior claim lives in a purged archive we cannot re-verify.
+		// Either way, stay permissive — the forward direction still catches
+		// a forged OrderSkipped if the projection is a skip.
+		return
+	}
+
+	callback(errorEvent(
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+		fmt.Sprintf("log %d on ledger %q is not an OrderSkipped projection but the chain-bound order opted into TRANSACTION_REFERENCE_CONFLICT skip and reference %q was already claimed at sequence %d", seq, ledger, expected.reference, firstSeenSeq),
+		seq, ledger, "", "",
+	))
 }
 
 // idemExpectedKey identifies the frozen idempotency entry an audit outcome

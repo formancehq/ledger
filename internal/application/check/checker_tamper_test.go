@@ -291,12 +291,13 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 		var got []*servicepb.CheckStoreError
 
-		require.NoError(t, checker.verifyAuditHashChain(context.Background(), handle, nil, nil, func(event *servicepb.CheckStoreEvent) {
+		_, _, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, func(event *servicepb.CheckStoreEvent) {
 			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
 			}
-		}))
+		})
+		require.NoError(t, err)
 
 		return got
 	}
@@ -412,7 +413,7 @@ func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*servi
 
 	var mismatches []*servicepb.CheckStoreError
 
-	err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, func(event *servicepb.CheckStoreEvent) {
+	_, _, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}

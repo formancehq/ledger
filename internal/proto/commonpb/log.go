@@ -103,6 +103,12 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 					RemovedMetadataFieldType: p,
 				},
 			}
+		case *OrderSkippedLog:
+			l.Data = &LedgerLogPayload{
+				Payload: &LedgerLogPayload_OrderSkipped{
+					OrderSkipped: p,
+				},
+			}
 		}
 	}
 

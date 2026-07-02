@@ -65,6 +65,8 @@ func (lt LogType) String() string {
 		return "SET_METADATA_FIELD_TYPE"
 	case RemovedMetadataFieldTypeLogType:
 		return "REMOVED_METADATA_FIELD_TYPE"
+	case OrderSkippedLogType:
+		return "ORDER_SKIPPED"
 	}
 
 	return ""
@@ -84,6 +86,8 @@ func LogTypeFromString(logType string) (LogType, error) {
 		return SetMetadataFieldTypeLogType, nil
 	case "REMOVED_METADATA_FIELD_TYPE":
 		return RemovedMetadataFieldTypeLogType, nil
+	case "ORDER_SKIPPED":
+		return OrderSkippedLogType, nil
 	}
 
 	return 0, fmt.Errorf("invalid log type: %q", logType)
@@ -108,6 +112,8 @@ func GetLogType(payload *LedgerLogPayload) LogType {
 		return SetMetadataFieldTypeLogType
 	case *LedgerLogPayload_RemovedMetadataFieldType:
 		return RemovedMetadataFieldTypeLogType
+	case *LedgerLogPayload_OrderSkipped:
+		return OrderSkippedLogType
 	default:
 		return 0
 	}
