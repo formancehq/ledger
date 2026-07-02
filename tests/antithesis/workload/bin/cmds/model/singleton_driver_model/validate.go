@@ -158,6 +158,16 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 
 				return
 			}
+
+			if !metaMapEqual(order.Revert.Saved(), revTx.GetMetadata()) {
+				assert.Unreachable("singleton_driver_model: revert metadata mismatch", internal.Details{
+					"ledger":      oracle.LedgerOf(req),
+					"modelSaved":  renderMetaMap(order.Revert.Saved()),
+					"serverSaved": renderMetaMap(revTx.GetMetadata()),
+				})
+
+				return
+			}
 		} else if order.TxID != 0 {
 			tx := data.GetCreatedTransaction().GetTransaction()
 			ct := req.GetApply().GetAction().GetCreateTransaction()

@@ -420,10 +420,12 @@ type txRecord struct {
 }
 
 // revertEffect is a committed revert's predicted effect: the original
-// transaction id (echoed as reverted_transaction_id) and the reversed postings.
+// transaction id (echoed as reverted_transaction_id), the reversed postings, and
+// the metadata set on the revert transaction (echoed verbatim on its log).
 type revertEffect struct {
 	revertedID uint64
 	postings   []*commonpb.Posting
+	saved      map[string]*commonpb.MetadataValue
 }
 
 // ApplyResult is the predicted outcome of applying a whole bulk.
@@ -669,7 +671,7 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 		OK:     true,
 		PCV:    pcv,
 		TxID:   id,
-		Revert: &revertEffect{revertedID: rec.id, postings: reversed},
+		Revert: &revertEffect{revertedID: rec.id, postings: reversed, saved: rt.GetMetadata()},
 	}
 }
 

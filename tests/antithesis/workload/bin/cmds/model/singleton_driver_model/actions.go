@@ -627,17 +627,25 @@ func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
 		return nil
 	}
 
+	payload := &servicepb.RevertTransactionPayload{
+		TransactionId: ls.TxRefs()[ref].Id(),
+		Force:         true,
+		ExpandVolumes: true,
+	}
+
+	// ~half the reverts carry metadata on the revert transaction, echoed
+	// verbatim on its log (see validateBulkSuccess's revert check).
+	if random.RandomChoice([]uint8{0, 1}) == 0 {
+		payload.Metadata = randomMetaMap()
+	}
+
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_RevertTransaction{
-						RevertTransaction: &servicepb.RevertTransactionPayload{
-							TransactionId: ls.TxRefs()[ref].Id(),
-							Force:         true,
-							ExpandVolumes: true,
-						},
+						RevertTransaction: payload,
 					},
 				},
 			},

@@ -29,3 +29,7 @@ func (m *metaEffect) Saved() map[string]*commonpb.MetadataValue { return m.saved
 
 func (r *revertEffect) RevertedID() uint64            { return r.revertedID }
 func (r *revertEffect) Postings() []*commonpb.Posting { return r.postings }
+
+// Saved is the metadata set on the revert transaction (empty when the revert
+// carried none), echoed verbatim on the RevertedTransaction log.
+func (r *revertEffect) Saved() map[string]*commonpb.MetadataValue { return r.saved }
