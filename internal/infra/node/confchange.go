@@ -75,28 +75,29 @@ func unmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error
 // RemoveNode. Other ConfChange types (UpdateNode, etc.) are silently
 // skipped — callers only react to add/remove today.
 //
-// A single cc.Context carries exactly one peer address, so a ConfChangeV2
-// that bundles multiple Adds under the same Context would apply the same
-// address to every added node — a silent corruption in the FSM Pebble
-// writer. We defend against that: if the batch contains more than one
-// Add/AddLearner while cc.Context is set, we refuse to interpret the
-// address for any of them. All local propose paths (tryAddLearner,
-// ForceRemoveNode) emit at most one Add per V2 and multi-change
-// batching (joint consensus) isn't used, so this branch is a guard
-// against future misuse, not a currently-reachable case.
+// A single cc.Context carries exactly one peer address. A ConfChangeV2
+// that bundles multiple Add / AddLearnerNode changes with a non-empty
+// Context is therefore an invariant violation (all local propose paths
+// emit single-Add batches; joint consensus isn't used) — we surface it
+// as a loud error per invariant #7 rather than silently degrading, so
+// the FSM apply path aborts and a divergent state (voters recorded in
+// ConfState with no dialable Pebble row) is caught immediately instead
+// of leaking downstream.
 //
 // Used by both Membership.WriteConfChange (FSM Pebble write) and
 // Node.finishReady (post-commit cache + transport wiring) so the decode +
 // dispatch shape stays in one place.
 func walkConfChangeContexts(cc raftpb.ConfChangeV2, fn func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error) error {
-	addCount := 0
+	addNodeIDs := make([]uint64, 0, len(cc.Changes))
 	for _, change := range cc.Changes {
 		if change.Type == raftpb.ConfChangeAddNode || change.Type == raftpb.ConfChangeAddLearnerNode {
-			addCount++
+			addNodeIDs = append(addNodeIDs, change.NodeID)
 		}
 	}
 
-	multipleAdds := addCount > 1
+	if len(addNodeIDs) > 1 && len(cc.Context) > 0 {
+		return fmt.Errorf("invariant: ConfChangeV2 carries %d Add/AddLearner changes with a non-empty Context (nodes=%v); one Context can only address a single peer, all local propose paths emit single-Add batches", len(addNodeIDs), addNodeIDs)
+	}
 
 	var cached *ConfChangeContext
 
@@ -104,7 +105,7 @@ func walkConfChangeContexts(cc raftpb.ConfChangeV2, fn func(raftpb.ConfChangeTyp
 		switch change.Type {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 			var ctx *ConfChangeContext
-			if len(cc.Context) > 0 && !multipleAdds {
+			if len(cc.Context) > 0 {
 				if cached == nil {
 					decoded, err := UnmarshalConfChangeContext(cc.Context)
 					if err != nil {

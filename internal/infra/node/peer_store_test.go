@@ -490,14 +490,15 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 	})
 }
 
-// TestWalkConfChangeContexts_MultiAddSafeguard pins the guard that
-// refuses to interpret cc.Context when a single ConfChangeV2 carries
-// more than one Add / AddLearner change. cc.Context encodes exactly
-// one peer address, so applying it to every added node would silently
-// persist the wrong address for all but one — a corruption in the
-// FSM's Pebble write path. Local propose paths only emit single-Add
-// batches, so this branch is a defense against future misuse.
-func TestWalkConfChangeContexts_MultiAddSafeguard(t *testing.T) {
+// TestWalkConfChangeContexts_MultiAddInvariant pins the invariant #7
+// enforcement: a ConfChangeV2 that bundles multiple Add / AddLearner
+// changes with a non-empty Context is an impossible-by-design shape
+// (all local propose paths emit single-Add batches; joint consensus
+// isn't used), and cc.Context can only address a single peer. Silently
+// degrading (dropping the address for every added node) would leave
+// voters recorded in ConfState with no dialable Pebble row — a
+// downstream corruption that's hard to trace. Fail loudly instead.
+func TestWalkConfChangeContexts_MultiAddInvariant(t *testing.T) {
 	t.Parallel()
 
 	ctx, err := MarshalConfChangeContext(ConfChangeContext{
@@ -514,16 +515,36 @@ func TestWalkConfChangeContexts_MultiAddSafeguard(t *testing.T) {
 		Context: ctx,
 	}
 
-	seen := map[uint64]*ConfChangeContext{}
+	callCount := 0
+	err = walkConfChangeContexts(cc, func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error {
+		callCount++
 
-	err = walkConfChangeContexts(cc, func(_ raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
-		seen[nodeID] = ctx
+		return nil
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invariant:")
+	require.Zero(t, callCount, "fn must not fire when the invariant is violated")
+}
+
+// Multi-Remove is fine — cc.Context is empty for RemoveNode and there's
+// no per-peer address ambiguity, so bundling removes is allowed.
+func TestWalkConfChangeContexts_MultiRemoveAllowed(t *testing.T) {
+	t.Parallel()
+
+	cc := raftpb.ConfChangeV2{
+		Changes: []raftpb.ConfChangeSingle{
+			{Type: raftpb.ConfChangeRemoveNode, NodeID: 1},
+			{Type: raftpb.ConfChangeRemoveNode, NodeID: 2},
+		},
+	}
+
+	var seen []uint64
+	err := walkConfChangeContexts(cc, func(_ raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
+		require.Nil(t, ctx)
+		seen = append(seen, nodeID)
 
 		return nil
 	})
 	require.NoError(t, err)
-
-	require.Len(t, seen, 2)
-	require.Nil(t, seen[1], "multi-Add safeguard must NOT propagate the shared Context")
-	require.Nil(t, seen[2], "multi-Add safeguard must NOT propagate the shared Context")
+	require.Equal(t, []uint64{1, 2}, seen)
 }
