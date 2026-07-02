@@ -3,7 +3,7 @@ package v1alpha1
 import "testing"
 
 // TestDeletionProtectionEnabled pins the opt-out default: an omitted field (nil)
-// resolves to protected, matching the CRD default of true, so a LedgerService
+// resolves to protected, matching the CRD default of true, so a Cluster
 // constructed in-process without API-server defaulting is protected unless it
 // explicitly opts out.
 func TestDeletionProtectionEnabled(t *testing.T) {

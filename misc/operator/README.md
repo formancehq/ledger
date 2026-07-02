@@ -113,7 +113,7 @@ opt out. Deletion protection has three independent layers, so the choice of
    Kubernetes >= 1.30** (ValidatingAdmissionPolicy GA). On an older cluster the
    chart detects that the `ValidatingAdmissionPolicy` kind is absent and **skips
    these objects** so the default install/upgrade still succeeds (it prints a
-   NOTES warning); a LedgerService with `deletionProtection: true` then reports the
+   NOTES warning); a Cluster with `deletionProtection: true` then reports the
    runtime `DeletionProtectionInactive` warning because no policy acts on its
    volumes. `helm template` run offline uses Helm's built-in capability list, so
    pass `--api-versions admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy`

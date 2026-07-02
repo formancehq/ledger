@@ -63,7 +63,7 @@ func TestDeletionProtectionPolicyInstalled(t *testing.T) {
 					Message: "the server could not find the requested resource",
 				}}
 			})
-		r := &LedgerServiceReconciler{Clientset: cs}
+		r := &ClusterReconciler{Clientset: cs}
 
 		installed, err := r.deletionProtectionPolicyInstalled(context.Background())
 		require.NoError(t, err, "a 404 for the unregistered API must not error the reconcile")
@@ -80,7 +80,7 @@ func TestDeletionProtectionPolicyInstalled(t *testing.T) {
 			func(k8stesting.Action) (bool, runtime.Object, error) {
 				return true, nil, apierrors.NewInternalError(assert.AnError)
 			})
-		r := &LedgerServiceReconciler{Clientset: cs}
+		r := &ClusterReconciler{Clientset: cs}
 
 		installed, err := r.deletionProtectionPolicyInstalled(context.Background())
 		require.Error(t, err, "a non-NotFound error must surface, not be treated as not-installed")
