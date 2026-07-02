@@ -38,7 +38,9 @@ Examples:
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
 	cmd.Flags().String("type", "", "Index type: address, source-address, dest-address, metadata")
+	cmdutil.RegisterEnumCompletion(cmd, "type", indexTypeOptions...)
 	cmd.Flags().String("target", "", "Target type for metadata index: account or transaction")
+	cmdutil.RegisterEnumCompletion(cmd, "target", "account", "transaction")
 	cmd.Flags().String("key", "", "Metadata key name (for metadata index)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -63,7 +65,7 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {
 		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "inserted-at", "log-ledger", "account-asset"}).
+			WithOptions(indexTypeOptions).
 			WithDefaultText("Select index type to drop").
 			Show()
 		if err != nil {

@@ -130,6 +130,7 @@ func newRootCommand() *cobra.Command {
 
 	// Add persistent flag for read consistency level.
 	rootCmd.PersistentFlags().String("consistency", "", "Read consistency level: stale, leader, or linearizable (default) (env: LEDGERCTL_CONSISTENCY)")
+	cmdutil.RegisterEnumCompletion(rootCmd, "consistency", "stale", "leader", "linearizable")
 
 	// Add persistent flag for bearer token authentication.
 	rootCmd.PersistentFlags().String("auth-token", "", "Bearer token for authentication (JWT string or @path-to-file) (env: LEDGERCTL_AUTH_TOKEN)")

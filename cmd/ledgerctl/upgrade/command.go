@@ -28,6 +28,7 @@ func NewCommand(currentVersion string) *cobra.Command {
 	}
 
 	cmd.Flags().String("channel", "nightly", "Release channel: \"nightly\" or \"stable\"")
+	cmdutil.RegisterEnumCompletion(cmd, "channel", "nightly", "stable")
 	cmd.Flags().Bool("force", false, "Upgrade even if already on the latest version")
 	cmd.Flags().Bool("dry-run", false, "Check for updates without installing")
 

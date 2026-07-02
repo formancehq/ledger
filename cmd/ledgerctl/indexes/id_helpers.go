@@ -2,6 +2,21 @@ package indexes
 
 import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
+// indexTypeOptions is the canonical set of --type values accepted by the
+// indexes create/drop commands. It backs both the interactive selector and
+// shell completion so the two never drift.
+var indexTypeOptions = []string{
+	"address",
+	"source-address",
+	"dest-address",
+	"metadata",
+	"reference",
+	"timestamp",
+	"inserted-at",
+	"log-ledger",
+	"account-asset",
+}
+
 // txBuiltinIndexID constructs an IndexID for a transaction builtin field.
 func txBuiltinIndexID(b commonpb.TransactionBuiltinIndex) *commonpb.IndexID {
 	return &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: b}}
