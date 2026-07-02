@@ -1087,17 +1087,26 @@ type PersistenceSpec struct {
 	RetentionPolicy *RetentionPolicySpec `json:"retentionPolicy,omitempty"`
 
 	// DeletionProtection opts this ledger's PVCs and bound PVs into the
-	// cluster-scoped volume deletion-protection admission policy. When true, the
-	// operator stamps the `ledger.formance.com/deletion-protection: enabled`
-	// label on the volumes so the policy selects them and rejects accidental
-	// DELETEs unless the object carries the allow-deletion annotation; when set
-	// back to false the label is removed and protection is lifted. The policy
-	// itself must be installed cluster-wide by an admin via the Helm value
-	// `pvcProtection.enabled` — otherwise this flag has no effect and the
-	// operator emits a DeletionProtectionInactive warning on the CR.
-	// +kubebuilder:default=false
+	// cluster-scoped volume deletion-protection admission policy. It defaults to
+	// true (protected): the operator stamps the
+	// `ledger.formance.com/deletion-protection: enabled` label on the volumes so
+	// the policy selects them and rejects accidental DELETEs unless the object
+	// carries the allow-deletion annotation. Set it explicitly to false to opt
+	// out — the label is then removed and protection is lifted. The policy itself
+	// must be installed cluster-wide by an admin via the Helm value
+	// `pvcProtection.enabled` (on by default) — otherwise this flag has no effect
+	// and the operator emits a DeletionProtectionInactive warning on the CR.
+	// +kubebuilder:default=true
 	// +optional
-	DeletionProtection bool `json:"deletionProtection,omitempty"`
+	DeletionProtection *bool `json:"deletionProtection,omitempty"`
+}
+
+// DeletionProtectionEnabled reports whether volume deletion protection is
+// requested for this ledger. An unset field defaults to true, matching the CRD
+// default, so a LedgerService constructed in-process without API-server
+// defaulting is protected unless it explicitly opts out.
+func (p PersistenceSpec) DeletionProtectionEnabled() bool {
+	return p.DeletionProtection == nil || *p.DeletionProtection
 }
 
 // VolumeSpec defines a volume configuration.

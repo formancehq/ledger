@@ -191,7 +191,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 	// unstamping a PVC born from a still-labeled immutable VCT after an opt-out.
 	if r.Clientset != nil {
 		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
-		pending, err := reconcileVolumeProtection(ctx, r.Clientset, ledger.Namespace, name, desiredReplicas, volNames, ledger.Spec.Persistence.DeletionProtection)
+		pending, err := reconcileVolumeProtection(ctx, r.Clientset, ledger.Namespace, name, desiredReplicas, volNames, ledger.Spec.Persistence.DeletionProtectionEnabled())
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("reconciling volume deletion-protection labels: %w", err)
 		}
@@ -647,7 +647,7 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.Pe
 		// fully would mean recreating the StatefulSet just to re-emit templates,
 		// which is too disruptive for a running Raft cluster.
 		var labels map[string]string
-		if ledger.Spec.Persistence.DeletionProtection {
+		if ledger.Spec.Persistence.DeletionProtectionEnabled() {
 			labels = map[string]string{labelDeletionProtection: labelDeletionProtectionValue}
 		}
 

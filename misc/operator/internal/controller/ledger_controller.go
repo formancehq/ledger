@@ -171,7 +171,7 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// it, so keying off the local flag would falsely report unprotected.
 	if r.Clientset != nil {
 		inactive := false
-		if ledger.Spec.Persistence.DeletionProtection {
+		if ledger.Spec.Persistence.DeletionProtectionEnabled() {
 			installed, err := r.deletionProtectionPolicyInstalled(ctx)
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("checking volume deletion-protection policy: %w", err)
