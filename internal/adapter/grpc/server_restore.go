@@ -217,7 +217,9 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	}
 
 	attrs := attributes.New()
-	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), s.logger)
+	// No cold reader on this path: it validates a staged backup store, so the
+	// idempotency pass keeps the post-archive boundary as its verification floor.
+	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, s.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		var restoreEvent restorepb.ValidateRestoreEvent

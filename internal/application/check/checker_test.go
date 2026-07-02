@@ -852,7 +852,7 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, "test-cluster", logging.Testing())
+	checker := NewChecker(store, attrs, "test-cluster", nil, logging.Testing())
 
 	var errors []*servicepb.CheckStoreError
 
@@ -1124,7 +1124,7 @@ func TestCheckerProgressEvents(t *testing.T) {
 		))
 	}
 
-	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, logging.Testing())
 
 	var progressEvents []*servicepb.CheckStoreProgress
 
@@ -1459,7 +1459,7 @@ func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
 	require.NoError(t, batch.SetBytes(auditKey, []byte{0xFF, 0xFF, 0xFF, 0xFF}))
 	require.NoError(t, batch.Commit())
 
-	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, logging.Testing())
 	err := checker.Check(context.Background(), func(_ *servicepb.CheckStoreEvent) {})
 
 	// Before the fix: Check returned nil; the cursor break swallowed the
@@ -1844,7 +1844,7 @@ func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*commonpb.Index) (
 
 	ctx := logging.TestingContext()
 
-	return NewChecker(store, attrs, "test-cluster", logging.FromContext(ctx)), store
+	return NewChecker(store, attrs, "test-cluster", nil, logging.FromContext(ctx)), store
 }
 
 // TestCompareIndexes_Identical pins the happy path: when the SubAttrIndex

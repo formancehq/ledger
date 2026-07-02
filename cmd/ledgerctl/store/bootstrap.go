@@ -422,7 +422,10 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	}
 
 	attrs := attributes.New()
-	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), logger)
+	// No cold reader on this path: it validates a local staging store from a
+	// backup, so the idempotency pass keeps the post-archive boundary as its
+	// verification floor.
+	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, logger)
 
 	pterm.Info.Println("Validating backup integrity...")
 
