@@ -163,14 +163,14 @@ type Node struct {
 	observer         *Observer
 	applier          *Applier
 
-	readies            chan raft.Ready
-	readyTerminated    chan readyResult
+	readies         chan raft.Ready
+	readyTerminated chan readyResult
 	// localResponseCh receives MsgStorageAppendResp / MsgStorageApplyResp
 	// messages (and any msgsAfterAppend responses they carry) produced by the
 	// async-storage path. The orchestrate goroutine drains it and Step()s each
 	// message into rawNode (rawNode is not thread-safe; only orchestrate may
 	// touch it). Used only when raft.Config.AsyncStorageWrites is true.
-	localResponseCh LocalResponses
+	localResponseCh    LocalResponses
 	tasks              *taskSet
 	stopChannel        chan chan struct{}
 	runDone            chan struct{} // closed when Run() exits
