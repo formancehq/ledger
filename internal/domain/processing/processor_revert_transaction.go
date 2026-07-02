@@ -108,7 +108,11 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		postCommitVolumes = buildPostCommitVolumes(s, ledger, revertPostings)
+		var err domain.Describable
+		postCommitVolumes, err = buildPostCommitVolumes(s, ledger, revertPostings)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &commonpb.LedgerLogPayload{
