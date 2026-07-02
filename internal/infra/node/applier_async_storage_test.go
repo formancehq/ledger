@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -209,6 +210,53 @@ func TestApplierMultipleBatchesOnlyLastResponsesFire(t *testing.T) {
 		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after stop")
+	}
+}
+
+// TestApplierRunCommitterDoesNotDeadlockOnFullSink — regression guard for
+// findings 34540caa/9047f08a. If the response sink stops being drained
+// (consumer down, orchestrate halted) and ctx is cancelled, runCommitter
+// must NOT return from mid-batch: it must fall through the ctx.Done arm and
+// still signal work.done, otherwise Applier.Run's deferred waitPendingCommit
+// blocks forever on <-a.pending.done.
+func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
+	t.Parallel()
+
+	// Unbuffered sink + zero consumer: any send blocks immediately.
+	sink := make(LocalResponses)
+	setup := newTestApplierSetupWithSink(t, sink)
+
+	ctx, cancel := context.WithCancel(logging.TestingContext())
+	defer cancel()
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+
+	entry, _ := makeCreateLedgerEntry(t, 1, "async-full-sink")
+	resp := makeApplyResp(1, entry.Index)
+	setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, []raftpb.Message{resp}, setup.stop)
+
+	// Give runCommitter time to fire the response — it will block on the
+	// unbuffered send. If the deadlock regressed, the test hangs here.
+	time.Sleep(200 * time.Millisecond)
+
+	// Cancel ctx → runCommitter's select takes the ctx.Done arm. The fix
+	// requires it to fall through (not return), so work.done fires and
+	// Applier.Run's deferred cleanup can drain pending without hanging.
+	cancel()
+
+	// Signal shutdown to Applier.Run.
+	close(setup.stop)
+
+	select {
+	case err := <-runDone:
+		// Either nil (clean stop) or a ctx-related error — either is fine.
+		// The test PASSES as long as Run returned; the previous code
+		// (early `return` from runCommitter without signalling work.done)
+		// would hang forever here.
+		_ = err
+	case <-time.After(5 * time.Second):
+		t.Fatal("Applier.Run did not return after ctx cancel + stop — deadlock regression on findings 34540caa/9047f08a")
 	}
 }
 

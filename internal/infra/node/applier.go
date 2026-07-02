@@ -1008,11 +1008,15 @@ func (a *Applier) runCommitter(ctx context.Context) {
 		// raft.Applied stays behind, the committed entries will be re-emitted
 		// on the next boot (raft.Config.Applied re-reads from Pebble), and
 		// re-apply is idempotent via the applied-index guard.
+		//
+		// On ctx.Done we drop the response and fall through — we MUST NOT
+		// return here, otherwise the trailing `work.done <- err` never fires
+		// and Applier.Run's deferred `waitPendingCommit` deadlocks on
+		// `<-a.pending.done` during shutdown (finding 34540caa/9047f08a).
 		if err == nil && len(work.responses) > 0 && a.responseSink != nil {
 			select {
 			case a.responseSink <- work.responses:
 			case <-ctx.Done():
-				return
 			}
 		}
 
