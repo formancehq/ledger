@@ -19,6 +19,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -148,7 +149,7 @@ type Node struct {
 	// membership owns the Raft peer-address state (Pebble + in-memory
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
-	membership         *Membership
+	membership         *membership.Membership
 	pendingConfChanges SyncMap[uint64, *futures.Future[struct{}]]
 
 	// confChangeMu serializes external ConfChange operations (AddLearner,
@@ -206,7 +207,7 @@ func NewNode(
 	fsm *state.Machine,
 	recovery *state.Recovery,
 	synchronizer *state.Synchronizer,
-	membership *Membership,
+	membership *membership.Membership,
 ) (*Node, error) {
 	cfg.SetDefaults()
 
@@ -244,7 +245,7 @@ func NewNode(
 				Voters: []uint64{cfg.NodeID},
 			}
 
-			if err := membership.PersistInitialPeers(cfg, true); err != nil {
+			if err := registerInitialPeers(membership, cfg, true); err != nil {
 				return nil, err
 			}
 
@@ -305,7 +306,7 @@ func NewNode(
 			// the WAL ConfState but no peer addresses in Pebble — the
 			// EN-1404-class failure where the bootstrap voter has no
 			// durable address.
-			if err := membership.PersistInitialPeers(cfg, cfg.Bootstrap); err != nil {
+			if err := registerInitialPeers(membership, cfg, cfg.Bootstrap); err != nil {
 				return nil, err
 			}
 
@@ -1126,7 +1127,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	// Extract conf changes from committed entries. The actual rawNode.ApplyConfChange
 	// calls are deferred to the orchestrate goroutine (rawNode is not thread-safe).
 	for _, entry := range rd.CommittedEntries {
-		cc, ok, err := unmarshalConfChangeV2(entry)
+		cc, ok, err := membership.UnmarshalConfChangeV2(entry)
 		if err != nil {
 			return readyResult{}, err
 		}
@@ -1179,7 +1180,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		// tick to learn the new address. (rawNode.ApplyConfChange above
 		// makes Raft start replicating to the new peer immediately, so
 		// the transport must be wired by then.)
-		err := walkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
+		err := membership.WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *membership.ConfChangeContext) error {
 			switch t {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 				if ctx != nil {
@@ -1198,7 +1199,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		// Collect pending ConfChange futures (resolved below after WAL
 		// update) and emit the antithesis lifecycle ping for the
 		// fault-injector. Loops over every change.NodeID — including
-		// PromoteLearner and UpdateNode types that walkConfChangeContexts
+		// PromoteLearner and UpdateNode types that membership.WalkConfChangeContexts
 		// skips — because pending futures are keyed by NodeID regardless
 		// of transition type.
 		for _, change := range cc.Changes {
@@ -2052,7 +2053,7 @@ func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name strin
 // The call blocks until the ConfChange is committed through Raft consensus.
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
-	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{
+	ccCtx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
 		RaftAddress:    raftAddr,
 		ServiceAddress: serviceAddr,
 	})
@@ -2285,4 +2286,28 @@ func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
 	}
 
 	return slices.Contains(cs.Learners, nodeID)
+}
+
+// registerInitialPeers writes cfg.Peers (and self when includeSelf is
+// true) into Membership before the WAL snapshot / CLUSTER_JOINED marker
+// lands, so a crash cannot leave a durable ConfState without the
+// matching peer addresses in Pebble (EN-1413).
+//
+// includeSelf is true for Bootstrap and Restore; false for Join
+// (self's address lands later via the AddLearner ConfChange applied
+// through WriteConfChange).
+func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf bool) error {
+	if includeSelf {
+		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr); err != nil {
+			return fmt.Errorf("persisting self in peer store: %w", err)
+		}
+	}
+
+	for _, p := range cfg.Peers {
+		if err := m.Register(p.ID, p.Address, p.ServiceAddress); err != nil {
+			return fmt.Errorf("persisting initial peer %d: %w", p.ID, err)
+		}
+	}
+
+	return nil
 }

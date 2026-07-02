@@ -1,4 +1,4 @@
-package node
+package membership
 
 import (
 	"encoding/binary"

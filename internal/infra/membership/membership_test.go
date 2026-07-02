@@ -1,4 +1,4 @@
-package node
+package membership
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// noopTransport / noopPool satisfy peerTransport / peerPool with no
+// noopTransport / noopPool satisfy Transport / Pool with no
 // side effect — Membership tests that don't exercise the wiring side
 // pass these so the production code path stays branchless (no nil
 // checks).
@@ -516,7 +516,7 @@ func TestWalkConfChangeContexts_MultiAddInvariant(t *testing.T) {
 	}
 
 	callCount := 0
-	err = walkConfChangeContexts(cc, func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error {
+	err = WalkConfChangeContexts(cc, func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error {
 		callCount++
 
 		return nil
@@ -539,7 +539,7 @@ func TestWalkConfChangeContexts_MultiRemoveAllowed(t *testing.T) {
 	}
 
 	var seen []uint64
-	err := walkConfChangeContexts(cc, func(_ raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
+	err := WalkConfChangeContexts(cc, func(_ raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
 		require.Nil(t, ctx)
 		seen = append(seen, nodeID)
 

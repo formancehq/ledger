@@ -1,4 +1,4 @@
-package node
+package membership
 
 import (
 	"encoding/json"
@@ -39,9 +39,9 @@ func UnmarshalConfChangeContext(data []byte) (ConfChangeContext, error) {
 	return ctx, nil
 }
 
-// unmarshalConfChangeV2 decodes a ConfChange or ConfChangeV2 entry into a
+// UnmarshalConfChangeV2 decodes a ConfChange or ConfChangeV2 entry into a
 // unified ConfChangeV2. Returns false for entries that are not conf-changes.
-func unmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error) {
+func UnmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error) {
 	var cc raftpb.ConfChangeV2
 
 	switch entry.Type {
@@ -68,7 +68,7 @@ func unmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error
 	return cc, true, nil
 }
 
-// walkConfChangeContexts iterates the Changes in cc and invokes fn once
+// WalkConfChangeContexts iterates the Changes in cc and invokes fn once
 // per change with (type, nodeID, ctx). ctx is non-nil for Add /
 // AddLearnerNode when cc.Context carries a payload (PromoteLearner sends
 // AddNode with empty Context — ctx is nil there); ctx is always nil for
@@ -87,7 +87,7 @@ func unmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error
 // Used by both Membership.WriteConfChange (FSM Pebble write) and
 // Node.finishReady (post-commit cache + transport wiring) so the decode +
 // dispatch shape stays in one place.
-func walkConfChangeContexts(cc raftpb.ConfChangeV2, fn func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error) error {
+func WalkConfChangeContexts(cc raftpb.ConfChangeV2, fn func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error) error {
 	addNodeIDs := make([]uint64, 0, len(cc.Changes))
 	for _, change := range cc.Changes {
 		if change.Type == raftpb.ConfChangeAddNode || change.Type == raftpb.ConfChangeAddLearnerNode {

@@ -1,9 +1,10 @@
-package node
+package membership
 
 import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"sync"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -14,18 +15,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// peerTransport is the slice of *DefaultTransport that Membership must
+// Transport is the slice of *DefaultTransport that Membership must
 // keep in lockstep with its peer-address cache so the Raft transport
 // dials the right hosts on the next tick.
-type peerTransport interface {
+type Transport interface {
 	AddPeer(id uint64, addr string)
 	RemovePeer(ctx context.Context, id uint64)
 }
 
-// peerPool is the slice of *transport.ConnectionPool used to forward
+// Pool is the slice of *transport.ConnectionPool used to forward
 // client RPCs to the appropriate peer. Kept in lockstep with the cache
-// the same way as peerTransport.
-type peerPool interface {
+// the same way as Transport.
+type Pool interface {
 	AddPeer(id uint64, addr string) error
 	RemovePeer(id uint64) error
 }
@@ -56,8 +57,8 @@ type peerPool interface {
 //     PersistInitialPeers, and Node.ForceRemoveNode via Unregister.
 type Membership struct {
 	store           *PeerStore
-	transport       peerTransport
-	pool            peerPool
+	transport       Transport
+	pool            Pool
 	selfNodeID      uint64
 	selfRaftAddr    string
 	selfServiceAddr string
@@ -90,7 +91,7 @@ type Membership struct {
 // Failure to read the peer rows is fatal: without them the node would
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
-func NewMembership(store *PeerStore, transport peerTransport, pool peerPool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, logger logging.Logger) (*Membership, error) {
+func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, logger logging.Logger) (*Membership, error) {
 	addresses, err := store.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
@@ -265,7 +266,7 @@ func (m *Membership) ReconcileAgainstConfState(cs raftpb.ConfState) error {
 	stale := make([]uint64, 0)
 
 	for nodeID := range m.addresses {
-		if confStateContainsNode(cs, nodeID) || nodeID == m.selfNodeID {
+		if confStateContains(cs, nodeID) || nodeID == m.selfNodeID {
 			continue
 		}
 
@@ -286,28 +287,10 @@ func (m *Membership) ReconcileAgainstConfState(cs raftpb.ConfState) error {
 	return nil
 }
 
-// PersistInitialPeers writes cfg.Peers (and self when includeSelf is
-// true) before the WAL snapshot / CLUSTER_JOINED marker is written, so
-// a crash cannot leave a durable ConfState without the matching peer
-// addresses in Pebble (EN-1413).
-//
-// includeSelf is true for Bootstrap and Restore; false for Join (self's
-// address lands later via the AddLearner ConfChange applied through
-// WriteConfChange).
-func (m *Membership) PersistInitialPeers(cfg NodeConfig, includeSelf bool) error {
-	if includeSelf {
-		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr); err != nil {
-			return fmt.Errorf("persisting self in peer store: %w", err)
-		}
-	}
-
-	for _, p := range cfg.Peers {
-		if err := m.Register(p.ID, p.Address, p.ServiceAddress); err != nil {
-			return fmt.Errorf("persisting initial peer %d: %w", p.ID, err)
-		}
-	}
-
-	return nil
+// confStateContains reports whether nodeID appears in the ConfState's
+// Voters or Learners list.
+func confStateContains(cs raftpb.ConfState, nodeID uint64) bool {
+	return slices.Contains(cs.Voters, nodeID) || slices.Contains(cs.Learners, nodeID)
 }
 
 // Rehydrate re-reads the peer rows from Pebble, computes the diff
@@ -438,7 +421,7 @@ func (m *Membership) OnSnapshotInstalled() {
 // PromoteLearner (ConfChangeAddNode with empty context) carries no
 // address payload — it's a role change — so we skip it.
 func (m *Membership) WriteConfChange(entry raftpb.Entry, session *dal.WriteSession) error {
-	cc, ok, err := unmarshalConfChangeV2(entry)
+	cc, ok, err := UnmarshalConfChangeV2(entry)
 	if err != nil {
 		return fmt.Errorf("decoding ConfChange entry: %w", err)
 	}
@@ -447,7 +430,7 @@ func (m *Membership) WriteConfChange(entry raftpb.Entry, session *dal.WriteSessi
 		return nil
 	}
 
-	return walkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
+	return WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
 		switch t {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 			if ctx == nil {

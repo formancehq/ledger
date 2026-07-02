@@ -46,6 +46,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
+	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
 	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
@@ -300,7 +301,7 @@ func Module() fx.Option {
 				machine *state.Machine,
 				recovery *state.Recovery,
 				synchronizer *state.Synchronizer,
-				membership *node.Membership,
+				membership *raftmembership.Membership,
 			) (*node.Applier, error) {
 				return node.NewApplier(
 					machine,
@@ -344,15 +345,15 @@ func Module() fx.Option {
 			// wiring, and exposes the OnSnapshotInstalled /
 			// WriteConfChange callbacks injected into Applier and Machine
 			// via constructor.
-			node.NewPeerStore,
+			raftmembership.NewPeerStore,
 			fx.Annotate(func(
-				store *node.PeerStore,
+				store *raftmembership.PeerStore,
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				cfg node.NodeConfig,
 				logger logging.Logger,
-			) (*node.Membership, error) {
-				return node.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, logger)
+			) (*raftmembership.Membership, error) {
+				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, logger)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
@@ -389,7 +390,7 @@ func Module() fx.Option {
 				mirrorNotifications *signal.Notifications,
 				indexNotifications *signal.Notifications,
 				bloomFilters *bloom.FilterSet,
-				membership *node.Membership,
+				membership *raftmembership.Membership,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 
@@ -441,7 +442,7 @@ func Module() fx.Option {
 					Machine       *state.Machine
 					Recovery      *state.Recovery
 					Synchronizer  *state.Synchronizer
-					Membership    *node.Membership
+					Membership    *raftmembership.Membership
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -953,7 +954,7 @@ func Module() fx.Option {
 				lc fx.Lifecycle,
 				raftServer *grpcadp.RaftServer,
 				logger logging.Logger,
-				membership *node.Membership,
+				membership *raftmembership.Membership,
 			) {
 				var waitRaft func()
 
