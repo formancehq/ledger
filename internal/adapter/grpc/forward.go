@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"errors"
 	"fmt"
 
 	"google.golang.org/grpc"
@@ -8,6 +9,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
+
+// ErrNodeNotReachable is returned by nodeForwarder.resolve when the requested
+// peer has no entry in the service-connection pool — typically a network
+// partition / pod restart in flight, recoverable as soon as the pool
+// re-converges. convertToGRPCError maps it to codes.Unavailable so SDK
+// clients (and the antithesis workload's IsTransient predicate) retry it
+// the same way as the other peer-transport transients.
+var ErrNodeNotReachable = errors.New("node not reachable")
 
 // nodeForwarder resolves a target node ID to either local handling or a gRPC
 // connection for forwarding the request to a peer.
@@ -25,7 +34,7 @@ func (f *nodeForwarder) resolve(nodeID uint32) (*grpc.ClientConn, error) {
 
 	conn := f.servicePool.GetConnection(uint64(nodeID))
 	if conn == nil {
-		return nil, fmt.Errorf("node %d not reachable", nodeID)
+		return nil, fmt.Errorf("%w: node %d", ErrNodeNotReachable, nodeID)
 	}
 
 	return conn, nil

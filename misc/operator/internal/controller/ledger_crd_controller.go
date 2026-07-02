@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -369,18 +370,75 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 			}
 
 		case src.Postgres != nil:
-			args = append(args, "--mirror-source-type", "postgres")
-
-			dsn, err := r.readSecretKey(ctx, ledger.Namespace,
-				src.Postgres.DSNFrom.Name, src.Postgres.DSNFrom.Key)
+			pgArgs, err := r.buildPostgresMirrorArgs(ctx, ledger.Namespace, src.Postgres)
 			if err != nil {
-				return nil, fmt.Errorf("reading Postgres DSN secret: %w", err)
+				return nil, err
 			}
 
-			args = append(args, "--mirror-dsn", dsn)
+			args = append(args, pgArgs...)
 
 		default:
 			return nil, errors.New("mirrorSource must specify either http or postgres")
+		}
+	}
+
+	return args, nil
+}
+
+// buildPostgresMirrorArgs assembles ledgerctl flags for a Postgres mirror
+// source: explicit Host/Port/User/Database/SSLMode fields are joined into a
+// DSN, then either the static password (looked up from a Secret) is inlined,
+// or AWS RDS IAM auth is signalled via --mirror-aws-iam-region (and the DSN
+// stays passwordless; the ledger pod mints SigV4 tokens per connection).
+// Exactly one of PasswordFrom or AWSIAMAuth must be set.
+func (r *LedgerReconciler) buildPostgresMirrorArgs(ctx context.Context, namespace string, pg *ledgerv1alpha1.PostgresMirrorSource) ([]string, error) {
+	if pg.PasswordFrom == nil && pg.AWSIAMAuth == nil {
+		return nil, errors.New("mirrorSource.postgres: one of passwordFrom or awsIamAuth must be set")
+	}
+
+	if pg.PasswordFrom != nil && pg.AWSIAMAuth != nil {
+		return nil, errors.New("mirrorSource.postgres: passwordFrom and awsIamAuth are mutually exclusive")
+	}
+
+	port := int32(5432)
+	if pg.Port != 0 {
+		port = pg.Port
+	}
+
+	sslmode := pg.SSLMode
+	if sslmode == "" {
+		sslmode = "require"
+	}
+
+	userInfo := url.User(pg.User)
+
+	if pg.PasswordFrom != nil {
+		password, err := r.readSecretKey(ctx, namespace, pg.PasswordFrom.Name, pg.PasswordFrom.Key)
+		if err != nil {
+			return nil, fmt.Errorf("reading Postgres password secret: %w", err)
+		}
+
+		userInfo = url.UserPassword(pg.User, password)
+	}
+
+	dsn := url.URL{
+		Scheme:   "postgres",
+		User:     userInfo,
+		Host:     fmt.Sprintf("%s:%d", pg.Host, port),
+		Path:     "/" + pg.Database,
+		RawQuery: url.Values{"sslmode": []string{sslmode}}.Encode(),
+	}
+
+	args := []string{
+		"--mirror-source-type", "postgres",
+		"--mirror-dsn", dsn.String(),
+	}
+
+	if pg.AWSIAMAuth != nil {
+		args = append(args, "--mirror-aws-iam-region", pg.AWSIAMAuth.Region)
+
+		if pg.AWSIAMAuth.AssumeRoleArn != "" {
+			args = append(args, "--mirror-aws-iam-assume-role-arn", pg.AWSIAMAuth.AssumeRoleArn)
 		}
 	}
 

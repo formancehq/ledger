@@ -79,7 +79,7 @@ func main() {
 			},
 		))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err),
+		assert.Sometimes(internal.IsTolerated(err),
 			"bulk Apply should succeed", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
@@ -89,6 +89,9 @@ func main() {
 		assert.AlwaysOrUnreachable(len(resp.GetLogs()) >= 3,
 			"bulk Apply should produce at least 3 logs",
 			details.With(internal.Details{"logCount": len(resp.GetLogs())}))
+
+		// Sanity-check the first transaction's post-commit volumes.
+		internal.CheckCreatedTransaction(resp, details)
 
 		// Verify read-after-write for the metadata.
 		acct, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{

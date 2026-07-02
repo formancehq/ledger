@@ -149,6 +149,15 @@ const (
 	CacheNeedsTouch
 	// CacheMiss means the key is not in cache at all — a full preload from store is needed.
 	CacheMiss
+	// CacheUnreachable means the target index is 2+ generations ahead of the
+	// current FSM-applied generation: any preload value computed now would be
+	// invalidated by the rotations that must run before apply (gen0 -> gen1 ->
+	// discarded). The admission cannot guarantee that the proposal will read a
+	// consistent cache horizon, so the order must be rejected and re-admitted
+	// once the FSM apply has caught up. This is an operational signal — under
+	// a correctly tuned rotation threshold and a healthy apply rate it should
+	// not occur.
+	CacheUnreachable
 )
 
 // CheckCache determines whether a key will survive in cache until the future raft
@@ -168,16 +177,32 @@ const (
 // raft index `at`. Takes a read lock on the cache to ensure a consistent view
 // of currentGeneration and the gen0/gen1 data during the check.
 func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus {
-	threshold := a.Cache.GenerationThreshold()
-	if threshold == 0 {
-		return CacheMiss
-	}
-
 	a.Cache.mu.RLock()
 	defer a.Cache.mu.RUnlock()
 
+	// Threshold + currentGeneration are read INSIDE the RLock so a concurrent
+	// ResetWithThreshold (write-lock holder) cannot bump one between our
+	// reads and leave us with a (threshold=old, currentGeneration=new)
+	// snapshot. Such a torn view would classify a valid admission as
+	// CacheUnreachable during the threshold-change transition window.
+	//
+	// threshold > 0 is a cluster-wide invariant: cache.New rejects 0 and
+	// ResetWithThreshold panics on 0 — no legitimate call path can observe
+	// threshold=0 here.
+	threshold := a.Cache.GenerationThreshold()
 	actualGeneration := a.Cache.currentGeneration.Load()
 	futureGeneration := Gen(at, threshold)
+
+	// Stale-behind build: an admission build sampled `at` before the FSM
+	// applied entries past that index, so its `at` maps to a generation the
+	// FSM has already left behind. Not a horizon violation — the higher-level
+	// staleness guard (checkStaleProposal / AcquireProposalGuard) will
+	// reject or rebuild. Report CacheMiss so the caller loads from store and
+	// the concurrent apply resolves the outcome; do NOT let the uint64
+	// subtraction underflow into the CacheUnreachable default branch.
+	if futureGeneration < actualGeneration {
+		return CacheMiss
+	}
 
 	switch futureGeneration - actualGeneration {
 	case 0:
@@ -205,8 +230,12 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 
 		return CacheMiss
 	default:
-		// 2+ generations ahead — data will be lost regardless.
-		return CacheMiss
+		// 2+ generations ahead — any preload value computed now would be
+		// rotated out (gen0 -> gen1 -> discarded) before apply. Signal an
+		// unreachable horizon so admission can reject the proposal with a
+		// transient error; the client retries and admission re-admits with
+		// a fresh prediction once the FSM apply has caught up.
+		return CacheUnreachable
 	}
 }
 
@@ -329,17 +358,48 @@ func (c *Cache) Reset() {
 	c.clearLocked()
 }
 
-// ResetWithThreshold atomically resets the cache, increments the epoch, and
-// sets a new generation threshold. Called by the FSM when a cluster config
-// change is applied — the epoch increment is deterministic (all nodes apply
-// the same Raft entry).
-func (c *Cache) ResetWithThreshold(threshold uint64) {
+// ResetWithThreshold atomically resets the cache, increments the epoch, sets
+// a new generation threshold, AND realigns currentGeneration + BaseIndex to
+// the generation that raftIndex falls into under the new threshold. Called
+// by the FSM when a cluster config change is applied.
+//
+// The epoch increment is deterministic (all nodes apply the same Raft
+// entry). Realigning currentGeneration and BaseIndex in the same critical
+// section closes the race window where admission's CheckCache would
+// otherwise observe currentGeneration=0 against the new threshold and
+// falsely trip the CacheUnreachable horizon (2+ predicted rotations); the
+// caller-provided raftIndex is the entry the FSM is applying, so
+// Gen(raftIndex, threshold) is the correct post-reset horizon.
+//
+// A zero threshold is a config invariant violation — cache.New already
+// rejects it, and every code path that reaches this method has validated
+// the config upstream. Panics loudly rather than silently disabling
+// rotations, which would leave currentGeneration frozen at 0 forever and
+// break the CacheUnreachable / CheckRotationNeeded contracts.
+//
+// Callers that persist the reset to Pebble must read
+// Cache.CurrentGeneration + Cache.BaseIndex.{Gen0,Gen1} after the call so
+// the on-disk sentinels reflect the same in-memory state a
+// RestoreFromStore would reconstruct.
+func (c *Cache) ResetWithThreshold(threshold, raftIndex uint64) {
+	if threshold == 0 {
+		panic("cache.ResetWithThreshold: threshold must be > 0 (invariant enforced by cache.New)")
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.clearLocked()
 	c.epoch.Add(1)
 	c.generationThreshold.Store(threshold)
+
+	// clearLocked already set currentGeneration=0 and BaseIndex={0,0}. If
+	// raftIndex falls inside the first generation, that's the final state.
+	// Otherwise realign under the same lock.
+	if g := Gen(raftIndex, threshold); g != 0 {
+		boundary := genEndIndex(g-1, threshold)
+		c.rotateLocked(boundary, g)
+	}
 }
 
 // clearLocked clears all cache data without incrementing the epoch.
@@ -356,10 +416,9 @@ func (c *Cache) clearLocked() {
 // and performs it atomically if necessary.
 // Returns whether a rotation occurred and the old Gen1 base index (compaction threshold).
 func (c *Cache) CheckRotationNeeded(index uint64) (rotated bool, oldGen1BaseIndex uint64) {
+	// threshold > 0 is a cluster-wide invariant (see CheckCache / New /
+	// ResetWithThreshold) — no dead-code guard here.
 	threshold := c.generationThreshold.Load()
-	if threshold == 0 {
-		return false, 0
-	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -473,7 +532,12 @@ func (c *Cache) GenerationThreshold() uint64 {
 }
 
 // SetGenerationThreshold updates the cache rotation threshold atomically.
+// Panics on 0 — threshold > 0 is a cluster-wide invariant enforced by
+// cache.New and ResetWithThreshold.
 func (c *Cache) SetGenerationThreshold(v uint64) {
+	if v == 0 {
+		panic("cache.SetGenerationThreshold: threshold must be > 0 (invariant enforced by cache.New)")
+	}
 	c.generationThreshold.Store(v)
 }
 

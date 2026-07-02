@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -12,7 +11,8 @@ import (
 func main() {
 	log.Println("composer: parallel_driver_query_checkpoints")
 
-	ctx := context.Background()
+	ctx, cancel := internal.DriverContext()
+	defer cancel()
 	conn, err := internal.NewGRPCConn()
 	if err != nil {
 		log.Printf("error creating connection: %s", err)

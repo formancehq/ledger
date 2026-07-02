@@ -6,8 +6,20 @@ package raftcmdpb
 import (
 	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	maps "maps"
 	slices "slices"
+	sync "sync"
+)
+
+// Map-key scratch pools. Each MarshalToSizedBufferDeterministicVT that
+// encodes a map<K, V> grabs a *[]K from the matching pool, fills it,
+// sorts it in place, and returns it. Steady-state allocations are zero:
+// the pool reuses the slice across marshal calls. The first marshal of
+// a given kind warms the pool with a 16-cap slice; larger maps grow it
+// once and the grown capacity persists.
+var (
+	_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString = sync.Pool{
+		New: func() any { s := make([]string, 0, 16); return &s },
+	}
 )
 
 func (m *Order) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -462,7 +474,13 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		dAtA[i] = 0x28
 	}
 	if len(m.AccountTypes) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.AccountTypes)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.AccountTypes {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.AccountTypes[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferDeterministicVT(dAtA[:i])
@@ -479,6 +497,9 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 			i--
 			dAtA[i] = 0x22
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if m.MirrorSource != nil {
 		size, _ := m.MirrorSource.MarshalToSizedBufferVT(dAtA[:i])
@@ -634,7 +655,13 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.AccountMetadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.AccountMetadata)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.AccountMetadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.AccountMetadata[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferDeterministicVT(dAtA[:i])
@@ -651,6 +678,9 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 			i--
 			dAtA[i] = 0x32
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if len(m.Reference) > 0 {
 		i -= len(m.Reference)
@@ -667,7 +697,13 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		dAtA[i] = 0x22
 	}
 	if len(m.Metadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Metadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
@@ -684,6 +720,9 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 			i--
 			dAtA[i] = 0x1a
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if len(m.Postings) > 0 {
 		for iNdEx := len(m.Postings) - 1; iNdEx >= 0; iNdEx-- {
@@ -723,7 +762,13 @@ func (m *MirrorSavedMetadata) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Metadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
@@ -740,6 +785,9 @@ func (m *MirrorSavedMetadata) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if m.Target != nil {
 		size, _ := m.Target.MarshalToSizedBufferVT(dAtA[:i])
@@ -778,7 +826,13 @@ func (m *MirrorRevertedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []b
 		dAtA[i] = 0x2a
 	}
 	if len(m.Metadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Metadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
@@ -795,6 +849,9 @@ func (m *MirrorRevertedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []b
 			i--
 			dAtA[i] = 0x22
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if len(m.ReversePostings) > 0 {
 		for iNdEx := len(m.ReversePostings) - 1; iNdEx >= 0; iNdEx-- {
@@ -1107,7 +1164,13 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		dAtA[i] = 0x38
 	}
 	if len(m.AccountMetadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.AccountMetadata)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.AccountMetadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.AccountMetadata[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferDeterministicVT(dAtA[:i])
@@ -1124,9 +1187,18 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 			i--
 			dAtA[i] = 0x32
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if len(m.Metadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Metadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
@@ -1143,6 +1215,9 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 			i--
 			dAtA[i] = 0x2a
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if len(m.Reference) > 0 {
 		i -= len(m.Reference)
@@ -1197,7 +1272,13 @@ func (m *NumscriptReference) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Vars) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Vars)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Vars {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Vars[k]
 			baseI := i
 			i -= len(v)
@@ -1214,6 +1295,9 @@ func (m *NumscriptReference) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 			i--
 			dAtA[i] = 0x1a
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if len(m.Version) > 0 {
 		i -= len(m.Version)
@@ -1252,7 +1336,13 @@ func (m *SaveMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Metadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
@@ -1269,6 +1359,9 @@ func (m *SaveMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if m.Target != nil {
 		size, _ := m.Target.MarshalToSizedBufferVT(dAtA[:i])
@@ -1319,7 +1412,13 @@ func (m *RevertTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		}
 	}
 	if len(m.Metadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Metadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
@@ -1336,6 +1435,9 @@ func (m *RevertTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 			i--
 			dAtA[i] = 0x22
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	if m.AtEffectiveDate {
 		i--
@@ -1397,7 +1499,13 @@ func (m *SaveLedgerMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byt
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
+		keys := (*keysPtr)[:0]
+		for k := range m.Metadata {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
 			v := m.Metadata[k]
 			baseI := i
 			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
@@ -1414,6 +1522,9 @@ func (m *SaveLedgerMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byt
 			i--
 			dAtA[i] = 0xa
 		}
+		clear(keys)
+		*keysPtr = keys
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Put(keysPtr)
 	}
 	return len(dAtA) - i, nil
 }

@@ -11,9 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+// bulkWriteBody is a single-element bulk payload whose action (CREATE_TRANSACTION)
+// requires the transactions:write granular scope.
+const bulkWriteBody = `[{"action":"CREATE_TRANSACTION","data":{"postings":[{"source":"world","destination":"bank","amount":100,"asset":"USD/2"}]}}]`
 
 func TestHandleBulk_InvalidBody(t *testing.T) {
 	t.Parallel()
@@ -181,4 +189,50 @@ func TestRunBulkSequential_ContinueOnFailure(t *testing.T) {
 	require.Len(t, results, 2)
 	require.Error(t, results[0].err)
 	require.NoError(t, results[1].err)
+}
+
+// TestHandleBulk_AuthEnabled_NoToken_Unauthorized covers the unauthenticated
+// write path: auth is enabled with the default mapping (no anonymous scopes),
+// the request carries no bearer token, and a write element must be rejected with
+// 401 before reaching the backend. The mock backend has no Apply expectation, so
+// any call to it fails the test.
+func TestHandleBulk_AuthEnabled_NoToken_Unauthorized(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	authCfg := internalauth.AuthConfig{
+		Enabled:      true,
+		ScopeMapping: internalauth.DefaultMapping("ledger"),
+	}
+	handler := NewHandler(logging.Testing(), backend, authCfg, version.Info{})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk", strings.NewReader(bulkWriteBody))
+
+	handler.ServeHTTP(w, r)
+
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	require.Equal(t, "UNAUTHENTICATED", decodeResponse[bulkResponse](t, w).ErrorCode)
+}
+
+// TestHandleBulk_AuthDisabled_NoToken_Allowed is the control for the case above:
+// with auth disabled the same no-token write must pass through to the backend.
+func TestHandleBulk_AuthDisabled_NoToken_Allowed(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			return []*commonpb.Log{
+				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
+			}, nil
+		}).Times(1)
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/v3/ledger1/bulk", strings.NewReader(bulkWriteBody))
+
+	handler.ServeHTTP(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
 }

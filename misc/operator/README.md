@@ -95,22 +95,30 @@ spec:
 | `replicaCount` | `1` | Operator replicas |
 | `leaderElection` | `true` | Enable HA leader election |
 | `watchNamespace` | `""` | Namespace to watch (empty = all) |
-| `pvcProtection.enabled` | `false` | Install the cluster-scoped ValidatingAdmissionPolicy that can block accidental deletion of ledger PVCs/PVs (requires Kubernetes >= 1.30). Arming only — a ledger opts in per-CR via `spec.persistence.deletionProtection` |
+| `pvcProtection.enabled` | `true` | Install the cluster-scoped ValidatingAdmissionPolicy that blocks accidental deletion of ledger PVCs/PVs (requires Kubernetes >= 1.30). On by default; set `false` to opt the cluster out. Arming only — a ledger is selected via `spec.persistence.deletionProtection` (also on by default) |
 | `pvcProtection.allowDeletionAnnotation` | `formance.com/allow-deletion` | Annotation key whose value `true` opts a volume out of deletion protection |
 | `pvcProtection.additionalExemptServiceAccounts` | `[]` | Extra ServiceAccount usernames (`system:serviceaccount:<ns>:<name>`) exempt from the policies — sibling operator releases managing protected ledgers, or managed workload/GitOps controllers |
 
 ## Volume Deletion Protection
 
-Deletion protection has three independent layers, so the choice of *which*
-ledgers are protected lives with the ledger owner (per-CR), while *whether the
-mechanism exists at all* stays a cluster-admin decision:
+Protection is **on by default**: a freshly deployed ledger is protected without
+any extra configuration, and both layers below must be explicitly turned off to
+opt out. Deletion protection has three independent layers, so the choice of
+*which* ledgers are protected lives with the ledger owner (per-CR), while
+*whether the mechanism exists at all* stays a cluster-admin decision:
 
 1. **`pvcProtection.enabled` (Helm value, cluster-admin consent).** Installs two
    cluster-scoped `ValidatingAdmissionPolicy` objects (`failurePolicy: Fail`) that
-   reject `DELETE` of selected ledger PVCs/PVs. Off by default and **requires
-   Kubernetes >= 1.30** (ValidatingAdmissionPolicy GA); enabling it on an older
-   cluster fails the install. Installing the policy does **not** protect anything
-   on its own — the policy bindings only select volumes carrying the
+   reject `DELETE` of selected ledger PVCs/PVs. **On by default** but **requires
+   Kubernetes >= 1.30** (ValidatingAdmissionPolicy GA). On an older cluster the
+   chart detects that the `ValidatingAdmissionPolicy` kind is absent and **skips
+   these objects** so the default install/upgrade still succeeds (it prints a
+   NOTES warning); a LedgerService with `deletionProtection: true` then reports the
+   runtime `DeletionProtectionInactive` warning because no policy acts on its
+   volumes. `helm template` run offline uses Helm's built-in capability list, so
+   pass `--api-versions admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy`
+   to force-render the policy there. Installing the policy does **not** protect
+   anything on its own — the policy bindings only select volumes carrying the
    `ledger.formance.com/deletion-protection: enabled` label.
 
    The policy is a **cluster-wide singleton** — enable `pvcProtection.enabled` on
@@ -118,16 +126,19 @@ mechanism exists at all* stays a cluster-admin decision:
    have fixed, release-independent names, so a second release with
    `pvcProtection.enabled=true` fails its `helm install`/`upgrade` with an ownership
    conflict by design, rather than installing a second policy that would cross-apply
-   to and block legitimate deletes on the first release's volumes. In a multi-release
-   cluster where *other* releases also manage ledgers with `deletionProtection: true`,
-   list those releases' operator ServiceAccounts in `pvcProtection.additionalExemptServiceAccounts`
-   on the owning release, so their operators' scale-down deletes are not blocked by the
-   singleton policy.
-2. **`spec.persistence.deletionProtection` (per-LedgerService opt-in, default
-   `false`).** When `true`, the operator stamps that label on the ledger's PVCs and
-   their bound PVs, so the cluster policy starts selecting them; setting it back to
-   `false` removes the label and lifts protection. This is versioned alongside the
-   ledger and toggleable without a `helm upgrade`.
+   to and block legitimate deletes on the first release's volumes. **Because the value
+   now defaults to `true`, in a multi-release cluster you must set
+   `pvcProtection.enabled=false` on all but one release** — otherwise the second
+   install fails. In a multi-release cluster where *other* releases also manage
+   ledgers with `deletionProtection: true`, list those releases' operator
+   ServiceAccounts in `pvcProtection.additionalExemptServiceAccounts` on the owning
+   release, so their operators' scale-down deletes are not blocked by the singleton
+   policy.
+2. **`spec.persistence.deletionProtection` (per-LedgerService, default `true`).**
+   Protected by default: the operator stamps that label on the ledger's PVCs and
+   their bound PVs, so the cluster policy selects them. Set it explicitly to `false`
+   to opt out — the label is removed and protection is lifted. This is versioned
+   alongside the ledger and toggleable without a `helm upgrade`.
 3. **`formance.com/allow-deletion=true` annotation (per-volume override).** A
    protected volume can still be deleted on purpose by annotating it first.
 

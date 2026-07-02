@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/ed25519"
 	"fmt"
 	"log"
@@ -16,7 +15,8 @@ import (
 func main() {
 	log.Println("composer: singleton_driver_signing_keys")
 
-	ctx := context.Background()
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	bucketClient, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
@@ -48,7 +48,7 @@ func main() {
 		},
 	}))
 
-	assert.Sometimes(err == nil || internal.IsTransient(err),
+	assert.Sometimes(internal.IsTolerated(err),
 		"should be able to register signing key", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return
@@ -92,7 +92,7 @@ func main() {
 
 	_, err = bucketClient.Apply(ctx, servicepb.SignedApplyRequest(signedRevoke))
 
-	assert.Sometimes(err == nil || internal.IsTransient(err),
+	assert.Sometimes(internal.IsTolerated(err),
 		"should be able to revoke signing key", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return

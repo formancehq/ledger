@@ -50,6 +50,14 @@ func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 	case *commonpb.MirrorSourceConfig_Postgres:
 		pterm.Printf("  Type:    PostgreSQL\n")
 		pterm.Printf("  DSN:     %s\n", cmdutil.ObfuscateDSN(s.Postgres.GetDsn()))
+
+		if iam := s.Postgres.GetAwsIamAuth(); iam != nil {
+			pterm.Printf("  IAM:     AWS RDS IAM auth (region=%s)\n", iam.GetRegion())
+
+			if role := iam.GetAssumeRoleArn(); role != "" {
+				pterm.Printf("  Role:    %s\n", role)
+			}
+		}
 	}
 
 	if src.GetBatchSize() > 0 {
@@ -103,6 +111,8 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 		cmd.Flags().Changed("mirror-oauth2-token-endpoint") ||
 		cmd.Flags().Changed("mirror-oauth2-scopes") ||
 		cmd.Flags().Changed("mirror-dsn") ||
+		cmd.Flags().Changed("mirror-aws-iam-region") ||
+		cmd.Flags().Changed("mirror-aws-iam-assume-role-arn") ||
 		cmd.Flags().Changed("mirror-batch-size")
 
 	if hasMirrorFlags && !cmd.Flags().Changed("mode") {
@@ -169,10 +179,33 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			return 0, nil, errors.New("--mirror-dsn is required for postgres mirror source")
 		}
 
+		pgCfg := &commonpb.PostgresMirrorSourceConfig{
+			Dsn: dsn,
+		}
+
+		if cmd.Flags().Changed("mirror-aws-iam-region") {
+			iamRegion, _ := cmd.Flags().GetString("mirror-aws-iam-region")
+			if iamRegion == "" {
+				return 0, nil, errors.New("--mirror-aws-iam-region must be a non-empty region when set (got empty value)")
+			}
+			pgCfg.AwsIamAuth = &commonpb.PostgresAwsIamAuth{
+				Region: iamRegion,
+			}
+		}
+
+		if cmd.Flags().Changed("mirror-aws-iam-assume-role-arn") {
+			assumeRoleArn, _ := cmd.Flags().GetString("mirror-aws-iam-assume-role-arn")
+			if assumeRoleArn == "" {
+				return 0, nil, errors.New("--mirror-aws-iam-assume-role-arn must be a non-empty ARN when set (got empty value)")
+			}
+			if pgCfg.GetAwsIamAuth() == nil {
+				return 0, nil, errors.New("--mirror-aws-iam-assume-role-arn requires --mirror-aws-iam-region to be set")
+			}
+			pgCfg.AwsIamAuth.AssumeRoleArn = assumeRoleArn
+		}
+
 		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{
-			Postgres: &commonpb.PostgresMirrorSourceConfig{
-				Dsn: dsn,
-			},
+			Postgres: pgCfg,
 		}
 	default:
 		return 0, nil, fmt.Errorf("invalid mirror source type %q: must be 'http' or 'postgres'", sourceType)

@@ -45,7 +45,7 @@ func compactPrimary(ctx context.Context, clusterClient clusterpb.ClusterServiceC
 
 	resp, err := clusterClient.CompactPrimary(ctx, &clusterpb.CompactPrimaryRequest{})
 
-	assert.Sometimes(err == nil || internal.IsTransient(err), "primary compaction should succeed or be transiently unavailable", details.With(internal.Details{"error": err}))
+	assert.Sometimes(internal.IsTolerated(err), "primary compaction should succeed or be transiently unavailable", details.With(internal.Details{"error": err}))
 
 	if err != nil {
 		log.Printf("compaction: primary compaction failed: %s", err)
@@ -67,7 +67,7 @@ func compactSecondary(ctx context.Context, clusterClient clusterpb.ClusterServic
 
 	resp, err := clusterClient.CompactSecondary(ctx, &clusterpb.CompactSecondaryRequest{})
 
-	assert.Sometimes(err == nil || internal.IsTransient(err), "secondary compaction should succeed or be transiently unavailable", details.With(internal.Details{"error": err}))
+	assert.Sometimes(internal.IsTolerated(err), "secondary compaction should succeed or be transiently unavailable", details.With(internal.Details{"error": err}))
 
 	if err != nil {
 		log.Printf("compaction: secondary compaction failed: %s", err)
@@ -112,7 +112,7 @@ func verifyReadable(ctx context.Context, client servicepb.BucketServiceClient, l
 		Address: "world",
 	})
 
-	assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
+	assert.AlwaysOrUnreachable(internal.IsClassified(err),
 		"world account must be readable after compaction",
 		details.With(internal.Details{"error": err}),
 	)

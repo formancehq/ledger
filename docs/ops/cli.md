@@ -211,6 +211,8 @@ ledgerctl ledgers create [flags]
 | `--mirror-oauth2-token-endpoint` | | OAuth2 token endpoint URL (for `http` source) |
 | `--mirror-oauth2-scopes` | | OAuth2 scopes (for `http` source, repeatable) |
 | `--mirror-dsn` | | PostgreSQL DSN (required for `postgres` source) |
+| `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
+| `--mirror-aws-iam-assume-role-arn` | | Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors). Requires `--mirror-aws-iam-region`. |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -247,6 +249,13 @@ ledgerctl ledgers create --name my-mirror \
   --mode mirror \
   --mirror-source-type postgres \
   --mirror-dsn "postgres://user:pass@host:5432/ledger?sslmode=disable"
+
+# Create a mirror ledger from an AWS RDS v2 source using IAM authentication
+ledgerctl ledgers create --name my-mirror \
+  --mode mirror \
+  --mirror-source-type postgres \
+  --mirror-dsn "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require" \
+  --mirror-aws-iam-region eu-west-1
 
 # Mirror with a different source ledger name
 ledgerctl ledgers create --name my-mirror \
@@ -2129,6 +2138,40 @@ ledgerctl store rebuild-indexes --data-dir ./data --read-index-dir ./custom-inde
 
 ---
 
+### store rebuild-audit-index
+
+Rebuild the Pebble audit secondary index from the Audit zone. This is a purely offline operation — no server needed. Use this after corruption or a restore when the audit index is missing or out of date.
+
+```bash
+ledgerctl store rebuild-audit-index --data-dir /path/to/data [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--data-dir` | | Pebble data directory (required) |
+| `--read-index-dir` | | Read index output directory (default: `<data-dir>/read-indexes/`) |
+| `--audit-index-batch-size` | `1000` | Audit entries per Pebble batch commit (0 = default 1000) |
+
+**Behavior:**
+
+1. Opens the Pebble data directory in read-only mode
+2. Opens or creates the Pebble read index database
+3. Drops the existing audit secondary index, then replays all entries from the Audit zone, rebuilding the index from scratch
+
+**Example:**
+
+```bash
+# Rebuild with default read index location
+ledgerctl store rebuild-audit-index --data-dir ./data
+
+# Rebuild to a custom read index directory with a larger batch size
+ledgerctl store rebuild-audit-index --data-dir ./data --read-index-dir ./custom-indexes --audit-index-batch-size 5000
+```
+
+---
+
 ### audit
 
 View the replicated audit log. The audit log captures every proposal (success and failure) that goes through Raft consensus, providing a complete audit trail.
@@ -3819,6 +3862,9 @@ The Pebble-based read index store is always active. An index builder tails the s
 | `--read-index-bytes-per-sync` | ByteSize | `512Ki` | Read index bytes written before sync |
 | `--read-index-max-concurrent-compactions` | int | `1` | Read index max concurrent compactions |
 | `--read-index-compression` | string | `fastest,...,fast,fast,balanced` | Read index per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
+| `--audit-index-batch-size` | int | `1000` | Audit entries per Pebble batch commit when building the audit secondary index (0 = default 1000). |
+| `--audit-index-rebuild-threshold` | int | `0` | Drop and rebuild the audit index on boot when the cursor is this many entries behind the head (0 = never auto-rebuild). |
+| `--disable-audit-index` | bool | `false` | Disable the audit secondary index worker. When set, no audit index is built or maintained. |
 
 ```bash
 # Use default directory (<data-dir>/read-indexes/)
@@ -4653,7 +4699,7 @@ ledgerctl events remove-sink --name primary
 | `--name` | *(required)* | Name of the sink to remove |
 | `--timeout` | `10s` | Request timeout |
 
-See [Event System Architecture](../technical/architecture/data-model/events.md) for details on the event system design.
+See [Event System Architecture](../technical/architecture/subsystems/events-mirror/events.md) for details on the event system design.
 
 ---
 

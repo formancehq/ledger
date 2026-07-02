@@ -1,0 +1,187 @@
+package readstore
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+)
+
+func newTestStore(t *testing.T) *Store {
+	t.Helper()
+	s, err := New(t.TempDir(), logging.NopZap(), DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	return s
+}
+
+func TestAuditIndexKeysAreInternalNamespaced(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+	key := AuditIndexStringKey(kb, AuditFieldLedger, "ledger-a", 42)
+
+	require.Equal(t, PrefixInternal, key[0])
+	require.Equal(t, SubInternalAuditIndex, key[1])
+	require.Equal(t, AuditFieldLedger, key[2])
+	require.Equal(t, len(key), readStoreSplit(key), "audit-index key must not be split")
+}
+
+func TestAuditIndexUint64KeyOrdersByValueThenSeq(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+	k1 := AuditIndexUint64Key(kb, AuditFieldProposalID, 5, 100)
+	k2 := AuditIndexUint64Key(kb, AuditFieldProposalID, 5, 101)
+	k3 := AuditIndexUint64Key(kb, AuditFieldProposalID, 6, 1)
+
+	require.Negative(t, bytesCompare(k1, k2), "same value: lower seq sorts first")
+	require.Negative(t, bytesCompare(k2, k3), "higher value sorts after lower value")
+}
+
+func bytesCompare(a, b []byte) int {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			if a[i] < b[i] {
+				return -1
+			}
+
+			return 1
+		}
+	}
+
+	return len(a) - len(b)
+}
+
+// TestAuditSeqsByUint64RangeDedupes verifies that a range scan returns each
+// audit sequence at most once even when an entry emitted several keys carrying
+// the same sequence (e.g. multiple items' log sequences). The duplicate keys
+// are non-adjacent — keys sort by value then seq — so dedup must not rely on
+// neighbouring keys.
+func TestAuditSeqsByUint64RangeDedupes(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+
+	kb := dal.NewKeyBuilder()
+	batch := s.NewBatch()
+	// seq 5 indexed at two distinct log-seq values, with seq 6 sorting in
+	// between, so the two seq-5 keys are not adjacent in the scan.
+	require.NoError(t, batch.SetBytes(AuditIndexUint64Key(kb, AuditFieldLogSeq, 100, 5), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexUint64Key(kb, AuditFieldLogSeq, 150, 6), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexUint64Key(kb, AuditFieldLogSeq, 200, 5), nil))
+	require.NoError(t, batch.Commit())
+
+	seqs, err := s.AuditSeqsByUint64Range(AuditFieldLogSeq, 0, 1000)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{5, 6}, seqs, "each matching audit sequence returned once, first-occurrence order")
+}
+
+func TestAuditProgressRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	got, err := s.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Zero(t, got, "missing cursor reads as 0")
+
+	batch := s.NewBatch()
+	require.NoError(t, s.WriteAuditProgress(batch, 7))
+	require.NoError(t, batch.Commit())
+
+	got, err = s.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), got)
+}
+
+func TestSeekAuditEqualityAndRangeAndDrop(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	const highSeq = uint64(0xFF00000000000001)
+	batch := s.NewBatch()
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldLedger, "a", 1), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldLedger, "a", 4), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldLedger, "a", highSeq), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldLedger, "b", 2), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexUint64Key(kb, AuditFieldProposalID, 10, 1), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexUint64Key(kb, AuditFieldProposalID, 20, 5), nil))
+	require.NoError(t, batch.Commit())
+
+	// A sequence whose top byte is 0xFF must still be returned: the exclusive
+	// upper bound has to be computed as a true prefix successor, not by
+	// appending 0xFF to the value prefix (which would silently drop this key).
+	seqs, err := s.AuditSeqsByString(AuditFieldLedger, "a")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1, 4, highSeq}, seqs)
+
+	seqs, err = s.AuditSeqsByUint64Range(AuditFieldProposalID, 10, 10)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1}, seqs)
+
+	require.NoError(t, s.DropAuditIndex())
+
+	seqs, err = s.AuditSeqsByString(AuditFieldLedger, "a")
+	require.NoError(t, err)
+	require.Empty(t, seqs)
+}
+
+// TestDropAuditIndexPreservesCursor guards the 0x05/0x06 sub-prefix adjacency:
+// DropAuditIndex must clear the index keys (0x05) without touching the progress
+// cursor (0x06), which it relies on the exclusive prefix upper bound to achieve.
+func TestDropAuditIndexPreservesCursor(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	batch := s.NewBatch()
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldLedger, "a", 1), nil))
+	require.NoError(t, s.WriteAuditProgress(batch, 42))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, s.DropAuditIndex())
+
+	seqs, err := s.AuditSeqsByString(AuditFieldLedger, "a")
+	require.NoError(t, err)
+	require.Empty(t, seqs, "index keys must be dropped")
+
+	cursor, err := s.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(42), cursor, "drop must leave the progress cursor untouched")
+}
+
+// TestDropAndResetCursorAtomic covers the primitive the crash-atomic Rebuild
+// relies on: staging the index drop and the cursor reset into a single batch
+// clears both together, so a torn write can never leave an empty index with a
+// stale high cursor.
+func TestDropAndResetCursorAtomic(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	batch := s.NewBatch()
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldLedger, "a", 1), nil))
+	require.NoError(t, s.WriteAuditProgress(batch, 42))
+	require.NoError(t, batch.Commit())
+
+	rebuild := s.NewBatch()
+	require.NoError(t, s.DropAuditIndexInBatch(rebuild))
+	require.NoError(t, s.WriteAuditProgress(rebuild, 0))
+	require.NoError(t, rebuild.Commit())
+
+	seqs, err := s.AuditSeqsByString(AuditFieldLedger, "a")
+	require.NoError(t, err)
+	require.Empty(t, seqs, "index keys must be dropped")
+
+	cursor, err := s.ReadAuditProgress()
+	require.NoError(t, err)
+	require.Zero(t, cursor, "cursor must reset to 0 in the same batch as the drop")
+}

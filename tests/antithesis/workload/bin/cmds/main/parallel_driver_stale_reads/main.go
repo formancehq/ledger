@@ -63,7 +63,7 @@ func main() {
 		r := internal.Rand()
 
 		run := r.Uint64()
-		ledger := fmt.Sprintf("stale-%d", run%1_000_000)
+		ledger := internal.PrefixStaleReads.WithSeed(run)
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
@@ -122,8 +122,14 @@ func main() {
 				Address: probeAccount,
 			})
 			if err != nil {
-				// Transient, or the serving node's prefix predates the ledger
-				// (a NotFound is itself a valid prefix) — skip this read.
+				// Transient, ctx canceled (driver shutting down), or the
+				// serving node's prefix predates the ledger (NotFound is
+				// itself a valid prefix) — skip this read.
+				if !internal.IsTolerated(err) && !internal.IsNotFound(err) {
+					assert.Unreachable("stale read GetAccount returned unexpected error",
+						internal.Details{"ledger": ledger, "round": i, "error": err})
+				}
+
 				continue
 			}
 

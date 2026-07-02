@@ -1,55 +1,42 @@
 # Architecture Documentation
 
-26 architecture documents organized into four topic areas.
+Architecture documentation is organised by **subsystem** — each `subsystems/<name>/` directory mirrors a code boundary (`internal/application/<name>`, `internal/infra/<name>`, `internal/storage/<name>`) and is self-contained with its own README.
 
-## Core
+Cross-cutting concerns (overall design, data flows shared across subsystems, the data model, the audit-and-checker invariants, low-level wire formats) live at the root.
 
-Fundamental design: consensus, state machine, and timing guarantees.
+## Start here
 
-| Document | Description |
-|----------|-------------|
-| [architecture.md](core/architecture.md) | System components, main interactions, and high-level design |
-| [raft-consensus.md](core/raft-consensus.md) | Raft consensus implementation and leader management |
-| [deterministic-fsm.md](core/deterministic-fsm.md) | Deterministic FSM with generation-based caching and preloading |
-| [fsm-cache-layers.md](core/fsm-cache-layers.md) | FSM-side read/write layering: WriteSet → DerivedKeyStore → Plan → KeyStore → AttributeCache |
-| [global-log.md](core/global-log.md) | Two-level log architecture enabling system-level atomic bulk operations |
-| [hybrid-logical-clock.md](core/hybrid-logical-clock.md) | Monotonic HLC timestamps across leader changes and clock skew |
-| [read-snapshot-consistency.md](core/read-snapshot-consistency.md) | Single-snapshot rule for controller reads that stitch LedgerInfo with attribute data |
+| Document | When to read it |
+|----------|-----------------|
+| [overview.md](overview.md) | First read — system components, main interactions, and high-level design. |
+| [data-flows.md](data-flows.md) | Detailed sequence diagrams for write / read / synchronization flows. |
+| [data-model.md](data-model.md) | Ledger system, transaction management, and data organisation. |
 
-## Storage
+## Subsystems
 
-Pebble engine, key layout, caching, and synchronization buffers.
+| Subsystem | Code | Covers |
+|-----------|------|--------|
+| [admission](subsystems/admission/) | `internal/application/admission` | Request gateway, validation, signing, idempotency. |
+| [api](subsystems/api/) | `internal/adapter/grpc`, `internal/adapter/http`, `internal/adapter/auth` | gRPC and HTTP transport surfaces. |
+| [attributes](subsystems/attributes/) | `internal/infra/attributes`, `internal/infra/cache`, `internal/infra/bloom` | In-memory attribute caches, bloom filters, key hashing. |
+| [chapters](subsystems/chapters/) | `internal/infra/coldstorage`, `internal/infra/receipt`, `internal/application/backup` | Chapter lifecycle, archival, receipt-based reverts. |
+| [checker](subsystems/checker/) | `internal/application/check`, `internal/domain/replay` | Audit hash chain and integrity verification of every persisted projection. |
+| [consensus](subsystems/consensus/) | `internal/infra/node`, `internal/infra/transport` | Raft replication, global log, hybrid logical clock. |
+| [events-mirror](subsystems/events-mirror/) | `internal/application/events`, `internal/application/mirror` | Event sinks (NATS / Kafka / ClickHouse / Databricks / HTTP) and mirror ingest. |
+| [fsm](subsystems/fsm/) | `internal/infra/state`, `internal/infra/plan`, `internal/infra/preload` | Deterministic apply path, cache layering, preload contract. |
+| [indexer](subsystems/indexer/) | `internal/application/indexbuilder`, `internal/storage/readstore` (key layout) | Inverted-index builder, schema rewrite, atomic switch. |
+| [read-path](subsystems/read-path/) | `internal/application/ctrl` (reads), `internal/query`, `internal/storage/readstore` | Query pipeline, prepared queries, query checkpoints, typed metadata. |
+| [scripting](subsystems/scripting/) | numscript runtime + library | Reusable numscript programs and their lifecycle. |
+| [storage](subsystems/storage/) | `internal/storage/dal`, `wal`, `spool`, `pebblecfg` | Pebble main store, WAL, snapshots, spool. |
 
-| Document | Description |
-|----------|-------------|
-| [storage.md](storage/storage.md) | WAL, snapshots, runtime stores, persistence, and recovery |
-| [storage-drivers.md](storage/storage-drivers.md) | Pebble storage driver characteristics and configuration |
-| [attributes.md](storage/attributes.md) | System attributes (volumes, metadata, reversions, idempotency), storage format, and caching |
-| [attribute-key-hashing.md](storage/attribute-key-hashing.md) | U128 hashing scheme for attribute keys and collision detection |
-| [spool.md](storage/spool.md) | Committed entry buffer during FSM synchronization |
+## Cross-cutting
 
-## Data Model
+| Document | Why |
+|----------|-----|
+| [data-flows.md](data-flows.md) | Sequence diagrams that span multiple subsystems. |
+| [data-model.md](data-model.md) | Ledgers, transactions, postings — the core domain shape. |
+| [primitives/uint256-wire-format.md](primitives/uint256-wire-format.md) | Fixed-size monetary-amount wire format used everywhere on the boundary. |
 
-Ledgers, transactions, chapters, events, and wire formats.
+## Conventions
 
-| Document | Description |
-|----------|-------------|
-| [buckets-ledgers.md](data-model/buckets-ledgers.md) | Ledger system, transaction management, and data organization |
-| [data-flows.md](data-model/data-flows.md) | Data flow diagrams for ledger creation, transactions, and other operations |
-| [chapters.md](data-model/chapters.md) | Chapter lifecycle (OPEN, CLOSING, CLOSED), sealing hash, and crash recovery |
-| [idempotency.md](data-model/idempotency.md) | Idempotency key mechanism, hash-based conflict detection, and storage |
-| [typed-metadata.md](data-model/typed-metadata.md) | Typed metadata values, per-ledger schema, and hybrid conversion strategy |
-| [uint256-wire-format.md](data-model/uint256-wire-format.md) | Fixed-size Uint256 wire format for monetary amounts |
-| [query-checkpoints.md](data-model/query-checkpoints.md) | Point-in-time snapshots of main store and read index for historical queries |
-| [events.md](data-model/events.md) | Domain event types and event sink system (NATS, Kafka, ClickHouse, HTTP) |
-
-## API
-
-Client-facing interfaces and scripting.
-
-| Document | Description |
-|----------|-------------|
-| [grpc-api.md](api/grpc-api.md) | gRPC service, methods, request/response types, and client examples |
-| [grpc-connections.md](api/grpc-connections.md) | gRPC connection mechanics, reconnection, and rolling deployment optimizations |
-| [api.md](api/api.md) | HTTP REST API endpoints, response formats, and error handling |
-| [numscript-library.md](api/numscript-library.md) | Global repository for reusable numscript programs with semantic versioning |
+Whenever you introduce a new technical mechanism, subsystem, or non-obvious invariant, add a dedicated page under the matching subsystem directory and link it from that subsystem's README (and update this top-level table if a brand-new subsystem is being added). See [AGENTS.md / Documentation Maintenance](../../../AGENTS.md#documentation-maintenance) for the rule.

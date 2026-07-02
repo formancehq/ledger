@@ -793,6 +793,23 @@ message OAuth2ClientCredentials {
 
 message PostgresMirrorSourceConfig {
   string dsn = 1;  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
+  // When set, the DSN password is overridden by a freshly minted AWS RDS IAM
+  // authentication token on every new pool connection. Ambient AWS credentials
+  // (IRSA, instance profile, env vars, profile) are loaded via the default
+  // AWS SDK chain; this message only carries the region needed to sign the
+  // token, which must match the RDS instance's region.
+  PostgresAwsIamAuth aws_iam_auth = 2;
+}
+
+message PostgresAwsIamAuth {
+  string region = 1;  // AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing
+  // Optional STS role ARN to assume before minting the RDS IAM token. When
+  // set, the mirror calls sts:AssumeRole on this ARN and signs the RDS token
+  // with the assumed credentials, decoupling the per-mirror IAM identity from
+  // the pod's ambient credentials. Enables multi-account / multi-tenant
+  // mirrors from a single LedgerService whose base role only needs
+  // sts:AssumeRole on these targets (no direct rds-db:connect grant).
+  string assume_role_arn = 2;
 }
 
 message MirrorSyncError {

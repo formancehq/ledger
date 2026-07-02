@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"time"
 
@@ -13,7 +12,8 @@ import (
 func main() {
 	log.Println("composer: parallel_driver_transfer_leadership")
 
-	ctx := context.Background()
+	ctx, cancel := internal.DriverContext()
+	defer cancel()
 	conn, err := internal.NewGRPCConn()
 	if err != nil {
 		log.Printf("error creating connection: %s", err)
@@ -67,7 +67,7 @@ func main() {
 		Transferee: targetID,
 	})
 
-	assert.Sometimes(err == nil || internal.IsTransient(err),
+	assert.Sometimes(internal.IsTolerated(err),
 		"should be able to transfer leadership", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return

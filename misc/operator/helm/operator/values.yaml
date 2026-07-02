@@ -35,22 +35,27 @@ tolerations: []
 nameOverride: ""
 fullnameOverride: ""
 
-# -- Volume deletion protection (cluster-admin consent layer). When enabled,
+# -- Volume deletion protection (cluster-admin consent layer). Enabled by default:
 # installs the cluster-scoped ValidatingAdmissionPolicy that rejects DELETE of
 # ledger PVCs/PVs unless they carry the allow-deletion annotation. This only
-# arms the policy — a ledger is protected only once it also opts in per-CR via
-# spec.persistence.deletionProtection (the operator then stamps the
-# `ledger.formance.com/deletion-protection: enabled` label the policy selects on).
-# Requires Kubernetes >= 1.30. The operator ServiceAccount (scale-down deletes)
+# arms the policy — a ledger is protected once it also opts in per-CR via
+# spec.persistence.deletionProtection (also on by default; the operator then stamps
+# the `ledger.formance.com/deletion-protection: enabled` label the policy selects on).
+# Set enabled=false to opt the whole cluster out of the policy.
+# Requires Kubernetes >= 1.30 (ValidatingAdmissionPolicy GA). On an older cluster the
+# chart auto-skips the policy (the install still succeeds and prints a NOTES warning)
+# rather than failing on the unknown kind; deletionProtection CRs then report
+# DeletionProtectionInactive at runtime. The operator ServiceAccount (scale-down deletes)
 # and the kube-controller-manager garbage collector (retentionPolicy
 # whenScaled/whenDeleted=Delete) are exempt, so both deletion paths keep working.
 # allowDeletionAnnotation must be a valid Kubernetes annotation key (render fails
 # otherwise). The installed policy is a cluster-wide singleton: enable it on at most
 # one operator release per cluster. A second release with pvcProtection.enabled=true
 # renders the same fixed-name cluster-scoped objects and fails to install (Helm
-# ownership conflict) by design. See the operator README "Volume deletion protection".
+# ownership conflict) by design — in a multi-release cluster, set enabled=false on all
+# but one release. See the operator README "Volume deletion protection".
 pvcProtection:
-  enabled: false
+  enabled: true
   allowDeletionAnnotation: formance.com/allow-deletion
   # Extra ServiceAccount usernames to exempt from the deletion-protection policies,
   # beyond this release's operator SA and the kube-controller-manager GC. Entries must

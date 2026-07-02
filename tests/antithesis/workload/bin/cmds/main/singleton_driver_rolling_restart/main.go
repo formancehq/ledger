@@ -27,8 +27,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+var rrSentinelLedger = internal.PrefixSentinel.WithSuffix("rolling-restart")
+
 const (
-	rrSentinelLedger      = "sentinel-rolling-restart"
 	rrPodGoneTimeout      = 60 * time.Second
 	rrPodReadyTimeout     = 5 * time.Minute
 	rrVotersTimeout       = 5 * time.Minute
@@ -39,8 +40,8 @@ const (
 func main() {
 	log.Println("composer: singleton_driver_rolling_restart")
 
-	ctx := context.Background()
-
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	clientset, err := internal.NewKubeClientset()
 	if err != nil {
 		log.Printf("cannot build k8s clientset: %s", err)

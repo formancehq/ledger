@@ -58,30 +58,45 @@ func StopSnapshotService(server snapshotpb.SnapshotServiceServer) {
 // PrepareSnapshot creates a fresh Pebble checkpoint, builds a manifest, and
 // returns a session ID that can be used for parallel FetchFile calls.
 func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
-	if s.logger.Enabled(logging.TraceLevel) {
-		s.logger.WithFields(map[string]any{
-			"node_id":         req.GetNodeId(),
-			"minAppliedIndex": req.GetMinAppliedIndex(),
-		}).Tracef("PrepareSnapshot request received")
-	}
+	overallStart := time.Now()
+
+	s.logger.WithFields(map[string]any{
+		"node_id":         req.GetNodeId(),
+		"minAppliedIndex": req.GetMinAppliedIndex(),
+	}).Infof("PrepareSnapshot request received")
 
 	// Wait until the FSM has applied at least the requested index before
 	// creating the Pebble checkpoint. Without this, the checkpoint could be
 	// taken before the FSM commits entries the follower needs, causing the
 	// follower to restore a state behind its Raft snapshot index.
 	if minIdx := req.GetMinAppliedIndex(); minIdx > 0 && s.waitForApplied != nil {
+		waitStart := time.Now()
 		if err := s.waitForApplied(ctx, minIdx); err != nil {
 			return nil, fmt.Errorf("waiting for FSM to apply index %d: %w", minIdx, err)
+		}
+
+		if d := time.Since(waitStart); d > 100*time.Millisecond {
+			s.logger.WithFields(map[string]any{
+				"minAppliedIndex": minIdx,
+				"duration":        d.String(),
+			}).Infof("FSM caught up to minAppliedIndex for PrepareSnapshot")
 		}
 	}
 
 	syncName := "follower-sync-" + strconv.FormatUint(s.nextSyncID.Add(1), 10)
 
+	checkpointStart := time.Now()
 	checkpointPath, err := s.store.CreateTemporaryCheckpoint(syncName)
 	if err != nil {
 		return nil, fmt.Errorf("creating temporary checkpoint: %w", err)
 	}
 
+	s.logger.WithFields(map[string]any{
+		"syncName": syncName,
+		"duration": time.Since(checkpointStart).String(),
+	}).Infof("Temporary checkpoint created for follower sync")
+
+	manifestStart := time.Now()
 	manifest, err := buildManifest(checkpointPath)
 	if err != nil {
 		// Clean up checkpoint on manifest build failure.
@@ -102,8 +117,10 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	}
 
 	s.logger.WithFields(map[string]any{
-		"sessionId": sessionID,
-		"files":     len(manifest.GetFiles()),
+		"sessionId":        sessionID,
+		"files":            len(manifest.GetFiles()),
+		"manifestDuration": time.Since(manifestStart).String(),
+		"totalDuration":    time.Since(overallStart).String(),
 	}).Infof("Snapshot session created")
 
 	return &snapshotpb.PrepareSnapshotResponse{

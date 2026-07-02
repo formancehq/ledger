@@ -40,7 +40,7 @@ func TestCheckStaleProposal_CacheEpochMismatchAfterFirstReset(t *testing.T) {
 		"proposal carrying the live cache epoch must pass")
 
 	// A cluster config change wipes the cache and bumps the epoch.
-	fsm.Registry.Cache.ResetWithThreshold(2000)
+	fsm.Registry.Cache.ResetWithThreshold(2000, 0)
 	require.Equal(t, uint64(2), fsm.Registry.Cache.Epoch())
 
 	// The in-flight proposal (still carrying epoch=1) must now be rejected
@@ -61,7 +61,7 @@ func TestCheckStaleProposal_PreloadWithoutEpochIsAccepted(t *testing.T) {
 	t.Parallel()
 
 	fsm, _, _ := newTestMachine(t)
-	fsm.Registry.Cache.ResetWithThreshold(2000) // live epoch = 2
+	fsm.Registry.Cache.ResetWithThreshold(2000, 0) // live epoch = 2
 
 	proposal := &raftcmdpb.Proposal{
 		Id: 1,

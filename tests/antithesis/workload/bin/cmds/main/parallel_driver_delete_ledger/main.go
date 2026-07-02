@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"io"
 	"log"
 
@@ -15,7 +13,8 @@ import (
 func main() {
 	log.Println("composer: parallel_driver_delete_ledger")
 
-	ctx := context.Background()
+	ctx, cancel := internal.DriverContext()
+	defer cancel()
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
@@ -23,13 +22,13 @@ func main() {
 	}
 	defer conn.Close()
 
-	ledgerName := fmt.Sprintf("ephemeral-%d", internal.Rand().Uint64()%1e6)
+	ledgerName := internal.PrefixEphemeral.New()
 	details := internal.Details{"ledger": ledgerName}
 
-	// Create a dedicated ledger.
-	err = internal.CreateLedger(ctx, client, ledgerName)
-	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to create ephemeral ledger", details.With(internal.Details{"error": err}))
-	if err != nil {
+	// Create a dedicated ledger. CreateLedger already emits the canonical
+	// "should be able to create ledger" Sometimes assertion with the proper
+	// IsTransient classification, so we just check the error here.
+	if err := internal.CreateLedger(ctx, client, ledgerName); err != nil {
 		return
 	}
 
@@ -49,7 +48,7 @@ func main() {
 			},
 		},
 	}))
-	assert.Sometimes(err == nil || internal.IsTransient(err) || internal.IsLedgerDeleted(err),
+	assert.Sometimes(internal.IsTolerated(err) || internal.IsLedgerDeleted(err),
 		"should be able to seed ephemeral ledger before delete", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return
@@ -64,7 +63,7 @@ func main() {
 		},
 	}))
 
-	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to delete ledger", details.With(internal.Details{"error": err}))
+	assert.Sometimes(internal.IsTolerated(err), "should be able to delete ledger", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return
 	}

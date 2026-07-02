@@ -531,8 +531,14 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	// Restore bloom filters: load persisted blocks from Pebble, then replay
 	// cache gen0+gen1 entries to fill the gap since the last rotation flush.
 	// If no persisted blocks exist (first boot), fall back to a full attribute scan.
+	// On the persisted-blocks (restart) path, restoreBloomFilters runs the
+	// rebuild synchronously and returns once IsReady() is true -- closes
+	// the EN-1410 window where replayWAL would race the rebuild and drive
+	// rotations while !IsReady.
 	if s.bloomFilters != nil {
-		s.restoreBloomFilters(store)
+		if err := s.restoreBloomFilters(store); err != nil {
+			return fmt.Errorf("restoring bloom filters: %w", err)
+		}
 	}
 
 	return nil
@@ -623,20 +629,26 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 	return nil
 }
 
-// restoreBloomFilters launches a background task to restore bloom filters.
-// If persisted blocks exist, loads them from Pebble and replays cache gen0+gen1
-// to fill the gap. Otherwise, falls back to a full attribute scan.
-// In both cases, IsReady() remains false until the background work completes.
-// The store is captured by the background goroutine so it can open a fresh
-// read handle each invocation.
-func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) {
+// restoreBloomFilters publishes a ready bloom on top of Pebble's
+// persisted state. On a simple restart (persisted bloom blocks exist),
+// the rebuild runs SYNCHRONOUSLY before this function returns: the cost
+// is bounded (O(blocks) + O(cache gen0+gen1)) and running it inline
+// closes the EN-1410 window where the replayWAL goroutine would
+// otherwise race the background rebuild and drive cache rotations
+// while !IsReady. On cold start / post-Rebuild (no persisted blocks),
+// the rebuild stays async because the full attribute scan via
+// PopulateFromStore can take minutes on a large database -- blocking
+// boot is unacceptable. The cold-start path's correctness is guarded
+// separately at the cache-rotation site, which inhibits rotation while
+// the bloom is still populating (see machine.go).
+func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
 	if s.hasPersistedBloomBlocks(store) {
-		s.runBloomTask(store, "restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
-
-		return
+		return s.runBloomTaskSync(store, "restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
 	}
 
 	s.StartAsyncBloomPopulate(store, "first boot: no persisted bloom blocks")
+
+	return nil
 }
 
 // StartAsyncBloomPopulate interrupts any running bloom task and launches a
@@ -647,11 +659,62 @@ func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, rea
 	s.runBloomTask(store, reason, s.bloomFilters.PopulateFromStore)
 }
 
+// runBloomTaskBody runs loadFn + replayBloomFromCache + SetReadyIfEpoch
+// in the calling goroutine using the provided context. Shared between
+// runBloomTask (wraps it in a SingleTaskExecutor) and runBloomTaskSync
+// (drives it inline on the boot path).
+func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.RecoveryReader, reason string, epoch uint64, loadFn func(context.Context, dal.PebbleReader) error) error {
+	start := time.Now()
+
+	// Hold dbMu.RLock for the entire bloom load to prevent RestoreCheckpoint
+	// from closing the DB while iterators are open. StopBackgroundTasks cancels
+	// the context first, so the bloom iteration exits and releases the lock
+	// before RestoreCheckpoint acquires the exclusive lock.
+	reader, err := store.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read handle for bloom task: %w", err)
+	}
+
+	loadErr := loadFn(ctx, reader)
+	_ = reader.Close()
+
+	if loadErr != nil {
+		return loadErr
+	}
+
+	if err := s.replayBloomFromCache(ctx); err != nil {
+		return err
+	}
+
+	if !s.bloomFilters.SetReadyIfEpoch(epoch) {
+		// The rarest interleaving (#391-class): a Rebuild bumped the epoch
+		// while this task was scanning, so publishing readiness would have
+		// exposed a half-populated filter. Skipping is the correct path —
+		// the rebuild's own task republishes readiness.
+		assert.Reachable("bloom SetReady skipped: rebuild raced populate", map[string]any{
+			"reason": reason,
+			"epoch":  epoch,
+		})
+
+		s.logger.WithFields(map[string]any{
+			"reason": reason,
+		}).Infof("Bloom task skipped SetReady: Rebuild occurred")
+
+		return nil
+	}
+
+	s.logger.WithFields(map[string]any{
+		"reason":   reason,
+		"duration": time.Since(start).String(),
+	}).Infof("Bloom task complete")
+
+	return nil
+}
+
 // runBloomTask is the common entry point for background bloom work.
 // It interrupts any in-flight task, captures the current epoch, and runs
-// loadFn (restore or populate) via the SingleTaskExecutor. After loadFn,
-// it replays cache gen0+gen1 and marks the bloom as ready only if no
-// Rebuild occurred during the work.
+// loadFn via the SingleTaskExecutor. See runBloomTaskBody for the actual
+// load + replay + SetReady sequence.
 func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.PebbleReader) error) {
 	s.bloomExecutor.Interrupt()
 
@@ -662,52 +725,26 @@ func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string,
 	epoch := s.bloomFilters.Epoch()
 
 	s.bloomExecutor.Run(context.Background(), func(ctx context.Context) error {
-		start := time.Now()
-
-		// Hold dbMu.RLock for the entire bloom load to prevent RestoreCheckpoint
-		// from closing the DB while iterators are open. StopBackgroundTasks cancels
-		// the context first, so the bloom iteration exits and releases the lock
-		// before RestoreCheckpoint acquires the exclusive lock.
-		reader, err := store.NewDirectReadHandle()
-		if err != nil {
-			return fmt.Errorf("creating read handle for bloom task: %w", err)
-		}
-
-		loadErr := loadFn(ctx, reader)
-		_ = reader.Close()
-
-		if loadErr != nil {
-			return loadErr
-		}
-
-		if err := s.replayBloomFromCache(ctx); err != nil {
-			return err
-		}
-
-		if !s.bloomFilters.SetReadyIfEpoch(epoch) {
-			// The rarest interleaving (#391-class): a Rebuild bumped the epoch
-			// while this task was scanning, so publishing readiness would have
-			// exposed a half-populated filter. Skipping is the correct path —
-			// the rebuild's own task republishes readiness.
-			assert.Reachable("bloom SetReady skipped: rebuild raced populate", map[string]any{
-				"reason": reason,
-				"epoch":  epoch,
-			})
-
-			s.logger.WithFields(map[string]any{
-				"reason": reason,
-			}).Infof("Bloom background task skipped SetReady: Rebuild occurred")
-
-			return nil
-		}
-
-		s.logger.WithFields(map[string]any{
-			"reason":   reason,
-			"duration": time.Since(start).String(),
-		}).Infof("Bloom background task complete")
-
-		return nil
+		return s.runBloomTaskBody(ctx, store, reason, epoch, loadFn)
 	})
+}
+
+// runBloomTaskSync is the synchronous variant used on the restart path
+// (persisted bloom blocks exist). It interrupts any in-flight async
+// task, captures the current epoch, and runs the body inline against a
+// background context. By the time it returns, the bloom is ready (or
+// the call errored out), so the caller can safely begin work that
+// relies on bloom completeness -- in particular replayWAL.
+func (s *CacheSnapshotter) runBloomTaskSync(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.PebbleReader) error) error {
+	s.bloomExecutor.Interrupt()
+
+	s.logger.WithFields(map[string]any{
+		"reason": reason,
+	}).Infof("Bloom sync task starting")
+
+	epoch := s.bloomFilters.Epoch()
+
+	return s.runBloomTaskBody(context.Background(), store, reason, epoch, loadFn)
 }
 
 // hasPersistedBloomBlocks checks if any bloom block keys exist in Pebble.

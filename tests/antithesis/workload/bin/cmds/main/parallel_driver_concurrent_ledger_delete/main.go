@@ -17,7 +17,7 @@ func main() {
 		r := internal.Rand()
 
 		// 1. Create a dedicated ephemeral ledger.
-		ledger := fmt.Sprintf("deltest-%d", r.Uint64()%1_000_000)
+		ledger := internal.PrefixDeltest.New()
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}

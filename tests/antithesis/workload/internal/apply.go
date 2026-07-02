@@ -18,3 +18,19 @@ func ExtractCreatedTransaction(resp *servicepb.ApplyResponse) *commonpb.CreatedT
 
 	return applyLog.Log.Data.GetCreatedTransaction()
 }
+
+// CheckCreatedTransaction extracts the CreatedTransaction from an Apply response
+// AND verifies post-commit volume consistency (balance == input - output) on
+// every account it touches. Returns the extracted transaction so callers can
+// reuse its fields (TxId, postings, …), or nil if the response did not carry
+// one (ambiguous error path).
+func CheckCreatedTransaction(resp *servicepb.ApplyResponse, details Details) *commonpb.CreatedTransaction {
+	ct := ExtractCreatedTransaction(resp)
+	if ct == nil {
+		return nil
+	}
+
+	CheckPostCommitVolumes(ct.PostCommitVolumes, details)
+
+	return ct
+}

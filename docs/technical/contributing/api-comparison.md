@@ -185,7 +185,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 - ✅ `continueOnFailure` - Continue even on error
 - ✅ `atomic` - All operations or nothing (supports cross-ledger operations)
 
-> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](../architecture/core/global-log.md).
+> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](../architecture/subsystems/consensus/global-log.md).
 
 ### 5. Ledger Management
 
@@ -236,7 +236,7 @@ ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 
 ### 7. Chapters
 
-Chapters partition a ledger's transaction history into discrete, sealed segments. See [Chapters Architecture](../architecture/data-model/chapters.md) for full documentation.
+Chapters partition a ledger's transaction history into discrete, sealed segments. See [Chapters Architecture](../architecture/subsystems/chapters/lifecycle.md) for full documentation.
 
 **gRPC Methods:**
 - `Apply(CloseChapterRequest)` - Close the current open chapter (write, leader-only)
@@ -286,7 +286,7 @@ Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying
 
 **Source types:**
 - **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `oauth2ClientId`, `oauth2ClientSecret`, `oauth2TokenEndpoint`, `oauth2Scopes` (optional, for OAuth2 client credentials authentication).
-- **PostgreSQL** (`type: "postgres"`) — Reads directly from the v2 ledger's PostgreSQL database. Fields: `dsn`.
+- **PostgreSQL** (`type: "postgres"`) — Reads directly from the v2 ledger's PostgreSQL database. Fields: `dsn`. AWS RDS IAM authentication is provisioned via the operator `Ledger` CRD (`mirrorSource.postgres.awsIamAuth.region` + optional `assumeRoleArn` for cross-account / multi-tenant mirrors) — see `misc/operator/api/v1alpha1/ledger_crd_types.go`. The mirror pod mints SigV4 tokens per connection from the ambient AWS credential chain (IRSA on EKS).
 
 If `type` is omitted, defaults to `"http"`.
 
@@ -542,7 +542,7 @@ The response will include a `postCommitVolumes` field:
 
 **Status:** ✅ Compliant
 
-See [Idempotency](../architecture/data-model/idempotency.md) for detailed documentation.
+See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detailed documentation.
 
 ### 5. Index readiness and metadata schema retypes (EN-1323)
 
@@ -670,7 +670,7 @@ This architecture impacts certain implementation decisions:
 - Import must respect log sequence
 - Export can be done from any node (local read)
 
-See [Global Log Architecture](../architecture/core/global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
+See [Global Log Architecture](../architecture/subsystems/consensus/global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
 
 ---
 
