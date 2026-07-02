@@ -74,8 +74,10 @@ func NewPostgresSource(ctx context.Context, cfg *commonpb.PostgresMirrorSourceCo
 // Returns logs (oldest first), whether there are more, and any error.
 func (s *PostgresSource) FetchLogs(ctx context.Context, afterID uint64, pageSize int) ([]V2Log, bool, error) {
 	// Fetch pageSize+1 rows to determine if there are more.
+	// COALESCE on hash: v2 ledgers with LEDGER_FEATURE_HASH_LOGS disabled leave
+	// logs.hash NULL, which would fail the scan into V2Log.Hash (string).
 	query := fmt.Sprintf(
-		`SELECT id, type, date::text, data, encode(hash, 'hex') FROM %q.logs WHERE ledger = $1 AND id > $2 ORDER BY id ASC LIMIT $3`,
+		`SELECT id, type, date::text, data, COALESCE(encode(hash, 'hex'), '') FROM %q.logs WHERE ledger = $1 AND id > $2 ORDER BY id ASC LIMIT $3`,
 		s.bucket,
 	)
 
