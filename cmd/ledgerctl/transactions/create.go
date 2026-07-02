@@ -454,6 +454,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
+	rescale := cmdutil.RescaleTarget(cmd)
+
 	// Display postings
 	if len(tx.GetPostings()) > 0 {
 		pterm.Println()
@@ -464,13 +466,18 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		}
 
 		for i, posting := range tx.GetPostings() {
+			amount, asset := posting.GetAmount().Dec(), posting.GetAsset()
+			if rescale != nil {
+				amount, asset = cmdutil.Rescale(amount, asset, *rescale)
+			}
+
 			postingsTable = append(postingsTable, []string{
 				strconv.Itoa(i + 1),
 				posting.GetSource(),
 				"→",
 				posting.GetDestination(),
-				posting.GetAmount().Dec(),
-				posting.GetAsset(),
+				amount,
+				asset,
 			})
 		}
 
@@ -503,7 +510,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	// Display post-commit volumes
 	if createdTx.GetPostCommitVolumes() != nil {
-		err := renderPostCommitVolumes(createdTx.GetPostCommitVolumes())
+		err := renderPostCommitVolumes(createdTx.GetPostCommitVolumes(), rescale)
 		if err != nil {
 			return err
 		}

@@ -159,6 +159,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 		const continuationIndent = "  "
 
+		rescale := cmdutil.RescaleTarget(cmd)
+
 		for i, posting := range tx.GetPostings() {
 			srcLines := cmdutil.WrapText(posting.GetSource(), maxAddrWidth, ":")
 			dstLines := cmdutil.WrapText(posting.GetDestination(), maxAddrWidth, ":")
@@ -186,8 +188,11 @@ func runGet(cmd *cobra.Command, args []string) error {
 				if line == 0 {
 					num = strconv.Itoa(i + 1)
 					arrow = "→"
-					amount = posting.GetAmount().Dec()
-					asset = posting.GetAsset()
+					amount, asset = posting.GetAmount().Dec(), posting.GetAsset()
+
+					if rescale != nil {
+						amount, asset = cmdutil.Rescale(amount, asset, *rescale)
+					}
 				}
 
 				postingsTable = append(postingsTable, []string{

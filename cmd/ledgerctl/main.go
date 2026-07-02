@@ -140,6 +140,15 @@ func newRootCommand() *cobra.Command {
 	// kubelet captures the result on pod.status) can all opt in.
 	rootCmd.PersistentFlags().String("result-file", "", "Also write the --json result to this file path (env: LEDGERCTL_RESULT_FILE)")
 
+	// Add persistent flag for human-friendly amount display. Affects only the
+	// rendered tables/text — structured (--json/--yaml) output keeps the raw
+	// integer amounts and full "CUR/precision" asset strings so scripts stay
+	// stable. Absent = no rescaling; --rescale alone = scale 0. The scale is a
+	// uint8 (an asset's precision is a single byte), so pflag rejects values
+	// above 255 at parse time.
+	rootCmd.PersistentFlags().Uint8(cmdutil.RescaleFlagName, 0, "Re-express amounts at the given scale, summing same-currency balances across precisions (e.g. 1234 USD/2 + 56789 USD/3 → 69.129 USD; --rescale=2 → 6912.9 USD/2)")
+	rootCmd.PersistentFlags().Lookup(cmdutil.RescaleFlagName).NoOptDefVal = "0"
+
 	// Add subcommands.
 	rootCmd.AddCommand(ledgers.NewCommand())
 	rootCmd.AddCommand(indexes.NewCommand())
