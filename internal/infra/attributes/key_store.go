@@ -158,10 +158,14 @@ func (s *KeyStore[K, T]) GetEntry(canonical []byte) (Entry[T], bool) {
 	return entry, true
 }
 
-// Delete marks the entry as a tombstone instead of removing it.
+// Delete marks the entry as a tombstone in the underlying store.
+// On the dual-generation cache the tombstone is written to every generation
+// (cache.AttributeCache.Del), mirroring the 0xFF zone the FSM writes in the
+// same batch, so the in-memory cache equals disk for the same applied index.
 // The entry stays in the cache (surviving MirrorTouch during pipelined
-// proposals) but reads via Get return nil. Tombstones age out naturally
-// via cache generation rotation.
+// proposals) and reads via Get return ErrNotFound. Tombstones age out naturally
+// via cache generation rotation. A single-map kv.KV (tests) removes the entry,
+// which Get also reports as not found.
 func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, tag uint64, err error) {
 	id, tag = s.hasher.MakeKey(canonical)
 
@@ -174,8 +178,7 @@ func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, tag uint64, err erro
 		return id, tag, newErrCollisionDetected(canonical, entry.Tag, tag)
 	}
 
-	entry.Deleted = true
-	s.M.Put(id, entry)
+	s.M.Del(id)
 
 	return id, tag, nil
 }

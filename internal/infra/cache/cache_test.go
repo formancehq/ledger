@@ -169,9 +169,23 @@ func TestAttributeCache_Del(t *testing.T) {
 	assert.True(t, ok)
 	assert.True(t, result.Deleted)
 	// Data is reset to the zero value: a tombstone's payload is unreadable by
-	// contract, and retaining it has historically caused snapshot/restore
-	// foot-guns (EN-1377).
+	// contract, and retaining it risks snapshot/restore resurrection (EN-1377).
 	assert.Nil(t, result.Data, "Del must reset entry.Data to the zero value")
+
+	// Del tombstones both generations, borrowing the tag for the gen that
+	// lacked the key (here Gen1), so the in-memory cache mirrors the dual-gen
+	// 0xFF tombstone.
+	gen0Entry, ok := ac.Gen0().Get(key)
+	require.True(t, ok)
+	assert.True(t, gen0Entry.Deleted)
+	assert.Equal(t, uint64(123), gen0Entry.Tag)
+	assert.Nil(t, gen0Entry.Data)
+
+	gen1Entry, ok := ac.Gen1().Get(key)
+	require.True(t, ok)
+	assert.True(t, gen1Entry.Deleted)
+	assert.Equal(t, uint64(123), gen1Entry.Tag)
+	assert.Nil(t, gen1Entry.Data)
 }
 
 func TestAttributeCache_DelResetsDataAcrossGenerations(t *testing.T) {
