@@ -225,6 +225,68 @@ func TestReconcile_AgentOrphanCleanup(t *testing.T) {
 	require.NoError(t, k8sClient.Get(ctx, keyA, &corev1.Secret{}), "matched-namespace replica must remain")
 }
 
+func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
+	ns := createTestNamespace(t)
+
+	ls := newLedgerService("survive-svc", ns)
+	ls.Labels = map[string]string{"tier": "survive"}
+	require.NoError(t, k8sClient.Create(ctx, ls))
+
+	agent := newLedgerClusterAgent("survive-agent", []string{"read"}, map[string]string{"tier": "survive"})
+	require.NoError(t, k8sClient.Create(ctx, agent))
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
+	})
+
+	secretKey := types.NamespacedName{Namespace: ns, Name: "ledger-survive-agent-agent-keys"}
+	secret := &corev1.Secret{}
+	requireEventually(t, func() bool {
+		return k8sClient.Get(ctx, secretKey, secret) == nil
+	}, "Secret should be created while the LedgerService matches")
+
+	initialSeed := string(secret.Data["seed.hex"])
+	initialPubKey := string(secret.Data["pubkey.hex"])
+	initialKeyID := string(secret.Data["key-id"])
+	require.NotEmpty(t, initialSeed)
+
+	require.NoError(t, k8sClient.Delete(ctx, ls))
+	requireEventually(t, func() bool {
+		err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "survive-svc"}, &ledgerv1alpha1.LedgerService{})
+
+		return apierrors.IsNotFound(err)
+	}, "LedgerService should be deleted")
+
+	// The dormant Secret must survive the transient absence of the LedgerService
+	// so the seed identity is preserved across recreation.
+	requireEventually(t, func() bool {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "survive-agent"}, agent); err != nil {
+			return false
+		}
+
+		return agent.Status.Phase == "Pending" && agent.Status.ObservedGeneration == agent.Generation
+	}, "agent should report Pending once no service matches")
+
+	require.NoError(t, k8sClient.Get(ctx, secretKey, secret), "Secret must remain dormant while no LedgerService matches")
+	assert.Equal(t, initialSeed, string(secret.Data["seed.hex"]), "dormant seed must not be regenerated")
+
+	lsAgain := newLedgerService("survive-svc", ns)
+	lsAgain.Labels = map[string]string{"tier": "survive"}
+	require.NoError(t, k8sClient.Create(ctx, lsAgain))
+
+	requireEventually(t, func() bool {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "survive-agent"}, agent); err != nil {
+			return false
+		}
+
+		return agent.Status.Phase == "Ready" && agent.Status.KeyID == initialKeyID
+	}, "agent should return to Ready with the original keyID")
+
+	require.NoError(t, k8sClient.Get(ctx, secretKey, secret))
+	assert.Equal(t, initialSeed, string(secret.Data["seed.hex"]), "seed must be identical after LedgerService recreation")
+	assert.Equal(t, initialPubKey, string(secret.Data["pubkey.hex"]))
+	assert.Equal(t, initialKeyID, string(secret.Data["key-id"]))
+}
+
 func TestReconcile_AgentDeletion(t *testing.T) {
 	nsA := createTestNamespace(t)
 	nsB := createTestNamespace(t)
