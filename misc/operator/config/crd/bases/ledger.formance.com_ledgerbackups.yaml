@@ -35,7 +35,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: LedgerBackup manages scheduled backups of a LedgerService to
+        description: LedgerBackup manages scheduled backups of a Cluster to
           S3 via ledgerctl.
         properties:
           apiVersion:
@@ -122,7 +122,7 @@ spec:
                     type: string
                 type: object
               serviceRef:
-                description: ServiceRef is the name of the LedgerService in the same
+                description: ServiceRef is the name of the Cluster in the same
                   namespace.
                 type: string
               successfulRunsHistoryLimit:

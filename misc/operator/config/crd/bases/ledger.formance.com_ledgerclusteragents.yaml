@@ -30,7 +30,7 @@ spec:
         description: |-
           LedgerClusterAgent is a cluster-scoped resource that describes an agent with
           Ed25519 authentication keys. The operator generates the keypair, stores the seed
-          in a Secret, and injects the public key into matching LedgerService clusters.
+          in a Secret, and injects the public key into matching Cluster clusters.
         properties:
           apiVersion:
             description: |-
@@ -56,7 +56,7 @@ spec:
                 description: |-
                   AdditionalNamespaces is an optional list of extra namespaces where the
                   agent's Secret must also be created, in addition to the namespaces of
-                  the LedgerServices matched by Selector.
+                  the Clusters matched by Selector.
                 items:
                   type: string
                 type: array
@@ -72,7 +72,7 @@ spec:
                   type: string
                 type: array
               selector:
-                description: Selector selects which LedgerService resources this agent
+                description: Selector selects which Cluster resources this agent
                   applies to.
                 properties:
                   matchExpressions:
@@ -206,17 +206,17 @@ spec:
                   of the public key.
                 type: string
               matchedServices:
-                description: MatchedServices lists the LedgerService resources matched
+                description: MatchedServices lists the Cluster resources matched
                   by the selector.
                 items:
-                  description: MatchedService identifies a namespaced LedgerService
+                  description: MatchedService identifies a namespaced Cluster
                     matched by the agent selector.
                   properties:
                     name:
-                      description: Name of the LedgerService.
+                      description: Name of the Cluster.
                       type: string
                     namespace:
-                      description: Namespace of the LedgerService.
+                      description: Namespace of the Cluster.
                       type: string
                   required:
                   - name

@@ -114,10 +114,20 @@ rules:
   - ledgerbackups
   - ledgerclusteragents
   - ledgers
-  - ledgerservices
+  - clusters
   verbs:
   - create
   - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ledger.formance.com
+  resources:
+  - ledgerservices
+  verbs:
   - get
   - list
   - patch
@@ -130,7 +140,7 @@ rules:
   - ledgerbackups/finalizers
   - ledgerclusteragents/finalizers
   - ledgers/finalizers
-  - ledgerservices/finalizers
+  - clusters/finalizers
   verbs:
   - update
 - apiGroups:
@@ -140,6 +150,7 @@ rules:
   - ledgerbackups/status
   - ledgerclusteragents/status
   - ledgers/status
+  - clusters/status
   - ledgerservices/status
   verbs:
   - get

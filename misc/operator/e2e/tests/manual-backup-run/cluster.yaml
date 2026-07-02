@@ -1,0 +1,10 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: bk-manual-svc
+spec:
+  replicas: 1
+  image:
+    repository: ledger
+    tag: e2e
+    pullPolicy: Never

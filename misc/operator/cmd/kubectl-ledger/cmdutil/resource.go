@@ -21,20 +21,20 @@ const (
 
 	// resourcePrefix mirrors internal/controller.resourcePrefix (names.go), the
 	// source of truth. The operator prefixes every object it creates with it, so
-	// a LedgerService's StatefulSet is named "ledger-<cr>", not "<cr>" (EN-1319).
+	// a Cluster's StatefulSet is named "ledger-<cr>", not "<cr>" (EN-1319).
 	// Duplicated here because that const is unexported and importing the
 	// controller package would pull controller-runtime into this CLI.
 	resourcePrefix = "ledger-"
 )
 
-// LabelSelector returns a comma-separated label selector for the given LedgerService name.
+// LabelSelector returns a comma-separated label selector for the given Cluster name.
 func LabelSelector(name string) string {
 	return fmt.Sprintf("%s=%s,%s=%s", LabelName, LabelValue, LabelInstance, name)
 }
 
-// GetLedgerService fetches a single LedgerService CR.
-func GetLedgerService(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.LedgerService, error) {
-	var ledger ledgerv1alpha1.LedgerService
+// GetCluster fetches a single Cluster CR.
+func GetCluster(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.Cluster, error) {
+	var ledger ledgerv1alpha1.Cluster
 	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &ledger); err != nil {
 		return nil, err
 	}
@@ -42,9 +42,9 @@ func GetLedgerService(ctx context.Context, c client.Client, namespace, name stri
 	return &ledger, nil
 }
 
-// ListLedgerServices lists LedgerService CRs. Pass empty namespace for all namespaces.
-func ListLedgerServices(ctx context.Context, c client.Client, namespace string) (*ledgerv1alpha1.LedgerServiceList, error) {
-	var list ledgerv1alpha1.LedgerServiceList
+// ListClusters lists Cluster CRs. Pass empty namespace for all namespaces.
+func ListClusters(ctx context.Context, c client.Client, namespace string) (*ledgerv1alpha1.ClusterList, error) {
+	var list ledgerv1alpha1.ClusterList
 	opts := []client.ListOption{}
 	if namespace != "" {
 		opts = append(opts, client.InNamespace(namespace))
@@ -56,35 +56,35 @@ func ListLedgerServices(ctx context.Context, c client.Client, namespace string) 
 	return &list, nil
 }
 
-// LedgerServicePods lists pods matching the selector labels for a LedgerService.
-func LedgerServicePods(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PodList, error) {
+// ClusterPods lists pods matching the selector labels for a Cluster.
+func ClusterPods(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PodList, error) {
 	return cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: LabelSelector(name),
 	})
 }
 
-// LedgerServicePVCs lists PVCs matching the selector labels for a LedgerService.
-func LedgerServicePVCs(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PersistentVolumeClaimList, error) {
+// ClusterPVCs lists PVCs matching the selector labels for a Cluster.
+func ClusterPVCs(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PersistentVolumeClaimList, error) {
 	return cs.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: LabelSelector(name),
 	})
 }
 
-// LedgerServiceStatefulSet fetches the StatefulSet for a LedgerService. The
+// ClusterStatefulSet fetches the StatefulSet for a Cluster. The
 // operator names it "ledger-<cr>" (resourcePrefix), not the bare CR name.
-func LedgerServiceStatefulSet(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*appsv1.StatefulSet, error) {
+func ClusterStatefulSet(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*appsv1.StatefulSet, error) {
 	return cs.AppsV1().StatefulSets(namespace).Get(ctx, resourcePrefix+name, metav1.GetOptions{})
 }
 
-// LedgerServicePodName returns the name of the ordinal-th StatefulSet pod for a
-// LedgerService. The operator names pods "ledger-<cr>-<ordinal>" (resourcePrefix),
+// ClusterPodName returns the name of the ordinal-th StatefulSet pod for a
+// Cluster. The operator names pods "ledger-<cr>-<ordinal>" (resourcePrefix),
 // not "<cr>-<ordinal>".
-func LedgerServicePodName(name string, ordinal int) string {
+func ClusterPodName(name string, ordinal int) string {
 	return fmt.Sprintf("%s%s-%d", resourcePrefix, name, ordinal)
 }
 
-// LedgerServices lists services matching the selector labels for a LedgerService.
-func LedgerServices(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.ServiceList, error) {
+// Clusters lists services matching the selector labels for a Cluster.
+func Clusters(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.ServiceList, error) {
 	return cs.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: LabelSelector(name),
 	})

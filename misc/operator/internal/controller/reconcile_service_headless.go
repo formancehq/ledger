@@ -11,7 +11,7 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-func (r *LedgerServiceReconciler) reconcileHeadlessService(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) reconcileHeadlessService(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	enabled := ledger.Spec.HeadlessService.Enabled
 	if enabled != nil && !*enabled {
 		return r.deleteIfExists(ctx, &corev1.Service{
@@ -64,7 +64,7 @@ func (r *LedgerServiceReconciler) reconcileHeadlessService(ctx context.Context, 
 	return err
 }
 
-func serviceRaftPort(ledger *ledgerv1alpha1.LedgerService) int32 {
+func serviceRaftPort(ledger *ledgerv1alpha1.Cluster) int32 {
 	if ledger.Spec.Service.RaftPort != 0 {
 		return ledger.Spec.Service.RaftPort
 	}
@@ -72,7 +72,7 @@ func serviceRaftPort(ledger *ledgerv1alpha1.LedgerService) int32 {
 	return 7777
 }
 
-func serviceGrpcPort(ledger *ledgerv1alpha1.LedgerService) int32 {
+func serviceGrpcPort(ledger *ledgerv1alpha1.Cluster) int32 {
 	if ledger.Spec.Service.GrpcPort != 0 {
 		return ledger.Spec.Service.GrpcPort
 	}
@@ -80,7 +80,7 @@ func serviceGrpcPort(ledger *ledgerv1alpha1.LedgerService) int32 {
 	return 8888
 }
 
-func serviceHttpPort(ledger *ledgerv1alpha1.LedgerService) int32 {
+func serviceHttpPort(ledger *ledgerv1alpha1.Cluster) int32 {
 	if ledger.Spec.Service.HttpPort != 0 {
 		return ledger.Spec.Service.HttpPort
 	}

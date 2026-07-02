@@ -15,5 +15,5 @@ x-plr-config:
     description: >
       Benchmark configuration object containing: script (k6 script name),
       metadata (name, namespace), spec (parallelism, arguments, separate),
-      resources (LedgerService/Ledger manifests with readyConditions),
+      resources (Cluster/Ledger manifests with readyConditions),
       runner (env vars, nodeSelector, tolerations)

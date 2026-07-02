@@ -23,34 +23,34 @@ func prefixedName(crName string) string {
 	return resourcePrefix + crName
 }
 
-// resourceName is the base name for the primary objects of a LedgerService:
+// resourceName is the base name for the primary objects of a Cluster:
 // the StatefulSet, ClusterIP Service, Ingress, NetworkPolicy and DNSEndpoint.
 func resourceName(crName string) string {
 	return prefixedName(crName)
 }
 
-// headlessServiceName returns the headless Service name for a LedgerService.
+// headlessServiceName returns the headless Service name for a Cluster.
 // It is also the StatefulSet ServiceName and the DNS subdomain of every pod.
 func headlessServiceName(crName string) string {
 	return resourceName(crName) + "-headless"
 }
 
-// grpcServiceName returns the dedicated gRPC Service name for a LedgerService.
+// grpcServiceName returns the dedicated gRPC Service name for a Cluster.
 func grpcServiceName(crName string) string {
 	return resourceName(crName) + "-grpc"
 }
 
-// grpcIngressName returns the gRPC Ingress object name for a LedgerService.
+// grpcIngressName returns the gRPC Ingress object name for a Cluster.
 func grpcIngressName(crName string) string {
 	return resourceName(crName) + "-grpc"
 }
 
-// authKeysConfigMapName returns the auth-keys ConfigMap name for a LedgerService.
+// authKeysConfigMapName returns the auth-keys ConfigMap name for a Cluster.
 func authKeysConfigMapName(crName string) string {
 	return resourceName(crName) + "-auth-keys"
 }
 
-// clusterSecretName returns the cluster inter-node Secret name for a LedgerService.
+// clusterSecretName returns the cluster inter-node Secret name for a Cluster.
 func clusterSecretName(crName string) string {
 	return resourceName(crName) + "-cluster-secret"
 }
@@ -63,7 +63,7 @@ func podName(crName string, ordinal int) string {
 
 // serviceAccountName returns the ServiceAccount name: the user-supplied override
 // verbatim if set, otherwise the prefixed default.
-func serviceAccountName(ledger *ledgerv1alpha1.LedgerService) string {
+func serviceAccountName(ledger *ledgerv1alpha1.Cluster) string {
 	if ledger.Spec.ServiceAccount.Name != "" {
 		return ledger.Spec.ServiceAccount.Name
 	}

@@ -58,13 +58,13 @@ func (r *LedgerBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	// Validate that the referenced LedgerService exists.
-	var ledgerService ledgerv1alpha1.LedgerService
+	// Validate that the referenced Cluster exists.
+	var cluster ledgerv1alpha1.Cluster
 	if err := r.Get(ctx, types.NamespacedName{
 		Name:      backup.Spec.ServiceRef,
 		Namespace: backup.Namespace,
-	}, &ledgerService); err != nil {
-		return r.setFailed(ctx, &backup, fmt.Sprintf("LedgerService %q not found: %v", backup.Spec.ServiceRef, err))
+	}, &cluster); err != nil {
+		return r.setFailed(ctx, &backup, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ServiceRef, err))
 	}
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)

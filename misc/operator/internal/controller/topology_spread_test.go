@@ -13,9 +13,9 @@ import (
 func TestBuildTopologySpreadConstraints_DefaultsLabelSelector(t *testing.T) {
 	t.Parallel()
 
-	ledger := &ledgerv1alpha1.LedgerService{
+	ledger := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "ns"},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			TopologySpreadConstraints: []corev1.TopologySpreadConstraint{
 				{
 					MaxSkew:           1,
@@ -42,9 +42,9 @@ func TestBuildTopologySpreadConstraints_PreservesUserLabelSelector(t *testing.T)
 	t.Parallel()
 
 	userSelector := &metav1.LabelSelector{MatchLabels: map[string]string{"custom": "true"}}
-	ledger := &ledgerv1alpha1.LedgerService{
+	ledger := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "ns"},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			TopologySpreadConstraints: []corev1.TopologySpreadConstraint{
 				{
 					MaxSkew:           2,
@@ -66,9 +66,9 @@ func TestBuildTopologySpreadConstraints_PreservesUserLabelSelector(t *testing.T)
 func TestBuildTopologySpreadConstraints_DeepCopiesInput(t *testing.T) {
 	t.Parallel()
 
-	ledger := &ledgerv1alpha1.LedgerService{
+	ledger := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "ns"},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			TopologySpreadConstraints: []corev1.TopologySpreadConstraint{
 				{
 					MaxSkew:           1,
@@ -83,5 +83,5 @@ func TestBuildTopologySpreadConstraints_DeepCopiesInput(t *testing.T) {
 	got[0].MaxSkew = 99
 
 	assert.Equal(t, int32(1), ledger.Spec.TopologySpreadConstraints[0].MaxSkew,
-		"mutating the returned slice must not affect the LedgerService spec")
+		"mutating the returned slice must not affect the Cluster spec")
 }

@@ -13,7 +13,7 @@ import (
 
 // LedgerClusterAgent is a cluster-scoped resource that describes an agent with
 // Ed25519 authentication keys. The operator generates the keypair, stores the seed
-// in a Secret, and injects the public key into matching LedgerService clusters.
+// in a Secret, and injects the public key into matching Cluster clusters.
 type LedgerClusterAgent struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -43,12 +43,12 @@ type LedgerClusterAgentSpec struct {
 	// +optional
 	God bool `json:"god,omitempty"`
 
-	// Selector selects which LedgerService resources this agent applies to.
+	// Selector selects which Cluster resources this agent applies to.
 	Selector metav1.LabelSelector `json:"selector"`
 
 	// AdditionalNamespaces is an optional list of extra namespaces where the
 	// agent's Secret must also be created, in addition to the namespaces of
-	// the LedgerServices matched by Selector.
+	// the Clusters matched by Selector.
 	// +optional
 	AdditionalNamespaces []string `json:"additionalNamespaces,omitempty"`
 }
@@ -69,7 +69,7 @@ type LedgerClusterAgentStatus struct {
 	// +optional
 	DistributedSecretRefs []SecretReference `json:"distributedSecretRefs,omitempty"`
 
-	// MatchedServices lists the LedgerService resources matched by the selector.
+	// MatchedServices lists the Cluster resources matched by the selector.
 	// +optional
 	MatchedServices []MatchedService `json:"matchedServices,omitempty"`
 
@@ -91,12 +91,12 @@ type SecretReference struct {
 	Name string `json:"name"`
 }
 
-// MatchedService identifies a namespaced LedgerService matched by the agent selector.
+// MatchedService identifies a namespaced Cluster matched by the agent selector.
 type MatchedService struct {
-	// Namespace of the LedgerService.
+	// Namespace of the Cluster.
 	Namespace string `json:"namespace"`
 
-	// Name of the LedgerService.
+	// Name of the Cluster.
 	Name string `json:"name"`
 }
 

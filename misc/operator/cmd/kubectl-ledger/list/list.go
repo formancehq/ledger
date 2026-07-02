@@ -22,7 +22,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List LedgerService deployments",
+		Short:   "List Cluster deployments",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runList(cmd, opts, &f)
 		},
@@ -50,11 +50,11 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options, f *listFlags) error {
 		}
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerService resources...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Cluster resources...")
 
-	ledgers, err := cmdutil.ListLedgerServices(ctx, crdClient, ns)
+	ledgers, err := cmdutil.ListClusters(ctx, crdClient, ns)
 	if err != nil {
-		spinner.Fail("Failed to list LedgerService resources")
+		spinner.Fail("Failed to list Cluster resources")
 
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
@@ -71,7 +71,7 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options, f *listFlags) error {
 	}
 }
 
-func renderTable(ledgers *ledgerv1alpha1.LedgerServiceList, showNamespace bool) error {
+func renderTable(ledgers *ledgerv1alpha1.ClusterList, showNamespace bool) error {
 	header := []string{"NAME", "REPLICAS", "PHASE", "IMAGE", "URL", "AGE"}
 	if showNamespace {
 		header = append([]string{"NAMESPACE"}, header...)
@@ -94,7 +94,7 @@ func renderTable(ledgers *ledgerv1alpha1.LedgerServiceList, showNamespace bool) 
 	}
 
 	if len(rows) == 0 {
-		pterm.Info.Println("No LedgerService resources found.")
+		pterm.Info.Println("No Cluster resources found.")
 		pterm.Println(pterm.Gray("Create one with: kubectl ledger create"))
 
 		return nil
@@ -106,7 +106,7 @@ func renderTable(ledgers *ledgerv1alpha1.LedgerServiceList, showNamespace bool) 
 	return nil
 }
 
-func formatURL(l *ledgerv1alpha1.LedgerService) string {
+func formatURL(l *ledgerv1alpha1.Cluster) string {
 	if l.Status.Endpoints == nil {
 		return ""
 	}

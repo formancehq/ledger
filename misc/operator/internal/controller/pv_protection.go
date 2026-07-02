@@ -13,7 +13,7 @@ import (
 )
 
 // reconcileVolumeProtection brings the deletion-protection label on this
-// LedgerService's PVCs and their bound PVs in line with the desired protect
+// Cluster's PVCs and their bound PVs in line with the desired protect
 // state (spec.persistence.deletionProtection). When protect is true the
 // `ledger.formance.com/deletion-protection: enabled` label is stamped so the
 // volume deletion-protection ValidatingAdmissionPolicyBinding selects the

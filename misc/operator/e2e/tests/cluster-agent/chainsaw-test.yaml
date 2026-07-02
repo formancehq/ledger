@@ -6,11 +6,11 @@ spec:
   timeouts:
     assert: 5m
   steps:
-    # 1. Deploy LedgerService with labels that the agent will match.
-    - name: Deploy LedgerService
+    # 1. Deploy Cluster with labels that the agent will match.
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -32,7 +32,7 @@ spec:
               echo "OK: no auth-keys ConfigMap"
             timeout: 10s
 
-    # 3. Create LedgerClusterAgent matching the LedgerService.
+    # 3. Create LedgerClusterAgent matching the Cluster.
     - name: Create LedgerClusterAgent
       try:
         - apply:
@@ -66,7 +66,7 @@ spec:
               echo "OK: agent secret is valid"
             timeout: 30s
 
-    # 5. Wait for auth-keys ConfigMap to appear (LedgerService reconciler picks up agent).
+    # 5. Wait for auth-keys ConfigMap to appear (Cluster reconciler picks up agent).
     - name: Verify auth-keys ConfigMap
       try:
         - script:
@@ -117,7 +117,7 @@ spec:
               echo "OK: auth-keys volume is mounted"
             timeout: 30s
 
-    # 7. Verify the agent lists the matched LedgerService.
+    # 7. Verify the agent lists the matched Cluster.
     - name: Verify agent matched services
       try:
         - script:
@@ -125,7 +125,7 @@ spec:
               MATCHED=$(kubectl get ledgerclusteragent e2e-agent -o jsonpath='{.status.matchedServices[*].name}')
               echo "Matched services: $MATCHED"
               echo "$MATCHED" | grep -q 'agent-svc' || { echo "FAIL: agent-svc not in matchedServices"; exit 1; }
-              echo "OK: agent matches LedgerService"
+              echo "OK: agent matches Cluster"
             timeout: 30s
 
     # 8. Cleanup: delete the cluster-scoped agent (not auto-cleaned by namespace deletion).

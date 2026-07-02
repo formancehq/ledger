@@ -49,7 +49,7 @@ func TestReconcile_AgentDistributesToMatchedServiceNamespaces(t *testing.T) {
 	nsB := createTestNamespace(t)
 
 	for _, ns := range []string{nsA, nsB} {
-		ls := newLedgerService("matched-svc", ns)
+		ls := newCluster("matched-svc", ns)
 		ls.Labels = map[string]string{"tier": "multi"}
 		require.NoError(t, k8sClient.Create(ctx, ls))
 	}
@@ -163,7 +163,7 @@ func TestReconcile_AgentNoTargets(t *testing.T) {
 func TestReconcile_AgentMatchesServices(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newLedgerService("matched-svc", ns)
+	ls := newCluster("matched-svc", ns)
 	ls.Labels = map[string]string{"app": "matched"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -184,7 +184,7 @@ func TestReconcile_AgentMatchesServices(t *testing.T) {
 		}
 
 		return false
-	}, "agent should match the LedgerService")
+	}, "agent should match the Cluster")
 }
 
 func TestReconcile_AgentOrphanCleanup(t *testing.T) {
@@ -192,7 +192,7 @@ func TestReconcile_AgentOrphanCleanup(t *testing.T) {
 	nsB := createTestNamespace(t)
 
 	for _, ns := range []string{nsA, nsB} {
-		ls := newLedgerService("cleanup-svc", ns)
+		ls := newCluster("cleanup-svc", ns)
 		ls.Labels = map[string]string{"tier": "cleanup"}
 		require.NoError(t, k8sClient.Create(ctx, ls))
 	}
@@ -210,7 +210,7 @@ func TestReconcile_AgentOrphanCleanup(t *testing.T) {
 	}, "both replicas should be created initially")
 
 	// Remove the matching label from the service in nsB so it leaves the selector scope.
-	lsB := &ledgerv1alpha1.LedgerService{}
+	lsB := &ledgerv1alpha1.Cluster{}
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: nsB, Name: "cleanup-svc"}, lsB))
 	lsB.Labels = map[string]string{"tier": "elsewhere"}
 	require.NoError(t, k8sClient.Update(ctx, lsB))

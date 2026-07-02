@@ -13,15 +13,15 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-func newTestLedgerService(name string, np *ledgerv1alpha1.NetworkPolicySpec) *ledgerv1alpha1.LedgerService {
+func newTestCluster(name string, np *ledgerv1alpha1.NetworkPolicySpec) *ledgerv1alpha1.Cluster {
 	replicas := int32(3)
 
-	return &ledgerv1alpha1.LedgerService{
+	return &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: "default",
 		},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			Replicas:      &replicas,
 			NetworkPolicy: np,
 		},
@@ -31,10 +31,10 @@ func newTestLedgerService(name string, np *ledgerv1alpha1.NetworkPolicySpec) *le
 func TestBuildNetworkPolicySpec_DefaultCIDR(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("test", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("test", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	spec := buildNetworkPolicySpec(ls)
 
-	// PodSelector matches the LedgerService.
+	// PodSelector matches the Cluster.
 	assert.Equal(t, "ledger", spec.PodSelector.MatchLabels[labelName])
 	assert.Equal(t, "test", spec.PodSelector.MatchLabels[labelInstance])
 
@@ -57,7 +57,7 @@ func TestBuildNetworkPolicySpec_CustomCIDR(t *testing.T) {
 	t.Parallel()
 
 	custom := []string{"10.0.0.0/8", "100.64.0.0/10"}
-	ls := newTestLedgerService("custom", &ledgerv1alpha1.NetworkPolicySpec{
+	ls := newTestCluster("custom", &ledgerv1alpha1.NetworkPolicySpec{
 		Enabled:            true,
 		ExternalCIDRExcept: custom,
 	})
@@ -70,7 +70,7 @@ func TestBuildNetworkPolicySpec_CustomCIDR(t *testing.T) {
 func TestBuildNetworkPolicySpec_InterNodeRule(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("inter", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("inter", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	spec := buildNetworkPolicySpec(ls)
 
 	interNode := spec.Egress[0]
@@ -93,7 +93,7 @@ func TestBuildNetworkPolicySpec_InterNodeRule(t *testing.T) {
 func TestBuildNetworkPolicySpec_InterNodeCustomPorts(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("ports", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("ports", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	ls.Spec.Service.RaftPort = 17777
 	ls.Spec.Service.GrpcPort = 18888
 	ls.Spec.Service.HttpPort = 19000
@@ -109,7 +109,7 @@ func TestBuildNetworkPolicySpec_InterNodeCustomPorts(t *testing.T) {
 func TestBuildNetworkPolicySpec_DNSRule(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("dns", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("dns", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	spec := buildNetworkPolicySpec(ls)
 
 	dns := spec.Egress[1]
@@ -134,7 +134,7 @@ func TestBuildNetworkPolicySpec_DNSRule(t *testing.T) {
 func TestBuildNetworkPolicySpec_OTELDefaultPorts(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{
 		Traces: &ledgerv1alpha1.TracesConfig{Enabled: new(true)},
 	}
@@ -160,7 +160,7 @@ func TestBuildNetworkPolicySpec_OTELDefaultPorts(t *testing.T) {
 func TestBuildNetworkPolicySpec_OTELCustomPort(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("otel-custom", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("otel-custom", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{
 		Traces: &ledgerv1alpha1.TracesConfig{
 			Enabled: new(true),
@@ -181,7 +181,7 @@ func TestBuildNetworkPolicySpec_OTELCustomPort(t *testing.T) {
 func TestBuildNetworkPolicySpec_NoOTELWithoutMonitoring(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("no-otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("no-otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	spec := buildNetworkPolicySpec(ls)
 
 	// Only the base 3 egress rules.
@@ -208,7 +208,7 @@ func TestBuildNetworkPolicySpec_AdditionalEgress(t *testing.T) {
 		},
 	}
 
-	ls := newTestLedgerService("additional", &ledgerv1alpha1.NetworkPolicySpec{
+	ls := newTestCluster("additional", &ledgerv1alpha1.NetworkPolicySpec{
 		Enabled:          true,
 		AdditionalEgress: additionalRules,
 	})
@@ -229,7 +229,7 @@ func TestBuildNetworkPolicySpec_AdditionalEgress(t *testing.T) {
 func TestBuildNetworkPolicySpec_PyroscopePort(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("pyro", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("pyro", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{
 		Pyroscope: &ledgerv1alpha1.PyroscopeConfig{
 			Enabled:       true,
@@ -251,7 +251,7 @@ func TestBuildNetworkPolicySpec_PyroscopePort(t *testing.T) {
 func TestBuildNetworkPolicySpec_PyroscopeAndOTELPorts(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("pyro-otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("pyro-otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{
 		Traces: &ledgerv1alpha1.TracesConfig{
 			Enabled: new(true),
@@ -278,7 +278,7 @@ func TestBuildNetworkPolicySpec_PyroscopeAndOTELPorts(t *testing.T) {
 func TestBuildNetworkPolicySpec_OTELWithMonitoring(t *testing.T) {
 	t.Parallel()
 
-	ls := newTestLedgerService("with-monitoring", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls := newTestCluster("with-monitoring", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{
 		Traces: &ledgerv1alpha1.TracesConfig{
 			Enabled: new(true),

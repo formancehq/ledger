@@ -3,7 +3,7 @@
        actually being present so a default install/upgrade against an older
        cluster does not fail with "no matches for kind ValidatingAdmissionPolicy".
        On such a cluster the objects are silently skipped (see NOTES.txt) and any
-       LedgerService with deletionProtection=true surfaces the runtime
+       Cluster with deletionProtection=true surfaces the runtime
        DeletionProtectionInactive warning instead. `helm template` offline uses
        Helm's built-in capability list; pass
        --api-versions admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy

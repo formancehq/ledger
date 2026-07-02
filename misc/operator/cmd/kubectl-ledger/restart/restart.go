@@ -22,8 +22,8 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "restart [name]",
 		Aliases: []string{"rollout"},
-		Short:   "Rolling restart of a LedgerService deployment",
-		Long:    "Triggers a rolling restart by patching podAnnotations on the LedgerService CR. The operator detects the spec hash change and performs a StatefulSet rolling update.",
+		Short:   "Rolling restart of a Cluster deployment",
+		Long:    "Triggers a rolling restart by patching podAnnotations on the Cluster CR. The operator detects the spec hash change and performs a StatefulSet rolling update.",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRestart(cmd, opts, &f, args)
@@ -38,7 +38,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 func runRestart(cmd *cobra.Command, opts *cmdutil.Options, f *restartFlags, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveClusterName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -48,7 +48,7 @@ func runRestart(cmd *cobra.Command, opts *cmdutil.Options, f *restartFlags, args
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
+	ledger, err := cmdutil.GetCluster(ctx, crdClient, ns, name)
 	if err != nil {
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
@@ -57,7 +57,7 @@ func runRestart(cmd *cobra.Command, opts *cmdutil.Options, f *restartFlags, args
 
 	if !f.yes {
 		confirm, err := cmdutil.PromptConfirm(
-			fmt.Sprintf("Rolling restart LedgerService %s?", pterm.Cyan(name)),
+			fmt.Sprintf("Rolling restart Cluster %s?", pterm.Cyan(name)),
 			true,
 		)
 		if err != nil {
@@ -79,12 +79,12 @@ func runRestart(cmd *cobra.Command, opts *cmdutil.Options, f *restartFlags, args
 	spinner, _ := pterm.DefaultSpinner.Start("Triggering rolling restart...")
 
 	if err := crdClient.Patch(ctx, ledger, patch); err != nil {
-		spinner.Fail("Failed to restart LedgerService")
+		spinner.Fail("Failed to restart Cluster")
 
 		return fmt.Errorf("restarting ledger %q: %w", name, err)
 	}
 
-	spinner.Success("Rolling restart triggered for LedgerService " + pterm.Cyan(name))
+	spinner.Success("Rolling restart triggered for Cluster " + pterm.Cyan(name))
 
 	return nil
 }

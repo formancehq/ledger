@@ -23,7 +23,7 @@ const (
 	tlsModeRequired = "required"
 )
 
-// TLSMigrationPhase values surfaced on LedgerService.Status.TLSMigrationPhase.
+// TLSMigrationPhase values surfaced on Cluster.Status.TLSMigrationPhase.
 const (
 	TLSPhaseDisabled                = "disabled"
 	TLSPhaseTransitioningToRequired = "transitioning-to-required"
@@ -32,7 +32,7 @@ const (
 )
 
 // desiredTLSMode maps the user-facing bool to the strict target mode.
-func desiredTLSMode(ledger *ledgerv1alpha1.LedgerService) string {
+func desiredTLSMode(ledger *ledgerv1alpha1.Cluster) string {
 	if ledger.Spec.TLS != nil && ledger.Spec.TLS.Enabled {
 		return tlsModeRequired
 	}
@@ -41,7 +41,7 @@ func desiredTLSMode(ledger *ledgerv1alpha1.LedgerService) string {
 }
 
 // fetchTLSMode returns the TLS_MODE currently in effect on the running pods of
-// the named LedgerService, by reading the TLS_MODE env var from the
+// the named Cluster, by reading the TLS_MODE env var from the
 // StatefulSet pod template. Returns an empty string (and no error) if the
 // StatefulSet does not exist yet; the caller's exec is meaningless in that
 // case and will fail on the pod lookup, but this keeps the bootstrap path
@@ -160,7 +160,7 @@ func tlsMigrationPhase(desired, target string) string {
 
 // fetchExistingStatefulSet retrieves the live StatefulSet for the ledger,
 // returning (nil, nil) if it doesn't exist yet (bootstrap case).
-func (r *LedgerServiceReconciler) fetchExistingStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) (*appsv1.StatefulSet, error) {
+func (r *ClusterReconciler) fetchExistingStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (*appsv1.StatefulSet, error) {
 	sts := &appsv1.StatefulSet{}
 
 	err := r.Get(ctx, types.NamespacedName{Name: resourceName(ledger.Name), Namespace: ledger.Namespace}, sts)

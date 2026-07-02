@@ -7047,7 +7047,7 @@ type PostgresAwsIamAuth struct {
 	// set, the mirror calls sts:AssumeRole on this ARN and signs the RDS token
 	// with the assumed credentials, decoupling the per-mirror IAM identity from
 	// the pod's ambient credentials. Enables multi-account / multi-tenant
-	// mirrors from a single LedgerService whose base role only needs
+	// mirrors from a single Cluster whose base role only needs
 	// sts:AssumeRole on these targets (no direct rds-db:connect grant).
 	AssumeRoleArn string `protobuf:"bytes,2,opt,name=assume_role_arn,json=assumeRoleArn,proto3" json:"assume_role_arn,omitempty"`
 	unknownFields protoimpl.UnknownFields

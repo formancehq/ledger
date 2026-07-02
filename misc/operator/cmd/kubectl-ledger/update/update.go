@@ -18,8 +18,8 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update [name]",
-		Short: "Update a LedgerService configuration",
-		Long:  "Update fields of an existing LedgerService.\nUse --set for all fields (see 'explain' for available fields).\nExample: kubectl-ledger update my-ledger --set replicas=5 --set debug=true",
+		Short: "Update a Cluster configuration",
+		Long:  "Update fields of an existing Cluster.\nUse --set for all fields (see 'explain' for available fields).\nExample: kubectl-ledger update my-ledger --set replicas=5 --set debug=true",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdate(cmd, opts, setValues, args)
@@ -34,7 +34,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 func runUpdate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveClusterName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func runUpdate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, ar
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
+	ledger, err := cmdutil.GetCluster(ctx, crdClient, ns, name)
 	if err != nil {
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
@@ -102,7 +102,7 @@ func runUpdate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, ar
 	}
 	cmdutil.RenderTable([]string{"FIELD", "CHANGE"}, rows)
 
-	ok, err := cmdutil.PromptConfirm(fmt.Sprintf("Apply changes to LedgerService %s?", name), true)
+	ok, err := cmdutil.PromptConfirm(fmt.Sprintf("Apply changes to Cluster %s?", name), true)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func runUpdate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, ar
 		return fmt.Errorf("patching ledger %q: %w", name, err)
 	}
 
-	pterm.Success.Printfln("LedgerService %s updated", name)
+	pterm.Success.Printfln("Cluster %s updated", name)
 
 	return nil
 }

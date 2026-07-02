@@ -17,8 +17,8 @@ import (
 func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	// Create LedgerService first so the agent has a namespace to distribute into.
-	ls := newLedgerService("authcm-svc", ns)
+	// Create Cluster first so the agent has a namespace to distribute into.
+	ls := newCluster("authcm-svc", ns)
 	ls.Labels = map[string]string{"tier": "authcm"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -64,8 +64,8 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	// Create LedgerService first so the agent has a namespace to distribute into.
-	ls := newLedgerService("authsts-svc", ns)
+	// Create Cluster first so the agent has a namespace to distribute into.
+	ls := newCluster("authsts-svc", ns)
 	ls.Labels = map[string]string{"tier": "authsts"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -124,8 +124,8 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 func TestReconcile_NoAgentsNoConfigMap(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	// Create LedgerService without matching agents.
-	ls := newLedgerService("no-agents-svc", ns)
+	// Create Cluster without matching agents.
+	ls := newCluster("no-agents-svc", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Wait for StatefulSet to confirm reconciliation ran.
@@ -152,8 +152,8 @@ func TestReconcile_NoAgentsNoConfigMap(t *testing.T) {
 func TestReconcile_AuthKeysHashAnnotation(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	// Create LedgerService first so the agent has a namespace to distribute into.
-	ls := newLedgerService("authhash-svc", ns)
+	// Create Cluster first so the agent has a namespace to distribute into.
+	ls := newCluster("authhash-svc", ns)
 	ls.Labels = map[string]string{"tier": "authhash"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 

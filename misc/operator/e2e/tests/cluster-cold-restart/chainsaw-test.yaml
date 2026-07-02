@@ -19,10 +19,10 @@ spec:
     assert: 5m
   steps:
     # 1. Deploy a 3-replica cluster and wait until it is fully Ready.
-    - name: Deploy LedgerService
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1

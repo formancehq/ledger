@@ -1,0 +1,63 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: ledgerservice-migration
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Deploy legacy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+
+    - name: Verify Cluster was auto-created with the same name
+      try:
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Cluster
+              metadata:
+                name: migration-svc
+                annotations:
+                  ledger.formance.com/migrated-from: LedgerService
+
+    - name: Verify LedgerService is annotated as migrated
+      try:
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: migration-svc
+                annotations:
+                  ledger.formance.com/migrated-to: migration-svc
+              status:
+                (conditions[?type == 'Migrated']):
+                  - status: "True"
+                    reason: MigratedToCluster
+
+    - name: Verify derived StatefulSet is created under the same name
+      try:
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-migration-svc
+              status:
+                readyReplicas: 1
+
+    - name: Verify StatefulSet ownerReference points to the Cluster (not the LedgerService)
+      try:
+        - script:
+            content: |
+              set -eu
+              OWNER=$(kubectl -n $NAMESPACE get statefulset ledger-migration-svc \
+                -o jsonpath='{.metadata.ownerReferences[?(@.controller==true)].kind}')
+              if [ "$OWNER" != "Cluster" ]; then
+                echo "FAIL: StatefulSet controller ownerRef is $OWNER, expected Cluster"
+                exit 1
+              fi
+              echo "OK: StatefulSet is owned by Cluster"
+            timeout: 30s

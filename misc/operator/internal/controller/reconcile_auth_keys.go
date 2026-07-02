@@ -20,7 +20,7 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-// agentKeyInfo holds the resolved key information for an agent matching a LedgerService.
+// agentKeyInfo holds the resolved key information for an agent matching a Cluster.
 type agentKeyInfo struct {
 	// ConfigMapPrefix differentiates agent types in the ConfigMap keys.
 	ConfigMapPrefix string
@@ -44,10 +44,10 @@ type authKeyEntry struct {
 	God           bool     `json:"god,omitempty"`
 }
 
-// reconcileAuthKeys resolves all LedgerClusterAgents matching the given LedgerService,
+// reconcileAuthKeys resolves all LedgerClusterAgents matching the given Cluster,
 // creates/updates (or deletes) a ConfigMap with aggregated auth keys, and returns the
 // list of agent key info for use by the StatefulSet reconciler.
-func (r *LedgerServiceReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) ([]agentKeyInfo, error) {
+func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]agentKeyInfo, error) {
 	logger := log.FromContext(ctx)
 
 	// Collect keys from cluster-scoped LedgerClusterAgents.
@@ -132,8 +132,8 @@ func (r *LedgerServiceReconciler) reconcileAuthKeys(ctx context.Context, ledger 
 }
 
 // collectClusterAgentKeys lists all LedgerClusterAgents and returns keys for those
-// whose selector matches the given LedgerService.
-func (r *LedgerServiceReconciler) collectClusterAgentKeys(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) ([]agentKeyInfo, error) {
+// whose selector matches the given Cluster.
+func (r *ClusterReconciler) collectClusterAgentKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]agentKeyInfo, error) {
 	logger := log.FromContext(ctx)
 
 	var agentList ledgerv1alpha1.LedgerClusterAgentList
@@ -175,7 +175,7 @@ func (r *LedgerServiceReconciler) collectClusterAgentKeys(ctx context.Context, l
 
 // readAgentKeyFromSecret reads the public key from an agent's secret and returns
 // an agentKeyInfo. Returns (info, false, nil) if the secret is not yet ready.
-func (r *LedgerServiceReconciler) readAgentKeyFromSecret(
+func (r *ClusterReconciler) readAgentKeyFromSecret(
 	ctx context.Context,
 	agentName string,
 	secretRef ledgerv1alpha1.SecretReference,
@@ -224,20 +224,20 @@ func (r *LedgerServiceReconciler) readAgentKeyFromSecret(
 	}, true, nil
 }
 
-// ledgerClusterAgentToLedgerServices maps a LedgerClusterAgent change to all
-// LedgerServices matched by its selector, triggering their re-reconciliation.
-func (r *LedgerServiceReconciler) ledgerClusterAgentToLedgerServices(ctx context.Context, obj client.Object) []ctrl.Request {
+// ledgerClusterAgentToClusters maps a LedgerClusterAgent change to all
+// Clusters matched by its selector, triggering their re-reconciliation.
+func (r *ClusterReconciler) ledgerClusterAgentToClusters(ctx context.Context, obj client.Object) []ctrl.Request {
 	agent, ok := obj.(*ledgerv1alpha1.LedgerClusterAgent)
 	if !ok {
 		return nil
 	}
 
-	return r.ledgerServicesMatchingSelector(ctx, &agent.Spec.Selector, "")
+	return r.clustersMatchingSelector(ctx, &agent.Spec.Selector, "")
 }
 
-// ledgerServicesMatchingSelector lists LedgerServices matching the given label selector.
+// clustersMatchingSelector lists Clusters matching the given label selector.
 // If namespace is non-empty, the search is restricted to that namespace.
-func (r *LedgerServiceReconciler) ledgerServicesMatchingSelector(ctx context.Context, ls *metav1.LabelSelector, namespace string) []ctrl.Request {
+func (r *ClusterReconciler) clustersMatchingSelector(ctx context.Context, ls *metav1.LabelSelector, namespace string) []ctrl.Request {
 	selector, err := metav1.LabelSelectorAsSelector(ls)
 	if err != nil {
 		log.FromContext(ctx).Error(err, "invalid label selector on agent")
@@ -250,9 +250,9 @@ func (r *LedgerServiceReconciler) ledgerServicesMatchingSelector(ctx context.Con
 		opts.Namespace = namespace
 	}
 
-	var ledgers ledgerv1alpha1.LedgerServiceList
+	var ledgers ledgerv1alpha1.ClusterList
 	if err := r.List(ctx, &ledgers, opts); err != nil {
-		log.FromContext(ctx).Error(err, "failed to list LedgerServices for agent mapping")
+		log.FromContext(ctx).Error(err, "failed to list Clusters for agent mapping")
 
 		return nil
 	}

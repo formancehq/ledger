@@ -39,7 +39,7 @@ func main() {
 	defer conn.Close()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
-	lsClient := dynClient.Resource(internal.LedgerServiceGVR).Namespace(internal.LedgerServiceNamespace())
+	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	for {
 		select {
@@ -57,7 +57,7 @@ func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClien
 
 	currentReplicas, err := internal.GetCurrentReplicas(ctx, lsClient, "ledger")
 	if err != nil {
-		log.Printf("scaling: cannot get LedgerService: %s", err)
+		log.Printf("scaling: cannot get Cluster: %s", err)
 		return
 	}
 
@@ -71,7 +71,7 @@ func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClien
 		next := nextStep(currentReplicas, target)
 
 		details := internal.Details{
-			"ledgerService":   "ledger",
+			"cluster":   "ledger",
 			"currentReplicas": currentReplicas,
 			"stepTarget":      next,
 			"finalTarget":     target,
@@ -80,7 +80,7 @@ func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClien
 		log.Printf("scaling: %d → %d (final target %d)", currentReplicas, next, target)
 
 		err = internal.PatchReplicas(ctx, lsClient, "ledger", next)
-		assert.Sometimes(err == nil, "should be able to patch LedgerService replicas", details.With(internal.Details{"error": err}))
+		assert.Sometimes(err == nil, "should be able to patch Cluster replicas", details.With(internal.Details{"error": err}))
 
 		if err != nil {
 			log.Printf("scaling: patch failed: %s", err)

@@ -18,7 +18,7 @@ import (
 
 func TestReconcile_HostPathDataVolume(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("hp-data", ns)
+	ls := newCluster("hp-data", ns)
 	ls.Spec.Persistence.Data.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{
 		Path: "/mnt/nvme0/data",
 	}
@@ -77,7 +77,7 @@ func TestReconcile_HostPathDataVolume(t *testing.T) {
 
 func TestReconcile_HostPathAllVolumes(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("hp-all", ns)
+	ls := newCluster("hp-all", ns)
 	ls.Spec.Persistence.WAL.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{
 		Path: "/mnt/nvme0/wal",
 	}
@@ -133,7 +133,7 @@ func TestReconcile_HostPathAllVolumes(t *testing.T) {
 
 func TestReconcile_HostPathValidation_MutualExclusion(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("hp-invalid", ns)
+	ls := newCluster("hp-invalid", ns)
 	ls.Spec.Persistence.Data.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{
 		Path: "/mnt/nvme0/data",
 	}
@@ -141,7 +141,7 @@ func TestReconcile_HostPathValidation_MutualExclusion(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Should fail validation
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "hp-invalid", Namespace: ns}, updated); err != nil {
 			return false
@@ -161,13 +161,13 @@ func TestReconcile_HostPathValidation_MutualExclusion(t *testing.T) {
 
 func TestReconcile_HostPathValidation_EmptyPath(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("hp-nopath", ns)
+	ls := newCluster("hp-nopath", ns)
 	ls.Spec.Persistence.Data.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{
 		Path: "", // empty path
 	}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "hp-nopath", Namespace: ns}, updated); err != nil {
 			return false
@@ -182,14 +182,14 @@ func TestReconcile_HostPathValidation_EmptyPath(t *testing.T) {
 
 func TestReconcile_HostPathSchedulingWarning(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("hp-warn", ns)
+	ls := newCluster("hp-warn", ns)
 	ls.Spec.Persistence.Data.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{
 		Path: "/mnt/nvme0/data",
 	}
 	// No nodeSelector or affinity → should get a warning
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "hp-warn", Namespace: ns}, updated); err != nil {
 			return false
@@ -209,7 +209,7 @@ func TestReconcile_HostPathSchedulingWarning(t *testing.T) {
 
 func TestReconcile_HostPathNoWarningWithNodeSelector(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("hp-nowarn", ns)
+	ls := newCluster("hp-nowarn", ns)
 	ls.Spec.Persistence.Data.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{
 		Path: "/mnt/nvme0/data",
 	}
@@ -222,7 +222,7 @@ func TestReconcile_HostPathNoWarningWithNodeSelector(t *testing.T) {
 		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-hp-nowarn", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "hp-nowarn", Namespace: ns}, updated))
 
 	// HostPathSchedulingWarning should NOT be set

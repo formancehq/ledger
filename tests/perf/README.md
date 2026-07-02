@@ -36,7 +36,7 @@ tests/perf/
 
 The Pulumi program creates:
 1. A **ConfigMap** with the k6 test archive (built automatically via `k6 archive`)
-2. A **Benchmark CR** (`benchmark.formance.com/v1alpha1`) with LedgerService/Ledger resources and the TestRun spec
+2. A **Benchmark CR** (`benchmark.formance.com/v1alpha1`) with Cluster/Ledger resources and the TestRun spec
 
 ### Deploy
 
@@ -76,7 +76,7 @@ config:
     resources:
       - manifest:
           apiVersion: ledger.formance.com/v1alpha1
-          kind: LedgerService
+          kind: Cluster
           spec: { ... }
         readyCondition:
           fieldPath: status.phase

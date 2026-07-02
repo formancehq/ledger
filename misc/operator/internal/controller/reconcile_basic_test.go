@@ -13,9 +13,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func TestReconcile_MinimalLedgerService(t *testing.T) {
+func TestReconcile_MinimalCluster(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("basic", ns)
+	ls := newCluster("basic", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Wait for StatefulSet to appear (proves reconciliation ran)
@@ -90,7 +90,7 @@ func TestReconcile_MinimalLedgerService(t *testing.T) {
 
 func TestReconcile_GrpcServiceNotCreatedByDefault(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("no-grpc", ns)
+	ls := newCluster("no-grpc", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Wait for main service to appear
@@ -107,7 +107,7 @@ func TestReconcile_GrpcServiceNotCreatedByDefault(t *testing.T) {
 func TestReconcile_StatefulSetSpec(t *testing.T) {
 	ns := createTestNamespace(t)
 	replicas := int32(5)
-	ls := newLedgerService("sts-spec", ns)
+	ls := newCluster("sts-spec", ns)
 	ls.Spec.Replicas = &replicas
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -137,11 +137,11 @@ func TestReconcile_StatefulSetSpec(t *testing.T) {
 func requireOwnerRef(t *testing.T, refs []metav1.OwnerReference, name string) {
 	t.Helper()
 	for _, ref := range refs {
-		if ref.Name == name && ref.Kind == "LedgerService" {
+		if ref.Name == name && ref.Kind == "Cluster" {
 			return
 		}
 	}
-	t.Errorf("expected ownerReference to LedgerService %q, got %v", name, refs)
+	t.Errorf("expected ownerReference to Cluster %q, got %v", name, refs)
 }
 
 func requirePort(t *testing.T, ports []corev1.ServicePort, name string, port int32) {

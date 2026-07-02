@@ -17,7 +17,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "get [name]",
 		Aliases: []string{"describe", "show", "inspect", "status", "st"},
-		Short:   "Show details of a LedgerService deployment",
+		Short:   "Show details of a Cluster deployment",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd, opts, args)
@@ -28,7 +28,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveClusterName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -43,11 +43,11 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating clientset: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerService details...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Cluster details...")
 
-	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
+	ledger, err := cmdutil.GetCluster(ctx, crdClient, ns, name)
 	if err != nil {
-		spinner.Fail("Failed to get LedgerService")
+		spinner.Fail("Failed to get Cluster")
 
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
@@ -87,7 +87,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	)
 
 	// Pods section
-	pods, err := cmdutil.LedgerServicePods(ctx, cs, ns, name)
+	pods, err := cmdutil.ClusterPods(ctx, cs, ns, name)
 	if err != nil {
 		return fmt.Errorf("listing pods: %w", err)
 	}
@@ -110,7 +110,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 
 	// PVCs section
-	pvcs, err := cmdutil.LedgerServicePVCs(ctx, cs, ns, name)
+	pvcs, err := cmdutil.ClusterPVCs(ctx, cs, ns, name)
 	if err != nil {
 		return fmt.Errorf("listing PVCs: %w", err)
 	}
@@ -139,7 +139,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 
 	// Services section
-	svcs, err := cmdutil.LedgerServices(ctx, cs, ns, name)
+	svcs, err := cmdutil.Clusters(ctx, cs, ns, name)
 	if err != nil {
 		return fmt.Errorf("listing services: %w", err)
 	}

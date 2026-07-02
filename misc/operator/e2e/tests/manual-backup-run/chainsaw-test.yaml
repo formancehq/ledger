@@ -16,10 +16,10 @@ spec:
                 -- mb --ignore-existing minio/e2e-manual-backup
             timeout: 60s
 
-    - name: Deploy LedgerService
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1

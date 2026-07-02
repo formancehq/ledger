@@ -29,7 +29,7 @@ import (
 // StatefulSet status churn.
 const volumeBindRequeueInterval = 10 * time.Second
 
-func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) (ctrl.Result, error) {
+func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, agents []agentKeyInfo) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	name := resourceName(ledger.Name)
 
@@ -203,7 +203,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 	return ctrl.Result{}, nil
 }
 
-func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo, targetTLSMode string) appsv1.StatefulSetSpec {
+func buildStatefulSetSpec(ledger *ledgerv1alpha1.Cluster, specHash string, agents []agentKeyInfo, targetTLSMode string) appsv1.StatefulSetSpec {
 	replicas := int32(3)
 	if ledger.Spec.Replicas != nil {
 		replicas = *ledger.Spec.Replicas
@@ -236,7 +236,7 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string,
 	return spec
 }
 
-func buildRetentionPolicy(ledger *ledgerv1alpha1.LedgerService) *appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy {
+func buildRetentionPolicy(ledger *ledgerv1alpha1.Cluster) *appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy {
 	whenScaled := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	whenDeleted := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 
@@ -256,7 +256,7 @@ func buildRetentionPolicy(ledger *ledgerv1alpha1.LedgerService) *appsv1.Stateful
 	}
 }
 
-func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo, targetTLSMode string) corev1.PodTemplateSpec {
+func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, agents []agentKeyInfo, targetTLSMode string) corev1.PodTemplateSpec {
 	spec := &ledger.Spec
 
 	// Pod annotations with spec hash for rolling updates
@@ -469,7 +469,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 	}
 }
 
-func buildAffinity(ledger *ledgerv1alpha1.LedgerService) *corev1.Affinity {
+func buildAffinity(ledger *ledgerv1alpha1.Cluster) *corev1.Affinity {
 	var affinity *corev1.Affinity
 
 	if ledger.Spec.Affinity != nil {
@@ -529,8 +529,8 @@ func buildAffinity(ledger *ledgerv1alpha1.LedgerService) *corev1.Affinity {
 
 // buildTopologySpreadConstraints returns a deep-copied list of the user-provided
 // topologySpreadConstraints with a default LabelSelector pointing to the
-// LedgerService selector when the user did not supply one.
-func buildTopologySpreadConstraints(ledger *ledgerv1alpha1.LedgerService) []corev1.TopologySpreadConstraint {
+// Cluster selector when the user did not supply one.
+func buildTopologySpreadConstraints(ledger *ledgerv1alpha1.Cluster) []corev1.TopologySpreadConstraint {
 	in := ledger.Spec.TopologySpreadConstraints
 	out := make([]corev1.TopologySpreadConstraint, len(in))
 	selector := selectorLabels(ledger)
@@ -550,7 +550,7 @@ func buildTopologySpreadConstraints(ledger *ledgerv1alpha1.LedgerService) []core
 // deriving the Raft NODE_ID and choosing between bootstrap / join / restore
 // for the cluster startup flag. Everything else is plain configuration and
 // is passed through env vars built by buildEnvVars.
-func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
+func buildCommand(ledger *ledgerv1alpha1.Cluster) []string {
 	spec := &ledger.Spec
 
 	var clusterLogic string
@@ -603,7 +603,7 @@ exec ./ledger-server run --node-id $NODE_ID $CLUSTER_FLAG`, clusterLogic)
 	return []string{"/bin/sh", "-c", script}
 }
 
-func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.PersistentVolumeClaim {
+func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.Cluster) []corev1.PersistentVolumeClaim {
 	type vctDef struct {
 		name string
 		spec *ledgerv1alpha1.VolumeSpec
