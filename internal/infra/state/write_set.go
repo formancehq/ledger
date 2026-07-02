@@ -258,7 +258,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 
 	// Update per-ledger attribute counters in boundaries before merging them.
-	b.updateBoundaryCounters(volumeUpdates, partResult.purged, partResult.transient, metadataUpdates, metadataDeletions)
+	// metadataUpdates / metadataDeletions no longer contribute to any
+	// boundary counter (see write_set_counters.go) — they still flow through
+	// to the cache flush below.
+	b.updateBoundaryCounters(volumeUpdates, partResult.purged, partResult.transient)
 
 	boundaryUpdates, boundaryDeletions, err := b.Derived.Boundaries.Merge()
 	if err != nil {

@@ -3482,7 +3482,6 @@ func (m *LedgerStats) CloneVT() *LedgerStats {
 	r := new(LedgerStats)
 	r.TransactionCount = m.TransactionCount
 	r.VolumeCount = m.VolumeCount
-	r.MetadataCount = m.MetadataCount
 	r.ReferenceCount = m.ReferenceCount
 	r.PostingCount = m.PostingCount
 	r.EphemeralEvictedCount = m.EphemeralEvictedCount
@@ -9413,9 +9412,6 @@ func (this *LedgerStats) EqualVT(that *LedgerStats) bool {
 		return false
 	}
 	if this.VolumeCount != that.VolumeCount {
-		return false
-	}
-	if this.MetadataCount != that.MetadataCount {
 		return false
 	}
 	if this.ReferenceCount != that.ReferenceCount {
@@ -18451,12 +18447,6 @@ func (m *LedgerStats) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x21
 	}
-	if m.MetadataCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataCount))
-		i--
-		dAtA[i] = 0x19
-	}
 	if m.VolumeCount != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.VolumeCount))
@@ -22690,9 +22680,6 @@ func (m *LedgerStats) SizeVT() (n int) {
 		n += 9
 	}
 	if m.VolumeCount != 0 {
-		n += 9
-	}
-	if m.MetadataCount != 0 {
 		n += 9
 	}
 	if m.ReferenceCount != 0 {
@@ -43535,16 +43522,6 @@ func (m *LedgerStats) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.VolumeCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MetadataCount", wireType)
-			}
-			m.MetadataCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MetadataCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 4:
 			if wireType != 1 {

@@ -9919,7 +9919,6 @@ type LedgerStats struct {
 	state                   protoimpl.MessageState `protogen:"open.v1"`
 	TransactionCount        uint64                 `protobuf:"fixed64,1,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
 	VolumeCount             uint64                 `protobuf:"fixed64,2,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
-	MetadataCount           uint64                 `protobuf:"fixed64,3,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
 	ReferenceCount          uint64                 `protobuf:"fixed64,4,opt,name=reference_count,json=referenceCount,proto3" json:"reference_count,omitempty"`
 	PostingCount            uint64                 `protobuf:"fixed64,5,opt,name=posting_count,json=postingCount,proto3" json:"posting_count,omitempty"`
 	EphemeralEvictedCount   uint64                 `protobuf:"fixed64,6,opt,name=ephemeral_evicted_count,json=ephemeralEvictedCount,proto3" json:"ephemeral_evicted_count,omitempty"`
@@ -9971,13 +9970,6 @@ func (x *LedgerStats) GetTransactionCount() uint64 {
 func (x *LedgerStats) GetVolumeCount() uint64 {
 	if x != nil {
 		return x.VolumeCount
-	}
-	return 0
-}
-
-func (x *LedgerStats) GetMetadataCount() uint64 {
-	if x != nil {
-		return x.MetadataCount
 	}
 	return 0
 }
@@ -11325,11 +11317,10 @@ const file_common_proto_rawDesc = "" +
 	"\bprevious\x18\x03 \x01(\tR\bprevious\x12\x12\n" +
 	"\x04next\x18\x04 \x01(\tR\x04next\x122\n" +
 	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
-	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\"\xb8\x03\n" +
+	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\"\x91\x03\n" +
 	"\vLedgerStats\x12+\n" +
 	"\x11transaction_count\x18\x01 \x01(\x06R\x10transactionCount\x12!\n" +
-	"\fvolume_count\x18\x02 \x01(\x06R\vvolumeCount\x12%\n" +
-	"\x0emetadata_count\x18\x03 \x01(\x06R\rmetadataCount\x12'\n" +
+	"\fvolume_count\x18\x02 \x01(\x06R\vvolumeCount\x12'\n" +
 	"\x0freference_count\x18\x04 \x01(\x06R\x0ereferenceCount\x12#\n" +
 	"\rposting_count\x18\x05 \x01(\x06R\fpostingCount\x126\n" +
 	"\x17ephemeral_evicted_count\x18\x06 \x01(\x06R\x15ephemeralEvictedCount\x120\n" +

@@ -4886,7 +4886,6 @@ type LedgerBoundaries struct {
 	NextTransactionId uint64                 `protobuf:"fixed64,1,opt,name=next_transaction_id,json=nextTransactionId,proto3" json:"next_transaction_id,omitempty"`
 	NextLogId         uint64                 `protobuf:"fixed64,2,opt,name=next_log_id,json=nextLogId,proto3" json:"next_log_id,omitempty"`
 	VolumeCount       uint64                 `protobuf:"fixed64,3,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
-	MetadataCount     uint64                 `protobuf:"fixed64,4,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -4938,13 +4937,6 @@ func (x *LedgerBoundaries) GetNextLogId() uint64 {
 func (x *LedgerBoundaries) GetVolumeCount() uint64 {
 	if x != nil {
 		return x.VolumeCount
-	}
-	return 0
-}
-
-func (x *LedgerBoundaries) GetMetadataCount() uint64 {
-	if x != nil {
-		return x.MetadataCount
 	}
 	return 0
 }
@@ -6465,12 +6457,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\vcreated_log\x18\x01 \x01(\v2\v.common.LogH\x00R\n" +
 	"createdLog\x12/\n" +
 	"\x12reference_sequence\x18\x02 \x01(\x06H\x00R\x11referenceSequenceB\x06\n" +
-	"\x04type\"\xac\x01\n" +
+	"\x04type\"\x85\x01\n" +
 	"\x10LedgerBoundaries\x12.\n" +
 	"\x13next_transaction_id\x18\x01 \x01(\x06R\x11nextTransactionId\x12\x1e\n" +
 	"\vnext_log_id\x18\x02 \x01(\x06R\tnextLogId\x12!\n" +
-	"\fvolume_count\x18\x03 \x01(\x06R\vvolumeCount\x12%\n" +
-	"\x0emetadata_count\x18\x04 \x01(\x06R\rmetadataCount\"\\\n" +
+	"\fvolume_count\x18\x03 \x01(\x06R\vvolumeCount\"\\\n" +
 	"\n" +
 	"VolumePair\x12%\n" +
 	"\x05input\x18\x01 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +

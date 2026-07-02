@@ -5256,7 +5256,6 @@ type LedgerBoundariesReader interface {
 	GetNextTransactionId() uint64
 	GetNextLogId() uint64
 	GetVolumeCount() uint64
-	GetMetadataCount() uint64
 	Mutate() *LedgerBoundaries
 }
 
@@ -5272,10 +5271,6 @@ func (r *ledgerBoundariesReadonly) GetNextLogId() uint64 {
 
 func (r *ledgerBoundariesReadonly) GetVolumeCount() uint64 {
 	return r.v.GetVolumeCount()
-}
-
-func (r *ledgerBoundariesReadonly) GetMetadataCount() uint64 {
-	return r.v.GetMetadataCount()
 }
 
 func (r *ledgerBoundariesReadonly) Mutate() *LedgerBoundaries {

@@ -10378,7 +10378,6 @@ func NewPreparedQueryCursorListReader(s []*PreparedQueryCursor) PreparedQueryCur
 type LedgerStatsReader interface {
 	GetTransactionCount() uint64
 	GetVolumeCount() uint64
-	GetMetadataCount() uint64
 	GetReferenceCount() uint64
 	GetPostingCount() uint64
 	GetEphemeralEvictedCount() uint64
@@ -10397,10 +10396,6 @@ func (r *ledgerStatsReadonly) GetTransactionCount() uint64 {
 
 func (r *ledgerStatsReadonly) GetVolumeCount() uint64 {
 	return r.v.GetVolumeCount()
-}
-
-func (r *ledgerStatsReadonly) GetMetadataCount() uint64 {
-	return r.v.GetMetadataCount()
 }
 
 func (r *ledgerStatsReadonly) GetReferenceCount() uint64 {

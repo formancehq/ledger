@@ -29,7 +29,6 @@ func TestHandleGetLedgerStats_Success(t *testing.T) {
 			return &commonpb.LedgerStats{
 				TransactionCount: 100,
 				VolumeCount:      42,
-				MetadataCount:    10,
 				ReferenceCount:   5,
 				PostingCount:     200,
 			}, nil
@@ -48,7 +47,6 @@ func TestHandleGetLedgerStats_Success(t *testing.T) {
 	wrapper := decodeResponse[BaseResponse[ledgerStatsJSON]](t, w)
 	require.Equal(t, uint64(100), wrapper.Data.TransactionCount)
 	require.Equal(t, uint64(42), wrapper.Data.VolumeCount)
-	require.Equal(t, uint64(10), wrapper.Data.MetadataCount)
 	require.Equal(t, uint64(5), wrapper.Data.ReferenceCount)
 	require.Equal(t, uint64(200), wrapper.Data.PostingCount)
 }
@@ -75,7 +73,6 @@ func TestHandleGetLedgerStats_EmptyLedger(t *testing.T) {
 	wrapper := decodeResponse[BaseResponse[ledgerStatsJSON]](t, w)
 	require.Equal(t, uint64(0), wrapper.Data.TransactionCount)
 	require.Equal(t, uint64(0), wrapper.Data.VolumeCount)
-	require.Equal(t, uint64(0), wrapper.Data.MetadataCount)
 	require.Equal(t, uint64(0), wrapper.Data.ReferenceCount)
 	require.Equal(t, uint64(0), wrapper.Data.PostingCount)
 }
