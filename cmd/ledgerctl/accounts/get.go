@@ -132,6 +132,31 @@ func runGet(cmd *cobra.Command, args []string) error {
 			{"ASSET", "INPUT", "OUTPUT", "BALANCE"},
 		}
 
+		// With --rescale, currencies that differ only in precision are summed
+		// into a single base-currency row, re-expressed at the requested scale.
+		if rescale := cmdutil.RescaleTarget(cmd); rescale != nil {
+			raw := make(map[string]cmdutil.RawVolume, len(account.GetVolumes()))
+			for asset, vol := range account.GetVolumes() {
+				raw[asset] = cmdutil.RawVolume{Input: vol.GetInput(), Output: vol.GetOutput()}
+			}
+
+			for _, av := range cmdutil.AggregateVolumes(raw) {
+				balanceColor := pterm.Green
+				if av.Balance.Sign() < 0 {
+					balanceColor = pterm.Red
+				}
+
+				volumesTable = append(volumesTable, []string{
+					cmdutil.AssetLabel(av.Asset, *rescale),
+					cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
+					cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
+					balanceColor(cmdutil.RescaleAmount(av.Balance, av.Precision, *rescale)),
+				})
+			}
+
+			return pterm.DefaultTable.WithHasHeader().WithData(volumesTable).Render()
+		}
+
 		assets := make([]string, 0, len(account.GetVolumes()))
 		for asset := range account.GetVolumes() {
 			assets = append(assets, asset)
