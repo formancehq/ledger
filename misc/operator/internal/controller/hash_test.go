@@ -45,7 +45,8 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	// Toggling Persistence.DeletionProtection should NOT change the hash: it only
 	// drives PVC/PV label patches, not the pod template, so it must not roll pods.
 	withDeletionProtection := base.DeepCopy()
-	withDeletionProtection.Persistence.DeletionProtection = true
+	optOut := false
+	withDeletionProtection.Persistence.DeletionProtection = &optOut
 	assert.Equal(t, baseHash, computeSpecHash(withDeletionProtection), "DeletionProtection change should not affect hash")
 }
 

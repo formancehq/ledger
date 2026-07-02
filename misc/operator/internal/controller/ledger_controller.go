@@ -171,7 +171,7 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// it, so keying off the local flag would falsely report unprotected.
 	if r.Clientset != nil {
 		inactive := false
-		if ledger.Spec.Persistence.DeletionProtection {
+		if ledger.Spec.Persistence.DeletionProtectionEnabled() {
 			installed, err := r.deletionProtectionPolicyInstalled(ctx)
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("checking volume deletion-protection policy: %w", err)
@@ -280,6 +280,12 @@ func (r *LedgerServiceReconciler) deletionProtectionPolicyInstalled(ctx context.
 	_, err := r.Clientset.AdmissionregistrationV1().
 		ValidatingAdmissionPolicyBindings().
 		Get(ctx, volumeProtectionPVCBindingName, metav1.GetOptions{})
+	// Not installed (binding absent) — or the cluster predates ValidatingAdmissionPolicy
+	// (GA in Kubernetes >= 1.30): the resource type is unregistered there, so the API
+	// server answers the GET with a 404, which IsNotFound also matches (unknown reason +
+	// code 404). Either way the policy is not acting on any volume, so report not-installed
+	// rather than erroring the reconcile — deletionProtection now defaults on, so this
+	// probe runs on every reconcile.
 	if apierrors.IsNotFound(err) {
 		return false, nil
 	}

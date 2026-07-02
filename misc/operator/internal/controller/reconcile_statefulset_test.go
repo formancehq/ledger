@@ -35,7 +35,7 @@ func TestBuildVolumeClaimTemplates_DeletionProtectionLabel(t *testing.T) {
 		return &ledgerv1alpha1.LedgerService{
 			ObjectMeta: metav1.ObjectMeta{Name: "ls", Namespace: "default"},
 			Spec: ledgerv1alpha1.LedgerServiceSpec{
-				Persistence: ledgerv1alpha1.PersistenceSpec{DeletionProtection: protect},
+				Persistence: ledgerv1alpha1.PersistenceSpec{DeletionProtection: &protect},
 			},
 		}
 	}

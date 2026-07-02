@@ -1,4 +1,14 @@
-{{- if .Values.pvcProtection.enabled }}
+{{- /* ValidatingAdmissionPolicy is GA only in Kubernetes >= 1.30. Because
+       pvcProtection.enabled now defaults to true, gate rendering on the API
+       actually being present so a default install/upgrade against an older
+       cluster does not fail with "no matches for kind ValidatingAdmissionPolicy".
+       On such a cluster the objects are silently skipped (see NOTES.txt) and any
+       LedgerService with deletionProtection=true surfaces the runtime
+       DeletionProtectionInactive warning instead. `helm template` offline uses
+       Helm's built-in capability list; pass
+       --api-versions admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy
+       to force-render there. */}}
+{{- if and .Values.pvcProtection.enabled (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy") }}
 {{- $sa := printf "system:serviceaccount:%s:%s" .Release.Namespace (include "ledger-operator.serviceAccountName" .) }}
 {{- $annotation := .Values.pvcProtection.allowDeletionAnnotation }}
 {{- /* Validate as a Kubernetes annotation key: an optional lowercase DNS-1123
