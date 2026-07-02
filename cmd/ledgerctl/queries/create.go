@@ -29,6 +29,7 @@ Examples:
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
 	cmd.Flags().String("target", "accounts", "Query target: accounts, transactions, or logs")
+	cmdutil.RegisterEnumCompletion(cmd, "target", "accounts", "transactions", "logs")
 	cmd.Flags().String("filter", "", "Filter expression")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
