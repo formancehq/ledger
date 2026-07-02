@@ -103,9 +103,11 @@ func (m *MockIndexWriter) EXPECT() *MockIndexWriterMockRecorder {
 }
 
 // Delete mocks base method.
-func (m *MockIndexWriter) Delete(key domain.IndexKey) {
+func (m *MockIndexWriter) Delete(key domain.IndexKey) error {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Delete", key)
+	ret := m.ctrl.Call(m, "Delete", key)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // Delete indicates an expected call of Delete.
@@ -121,19 +123,19 @@ type MockIndexWriterDeleteCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockIndexWriterDeleteCall) Return() *MockIndexWriterDeleteCall {
-	c.Call = c.Call.Return()
+func (c *MockIndexWriterDeleteCall) Return(arg0 error) *MockIndexWriterDeleteCall {
+	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockIndexWriterDeleteCall) Do(f func(domain.IndexKey)) *MockIndexWriterDeleteCall {
+func (c *MockIndexWriterDeleteCall) Do(f func(domain.IndexKey) error) *MockIndexWriterDeleteCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockIndexWriterDeleteCall) DoAndReturn(f func(domain.IndexKey)) *MockIndexWriterDeleteCall {
+func (c *MockIndexWriterDeleteCall) DoAndReturn(f func(domain.IndexKey) error) *MockIndexWriterDeleteCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

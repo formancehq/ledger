@@ -183,7 +183,7 @@ type Config struct {
 	SpoolSegmentMaxBytes int64
 	NumscriptCacheSize   int
 	MirrorMaxBatchSize   int
-	// MaxExecutionPlanSize caps the number of AttributePlan entries an
+	// MaxExecutionPlanSize caps the number of AttributeCoverage entries an
 	// ExecutionPlan may carry. 0 disables the cap. See plan.Builder.
 	MaxExecutionPlanSize        int
 	UnsafeSkipConfigValidation  bool

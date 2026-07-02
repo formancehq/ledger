@@ -114,7 +114,7 @@ FSM (apply) ─── in-memory map (bridge) ──────────>│
 
 ### Preloading
 
-During admission, idempotency keys are loaded directly from Pebble (no bloom filter, no dual-generation cache). The preload logic is in `internal/infra/preload/preloader.go` and emits a `ReloadIdempotencyKey` on a dedicated channel of `ExecutionPlan` (separate from the `AttributePlan` channel that drives the coverage gate):
+During admission, idempotency keys are loaded directly from Pebble (no bloom filter, no dual-generation cache). The preload logic is in `internal/infra/preload/preloader.go` and emits a `ReloadIdempotencyKey` on a dedicated channel of `ExecutionPlan` (separate from the `AttributeCoverage` channel that drives the coverage gate):
 
 ```go
 value, err := state.LoadIdempotencyKey(reader, ik.Key)

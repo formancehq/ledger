@@ -173,9 +173,8 @@ func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (raftpb.Entr
 	// processCreateLedger performs on WriteSet.GetLedger before writing.
 	ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
 	cmd.ExecutionPlan = &raftcmdpb.ExecutionPlan{
-		Attributes: []*raftcmdpb.AttributePlan{{
+		Attributes: []*raftcmdpb.AttributeCoverage{{
 			Id: &raftcmdpb.AttributeID{Id: ledgerID[:]}, AttrCode: uint32(dal.SubAttrLedger),
-			Intent: &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 		}},
 	}
 
@@ -494,9 +493,8 @@ func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string
 
 	ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
 	cmd.ExecutionPlan = &raftcmdpb.ExecutionPlan{
-		Attributes: []*raftcmdpb.AttributePlan{{
+		Attributes: []*raftcmdpb.AttributeCoverage{{
 			Id: &raftcmdpb.AttributeID{Id: ledgerID[:]}, AttrCode: uint32(dal.SubAttrLedger),
-			Intent: &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 		}},
 	}
 	order.CoverageBits = []byte{0b1}

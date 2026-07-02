@@ -7580,6 +7580,7 @@ type TransactionStateReader interface {
 	GetRevertedByTransaction() uint64
 	GetMetadata() TransactionState_MetadataMapReader
 	GetTimestamp() TimestampReader
+	GetPostings() PostingListReader
 	Mutate() *TransactionState
 }
 
@@ -7603,6 +7604,10 @@ func (r *transactionStateReadonly) GetTimestamp() TimestampReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *transactionStateReadonly) GetPostings() PostingListReader {
+	return NewPostingListReader(r.v.GetPostings())
 }
 
 func (r *transactionStateReadonly) Mutate() *TransactionState {

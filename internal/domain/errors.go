@@ -1244,7 +1244,7 @@ func (e *ErrAccountValidation) Metadata() map[string]string {
 // ErrInvalidExecutionPlan signals that the ExecutionPlan shipped by
 // admission is structurally inconsistent with itself — a coverage_bits
 // or production_bits bit flags a position past the slice it indexes,
-// or an AttributePlan/Production declares an attr_code the FSM does
+// or an AttributeCoverage/Production declares an attr_code the FSM does
 // not handle.
 //
 // Detected at scope construction in the FSM, BEFORE any cache mutation

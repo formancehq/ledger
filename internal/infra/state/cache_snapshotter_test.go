@@ -540,65 +540,148 @@ func TestCacheSnapshotter_MachineIntegration(t *testing.T) {
 	require.Equal(t, int64(100), restored.Data.GetInput().ToBigInt().Int64())
 }
 
-// Regression for the delete-resurrection-across-recovery bug found via the
-// singleton_driver_model antithesis workload: a deleted ledger-metadata key
-// must not reappear after a node rebuilds its cache from the 0xFF snapshot zone.
+// TestCacheSnapshotter_EN1242_DeleteAfterRotationCrashRestart drives the full
+// EN-1242 cycle end-to-end with a real Pebble store under the lazy-Del model:
 //
-// AttributeCache.Del marks a tombstone but keeps the old value in entry.Data.
-// MirrorTouch promotes a gen1 entry to gen0 and mirrors it to 0xFF; without the
-// Deleted guard it persists marshalValue(entry.Data) — a NON-EMPTY value — so a
-// CacheNeedsTouch on a gen1-only deleted key writes the deleted key's old value
-// back as a live 0xFF entry. The live cache still reads "deleted" (it keeps the
-// flag), so it only surfaces when a node rehydrates from 0xFF (RestoreFromStore):
-// RestoreEntry sees non-empty bytes and restores a live value.
-//
-// This drives that exact sequence against a real Pebble store: a gen1 tombstone
-// (the deleted-then-rotated state) + the 0xFF tombstone a delete writes, then
-// MirrorTouch, then RestoreFromStore — and asserts the key stays deleted.
-func TestCacheSnapshotter_MirrorTouchDoesNotResurrectDeletedMetadata(t *testing.T) {
+//  1. Put a metadata key — mem gen0 + disk gen0 byte = live.
+//  2. Rotate the cache (mem) and writeCacheRotation (disk) — the live row
+//     migrates: mem gen1 holds it, gen0 is empty; disk's old gen0 byte now
+//     plays gen1, and the new gen0 byte was purged.
+//  3. FSM-apply batch: KeyStore.Delete (via s.M.Del → AttributeCache.Del)
+//     lazy-fabricates a gen0 tombstone from Gen1's tag — no separate
+//     MirrorTouch pass needed. writeCacheTombstone writes the tombstone to
+//     disk gen0 byte.
+//  4. Reset memory and RestoreFromStore — exactly as a crashed node does.
+//  5. Verify: mem gen0 = tombstone, mem gen1 = unchanged live row (carried
+//     over from the rotation step), and Get returns ErrNotFound. Cache and
+//     disk are byte-equivalent for the same applied index (invariant #1).
+//  6. Another rotation purges the stale gen1 row everywhere.
+func TestCacheSnapshotter_EN1242_DeleteAfterRotationCrashRestart(t *testing.T) {
 	t.Parallel()
 
 	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
 
 	lmk := domain.LedgerMetadataKey{LedgerName: "test-ledger", Key: "k0"}
-	u128, tag := attributes.MakeKey(lmk.Bytes())
-	deletedValue := commonpb.NewStringValue("should-stay-deleted")
+	canonical := lmk.Bytes()
+	liveValue := commonpb.NewStringValue("v0")
+	liveBytes, err := liveValue.MarshalVT()
+	require.NoError(t, err)
 
-	// In-memory state after a delete followed by a rotation: the entry is a
-	// tombstone in gen1 (Deleted, but Del retained the old value in Data) and
-	// absent from gen0 — i.e. gen1-only, which CheckCache reports as CacheNeedsTouch.
-	registry.Cache.LedgerMetadata.Gen1().Put(u128, attributes.Entry[*commonpb.MetadataValue]{
-		Tag:     tag,
-		Data:    deletedValue,
-		Deleted: true,
-	})
+	ks := attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](registry.Cache.LedgerMetadata)
 
-	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+	// Step 1: Put — memory + disk land the live entry in Gen0.
+	_, idWithTag, err := ks.Put(canonical, liveValue)
+	require.NoError(t, err)
+	id := idWithTag.ID
+	tag := idWithTag.Tag
+
+	gen0ByteAtPut := byte(registry.Cache.CurrentGeneration() % 2)
 
 	batch := dataStore.OpenWriteSession()
-	// The delete wrote a tombstone to the 0xFF zone (both generations).
-	require.NoError(t, writeCacheTombstone(batch, dal.SubAttrLedgerMetadata, u128, tag))
-	// The leader's CacheNeedsTouch promotes the gen1 tombstone to gen0. MirrorTouch
-	// must persist a tombstone for it — not the retained value.
-	require.NoError(t, snapshotter.MirrorTouch(batch, dal.SubAttrLedgerMetadata, gen0Byte, u128))
+	require.NoError(t, writeCacheRaw(batch, gen0ByteAtPut, dal.SubAttrLedgerMetadata, id, tag, false, liveBytes))
 	require.NoError(t, batch.Commit())
 
-	// Rehydrate the cache from the 0xFF zone, exactly as a node does on restart.
+	// Step 2: Rotate — memory rotation, then writeCacheRotation on disk.
+	registry.Cache.LedgerMetadata.Rotate()
+	newGen := registry.Cache.CurrentGeneration() + 1
+	registry.Cache.SetCurrentGeneration(newGen)
+
+	batch = dataStore.OpenWriteSession()
+	require.NoError(t, writeCacheRotation(batch, newGen, newGen, newGen-1))
+	require.NoError(t, batch.Commit())
+
+	gen0Byte := byte(newGen % 2)
+	gen1Byte := byte((newGen + 1) % 2)
+
+	_, gen0Has := registry.Cache.LedgerMetadata.Gen0().Get(id)
+	require.False(t, gen0Has, "precondition: Gen0 empty after rotation")
+	postRotateLive, gen1Has := registry.Cache.LedgerMetadata.Gen1().Get(id)
+	require.True(t, gen1Has)
+	require.False(t, postRotateLive.Deleted, "precondition: live row migrated to Gen1")
+
+	// Step 3: FSM apply — KeyStore.Delete lazy-fabricates the gen0
+	// tombstone from Gen1's tag (no separate MirrorTouch step), and
+	// writeCacheTombstone mirrors the tombstone to the gen0 byte on disk.
+	batch = dataStore.OpenWriteSession()
+	_, _, err = ks.Delete(canonical)
+	require.NoError(t, err, "Delete must succeed via the lazy gen1→gen0 promote")
+
+	require.NoError(t, writeCacheTombstone(batch, gen0Byte, dal.SubAttrLedgerMetadata, id, tag))
+	require.NoError(t, batch.Commit())
+
+	// Pre-restart sanity: Gen0 mem = fabricated tombstone (borrowed tag),
+	// Gen1 mem = pre-rotation live row (untouched by Del).
+	memTombstone, ok := registry.Cache.LedgerMetadata.Gen0().Get(id)
+	require.True(t, ok)
+	require.True(t, memTombstone.Deleted)
+	require.Equal(t, tag, memTombstone.Tag)
+
+	memLive, ok := registry.Cache.LedgerMetadata.Gen1().Get(id)
+	require.True(t, ok)
+	require.False(t, memLive.Deleted, "Gen1 mem must keep the live row untouched")
+
+	// Step 4: Simulate crash + restart by resetting memory and rehydrating
+	// from disk.
 	registry.Cache.Reset()
 	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
 
-	// The key must still be deleted in the restored cache. On the buggy code the
-	// restored gen0 entry is a live value (Deleted=false): the deleted key
-	// resurrected to its pre-delete value.
-	if e, ok := registry.Cache.LedgerMetadata.Gen0().Get(u128); ok {
-		require.True(t, e.Deleted,
-			"deleted ledger-metadata key resurrected after restore: gen0 holds live value %q",
-			e.Data.GetStringValue())
-	}
-	if e, ok := registry.Cache.LedgerMetadata.Gen1().Get(u128); ok && !e.Deleted {
-		t.Fatalf("deleted ledger-metadata key resurrected after restore: gen1 holds live value %q",
-			e.Data.GetStringValue())
-	}
+	// Step 5: Verify mem == disk for the same applied index.
+	require.Equal(t, newGen, registry.Cache.CurrentGeneration(), "restored generation must match pre-crash")
+
+	restoredGen0, ok := registry.Cache.LedgerMetadata.Gen0().Get(id)
+	require.True(t, ok, "Gen0 must hold the tombstone after restart")
+	require.True(t, restoredGen0.Deleted)
+	require.Equal(t, tag, restoredGen0.Tag)
+
+	restoredGen1, ok := registry.Cache.LedgerMetadata.Gen1().Get(id)
+	require.True(t, ok, "Gen1 must hold the carried-over live row after restart")
+	require.False(t, restoredGen1.Deleted)
+	require.Equal(t, tag, restoredGen1.Tag)
+
+	// KeyStore.Get filters tombstones — Gen0 wins over Gen1's live row.
+	_, _, err = ks.Get(canonical)
+	require.ErrorIs(t, err, domain.ErrNotFound, "Get must surface ErrNotFound after restart")
+
+	// Step 6: Next rotation must purge the stale Gen1 live row both in memory
+	// and on disk; only the tombstone migrates into the new Gen1.
+	registry.Cache.LedgerMetadata.Rotate()
+	postRotateGen := newGen + 1
+	registry.Cache.SetCurrentGeneration(postRotateGen)
+
+	batch = dataStore.OpenWriteSession()
+	require.NoError(t, writeCacheRotation(batch, postRotateGen, postRotateGen, postRotateGen-1))
+	require.NoError(t, batch.Commit())
+
+	postRotateGen0Byte := byte(postRotateGen % 2)
+	postRotateGen1Byte := byte((postRotateGen + 1) % 2)
+
+	_ = gen1Byte // gen1Byte pre-rotation is the same as postRotateGen0Byte; assert symmetry
+	require.Equal(t, gen1Byte, postRotateGen0Byte, "new Gen0 byte is the old Gen1 byte")
+
+	_, ok = registry.Cache.LedgerMetadata.Gen0().Get(id)
+	require.False(t, ok, "post-rotation Gen0 must be empty")
+
+	postRotateMemGen1, ok := registry.Cache.LedgerMetadata.Gen1().Get(id)
+	require.True(t, ok, "post-rotation Gen1 must keep the tombstone")
+	require.True(t, postRotateMemGen1.Deleted)
+
+	// And on disk: the byte that was previously Gen1 (carrying the live row)
+	// is now Gen0 and was purged by writeCacheRotation; the byte that was
+	// previously Gen0 (carrying the tombstone) is now Gen1.
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+
+	_, ok = registry.Cache.LedgerMetadata.Gen0().Get(id)
+	require.False(t, ok, "after second restart, Gen0 must stay empty")
+
+	finalGen1, ok := registry.Cache.LedgerMetadata.Gen1().Get(id)
+	require.True(t, ok, "after second restart, Gen1 must hold the tombstone")
+	require.True(t, finalGen1.Deleted)
+
+	_, _, err = ks.Get(canonical)
+	require.ErrorIs(t, err, domain.ErrNotFound, "Get must still return ErrNotFound after second cycle")
+
+	_ = postRotateGen1Byte // referenced for symmetry with the rotation derivation
 }
 
 // TestCacheSnapshotter_EN1377_LiveZeroByteProtoRoundTrip is the main
@@ -710,38 +793,6 @@ func TestCacheSnapshotter_EN1377_MirrorPreloadEmptyRawValue(t *testing.T) {
 	restored, ok := registry.Cache.Boundaries.Gen0().Get(u128)
 	require.True(t, ok)
 	require.False(t, restored.Deleted, "presence-only marker must round-trip as live")
-	require.Equal(t, tag, restored.Tag)
-}
-
-// TestCacheSnapshotter_EN1377_MirrorTouchOfZeroByteValue mirrors the
-// previous test on the Touch path. A live gen1 entry whose proto marshals
-// to zero bytes is promoted to gen0 by MirrorTouch; the new gen0 row must
-// be readable as live after a restart.
-func TestCacheSnapshotter_EN1377_MirrorTouchOfZeroByteValue(t *testing.T) {
-	t.Parallel()
-
-	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
-
-	u128 := attributes.HashU128([]byte("touch:empty-boundaries"))
-	const tag uint64 = 11
-
-	registry.Cache.Boundaries.Gen1().Put(u128, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
-		Tag:  tag,
-		Data: &raftcmdpb.LedgerBoundaries{},
-	})
-
-	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
-
-	batch := dataStore.OpenWriteSession()
-	require.NoError(t, snapshotter.MirrorTouch(batch, dal.SubAttrBoundary, gen0Byte, u128))
-	require.NoError(t, batch.Commit())
-
-	registry.Cache.Reset()
-	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
-
-	restored, ok := registry.Cache.Boundaries.Gen0().Get(u128)
-	require.True(t, ok, "touched zero-byte entry must restore in gen0")
-	require.False(t, restored.Deleted, "touched live entry must NOT restore as tombstone (EN-1377)")
 	require.Equal(t, tag, restored.Tag)
 }
 

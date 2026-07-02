@@ -158,10 +158,20 @@ func (s *KeyStore[K, T]) GetEntry(canonical []byte) (Entry[T], bool) {
 	return entry, true
 }
 
-// Delete marks the entry as a tombstone instead of removing it.
-// The entry stays in the cache (surviving MirrorTouch during pipelined
-// proposals) but reads via Get return nil. Tombstones age out naturally
-// via cache generation rotation.
+// Delete marks the entry as a tombstone in the underlying store's primary
+// generation. On the dual-generation cache the tombstone lands in Gen0 only
+// (via cache.AttributeCache.Del), mirroring the single-byte
+// writeCacheTombstone the FSM issues in the same batch — keeping the
+// in-memory cache equal to disk for the same applied index (invariant #1).
+// Any pre-existing Gen1 entry is left untouched: Gen0 wins on every read,
+// and the stale Gen1 row is purged on the next rotation.
+//
+// Delete bubbles up the error AttributeCache.Del returns when the key is not
+// in Gen0 — a preload-contract violation (invariant #6). The caller (FSM
+// apply) propagates the error so the proposal fails loudly instead of
+// silently desyncing.
+//
+// Tombstones age out naturally via rotation.
 func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, tag uint64, err error) {
 	id, tag = s.hasher.MakeKey(canonical)
 
@@ -174,8 +184,9 @@ func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, tag uint64, err erro
 		return id, tag, newErrCollisionDetected(canonical, entry.Tag, tag)
 	}
 
-	entry.Deleted = true
-	s.M.Put(id, entry)
+	if delErr := s.M.Del(id); delErr != nil {
+		return id, tag, delErr
+	}
 
 	return id, tag, nil
 }
@@ -272,7 +283,20 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 		canonical := append([]byte(nil), s.scratch...)
 
 		id, tag, err := s.writer.Delete(canonical)
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		if err != nil {
+			// Genuinely absent (writer.Delete returns ErrNotFound when the
+			// underlying store — gen0-strict AttributeCache — misses on the
+			// key). Skip the deletion entirely: writing a downstream disk
+			// tombstone here would drift the persisted state past the
+			// in-memory cache (invariant #1). Under invariant #6, admission
+			// preloaded any key the FSM handler intends to delete; if the
+			// gen0-strict miss happened anyway, the entry does not exist
+			// anywhere the FSM apply path is allowed to see, so a no-op is
+			// the correct outcome.
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+
 			return nil, nil, err
 		}
 

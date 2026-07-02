@@ -76,15 +76,19 @@ func (a *rawAccessor[K, V, R]) Put(key K, value V) {
 	a.store.Put(key, value)
 }
 
-func (a *rawAccessor[K, V, R]) Delete(key K) {
+func (a *rawAccessor[K, V, R]) Delete(key K) error {
 	a.store.Delete(key)
+
+	return nil
 }
 
 // gatedAccessor decorates an inner processing.Accessor with the per-scope
-// coverage gate. Reads check CheckCoverage(sub, key.Bytes()) before
-// delegating; writes (Put/Delete) inherit unchanged from the embedded
-// Accessor because admission's preload covers reads, not writes, and the
-// FSM-side gate never blocked mutations either.
+// coverage gate. Get and Delete both check CheckCoverage(sub, key.Bytes())
+// before delegating — every FSM hot-path read AND deletion is bound to
+// admission's declared preload set (invariants #6, #9). Put is not gated
+// because in-batch writes to keys admission did not preload are still
+// covered by the batch's own mutation overlay (Derived) and never race
+// with the cache-mem/disk equality invariant that strict Del guards.
 type gatedAccessor[K accessorKey, V any, R any] struct {
 	processing.Accessor[K, V, R]
 
@@ -104,6 +108,14 @@ func (a *gatedAccessor[K, V, R]) Get(key K) (R, error) {
 	}
 
 	return a.Accessor.Get(key)
+}
+
+func (a *gatedAccessor[K, V, R]) Delete(key K) error {
+	if err := a.g.CheckCoverage(a.sub, key.Bytes()); err != nil {
+		return err
+	}
+
+	return a.Accessor.Delete(key)
 }
 
 // recorderAccessor decorates an inner Accessor by recording every

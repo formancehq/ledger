@@ -1885,29 +1885,7 @@ func (m *ExecutionPlan) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, e
 	return len(dAtA) - i, nil
 }
 
-func (m *AttributePlan) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *Declare) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *Touch) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *AttributeCoverage) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

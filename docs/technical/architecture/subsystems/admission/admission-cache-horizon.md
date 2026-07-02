@@ -14,8 +14,8 @@ applied generation:
 
 | `Gen(at) − currentGen` | `CheckCache` result | Plan emitted |
 |---|---|---|
-| 0 | `CacheGuaranteed` / `CacheNeedsTouch` / `CacheMiss` | `Declare` / `Touch` / `Preload` |
-| 1 | `CacheGuaranteed` / `CacheMiss` | `Declare` / `Preload` |
+| 0 | `CacheHit` / `CacheMiss` | `Declare` / `Value` |
+| 1 | `CacheHit` (Gen0-hit only) / `CacheMiss` | `Declare` / `Value` |
 | **≥ 2** | **`CacheUnreachable`** | **proposal rejected at admission** |
 
 The ≥ 2 case is the "cache horizon exceeded" condition this document is about.

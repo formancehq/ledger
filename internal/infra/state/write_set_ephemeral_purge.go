@@ -198,7 +198,7 @@ func buildPurgedByLog(perOrderVolumeKeys [][]domain.VolumeKey, purged map[purged
 
 // applyEphemeralPurge deletes purged volumes from 0xF1 then zeroes the cache.
 // Deleting saves storage; the cache is zeroed (rather than deleted) so any
-// co-batched proposal admitted with CacheGuaranteed still sees a populated
+// co-batched proposal admitted with CacheHit still sees a populated
 // entry.
 func (b *WriteSet) applyEphemeralPurge(
 	batch *dal.WriteSession,

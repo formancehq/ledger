@@ -21,7 +21,7 @@ import (
 //     from the in-memory cache (gen0 or gen1)
 //
 // If any volume is in 0xF1 but not in the cache after restart + rotations,
-// proposals marked CacheGuaranteed for that volume will fail with
+// proposals marked CacheHit for that volume will fail with
 // "not preloaded: not found" — the root cause of the volume divergence bug.
 func TestCacheCoherenceAfterRestart(t *testing.T) {
 	t.Parallel()

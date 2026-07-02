@@ -377,10 +377,12 @@ func (a *scopeFuncAccessor[K, V, R]) Put(key K, value V) {
 	}
 }
 
-func (a *scopeFuncAccessor[K, V, R]) Delete(key K) {
+func (a *scopeFuncAccessor[K, V, R]) Delete(key K) error {
 	if a.delete != nil {
 		a.delete(key)
 	}
+
+	return nil
 }
 
 func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {

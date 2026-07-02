@@ -134,18 +134,18 @@ type Scope interface {
 //
 // NewScope returns an error when the ExecutionPlan / bits combination
 // is structurally inconsistent (e.g. a bit indexes past the
-// AttributePlan slice, an unknown attr_code is declared). This is
+// AttributeCoverage slice, an unknown attr_code is declared). This is
 // surfaced as a business-level rejection: detection happens BEFORE any
 // cache mutation so the in-memory state stays in lockstep with Pebble.
 type ScopeFactory interface {
 	// NewScope returns a per-order or per-TU scope narrowed by the
 	// caller's coverage_bits. nil or empty bits admits no plan —
 	// every CheckCoverage call will miss. Callers that need a
-	// proposal-wide scope (admit every declared AttributePlan, e.g.
+	// proposal-wide scope (admit every declared AttributeCoverage, e.g.
 	// for ValidateTransientVolumes) must use NewProposalScope.
 	NewScope(coverageBits []byte) (Scope, error)
 
-	// NewProposalScope returns a scope that admits every AttributePlan
+	// NewProposalScope returns a scope that admits every AttributeCoverage
 	// the proposal declared. Distinct from NewScope(nil) so a per-order
 	// caller passing empty bits (no declared needs) does not silently
 	// inherit coverage from other orders' plans in the same proposal.

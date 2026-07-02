@@ -43,7 +43,7 @@ type Builder struct {
 	// single-line change in buildAttrResolvers.
 	resolvers map[byte]attrResolver
 
-	// maxPlanSize is the cap on the number of AttributePlan entries an
+	// maxPlanSize is the cap on the number of AttributeCoverage entries an
 	// ExecutionPlan may carry. Build returns domain.ErrExecutionPlanTooLarge
 	// past this threshold so admission rejects pathological payloads up
 	// front rather than paying for proportionally-large coverage slices
@@ -57,7 +57,7 @@ type Builder struct {
 //
 // operations is captured here so Run can iterate them right before each
 // (re-)marshal without the caller re-passing the slice. aggregate is the
-// merged Needs across all operations — used for preload boundary
+// merged Coverage across all operations — used for preload boundary
 // validation under the guard.
 type BuildResult struct {
 	ExecutionPlan *raftcmdpb.ExecutionPlan
@@ -65,7 +65,7 @@ type BuildResult struct {
 	nextIndex     uint64
 	nextIndexGen  uint64 // gen(nextIndex, threshold) — the future generation used by CheckCache
 	operations    []WriteOperation
-	aggregate     *Needs
+	aggregate     *Coverage
 }
 
 // ReleaseLoaders releases the loader cleanup token from the build.
@@ -116,7 +116,7 @@ func (g *ProposalGuard) ReleaseAll() {
 }
 
 // NewBuilder creates a Builder using the given IndexTracker for Raft index
-// prediction. maxPlanSize caps the number of AttributePlan entries an
+// prediction. maxPlanSize caps the number of AttributeCoverage entries an
 // ExecutionPlan may carry (0 = unlimited); see Builder.maxPlanSize.
 func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger, maxPlanSize int) *Builder {
 	b := &Builder{
@@ -138,56 +138,6 @@ func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.At
 // release tokens from a BuildResult on error paths.
 func (p *Builder) Loaders() *preload.Loaders {
 	return p.loaders
-}
-
-// ResolveLedgerID resolves a ledger name to its uint32 ID using the standard
-// attribute resolution path: bloom → cache → Pebble.
-// Returns (0, false) if the ledger does not exist.
-func (p *Builder) ResolveLedgerID(name string) (uint32, bool) {
-	canonical := domain.LedgerKey{Name: name}.Bytes()
-	id, _ := attributes.MakeKey(canonical)
-
-	// 1. Bloom filter: if definitely absent, skip. Use the IsReady-guarded
-	// helper — the raw FilterForAttrType returns the (still-empty) filter
-	// even while restoreBloomFilters / StartAsyncBloomPopulate is rebuilding
-	// it on boot or after a rebuild. During that window every MayContain
-	// returns false, so ResolveLedgerID would falsely answer "not found"
-	// for every pre-existing ledger and admission would reject the matching
-	// proposals with ErrBalanceNotPreloaded / reverts with ErrLedgerNotFound
-	// (#318).
-	bf := p.bloomFilter(dal.SubAttrLedger)
-	if bf != nil && !bf.MayContain(id) {
-		return 0, false
-	}
-
-	// bf == nil with bloom configured but not ready means the populate window
-	// (#318) is open and we are falling through to cache/Pebble. Re-reading
-	// readiness here can race SetReady: the window may close between the two
-	// reads, which only under-reports the condition — it never over-reports
-	// (a bloom-disabled deployment keeps bloomFilters == nil and a ready
-	// snapshot keeps Ready() == true).
-	bloomPopulating := bf == nil && p.bloomFilters != nil && !p.bloomFilters.Snapshot().Ready()
-
-	var (
-		resolvedID uint32
-		resolved   bool
-	)
-
-	// 2. Cache: check gen0/gen1.
-	if entry, ok := p.cache.Ledgers.Get(id); ok && entry.Data != nil {
-		resolvedID, resolved = entry.Data.GetId(), true
-	} else if info, err := p.attrs.Ledger.Get(p.store, canonical); err == nil && info != nil {
-		// 3. Pebble fallback (single point read, no snapshot needed).
-		resolvedID, resolved = info.GetId(), true
-	}
-
-	// Antithesis anchor: a pre-existing ledger was successfully resolved
-	// through the fallback path while the bloom filters were still
-	// populating — proves the not-ready window degrades gracefully instead
-	// of faking absence.
-	assert.Sometimes(bloomPopulating && resolved, "ledger resolved while bloom filters not ready", nil)
-
-	return resolvedID, resolved
 }
 
 // ReadBoundaries reads the current LedgerBoundaries for the given ledger
@@ -215,17 +165,17 @@ func (p *Builder) LockTracker() { p.tracker.Lock() }
 func (p *Builder) UnlockTracker() { p.tracker.Unlock() }
 
 // Build resolves all preload needs optimistically without holding the
-// proposal lock. operations contribute their per-operation Needs to a
+// proposal lock. operations contribute their per-operation Coverage to a
 // single aggregate that drives the preload; the slice is retained on
 // the BuildResult so Run can assign each operation's coverage_bits at
 // marshal time.
 //
 // On error, the caller must call build.ReleaseLoaders().
 func (p *Builder) Build(operations []WriteOperation) (*BuildResult, error) {
-	aggregate := NewNeeds()
+	aggregate := NewCoverage()
 	for _, op := range operations {
-		if op.Needs != nil {
-			aggregate.Merge(op.Needs)
+		if op.Coverage != nil {
+			aggregate.Merge(op.Coverage)
 		}
 	}
 
@@ -345,7 +295,7 @@ type buildResult struct {
 // buildPreloadsAt resolves all preload needs at the given nextIndex.
 // Each attribute type uses independent caches and loaders, so they are resolved
 // in parallel to reduce wall-clock time and shard lock hold duration.
-func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Needs) (*raftcmdpb.ExecutionPlan, *preload.CleanupToken, error) {
+func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Coverage) (*raftcmdpb.ExecutionPlan, *preload.CleanupToken, error) {
 	boundary := cache.BoundaryIndex(nextIndex, snap.GenerationThreshold)
 
 	if p.logger.Enabled(logging.TraceLevel) {
@@ -362,7 +312,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 	// any synchronization on the slice header.
 	activeAttrCodes := make([]byte, 0, len(needs.Attributes))
 	for attrCode, set := range needs.Attributes {
-		if len(set.Keys) == 0 {
+		if len(set) == 0 {
 			continue
 		}
 
@@ -384,7 +334,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 			// on the apply side, violating invariant #6.
 			assert.Unreachable("plan builder: no resolver registered for attrCode — extend buildAttrResolvers", map[string]any{
 				"attrCode": attrCode,
-				"keys":     len(needs.Attributes[attrCode].Keys),
+				"keys":     len(needs.Attributes[attrCode]),
 			})
 
 			return nil, nil, fmt.Errorf("plan builder: no resolver for attrCode 0x%x", attrCode)
@@ -415,7 +365,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 
 		launch(func(i int) {
 			r, err := resolver.Resolve(
-				set.Keys,
+				set,
 				nextIndex, boundary, snap.Epoch,
 				p.store, p.logger,
 			)
@@ -466,7 +416,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 
 	for i := range results {
 		// Always promote any tracker entries into the cleanup token,
-		// even when the slot returned an error. resolveAttributePreload
+		// even when the slot returned an error. resolveCoverage
 		// can populate the tracker for keys that loaded successfully
 		// before a concurrent sibling set firstErr; if we returned
 		// before draining them, the caller's ReleaseLoaders would skip

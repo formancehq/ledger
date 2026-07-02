@@ -902,12 +902,12 @@ func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
 
 // Preload applies preloaded data to the Machine's volatile state.
 // batch and genByte are used for incremental 0xFF persistence of NumscriptParsed entries.
-func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte) error {
+func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte, raftIndex uint64) error {
 	if executionPlan == nil {
 		return nil
 	}
 
-	// Idempotency keys live outside the AttributePlan stream — they are not
+	// Idempotency keys live outside the AttributeCoverage stream — they are not
 	// a cache attribute (the FSM applies them to the dedicated Idempotency-
 	// Store, not the per-kind cache). Apply them first and unconditionally:
 	// a proposal carrying only idempotency keys (idempotent maintenance /
@@ -927,14 +927,14 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		return nil
 	}
 
-	// Pre-validate every AttributePlan envelope before touching the
+	// Pre-validate every AttributeCoverage envelope before touching the
 	// cache. Without this, a forged plan with a nil/short AttributeID
-	// or no intent would silently zero-pad through MirrorTouch /
-	// MirrorPreload, mutating both the in-memory cache and the 0xFF
-	// Pebble writes. A later business rejection from the scope path
-	// commits its failure audit batch — and the cache mutations would
-	// commit with it. Run the same validation the scope path uses
-	// here, so a malformed plan is caught before the first MirrorTouch.
+	// or an unknown attr_code would silently zero-pad through MirrorPreload,
+	// mutating both the in-memory cache and the 0xFF Pebble writes. A
+	// later business rejection from the scope path commits its failure
+	// audit batch — and the cache mutations would commit with it. Run the
+	// same validation the scope path uses here, so a malformed plan is
+	// caught before the first MirrorPreload.
 	for i, plan := range executionPlan.GetAttributes() {
 		if err := validatePlan(plan, i); err != nil {
 			return err
@@ -978,22 +978,25 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 
 	gen1Byte := genByte ^ 1
 	for _, plan := range executionPlan.GetAttributes() {
-		switch intent := plan.GetIntent().(type) {
-		case *raftcmdpb.AttributePlan_Declare:
-			// Pure coverage declaration: the value is already in Gen0 on
-			// every node. No FSM-side mutation; the Plan consumes
-			// the declaration separately.
+		value := plan.GetValue()
+		if value == nil {
+			// Coverage-only entry: nothing to seed. The gen0→gen1 fallback
+			// in AttributeCache.Get and the lazy gen1→gen0 promote in
+			// AttributeCache.Del cover the handler's reads and deletes
+			// respectively; coverage_bits (invariant #9) bounds the read
+			// horizon to admission's declared preload set. Keeps Preload
+			// O(seeds) instead of O(coverage entries).
+			continue
+		}
 
-		case *raftcmdpb.AttributePlan_Touch:
-			id := attributes.U128FromBytes(plan.GetId().GetId())
-			if err := fsm.cacheSnapshotter.MirrorTouch(batch, byte(plan.GetAttrCode()), genByte, id); err != nil {
-				return err
-			}
+		attrCode := byte(plan.GetAttrCode())
 
-		case *raftcmdpb.AttributePlan_Value:
-			if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, plan.GetId(), byte(plan.GetAttrCode()), intent.Value); err != nil {
-				return err
-			}
+		// Seed: MirrorPreload writes gen0+gen1 with the Pebble-loaded
+		// payload. Gen1-wins semantics preserve any fresher value a
+		// concurrent write may have already populated between admission's
+		// Pebble scan and apply.
+		if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, plan.GetId(), attrCode, value); err != nil {
+			return err
 		}
 	}
 
@@ -1081,7 +1084,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 // when err is some other kind of error (Pebble write failure, etc.) so
 // the caller can fall through to the FSM-killing path.
 //
-// Admission ships bits that don't match the AttributePlan slice →
+// Admission ships bits that don't match the AttributeCoverage slice →
 // *ErrCoverageMiss or *domain.ErrInvalidExecutionPlan. Both implement
 // Describable with KindInternal. Surfacing them via ApplyResult.Error
 // rejects the proposal as a business error instead of wedging the FSM
@@ -1137,12 +1140,12 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Preload is a no-op when the proposal carries no ExecutionPlan.
 	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
-	if err := fsm.Preload(proposal.GetExecutionPlan(), batch, genByte); err != nil {
+	if err := fsm.Preload(proposal.GetExecutionPlan(), batch, genByte, raftIndex); err != nil {
 		if invariant := planInvariantDescribable(err); invariant != nil {
-			// Malformed AttributePlan caught before any MirrorTouch /
-			// MirrorPreload — no cache mutation landed. Surface as a
-			// business rejection in the same shape as scope-level plan
-			// invariants so the admission side can diagnose its bug.
+			// Malformed AttributeCoverage caught before any MirrorPreload
+			// — no cache mutation landed. Surface as a business rejection
+			// in the same shape as scope-level plan invariants so the
+			// admission side can diagnose its bug.
 			return &ApplyResult{
 				ProposalID: proposal.GetId(),
 				Error:      &domain.BusinessError{Err: invariant},
