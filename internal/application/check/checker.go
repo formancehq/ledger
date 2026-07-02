@@ -526,6 +526,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			}
 		}
 
+		// Elision guard: run at every seq (outside the payload switch) so
+		// it also fires for tampered projections that never reach the
+		// well-formed Apply branch above — non-Apply payloads, nil
+		// Apply.Log, or nil Data — where verifySkippedOrder is unreachable.
+		dispatchElisionCheck(seq, log, expectedSkippable, chainBoundReferences, callback)
+
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
@@ -2019,19 +2025,12 @@ func verifySkippedOrder(
 ) {
 	skipped, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped)
 	if !ok || skipped.OrderSkipped == nil {
-		// Inverse direction: the projection at `seq` is NOT an
-		// OrderSkippedLog. If the originating order opted into a
-		// skippable reason AND the chain shows the underlying condition
-		// was met at this sequence (e.g. a TRANSACTION_REFERENCE_CONFLICT
-		// reference was already claimed earlier), the FSM would have
-		// produced an OrderSkippedLog; substituting it with a non-skip
-		// projection (e.g. a forged CreatedTransaction) is tampering.
-		// The LedgerLog is not hash-chain bound, so without this
-		// symmetric check a tamperer could elide the skip and convince
-		// downstream readers a transaction landed when the FSM
-		// actually rolled it back.
-		verifyExpectedSkipNotElided(ledger, seq, expectedSkippable, chainBoundReferences, callback)
-
+		// The projection at `seq` is NOT an OrderSkippedLog. The elision
+		// check (inverse direction) is now dispatched at the outer log
+		// iteration scope by verifyExpectedSkipNotElided so it also fires
+		// for tampered projections that never reach this well-formed
+		// Apply-log path (non-Apply payload, nil Apply.Log, nil Data).
+		// Return silently here — the outer dispatch owns the alert.
 		return
 	}
 
@@ -2208,6 +2207,47 @@ func idempotencyWindowCutoff(now, ttlMicros uint64) uint64 {
 	}
 
 	return 0
+}
+
+// dispatchElisionCheck runs the elision guard at every seq where the audit
+// chain expected a skip, using expected.ledger (chain-bound) as the ledger
+// context. A "valid skip projection" is a well-formed Apply payload with a
+// non-nil Log/Data whose payload discriminant is LedgerLogPayload_OrderSkipped;
+// anything else — a non-Apply payload (e.g. LogPayload_DeleteLedger), nil
+// Apply.Log, nil Log.Data, or an Apply payload discriminant other than
+// OrderSkipped — is treated as an elision candidate and forwarded to
+// verifyExpectedSkipNotElided.
+//
+// Dispatching from the outer iteration (rather than from inside
+// verifySkippedOrder) closes a bypass path: the Apply case's inline call
+// only fires for well-formed Apply payloads with non-nil Log.Data, so a
+// tampered projection stored as any other shape would previously escape
+// the elision check entirely.
+func dispatchElisionCheck(
+	seq uint64,
+	log *commonpb.Log,
+	expectedSkippable map[uint64]*expectedSkippableOrder,
+	chainBoundReferences map[string]map[string]uint64,
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	expected, isExpected := expectedSkippable[seq]
+	if !isExpected {
+		return
+	}
+
+	if apl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply); ok &&
+		apl.Apply != nil &&
+		apl.Apply.GetLog() != nil &&
+		apl.Apply.GetLog().GetData() != nil {
+		if _, isSkip := apl.Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped); isSkip {
+			// Well-formed OrderSkipped projection: verifySkippedOrder
+			// (called from the Apply branch of the iteration) already
+			// validated the forward direction.
+			return
+		}
+	}
+
+	verifyExpectedSkipNotElided(expected.ledger, seq, expectedSkippable, chainBoundReferences, callback)
 }
 
 // verifyExpectedSkipNotElided is the inverse-direction sibling of
