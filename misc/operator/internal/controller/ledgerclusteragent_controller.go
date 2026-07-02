@@ -131,21 +131,31 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}
 
-	// Garbage-collect orphan replicas in namespaces no longer in scope (also covers
-	// the no-targets case: any leftover replica from a previous reconcile is removed).
-	desiredSet := make(map[string]struct{}, len(desiredNamespaces))
-	for _, ns := range desiredNamespaces {
-		desiredSet[ns] = struct{}{}
-	}
-	for i := range existingReplicas {
-		secret := &existingReplicas[i]
-		if _, keep := desiredSet[secret.Namespace]; keep {
-			continue
+	// Garbage-collect orphan replicas in namespaces no longer in scope.
+	//
+	// When desiredNamespaces is empty (all matched services disappeared, no
+	// additional namespaces configured), we deliberately skip GC to preserve
+	// the seed across transient LedgerService deletion/recreation. Deleting
+	// every replica would destroy the canonical key material, and the next
+	// reconcile with a matching service would generate a fresh keypair —
+	// silently invalidating every bundle already handed out. The finalizer
+	// (handleDeletion) remains responsible for the definitive cleanup when
+	// the LedgerClusterAgent itself is deleted.
+	if len(desiredNamespaces) > 0 {
+		desiredSet := make(map[string]struct{}, len(desiredNamespaces))
+		for _, ns := range desiredNamespaces {
+			desiredSet[ns] = struct{}{}
 		}
-		if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
-			return ctrl.Result{}, fmt.Errorf("deleting orphan secret in %q: %w", secret.Namespace, err)
+		for i := range existingReplicas {
+			secret := &existingReplicas[i]
+			if _, keep := desiredSet[secret.Namespace]; keep {
+				continue
+			}
+			if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, fmt.Errorf("deleting orphan secret in %q: %w", secret.Namespace, err)
+			}
+			logger.Info("deleted orphan agent secret", "namespace", secret.Namespace, "name", secret.Name)
 		}
-		logger.Info("deleted orphan agent secret", "namespace", secret.Namespace, "name", secret.Name)
 	}
 
 	agent.Status.MatchedServices = matchedServices
@@ -155,11 +165,17 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if len(refs) == 0 {
 		agent.Status.KeyID = ""
 		agent.Status.Phase = "Pending"
+
+		message := "no matched LedgerServices or additional namespaces; agent keypair is not persisted"
+		if len(existingReplicas) > 0 {
+			message = "no matched LedgerServices or additional namespaces; dormant keypair preserved for later reuse"
+		}
+
 		meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
 			Type:               "Ready",
 			Status:             metav1.ConditionFalse,
 			Reason:             "NoTargets",
-			Message:            "no matched LedgerServices or additional namespaces; agent keypair is not persisted",
+			Message:            message,
 			ObservedGeneration: agent.Generation,
 		})
 	} else {
