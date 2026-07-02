@@ -84,6 +84,32 @@ func (wb *WriteBatch) del(key []byte) error {
 	return nil
 }
 
+// DeleteReverseMapKey deletes a reverse-map key in the batch and records the
+// deletion in the read-your-writes overlay (rmapOverlay[key] = nil), so a
+// subsequent same-batch ReverseMapOverlay lookup reports the key as deleted
+// rather than surfacing a stale in-flight value. Use this for every reverse-map
+// delete so the overlay never drifts from the batch it tracks.
+func (wb *WriteBatch) DeleteReverseMapKey(reverseKey []byte) error {
+	if err := wb.del(reverseKey); err != nil {
+		return err
+	}
+
+	wb.rmapOverlay[string(reverseKey)] = nil
+
+	return nil
+}
+
+// RangeReverseMapOverlay calls fn for every reverse-map mutation buffered in the
+// current (uncommitted) batch: reverseKey -> encoded value last written (nil =
+// deleted in this batch). It is a read-only view of the read-your-writes
+// overlay — callers that need to delete matching keys must collect them and
+// delete after iteration returns, to avoid mutating the overlay mid-range.
+func (wb *WriteBatch) RangeReverseMapOverlay(fn func(reverseKey []byte, value []byte)) {
+	for k, v := range wb.rmapOverlay {
+		fn([]byte(k), v)
+	}
+}
+
 // Flush commits the batch and resets state.
 func (wb *WriteBatch) Flush() error {
 	if wb.batch == nil {
