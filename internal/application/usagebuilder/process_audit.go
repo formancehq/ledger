@@ -180,6 +180,11 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 				return cursor, fmt.Errorf("reading audit items for seq %d: %w", entry.GetSequence(), err)
 			}
 
+			// Fresh dedup sets per audit entry — the entry is the natural
+			// boundary at which a (ledger, account, asset) key can change
+			// persistence class at most once. See applyVolumeAnnotations.
+			entryState := newEntryVolumeState()
+
 			for _, item := range items {
 				// LogSequence == 0 → idempotent replay or non-log-producing
 				// order (metadata schema changes, etc.). Skip: no work.
@@ -193,7 +198,7 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 						entry.GetSequence(), item.GetOrderIndex(), err)
 				}
 
-				if err := b.dispatchOrder(ctx, handle, order, item.GetLogSequence(), state); err != nil {
+				if err := b.dispatchOrder(ctx, handle, order, item.GetLogSequence(), state, entryState); err != nil {
 					return cursor, err
 				}
 			}
@@ -246,13 +251,15 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 
 // dispatchOrder inspects a raw Order and accumulates counter / template
 // deltas into the batch state. Fetches the produced log when the resolved
-// posting count is required (revert txs, script-backed create txs).
+// posting count is required (revert txs, script-backed create txs). entry
+// carries the per-audit-entry dedup scratchpad — see applyVolumeAnnotations.
 func (b *Builder) dispatchOrder(
 	ctx context.Context,
 	handle dal.PebbleGetter,
 	order *raftcmdpb.Order,
 	logSeq uint64,
 	state *batchState,
+	entry *entryVolumeState,
 ) error {
 	scoped := order.GetLedgerScoped()
 	if scoped == nil {
@@ -275,24 +282,76 @@ func (b *Builder) dispatchOrder(
 
 	switch data := apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-		return b.dispatchCreateTransaction(ctx, handle, ledger, data.CreateTransaction, logSeq, state)
+		return b.dispatchCreateTransaction(ctx, handle, ledger, data.CreateTransaction, logSeq, state, entry)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-		return b.dispatchRevertTransaction(ctx, handle, ledger, logSeq, state)
+		return b.dispatchRevertTransaction(ctx, handle, ledger, logSeq, state, entry)
 	}
 
 	return nil
 }
 
-// applyVolumeDelta feeds CounterVolume with the new-kept minus draining
-// delta from a single log. Pure ephemeral volumes live in their own
-// EphemeralVolumes list on the log and contribute +0 to VolumeCount
-// (was zero, is zero after commit — never counted). draining volumes
-// (in PurgedVolumes) had a prior balance and are evicted from Pebble
-// at commit, so they subtract from the live cardinality.
-func applyVolumeDelta(ledger string, counts logCounts, state *batchState) {
-	delta := counterDelta(counts.newKept) - counterDelta(counts.purged)
-	if delta != 0 {
-		state.addCounter(ledger, usagestore.CounterVolume, delta)
+// entryVolumeState is the per-audit-entry deduplication scratchpad. Each set
+// records the (account, asset) tuples already applied to their respective
+// counter for the current audit entry. VolumeCount, CounterEphemeralEvicted
+// and CounterTransientUsed are per-batch cardinality deltas: a tuple that
+// appears in multiple orders of the same batch (e.g. a shared "bank:main"
+// account touched by three transactions) must contribute at most once to
+// each counter. Postings / references / reverts / numscript executions are
+// per-event and don't need this dedup.
+type entryVolumeState struct {
+	seenNewKept   map[volumeSetKey]struct{}
+	seenPurged    map[volumeSetKey]struct{}
+	seenEphemeral map[volumeSetKey]struct{}
+}
+
+// volumeSetKey mirrors state.volumeSetKey — kept local to avoid crossing
+// package boundaries just for a triple of strings.
+type volumeSetKey struct {
+	ledger  string
+	account string
+	asset   string
+}
+
+func newEntryVolumeState() *entryVolumeState {
+	return &entryVolumeState{
+		seenNewKept:   make(map[volumeSetKey]struct{}),
+		seenPurged:    make(map[volumeSetKey]struct{}),
+		seenEphemeral: make(map[volumeSetKey]struct{}),
+	}
+}
+
+// applyVolumeAnnotations folds the three disjoint per-log volume lists into
+// the batch counter state, deduplicating each tuple within the current audit
+// entry. The audit entry maps 1:1 to an FSM apply batch, so a tuple can only
+// change persistence class (new → kept, draining → evicted, ephemeral in-out)
+// at most once inside it. Without this dedup, an account touched by N orders
+// of the same batch would be counted N times.
+func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batchState, entry *entryVolumeState) {
+	for _, v := range ann.newKept {
+		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset()}
+		if _, ok := entry.seenNewKept[k]; ok {
+			continue
+		}
+		entry.seenNewKept[k] = struct{}{}
+		state.addCounter(ledger, usagestore.CounterVolume, 1)
+	}
+
+	for _, v := range ann.purged {
+		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset()}
+		if _, ok := entry.seenPurged[k]; ok {
+			continue
+		}
+		entry.seenPurged[k] = struct{}{}
+		state.addCounter(ledger, usagestore.CounterVolume, -1)
+	}
+
+	for _, v := range ann.ephemeral {
+		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset()}
+		if _, ok := entry.seenEphemeral[k]; ok {
+			continue
+		}
+		entry.seenEphemeral[k] = struct{}{}
+		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, 1)
 	}
 }
 
@@ -306,24 +365,21 @@ func (b *Builder) dispatchCreateTransaction(
 	order *raftcmdpb.CreateTransactionOrder,
 	logSeq uint64,
 	state *batchState,
+	entry *entryVolumeState,
 ) error {
-	// Resolved posting count and purged-volume count live on the log — the
+	// Resolved posting count and volume annotations live on the log — the
 	// order carries raw postings only for the non-scripted path, and never
 	// carries purge info.
-	counts, err := b.countsFromLog(ctx, handle, logSeq)
+	ann, err := b.readLog(ctx, handle, logSeq)
 	if err != nil {
 		return err
 	}
 
-	if counts.postings > 0 {
-		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(counts.postings))
+	if ann.postings > 0 {
+		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(ann.postings))
 	}
 
-	if counts.ephemeral > 0 {
-		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.ephemeral))
-	}
-
-	applyVolumeDelta(ledger, counts, state)
+	applyVolumeAnnotations(ledger, ann, state, entry)
 
 	if order.GetReference() != "" {
 		state.addCounter(ledger, usagestore.CounterReference, 1)
@@ -352,72 +408,68 @@ func (b *Builder) dispatchRevertTransaction(
 	ledger string,
 	logSeq uint64,
 	state *batchState,
+	entry *entryVolumeState,
 ) error {
 	state.addCounter(ledger, usagestore.CounterRevert, 1)
 
-	counts, err := b.countsFromLog(ctx, handle, logSeq)
+	ann, err := b.readLog(ctx, handle, logSeq)
 	if err != nil {
 		return err
 	}
 
-	if counts.postings > 0 {
-		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(counts.postings))
+	if ann.postings > 0 {
+		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(ann.postings))
 	}
 
-	if counts.ephemeral > 0 {
-		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, counterDelta(counts.ephemeral))
-	}
-
-	applyVolumeDelta(ledger, counts, state)
+	applyVolumeAnnotations(ledger, ann, state, entry)
 
 	return nil
 }
 
-// logCounts is the tuple of per-log counter deltas extracted from a single
-// LedgerLog payload. purged / newKept / ephemeral are the three disjoint
-// volume-annotation lists on LedgerLog — see the proto comments for the
-// invariants they satisfy.
-type logCounts struct {
+// logVolumeAnnotations bundles the three disjoint TouchedVolume lists that
+// LedgerLog carries plus the resolved posting count. The lists are kept as
+// slices (not lengths) because the counter dispatch needs per-tuple identity
+// for batch-scoped deduplication — see the applyVolumeDelta docstring.
+type logVolumeAnnotations struct {
 	postings  int
-	purged    int // len(LedgerLog.PurgedVolumes)   — draining only
-	newKept   int // len(LedgerLog.NewKeptVolumes)   — new + kept
-	ephemeral int // len(LedgerLog.EphemeralVolumes) — new + purged
+	purged    []*commonpb.TouchedVolume // len — draining only
+	newKept   []*commonpb.TouchedVolume // new + kept
+	ephemeral []*commonpb.TouchedVolume // new + purged (pure ephemeral)
 }
 
-// countsFromLog fetches the log at logSeq and returns the resolved posting
-// count plus the number of ephemerally-purged volumes attached to this
-// specific log. Both are zero if the log does not exist or carries no
-// relevant payload.
-func (b *Builder) countsFromLog(ctx context.Context, handle dal.PebbleGetter, logSeq uint64) (logCounts, error) {
+// readLog fetches the log at logSeq and returns its posting count plus the
+// three disjoint volume-annotation lists. Empty when the log does not exist
+// or carries no transaction / annotation.
+func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq uint64) (logVolumeAnnotations, error) {
 	log, err := query.ReadLogBySequence(ctx, handle, logSeq)
 	if err != nil {
-		return logCounts{}, fmt.Errorf("reading log at seq %d: %w", logSeq, err)
+		return logVolumeAnnotations{}, fmt.Errorf("reading log at seq %d: %w", logSeq, err)
 	}
 
 	if log == nil {
-		return logCounts{}, nil
+		return logVolumeAnnotations{}, nil
 	}
 
 	apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	if !ok || apply.Apply == nil {
-		return logCounts{}, nil
+		return logVolumeAnnotations{}, nil
 	}
 
 	ledgerLog := apply.Apply.GetLog()
 	if ledgerLog == nil {
-		return logCounts{}, nil
+		return logVolumeAnnotations{}, nil
 	}
 
 	// PurgedVolumes / NewKeptVolumes / EphemeralVolumes live on LedgerLog
-	// directly (not on the payload variant), so we can extract them
-	// independently of the payload type. The three lists are DISJOINT: pure
-	// ephemeral tuples appear only in EphemeralVolumes (not duplicated
-	// across Purged + New), keeping the log payload compact on
-	// ephemeral-heavy workloads.
-	result := logCounts{
-		purged:    len(ledgerLog.GetPurgedVolumes()),
-		newKept:   len(ledgerLog.GetNewKeptVolumes()),
-		ephemeral: len(ledgerLog.GetEphemeralVolumes()),
+	// directly (not on the payload variant). The three lists are DISJOINT
+	// at the FSM emission site, but a single (account, asset) key can
+	// still appear in multiple orders' lists within the SAME batch because
+	// each order tracks the volumes IT touched. The counter side of the
+	// pipeline deduplicates per audit entry — see applyVolumeDelta.
+	result := logVolumeAnnotations{
+		purged:    ledgerLog.GetPurgedVolumes(),
+		newKept:   ledgerLog.GetNewKeptVolumes(),
+		ephemeral: ledgerLog.GetEphemeralVolumes(),
 	}
 
 	if ledgerLog.GetData() == nil {
