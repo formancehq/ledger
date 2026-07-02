@@ -593,6 +593,17 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 
 	pcv := s.applyPostings(ct.GetPostings(), touched)
 
+	// Account metadata attached to the transaction is applied verbatim, last-
+	// writer-wins. The server applies it without chart enforcement (unlike a
+	// standalone AddMetadata — processor_transaction.go); the generator only
+	// attaches it to the transaction's own accounts, which already passed the
+	// posting chart check above, so no enforcement branch is needed.
+	for account, mm := range ct.GetAccountMetadata() {
+		for key, val := range mm.GetValues() {
+			s.metadata[MetaKey{Address: account, Key: key}] = val
+		}
+	}
+
 	// A reference becomes targetable. A duplicate rejects the whole bulk; the
 	// workload uses unique references, so this guard is never exercised.
 	ref := ct.GetReference()

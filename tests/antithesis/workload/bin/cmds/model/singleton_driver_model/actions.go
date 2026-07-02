@@ -257,6 +257,16 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 		payload.Metadata = randomMetaMap()
 	}
 
+	// ~1/3 also set account metadata via the transaction payload, applied
+	// atomically with the tx. Target the transaction's own destination: it
+	// already passes the posting chart check when the tx commits, so the
+	// account-metadata write never introduces a chart rejection.
+	if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
+		payload.AccountMetadata = map[string]*commonpb.MetadataMap{
+			dest: {Values: randomMetaMap()},
+		}
+	}
+
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
