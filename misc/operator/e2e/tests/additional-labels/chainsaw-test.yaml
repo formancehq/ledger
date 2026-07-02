@@ -14,7 +14,7 @@ spec:
     - name: Bootstrap with additionalLabels
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -58,7 +58,7 @@ spec:
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: al-svc
               status:
@@ -71,11 +71,11 @@ spec:
     - name: Drift additionalLabels, expect SelectorImmutable=False
       try:
         - apply:
-            file: ledgerservice-drift.yaml
+            file: cluster-drift.yaml
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: al-svc
               status:
@@ -100,11 +100,11 @@ spec:
     - name: Revert and recover
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: al-svc
               status:

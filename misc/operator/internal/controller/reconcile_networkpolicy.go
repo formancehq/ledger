@@ -22,7 +22,7 @@ var defaultExternalCIDRExcept = []string{
 	"192.168.0.0/16",
 }
 
-func (r *LedgerServiceReconciler) reconcileNetworkPolicy(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) reconcileNetworkPolicy(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	name := resourceName(ledger.Name)
 
 	if ledger.Spec.NetworkPolicy == nil || !ledger.Spec.NetworkPolicy.Enabled {
@@ -51,7 +51,7 @@ func (r *LedgerServiceReconciler) reconcileNetworkPolicy(ctx context.Context, le
 	return err
 }
 
-func buildNetworkPolicySpec(ledger *ledgerv1alpha1.LedgerService) networkingv1.NetworkPolicySpec {
+func buildNetworkPolicySpec(ledger *ledgerv1alpha1.Cluster) networkingv1.NetworkPolicySpec {
 	except := defaultExternalCIDRExcept
 	if len(ledger.Spec.NetworkPolicy.ExternalCIDRExcept) > 0 {
 		except = ledger.Spec.NetworkPolicy.ExternalCIDRExcept
@@ -123,7 +123,7 @@ func buildNetworkPolicySpec(ledger *ledgerv1alpha1.LedgerService) networkingv1.N
 	}
 }
 
-func otelEgressRule(ledger *ledgerv1alpha1.LedgerService) *networkingv1.NetworkPolicyEgressRule {
+func otelEgressRule(ledger *ledgerv1alpha1.Cluster) *networkingv1.NetworkPolicyEgressRule {
 	mon := ledger.Spec.Monitoring
 	if mon == nil {
 		return nil

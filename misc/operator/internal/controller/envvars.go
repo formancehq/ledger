@@ -93,7 +93,7 @@ func appendIfQuantity(envs []corev1.EnvVar, name string, value *resource.Quantit
 // The agents slice drives whether AUTH_ED25519_KEYS is exposed: it is set
 // only when at least one agent is registered AND auth is not explicitly
 // disabled.
-func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, agents []agentKeyInfo) []corev1.EnvVar {
+func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, agents []agentKeyInfo) []corev1.EnvVar {
 	spec := &ledger.Spec
 	hlsSvcName := headlessServiceName(ledger.Name)
 

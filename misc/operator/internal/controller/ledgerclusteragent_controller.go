@@ -195,7 +195,7 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 			Type:               "Ready",
 			Status:             metav1.ConditionFalse,
 			Reason:             "NoTargets",
-			Message:            "no matched LedgerServices or additional namespaces; canonical seed (if any) is preserved for later reuse",
+			Message:            "no matched Clusters or additional namespaces; canonical seed (if any) is preserved for later reuse",
 			ObservedGeneration: agent.Generation,
 		})
 	} else {
@@ -255,7 +255,7 @@ func (r *LedgerClusterAgentReconciler) handleDeletion(ctx context.Context, agent
 	return ctrl.Result{}, nil
 }
 
-// resolveMatchedServices lists LedgerServices across all namespaces and returns
+// resolveMatchedServices lists Clusters across all namespaces and returns
 // those matching the agent's label selector.
 func (r *LedgerClusterAgentReconciler) resolveMatchedServices(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent) ([]ledgerv1alpha1.MatchedService, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&agent.Spec.Selector)
@@ -263,9 +263,9 @@ func (r *LedgerClusterAgentReconciler) resolveMatchedServices(ctx context.Contex
 		return nil, fmt.Errorf("parsing label selector: %w", err)
 	}
 
-	var services ledgerv1alpha1.LedgerServiceList
+	var services ledgerv1alpha1.ClusterList
 	if err := r.List(ctx, &services, &client.ListOptions{LabelSelector: selector}); err != nil {
-		return nil, fmt.Errorf("listing LedgerServices: %w", err)
+		return nil, fmt.Errorf("listing Clusters: %w", err)
 	}
 
 	matched := make([]ledgerv1alpha1.MatchedService, 0, len(services.Items))
@@ -480,18 +480,18 @@ func agentSecretName(agent *ledgerv1alpha1.LedgerClusterAgent) string {
 func (r *LedgerClusterAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ledgerv1alpha1.LedgerClusterAgent{}).
-		Watches(&ledgerv1alpha1.LedgerService{},
-			handler.EnqueueRequestsFromMapFunc(r.ledgerServiceToAgents)).
+		Watches(&ledgerv1alpha1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(r.clusterToAgents)).
 		Complete(r)
 }
 
-// ledgerServiceToAgents maps a LedgerService change to all LedgerClusterAgents
+// clusterToAgents maps a Cluster change to all LedgerClusterAgents
 // whose selector matches the service, so replica state is kept in sync with
 // service membership and namespace placement.
-func (r *LedgerClusterAgentReconciler) ledgerServiceToAgents(ctx context.Context, obj client.Object) []ctrl.Request {
+func (r *LedgerClusterAgentReconciler) clusterToAgents(ctx context.Context, obj client.Object) []ctrl.Request {
 	logger := log.FromContext(ctx)
 
-	service, ok := obj.(*ledgerv1alpha1.LedgerService)
+	service, ok := obj.(*ledgerv1alpha1.Cluster)
 	if !ok {
 		return nil
 	}

@@ -84,12 +84,12 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("creating manager: %v", err))
 	}
 
-	if err := (&LedgerServiceReconciler{
+	if err := (&ClusterReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ledgerservice-controller"),
+		Recorder: mgr.GetEventRecorderFor("cluster-controller"),
 	}).SetupWithManager(mgr); err != nil {
-		panic(fmt.Sprintf("setting up LedgerService controller: %v", err))
+		panic(fmt.Sprintf("setting up Cluster controller: %v", err))
 	}
 
 	if err := (&LedgerClusterAgentReconciler{
@@ -143,15 +143,15 @@ func createTestNamespace(t *testing.T) string {
 	return name
 }
 
-// newLedgerService returns a minimal valid LedgerService CR.
-func newLedgerService(name, namespace string) *ledgerv1alpha1.LedgerService {
+// newCluster returns a minimal valid Cluster CR.
+func newCluster(name, namespace string) *ledgerv1alpha1.Cluster {
 	replicas := int32(3)
-	return &ledgerv1alpha1.LedgerService{
+	return &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			Replicas: &replicas,
 		},
 	}

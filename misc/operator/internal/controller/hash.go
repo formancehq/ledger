@@ -8,13 +8,13 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-// computeSpecHash returns a SHA-256 hash of the serialized LedgerService spec,
+// computeSpecHash returns a SHA-256 hash of the serialized Cluster spec,
 // excluding fields that don't affect the pod template.
 // This is used as a pod template annotation to trigger rolling updates on spec changes.
 //
 // Fields that map to separate Kubernetes resources (Service, Ingress, NetworkPolicy,
 // DNSEndpoint) are excluded because changes to them do not require a pod restart.
-func computeSpecHash(spec *ledgerv1alpha1.LedgerServiceSpec) string {
+func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	// Copy the spec and nil out fields that should not trigger a rolling update.
 	cp := *spec
 

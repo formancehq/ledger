@@ -62,7 +62,7 @@ func main() {
 	defer conn.Close()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
-	lsClient := dynClient.Resource(internal.LedgerServiceGVR).Namespace(internal.LedgerServiceNamespace())
+	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	if err := internal.CreateLedger(ctx, client, qrSentinelLedger); err != nil && !internal.IsTransient(err) {
 		log.Printf("cannot create sentinel ledger: %s", err)
@@ -80,7 +80,7 @@ func main() {
 }
 
 func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
-	current, err := internal.GetCurrentReplicas(ctx, lsClient, internal.LedgerServiceName)
+	current, err := internal.GetCurrentReplicas(ctx, lsClient, internal.ClusterName)
 	if err != nil {
 		log.Printf("quorum-recovery: cannot read current replicas: %s", err)
 		return
@@ -136,7 +136,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	// operator scale-down and every subsequent driver runs against a broken
 	// cluster for the rest of the experiment.
 	defer func() {
-		if err := internal.PatchReplicas(context.Background(), lsClient, internal.LedgerServiceName, 3); err != nil {
+		if err := internal.PatchReplicas(context.Background(), lsClient, internal.ClusterName, 3); err != nil {
 			log.Printf("quorum-recovery: cleanup PatchReplicas(3) failed: %s", err)
 		}
 		// Best-effort wait for the cluster to settle back to N=3 voters before
@@ -152,7 +152,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	}
 	assert.Reachable("quorum-recovery killed both non-leader pods", details)
 
-	err = internal.PatchReplicas(ctx, lsClient, internal.LedgerServiceName, 1)
+	err = internal.PatchReplicas(ctx, lsClient, internal.ClusterName, 1)
 	assert.Sometimes(err == nil, "scale-down to 1 should succeed", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return

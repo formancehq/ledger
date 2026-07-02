@@ -1,0 +1,14 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: tls-bs
+spec:
+  replicas: 3
+  image:
+    repository: ledger
+    tag: e2e
+    pullPolicy: Never
+  tls:
+    enabled: true
+    secretName: tls-bs-certs
+    caSecretKey: ca.crt

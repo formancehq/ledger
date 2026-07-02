@@ -18,12 +18,12 @@ import (
 func TestReconcile_EvenReplicas(t *testing.T) {
 	ns := createTestNamespace(t)
 	replicas := int32(4)
-	ls := newLedgerService("even", ns)
+	ls := newCluster("even", ns)
 	ls.Spec.Replicas = &replicas
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Wait for ConfigValid=False
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "even", Namespace: ns}, updated); err != nil {
 			return false
@@ -42,14 +42,14 @@ func TestReconcile_EvenReplicas(t *testing.T) {
 
 func TestReconcile_IngressEnabledNoHosts(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("ing-nohosts", ns)
+	ls := newCluster("ing-nohosts", ns)
 	ls.Spec.Ingress = &ledgerv1alpha1.IngressSpec{
 		Enabled: true,
 		// No hosts → validation error
 	}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ing-nohosts", Namespace: ns}, updated); err != nil {
 			return false
@@ -64,14 +64,14 @@ func TestReconcile_IngressEnabledNoHosts(t *testing.T) {
 
 func TestReconcile_IngressGrpcEnabledNoHosts(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("grpc-nohosts", ns)
+	ls := newCluster("grpc-nohosts", ns)
 	ls.Spec.IngressGrpc = &ledgerv1alpha1.IngressGrpcSpec{
 		Enabled: true,
 		// No hosts → validation error
 	}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "grpc-nohosts", Namespace: ns}, updated); err != nil {
 			return false
@@ -87,12 +87,12 @@ func TestReconcile_IngressGrpcEnabledNoHosts(t *testing.T) {
 func TestReconcile_ValidationFixed(t *testing.T) {
 	ns := createTestNamespace(t)
 	replicas := int32(4)
-	ls := newLedgerService("fix-val", ns)
+	ls := newCluster("fix-val", ns)
 	ls.Spec.Replicas = &replicas
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Wait for ConfigValid=False
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "fix-val", Namespace: ns}, updated); err != nil {
 			return false

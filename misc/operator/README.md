@@ -4,7 +4,7 @@ Kubernetes operator for deploying and managing high-availability [Formance Ledge
 
 ## Overview
 
-The Ledger Operator manages `LedgerService` custom resources to automate the lifecycle of distributed ledger clusters on Kubernetes. It handles:
+The Ledger Operator manages `Cluster` custom resources to automate the lifecycle of distributed ledger clusters on Kubernetes. It handles:
 
 - **StatefulSet management** with Raft-based consensus (odd replica counts)
 - **Persistent storage** for WAL and data volumes
@@ -17,7 +17,7 @@ The Ledger Operator manages `LedgerService` custom resources to automate the lif
 
 | Resource | Scope | Description |
 |----------|-------|-------------|
-| `LedgerService` | Namespaced | Main resource - deploys a ledger cluster |
+| `Cluster` | Namespaced | Main resource - deploys a ledger cluster |
 | `LedgerClusterAgent` | Cluster | Cluster-level API credentials |
 
 ## Quick Start
@@ -40,7 +40,7 @@ helm install ledger-operator ./chart \
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
-kind: LedgerService
+kind: Cluster
 metadata:
   name: my-ledger
 spec:
@@ -134,7 +134,7 @@ opt out. Deletion protection has three independent layers, so the choice of
    ServiceAccounts in `pvcProtection.additionalExemptServiceAccounts` on the owning
    release, so their operators' scale-down deletes are not blocked by the singleton
    policy.
-2. **`spec.persistence.deletionProtection` (per-LedgerService, default `true`).**
+2. **`spec.persistence.deletionProtection` (per-Cluster, default `true`).**
    Protected by default: the operator stamps that label on the ledger's PVCs and
    their bound PVs, so the cluster policy selects them. Set it explicitly to `false`
    to opt out — the label is removed and protection is lifted. This is versioned
@@ -149,7 +149,7 @@ kubectl annotate pvc <name> formance.com/allow-deletion=true --overwrite
 kubectl delete pvc <name>
 ```
 
-If a LedgerService sets `deletionProtection: true` while no cluster-scoped protection
+If a Cluster sets `deletionProtection: true` while no cluster-scoped protection
 policy is installed on the cluster, the label is still stamped but no policy acts on it;
 the operator surfaces this as a `DeletionProtectionInactive` warning event and status
 condition on the CR rather than silently leaving the volumes unprotected. The operator
@@ -164,7 +164,7 @@ kube-controller-manager garbage collector are exempt, so the StatefulSet
 `whenDeleted=Delete`) continues to work with protection enabled.
 
 No other identity is exempt. A workload/GitOps controller (ArgoCD, Flux, Velero
-restore, etc.) that deletes a protected `LedgerService` **and** its PVCs/PVs in a
+restore, etc.) that deletes a protected `Cluster` **and** its PVCs/PVs in a
 single managed teardown runs under its own ServiceAccount, so once
 `pvcProtection.enabled=true` those deletes are blocked just like a manual one. To
 allow such a teardown, either annotate the volumes with the allow-deletion key
@@ -186,7 +186,7 @@ guards Bound PVs only.)
 
 ## kubectl Plugin
 
-The `kubectl-ledger` plugin provides a CLI for managing LedgerService resources.
+The `kubectl-ledger` plugin provides a CLI for managing Cluster resources.
 
 ### Installation
 
@@ -211,10 +211,10 @@ kubectl ledger --help
 ### Commands
 
 ```
-kubectl ledger list [-A]                  # List all LedgerServices
+kubectl ledger list [-A]                  # List all Clusters
 kubectl ledger get <name>                 # Show detailed status
-kubectl ledger create <name>              # Create a new LedgerService (interactive)
-kubectl ledger delete <name> [-y]         # Delete a LedgerService
+kubectl ledger create <name>              # Create a new Cluster (interactive)
+kubectl ledger delete <name> [-y]         # Delete a Cluster
 kubectl ledger scale <name> --replicas=5  # Scale replicas (must be odd)
 kubectl ledger restart <name>             # Rolling restart
 kubectl ledger logs <name>                # Stream pod logs

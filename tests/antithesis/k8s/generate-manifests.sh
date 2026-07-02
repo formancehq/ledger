@@ -50,7 +50,7 @@ helm template ledger-operator "$REPO_ROOT/misc/operator/helm/operator" \
   ' > "$OUT/operator.yaml"
 
 # 3. Static manifests — substitute tag, registry, image name
-for tmpl in kapp-config.yaml minio.yaml nats.yaml ledgerservice.yaml workload.yaml; do
+for tmpl in kapp-config.yaml minio.yaml nats.yaml cluster.yaml workload.yaml; do
   sed "s|__TAG__|$TAG|g; s|__REGISTRY__|$ANTITHESIS_REGISTRY|g; s|__IMAGE_NAME__|$LEDGER_IMAGE_NAME|g" \
     "$SCRIPT_DIR/$tmpl" > "$OUT/$tmpl"
 done

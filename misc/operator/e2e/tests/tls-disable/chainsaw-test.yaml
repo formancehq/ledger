@@ -34,15 +34,15 @@ spec:
                 --from-file=ca.crt=ca.crt
             timeout: 60s
 
-    # 2. Deploy LedgerService with TLS enabled.
-    - name: Deploy TLS-enabled LedgerService
+    # 2. Deploy Cluster with TLS enabled.
+    - name: Deploy TLS-enabled Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: tls-dis
               status:
@@ -62,7 +62,7 @@ spec:
     - name: Disable TLS
       try:
         - apply:
-            file: ledgerservice-tls-disabled.yaml
+            file: cluster-tls-disabled.yaml
 
     # 5. Observe the migration walking through the optional phase the other
     #    direction. This exercises the client-side re-probe: TLS connections
@@ -76,7 +76,7 @@ spec:
               for i in $(seq 1 60); do
                 MODE=$(kubectl get statefulset ledger-tls-dis -n $NAMESPACE \
                   -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TLS_MODE")].value}' 2>/dev/null)
-                PHASE=$(kubectl get ledgerservice tls-dis -n $NAMESPACE \
+                PHASE=$(kubectl get cluster tls-dis -n $NAMESPACE \
                   -o jsonpath='{.status.tlsMigrationPhase}' 2>/dev/null)
                 echo "tick $i: TLS_MODE=$MODE migrationPhase=$PHASE"
                 if [ "$MODE" = "optional" ] || [ "$PHASE" = "transitioning-to-disabled" ]; then
@@ -96,7 +96,7 @@ spec:
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: tls-dis
               status:

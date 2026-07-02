@@ -80,11 +80,11 @@ func backupFlags(dest *ledgerv1alpha1.BackupDestination) []string {
 	return args
 }
 
-// backupServerAddr is the host:port a backup Job dials. The LedgerService
+// backupServerAddr is the host:port a backup Job dials. The Cluster
 // Service routes to any pod; the leader proxies the backup internally so we
 // don't need to target a specific pod. Using the cluster-internal service
 // DNS keeps the TLS SNI inside the server certificate's SAN coverage.
-func backupServerAddr(ls *ledgerv1alpha1.LedgerService) string {
+func backupServerAddr(ls *ledgerv1alpha1.Cluster) string {
 	port := ls.Spec.GrpcPort
 	if port == 0 {
 		port = 8888
@@ -100,7 +100,7 @@ func backupJobName(run *ledgerv1alpha1.LedgerBackupRun) string {
 
 // buildBackupJob renders the desired batchv1.Job for a LedgerBackupRun. The
 // Job runs `ledgerctl store backup` (or incremental-backup) in a one-shot
-// pod that connects to the LedgerService over its cluster DNS.
+// pod that connects to the Cluster over its cluster DNS.
 //
 // tlsMode mirrors the running pod's TLS_MODE so the Job's ledgerctl negotiates
 // the same transport. Pre-existing volumes/secrets from the ledger StatefulSet
@@ -112,7 +112,7 @@ func backupJobName(run *ledgerv1alpha1.LedgerBackupRun) string {
 func buildBackupJob(
 	run *ledgerv1alpha1.LedgerBackupRun,
 	backup *ledgerv1alpha1.LedgerBackup,
-	ls *ledgerv1alpha1.LedgerService,
+	ls *ledgerv1alpha1.Cluster,
 	tlsMode string,
 ) (*batchv1.Job, error) {
 	subcmd, err := backupSubcommand(run.Spec.Type)

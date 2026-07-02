@@ -36,8 +36,8 @@ var errSelectorDrift = errors.New("selector drift detected")
 // live in reconcileHeadlessService / reconcileGrpcService and remain in place
 // for the steady state — this is just a pre-pass that mirrors them under the
 // drift-guard's nose.
-func (r *LedgerServiceReconciler) pruneDisabledOptionalServices(
-	ctx context.Context, ledger *ledgerv1alpha1.LedgerService,
+func (r *ClusterReconciler) pruneDisabledOptionalServices(
+	ctx context.Context, ledger *ledgerv1alpha1.Cluster,
 ) error {
 	if ledger.Spec.HeadlessService.Enabled != nil && !*ledger.Spec.HeadlessService.Enabled {
 		if err := r.deleteIfExists(ctx, &corev1.Service{
@@ -84,8 +84,8 @@ func (r *LedgerServiceReconciler) pruneDisabledOptionalServices(
 // The returned error is wrapped errSelectorDrift; the message lists every
 // drifting object so the user knows what to revert (or which clusters to
 // rebuild) in one shot.
-func (r *LedgerServiceReconciler) validateSelectorImmutability(
-	ctx context.Context, ledger *ledgerv1alpha1.LedgerService,
+func (r *ClusterReconciler) validateSelectorImmutability(
+	ctx context.Context, ledger *ledgerv1alpha1.Cluster,
 ) error {
 	desired := selectorLabels(ledger)
 

@@ -36,7 +36,7 @@ nix develop --command golangci-lint run
 
 Convergence is therefore bounded by: time to roll the STS + one election cycle.
 
-Validation lives in `ledger_controller.go::validateClusterConfig`. Defaults
+Validation lives in `cluster_controller.go::validateClusterConfig`. Defaults
 remain server-side (`cmd/server/server.go::loadBloomConfig`) — do not mirror
 defaults in the operator.
 

@@ -1,0 +1,18 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: ing-svc
+spec:
+  replicas: 1
+  image:
+    repository: ledger
+    tag: e2e
+    pullPolicy: Never
+  ingress:
+    enabled: true
+    hosts:
+      - host: ledger.e2e.local
+  ingressGrpc:
+    enabled: true
+    hosts:
+      - host: ledger-grpc.e2e.local

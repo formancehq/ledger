@@ -31,10 +31,10 @@ func TestUpdateStatus_RemovesStaleConditions(t *testing.T) {
 	// Persisted object already carries a stale DeletionProtectionInactive warning
 	// plus an unrelated condition that must survive the update.
 	replicas := int32(1)
-	persisted := &ledgerv1alpha1.LedgerService{
+	persisted := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ls", Namespace: "default"},
-		Spec:       ledgerv1alpha1.LedgerServiceSpec{Replicas: &replicas},
-		Status: ledgerv1alpha1.LedgerServiceStatus{
+		Spec:       ledgerv1alpha1.ClusterSpec{Replicas: &replicas},
+		Status: ledgerv1alpha1.ClusterStatus{
 			Conditions: []metav1.Condition{
 				{Type: "DeletionProtectionInactive", Status: metav1.ConditionTrue, Reason: "ClusterPolicyNotInstalled"},
 				{Type: "ConfigValid", Status: metav1.ConditionTrue, Reason: "Valid"},
@@ -45,16 +45,16 @@ func TestUpdateStatus_RemovesStaleConditions(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(persisted).
-		WithStatusSubresource(&ledgerv1alpha1.LedgerService{}).
+		WithStatusSubresource(&ledgerv1alpha1.Cluster{}).
 		Build()
 
-	r := &LedgerServiceReconciler{Client: c, Scheme: scheme}
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
 	// In-memory ledger after a reconcile in which protection became active: the
 	// warning was removed from the slice; ConfigValid remains.
-	inMemory := &ledgerv1alpha1.LedgerService{
+	inMemory := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ls", Namespace: "default"},
-		Status: ledgerv1alpha1.LedgerServiceStatus{
+		Status: ledgerv1alpha1.ClusterStatus{
 			Conditions: []metav1.Condition{
 				{Type: "ConfigValid", Status: metav1.ConditionTrue, Reason: "Valid"},
 			},
@@ -63,7 +63,7 @@ func TestUpdateStatus_RemovesStaleConditions(t *testing.T) {
 
 	require.NoError(t, r.updateStatus(context.Background(), inMemory))
 
-	got := &ledgerv1alpha1.LedgerService{}
+	got := &ledgerv1alpha1.Cluster{}
 	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Name: "ls", Namespace: "default"}, got))
 
 	assert.Nil(t, meta.FindStatusCondition(got.Status.Conditions, "DeletionProtectionInactive"),

@@ -114,7 +114,7 @@ func TestDesiredTLSMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ls := &ledgerv1alpha1.LedgerService{Spec: ledgerv1alpha1.LedgerServiceSpec{TLS: tt.spec}}
+			ls := &ledgerv1alpha1.Cluster{Spec: ledgerv1alpha1.ClusterSpec{TLS: tt.spec}}
 			require.Equal(t, tt.want, desiredTLSMode(ls))
 		})
 	}

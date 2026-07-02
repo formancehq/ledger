@@ -11,10 +11,10 @@ spec:
   timeouts:
     assert: 10m
   steps:
-    - name: Deploy plaintext LedgerService
+    - name: Deploy plaintext Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -54,7 +54,7 @@ spec:
     - name: Enable TLS
       try:
         - apply:
-            file: ledgerservice-tls-enabled.yaml
+            file: cluster-tls-enabled.yaml
 
     # The whole point: convergence must happen within the chainsaw timeout.
     # Before the fix this never converged because the first restarted pod
@@ -65,7 +65,7 @@ spec:
             timeout: 8m
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: tls-deadlock
               status:

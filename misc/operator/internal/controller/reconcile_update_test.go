@@ -15,7 +15,7 @@ import (
 
 func TestReconcile_SpecHashChanges(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("hash-change", ns)
+	ls := newCluster("hash-change", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	sts := &appsv1.StatefulSet{}
@@ -27,7 +27,7 @@ func TestReconcile_SpecHashChanges(t *testing.T) {
 	require.NotEmpty(t, initialHash)
 
 	// Update spec to trigger hash change
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "hash-change", Namespace: ns}, updated))
 	updated.Spec.Debug = true
 	require.NoError(t, k8sClient.Update(ctx, updated))

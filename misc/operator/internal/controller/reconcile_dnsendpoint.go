@@ -12,7 +12,7 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) reconcileDNSEndpoint(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	gvk := schema.GroupVersionKind{
 		Group:   "externaldns.k8s.io",
 		Version: "v1alpha1",

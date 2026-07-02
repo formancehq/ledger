@@ -23,8 +23,8 @@ func newRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "kubectl-ledger",
-		Short:         "Manage LedgerService deployments on Kubernetes",
-		Long:          "A kubectl plugin for managing LedgerService CRDs deployed by the Formance LedgerService Operator.",
+		Short:         "Manage Cluster deployments on Kubernetes",
+		Long:          "A kubectl plugin for managing Cluster CRDs deployed by the Formance Cluster Operator.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

@@ -16,10 +16,10 @@ spec:
                 -- mb --ignore-existing minio/e2e-restore
             timeout: 60s
 
-    - name: Deploy LedgerService
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -44,20 +44,20 @@ spec:
         - assert:
             file: assert-backup-ready.yaml
 
-    - name: Destroy LedgerService and PVCs
+    - name: Destroy Cluster and PVCs
       try:
         - script:
             content: |
               kubectl delete ledgerbackup restore-bk -n $NAMESPACE --ignore-not-found
-              kubectl delete ledgerservice restore-svc -n $NAMESPACE --wait=true --timeout=60s
+              kubectl delete cluster restore-svc -n $NAMESPACE --wait=true --timeout=60s
               kubectl wait --for=delete pod/ledger-restore-svc-0 -n $NAMESPACE --timeout=60s 2>/dev/null || true
               kubectl delete pvc wal-ledger-restore-svc-0 data-ledger-restore-svc-0 cold-cache-ledger-restore-svc-0 -n $NAMESPACE --ignore-not-found
             timeout: 120s
 
-    - name: Deploy LedgerService in restore mode
+    - name: Deploy Cluster in restore mode
       try:
         - apply:
-            file: ledgerservice-restore.yaml
+            file: cluster-restore.yaml
         # Restore mode serves /health but not /readyz, so the pod stays Running but not Ready.
         # Wait for the pod to be Running instead of StatefulSet readyReplicas.
         - assert:
@@ -96,7 +96,7 @@ spec:
     - name: Switch to normal mode
       try:
         - apply:
-            file: ledgerservice-normal.yaml
+            file: cluster-normal.yaml
         # The restore-mode pod is Running but not Ready (no /readyz in restore mode).
         # OrderedReady StatefulSet won't rolling-update until the pod is Ready.
         # Force-delete the pod so the StatefulSet recreates it with the new (normal) template.

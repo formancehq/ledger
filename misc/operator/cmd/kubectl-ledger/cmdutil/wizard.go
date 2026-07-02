@@ -10,10 +10,10 @@ import (
 	"github.com/pterm/pterm"
 )
 
-// ResolveLedgerServiceName returns the ledger name from args or by interactive selection.
+// ResolveClusterName returns the ledger name from args or by interactive selection.
 // If args contains a name, it is returned directly. Otherwise, lists ledgers in
 // the resolved namespace and prompts the user to select one.
-func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string) (name, namespace string, err error) {
+func ResolveClusterName(ctx context.Context, opts *Options, args []string) (name, namespace string, err error) {
 	ns, err := opts.ResolvedNamespace()
 	if err != nil {
 		return "", "", fmt.Errorf("resolving namespace: %w", err)
@@ -28,11 +28,11 @@ func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string)
 		return "", "", fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerService resources...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Cluster resources...")
 
-	ledgers, err := ListLedgerServices(ctx, crdClient, ns)
+	ledgers, err := ListClusters(ctx, crdClient, ns)
 	if err != nil {
-		spinner.Fail("Failed to list LedgerService resources")
+		spinner.Fail("Failed to list Cluster resources")
 
 		return "", "", fmt.Errorf("listing ledgers: %w", err)
 	}
@@ -40,7 +40,7 @@ func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string)
 	_ = spinner.Stop()
 
 	if len(ledgers.Items) == 0 {
-		return "", "", fmt.Errorf("no LedgerService resources found in namespace %q", ns)
+		return "", "", fmt.Errorf("no Cluster resources found in namespace %q", ns)
 	}
 
 	names := make([]string, len(ledgers.Items))
@@ -56,7 +56,7 @@ func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string)
 
 	selected, err := pterm.DefaultInteractiveSelect.
 		WithOptions(names).
-		WithDefaultText("Select a LedgerService").
+		WithDefaultText("Select a Cluster").
 		Show()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to select ledger: %w", err)
