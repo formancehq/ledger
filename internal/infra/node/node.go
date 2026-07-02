@@ -285,11 +285,7 @@ func NewNode(
 			case len(cfg.Peers) > 0:
 				// Join mode: existing peers are voters, self joins as learner.
 				// The leader will add us via ConfChange after we start.
-				voters = make([]uint64, 0, len(cfg.Peers))
-				for _, peerEntry := range cfg.Peers {
-					voters = append(voters, peerEntry.ID)
-				}
-
+				voters = initialJoinVoters(cfg.Peers, cfg.NodeID)
 				learners = []uint64{cfg.NodeID}
 				logger.WithFields(map[string]any{
 					"voters":   voters,
@@ -2388,6 +2384,35 @@ func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
 	}
 
 	return slices.Contains(cs.Learners, nodeID)
+}
+
+// initialJoinVoters returns the voter list for the join-mode initial WAL
+// snapshot. It maps every peer discovered from the existing cluster to its
+// ID and excludes self.
+//
+// The exclusion matters when this node was previously a cluster member and
+// is now rejoining with fresh WAL — e.g. after a scale-down/scale-up cycle
+// that removed its Pod but left the leader's status.Progress carrying the
+// node ID from an earlier auto-promote. discoverPeersFromCluster echoes
+// whatever the leader's Progress contains, so self can appear in cfg.Peers.
+// Passing that ID both here (as voter) AND to cfg.NodeID's Learners entry
+// produces the raft-invalid ConfState `Voters=[..., self], Learners=[self]`:
+// on the next boot, raft.newRaft's assertConfStatesEquivalent detects the
+// mismatch between the snapshot's ConfState and the tracker-restored
+// equivalent (which normalises self into voters only) and panics with
+// "ConfStates not equivalent after sorting", producing a permanent
+// CrashLoopBackOff that no amount of retries recovers from.
+func initialJoinVoters(peers []Peer, selfID uint64) []uint64 {
+	voters := make([]uint64, 0, len(peers))
+	for _, p := range peers {
+		if p.ID == selfID {
+			continue
+		}
+
+		voters = append(voters, p.ID)
+	}
+
+	return voters
 }
 
 // ExtractPeerAddressesFromEntries scans committed entries for ConfChange entries

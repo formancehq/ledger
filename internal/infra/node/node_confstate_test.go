@@ -48,6 +48,52 @@ func TestConfStateContainsNode(t *testing.T) {
 	})
 }
 
+// TestInitialJoinVoters_ExcludesSelf verifies the EN-1431 follow-up bug fix:
+// when discoverPeersFromCluster echoes back the joining node's own ID (which
+// happens when the leader's status.Progress still carries this node from a
+// previous life — e.g. auto-promoted voter before a scale-down/scale-up),
+// initialJoinVoters must drop self so the initial WAL snapshot does not end
+// up with `Voters=[..., self], Learners=[self]`. That raft-invalid state
+// triggers assertConfStatesEquivalent's panic on the next boot, producing a
+// permanent CrashLoopBackOff that only wiping cluster-side state recovers
+// from.
+func TestInitialJoinVoters_ExcludesSelf(t *testing.T) {
+	t.Parallel()
+
+	t.Run("self absent from peers", func(t *testing.T) {
+		t.Parallel()
+
+		peers := []Peer{{ID: 1}, {ID: 3}}
+		voters := initialJoinVoters(peers, 2)
+		require.Equal(t, []uint64{1, 3}, voters)
+	})
+
+	t.Run("self present in peers is dropped", func(t *testing.T) {
+		t.Parallel()
+
+		peers := []Peer{{ID: 1}, {ID: 2}, {ID: 3}}
+		voters := initialJoinVoters(peers, 2)
+		require.Equal(t, []uint64{1, 3}, voters,
+			"self must be excluded from the voter list to avoid the "+
+				"Voters=[...,self]/Learners=[self] raft-invalid ConfState")
+	})
+
+	t.Run("self is the only peer", func(t *testing.T) {
+		t.Parallel()
+
+		peers := []Peer{{ID: 2}}
+		voters := initialJoinVoters(peers, 2)
+		require.Empty(t, voters)
+	})
+
+	t.Run("empty peers", func(t *testing.T) {
+		t.Parallel()
+
+		voters := initialJoinVoters(nil, 2)
+		require.Empty(t, voters)
+	})
+}
+
 func TestFinishReady_SnapshotInstall_PreservesWALConfState(t *testing.T) {
 	t.Parallel()
 
