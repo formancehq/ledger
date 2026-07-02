@@ -202,6 +202,25 @@ func (c *Checker) modelLedgerMetaDump(ledger string) string {
 	return "{" + strings.Join(parts, ",") + "}"
 }
 
+// modelTxMetaDump renders the committed model's metadata for the transaction at
+// reference ref. Acquires c.mu.
+func (c *Checker) modelTxMetaDump(ledger, ref string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	ls := c.modelState.Ledger(ledger)
+
+	var parts []string
+	for tk, v := range ls.TxMeta() {
+		if tk.Reference == ref {
+			parts = append(parts, tk.Key+"="+oracle.MetaValueString(v))
+		}
+	}
+	sort.Strings(parts)
+
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
 // Server log sequences — for verifying drain order vs commit order.
 func logSeqs(logs []*commonpb.Log) string {
 	ids := make([]string, len(logs))

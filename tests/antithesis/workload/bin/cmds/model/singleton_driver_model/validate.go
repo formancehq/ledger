@@ -466,6 +466,65 @@ func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.Me
 	return true
 }
 
+// validateTransactionRead checks one GetTransaction snapshot against the model:
+// legal iff some candidate base holds a transaction at reference ref whose id,
+// reverted flag, postings, and whole metadata map all match the server's on the
+// SAME base. The read is picked from committed (drained) state, so id and
+// postings are fixed across bases; only metadata and the reverted flag can vary
+// with in-flight writes/reverts, which candidateBases enumerates. This is the
+// only path that reads accumulated transaction metadata back (add/overwrite/
+// delete), so a divergent stored projection with correct per-write echoes — the
+// ledger-metadata cross-routing bug class — is caught here for transactions.
+func (c *Checker) validateTransactionRead(maxTicket uint64, ledger, ref string, serverTx *commonpb.Transaction) {
+	if c.matchesModel(maxTicket, "TXREAD", func(base oracle.GlobalState) bool {
+		rec, ok := base.Ledger(ledger).TxRefs()[ref]
+		if !ok {
+			return false
+		}
+
+		return rec.Id() == serverTx.GetId() &&
+			rec.Reverted() == serverTx.GetReverted() &&
+			postingsEqual(rec.Postings(), serverTx.GetPostings()) &&
+			txMetaMatches(base.Ledger(ledger), ref, serverTx.GetMetadata())
+	}) {
+		return
+	}
+
+	assert.Unreachable("singleton_driver_model: transaction read outside model", internal.Details{
+		"ledger":     ledger,
+		"reference":  ref,
+		"serverId":   fmt.Sprintf("%d", serverTx.GetId()),
+		"serverRev":  fmt.Sprintf("%v", serverTx.GetReverted()),
+		"serverMeta": renderMetaMap(serverTx.GetMetadata()),
+		"modelMeta":  c.modelTxMetaDump(ledger, ref),
+	})
+}
+
+// txMetaMatches reports whether ls's metadata for the transaction at ref equals
+// serverMeta exactly — same keys, same verbatim values. Reads surface the stored
+// value as-written; the declared type is an index hint, not applied on read.
+func txMetaMatches(ls oracle.LedgerState, ref string, serverMeta map[string]*commonpb.MetadataValue) bool {
+	model := map[string]*commonpb.MetadataValue{}
+	for tk, v := range ls.TxMeta() {
+		if tk.Reference == ref {
+			model[tk.Key] = v
+		}
+	}
+
+	if len(model) != len(serverMeta) {
+		return false
+	}
+
+	for k, v := range model {
+		sv, ok := serverMeta[k]
+		if !ok || oracle.MetaValueString(sv) != oracle.MetaValueString(v) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // responseMetaEffect extracts the server's stored (as-written) values for a
 // committed metadata write from its response log, dispatching on the request
 // type. Returns nil for non-metadata requests and for deletes, whose log carries

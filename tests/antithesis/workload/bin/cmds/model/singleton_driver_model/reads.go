@@ -178,3 +178,84 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 
 	c.validateLedgerRead(maxTicket, ledger, info.GetAccountTypes(), info.GetMetadata())
 }
+
+// pickTransaction returns a committed transaction to read back, as
+// (ledger, reference, id), or ok=false when the model tracks none. Only
+// referenced transactions are tracked; drain/transient transactions set no
+// reference and so are unreadable by reference here.
+func pickTransaction(g oracle.GlobalState) (ledger, ref string, id uint64, ok bool) {
+	type txRef struct {
+		ledger string
+		ref    string
+		id     uint64
+	}
+
+	var txs []txRef
+	for name, ls := range g.Ledgers() {
+		for r, rec := range ls.TxRefs() {
+			txs = append(txs, txRef{ledger: name, ref: r, id: rec.Id()})
+		}
+	}
+
+	if len(txs) == 0 {
+		return "", "", 0, false
+	}
+
+	slices.SortFunc(txs, func(a, b txRef) int {
+		if a.ledger != b.ledger {
+			if a.ledger < b.ledger {
+				return -1
+			}
+			return 1
+		}
+		if a.ref < b.ref {
+			return -1
+		}
+		if a.ref > b.ref {
+			return 1
+		}
+		return 0
+	})
+
+	c := random.RandomChoice(txs)
+
+	return c.ledger, c.ref, c.id, true
+}
+
+// runTransactionRead issues a linearizable GetTransaction on a committed
+// transaction and checks the server's snapshot — id, reverted flag, postings,
+// and whole metadata map — against the model (see validateTransactionRead). This
+// is the only path that reads accumulated transaction metadata back.
+func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	c.mu.Lock()
+	ledger, ref, id, ok := pickTransaction(c.modelState)
+	if !ok {
+		c.mu.Unlock()
+		return
+	}
+	readID := c.registerRead()
+	c.mu.Unlock()
+	defer c.finishRead(readID)
+
+	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	resp, err := client.GetTransaction(readCtx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: id})
+	// High-water at the read's response: only bulks dispatched by now could be
+	// reflected in what the server returned.
+	maxTicket := c.ticketSeq.Load()
+	if err != nil {
+		if internal.IsTransient(err) || isShutdownError(err) {
+			return
+		}
+		// The transaction is committed (drained into modelState), so a definitive
+		// error on a linearizable read — NotFound, Internal — is a real finding.
+		assert.Unreachable("singleton_driver_model: GetTransaction returned unexpected error", internal.Details{
+			"ledger":    ledger,
+			"reference": ref,
+			"id":        id,
+			"error":     err.Error(),
+		})
+		return
+	}
+
+	c.validateTransactionRead(maxTicket, ledger, ref, resp.GetTransaction())
+}

@@ -21,9 +21,12 @@ func (s LedgerState) TransactionFieldTypes() map[string]commonpb.MetadataType {
 	return s.transactionFieldTypes
 }
 
-// txRecord.Id is the server-assigned id of a committed transaction tracked by
-// reference — the generator resolves a reference to its id to target it.
-func (t *txRecord) Id() uint64 { return t.id }
+// txRecord accessors expose a committed transaction tracked by reference: its
+// server-assigned id (the generator resolves a reference to its id to target
+// it), its original postings, and whether it has been reverted.
+func (t *txRecord) Id() uint64                    { return t.id }
+func (t *txRecord) Postings() []*commonpb.Posting { return t.postings }
+func (t *txRecord) Reverted() bool                { return t.reverted }
 
 func (m *metaEffect) Saved() map[string]*commonpb.MetadataValue { return m.saved }
 
