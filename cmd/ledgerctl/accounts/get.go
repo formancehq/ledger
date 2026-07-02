@@ -131,6 +131,45 @@ func runGet(cmd *cobra.Command, args []string) error {
 			{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 		}
 
+		// With --rescale, currencies that differ only in precision are summed
+		// into a single base-currency row per color, re-expressed at the
+		// requested scale. Colors stay segregated: they are distinct balance
+		// buckets.
+		if rescale := cmdutil.RescaleTarget(cmd); rescale != nil {
+			raw := make([]cmdutil.RawVolume, 0, len(account.GetVolumes()))
+			for _, entry := range account.GetVolumes() {
+				vol := entry.GetVolumes()
+				raw = append(raw, cmdutil.RawVolume{
+					Asset:  entry.GetAsset(),
+					Color:  entry.GetColor(),
+					Input:  vol.GetInput(),
+					Output: vol.GetOutput(),
+				})
+			}
+
+			for _, av := range cmdutil.AggregateVolumes(raw) {
+				balanceColor := pterm.Green
+				if av.Balance.Sign() < 0 {
+					balanceColor = pterm.Red
+				}
+
+				displayColor := av.Color
+				if displayColor == "" {
+					displayColor = "-"
+				}
+
+				volumesTable = append(volumesTable, []string{
+					cmdutil.AssetLabel(av.Asset, *rescale),
+					displayColor,
+					cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
+					cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
+					balanceColor(cmdutil.RescaleAmount(av.Balance, av.Precision, *rescale)),
+				})
+			}
+
+			return pterm.DefaultTable.WithHasHeader().WithData(volumesTable).Render()
+		}
+
 		// account.GetVolumes() is already sorted by (asset, color) ascending
 		// server-side, so we just render in-order.
 		for _, entry := range account.GetVolumes() {
