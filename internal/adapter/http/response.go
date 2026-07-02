@@ -8,6 +8,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -78,8 +80,25 @@ func writeBadRequest(w http.ResponseWriter, errorCode string, err error) {
 }
 
 // writeInternalServerError writes a 500 Internal Server Error response.
+//
+// The raw err is logged server-side with a correlation ID; the client only
+// receives a generic message carrying that same ID. This is the sanitization
+// boundary for handleError's fallthrough: any non-domain error (wrapped Pebble
+// errors, filesystem paths, invariant strings) must never reach the client
+// (mirrors the gRPC adapter's convertToGRPCError default branch, #375).
 func writeInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
-	writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
+	id := correlationID(r)
+
+	logging.FromContext(r.Context()).WithFields(map[string]any{
+		"correlation_id": id,
+	}).Errorf("HTTP unmapped handler error: %v", err)
+
+	writeErrorResponse(
+		w,
+		http.StatusInternalServerError,
+		"INTERNAL_ERROR",
+		fmt.Errorf("internal server error (correlation ID: %s)", id),
+	)
 }
 
 // queryParamBool returns true if the query parameter exists and is "true".

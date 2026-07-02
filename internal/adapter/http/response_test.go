@@ -1,6 +1,8 @@
 package http
 
 import (
+	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -9,9 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -79,14 +84,31 @@ func TestWriteBadRequest_MaxBytesError(t *testing.T) {
 func TestWriteInternalServerError(t *testing.T) {
 	t.Parallel()
 
+	var logs bytes.Buffer
+	logger := logging.NewDefaultLogger(&logs, false, false, false)
+
+	ctx := logging.ContextWithLogger(context.Background(), logger)
+	ctx = context.WithValue(ctx, middleware.RequestIDKey, "corr-123")
+
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	writeInternalServerError(w, r, errors.New("boom"))
+	r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+	writeInternalServerError(w, r, errors.New("boom: /var/lib/pebble path leaked"))
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	resp := decodeResponse[ErrorResponse](t, w)
 	require.Equal(t, "INTERNAL_ERROR", resp.ErrorCode)
-	require.Equal(t, "boom", resp.ErrorMessage)
+
+	// The client must receive only a generic message carrying the correlation
+	// ID — never the raw error text (EN-1442 information disclosure fix).
+	require.Equal(t, "internal server error (correlation ID: corr-123)", resp.ErrorMessage)
+	require.NotContains(t, resp.ErrorMessage, "boom")
+	require.NotContains(t, resp.ErrorMessage, "pebble")
+
+	// The raw error and correlation ID must be logged server-side so ops can
+	// correlate the client-reported ID with the real cause.
+	logged := logs.String()
+	require.Contains(t, logged, "boom: /var/lib/pebble path leaked")
+	require.Contains(t, logged, "corr-123")
 }
 
 func TestWriteErrorResponse_NilError(t *testing.T) {
