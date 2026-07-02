@@ -1103,7 +1103,7 @@ type PersistenceSpec struct {
 
 // DeletionProtectionEnabled reports whether volume deletion protection is
 // requested for this ledger. An unset field defaults to true, matching the CRD
-// default, so a LedgerService constructed in-process without API-server
+// default, so a Cluster constructed in-process without API-server
 // defaulting is protected unless it explicitly opts out.
 func (p PersistenceSpec) DeletionProtectionEnabled() bool {
 	return p.DeletionProtection == nil || *p.DeletionProtection
