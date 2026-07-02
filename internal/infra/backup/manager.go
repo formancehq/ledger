@@ -387,28 +387,36 @@ func RunIncrementalBackup(
 		segmentsUploaded++
 
 		// Export the audit items (per-order detail) for the same range.
-		// The audit hash is computed over these orders, so a restored
-		// incremental backup that lacks them cannot reconstruct the hash
-		// chain (the checker fails at the first restored audit sequence).
-		// Items share the audit sequence range but live in a separate
-		// subzone; their composite [seq][order_idx] keys fall within the
-		// same [seq+1, endSeq+1) prefix bounds exportEntries uses.
-		if _, err := exportEntries(
+		// On success proposals the audit hash covers the per-item payloads,
+		// so a restored backup missing them cannot reconstruct the chain.
+		// Failure proposals write an AuditEntry with zero items (see
+		// state.machine.go writeAuditEntry(failureEntry, nil, ...) and
+		// state.batch.go appendAuditItems), and their hash is bound to the
+		// header alone. An incremental range consisting of only failures
+		// therefore has audit count > 0 but auditItem count == 0 —
+		// exportEntries then uploads no object, and we must not add a
+		// manifest entry referencing a key that does not exist on storage
+		// (subsequent ApplyExports would fail on GetFile). Same guard
+		// pattern as the appliedProposal branch below.
+		itemCount, err := exportEntries(
 			ctx, storage, readHandle, bucketID,
 			dal.ZoneCold, dal.SubColdAuditItem, afterAuditSeq, currentAuditSeq,
 			ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
-		); err != nil {
+		)
+		if err != nil {
 			return nil, fmt.Errorf("exporting audit items: %w", err)
 		}
 
-		manifest.Exports = append(manifest.Exports, ExportSegment{
-			Type:     "auditItem",
-			StartSeq: afterAuditSeq + 1,
-			EndSeq:   currentAuditSeq,
-			Key:      ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
-		})
+		if itemCount > 0 {
+			manifest.Exports = append(manifest.Exports, ExportSegment{
+				Type:     "auditItem",
+				StartSeq: afterAuditSeq + 1,
+				EndSeq:   currentAuditSeq,
+				Key:      ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
+			})
 
-		segmentsUploaded++
+			segmentsUploaded++
+		}
 
 		// Export the AppliedProposal entries for the same range. Sequences
 		// are 1:1 with AuditEntry on the success path; ranges that contain
