@@ -425,7 +425,7 @@ func completeEventTypes(_ *cobra.Command, _ []string, toComplete string) ([]stri
 	}
 
 	selected := make(map[string]struct{})
-	for _, p := range strings.Split(prefix, ",") {
+	for p := range strings.SplitSeq(prefix, ",") {
 		if p = strings.ToUpper(strings.TrimSpace(p)); p != "" {
 			selected[p] = struct{}{}
 		}
