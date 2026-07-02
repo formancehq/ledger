@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
@@ -69,13 +70,41 @@ type pendingObservation struct {
 	obs    observation
 }
 
-// NewChecker returns an empty checker; caller spawns the processor goroutine.
-func NewChecker(ledgerNames []string) *Checker {
+// NewChecker returns a checker seeded with each ledger's initial metadata schema
+// (declared at creation, see setupLedgers); caller spawns the processor
+// goroutine. The schema is replayed as SetMetadataFieldType orders — the server
+// records the identical declared types at creation (populateInitialSchema), so
+// the model's schema state matches the server's from the first bulk.
+func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) *Checker {
+	modelState := oracle.NewGlobalState()
+	for _, ledger := range ledgerNames {
+		cmds := schemas[ledger]
+		if len(cmds) == 0 {
+			continue
+		}
+
+		reqs := make([]*servicepb.Request, 0, len(cmds))
+		for _, cmd := range cmds {
+			reqs = append(reqs, &servicepb.Request{
+				Type: &servicepb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+						Ledger:     ledger,
+						TargetType: cmd.GetTargetType(),
+						Key:        cmd.GetKey(),
+						Type:       cmd.GetType(),
+					},
+				},
+			})
+		}
+
+		modelState = modelState.Apply(oracle.Bulk{Requests: reqs}).State
+	}
+
 	return &Checker{
 		ledgerNames: ledgerNames,
 		inflight:    map[uint64]oracle.Bulk{},
 		reads:       map[uint64]struct{}{},
 		incoming:    make(chan observation, incomingBuffer),
-		modelState:  oracle.NewGlobalState(),
+		modelState:  modelState,
 	}
 }

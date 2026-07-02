@@ -32,7 +32,7 @@ func collectBases(c *Checker) []oracle.GlobalState {
 func TestCandidateBases_BoundsInflightByMaxTicket(t *testing.T) {
 	t.Parallel()
 
-	c := NewChecker([]string{"L"})
+	c := NewChecker([]string{"L"}, nil)
 	c.inflight[5] = bulkOf(oracletest.AddTypeReq("T"))
 
 	collect := func(maxTicket uint64) []oracle.GlobalState {
@@ -57,7 +57,7 @@ func TestCandidateBases_BoundsInflightByMaxTicket(t *testing.T) {
 func TestCandidateBases_TruncatesPendingByMaxTicket(t *testing.T) {
 	t.Parallel()
 
-	c := NewChecker([]string{"L"})
+	c := NewChecker([]string{"L"}, nil)
 	c.pending = []*pendingObservation{
 		{minSeq: 1, obs: observation{bulk: bulkOf(oracletest.AddTypeReq("A")), ticket: 2}},
 		{minSeq: 2, obs: observation{bulk: bulkOf(oracletest.AddTypeReq("B")), ticket: 6}},
@@ -77,7 +77,7 @@ func TestCandidateBases_TruncatesPendingByMaxTicket(t *testing.T) {
 func TestCandidateBases_FoldsInflight(t *testing.T) {
 	t.Parallel()
 
-	c := NewChecker([]string{"L"})
+	c := NewChecker([]string{"L"}, nil)
 	c.inflight[1] = bulkOf(oracletest.AddTypeReq("T"))
 
 	// modelState (empty) and the state with the in-flight add folded in.
@@ -93,7 +93,7 @@ func TestCandidateBases_FoldsInflight(t *testing.T) {
 func TestCandidateBases_PinsPendingOrder(t *testing.T) {
 	t.Parallel()
 
-	c := NewChecker([]string{"L"})
+	c := NewChecker([]string{"L"}, nil)
 	p1 := bulkOf(oracletest.AddTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))
 	p2 := bulkOf(oracletest.TxReq("world", "a:1", "USD", 5), oracletest.TxReq("a:1", "world", "USD", 5))
 	c.pending = []*pendingObservation{
@@ -126,10 +126,10 @@ func TestModelFailure_NoSelfExplanation(t *testing.T) {
 	}
 
 	// No concurrent add -> AlreadyExists is not explainable (would be a finding).
-	require.False(t, alreadyExistsExplained(collectBases(NewChecker([]string{"L"}))))
+	require.False(t, alreadyExistsExplained(collectBases(NewChecker([]string{"L"}, nil))))
 
 	// Concurrent in-flight add of T -> AlreadyExists is explainable.
-	withAdd := NewChecker([]string{"L"})
+	withAdd := NewChecker([]string{"L"}, nil)
 	withAdd.inflight[1] = bulkOf(oracletest.AddTypeReq("T"))
 	require.True(t, alreadyExistsExplained(collectBases(withAdd)))
 }

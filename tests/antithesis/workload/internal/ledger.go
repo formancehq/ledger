@@ -8,6 +8,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -130,7 +131,7 @@ func (p OwnedLedgerPrefix) WithSuffix(suffix string) string {
 }
 
 // CreateLedger creates a ledger via the Apply RPC and verifies it can be read back.
-func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, name string) error {
+func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, name string, initialSchema ...*commonpb.SetMetadataFieldTypeCommand) error {
 	details := Details{"ledger": name}
 
 	// A fresh idempotency key, reused across the client's internal retries: a
@@ -140,7 +141,7 @@ func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, nam
 	key := fmt.Sprintf("create-ledger-%016x%016x", Rand().Uint64(), Rand().Uint64())
 	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(key, &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{Name: name},
+			CreateLedger: &servicepb.CreateLedgerRequest{Name: name, InitialSchema: initialSchema},
 		},
 	}))
 	assert.Sometimes(IsTolerated(err), "should be able to create ledger", details.With(Details{"error": err}))

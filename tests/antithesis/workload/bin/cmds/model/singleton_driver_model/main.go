@@ -46,6 +46,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -96,11 +97,19 @@ func main() {
 	runID := fmt.Sprintf("%016x", internal.Rand().Uint64())
 	names := ledgerNames(runID, numLedgers)
 
-	if !setupLedgers(ctx, client, names) {
+	// Each ledger is created with a small, random initial metadata schema; the
+	// checker seeds the same declarations so the model's schema state matches
+	// the server's from the first bulk.
+	schemas := make(map[string][]*commonpb.SetMetadataFieldTypeCommand, len(names))
+	for _, name := range names {
+		schemas[name] = initialSchema()
+	}
+
+	if !setupLedgers(ctx, client, names, schemas) {
 		return
 	}
 
-	checker := NewChecker(names)
+	checker := NewChecker(names, schemas)
 
 	// No seed type — workers fill the chart organically; early txs at
 	// untyped prefixes fail ACCOUNT_NOT_MATCHING_TYPE and validate fine.
@@ -197,6 +206,26 @@ func runWorker(
 	}
 }
 
+// initialSchema generates a small, random metadata schema declared at ledger
+// creation via CreateLedger's initial_schema: 0-3 field types across targets,
+// keys, and types from the same pools the runtime schema ops use. NewChecker
+// seeds the same declarations so the model's schema state matches the server's
+// from the start. Declaring a type creates no index (populateInitialSchema only
+// records the schema), so a later remove drops nothing.
+func initialSchema() []*commonpb.SetMetadataFieldTypeCommand {
+	n := int(random.RandomChoice([]uint8{0, 1, 2, 3}))
+	cmds := make([]*commonpb.SetMetadataFieldTypeCommand, 0, n)
+	for i := 0; i < n; i++ {
+		cmds = append(cmds, &commonpb.SetMetadataFieldTypeCommand{
+			TargetType: random.RandomChoice(metaTargetPool),
+			Key:        metaKey(),
+			Type:       random.RandomChoice(metaTypePool),
+		})
+	}
+
+	return cmds
+}
+
 // Per-run fleet names: model-<runID>-0, model-<runID>-1, ... PrefixModel
 // is in internal.ownedLedgerPrefixes so generic drivers skip them.
 func ledgerNames(runID string, n int) []string {
@@ -230,9 +259,9 @@ func envInt(key string, def int) int {
 // missing ledger, so it asserts Unreachable. Shutdown (ctx cancelled) is teardown,
 // not a finding. Returns false to stop the run; the chart is left empty for
 // workers to fill.
-func setupLedgers(ctx context.Context, client servicepb.BucketServiceClient, names []string) bool {
+func setupLedgers(ctx context.Context, client servicepb.BucketServiceClient, names []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) bool {
 	for _, name := range names {
-		err := internal.CreateLedger(ctx, client, name)
+		err := internal.CreateLedger(ctx, client, name, schemas[name]...)
 		if err == nil {
 			continue
 		}
