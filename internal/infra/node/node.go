@@ -910,9 +910,38 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	node.tasks.add(newTask(node.runBackgroundMaintenance))
 	node.tasks.run(ctx)
 
-	// Wait for the FSM to apply all initially committed entries before
-	// signaling ready. This ensures downstream consumers (index builder,
-	// event manager) see the complete Pebble state at startup.
+	// Signal ready as soon as the raft loop is up.
+	//
+	// /readyz is documented as intentionally permissive (see
+	// internal/adapter/http/handlers_health.go): "returns 200 once the local
+	// Raft loop has started, regardless of whether a leader has been elected".
+	// The signal here is what the fx OnStart hook wrapping node.Run is
+	// blocked on (see bootstrap/module.go); fx runs OnStart hooks serially,
+	// so nothing that comes after — most importantly the HTTP server hook
+	// that opens port 9000 — starts until this closes.
+	//
+	// Blocking `ready` on FSM catch-up produced a design bug: a follower
+	// booting with an out-of-sync applier (fresh Pebble, WAL compacted past
+	// its snapshot — see the EN-1431 series) never catches up until
+	// SynchronizeWithLeader completes, which for a 17 GiB checkpoint can
+	// take multiple minutes. During that window the HTTP server never
+	// started, /readyz refused connections, kubelet marked the pod
+	// permanently not-ready, and the StatefulSet's OrderedReady rollout
+	// stalled — even though raft, spool, and apply were all functioning
+	// exactly as designed. The syncing follower IS ready in every sense
+	// that matters at k8s scheduling level; write traffic is forwarded to
+	// the leader and reads that need FSM state have their own gating.
+	//
+	// Downstream consumers that legitimately need the FSM caught up to a
+	// specific index (index builder, event manager, cluster-config
+	// reconciler) call fsm.WaitForApplied on demand rather than piggybacking
+	// on node.Run's ready signal.
+	close(ready)
+
+	// Observational: log FSM catch-up progress asynchronously so it never
+	// blocks node.Run's main goroutine. If the wait errors (only realistic
+	// cause is ctx cancellation at shutdown), we log and return — the
+	// main select loop below handles the real error propagation.
 	initialCommit := status.Commit
 	if initialCommit > 0 {
 		node.logger.WithFields(map[string]any{
@@ -920,17 +949,21 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 			"to":   initialCommit,
 		}).Infof("Replaying WAL...")
 
-		err := node.fsm.WaitForApplied(ctx, initialCommit)
-		if err != nil {
-			return fmt.Errorf("waiting for initial WAL replay: %w", err)
-		}
+		go func() {
+			if err := node.fsm.WaitForApplied(ctx, initialCommit); err != nil {
+				node.logger.WithFields(map[string]any{
+					"targetIndex": initialCommit,
+					"error":       err,
+				}).Errorf("WaitForApplied for initial commit did not complete")
 
-		node.logger.WithFields(map[string]any{
-			"appliedUpTo": initialCommit,
-		}).Infof("Initial WAL replay complete")
+				return
+			}
+
+			node.logger.WithFields(map[string]any{
+				"appliedUpTo": initialCommit,
+			}).Infof("Initial WAL replay complete")
+		}()
 	}
-
-	close(ready)
 
 	select {
 	case ch := <-node.stopChannel:
