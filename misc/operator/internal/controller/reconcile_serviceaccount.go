@@ -10,7 +10,7 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-func (r *LedgerServiceReconciler) reconcileServiceAccount(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) reconcileServiceAccount(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	create := ledger.Spec.ServiceAccount.Create
 	if create != nil && !*create {
 		// SA is managed externally — don't touch it.

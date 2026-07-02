@@ -28,7 +28,7 @@ func TestDeletionProtectionPolicyInstalled(t *testing.T) {
 		binding := &admissionregistrationv1.ValidatingAdmissionPolicyBinding{
 			ObjectMeta: metav1.ObjectMeta{Name: volumeProtectionPVCBindingName},
 		}
-		r := &LedgerServiceReconciler{Clientset: fake.NewClientset(binding)}
+		r := &ClusterReconciler{Clientset: fake.NewClientset(binding)}
 
 		installed, err := r.deletionProtectionPolicyInstalled(context.Background())
 		require.NoError(t, err)
@@ -38,7 +38,7 @@ func TestDeletionProtectionPolicyInstalled(t *testing.T) {
 	t.Run("binding absent", func(t *testing.T) {
 		t.Parallel()
 
-		r := &LedgerServiceReconciler{Clientset: fake.NewClientset()}
+		r := &ClusterReconciler{Clientset: fake.NewClientset()}
 
 		installed, err := r.deletionProtectionPolicyInstalled(context.Background())
 		require.NoError(t, err)

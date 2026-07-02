@@ -15,7 +15,7 @@ config:
     resources:
       - manifest:
           apiVersion: ledger.formance.com/v1alpha1
-          kind: LedgerService
+          kind: Cluster
           spec:
             replicas: 1
             resources:

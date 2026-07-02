@@ -14,15 +14,13 @@ spec:
     singular: ledgerservice
   scope: Namespaced
   versions:
-  - additionalPrinterColumns:
-    - jsonPath: .spec.replicas
-      name: Replicas
-      type: integer
-    - jsonPath: .status.readyReplicas
-      name: Ready
-      type: integer
-    - jsonPath: .status.phase
-      name: Phase
+  - deprecated: true
+    deprecationWarning: 'ledger.formance.com/LedgerService is deprecated: use ledger.formance.com/Cluster
+      instead. The operator migrates existing LedgerService resources to Cluster on
+      startup.'
+    additionalPrinterColumns:
+    - jsonPath: .metadata.annotations.ledger\.formance\.com/migrated-to
+      name: MigratedTo
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -30,7 +28,8 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: LedgerService is the Schema for the ledgers API.
+        description: LedgerService is the deprecated Kind previously used to manage
+          a Raft cluster of ledger nodes. It has been renamed to Cluster.
         properties:
           apiVersion:
             description: |-
@@ -50,7 +49,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: LedgerServiceSpec defines the desired state of LedgerService.
+            description: ClusterSpec defines the desired state of Cluster.
             properties:
               additionalLabels:
                 additionalProperties:
@@ -3794,7 +3793,7 @@ spec:
                 description: |-
                   TopologySpreadConstraints describe how pods are spread across failure
                   domains (e.g. zones, nodes). See PodSpec.topologySpreadConstraints. The
-                  pod label selector defaults to the LedgerService's selector when omitted.
+                  pod label selector defaults to the Cluster's selector when omitted.
                 items:
                   description: TopologySpreadConstraint specifies how to spread matching
                     pods among the given topology.
@@ -3981,7 +3980,7 @@ spec:
                   rule: oldSelf == '' || self == oldSelf
             type: object
           status:
-            description: LedgerServiceStatus defines the observed state of LedgerService.
+            description: ClusterStatus defines the observed state of Cluster.
             properties:
               conditions:
                 description: Conditions represent the latest available observations.
@@ -4067,7 +4066,7 @@ spec:
                 format: int64
                 type: integer
               phase:
-                description: 'Phase of the LedgerService: Pending, Running, Degraded,
+                description: 'Phase of the Cluster: Pending, Running, Degraded,
                   Error.'
                 type: string
               readyReplicas:

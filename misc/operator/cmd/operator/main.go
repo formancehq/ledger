@@ -82,14 +82,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.LedgerServiceReconciler{
+	if err = (&controller.ClusterReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		Config:    cfg,
 		Clientset: clientset,
-		Recorder:  mgr.GetEventRecorderFor("ledgerservice-controller"),
+		Recorder:  mgr.GetEventRecorderFor("cluster-controller"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LedgerService")
+		setupLog.Error(err, "unable to create controller", "controller", "Cluster")
 		os.Exit(1)
 	}
 
@@ -128,6 +128,14 @@ func main() {
 		Clientset: clientset,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LedgerBackupRun")
+		os.Exit(1)
+	}
+
+	if err = (&controller.LedgerServiceMigrator{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "LedgerServiceMigrator")
 		os.Exit(1)
 	}
 

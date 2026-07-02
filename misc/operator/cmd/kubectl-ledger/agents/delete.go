@@ -59,7 +59,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		if len(agent.Status.MatchedServices) > 0 {
 			rows = append(rows, []string{
 				"Matched Services",
-				pterm.Yellow(fmt.Sprintf("%d LedgerService(s)", len(agent.Status.MatchedServices))),
+				pterm.Yellow(fmt.Sprintf("%d Cluster(s)", len(agent.Status.MatchedServices))),
 			})
 		}
 		cmdutil.RenderBoxedTable(rows)

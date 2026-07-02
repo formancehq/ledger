@@ -21,7 +21,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "delete [name]",
 		Aliases: []string{"rm", "del"},
-		Short:   "Delete a LedgerService deployment",
+		Short:   "Delete a Cluster deployment",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDelete(cmd, opts, &f, args)
@@ -36,7 +36,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveClusterName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		return fmt.Errorf("creating CRD client: %w", err)
 	}
 
-	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
+	ledger, err := cmdutil.GetCluster(ctx, crdClient, ns, name)
 	if err != nil {
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
@@ -61,7 +61,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		if err != nil {
 			return fmt.Errorf("creating clientset: %w", err)
 		}
-		pvcs, err := cmdutil.LedgerServicePVCs(ctx, cs, ns, name)
+		pvcs, err := cmdutil.ClusterPVCs(ctx, cs, ns, name)
 		if err != nil {
 			return fmt.Errorf("listing PVCs: %w", err)
 		}
@@ -77,7 +77,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		pterm.Println()
 
 		confirm, err := cmdutil.PromptConfirm(
-			fmt.Sprintf("Delete LedgerService %s?", pterm.Cyan(name)),
+			fmt.Sprintf("Delete Cluster %s?", pterm.Cyan(name)),
 			false,
 		)
 		if err != nil {
@@ -90,15 +90,15 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		}
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Deleting LedgerService...")
+	spinner, _ := pterm.DefaultSpinner.Start("Deleting Cluster...")
 
 	if err := crdClient.Delete(ctx, ledger); err != nil {
-		spinner.Fail("Failed to delete LedgerService")
+		spinner.Fail("Failed to delete Cluster")
 
 		return fmt.Errorf("deleting ledger %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("LedgerService %s deleted", pterm.Cyan(name)))
+	spinner.Success(fmt.Sprintf("Cluster %s deleted", pterm.Cyan(name)))
 
 	return nil
 }

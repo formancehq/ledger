@@ -32,7 +32,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "logs [name]",
 		Aliases: []string{"log"},
-		Short:   "Stream logs from a LedgerService deployment",
+		Short:   "Stream logs from a Cluster deployment",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLogs(cmd, opts, &f, args)
@@ -51,7 +51,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveClusterName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -81,20 +81,20 @@ func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, args []str
 	}
 
 	ordinal := max(f.pod, 0)
-	podName := cmdutil.LedgerServicePodName(name, ordinal)
+	podName := cmdutil.ClusterPodName(name, ordinal)
 	pterm.Info.Printfln("Streaming logs from %s", pterm.Cyan(podName))
 
 	return streamPodLogs(ctx, cs, ns, podName, "", logOpts)
 }
 
 func streamAllPods(ctx context.Context, cs kubernetes.Interface, ns, name string, logOpts *corev1.PodLogOptions) error {
-	pods, err := cmdutil.LedgerServicePods(ctx, cs, ns, name)
+	pods, err := cmdutil.ClusterPods(ctx, cs, ns, name)
 	if err != nil {
 		return fmt.Errorf("listing pods: %w", err)
 	}
 
 	if len(pods.Items) == 0 {
-		pterm.Error.Printfln("No pods found for LedgerService %s", pterm.Cyan(name))
+		pterm.Error.Printfln("No pods found for Cluster %s", pterm.Cyan(name))
 
 		return fmt.Errorf("no pods found for ledger %q", name)
 	}

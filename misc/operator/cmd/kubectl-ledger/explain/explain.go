@@ -34,12 +34,12 @@ var (
 	cachedSpecFields []Field
 )
 
-// SpecFields returns the schema fields for the LedgerService spec,
+// SpecFields returns the schema fields for the Cluster spec,
 // built by reflecting on the Go types. No cluster access required.
 // Used for flag registration at init time.
 func SpecFields() []Field {
 	specFieldsOnce.Do(func() {
-		cachedSpecFields = fieldsFromType(reflect.TypeFor[ledgerv1alpha1.LedgerServiceSpec]())
+		cachedSpecFields = fieldsFromType(reflect.TypeFor[ledgerv1alpha1.ClusterSpec]())
 	})
 
 	return cachedSpecFields
@@ -72,8 +72,8 @@ func NewCommand(restConfigFn RESTConfigFunc) *cobra.Command {
 	return &cobra.Command{
 		Use:     "explain [field.path]",
 		Aliases: []string{"schema", "fields"},
-		Short:   "Describe the LedgerService CRD schema and fields",
-		Long:    "Displays the LedgerService CRD field hierarchy with types, defaults, and descriptions.\nFetches the schema from the cluster for full documentation.\nOptionally pass a dotted field path to show only that subtree (e.g. spec.raft.electionTick).",
+		Short:   "Describe the Cluster CRD schema and fields",
+		Long:    "Displays the Cluster CRD field hierarchy with types, defaults, and descriptions.\nFetches the schema from the cluster for full documentation.\nOptionally pass a dotted field path to show only that subtree (e.g. spec.raft.electionTick).",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExplain(cmd, restConfigFn, args)
@@ -99,11 +99,11 @@ func runExplain(cmd *cobra.Command, restConfigFn RESTConfigFunc, args []string) 
 		statusFields, _ = FetchStatusFields(cmd.Context(), restCfg)
 	}
 	if statusFields == nil {
-		statusFields = fieldsFromType(reflect.TypeFor[ledgerv1alpha1.LedgerServiceStatus]())
+		statusFields = fieldsFromType(reflect.TypeFor[ledgerv1alpha1.ClusterStatus]())
 	}
 
 	root := []Field{
-		{Name: "spec", Type: "object", Description: "Desired state of the LedgerService deployment.", Children: specFields},
+		{Name: "spec", Type: "object", Description: "Desired state of the Cluster deployment.", Children: specFields},
 		{Name: "status", Type: "object", Description: "Observed state (read-only, set by the operator).", Children: statusFields},
 	}
 
@@ -127,7 +127,7 @@ func runExplain(cmd *cobra.Command, restConfigFn RESTConfigFunc, args []string) 
 	}
 
 	pterm.Println()
-	pterm.DefaultSection.Println("LedgerService CRD — ledger.formance.com/v1alpha1")
+	pterm.DefaultSection.Println("Cluster CRD — ledger.formance.com/v1alpha1")
 	printFields(root, 0)
 
 	return nil

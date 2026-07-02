@@ -18,9 +18,9 @@ import (
 func TestBuildPodTemplate_NormalModeUsesHTTPProbes(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "n", Namespace: "default"},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			HttpPort: 9000,
 			GrpcPort: 8888,
 		},
@@ -52,9 +52,9 @@ func TestBuildPodTemplate_NormalModeUsesHTTPProbes(t *testing.T) {
 func TestBuildPodTemplate_RestoreModeUsesTCPProbes(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "default"},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			HttpPort: 9000,
 			GrpcPort: 8888,
 			Restore:  true,
@@ -88,9 +88,9 @@ func TestBuildPodTemplate_RestoreModeUsesTCPProbes(t *testing.T) {
 func TestBuildPodTemplate_RestoreModeHonorsUserProbeOverride(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "default"},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			HttpPort: 9000,
 			GrpcPort: 8888,
 			Restore:  true,

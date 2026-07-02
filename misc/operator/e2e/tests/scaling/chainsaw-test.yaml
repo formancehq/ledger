@@ -10,7 +10,7 @@ spec:
     - name: Deploy 1-replica cluster
       try:
         - apply:
-            file: ledgerservice-1.yaml
+            file: cluster-1.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -45,7 +45,7 @@ spec:
     - name: Scale up to 3 replicas
       try:
         - apply:
-            file: ledgerservice-3.yaml
+            file: cluster-3.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -86,7 +86,7 @@ spec:
     - name: Scale down to 1 replica
       try:
         - apply:
-            file: ledgerservice-1.yaml
+            file: cluster-1.yaml
         - assert:
             resource:
               apiVersion: apps/v1

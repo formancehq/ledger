@@ -1,5 +1,5 @@
 apiVersion: ledger.formance.com/v1alpha1
-kind: LedgerService
+kind: Cluster
 metadata:
   name: hp-val
 status:

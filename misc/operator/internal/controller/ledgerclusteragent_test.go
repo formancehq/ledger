@@ -67,7 +67,7 @@ func TestComputeAuthKeysHash_DifferentInput(t *testing.T) {
 func TestAuthKeysConfigMapName(t *testing.T) {
 	t.Parallel()
 
-	ledger := &ledgerv1alpha1.LedgerService{
+	ledger := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-ledger"},
 	}
 	assert.Equal(t, "ledger-my-ledger-auth-keys", authKeysConfigMapName(ledger.Name))

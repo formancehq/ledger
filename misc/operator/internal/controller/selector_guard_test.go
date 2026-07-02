@@ -126,11 +126,11 @@ func TestValidateSelectorImmutability(t *testing.T) {
 			require.NoError(t, appsv1.AddToScheme(scheme))
 
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tt.objects...).Build()
-			r := &LedgerServiceReconciler{Client: c, Scheme: scheme}
+			r := &ClusterReconciler{Client: c, Scheme: scheme}
 
-			ls := &ledgerv1alpha1.LedgerService{
+			ls := &ledgerv1alpha1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: crName, Namespace: namespace},
-				Spec: ledgerv1alpha1.LedgerServiceSpec{
+				Spec: ledgerv1alpha1.ClusterSpec{
 					AdditionalLabels: tt.additionalLabels,
 					HeadlessService:  ledgerv1alpha1.HeadlessServiceSpec{Enabled: tt.headlessEnabled},
 					IngressGrpc:      tt.ingressGrpc,
@@ -179,12 +179,12 @@ func TestPruneDisabledOptionalServices_RunsBeforeDriftGuard(t *testing.T) {
 		}},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(headlessSvc).Build()
-	r := &LedgerServiceReconciler{Client: c, Scheme: scheme}
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
 	disabled := false
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: crName, Namespace: namespace},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			HeadlessService: ledgerv1alpha1.HeadlessServiceSpec{Enabled: &disabled},
 		},
 	}
@@ -224,11 +224,11 @@ func TestPruneDisabledOptionalServices_PrunesGrpcIngress(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: grpcIngressName(crName), Namespace: namespace},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(grpcSvc, grpcIngress).Build()
-	r := &LedgerServiceReconciler{Client: c, Scheme: scheme}
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
 
 	// IngressGrpc nil (== disabled) — the pre-pass must remove both
 	// the gRPC Service AND the gRPC Ingress.
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: crName, Namespace: namespace},
 	}
 

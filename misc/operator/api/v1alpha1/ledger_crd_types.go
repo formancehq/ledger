@@ -20,7 +20,7 @@ type LedgerCRDSpec struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
-	// ServiceRef is the name of the LedgerService in the same namespace
+	// ServiceRef is the name of the Cluster in the same namespace
 	// that provides the gRPC endpoint.
 	// +kubebuilder:validation:Required
 	ServiceRef string `json:"serviceRef"`
@@ -147,15 +147,15 @@ type PostgresMirrorSource struct {
 	// Mutually exclusive with PasswordFrom.
 	//
 	// In a typical EKS deployment, IRSA is wired by annotating the
-	// LedgerService ServiceAccount with eks.amazonaws.com/role-arn, e.g.:
-	//   kind: LedgerService
+	// Cluster ServiceAccount with eks.amazonaws.com/role-arn, e.g.:
+	//   kind: Cluster
 	//   spec:
 	//     serviceAccount:
 	//       annotations:
 	//         eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/mirror-rds-iam
 	// The bound IAM role must allow rds-db:connect on the RDS db-user ARN
 	// (arn:aws:rds-db:REGION:ACCOUNT:dbuser:DB-RESOURCE-ID/USER). The role is
-	// shared across every mirror in the LedgerService, so its policy must
+	// shared across every mirror in the Cluster, so its policy must
 	// cover every RDS endpoint addressed by Ledger CRDs in that service.
 	// +optional
 	AWSIAMAuth *AWSIAMAuthSpec `json:"awsIamAuth,omitempty"`
@@ -173,7 +173,7 @@ type AWSIAMAuthSpec struct {
 	// RDS IAM token. When set, the mirror calls sts:AssumeRole on this ARN
 	// using the pod's ambient credentials and signs the RDS token with the
 	// assumed credentials. This decouples each mirror's IAM identity from the
-	// pod's base role, so a single LedgerService can mirror RDS instances
+	// pod's base role, so a single Cluster can mirror RDS instances
 	// across multiple AWS accounts or tenants: the pod's base role only needs
 	// sts:AssumeRole on the listed targets (no direct rds-db:connect grant).
 	//
@@ -217,7 +217,7 @@ type LedgerCRDStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.message`,priority=1
 
-// Ledger manages the lifecycle of a ledger on a LedgerService via gRPC.
+// Ledger manages the lifecycle of a ledger on a Cluster via gRPC.
 type Ledger struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

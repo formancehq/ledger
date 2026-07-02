@@ -52,7 +52,7 @@ func main() {
 	defer conn.Close()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
-	lsClient := dynClient.Resource(internal.LedgerServiceGVR).Namespace(internal.LedgerServiceNamespace())
+	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	if err := internal.CreateLedger(ctx, client, sentinelLedger); err != nil && !internal.IsTransient(err) {
 		log.Printf("cannot create sentinel ledger: %s", err)
@@ -85,7 +85,7 @@ func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterCl
 			"sentinel": sentinel.TxID,
 		}
 
-		err := internal.PatchReplicas(ctx, lsClient, internal.LedgerServiceName, target)
+		err := internal.PatchReplicas(ctx, lsClient, internal.ClusterName, target)
 		assert.Sometimes(err == nil, "structured scaling patch should succeed", details.With(internal.Details{"error": err}))
 		if err != nil {
 			log.Printf("structured-scaling: patch failed: %s", err)

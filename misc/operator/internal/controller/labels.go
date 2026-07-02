@@ -12,7 +12,7 @@ const (
 	annotationAuthKeysHash = "ledger.formance.com/auth-keys-hash"
 
 	// labelDeletionProtection (set to labelDeletionProtectionValue) is stamped on
-	// the PVCs and bound PVs of a LedgerService whose spec.persistence.deletionProtection
+	// the PVCs and bound PVs of a Cluster whose spec.persistence.deletionProtection
 	// is true. The volume deletion-protection ValidatingAdmissionPolicyBinding scopes
 	// itself to this label, so a ledger opts in or out per-CR without touching the
 	// cluster-scoped policy. PVs are cluster-scoped and don't inherit PVC labels, so
@@ -31,7 +31,7 @@ const (
 	volumeProtectionPVCBindingName = "ledger-volume-protection-pvc"
 )
 
-// selectorLabels returns the labels used to select pods owned by this LedgerService.
+// selectorLabels returns the labels used to select pods owned by this Cluster.
 //
 // The base set is the two app.kubernetes.io/{name,instance} labels. Any entry
 // in spec.additionalLabels is merged on top and may override a default key
@@ -41,7 +41,7 @@ const (
 // template labels, so accepting a user override would leak into pods and
 // contradict the documented non-overridable ownership label that commonLabels
 // guarantees on top-level objects.
-func selectorLabels(ledger *ledgerv1alpha1.LedgerService) map[string]string {
+func selectorLabels(ledger *ledgerv1alpha1.Cluster) map[string]string {
 	labels := map[string]string{
 		labelName:     "ledger",
 		labelInstance: ledger.Name,
@@ -56,11 +56,11 @@ func selectorLabels(ledger *ledgerv1alpha1.LedgerService) map[string]string {
 	return labels
 }
 
-// commonLabels returns labels applied to all resources owned by this LedgerService.
+// commonLabels returns labels applied to all resources owned by this Cluster.
 //
 // managed-by is written last and is NOT overridable: it is how the operator
 // tracks ownership across reconciles.
-func commonLabels(ledger *ledgerv1alpha1.LedgerService) map[string]string {
+func commonLabels(ledger *ledgerv1alpha1.Cluster) map[string]string {
 	labels := selectorLabels(ledger)
 	labels[labelManagedBy] = "ledger-operator"
 

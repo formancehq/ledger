@@ -12,7 +12,7 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-func (r *LedgerServiceReconciler) reconcileGrpcService(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) reconcileGrpcService(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	name := grpcServiceName(ledger.Name)
 
 	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled {

@@ -17,11 +17,11 @@ spec:
                 -- mb --ignore-existing minio/e2e-full-backup
             timeout: 60s
 
-    # 2. Create LedgerService and wait for StatefulSet readiness.
-    - name: Deploy LedgerService
+    # 2. Create Cluster and wait for StatefulSet readiness.
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
