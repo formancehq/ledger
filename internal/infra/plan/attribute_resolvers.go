@@ -18,9 +18,9 @@ import (
 // protoAttrResolver[T]; the interface exists so the builder can hold
 // them uniformly in a map keyed by attrCode.
 type attrResolver interface {
-	// Resolve walks the keys set through resolveAttributePreload for
+	// Resolve walks the keys set through resolveCoverage for
 	// this attribute's cache/loader/store bindings. Returns the batch
-	// of AttributePlan entries and the tracker keys the caller must
+	// of AttributeCoverage entries and the tracker keys the caller must
 	// associate with Loader() for the CleanupToken.
 	Resolve(
 		keys map[string]struct{},
@@ -61,7 +61,7 @@ func (r *protoAttrResolver[T]) Resolve(
 	store dal.PebbleGetter,
 	logger logging.Logger,
 ) (*resolveResult, error) {
-	return resolveAttributePreload[T](
+	return resolveCoverage[T](
 		keys, nextIndex, boundary, cacheEpoch,
 		r.cache, r.loader, r.getValue, store,
 		r.attrCode, nil, r.bloom(), logger, r.typeName,
@@ -72,7 +72,7 @@ func (r *protoAttrResolver[T]) Loader() preload.LoaderOps { return r.loader }
 
 // buildAttrResolvers returns the full registration set keyed by
 // dal.SubAttrX for every attribute cache. Adding a new attribute
-// cache means adding one entry here — no changes needed in Needs,
+// cache means adding one entry here — no changes needed in Coverage,
 // admission call sites, coverage_bits, or the builder loop.
 func buildAttrResolvers(
 	c *cache.Cache,

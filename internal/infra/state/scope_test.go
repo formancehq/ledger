@@ -41,7 +41,7 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 	okID, _ := attributes.MakeKey(okKey.Bytes())
 	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{
+		Attributes: []*raftcmdpb.AttributeCoverage{
 			declareTestPlan(okID, dal.SubAttrLedger),
 		},
 	}
@@ -121,7 +121,7 @@ func TestScope_TechnicalUpdate_PerUpdateCoverageIsolation(t *testing.T) {
 	bID, _ := attributes.MakeKey(bKey.Bytes())
 	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{
+		Attributes: []*raftcmdpb.AttributeCoverage{
 			declareTestPlan(aID, dal.SubAttrLedger), // bit 0
 			declareTestPlan(bID, dal.SubAttrLedger), // bit 1
 		},

@@ -45,7 +45,7 @@ func TestRunWithoutPreload_ClearsPreSetExecutionPlan(t *testing.T) {
 
 	build := &BuildResult{
 		ExecutionPlan: cmd.GetExecutionPlan(),
-		aggregate:     NewNeeds(), // empty → triggers the fast path
+		aggregate:     NewCoverage(), // empty → triggers the fast path
 		operations:    nil,
 		token:         &preload.CleanupToken{},
 	}
@@ -91,7 +91,7 @@ func TestRun_IdempotencyOnlyNeedsTakesFastPath(t *testing.T) {
 	// build.ExecutionPlan, not from whatever cmd happens to carry.
 	cmd := &raftcmdpb.Proposal{Id: 42}
 
-	needs := NewNeeds()
+	needs := NewCoverage()
 	needs.IdempotencyKeys[domain.IdempotencyKey{Key: "idem-only"}] = struct{}{}
 
 	build := &BuildResult{

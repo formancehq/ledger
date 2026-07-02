@@ -24,7 +24,8 @@ type AccessorKey interface {
 //   - raw: pure delegation to the underlying attributes.DerivedKeyStore.
 //     Used by the bare *WriteSet (recovery, technical updates, tests).
 //   - gated: prepends CheckCoverage(sub, key.Bytes()) so the FSM hot
-//     path never reads a key the proposer did not declare in coverage_bits.
+//     path never reads OR deletes a key the proposer did not declare in
+//     coverage_bits.
 //
 // Get returns:
 //   - (reader, nil)              when the key is present in the overlay or parent.
@@ -36,11 +37,18 @@ type AccessorKey interface {
 //     key is outside the scope's coverage map.
 //   - (zero, err)                on any other underlying engine error.
 //
+// Delete returns:
+//   - nil                        on success (entry marked for deletion in
+//     the batch overlay; final tombstone happens at Merge/apply time).
+//   - *ErrCoverageMiss           (gated implementation only) when the key
+//     is outside the scope's coverage map — the FSM hot path never
+//     deletes an undeclared key, per invariant #6.
+//
 // The per-kind miss convention is preserved verbatim from the pre-refactor
 // surface — call sites that already discriminated on err vs nil-reader
 // continue to work unchanged.
 type Accessor[K AccessorKey, V any, R any] interface {
 	Get(key K) (R, error)
 	Put(key K, value V)
-	Delete(key K)
+	Delete(key K) error
 }

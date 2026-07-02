@@ -138,7 +138,7 @@ func (p *Builder) Run(
 	// PredictedIndex and push into Raft's queue.
 	//
 	// Gating on AttributeKeysCount (not TotalKeys) so an idempotent
-	// no-read order — whose Needs carry IdempotencyKeys but no cache
+	// no-read order — whose Coverage carry IdempotencyKeys but no cache
 	// attribute — also takes the fast path. Otherwise the slow path
 	// would serialize a cache_epoch on cmd, and a cluster-config
 	// cache reset between Build and apply would spuriously reject the
@@ -221,7 +221,7 @@ func (p *Builder) Run(
 }
 
 // applyBits is the per-marshal hook that flows the proposal's final
-// AttributePlan slice into every WriteOperation's coverage bitset. Run
+// AttributeCoverage slice into every WriteOperation's coverage bitset. Run
 // calls this once on the happy path and again on the rare rebuild
 // under guard.
 //
@@ -230,7 +230,7 @@ func (p *Builder) Run(
 // all operations in the batch, so rebuilding the map per operation
 // costs O(N·P) runtime.mapassign for N orders × P plans where O(P)
 // suffices.
-func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.AttributePlan) {
+func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.AttributeCoverage) {
 	var (
 		index     map[planLookupKey]uint32
 		planCount = len(plans)
@@ -251,7 +251,7 @@ func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.Attrib
 			continue
 		}
 
-		op.SetCoverage(bitsForNeedsWithIndex(op.Needs, planCount, index))
+		op.SetCoverage(bitsForNeedsWithIndex(op.Coverage, planCount, index))
 	}
 }
 
@@ -263,7 +263,7 @@ func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.Attrib
 //
 // Returns a RunResult whose Guard wraps build.token so the caller's
 // usual ReleaseLoaders() still works uniformly. build.token is typically
-// the empty token from a zero-Needs Build, so ReleaseLoaders is a no-op
+// the empty token from a zero-Coverage Build, so ReleaseLoaders is a no-op
 // — but symmetry with the slow path keeps the call sites simple.
 func (p *Builder) runWithoutPreload(
 	ctx context.Context,
@@ -273,7 +273,7 @@ func (p *Builder) runWithoutPreload(
 	proposer Proposer,
 ) (*RunResult, error) {
 	// The empty-needs path reads nothing from the cache, so neither
-	// the AttributePlan slice nor the CacheEpoch must ride on the
+	// the AttributeCoverage slice nor the CacheEpoch must ride on the
 	// proposal — both would only trip checkStaleProposal on a
 	// cluster-config cache reset between Build and apply. But we
 	// keep IdempotencyKeys: machine.Preload applies them to the

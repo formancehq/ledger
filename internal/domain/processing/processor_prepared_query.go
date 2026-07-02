@@ -131,7 +131,9 @@ func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQu
 		}
 	}
 
-	s.PreparedQueries().Delete(domain.PreparedQueryKey{LedgerName: ledger, Name: order.GetName()})
+	if err := s.PreparedQueries().Delete(domain.PreparedQueryKey{LedgerName: ledger, Name: order.GetName()}); err != nil {
+		return nil, &domain.ErrStorageOperation{Operation: "deleting prepared query", Cause: err}
+	}
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedPreparedQuery{

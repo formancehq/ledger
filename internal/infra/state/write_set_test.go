@@ -125,7 +125,7 @@ func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, val)
 
-	buf.AccountMetadata().Delete(key)
+	require.NoError(t, buf.AccountMetadata().Delete(key))
 
 	// After delete the key reads as absent (ErrNotFound), like a committed tombstone.
 	_, err = buf.AccountMetadata().Get(key)
@@ -688,7 +688,7 @@ func TestWriteSetPreparedQueryDeletePersistsThroughMerge(t *testing.T) {
 	// Proposal 2: delete it.
 	buf2 := NewWriteSet(machine)
 	buf2.Reset(&commonpb.Timestamp{Data: 1700000001})
-	buf2.PreparedQueries().Delete(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-del"})
+	require.NoError(t, buf2.PreparedQueries().Delete(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-del"}))
 	batch2 := dataStore.OpenWriteSession()
 	require.NoError(t, buf2.Merge(batch2, nil))
 	require.NoError(t, batch2.Commit())
@@ -840,7 +840,7 @@ func TestValidateTransientVolumesListsAllOffendersSorted(t *testing.T) {
 
 	// Coverage: declare each ledger key (Ledgers().Get) and each volume key
 	// (CheckCoverage before the base-volume read).
-	attrPlans := make([]*raftcmdpb.AttributePlan, 0, len(ledgers)+len(offenders))
+	attrPlans := make([]*raftcmdpb.AttributeCoverage, 0, len(ledgers)+len(offenders))
 	for _, li := range ledgers {
 		lid, _ := attributes.MakeKey((&domain.LedgerKey{Name: li.GetName()}).Bytes())
 		attrPlans = append(attrPlans, declareTestPlan(lid, dal.SubAttrLedger))
@@ -919,7 +919,7 @@ func TestValidateTransientVolumesStorageFaultTakesPrecedence(t *testing.T) {
 	// fails inside ValidateTransientVolumes.
 	lid, _ := attributes.MakeKey((&domain.LedgerKey{Name: ledger.GetName()}).Bytes())
 	vid, _ := attributes.MakeKey(businessOffender.Bytes())
-	attrPlans := []*raftcmdpb.AttributePlan{
+	attrPlans := []*raftcmdpb.AttributeCoverage{
 		declareTestPlan(lid, dal.SubAttrLedger),
 		declareTestPlan(vid, dal.SubAttrVolume),
 	}

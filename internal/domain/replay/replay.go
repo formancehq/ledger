@@ -62,7 +62,7 @@ func ReplayLedgerLog(
 
 		txCanonical := domain.TransactionKey{LedgerName: ledger, ID: tx.GetId()}.Bytes()
 
-		if err := w.CreateTransaction(txCanonical, seq, tx.GetTimestamp(), tx.GetMetadata()); err != nil {
+		if err := w.CreateTransaction(txCanonical, seq, tx.GetTimestamp(), tx.GetMetadata(), tx.GetPostings()); err != nil {
 			return fmt.Errorf("putting tx state for created tx %d: %w", tx.GetId(), err)
 		}
 
@@ -108,7 +108,7 @@ func ReplayLedgerLog(
 
 		revertTxCanonical := domain.TransactionKey{LedgerName: ledger, ID: revertTx.GetId()}.Bytes()
 
-		if err := w.CreateTransaction(revertTxCanonical, seq, revertTx.GetTimestamp(), revertTx.GetMetadata()); err != nil {
+		if err := w.CreateTransaction(revertTxCanonical, seq, revertTx.GetTimestamp(), revertTx.GetMetadata(), revertTx.GetPostings()); err != nil {
 			return fmt.Errorf("putting tx state for revert tx %d: %w", revertTx.GetId(), err)
 		}
 

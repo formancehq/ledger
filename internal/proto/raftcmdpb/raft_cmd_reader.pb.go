@@ -5445,7 +5445,7 @@ func NewVolumePairListReader(s []*VolumePair) VolumePairListReader { return volu
 type ExecutionPlanReader interface {
 	GetLastPersistedIndex() uint64
 	GetCacheEpoch() uint64
-	GetAttributes() AttributePlanListReader
+	GetAttributes() AttributeCoverageListReader
 	GetIdempotencyKeys() ReloadIdempotencyKeyListReader
 	Mutate() *ExecutionPlan
 }
@@ -5460,8 +5460,8 @@ func (r *executionPlanReadonly) GetCacheEpoch() uint64 {
 	return r.v.GetCacheEpoch()
 }
 
-func (r *executionPlanReadonly) GetAttributes() AttributePlanListReader {
-	return NewAttributePlanListReader(r.v.GetAttributes())
+func (r *executionPlanReadonly) GetAttributes() AttributeCoverageListReader {
+	return NewAttributeCoverageListReader(r.v.GetAttributes())
 }
 
 func (r *executionPlanReadonly) GetIdempotencyKeys() ReloadIdempotencyKeyListReader {
@@ -5522,18 +5522,18 @@ func NewExecutionPlanListReader(s []*ExecutionPlan) ExecutionPlanListReader {
 	return executionPlanListReadonly(s)
 }
 
-// AttributePlanReader provides read-only access to AttributePlan.
+// AttributeCoverageReader provides read-only access to AttributeCoverage.
 // Call Mutate() to obtain a mutable clone.
-type AttributePlanReader interface {
+type AttributeCoverageReader interface {
 	GetId() AttributeIDReader
 	GetAttrCode() uint32
-	GetIntent() isAttributePlan_Intent
-	Mutate() *AttributePlan
+	GetValue() AttributeValueReader
+	Mutate() *AttributeCoverage
 }
 
-type attributePlanReadonly struct{ v *AttributePlan }
+type attributeCoverageReadonly struct{ v *AttributeCoverage }
 
-func (r *attributePlanReadonly) GetId() AttributeIDReader {
+func (r *attributeCoverageReadonly) GetId() AttributeIDReader {
 	v := r.v.GetId()
 	if v == nil {
 		return nil
@@ -5541,43 +5541,47 @@ func (r *attributePlanReadonly) GetId() AttributeIDReader {
 	return v.AsReader()
 }
 
-func (r *attributePlanReadonly) GetAttrCode() uint32 {
+func (r *attributeCoverageReadonly) GetAttrCode() uint32 {
 	return r.v.GetAttrCode()
 }
 
-func (r *attributePlanReadonly) GetIntent() isAttributePlan_Intent {
-	return r.v.GetIntent()
+func (r *attributeCoverageReadonly) GetValue() AttributeValueReader {
+	v := r.v.GetValue()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
-func (r *attributePlanReadonly) Mutate() *AttributePlan {
+func (r *attributeCoverageReadonly) Mutate() *AttributeCoverage {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this AttributePlan.
-func (m *AttributePlan) AsReader() AttributePlanReader {
+// AsReader returns a read-only view of this AttributeCoverage.
+func (m *AttributeCoverage) AsReader() AttributeCoverageReader {
 	if m == nil {
 		return nil
 	}
-	return &attributePlanReadonly{v: m}
+	return &attributeCoverageReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this AttributePlan.
-func (m *AttributePlan) Mutate() *AttributePlan {
+// Mutate returns a mutable deep clone of this AttributeCoverage.
+func (m *AttributeCoverage) Mutate() *AttributeCoverage {
 	return m.CloneVT()
 }
 
-// AttributePlanListReader provides read-only iteration over []*AttributePlan.
-type AttributePlanListReader interface {
+// AttributeCoverageListReader provides read-only iteration over []*AttributeCoverage.
+type AttributeCoverageListReader interface {
 	Len() int
-	Get(i int) AttributePlanReader
-	Range(yield func(int, AttributePlanReader) bool)
+	Get(i int) AttributeCoverageReader
+	Range(yield func(int, AttributeCoverageReader) bool)
 }
 
-type attributePlanListReadonly []*AttributePlan
+type attributeCoverageListReadonly []*AttributeCoverage
 
-func (l attributePlanListReadonly) Len() int { return len(l) }
+func (l attributeCoverageListReadonly) Len() int { return len(l) }
 
-func (l attributePlanListReadonly) Get(i int) AttributePlanReader {
+func (l attributeCoverageListReadonly) Get(i int) AttributeCoverageReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -5585,9 +5589,9 @@ func (l attributePlanListReadonly) Get(i int) AttributePlanReader {
 	return v.AsReader()
 }
 
-func (l attributePlanListReadonly) Range(yield func(int, AttributePlanReader) bool) {
+func (l attributeCoverageListReadonly) Range(yield func(int, AttributeCoverageReader) bool) {
 	for i, v := range l {
-		var r AttributePlanReader
+		var r AttributeCoverageReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -5597,131 +5601,11 @@ func (l attributePlanListReadonly) Range(yield func(int, AttributePlanReader) bo
 	}
 }
 
-// NewAttributePlanListReader wraps s for read-only iteration. The returned
+// NewAttributeCoverageListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAttributePlanListReader(s []*AttributePlan) AttributePlanListReader {
-	return attributePlanListReadonly(s)
+func NewAttributeCoverageListReader(s []*AttributeCoverage) AttributeCoverageListReader {
+	return attributeCoverageListReadonly(s)
 }
-
-// DeclareReader provides read-only access to Declare.
-// Call Mutate() to obtain a mutable clone.
-type DeclareReader interface {
-	Mutate() *Declare
-}
-
-type declareReadonly struct{ v *Declare }
-
-func (r *declareReadonly) Mutate() *Declare {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this Declare.
-func (m *Declare) AsReader() DeclareReader {
-	if m == nil {
-		return nil
-	}
-	return &declareReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this Declare.
-func (m *Declare) Mutate() *Declare {
-	return m.CloneVT()
-}
-
-// DeclareListReader provides read-only iteration over []*Declare.
-type DeclareListReader interface {
-	Len() int
-	Get(i int) DeclareReader
-	Range(yield func(int, DeclareReader) bool)
-}
-
-type declareListReadonly []*Declare
-
-func (l declareListReadonly) Len() int { return len(l) }
-
-func (l declareListReadonly) Get(i int) DeclareReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l declareListReadonly) Range(yield func(int, DeclareReader) bool) {
-	for i, v := range l {
-		var r DeclareReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewDeclareListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewDeclareListReader(s []*Declare) DeclareListReader { return declareListReadonly(s) }
-
-// TouchReader provides read-only access to Touch.
-// Call Mutate() to obtain a mutable clone.
-type TouchReader interface {
-	Mutate() *Touch
-}
-
-type touchReadonly struct{ v *Touch }
-
-func (r *touchReadonly) Mutate() *Touch {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this Touch.
-func (m *Touch) AsReader() TouchReader {
-	if m == nil {
-		return nil
-	}
-	return &touchReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this Touch.
-func (m *Touch) Mutate() *Touch {
-	return m.CloneVT()
-}
-
-// TouchListReader provides read-only iteration over []*Touch.
-type TouchListReader interface {
-	Len() int
-	Get(i int) TouchReader
-	Range(yield func(int, TouchReader) bool)
-}
-
-type touchListReadonly []*Touch
-
-func (l touchListReadonly) Len() int { return len(l) }
-
-func (l touchListReadonly) Get(i int) TouchReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l touchListReadonly) Range(yield func(int, TouchReader) bool) {
-	for i, v := range l {
-		var r TouchReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewTouchListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewTouchListReader(s []*Touch) TouchListReader { return touchListReadonly(s) }
 
 // AttributeValueReader provides read-only access to AttributeValue.
 // Call Mutate() to obtain a mutable clone.

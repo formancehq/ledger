@@ -32,7 +32,7 @@ const maxTechnicalStaleRetries = 5
 //
 // The caller passes one plan.WriteOperation per TechnicalUpdate in the
 // proposal. Each operation declares the cache keys its handler will
-// read (or nil/empty Needs for handlers that read nothing — cluster
+// read (or nil/empty Coverage for handlers that read nothing — cluster
 // config, idempotency eviction) and a SetCoverage closure that the
 // runner uses to write the bitset onto the corresponding
 // TechnicalUpdate. Per-TU isolation is therefore structural even when

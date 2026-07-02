@@ -59,37 +59,6 @@ func createTestStore(t *testing.T) *dal.Store {
 	return s
 }
 
-// createTransactionLog creates a log with a CreatedTransaction payload.
-func createTransactionLog(sequence uint64, ledgerName string, logID uint64, txID uint64, postings []*commonpb.Posting) *commonpb.Log {
-	return &commonpb.Log{
-		Sequence: sequence,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
-					LedgerName: ledgerName,
-					Log: &commonpb.LedgerLog{
-						Id:   logID,
-						Date: commonpb.NewTimestamp(time.Now()),
-						Data: &commonpb.LedgerLogPayload{
-							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: &commonpb.Transaction{
-										Id:         txID,
-										Postings:   postings,
-										Timestamp:  commonpb.NewTimestamp(time.Now()),
-										InsertedAt: commonpb.NewTimestamp(time.Now()),
-										UpdatedAt:  commonpb.NewTimestamp(time.Now()),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
 // createTestAdmission creates an Admission instance for testing.
 // It returns both the Admission and the Attributes so tests can set up
 // transaction state directly in Pebble.
@@ -119,69 +88,6 @@ func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attribute
 		numscript.NewNumscriptCache(0),
 		func(context.Context) error { return nil },
 	), attrs
-}
-
-func TestGetTransactionPostings(t *testing.T) {
-	t.Parallel()
-
-	t.Run("returns postings for existing transaction", func(t *testing.T) {
-		t.Parallel()
-		store := createTestStore(t)
-		admission, attrs := createTestAdmission(t, store)
-
-		// Create test postings
-		expectedPostings := []*commonpb.Posting{
-			{
-				Source:      "world",
-				Destination: "user:alice",
-				Amount:      commonpb.NewUint256FromUint64(100),
-				Asset:       "USD",
-			},
-			{
-				Source:      "world",
-				Destination: "user:bob",
-				Amount:      commonpb.NewUint256FromUint64(50),
-				Asset:       "EUR",
-			},
-		}
-
-		// Create and store a transaction log
-		txLog := createTransactionLog(1, testLedgerName, 1, 1, expectedPostings)
-
-		batch := store.OpenWriteSession()
-		err := state.AppendLogs(batch, []*commonpb.Log{txLog})
-		require.NoError(t, err)
-
-		// Store TransactionState to link transaction ID to its creating log
-		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}.Bytes(), &commonpb.TransactionState{
-			CreatedByLog: 1,
-		})
-		require.NoError(t, err)
-		require.NoError(t, state.SetAppliedIndex(batch, 1))
-		require.NoError(t, batch.Commit())
-
-		// Test getTransactionPostings
-		postings, err := admission.getTransactionPostings(testLedgerName, 1)
-		require.NoError(t, err)
-		require.Len(t, postings, 2)
-		require.Equal(t, expectedPostings[0].GetSource(), postings[0].GetSource())
-		require.Equal(t, expectedPostings[0].GetDestination(), postings[0].GetDestination())
-		require.Equal(t, expectedPostings[0].GetAsset(), postings[0].GetAsset())
-		require.Equal(t, expectedPostings[1].GetSource(), postings[1].GetSource())
-		require.Equal(t, expectedPostings[1].GetDestination(), postings[1].GetDestination())
-		require.Equal(t, expectedPostings[1].GetAsset(), postings[1].GetAsset())
-	})
-
-	t.Run("returns error for non-existent transaction", func(t *testing.T) {
-		t.Parallel()
-		store := createTestStore(t)
-		admission, _ := createTestAdmission(t, store)
-
-		// Try to get postings for a transaction that doesn't exist
-		_, err := admission.getTransactionPostings(testLedgerName, 999)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "transaction 999 does not exist")
-	})
 }
 
 func TestExtractNeededVolumes(t *testing.T) {
@@ -390,12 +296,13 @@ func TestExtractNeededVolumes(t *testing.T) {
 func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 	t.Parallel()
 
-	t.Run("fetches original postings for revert transaction", func(t *testing.T) {
+	t.Run("attaches original postings for volume coverage", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
 		admission, attrs := createTestAdmission(t, store)
 
-		// First, create a transaction to revert
+		// Setup: persist a TxState with Postings — the shape a post-EN-1242
+		// FSM would produce after applying a CreateTransaction.
 		expectedPostings := []*commonpb.Posting{
 			{
 				Source:      "world",
@@ -405,20 +312,14 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		txLog := createTransactionLog(1, testLedgerName, 1, 1, expectedPostings)
-
 		batch := store.OpenWriteSession()
-		err := state.AppendLogs(batch, []*commonpb.Log{txLog})
-		require.NoError(t, err)
-		// Store TransactionState to link transaction ID to its creating log
-		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}.Bytes(), &commonpb.TransactionState{
+		_, err := attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: testLedgerName, ID: 1}.Bytes(), &commonpb.TransactionState{
 			CreatedByLog: 1,
+			Postings:     expectedPostings,
 		})
 		require.NoError(t, err)
-		require.NoError(t, state.SetAppliedIndex(batch, 1))
 		require.NoError(t, batch.Commit())
 
-		// Now convert a revert request
 		applyRequest := &servicepb.LedgerApplyRequest{
 			Ledger: testLedgerName,
 			Action: &servicepb.LedgerAction{
@@ -436,19 +337,16 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, order)
 
-		// Verify the order contains the original postings
 		revertOrder := order.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
 		require.NotNil(t, revertOrder)
 		require.Equal(t, uint64(1), revertOrder.GetTransactionId())
-		require.False(t, revertOrder.GetForce())
-		require.True(t, revertOrder.GetAtEffectiveDate())
-		require.Len(t, revertOrder.GetOriginalPostings(), 1)
+		require.Len(t, revertOrder.GetOriginalPostings(), 1,
+			"admission reads TxState.Postings directly and attaches them to declare volume coverage (invariant #9)")
 		require.Equal(t, "world", revertOrder.GetOriginalPostings()[0].GetSource())
 		require.Equal(t, "user:alice", revertOrder.GetOriginalPostings()[0].GetDestination())
-		require.Equal(t, "USD", revertOrder.GetOriginalPostings()[0].GetAsset())
 	})
 
-	t.Run("returns error when transaction to revert does not exist", func(t *testing.T) {
+	t.Run("passes revert of non-existent transaction through to FSM (audited)", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
@@ -464,9 +362,21 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		_, err := admission.convertApplyRequest(t.Context(), applyRequest)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "getting original transaction postings")
+		// A revert on a non-existent transaction must NOT fail-fast at
+		// admission: invariant #8 requires business decisions to be
+		// hash-chained in the audit, and only the FSM apply writes audit
+		// entries. Admission emits an order with OriginalPostings=nil;
+		// the FSM's processRevertTransaction returns ErrTransactionNotFound
+		// (via `txID >= boundaries.GetNextTransactionId()`) BEFORE touching
+		// volumes — that error lands in the audit chain.
+		order, err := admission.convertApplyRequest(t.Context(), applyRequest)
+		require.NoError(t, err)
+		require.NotNil(t, order)
+
+		revert, ok := order.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction)
+		require.True(t, ok)
+		require.Empty(t, revert.RevertTransaction.GetOriginalPostings(),
+			"admission must pass through with nil postings when the source tx is absent")
 	})
 
 	t.Run("returns error when revert payload has no identifier", func(t *testing.T) {
@@ -859,35 +769,13 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 func TestRequestToOrder_RevertTransaction(t *testing.T) {
 	t.Parallel()
 
-	t.Run("converts revert request with original postings", func(t *testing.T) {
+	t.Run("converts revert request with empty OriginalPostings", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission, attrs := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
-		// Setup transaction to revert
-		expectedPostings := []*commonpb.Posting{
-			{
-				Source:      "bank",
-				Destination: "user:charlie",
-				Amount:      commonpb.NewUint256FromUint64(500),
-				Asset:       "EUR",
-			},
-		}
-
-		txLog := createTransactionLog(1, testLedgerName, 1, 42, expectedPostings)
-
-		batch := store.OpenWriteSession()
-		err := state.AppendLogs(batch, []*commonpb.Log{txLog})
-		require.NoError(t, err)
-		// Store TransactionState to link transaction ID to its creating log
-		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerName: "test-ledger", ID: 42}.Bytes(), &commonpb.TransactionState{
-			CreatedByLog: 1,
-		})
-		require.NoError(t, err)
-		require.NoError(t, state.SetAppliedIndex(batch, 1))
-		require.NoError(t, batch.Commit())
-
-		// Create revert request
+		// Non-receipt reverts leave OriginalPostings nil on the wire; the FSM
+		// reads TxState.Postings authoritatively at apply time.
 		request := &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
@@ -916,10 +804,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		revertOrder := applyOrder.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
 		require.Equal(t, uint64(42), revertOrder.GetTransactionId())
 		require.True(t, revertOrder.GetForce())
-		require.Len(t, revertOrder.GetOriginalPostings(), 1)
-		require.Equal(t, "bank", revertOrder.GetOriginalPostings()[0].GetSource())
-		require.Equal(t, "user:charlie", revertOrder.GetOriginalPostings()[0].GetDestination())
-		require.Equal(t, "EUR", revertOrder.GetOriginalPostings()[0].GetAsset())
+		require.Empty(t, revertOrder.GetOriginalPostings())
 	})
 }
 

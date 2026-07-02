@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -87,10 +86,6 @@ type cacheSnapshotSlot interface {
 	Persist(batch *dal.WriteSession, genByte byte, genIndex int) error
 	// RestoreEntry returns a function that restores a single entry into the given generation.
 	RestoreEntry(genIndex int) func(u128 attributes.U128, rawValue []byte) error
-	// MirrorTouch promotes id from gen1 to gen0 in-memory and mirrors the
-	// new gen0 entry to 0xFF. No-op if gen0 already has the key or the key
-	// is in neither generation.
-	MirrorTouch(batch *dal.WriteSession, gen0Byte byte, id attributes.U128) error
 	// MirrorPreload puts value into both in-memory generations and mirrors
 	// to 0xFF at both byte positions. rawValue is the vtproto-marshaled
 	// blob carried by Preload.raw_value; the concrete implementation
@@ -141,57 +136,6 @@ func (s *protoSnapshotSlot[V]) selectGen(genIndex int) kv.KV[attributes.U128, at
 
 func (s *protoSnapshotSlot[V]) Persist(batch *dal.WriteSession, genByte byte, genIndex int) error {
 	return persistLeanProtoEntries(batch, genByte, s.cacheType, s.selectGen(genIndex))
-}
-
-func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.WriteSession, gen0Byte byte, id attributes.U128) error {
-	// Skip when gen0 already holds the key — Touch is a no-op then, and
-	// the 0xFF gen0Byte row may hold a fresher in-batch Merge value.
-	if _, ok := s.ac.Gen0().Get(id); ok {
-		return nil
-	}
-
-	s.ac.Touch(id)
-
-	entry, ok := s.ac.Gen0().Get(id)
-	if !ok {
-		// Touch was a no-op: key was NOT in gen1.
-		// The leader thought this key was in gen1 (CacheNeedsTouch) but this
-		// node doesn't have it.
-		details := map[string]any{
-			"id":        fmt.Sprintf("%x", id),
-			"cacheType": s.cacheType,
-			"gen0Size":  s.ac.Gen0().Size(),
-			"gen1Size":  s.ac.Gen1().Size(),
-		}
-		lifecycle.SendEvent("touch_noop", details)
-		assert.Unreachable("touch_noop: key missing from gen1 — cache divergence imminent", details)
-
-		return fmt.Errorf("cache divergence: touch_noop for key %x (cacheType=%d) — key missing from gen1, gen0Size=%d gen1Size=%d",
-			id, s.cacheType, s.ac.Gen0().Size(), s.ac.Gen1().Size())
-	}
-
-	// Tombstones are persisted with the explicit tombstone flag byte
-	// (writeCacheRaw deleted=true), which RestoreEntry reads back as Deleted.
-	// AttributeCache.Del also resets entry.Data to zero, so even a stray
-	// marshalValue would emit an empty proto rather than a live payload.
-	if entry.Deleted {
-		if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, entry.Tag, true, nil); err != nil {
-			return fmt.Errorf("persisting touched tombstone: %w", err)
-		}
-
-		return nil
-	}
-
-	valueBytes, err := s.marshalValue(entry.Data)
-	if err != nil {
-		return fmt.Errorf("marshaling touched value: %w", err)
-	}
-
-	if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, entry.Tag, false, valueBytes); err != nil {
-		return fmt.Errorf("persisting touched value: %w", err)
-	}
-
-	return nil
 }
 
 func (s *protoSnapshotSlot[V]) MirrorPreload(
@@ -290,9 +234,10 @@ func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U
 		tag, deleted, valueBytes := parseLeanValue(rawValue)
 
 		// The flag byte at offset 8 distinguishes tombstones from live entries.
-		// Tombstones are kept in cache to prevent pipelined MirrorTouch failures.
-		// A live entry whose proto marshals to zero bytes is valid and must
-		// round-trip as live (EN-1377).
+		// Tombstones are kept in cache to shadow any live row in gen1 (see
+		// AttributeCache.Del's lazy fabrication). A live entry whose proto
+		// marshals to zero bytes is valid and must round-trip as live
+		// (EN-1377).
 		if deleted {
 			var zero V
 			store.Put(u128, attributes.Entry[V]{Tag: tag, Data: zero, Deleted: true})
@@ -327,8 +272,8 @@ func newProtoSnapshotSlot[V interface {
 // Extracted from Machine to isolate pure IO serialization logic.
 //
 // The snapshotter does NOT retain a dal.RecoveryReader: Machine holds a
-// snapshotter as a hot-path field (for MirrorTouch / MirrorPreload, which are
-// pure write operations), so a reader stored here would re-introduce indirect
+// snapshotter as a hot-path field (for MirrorPreload, which is a pure
+// write operation), so a reader stored here would re-introduce indirect
 // Pebble-read access from the hot path. Reader-bearing methods
 // (RestoreFromStore, StartAsyncBloomPopulate, hasPersistedBloomBlocks) accept
 // the reader as a parameter and are only called from non-hot-path contexts
@@ -338,9 +283,9 @@ type CacheSnapshotter struct {
 	registry     *StateRegistry
 	bloomFilters *bloom.FilterSet
 	slots        []cacheSnapshotSlot
-	// touchSlots maps attribute code bytes to the corresponding slot,
-	// for the FSM apply path's MirrorTouch dispatch.
-	touchSlots map[byte]cacheSnapshotSlot
+	// slotByAttrCode maps attribute code bytes to the corresponding slot,
+	// for the FSM apply path's MirrorPreload dispatch.
+	slotByAttrCode map[byte]cacheSnapshotSlot
 
 	// bloomExecutor ensures at most one background bloom goroutine runs at a time.
 	// Interrupt cancels the current goroutine and waits for it to finish before
@@ -374,7 +319,7 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 			transactions, sinks, numscriptVersions, numscriptContents,
 			preparedQueries, ledgerMetadata, indexEntries,
 		},
-		touchSlots: map[byte]cacheSnapshotSlot{
+		slotByAttrCode: map[byte]cacheSnapshotSlot{
 			dal.SubAttrVolume:           volumes,
 			dal.SubAttrMetadata:         metadata,
 			dal.SubAttrLedger:           ledgers,
@@ -392,20 +337,8 @@ func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFi
 	}
 }
 
-// MirrorTouch performs an in-memory Touch and mirrors the gen0 promotion
-// to 0xFF, so a restart restores the entry into the same generation it
-// occupies in memory. gen0Byte = currentGeneration % 2.
-func (s *CacheSnapshotter) MirrorTouch(batch *dal.WriteSession, attrType byte, gen0Byte byte, id attributes.U128) error {
-	slot, ok := s.touchSlots[attrType]
-	if !ok {
-		return nil
-	}
-
-	return slot.MirrorTouch(batch, gen0Byte, id)
-}
-
 // MirrorPreload populates both in-memory generations and mirrors to 0xFF
-// at both byte positions. attrCode (from the parent AttributePlan) picks
+// at both byte positions. attrCode (from the parent AttributeCoverage) picks
 // the slot; value.raw_value carries the typed value bytes (vtproto-
 // marshaled), and attrID carries the U128 + the xxh3 collision tag.
 func (s *CacheSnapshotter) MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) error {
@@ -413,7 +346,7 @@ func (s *CacheSnapshotter) MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1
 		return nil
 	}
 
-	slot, ok := s.touchSlots[attrCode]
+	slot, ok := s.slotByAttrCode[attrCode]
 	if !ok {
 		return nil
 	}

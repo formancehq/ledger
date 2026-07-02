@@ -78,7 +78,9 @@ func (s *ShardedMap[K, V]) GetAndPut(k K, v V) (old V, existed bool) {
 	return old, existed
 }
 
-func (s *ShardedMap[K, V]) Del(k K) {
+// Del removes k. ShardedMap has no notion of a primary store, so the contract
+// violation that kv.KV.Del documents can never fire here — always returns nil.
+func (s *ShardedMap[K, V]) Del(k K) error {
 	sh := s.shard(k)
 	sh.mu.Lock()
 
@@ -91,6 +93,8 @@ func (s *ShardedMap[K, V]) Del(k K) {
 	if exists {
 		s.size.Add(-1)
 	}
+
+	return nil
 }
 
 func (s *ShardedMap[K, V]) Size() uint64 {

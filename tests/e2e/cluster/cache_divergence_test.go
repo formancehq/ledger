@@ -24,7 +24,7 @@ import (
 // The race: during rotateLocked, currentGeneration is stored atomically BEFORE
 // the gen0/gen1 ShardedMaps are rotated. A concurrent CheckCache (from the
 // admission goroutine) can see the new generation but pre-rotation data,
-// returning CacheNeedsTouch for a key about to be purged — when CacheMiss
+// returning CacheHit for a key about to be purged — when CacheMiss
 // (full preload) was correct.
 //
 // Strategy: maximize concurrent CheckCache calls during rotations by:
@@ -103,7 +103,7 @@ var _ = Describe("Cache divergence under chaos", func() {
 				}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 				// Now send MORE transactions through the leader while follower catches up
-				// These proposals may use CacheGuaranteed for volumes the follower
+				// These proposals may use CacheHit for volumes the follower
 				// doesn't have — this is where the race manifests
 				By("  Sending transactions after restart (race window)")
 				sendParallelTransactions(ctx, servers[0].Client, ledgerName, parallelism, txPerWorker, cycle*1000+500, "COIN")

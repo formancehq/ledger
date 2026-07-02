@@ -84,13 +84,13 @@ The attribute cache (`internal/infra/cache/cache.go`) holds two generations:
 - **Gen0** — the active generation, populated on every preload.
 - **Gen1** — the previous generation, kept for `--cache-rotation-threshold` Raft indices after rotation.
 
-`CheckCache(at, k)` (`cache.go:157-198`) returns one of three states:
+`CheckCache(at, k)` returns one of three states:
 
 | State | Meaning |
 |-------|---------|
-| `CacheGuaranteed` | Cache is authoritative for `k` at Raft index `at`. |
-| `CacheNeedsTouch` | Cache may have rotated; the loader must re-verify against Pebble. |
+| `CacheHit` | Cache holds `k` somewhere within the reachable horizon (Gen0 hit, or Gen1 hit — `AttributeCache.Get`'s gen0→gen1 fallback surfaces it at apply time). |
 | `CacheMiss` | Cache does not hold a value for `k`. The FSM treats this as `ErrNotFound`. |
+| `CacheUnreachable` | Target index is 2+ generations ahead — admission rejects the proposal with `plan.ErrCacheHorizonExceeded`. |
 
 The FSM apply path **never** reads Pebble on a `CacheMiss` — the call is a silent no-op for that read. This is enforced structurally: the apply path holds a `*dal.WriteSession`, which deliberately has no `Get`/`NewIter` methods. Only Pebble's `dal.Store.OpenWriteSession()` produces a session, and only declared lifecycle paths may call it (see [CLAUDE.md invariant #4](../../../../../AGENTS.md)).
 
