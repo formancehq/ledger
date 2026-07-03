@@ -73,6 +73,10 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 		indexType = result
 	}
 
+	if err := rejectMetadataOnlyFlags(cmd, indexType); err != nil {
+		return err
+	}
+
 	req := &servicepb.DropIndexRequest{
 		Ledger: ledgerName,
 	}

@@ -587,6 +587,7 @@ ledgerctl indexes create [flags]
 - The index starts building in the background immediately
 - Queries using the index will be rejected until the index reaches READY status
 - Creating an index that already exists and is READY is idempotent (no error)
+- `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected. In particular, there is no builtin address index scoped to accounts — `address`, `source-address`, and `dest-address` all index transactions.
 
 **Example:**
 
@@ -639,6 +640,7 @@ ledgerctl indexes drop [flags]
 **Behavior:**
 - Queries using the dropped index will be rejected after the drop
 - Dropping a non-existent index returns an error
+- `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected.
 
 **Example:**
 

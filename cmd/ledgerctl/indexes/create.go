@@ -82,6 +82,10 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		indexType = result
 	}
 
+	if err := rejectMetadataOnlyFlags(cmd, indexType); err != nil {
+		return err
+	}
+
 	req := &servicepb.CreateIndexRequest{
 		Ledger: ledgerName,
 	}
