@@ -25,16 +25,46 @@ func mapExporter(exporter ledger.Exporter) *grpc.Exporter {
 
 func mapPipelineConfiguration(cfg ledger.PipelineConfiguration) *grpc.PipelineConfiguration {
 	return &grpc.PipelineConfiguration{
-		ExporterId: cfg.ExporterID,
-		Ledger:     cfg.Ledger,
+		ExporterId:          cfg.ExporterID,
+		Ledger:              cfg.Ledger,
+		AddressRewriteRules: mapAddressRewriteRules(cfg.AddressRewriteRules),
 	}
 }
 
 func mapPipelineConfigurationFromGRPC(cfg *grpc.PipelineConfiguration) ledger.PipelineConfiguration {
 	return ledger.PipelineConfiguration{
-		ExporterID: cfg.ExporterId,
-		Ledger:     cfg.Ledger,
+		ExporterID:          cfg.ExporterId,
+		Ledger:              cfg.Ledger,
+		AddressRewriteRules: mapAddressRewriteRulesFromGRPC(cfg.AddressRewriteRules),
 	}
+}
+
+func mapAddressRewriteRules(rules []ledger.AddressRewriteRule) []*grpc.AddressRewriteRule {
+	if rules == nil {
+		return nil
+	}
+	ret := make([]*grpc.AddressRewriteRule, len(rules))
+	for i, rule := range rules {
+		ret[i] = &grpc.AddressRewriteRule{
+			Pattern:     rule.Pattern,
+			Replacement: rule.Replacement,
+		}
+	}
+	return ret
+}
+
+func mapAddressRewriteRulesFromGRPC(rules []*grpc.AddressRewriteRule) []ledger.AddressRewriteRule {
+	if rules == nil {
+		return nil
+	}
+	ret := make([]ledger.AddressRewriteRule, len(rules))
+	for i, rule := range rules {
+		ret[i] = ledger.AddressRewriteRule{
+			Pattern:     rule.Pattern,
+			Replacement: rule.Replacement,
+		}
+	}
+	return ret
 }
 
 func mapPipeline(pipeline ledger.Pipeline) *grpc.Pipeline {

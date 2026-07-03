@@ -7,7 +7,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/query"
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
-	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -61,6 +60,11 @@ type PipelineHandler struct {
 	exporter       drivers.Driver
 	pipelineConfig PipelineHandlerConfig
 	logger         logging.Logger
+	rewriter       *AddressRewriter
+	// rewriterErr holds a failure to compile the pipeline's address rewrite rules.
+	// Rules are validated at creation time, so this should never occur in practice;
+	// if it does we fail loudly rather than export unrewritten data.
+	rewriterErr error
 }
 
 func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
@@ -108,17 +112,47 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 				continue
 			}
 
+			if p.rewriterErr != nil {
+				p.logger.Errorf("Invalid address rewrite configuration: %s, waiting for: %s", p.rewriterErr, p.pipelineConfig.PushRetryPeriod)
+				select {
+				case ch := <-p.stopChannel:
+					stop(ch)
+					return
+				case <-time.After(p.pipelineConfig.PushRetryPeriod):
+					continue
+				}
+			}
+
+			logsToExport := make([]drivers.LogWithLedger, 0, len(logs.Data))
+			var rewriteErr error
+			for _, log := range logs.Data {
+				rewritten, err := p.rewriter.Apply(log)
+				if err != nil {
+					rewriteErr = err
+					break
+				}
+				logsToExport = append(logsToExport, drivers.LogWithLedger{
+					Log:    rewritten,
+					Ledger: p.pipeline.Ledger,
+				})
+			}
+			if rewriteErr != nil {
+				p.logger.Errorf("Error rewriting addresses: %s, waiting for: %s", rewriteErr, p.pipelineConfig.PushRetryPeriod)
+				select {
+				case ch := <-p.stopChannel:
+					stop(ch)
+					return
+				case <-time.After(p.pipelineConfig.PushRetryPeriod):
+					continue
+				}
+			}
+
 			for {
 				p.logger.Debugf("Send data to exporter.")
 				errChan := make(chan error, 1)
 				exportContext, cancel := context.WithCancel(ctx)
 				go func() {
-					_, err := p.exporter.Accept(exportContext, collections.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
-						return drivers.LogWithLedger{
-							Log:    log,
-							Ledger: p.pipeline.Ledger,
-						}
-					})...)
+					_, err := p.exporter.Accept(exportContext, logsToExport...)
 					errChan <- err
 				}()
 				select {
@@ -192,12 +226,16 @@ func NewPipelineHandler(
 		opt(&config)
 	}
 
+	rewriter, rewriterErr := NewAddressRewriter(pipeline.AddressRewriteRules)
+
 	return &PipelineHandler{
 		pipeline:       pipeline,
 		stopChannel:    make(chan chan error, 1),
 		store:          store,
 		exporter:       driver,
 		pipelineConfig: config,
+		rewriter:       rewriter,
+		rewriterErr:    rewriterErr,
 		logger: logger.
 			WithField("component", "pipeline").
 			WithField("module", pipeline.Ledger).

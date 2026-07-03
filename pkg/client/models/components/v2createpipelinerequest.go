@@ -3,7 +3,8 @@
 package components
 
 type V2CreatePipelineRequest struct {
-	ExporterID string `json:"exporterID"`
+	ExporterID          string                 `json:"exporterID"`
+	AddressRewriteRules []V2AddressRewriteRule `json:"addressRewriteRules,omitempty"`
 }
 
 func (v *V2CreatePipelineRequest) GetExporterID() string {
@@ -11,6 +12,13 @@ func (v *V2CreatePipelineRequest) GetExporterID() string {
 		return ""
 	}
 	return v.ExporterID
+}
+
+func (v *V2CreatePipelineRequest) GetAddressRewriteRules() []V2AddressRewriteRule {
+	if v == nil {
+		return nil
+	}
+	return v.AddressRewriteRules
 }
 
 // #region class-body-v2createpipelinerequest

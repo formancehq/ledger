@@ -14,16 +14,24 @@ import (
 )
 
 type PipelineConfiguration struct {
-	ExporterID string `json:"exporterID"`
+	ExporterID          string                      `json:"exporterID"`
+	AddressRewriteRules []ledger.AddressRewriteRule `json:"addressRewriteRules,omitempty"`
 }
 
 func createPipeline(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		common.WithBody[PipelineConfiguration](w, r, func(req PipelineConfiguration) {
-			p, err := systemController.CreatePipeline(r.Context(), ledger.PipelineConfiguration{
-				ExporterID: req.ExporterID,
-				Ledger:     common.LedgerFromContext(r.Context()).Info().Name,
-			})
+			configuration := ledger.PipelineConfiguration{
+				ExporterID:          req.ExporterID,
+				Ledger:              common.LedgerFromContext(r.Context()).Info().Name,
+				AddressRewriteRules: req.AddressRewriteRules,
+			}
+			if err := configuration.Validate(); err != nil {
+				api.BadRequest(w, "VALIDATION", err)
+				return
+			}
+
+			p, err := systemController.CreatePipeline(r.Context(), configuration)
 			if err != nil {
 				switch {
 				case errors.Is(err, systemcontroller.ErrExporterNotFound("")) ||

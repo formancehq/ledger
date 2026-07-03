@@ -409,6 +409,10 @@ func (m *Manager) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pi
 }
 
 func (m *Manager) CreatePipeline(ctx context.Context, config ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

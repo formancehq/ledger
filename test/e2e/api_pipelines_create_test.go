@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/formancehq/go-libs/v5/pkg/transport/grpcserver"
 
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
@@ -308,6 +309,75 @@ func runPipelinesTests(ctx context.Context, testServer *deferred.Deferred[*tests
 								})
 							})
 						})
+					})
+				})
+			})
+		})
+
+		setup(func(driver *deferred.Deferred[Driver]) {
+			When("creating an exporter and a pipeline with address rewrite rules", func() {
+				var err error
+				BeforeEach(func(specContext SpecContext) {
+					config := driver.GetValue().Config()
+					// Set batching to 1 to make testing easier
+					config["batching"] = map[string]any{
+						"maxItems": 1,
+					}
+					createExporterResponse, exporterErr := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, components.V2CreateExporterRequest{
+						Driver: driverName,
+						Config: config,
+					})
+					Expect(exporterErr).To(BeNil())
+
+					_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+						Ledger: "default",
+					})
+					Expect(err).To(BeNil())
+
+					_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreatePipeline(ctx, operations.V2CreatePipelineRequest{
+						Ledger: "default",
+						V2CreatePipelineRequest: &components.V2CreatePipelineRequest{
+							ExporterID: createExporterResponse.V2CreateExporterResponse.Data.ID,
+							AddressRewriteRules: []components.V2AddressRewriteRule{{
+								// Drop the ":worker:<n>" lock-avoidance segment.
+								Pattern:     `(:worker:\d+)`,
+								Replacement: "",
+							}},
+						},
+					})
+				})
+				It("should be ok", func() {
+					Expect(err).To(BeNil())
+				})
+				Context("then creating a transaction with a worker-sharded address", func() {
+					BeforeEach(func(specContext SpecContext) {
+						Expect(err).To(BeNil())
+						_, txErr := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+							Ledger: "default",
+							V2PostTransaction: components.V2PostTransaction{
+								Postings: []components.V2Posting{{
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+									Destination: "payments:acme:worker:001:main",
+									Source:      "world",
+								}},
+							},
+						})
+						Expect(txErr).To(Succeed())
+					})
+					It("should export the transaction with the worker segment dropped", func() {
+						Eventually(func(g Gomega) string {
+							messages, err := driver.GetValue().ReadMessages(ctx)
+							g.Expect(err).To(BeNil())
+							g.Expect(messages).To(HaveLen(1))
+
+							createdTransaction, ok := messages[0].Data.(ledger.CreatedTransaction)
+							g.Expect(ok).To(BeTrue())
+							return createdTransaction.Transaction.Postings[0].Destination
+						}).
+							WithTimeout(10 * time.Second).
+							WithPolling(100 * time.Millisecond).
+							Should(Equal("payments:acme:main"))
 					})
 				})
 			})

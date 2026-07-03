@@ -3308,7 +3308,13 @@ Accept: application/json
 
 ```json
 {
-  "exporterID": "string"
+  "exporterID": "string",
+  "addressRewriteRules": [
+    {
+      "pattern": "string",
+      "replacement": "string"
+    }
+  ]
 }
 ```
 
@@ -3356,6 +3362,9 @@ Status Code **201**
 |»» *anonymous*|object|false|none|none|
 |»»» ledger|string|true|none|none|
 |»»» exporterID|string|true|none|none|
+|»»» addressRewriteRules|[[V2AddressRewriteRule](#schemav2addressrewriterule)]|false|none|[Rewrites account addresses while mirroring a ledger to an exporter. `pattern` is a regular expression applied to the full account address; matches are replaced with `replacement` (which may reference capture groups). An empty `replacement` drops the matched part, e.g. pattern `(:worker:\d+)` turns `payments:acme:worker:001:main` into `payments:acme:main`.<br>]|
+|»»»» pattern|string|true|none|none|
+|»»»» replacement|string|true|none|none|
 
 *and*
 
@@ -3430,6 +3439,9 @@ Status Code **200**
 |»» *anonymous*|object|false|none|none|
 |»»» ledger|string|true|none|none|
 |»»» exporterID|string|true|none|none|
+|»»» addressRewriteRules|[[V2AddressRewriteRule](#schemav2addressrewriterule)]|false|none|[Rewrites account addresses while mirroring a ledger to an exporter. `pattern` is a regular expression applied to the full account address; matches are replaced with `replacement` (which may reference capture groups). An empty `replacement` drops the matched part, e.g. pattern `(:worker:\d+)` turns `payments:acme:worker:001:main` into `payments:acme:main`.<br>]|
+|»»»» pattern|string|true|none|none|
+|»»»» replacement|string|true|none|none|
 
 *and*
 
@@ -7628,6 +7640,30 @@ and
 |metadata|object|false|none|none|
 |» **additionalProperties**|string|false|none|none|
 
+<h2 id="tocS_V2AddressRewriteRule">V2AddressRewriteRule</h2>
+<!-- backwards compatibility -->
+<a id="schemav2addressrewriterule"></a>
+<a id="schema_V2AddressRewriteRule"></a>
+<a id="tocSv2addressrewriterule"></a>
+<a id="tocsv2addressrewriterule"></a>
+
+```json
+{
+  "pattern": "string",
+  "replacement": "string"
+}
+
+```
+
+Rewrites account addresses while mirroring a ledger to an exporter. `pattern` is a regular expression applied to the full account address; matches are replaced with `replacement` (which may reference capture groups). An empty `replacement` drops the matched part, e.g. pattern `(:worker:\d+)` turns `payments:acme:worker:001:main` into `payments:acme:main`.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|pattern|string|true|none|none|
+|replacement|string|true|none|none|
+
 <h2 id="tocS_V2CreatePipelineRequest">V2CreatePipelineRequest</h2>
 <!-- backwards compatibility -->
 <a id="schemav2createpipelinerequest"></a>
@@ -7637,7 +7673,13 @@ and
 
 ```json
 {
-  "exporterID": "string"
+  "exporterID": "string",
+  "addressRewriteRules": [
+    {
+      "pattern": "string",
+      "replacement": "string"
+    }
+  ]
 }
 
 ```
@@ -7647,6 +7689,7 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |exporterID|string|true|none|none|
+|addressRewriteRules|[[V2AddressRewriteRule](#schemav2addressrewriterule)]|false|none|[Rewrites account addresses while mirroring a ledger to an exporter. `pattern` is a regular expression applied to the full account address; matches are replaced with `replacement` (which may reference capture groups). An empty `replacement` drops the matched part, e.g. pattern `(:worker:\d+)` turns `payments:acme:worker:001:main` into `payments:acme:main`.<br>]|
 
 <h2 id="tocS_V2CreateExporterRequest">V2CreateExporterRequest</h2>
 <!-- backwards compatibility -->
@@ -7696,7 +7739,13 @@ and
 ```json
 {
   "ledger": "string",
-  "exporterID": "string"
+  "exporterID": "string",
+  "addressRewriteRules": [
+    {
+      "pattern": "string",
+      "replacement": "string"
+    }
+  ]
 }
 
 ```
@@ -7707,6 +7756,7 @@ and
 |---|---|---|---|---|
 |ledger|string|true|none|none|
 |exporterID|string|true|none|none|
+|addressRewriteRules|[[V2AddressRewriteRule](#schemav2addressrewriterule)]|false|none|[Rewrites account addresses while mirroring a ledger to an exporter. `pattern` is a regular expression applied to the full account address; matches are replaced with `replacement` (which may reference capture groups). An empty `replacement` drops the matched part, e.g. pattern `(:worker:\d+)` turns `payments:acme:worker:001:main` into `payments:acme:main`.<br>]|
 
 <h2 id="tocS_V2ExporterConfiguration">V2ExporterConfiguration</h2>
 <!-- backwards compatibility -->

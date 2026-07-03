@@ -84,9 +84,15 @@ message ListPipelinesResponse {
   Cursor cursor = 2;
 }
 
+message AddressRewriteRule {
+  string pattern = 1;
+  string replacement = 2;
+}
+
 message PipelineConfiguration {
   string exporter_id = 1;
   string ledger = 2;
+  repeated AddressRewriteRule address_rewrite_rules = 3;
 }
 
 message Pipeline {

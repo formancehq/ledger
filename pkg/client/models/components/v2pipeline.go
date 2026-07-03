@@ -8,12 +8,13 @@ import (
 )
 
 type V2Pipeline struct {
-	Ledger     string    `json:"ledger"`
-	ExporterID string    `json:"exporterID"`
-	ID         string    `json:"id"`
-	CreatedAt  time.Time `json:"createdAt"`
-	LastLogID  *int64    `json:"lastLogID,omitempty"`
-	Enabled    *bool     `json:"enabled,omitempty"`
+	Ledger              string                 `json:"ledger"`
+	ExporterID          string                 `json:"exporterID"`
+	ID                  string                 `json:"id"`
+	CreatedAt           time.Time              `json:"createdAt"`
+	LastLogID           *int64                 `json:"lastLogID,omitempty"`
+	Enabled             *bool                  `json:"enabled,omitempty"`
+	AddressRewriteRules []V2AddressRewriteRule `json:"addressRewriteRules,omitempty"`
 }
 
 func (v V2Pipeline) MarshalJSON() ([]byte, error) {
@@ -67,6 +68,13 @@ func (v *V2Pipeline) GetEnabled() *bool {
 		return nil
 	}
 	return v.Enabled
+}
+
+func (v *V2Pipeline) GetAddressRewriteRules() []V2AddressRewriteRule {
+	if v == nil {
+		return nil
+	}
+	return v.AddressRewriteRules
 }
 
 // #region class-body-v2pipeline

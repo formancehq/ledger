@@ -3414,11 +3414,32 @@ components:
           type: object
           additionalProperties:
             type: string
+    V2AddressRewriteRule:
+      type: object
+      description: >
+        Rewrites account addresses while mirroring a ledger to an exporter.
+        `pattern` is a regular expression applied to the full account address;
+        matches are replaced with `replacement` (which may reference capture
+        groups). An empty `replacement` drops the matched part, e.g. pattern
+        `(:worker:\d+)` turns `payments:acme:worker:001:main` into
+        `payments:acme:main`.
+      properties:
+        pattern:
+          type: string
+        replacement:
+          type: string
+      required:
+        - pattern
+        - replacement
     V2CreatePipelineRequest:
       type: object
       properties:
         exporterID:
           type: string
+        addressRewriteRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2AddressRewriteRule"
       required:
         - exporterID
     V2CreateExporterRequest:
@@ -3431,6 +3452,10 @@ components:
           type: string
         exporterID:
           type: string
+        addressRewriteRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2AddressRewriteRule"
       required:
         - ledger
         - exporterID
