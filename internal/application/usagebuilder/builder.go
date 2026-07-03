@@ -16,11 +16,12 @@
 //
 // Runs on every node; each replica maintains its own cursor (last consumed
 // audit sequence). Eventually consistent with the FSM: reads may lag by up
-// to one tick interval (100 ms) plus batch drain time.
+// to one tick interval plus batch drain time.
 package usagebuilder
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -29,7 +30,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/pkg/tailworker"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
@@ -37,6 +38,16 @@ import (
 
 // DefaultBatchSize is the default number of audit entries per Pebble batch commit.
 const DefaultBatchSize = 200
+
+// TickInterval is the steady-state polling interval. Same rationale as the
+// audit indexer: the audit sequence advances on every proposal (including
+// failures that emit no log), so a ticker is what guarantees pickup.
+const TickInterval = 100 * time.Millisecond
+
+// catchUpBudget bounds how long a single processAuditEntries invocation
+// holds a Pebble snapshot during boot-time catch-up. Between slices the
+// snapshot is released so compactions can proceed on long-history stores.
+const catchUpBudget = 5 * time.Second
 
 // Builder tails the FSM audit chain and populates the usagestore projections.
 // Runs as a background goroutine on all nodes (not leader-only). Progress is
@@ -47,14 +58,19 @@ type Builder struct {
 	notifications *signal.Notifications
 	logger        logging.Logger
 	meter         metric.Meter
-	w             worker.Worker
 
 	batchSize int
 
+	// lastProcessedAuditSeq mirrors usagestore.ReadProgress() and is
+	// updated on every successful commit — the atomic hint lets external
+	// readers (metrics, tests) avoid a Pebble Get.
 	lastProcessedAuditSeq atomic.Uint64
-	pebbleLastAuditSeq    atomic.Uint64
-	entriesProcessed      atomic.Uint64
-	metricsRegistration   metric.Registration
+	// pebbleLastAuditSeq is the highest audit sequence in the main store,
+	// resampled on each tick for the lag gauge.
+	pebbleLastAuditSeq atomic.Uint64
+
+	tw  *tailworker.TailWorker
+	reg metric.Registration
 }
 
 // NewBuilder wires the usagebuilder subsystem. Notifications is injected via
@@ -82,122 +98,72 @@ func NewBuilder(
 	}
 }
 
-// Start begins the background loop and registers OTEL metrics.
+// Start launches the background tail loop and registers OTEL gauges.
 func (b *Builder) Start() {
-	if reg, err := b.registerMetrics(); err == nil {
-		b.metricsRegistration = reg
+	if reg, err := tailworker.RegisterTailGauges(
+		b.meter, "usage.builder", "audit", &b.lastProcessedAuditSeq, &b.pebbleLastAuditSeq,
+	); err == nil {
+		b.reg = reg
 	}
 
-	b.w = worker.New()
-	b.w.RunCtx(b.loop)
+	// Wake on FSM commit signals when available. `notifications` is nil
+	// only in the offline rebuild path (RebuildAll), which does not go
+	// through Start — the guard is defensive.
+	var wake <-chan struct{}
+	if b.notifications != nil {
+		wake = b.notifications.LogCommitted.C()
+	}
+
+	b.tw = tailworker.New(tailworker.Config{
+		Name:   "usage-builder",
+		Logger: b.logger,
+		Ticker: TickInterval,
+		Wake:   wake,
+		Boot:   b.boot,
+		Tick:   b.tick,
+	})
+	b.tw.Start()
 }
 
-// Stop gracefully stops the background loop and unregisters OTEL metrics.
+// Stop halts the tail loop and unregisters metrics.
 func (b *Builder) Stop() {
-	b.w.Stop()
-
-	if b.metricsRegistration != nil {
-		_ = b.metricsRegistration.Unregister()
+	if b.tw != nil {
+		b.tw.Stop()
+	}
+	if b.reg != nil {
+		_ = b.reg.Unregister()
 	}
 }
 
-// LastProcessedAuditSequence returns the last audit sequence consumed (from
-// the atomic cache — same value as usagestore.ReadProgress but without a
-// Pebble Get).
+// LastProcessedAuditSequence returns the last audit sequence consumed
+// (atomic hint — same value as usagestore.ReadProgress but without a
+// Pebble Get). Exposed for tests and health checks.
 func (b *Builder) LastProcessedAuditSequence() uint64 {
 	return b.lastProcessedAuditSeq.Load()
 }
 
-// PebbleLastAuditSequence returns the last known Pebble audit sequence (from
-// the atomic cache).
+// PebbleLastAuditSequence returns the last known main-store audit sequence
+// (atomic hint refreshed each tick).
 func (b *Builder) PebbleLastAuditSequence() uint64 {
 	return b.pebbleLastAuditSeq.Load()
 }
 
-// registerMetrics registers observable gauges for the usagebuilder.
-func (b *Builder) registerMetrics() (metric.Registration, error) {
-	lastProcessedGauge, err := b.meter.Int64ObservableGauge(
-		"usage.builder.last_processed_audit_sequence",
-		metric.WithDescription("Last audit sequence consumed by the usagebuilder"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	pebbleLastGauge, err := b.meter.Int64ObservableGauge(
-		"usage.builder.pebble_last_audit_sequence",
-		metric.WithDescription("Last audit sequence in Pebble"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	lagGauge, err := b.meter.Int64ObservableGauge(
-		"usage.builder.lag",
-		metric.WithDescription("Number of audit entries the usagebuilder is behind Pebble"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	entriesProcessedGauge, err := b.meter.Int64ObservableGauge(
-		"usage.builder.entries_processed_total",
-		metric.WithDescription("Total number of audit entries consumed since process start"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return b.meter.RegisterCallback(
-		func(_ context.Context, o metric.Observer) error {
-			processed := int64(b.lastProcessedAuditSeq.Load())
-			pebbleLast := int64(b.pebbleLastAuditSeq.Load())
-
-			lag := max(pebbleLast-processed, 0)
-
-			o.ObserveInt64(lastProcessedGauge, processed)
-			o.ObserveInt64(pebbleLastGauge, pebbleLast)
-			o.ObserveInt64(lagGauge, lag)
-			o.ObserveInt64(entriesProcessedGauge, int64(b.entriesProcessed.Load()))
-
-			return nil
-		},
-		lastProcessedGauge,
-		pebbleLastGauge,
-		lagGauge,
-		entriesProcessedGauge,
-	)
-}
-
-// loop is the main goroutine driven by Start(). Reads cursor from the usage
-// store, catches up on any pending audit entries, then tails via a 100 ms
-// ticker plus the LogCommitted notification (fires whenever the FSM
-// advances, which is also when the audit chain advances).
-func (b *Builder) loop(ctx context.Context) {
+// boot runs once before the tail loop: seed both atomics from the persisted
+// state and drain the reachable backlog with a bigger batch size so the
+// steady-state loop starts already caught up. A cursor-read error aborts the
+// loop (returned to tailworker, which logs and stops); a catch-up error is
+// logged and swallowed so steady-state indexing still starts.
+func (b *Builder) boot(ctx context.Context) error {
 	cursor, err := b.usageStore.ReadProgress()
 	if err != nil {
-		b.logger.Errorf("Failed to read usage progress: %v", err)
-
-		return
+		return fmt.Errorf("reading usage progress: %w", err)
 	}
 
 	b.lastProcessedAuditSeq.Store(cursor)
 
-	// Seed pebble last audit sequence. Handle closed immediately to release
-	// the RLock — keeping it open would deadlock with RestoreCheckpoint
-	// (write lock) when processAuditEntries takes a new RLock.
-	var pebbleLast uint64
-	if handle, err := b.pebbleStore.NewDirectReadHandle(); err != nil {
-		b.logger.Errorf("Failed to create read handle: %v", err)
-
-		return
-	} else {
-		if v, err := query.ReadLastAuditSequence(handle); err == nil {
-			pebbleLast = v
-			b.pebbleLastAuditSeq.Store(v)
-		}
-
-		_ = handle.Close()
+	pebbleLast, sampleErr := b.sampleAuditHead()
+	if sampleErr == nil {
+		b.pebbleLastAuditSeq.Store(pebbleLast)
 	}
 
 	b.logger.WithFields(map[string]any{
@@ -206,28 +172,25 @@ func (b *Builder) loop(ctx context.Context) {
 		"gap":        int64(pebbleLast) - int64(cursor),
 	}).Infof("Usage builder started")
 
-	// Initial catch-up: time-bounded iterations to release the Pebble
-	// snapshot between passes (same rationale as indexbuilder catchUpBudget).
-	const catchUpBudget = 5 * time.Second
-
+	// Initial catch-up — time-bounded slices so the Pebble snapshot is
+	// released between passes. Larger batch size so bootstrap commits are
+	// coalesced.
 	prevCursor := cursor
 	savedBatchSize := b.batchSize
 	b.batchSize = max(b.batchSize, 2_000)
+	defer func() { b.batchSize = savedBatchSize }()
 
 	for {
-		select {
-		case <-ctx.Done():
-			b.batchSize = savedBatchSize
-
-			return
-		default:
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
 		before := cursor
 		deadline := time.Now().Add(catchUpBudget)
 
-		if cursor, err = b.processAuditEntries(ctx, cursor, deadline); err != nil {
-			b.logger.Errorf("Error during initial catch-up: %v", err)
+		cursor, err = b.processAuditEntries(ctx, cursor, deadline)
+		if err != nil {
+			b.logger.Errorf("initial catch-up: %v", err)
 
 			break
 		}
@@ -237,8 +200,6 @@ func (b *Builder) loop(ctx context.Context) {
 		}
 	}
 
-	b.batchSize = savedBatchSize
-
 	if cursor > prevCursor {
 		b.logger.WithFields(map[string]any{
 			"from":    prevCursor,
@@ -247,30 +208,32 @@ func (b *Builder) loop(ctx context.Context) {
 		}).Infof("Initial catch-up complete")
 	}
 
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+	return nil
+}
 
-	for {
-		select {
-		case <-ctx.Done():
-			b.logger.Infof("Usage builder stopped")
-
-			return
-		case <-b.notifications.LogCommitted.C():
-		case <-ticker.C:
-		}
-
-		// No fast-path atomic gate here: `signal.Notifications.LastSequence`
-		// tracks the last LOG sequence, whereas our cursor tracks the last
-		// AUDIT sequence. The two counters advance together in the common
-		// case but a failed proposal advances the audit chain without
-		// producing a log — comparing them directly would leave audit
-		// entries un-projected. processAuditEntries opens a cursor at
-		// `lastProcessedAuditSeq + 1` and immediately hits EOF when nothing
-		// new has landed, so the pebble-side cost of a spurious wake-up is
-		// negligible (one iterator open + close, no snapshot pin).
-		if cursor, err = b.processAuditEntries(ctx, cursor, time.Time{}); err != nil {
-			b.logger.Errorf("Error processing audit entries: %v", err)
-		}
+// tick runs one steady-state iteration: refresh the audit-head gauge, then
+// drain any pending audit entries from the persisted cursor forward.
+func (b *Builder) tick(ctx context.Context) error {
+	if last, err := b.sampleAuditHead(); err == nil {
+		b.pebbleLastAuditSeq.Store(last)
 	}
+
+	cursor := b.lastProcessedAuditSeq.Load()
+	_, err := b.processAuditEntries(ctx, cursor, time.Time{})
+
+	return err
+}
+
+// sampleAuditHead opens a short-lived read handle to read the current audit
+// head. The handle is closed immediately so RestoreCheckpoint's write lock
+// is not blocked during idle ticks.
+func (b *Builder) sampleAuditHead() (uint64, error) {
+	handle, err := b.pebbleStore.NewDirectReadHandle()
+	if err != nil {
+		return 0, err
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	return query.ReadLastAuditSequence(handle)
 }

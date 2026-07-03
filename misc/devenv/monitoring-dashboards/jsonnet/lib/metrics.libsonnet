@@ -72,10 +72,9 @@
 
   // usage.builder — internal/application/usagebuilder/builder.go
   usage_builder:: {
-    last_processed_audit_sequence: 'usage.builder.last_processed_audit_sequence',
-    pebble_last_audit_sequence: 'usage.builder.pebble_last_audit_sequence',
+    last_indexed_sequence: 'usage.builder.last_indexed_sequence',
+    audit_last_sequence: 'usage.builder.audit_last_sequence',
     lag: 'usage.builder.lag',
-    entries_processed_total: 'usage.builder.entries_processed_total',
   },
 
   // numscript — internal/domain/processing/numscript/cache.go

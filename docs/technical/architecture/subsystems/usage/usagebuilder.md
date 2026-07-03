@@ -129,9 +129,11 @@ The audit chain remains the source of truth in both cases.
 
 | Concern | Mechanism | File |
 |---------|-----------|------|
-| Wake-up | Dedicated `name:"usage"` `Notifications` from the FSM FanOut + 100 ms ticker | `builder.go` |
+| Loop skeleton | `tailworker.TailWorker` — shared boot/tick/wake driver used by every tail-worker subsystem (audit indexer, usagebuilder, …) | `internal/pkg/tailworker/tailworker.go` |
+| Wake-up | Dedicated `name:"usage"` `Notifications` from the FSM FanOut fed into the tailworker's `Wake` channel + `TickInterval` fallback | `builder.go` |
 | Source | Audit chain (`ReadAuditEntries` + `ReadAuditItems`), not the log stream — needed for Numscript template ref survival | `process_audit.go` |
 | Atomicity | `WriteProgress` shares the same Pebble batch as counter / template mutations | `process_audit.go`, `usagestore/store.go` |
 | Read consistency | Multi-counter reads via `usagestore.NewSnapshot()` | `usagestore/snapshot.go`, `ctrl/controller_default.go` |
 | Isolation | Dedicated Pebble instance at `<data-dir>/usage/`, own comparer, WAL disabled | `usagestore/{store,comparer,keys}.go` |
+| Metrics | `tailworker.RegisterTailGauges` — 3 shared gauges (`last_indexed_sequence`, `audit_last_sequence`, `lag`) | `builder.go`, `internal/pkg/tailworker/gauges.go` |
 | Rebuild | `ledgerctl store rebuild-usage` — drop directory + replay | `cmd/ledgerctl/store/rebuild_usage.go` |

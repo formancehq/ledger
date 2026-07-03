@@ -125,8 +125,9 @@ Registered in `misc/devenv/monitoring-dashboards/jsonnet/lib/metrics.libsonnet`:
 
 | Metric | Description |
 |--------|-------------|
-| `usage.builder.last_processed_audit_sequence` | Highest audit sequence the builder has committed for this replica. |
-| `usage.builder.pebble_last_audit_sequence` | Highest audit sequence present in Pebble on this replica. |
+| `usage.builder.last_indexed_sequence` | Highest audit sequence the builder has committed for this replica. |
+| `usage.builder.audit_last_sequence` | Highest audit sequence present in Pebble on this replica. |
 | `usage.builder.lag` | Difference between the two (indicator of the eventual-consistency window). |
-| `usage.builder.entries_processed_total` | Cumulative audit entries consumed since process start. |
 | `usagestore.level.bytes` / `memtable.bytes` / `cache.hits` / `cache.misses` | Pebble-internal metrics for the usagestore instance (parallel to the readindex namespace). |
+
+The three progress gauges are registered through `tailworker.RegisterTailGauges` — the same helper the audit indexer uses — so the naming pattern (`{ns}.last_indexed_sequence`, `{ns}.{source}_last_sequence`, `{ns}.lag`) stays consistent across every tail-worker subsystem.

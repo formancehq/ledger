@@ -230,17 +230,6 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 
 		cursor = lastAuditSeq
 		b.lastProcessedAuditSeq.Store(cursor)
-		b.entriesProcessed.Add(uint64(batchCount))
-
-		// Sample Pebble last audit sequence from the FSM notification cache
-		// when available. Notifications is nil in offline rebuild
-		// (`ledgerctl store rebuild-usage`) where no FSM is running — the
-		// atomic is skipped in that path.
-		if b.notifications != nil {
-			if cached := b.notifications.LastSequence.Load(); cached > 0 {
-				b.pebbleLastAuditSeq.Store(cached)
-			}
-		}
 
 		// Periodic progress logging for long catch-up runs.
 		if now := time.Now(); now.Sub(lastProgressLog) >= 10*time.Second {
