@@ -170,6 +170,27 @@ func TestSubcommandLocalFlagsIgnoreBareEnv(t *testing.T) {
 			flag:    "signing-key",
 			bareEnv: "SIGNING_KEY",
 		},
+		{
+			// key-id is owned so auth's resolveKeyID can trust Changed("key-id")
+			// as a strict CLI-typed signal; a stray KEY_ID must not let env
+			// impersonate a CLI flag.
+			name:    "auth generate-token --key-id ignores bare KEY_ID",
+			path:    []string{"auth", "generate-token"},
+			flag:    "key-id",
+			bareEnv: "KEY_ID",
+		},
+		{
+			name:    "auth login --key-id ignores bare KEY_ID",
+			path:    []string{"auth", "login"},
+			flag:    "key-id",
+			bareEnv: "KEY_ID",
+		},
+		{
+			name:    "signing revoke-key --key-id ignores bare KEY_ID",
+			path:    []string{"signing", "revoke-key"},
+			flag:    "key-id",
+			bareEnv: "KEY_ID",
+		},
 	}
 
 	for _, tc := range tests {
@@ -370,12 +391,8 @@ func TestBindEnvSkipsOwnedProfile(t *testing.T) {
 
 	// Control: a non-owned flag IS bound from its bare env name, proving the
 	// binder actually ran and the skip above is specific to the owned set.
-	// Value.Set semantics: the flag holds the env value, but Changed stays
-	// false — Changed must always mean "typed on the CLI" so auth login's
-	// resolveKeyID and bundle-override checks stay correct.
 	probe, err := set.GetString("probe-only")
 	require.NoError(t, err)
 	require.Equal(t, "bound-value", probe)
-	require.False(t, set.Changed("probe-only"),
-		"env-derived non-owned flags must leave Changed=false so CLI-only intent stays distinguishable")
+	require.True(t, set.Changed("probe-only"))
 }

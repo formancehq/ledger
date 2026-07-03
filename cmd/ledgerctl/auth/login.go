@@ -212,31 +212,19 @@ func syncProfile(cmd *cobra.Command, server string) error {
 // `auth generate-token` share the same behavior.
 //
 // The two flags identify the same key entry, and users routinely pass only
-// one of them. Precedence (highest to lowest):
-//  1. CLI --key-id (Changed=true).
-//  2. CLI --signing-key-id (Changed=true) — beats any non-CLI --key-id
-//     (env KEY_ID, or profile-derived).
-//  3. Non-empty --key-id (env KEY_ID via bindSubcommandEnv).
-//  4. Non-empty --signing-key-id (LEDGERCTL_SIGNING_KEY_ID env or profile).
+// one of them. --key-id is CLI-only (in ledgerctlOwnedFlagNames, so
+// bindSubcommandEnv does not touch it and PersistentPreRunE never
+// pre-populates it), so a non-empty --key-id here means the user typed it.
+// --signing-key-id carries the CLI value, LEDGERCTL_SIGNING_KEY_ID env, or
+// the active profile's signingKeyId.
 //
-// This ordering keeps CLI-over-env and env-over-profile intact for both
-// flags. Bundle values still win against an env/profile-derived
-// --signing-key-id via the downstream bundle-override guard in
-// resolveLoginParams.
+// Precedence: CLI --key-id > CLI/env/profile --signing-key-id.
 func resolveKeyID(cmd *cobra.Command) string {
-	keyID, _ := cmd.Flags().GetString("key-id")
-	if cmd.Flags().Changed("key-id") {
+	if keyID, _ := cmd.Flags().GetString("key-id"); keyID != "" {
 		return keyID
 	}
 
 	sk, _ := cmd.Flags().GetString("signing-key-id")
-	if cmd.Flags().Changed("signing-key-id") {
-		return sk
-	}
-
-	if keyID != "" {
-		return keyID
-	}
 
 	return sk
 }

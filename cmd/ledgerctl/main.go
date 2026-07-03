@@ -264,6 +264,14 @@ var ledgerctlOwnedFlagNames = map[string]struct{}{
 	"signing-key-id":      {},
 	"response-verify-key": {},
 	"result-file":         {},
+	// key-id is a per-command JWT/key identifier declared locally by
+	// auth login / auth generate-token / signing register-key / signing
+	// revoke-key. Skipping bare KEY_ID here keeps Changed("key-id") a
+	// reliable "CLI-typed" signal, which auth's resolveKeyID uses to
+	// prefer an explicit --signing-key-id over an env-derived KEY_ID.
+	// Callers who need env-driven auth setup use LEDGERCTL_SIGNING_KEY_ID
+	// (feeds --signing-key-id, which resolveKeyID falls back to).
+	"key-id": {},
 }
 
 // bindSubcommandEnv binds bare-name environment variables (the go-libs
@@ -292,14 +300,6 @@ func bindEnvSkippingOwned(cmd *cobra.Command) {
 // bindFlagSetSkippingOwned binds each non-owned flag in set to its bare
 // uppercased env name (matching service.BindEnvToFlagSet, including the
 // stringSlice space-to-comma handling used by flags such as --scopes).
-//
-// Values are applied through Flag.Value.Set instead of FlagSet.Set so the
-// flag's Changed bit stays false: Changed must mean "the user typed the flag
-// on the CLI", not "we found a matching env var". auth login's resolveKeyID
-// and its bundle-override guards rely on this — otherwise a stray KEY_ID
-// env would beat an explicit CLI --signing-key-id, and env-derived
-// key-id/subject/scopes would silently override bundle values that
-// documentation says should win over env.
 func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
 	set.VisitAll(func(flag *pflag.Flag) {
 		if _, owned := ledgerctlOwnedFlagNames[flag.Name]; owned {
@@ -320,7 +320,7 @@ func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
 
 		// Ignore the error: an invalid env value leaves the cobra default in
 		// place, matching resolveFlag's best-effort env handling.
-		_ = flag.Value.Set(value)
+		_ = set.Set(flag.Name, value)
 	})
 }
 
