@@ -200,11 +200,20 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 	scopes, _ := cmd.Flags().GetStringSlice("scopes")
 	signingKeyPath, _ := cmd.Flags().GetString("signing-key")
 
-	// Symmetric fallback so users who pass --signing-key-id on the CLI
-	// (matching the profile-config field name) don't need to also pass
-	// --key-id: the two identify the same key entry, and on a first-login
-	// bootstrap there is no profile yet for PersistentPreRunE's
-	// profile.signingKeyId -> --key-id resolveFlag to read from.
+	// The two flags identify the same key entry, and users routinely pass
+	// only one of them:
+	//   - Explicit --signing-key-id on the CLI must beat a profile-derived
+	//     --key-id (populated by PersistentPreRunE with Changed=false).
+	//     Otherwise `auth login --signing-key-id new` against an active
+	//     profile with signingKeyId=old signs the JWT with the stale
+	//     profile value.
+	//   - On a first-login bootstrap there is no profile for the
+	//     profile.signingKeyId -> --key-id fallback to read from, so the
+	//     empty-keyID fallback keeps --signing-key-id-only invocations working.
+	if cmd.Flags().Changed("signing-key-id") && !cmd.Flags().Changed("key-id") {
+		keyID, _ = cmd.Flags().GetString("signing-key-id")
+	}
+
 	if keyID == "" {
 		keyID, _ = cmd.Flags().GetString("signing-key-id")
 	}

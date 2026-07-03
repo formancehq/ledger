@@ -51,6 +51,46 @@ func pinConfig(t *testing.T) {
 	t.Setenv("LEDGERCTL_PROFILE", "")
 }
 
+// TestResolveLoginParams_ExplicitSigningKeyIDBeatsProfileDerivedKeyID guards
+// the CLI-over-profile precedence for the sibling flag: when the active
+// profile provides `signingKeyId` (which PersistentPreRunE feeds into
+// --key-id with Changed=false), an explicit --signing-key-id on the CLI must
+// still take effect. Otherwise `auth login --signing-key-id new` signs a
+// JWT with the stale profile value.
+func TestResolveLoginParams_ExplicitSigningKeyIDBeatsProfileDerivedKeyID(t *testing.T) {
+	seedPath := filepath.Join(t.TempDir(), "seed.hex")
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	require.NoError(t, os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)), 0o600))
+
+	cmd := newTestCmd(t)
+	cmd.Flags().StringSlice("scopes", nil, "")
+	cmd.Flags().Duration("expiration", 0, "")
+	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().String("subject", "", "")
+	cmd.Flags().String("bundle", "", "")
+
+	// PersistentPreRunE-style: profile-derived --key-id via Value.Set (no
+	// Changed flip).
+	require.NoError(t, cmd.Flags().Lookup("key-id").Value.Set("profile-derived"))
+	require.False(t, cmd.Flags().Changed("key-id"),
+		"guard: profile-derived key-id must leave Changed=false")
+
+	// User overrides via the CLI-passed sibling flag.
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--signing-key", seedPath,
+		"--signing-key-id", "cli-override",
+		"--subject", "svc",
+	}))
+
+	p, err := resolveLoginParams(cmd)
+	require.NoError(t, err)
+	require.Equal(t, "cli-override", p.keyID,
+		"explicit --signing-key-id must beat a profile-derived --key-id")
+}
+
 // TestResolveLoginParams_BundleBeatsProfileDerivedKeyID guards the documented
 // precedence CLI > bundle > profile: a keyID resolved from the profile
 // (Changed=false) must be superseded by a bundle keyId when no CLI --key-id
