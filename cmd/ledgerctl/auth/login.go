@@ -65,18 +65,23 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 
 	server, _ := cmd.Flags().GetString("server")
 
-	// Sync the profile before storing the token so the two stay aligned:
-	// bootstrap is an advertised feature of `auth login --profile <new>`,
-	// and storing the token first would let the command exit 0 with a
-	// warning even when the profile write failed — a CI wrapper chaining
-	// `auth login --profile prod ... && ledgerctl --profile prod ...`
-	// would then move on and hit `profile "prod" not found`.
-	if err := syncProfile(cmd, server); err != nil {
-		return fmt.Errorf("syncing profile: %w", err)
+	// Order: keychain first, then profile. If profile sync fails, roll back
+	// the just-stored token so we never leave the config pointing at a
+	// server whose keychain entry is absent (or worse, points at the wrong
+	// token). Bootstrap is an advertised feature of `auth login --profile
+	// <new>`, and this two-phase commit is the only way to keep exit code,
+	// keychain, and config aligned without introducing a lock file.
+	keyring := cmdutil.GetKeyring(cmd)
+	if err := keyring.Set(server, token); err != nil {
+		return fmt.Errorf("storing token in keychain: %w", err)
 	}
 
-	if err := cmdutil.GetKeyring(cmd).Set(server, token); err != nil {
-		return fmt.Errorf("storing token in keychain: %w", err)
+	if err := syncProfile(cmd, server); err != nil {
+		if delErr := keyring.Delete(server); delErr != nil {
+			return fmt.Errorf("syncing profile: %w (also failed to remove stranded keychain token: %v)", err, delErr)
+		}
+
+		return fmt.Errorf("syncing profile: %w", err)
 	}
 
 	pterm.Success.Printfln("Logged in to %s", pterm.Bold.Sprint(server))
