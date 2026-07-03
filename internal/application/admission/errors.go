@@ -20,4 +20,10 @@ var (
 	// The SigV4 token in cc.Password is a short-lived bearer credential and
 	// must not transit cleartext.
 	ErrMirrorIAMRequiresTLS = domain.NewValidationSentinel("mirrorSource.postgres: awsIamAuth requires sslmode in {require, verify-ca, verify-full}")
+
+	// ErrMirrorAddressRewritePatternInvalid rejects a mirror config whose
+	// addressRewriteRules contain a pattern that is not a valid Go (RE2) regular
+	// expression. Validating at admission fails fast before the config is
+	// persisted, instead of stalling the mirror worker on every batch.
+	ErrMirrorAddressRewritePatternInvalid = domain.NewValidationSentinel("mirrorSource.addressRewriteRules: pattern is not a valid regular expression")
 )

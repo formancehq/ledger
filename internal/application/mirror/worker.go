@@ -49,6 +49,7 @@ type Worker struct {
 	ledgerName     string
 	batchSize      int
 	source         v2.Source
+	rewriter       *v2.AddressRewriter
 	store          *dal.Store
 	proposer       Proposer
 	builder        *plan.Builder
@@ -82,6 +83,7 @@ func NewWorker(
 	ledgerName string,
 	batchSize int,
 	source v2.Source,
+	rewriter *v2.AddressRewriter,
 	store *dal.Store,
 	proposer Proposer,
 	builder *plan.Builder,
@@ -124,6 +126,7 @@ func NewWorker(
 		ledgerName: ledgerName,
 		batchSize:  batchSize,
 		source:     source,
+		rewriter:   rewriter,
 		store:      store,
 		proposer:   proposer,
 		builder:    builder,
@@ -329,7 +332,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	// Translate v2 logs to v3 orders
 	translateStart := time.Now()
 
-	orders, _, newNextTxID, err := v2.TranslateBatch(w.ledgerName, v2Logs, expectedNextLogID, expectedNextTxID)
+	orders, _, newNextTxID, err := v2.TranslateBatch(w.ledgerName, v2Logs, expectedNextLogID, expectedNextTxID, w.rewriter)
 	if err != nil {
 		return false, err
 	}

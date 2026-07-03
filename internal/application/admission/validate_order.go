@@ -2,6 +2,7 @@ package admission
 
 import (
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -258,6 +259,15 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	src := create.CreateLedger.GetMirrorSource()
 	if src == nil {
 		return nil
+	}
+
+	// Reject uncompilable address-rewrite patterns before the order reaches the
+	// audit chain, so a malformed rule fails fast instead of stalling the mirror
+	// worker on every batch.
+	for _, rule := range src.GetAddressRewriteRules() {
+		if _, err := regexp.Compile(rule.GetPattern()); err != nil {
+			return ErrMirrorAddressRewritePatternInvalid
+		}
 	}
 
 	pg := src.GetPostgres()

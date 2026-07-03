@@ -876,6 +876,29 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 				Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 			}},
 		},
+		{
+			name: "valid address rewrite rules accepted",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AddressRewriteRules: []*commonpb.AddressRewriteRule{
+					{Pattern: `(:worker:\d+)`, Replacement: ""},
+				},
+			},
+		},
+		{
+			name: "invalid address rewrite pattern rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				AddressRewriteRules: []*commonpb.AddressRewriteRule{
+					{Pattern: `(unbalanced`, Replacement: ""},
+				},
+			},
+			wantErr: ErrMirrorAddressRewritePatternInvalid,
+		},
 	}
 
 	for _, tt := range tests {
