@@ -78,7 +78,7 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 
 	if err := syncProfile(cmd, server); err != nil {
 		if delErr := keyring.Delete(server); delErr != nil {
-			return fmt.Errorf("syncing profile: %w (also failed to remove stranded keychain token: %v)", err, delErr)
+			return fmt.Errorf("syncing profile: %w (also failed to remove stranded keychain token: %w)", err, delErr)
 		}
 
 		return fmt.Errorf("syncing profile: %w", err)
