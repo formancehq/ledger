@@ -377,7 +377,7 @@ Prepared queries are reusable, named filter queries stored per-ledger. They can 
 |------------|----------|---------|
 | `address` | `--type address` | `AddressMatch` on transaction queries |
 | `source-address` | `--type source-address` | source-only address matching |
-| `dest-address` | `--type dest-address` | destination-only address matching |
+| `destination-address` | `--type destination-address` | destination-only address matching |
 | `metadata` | `--type metadata --target … --key …` | `FieldCondition` on the specified field |
 | `reference` | `--type reference` | `ReferenceCondition` |
 | `timestamp` | `--type timestamp` | `BuiltinUintCondition(TIMESTAMP)` |

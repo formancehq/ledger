@@ -431,12 +431,12 @@ func classifyPostingStructure(postings []*servicepb.NormalizedPosting) servicepb
 	}
 
 	singleSource := len(sources) == 1
-	singleDest := len(destinations) == 1
+	singleDestination := len(destinations) == 1
 
 	switch {
-	case singleSource && !singleDest:
+	case singleSource && !singleDestination:
 		return servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION
-	case !singleSource && singleDest:
+	case !singleSource && singleDestination:
 		return servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE
 	default:
 		return servicepb.PostingStructure_POSTING_STRUCTURE_COMPLEX

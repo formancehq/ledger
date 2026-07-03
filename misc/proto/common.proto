@@ -200,7 +200,7 @@ enum TransactionBuiltinIndex {
   TX_BUILTIN_INDEX_ID = 2;               // range scan on existence bucket (no index)
   TX_BUILTIN_INDEX_ADDRESS = 3;          // account→transaction mapping (any role)
   TX_BUILTIN_INDEX_SOURCE_ADDRESS = 4;   // source account→transaction mapping
-  TX_BUILTIN_INDEX_DEST_ADDRESS = 5;     // destination account→transaction mapping
+  TX_BUILTIN_INDEX_DESTINATION_ADDRESS = 5;     // destination account→transaction mapping
   TX_BUILTIN_INDEX_INSERTED_AT = 6;     // requires Pebble "txiat" index (inserted_at date)
 }
 

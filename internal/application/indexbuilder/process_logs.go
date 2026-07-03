@@ -479,8 +479,8 @@ func (b *Builder) indexCreatedTransaction(
 
 	// Collect unique accounts from postings (reuse builder's map)
 	indexAny := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
-	indexSrc := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
-	indexDst := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
+	indexSource := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
+	indexDestination := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
 
 	clear(b.accounts)
 
@@ -490,7 +490,7 @@ func (b *Builder) indexCreatedTransaction(
 
 		if err := b.indexPostingAddressMappings(
 			kb, cfg, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
-			indexAny, indexSrc, indexDst, excludedVolumes,
+			indexAny, indexSource, indexDestination, excludedVolumes,
 		); err != nil {
 			return err
 		}
@@ -605,8 +605,8 @@ func (b *Builder) indexRevertedTransaction(
 
 	// Account→tx mapping for revert postings (reuse builder's map)
 	indexAny := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
-	indexSrc := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
-	indexDst := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
+	indexSource := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
+	indexDestination := cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
 
 	clear(b.accounts)
 
@@ -616,7 +616,7 @@ func (b *Builder) indexRevertedTransaction(
 
 		if err := b.indexPostingAddressMappings(
 			kb, cfg, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
-			indexAny, indexSrc, indexDst, excludedVolumes,
+			indexAny, indexSource, indexDestination, excludedVolumes,
 		); err != nil {
 			return err
 		}
@@ -682,13 +682,13 @@ func (b *Builder) indexPostingAddressMappings(
 	destination string,
 	asset string,
 	indexAny bool,
-	indexSrc bool,
-	indexDst bool,
+	indexSource bool,
+	indexDestination bool,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	wb := b.wb
-	srcExcluded := isExcluded(excludedVolumes, source, asset)
-	dstExcluded := isExcluded(excludedVolumes, destination, asset)
+	sourceExcluded := isExcluded(excludedVolumes, source, asset)
+	destinationExcluded := isExcluded(excludedVolumes, destination, asset)
 
 	// Account has-asset index: record every (account, assetBase, precision) a
 	// posting touches, for both source and destination, skipping excluded
@@ -697,13 +697,13 @@ func (b *Builder) indexPostingAddressMappings(
 	if cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
 		assetBase, precision := domain.ParseAssetPrecision(asset)
 
-		if !srcExcluded {
+		if !sourceExcluded {
 			if err := b.writeAccountByAssetDedup(kb, ledger, source, assetBase, precision); err != nil {
 				return err
 			}
 		}
 
-		if !dstExcluded {
+		if !destinationExcluded {
 			if err := b.writeAccountByAssetDedup(kb, ledger, destination, assetBase, precision); err != nil {
 				return err
 			}
@@ -711,13 +711,13 @@ func (b *Builder) indexPostingAddressMappings(
 	}
 
 	if indexAny {
-		if !srcExcluded {
+		if !sourceExcluded {
 			if err := wb.WriteAccountTxMapping(kb, ledger, source, txID); err != nil {
 				return err
 			}
 		}
 
-		if !dstExcluded {
+		if !destinationExcluded {
 			if err := wb.WriteAccountTxMapping(kb, ledger, destination, txID); err != nil {
 				return err
 			}
@@ -727,14 +727,14 @@ func (b *Builder) indexPostingAddressMappings(
 	// Role-specific mappings skip transient and purged ephemeral volumes —
 	// matched per (account, asset) tuple so a multi-asset account keeps its
 	// mappings for the assets that survived this proposal.
-	if indexSrc && !srcExcluded {
+	if indexSource && !sourceExcluded {
 		if err := wb.WriteSourceAccountTxMapping(kb, ledger, source, txID); err != nil {
 			return err
 		}
 	}
 
-	if indexDst && !dstExcluded {
-		if err := wb.WriteDestAccountTxMapping(kb, ledger, destination, txID); err != nil {
+	if indexDestination && !destinationExcluded {
+		if err := wb.WriteDestinationAccountTxMapping(kb, ledger, destination, txID); err != nil {
 			return err
 		}
 	}

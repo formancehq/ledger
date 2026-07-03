@@ -853,7 +853,7 @@ func addressRolePrefix(role commonpb.AddressRole) byte {
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		return readstore.PrefixSourceAccountTx
 	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		return readstore.PrefixDestAccountTx
+		return readstore.PrefixDestinationAccountTx
 	default:
 		return readstore.PrefixAccountTx
 	}
@@ -1735,7 +1735,7 @@ func txAddressIndexID(role commonpb.AddressRole) (*commonpb.IndexID, string) {
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS), "source"
 	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS), "destination"
+		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS), "destination"
 	default:
 		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS), "address"
 	}

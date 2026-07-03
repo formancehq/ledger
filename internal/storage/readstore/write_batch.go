@@ -113,9 +113,9 @@ func (wb *WriteBatch) WriteSourceAccountTxMapping(kb *dal.KeyBuilder, ledgerName
 	return wb.put(key, nil)
 }
 
-// WriteDestAccountTxMapping records that an account is a destination in a transaction.
-func (wb *WriteBatch) WriteDestAccountTxMapping(kb *dal.KeyBuilder, ledgerName string, account string, txID uint64) error {
-	key := AccountTxKey(kb, PrefixDestAccountTx, ledgerName, account, txID)
+// WriteDestinationAccountTxMapping records that an account is a destination in a transaction.
+func (wb *WriteBatch) WriteDestinationAccountTxMapping(kb *dal.KeyBuilder, ledgerName string, account string, txID uint64) error {
+	key := AccountTxKey(kb, PrefixDestinationAccountTx, ledgerName, account, txID)
 
 	return wb.put(key, nil)
 }

@@ -15,7 +15,7 @@ func AddressRoleToBuiltinIndex(role commonpb.AddressRole) commonpb.TransactionBu
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
 	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS
+		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS
 	default:
 		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
 	}

@@ -344,7 +344,7 @@ func (c *ledgerIndexConfig) isBuiltinIndexed(index commonpb.TransactionBuiltinIn
 func (c *ledgerIndexConfig) indexesPostingAddressMappings() bool {
 	return c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS) ||
 		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS) ||
-		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
+		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
 }
 
 // indexesPostingDerived reports whether any enabled index is derived from

@@ -320,7 +320,7 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "kept:dest", 42,
 	)))
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixDestAccountTx, "test", "kept:dest", 42,
+		dal.NewKeyBuilder(), readstore.PrefixDestinationAccountTx, "test", "kept:dest", 42,
 	)))
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "kept:source", 43,
@@ -332,7 +332,7 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "purged:dest", 43,
 	)))
 	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
-		dal.NewKeyBuilder(), readstore.PrefixDestAccountTx, "test", "purged:dest", 43,
+		dal.NewKeyBuilder(), readstore.PrefixDestinationAccountTx, "test", "purged:dest", 43,
 	)))
 
 	// Multi-asset: shared:account USD (tx 44) is excluded, EUR (tx 45) is not.
@@ -406,7 +406,7 @@ func TestIndexPostingAddressMappingsWritesAccountByAsset(t *testing.T) {
 
 	cfg := acctAssetConfig()
 
-	// source=accounts:alice dest=accounts:bob asset="USD/2".
+	// source=accounts:alice destination=accounts:bob asset="USD/2".
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2",
 		false, false, false, nil,
@@ -1520,8 +1520,8 @@ func TestIsPostingIndex(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "dest address index",
-			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS),
+			name:     "destination address index",
+			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
 			expected: true,
 		},
 		{

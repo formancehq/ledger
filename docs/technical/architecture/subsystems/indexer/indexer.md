@@ -78,7 +78,7 @@ flowchart TB
 
 | Log type | Handler | What it writes |
 |----------|---------|---------------|
-| `CreatedTransaction` | `indexCreatedTransaction` | Postings-address mappings (any / source / destination via `WriteAccountTxMapping` + `WriteSourceAccountTxMapping` + `WriteDestAccountTxMapping`), reference / timestamp / inserted-at builtin indexes, account-metadata via `dualWriteMetadataIndex`, transaction-metadata via `dualWriteMetadataIndex`. Existence rows are written by `dualWriteMetadataIndex` *only* for entities that carry an indexed metadata key — there is no standalone transaction-existence or account-existence write. |
+| `CreatedTransaction` | `indexCreatedTransaction` | Postings-address mappings (any / source / destination via `WriteAccountTxMapping` + `WriteSourceAccountTxMapping` + `WriteDestinationAccountTxMapping`), reference / timestamp / inserted-at builtin indexes, account-metadata via `dualWriteMetadataIndex`, transaction-metadata via `dualWriteMetadataIndex`. Existence rows are written by `dualWriteMetadataIndex` *only* for entities that carry an indexed metadata key — there is no standalone transaction-existence or account-existence write. |
 | `RevertedTransaction` | `indexRevertedTransaction` | Inverse adjustments to the postings mappings; the revert link is kept (not deleted) so revert lookups stay queryable. |
 | `SavedMetadata` | `indexSavedMetadata` → `dualWriteMetadataIndex` | New `(value, entity)` row in the metadata index, plus a reverse-map row for later schema rewrites. |
 | `DeletedMetadata` | `indexDeletedMetadata` → `dualDeleteMetadataEntry` | Removes the metadata index row and the reverse-map row. |

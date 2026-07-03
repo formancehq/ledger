@@ -563,7 +563,7 @@ ledgerctl indexes create [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
+| `--type` | | Index type: `address`, `source-address`, `destination-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |
@@ -574,7 +574,7 @@ ledgerctl indexes create [flags]
 |------|-------------|
 | `address` | Account-to-transaction mapping for any posting role |
 | `source-address` | Source account-to-transaction mapping |
-| `dest-address` | Destination account-to-transaction mapping |
+| `destination-address` | Destination account-to-transaction mapping |
 | `metadata` | Metadata field index (requires `--target` and `--key`) |
 | `reference` | Transaction reference exact-match index |
 | `timestamp` | Transaction timestamp (effective date) range-scan index |
@@ -587,7 +587,7 @@ ledgerctl indexes create [flags]
 - The index starts building in the background immediately
 - Queries using the index will be rejected until the index reaches READY status
 - Creating an index that already exists and is READY is idempotent (no error)
-- `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected. In particular, there is no builtin address index scoped to accounts — `address`, `source-address`, and `dest-address` all index transactions.
+- `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected. In particular, there is no builtin address index scoped to accounts — `address`, `source-address`, and `destination-address` all index transactions.
 
 **Example:**
 
@@ -632,7 +632,7 @@ ledgerctl indexes drop [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
+| `--type` | | Index type: `address`, `source-address`, `destination-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |

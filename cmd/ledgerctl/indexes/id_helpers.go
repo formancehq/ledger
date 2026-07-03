@@ -11,7 +11,7 @@ import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 var indexTypeOptions = []string{
 	"address",
 	"source-address",
-	"dest-address",
+	"destination-address",
 	"metadata",
 	"reference",
 	"timestamp",

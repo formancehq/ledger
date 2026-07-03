@@ -14,7 +14,7 @@ const (
 	PrefixReverseMap            byte = 0x03 // rmap — reverse metadata map
 	PrefixAccountTx             byte = 0x04 // atxm — account→tx (any role)
 	PrefixSourceAccountTx       byte = 0x05 // satx — source account→tx
-	PrefixDestAccountTx         byte = 0x06 // datx — dest account→tx
+	PrefixDestinationAccountTx  byte = 0x06 // datx — destination account→tx
 	PrefixTransactionReference  byte = 0x07 // txref — transaction reference
 	PrefixTransactionTimestamp  byte = 0x08 // tstmp — transaction timestamp
 	PrefixLedgerLogs            byte = 0x09 // llog — ledger log mapping

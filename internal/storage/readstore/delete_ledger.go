@@ -23,7 +23,7 @@ var ledgerScopedPrefixes = [][]byte{
 	{PrefixReverseMap},
 	{PrefixAccountTx},
 	{PrefixSourceAccountTx},
-	{PrefixDestAccountTx},
+	{PrefixDestinationAccountTx},
 	{PrefixTransactionReference},
 	{PrefixTransactionTimestamp},
 	{PrefixLedgerLogs},

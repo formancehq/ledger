@@ -184,8 +184,8 @@ func describeIndex(id *commonpb.IndexID) (typeName, target, key string) {
 			return "address", "-", "-"
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
 			return "source-address", "-", "-"
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
-			return "dest-address", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
+			return "destination-address", "-", "-"
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 			return "inserted-at", "-", "-"
 		}
