@@ -49,6 +49,26 @@ func savedAccountMetadata(account, key string, value int64) *commonpb.SavedMetad
 	}
 }
 
+func savedTransactionMetadata(txID uint64, key string, value int64) *commonpb.SavedMetadata {
+	return &commonpb.SavedMetadata{
+		Target: &commonpb.Target{
+			Target: &commonpb.Target_TransactionId{TransactionId: txID},
+		},
+		Metadata: map[string]*commonpb.MetadataValue{key: commonpb.NewIntValue(value)},
+	}
+}
+
+func deletedAccountMetadata(account, key string) *commonpb.DeletedMetadata {
+	return &commonpb.DeletedMetadata{
+		Target: &commonpb.Target{
+			Target: &commonpb.Target_Account{
+				Account: &commonpb.TargetAccount{Addr: account},
+			},
+		},
+		Key: key,
+	}
+}
+
 // TestHandleRemovedMetadataFieldType_PurgesReverseMap pins EN-1443: when an
 // indexed metadata field is removed, every reverse-map row for that field must
 // be purged — including PUTs written earlier in the *same* uncommitted builder
@@ -159,5 +179,138 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 
 		require.Equal(t, 0, countReverseMapRows(t, b, ledger, ns, removedKey))
 		require.Equal(t, 1, countReverseMapRows(t, b, ledger, ns, keepKey))
+	})
+
+	t.Run("same batch write then delete then remove", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+		b.seedBatchSchema(t)
+		cfg := newActiveCfg()
+
+		// One batch: write role, then delete it (overlay entry becomes nil),
+		// then remove the field. Exercises the overlay's already-deleted
+		// (value == nil) skip branch in purgeReverseMapForKey.
+		b.wb.Init(b.readStore.NewBatch())
+		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 1)))
+		require.NoError(t, b.indexDeletedMetadata(b.kb, cfg, ledger, deletedAccountMetadata(acct1, removedKey)))
+		removeRole(t, b, cfg)
+		require.NoError(t, b.wb.Flush())
+
+		require.Equal(t, 0, countReverseMapRows(t, b, ledger, ns, removedKey))
+	})
+
+	t.Run("committed then same batch rewrite same key", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+		b.seedBatchSchema(t)
+		cfg := newActiveCfg()
+
+		// Batch 1: commit role on acct-1.
+		b.wb.Init(b.readStore.NewBatch())
+		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 1)))
+		require.NoError(t, b.wb.Flush())
+		require.Equal(t, 1, countReverseMapRows(t, b, ledger, ns, removedKey))
+
+		// Batch 2: rewrite the SAME reverse-map key in-flight (committed row +
+		// non-nil overlay entry for the same key), then remove the field. The
+		// committed scan nils the overlay entry before the overlay pass, so the
+		// row is purged exactly once.
+		b.wb.Init(b.readStore.NewBatch())
+		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 2)))
+		removeRole(t, b, cfg)
+		require.NoError(t, b.wb.Flush())
+
+		require.Equal(t, 0, countReverseMapRows(t, b, ledger, ns, removedKey))
+	})
+}
+
+// TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction mirrors the
+// account cases for the transaction namespace, whose reverse-map key layout
+// (fixed 8-byte txID + version block) differs from the account null-scan. It
+// exercises the same-batch overlay-purge path for transactions specifically.
+func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ledger     = "test"
+		tx1        = uint64(1)
+		tx2        = uint64(2)
+		removedKey = "role"
+	)
+	ns := readstore.NamespaceTransaction
+
+	newActiveCfg := func() *ledgerIndexConfig {
+		cfg := newLedgerIndexConfig()
+		id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, removedKey)
+		cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+		return cfg
+	}
+
+	removeRole := func(t *testing.T, b *Builder, cfg *ledgerIndexConfig) {
+		t.Helper()
+
+		removed := &commonpb.RemovedMetadataFieldTypeLog{
+			DroppedIndex: indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, removedKey),
+		}
+		require.NoError(t, b.handleRemovedMetadataFieldType(b.kb, cfg, ledger, removed))
+	}
+
+	t.Run("committed then removed", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+		b.seedBatchSchema(t)
+		cfg := newActiveCfg()
+
+		b.wb.Init(b.readStore.NewBatch())
+		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedTransactionMetadata(tx1, removedKey, 1)))
+		require.NoError(t, b.wb.Flush())
+		require.Equal(t, 1, countReverseMapRows(t, b, ledger, ns, removedKey))
+
+		b.wb.Init(b.readStore.NewBatch())
+		removeRole(t, b, cfg)
+		require.NoError(t, b.wb.Flush())
+
+		require.Equal(t, 0, countReverseMapRows(t, b, ledger, ns, removedKey))
+	})
+
+	t.Run("same batch repro", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+		b.seedBatchSchema(t)
+		cfg := newActiveCfg()
+
+		// One batch: uncommitted tx metadata PUT, then removal, then flush. The
+		// committed-only snapshot cannot see the in-flight PUT — the overlay
+		// pass is what purges it. Fails before EN-1443 (orphan row survives).
+		b.wb.Init(b.readStore.NewBatch())
+		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedTransactionMetadata(tx1, removedKey, 1)))
+		removeRole(t, b, cfg)
+		require.NoError(t, b.wb.Flush())
+
+		require.Equal(t, 0, countReverseMapRows(t, b, ledger, ns, removedKey))
+	})
+
+	t.Run("mixed committed and same batch", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+		b.seedBatchSchema(t)
+		cfg := newActiveCfg()
+
+		b.wb.Init(b.readStore.NewBatch())
+		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedTransactionMetadata(tx1, removedKey, 1)))
+		require.NoError(t, b.wb.Flush())
+
+		b.wb.Init(b.readStore.NewBatch())
+		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedTransactionMetadata(tx2, removedKey, 2)))
+		removeRole(t, b, cfg)
+		require.NoError(t, b.wb.Flush())
+
+		require.Equal(t, 0, countReverseMapRows(t, b, ledger, ns, removedKey))
 	})
 }
