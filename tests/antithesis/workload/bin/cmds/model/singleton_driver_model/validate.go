@@ -158,16 +158,8 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 
 				return
 			}
-
-			if !metaMapEqual(order.Revert.Saved(), revTx.GetMetadata()) {
-				assert.Unreachable("singleton_driver_model: revert metadata mismatch", internal.Details{
-					"ledger":      oracle.LedgerOf(req),
-					"modelSaved":  renderMetaMap(order.Revert.Saved()),
-					"serverSaved": renderMetaMap(revTx.GetMetadata()),
-				})
-
-				return
-			}
+			// The revert transaction's metadata is verified by reading its log
+			// entry back (validateTransactionRead), not at commit.
 		} else if order.TxID != 0 {
 			tx := data.GetCreatedTransaction().GetTransaction()
 			ct := req.GetApply().GetAction().GetCreateTransaction()
@@ -466,63 +458,46 @@ func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.Me
 	return true
 }
 
-// validateTransactionRead checks one GetTransaction snapshot against the model:
-// legal iff some candidate base holds a transaction at reference ref whose id,
-// reverted flag, postings, and whole metadata map all match the server's on the
-// SAME base. The read is picked from committed (drained) state, so id and
-// postings are fixed across bases; only metadata and the reverted flag can vary
-// with in-flight writes/reverts, which candidateBases enumerates. This is the
-// only path that reads accumulated transaction metadata back (add/overwrite/
-// delete), so a divergent stored projection with correct per-write echoes — the
-// ledger-metadata cross-routing bug class — is caught here for transactions.
-func (c *Checker) validateTransactionRead(maxTicket uint64, ledger, ref string, serverTx *commonpb.Transaction) {
+// validateTransactionRead checks one GetTransaction observation — a returned
+// transaction, or NotFound when found is false — against the model: legal iff
+// some candidate base's log agrees at that id. Either the base holds a
+// transaction there matching the server's (id, reference, reverted flag,
+// postings, and whole metadata map), or, for NotFound, the base has not assigned
+// that id yet. The id is probed up to the dispatched frontier, so it may land on
+// a committed tx, an in-flight one, or an unassigned id; candidateBases
+// enumerates the serializations. This is the only path that reads accumulated
+// transaction metadata back (create/add/overwrite/delete/revert), so a divergent
+// stored projection with correct per-write echoes — the ledger-metadata
+// cross-routing bug class — is caught here for transactions.
+func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *commonpb.Transaction, found bool) {
 	if c.matchesModel(maxTicket, "TXREAD", func(base oracle.GlobalState) bool {
-		rec, ok := base.Ledger(ledger).TxRefs()[ref]
-		if !ok {
-			return false
+		txs := base.Ledger(ledger).Txs()
+		if id == 0 || id > uint64(len(txs)) {
+			return !found // no tx at this id in this base: consistent only with NotFound
+		}
+		if !found {
+			return false // base has a tx at this id, but the server returned NotFound
 		}
 
+		rec := txs[id-1]
 		return rec.Id() == serverTx.GetId() &&
+			rec.Reference() == serverTx.GetReference() &&
 			rec.Reverted() == serverTx.GetReverted() &&
 			postingsEqual(rec.Postings(), serverTx.GetPostings()) &&
-			txMetaMatches(base.Ledger(ledger), ref, serverTx.GetMetadata())
+			metaMapEqual(rec.Metadata(), serverTx.GetMetadata())
 	}) {
 		return
 	}
 
 	assert.Unreachable("singleton_driver_model: transaction read outside model", internal.Details{
 		"ledger":     ledger,
-		"reference":  ref,
-		"serverId":   fmt.Sprintf("%d", serverTx.GetId()),
-		"serverRev":  fmt.Sprintf("%v", serverTx.GetReverted()),
+		"id":         id,
+		"found":      found,
+		"serverRef":  serverTx.GetReference(),
+		"serverRev":  serverTx.GetReverted(),
 		"serverMeta": renderMetaMap(serverTx.GetMetadata()),
-		"modelMeta":  c.modelTxMetaDump(ledger, ref),
+		"modelTx":    c.modelTxDump(ledger, id),
 	})
-}
-
-// txMetaMatches reports whether ls's metadata for the transaction at ref equals
-// serverMeta exactly — same keys, same verbatim values. Reads surface the stored
-// value as-written; the declared type is an index hint, not applied on read.
-func txMetaMatches(ls oracle.LedgerState, ref string, serverMeta map[string]*commonpb.MetadataValue) bool {
-	model := map[string]*commonpb.MetadataValue{}
-	for tk, v := range ls.TxMeta() {
-		if tk.Reference == ref {
-			model[tk.Key] = v
-		}
-	}
-
-	if len(model) != len(serverMeta) {
-		return false
-	}
-
-	for k, v := range model {
-		sv, ok := serverMeta[k]
-		if !ok || oracle.MetaValueString(sv) != oracle.MetaValueString(v) {
-			return false
-		}
-	}
-
-	return true
 }
 
 // validateSchemaRead checks one GetMetadataSchemaStatus snapshot against the

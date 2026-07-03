@@ -122,7 +122,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 // ledger's committed-transaction count (see the txEmit* knobs) so tracked
 // references don't grow without bound.
 func rollTransaction(ls oracle.LedgerState) bool {
-	switch n := len(ls.TxRefs()); {
+	switch n := len(ls.TxByRef()); {
 	case n < txEmitFull:
 		return true
 	case n < txEmitTaper:
@@ -576,7 +576,7 @@ func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Requ
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
 						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target:   txTarget(ls.TxRefs()[ref].Id()),
+							Target:   txTarget(uint64(ls.TxByRef()[ref])),
 							Metadata: randomMetaMap(),
 						},
 					},
@@ -590,19 +590,32 @@ func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Requ
 // occasionally a freshly-rolled key on a known reference to exercise
 // METADATA_NOT_FOUND. Returns nil when the model holds no transaction metadata.
 func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	keys := make([]oracle.TxMetaKey, 0, len(ls.TxMeta()))
-	for tk := range ls.TxMeta() {
-		keys = append(keys, tk)
+	type refKey struct {
+		ref string
+		key string
+	}
+
+	var keys []refKey
+	txs := ls.Txs()
+	for ref, id := range ls.TxByRef() {
+		for k := range txs[id-1].Metadata() {
+			keys = append(keys, refKey{ref: ref, key: k})
+		}
 	}
 
 	if len(keys) == 0 {
 		return nil
 	}
 
-	slices.SortFunc(keys, oracle.CompareTxMetaKey)
+	slices.SortFunc(keys, func(a, b refKey) int {
+		if a.ref != b.ref {
+			return strings.Compare(a.ref, b.ref)
+		}
+		return strings.Compare(a.key, b.key)
+	})
 	chosen := random.RandomChoice(keys)
 
-	ref, key := chosen.Reference, chosen.Key
+	ref, key := chosen.ref, chosen.key
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 		key = metaKey()
 	}
@@ -614,7 +627,7 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_DeleteMetadata{
 						DeleteMetadata: &commonpb.DeleteMetadataCommand{
-							Target: txTarget(ls.TxRefs()[ref].Id()),
+							Target: txTarget(uint64(ls.TxByRef()[ref])),
 							Key:    key,
 						},
 					},
@@ -638,7 +651,7 @@ func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	}
 
 	payload := &servicepb.RevertTransactionPayload{
-		TransactionId: ls.TxRefs()[ref].Id(),
+		TransactionId: uint64(ls.TxByRef()[ref]),
 		Force:         true,
 		ExpandVolumes: true,
 	}
@@ -666,8 +679,8 @@ func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
 // pickTxRef returns a deterministically-chosen committed transaction reference,
 // or "" when the model holds none.
 func pickTxRef(ls oracle.LedgerState) string {
-	refs := make([]string, 0, len(ls.TxRefs()))
-	for r := range ls.TxRefs() {
+	refs := make([]string, 0, len(ls.TxByRef()))
+	for r := range ls.TxByRef() {
 		refs = append(refs, r)
 	}
 

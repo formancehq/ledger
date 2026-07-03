@@ -15,24 +15,25 @@ func (s LedgerState) Metadata() map[MetaKey]*commonpb.MetadataValue       { retu
 func (s LedgerState) LedgerMeta() map[string]*commonpb.MetadataValue      { return s.ledgerMeta }
 func (s LedgerState) AccountFieldTypes() map[string]commonpb.MetadataType { return s.accountFieldTypes }
 func (s LedgerState) LedgerFieldTypes() map[string]commonpb.MetadataType  { return s.ledgerFieldTypes }
-func (s LedgerState) TxRefs() map[string]*txRecord                        { return s.txRefs }
-func (s LedgerState) TxMeta() map[TxMetaKey]*commonpb.MetadataValue       { return s.txMeta }
 func (s LedgerState) TransactionFieldTypes() map[string]commonpb.MetadataType {
 	return s.transactionFieldTypes
 }
 
-// txRecord accessors expose a committed transaction tracked by reference: its
-// server-assigned id (the generator resolves a reference to its id to target
-// it), its original postings, and whether it has been reverted.
-func (t *txRecord) Id() uint64                    { return t.id }
-func (t *txRecord) Postings() []*commonpb.Posting { return t.postings }
-func (t *txRecord) Reverted() bool                { return t.reverted }
+// Txs is the transaction log; index i holds the transaction with id i+1. TxByRef
+// indexes referenced transactions by reference -> id.
+func (s LedgerState) Txs() []*txRecord        { return s.txs }
+func (s LedgerState) TxByRef() map[string]int { return s.txByRef }
+
+// txRecord accessors expose one committed transaction from the log: its
+// server-assigned id, its reference ("" for drains/transients/reverts), its
+// postings, its metadata, and whether it has been reverted.
+func (t *txRecord) Id() uint64                                   { return t.id }
+func (t *txRecord) Reference() string                            { return t.reference }
+func (t *txRecord) Postings() []*commonpb.Posting                { return t.postings }
+func (t *txRecord) Metadata() map[string]*commonpb.MetadataValue { return t.metadata }
+func (t *txRecord) Reverted() bool                               { return t.reverted }
 
 func (m *metaEffect) Saved() map[string]*commonpb.MetadataValue { return m.saved }
 
 func (r *revertEffect) RevertedID() uint64            { return r.revertedID }
 func (r *revertEffect) Postings() []*commonpb.Posting { return r.postings }
-
-// Saved is the metadata set on the revert transaction (empty when the revert
-// carried none), echoed verbatim on the RevertedTransaction log.
-func (r *revertEffect) Saved() map[string]*commonpb.MetadataValue { return r.saved }

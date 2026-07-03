@@ -202,23 +202,25 @@ func (c *Checker) modelLedgerMetaDump(ledger string) string {
 	return "{" + strings.Join(parts, ",") + "}"
 }
 
-// modelTxMetaDump renders the committed model's metadata for the transaction at
-// reference ref. Acquires c.mu.
-func (c *Checker) modelTxMetaDump(ledger, ref string) string {
+// modelTxDump renders the committed model's transaction at id (reference,
+// reverted, metadata), or "<absent>" if the log has no such id. Acquires c.mu.
+func (c *Checker) modelTxDump(ledger string, id uint64) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	ls := c.modelState.Ledger(ledger)
+	txs := c.modelState.Ledger(ledger).Txs()
+	if id == 0 || id > uint64(len(txs)) {
+		return "<absent>"
+	}
 
-	var parts []string
-	for tk, v := range ls.TxMeta() {
-		if tk.Reference == ref {
-			parts = append(parts, tk.Key+"="+oracle.MetaValueString(v))
-		}
+	tx := txs[id-1]
+	parts := make([]string, 0, len(tx.Metadata()))
+	for k, v := range tx.Metadata() {
+		parts = append(parts, k+"="+oracle.MetaValueString(v))
 	}
 	sort.Strings(parts)
 
-	return "{" + strings.Join(parts, ",") + "}"
+	return fmt.Sprintf("{ref=%q reverted=%v meta={%s}}", tx.Reference(), tx.Reverted(), strings.Join(parts, ","))
 }
 
 // modelSchemaDump renders the committed model's declared field types per target

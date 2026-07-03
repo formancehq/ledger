@@ -44,24 +44,6 @@ func CompareMetaKey(a, b MetaKey) int {
 	return strings.Compare(a.Key, b.Key)
 }
 
-// TxMetaKey is one (transaction reference, key) cell of the transaction-metadata
-// table. Transactions are addressed by reference (carried in the request) rather
-// than by server-assigned id, so the model can track them in the serialization
-// search where no response — hence no id — is available.
-type TxMetaKey struct {
-	Reference string
-	Key       string
-}
-
-// CompareTxMetaKey compares TxMetaKeys by reference, then key.
-func CompareTxMetaKey(a, b TxMetaKey) int {
-	if c := strings.Compare(a.Reference, b.Reference); c != 0 {
-		return c
-	}
-
-	return strings.Compare(a.Key, b.Key)
-}
-
 // VolumePair is the cumulative input/output for one (address, asset) cell.
 type VolumePair struct {
 	Input  uint256.Int
@@ -92,21 +74,16 @@ type LedgerState struct {
 	accountFieldTypes map[string]commonpb.MetadataType
 	ledgerFieldTypes  map[string]commonpb.MetadataType
 
-	// Transactions addressed by reference: txRefs maps a reference to its record
-	// (id, postings, reverted status), txMeta holds their metadata. txIDToRef maps
-	// each reference's server id back to the reference — the API now targets
-	// transactions by id (the proto dropped reference targeting in #462), so the
-	// generator resolves a tracked reference to its id and the apply path resolves
-	// the id back to the reference to reuse the reference-keyed bookkeeping.
-	txRefs                map[string]*txRecord
-	txMeta                map[TxMetaKey]*commonpb.MetadataValue
-	txIDToRef             map[uint64]string
+	// txs is the transaction log: index i holds the transaction with id i+1, so
+	// ids are dense and sequential, mirroring the server (first id is 1). Every
+	// committed create is appended — referenced and unreferenced alike (drains,
+	// transients, and reverts). The next id is len(txs)+1. Records are replaced,
+	// never mutated in place, so clones share the pointers.
+	txs []*txRecord
+	// txByRef indexes referenced transactions by reference -> id, for the
+	// generator (which targets by reference) and reference-keyed metadata writes.
+	txByRef               map[string]int
 	transactionFieldTypes map[string]commonpb.MetadataType
-
-	// Next transaction id the server assigns in this ledger (starts at 1, per
-	// processor_ledger.go), bumped per committed CreateTransaction so the model
-	// can predict the id echoed in the response.
-	nextTxID uint64
 }
 
 func NewLedgerState() LedgerState {
@@ -118,11 +95,8 @@ func NewLedgerState() LedgerState {
 		accountFieldTypes: map[string]commonpb.MetadataType{},
 		ledgerFieldTypes:  map[string]commonpb.MetadataType{},
 
-		txRefs:                map[string]*txRecord{},
-		txMeta:                map[TxMetaKey]*commonpb.MetadataValue{},
-		txIDToRef:             map[uint64]string{},
+		txByRef:               map[string]int{},
 		transactionFieldTypes: map[string]commonpb.MetadataType{},
-		nextTxID:              1,
 	}
 }
 
@@ -149,16 +123,13 @@ func (s LedgerState) clone() LedgerState {
 	ledgerFieldTypes := make(map[string]commonpb.MetadataType, len(s.ledgerFieldTypes))
 	maps.Copy(ledgerFieldTypes, s.ledgerFieldTypes)
 
-	// Records are replaced (not mutated in place) on a revert, so clones can
-	// share the pointer.
-	txRefs := make(map[string]*txRecord, len(s.txRefs))
-	maps.Copy(txRefs, s.txRefs)
+	// Records are replaced (not mutated in place) on a metadata write or revert,
+	// so a shallow copy of the log lets clones share the pointers.
+	txs := make([]*txRecord, len(s.txs))
+	copy(txs, s.txs)
 
-	txMeta := make(map[TxMetaKey]*commonpb.MetadataValue, len(s.txMeta))
-	maps.Copy(txMeta, s.txMeta)
-
-	txIDToRef := make(map[uint64]string, len(s.txIDToRef))
-	maps.Copy(txIDToRef, s.txIDToRef)
+	txByRef := make(map[string]int, len(s.txByRef))
+	maps.Copy(txByRef, s.txByRef)
 
 	transactionFieldTypes := make(map[string]commonpb.MetadataType, len(s.transactionFieldTypes))
 	maps.Copy(transactionFieldTypes, s.transactionFieldTypes)
@@ -170,11 +141,9 @@ func (s LedgerState) clone() LedgerState {
 		ledgerMeta:            ledgerMeta,
 		accountFieldTypes:     accountFieldTypes,
 		ledgerFieldTypes:      ledgerFieldTypes,
-		txRefs:                txRefs,
-		txMeta:                txMeta,
-		txIDToRef:             txIDToRef,
+		txs:                   txs,
+		txByRef:               txByRef,
 		transactionFieldTypes: transactionFieldTypes,
-		nextTxID:              s.nextTxID,
 	}
 }
 
@@ -247,26 +216,24 @@ func (s LedgerState) Hash(h io.Writer) {
 	hashFieldTypes(h, "LF", s.ledgerFieldTypes)
 	hashFieldTypes(h, "TF", s.transactionFieldTypes)
 
-	refs := make([]string, 0, len(s.txRefs))
-	for r := range s.txRefs {
-		refs = append(refs, r)
-	}
-	sort.Strings(refs)
-	for _, r := range refs {
+	// The log is already in id order; hash each tx's identity (id, reference,
+	// reverted) and its metadata. Postings are fixed at creation, so they add
+	// nothing to the canonical fingerprint.
+	for _, tx := range s.txs {
 		rev := ""
-		if s.txRefs[r].reverted {
+		if tx.reverted {
 			rev = "R"
 		}
-		_, _ = fmt.Fprintf(h, "TR|%s|%s\n", r, rev)
-	}
+		_, _ = fmt.Fprintf(h, "TX|%d|%s|%s\n", tx.id, tx.reference, rev)
 
-	tkeys := make([]TxMetaKey, 0, len(s.txMeta))
-	for k := range s.txMeta {
-		tkeys = append(tkeys, k)
-	}
-	sort.Slice(tkeys, func(i, j int) bool { return CompareTxMetaKey(tkeys[i], tkeys[j]) < 0 })
-	for _, k := range tkeys {
-		_, _ = fmt.Fprintf(h, "TM|%s|%s|%s\n", k.Reference, k.Key, MetaValueString(s.txMeta[k]))
+		mkeys := make([]string, 0, len(tx.metadata))
+		for k := range tx.metadata {
+			mkeys = append(mkeys, k)
+		}
+		sort.Strings(mkeys)
+		for _, k := range mkeys {
+			_, _ = fmt.Fprintf(h, "TM|%d|%s|%s\n", tx.id, k, MetaValueString(tx.metadata[k]))
+		}
 	}
 }
 
@@ -409,23 +376,26 @@ type metaEffect struct {
 	saved map[string]*commonpb.MetadataValue
 }
 
-// txRecord is a committed transaction tracked by reference: its server-assigned
-// id and postings (to predict a revert's reversed postings) and whether it has
-// been reverted (a second revert is rejected). Records are replaced, never
-// mutated in place, so clones safely share the pointer.
+// txRecord is a committed transaction in the log: its server-assigned id, its
+// reference ("" for drains, transients, and reverts), its postings, its metadata
+// (set at creation and by later metadata writes), and whether it has been
+// reverted (a second revert is rejected). Records are replaced, never mutated in
+// place, so clones safely share the pointer.
 type txRecord struct {
-	id       uint64
-	postings []*commonpb.Posting
-	reverted bool
+	id        uint64
+	reference string
+	postings  []*commonpb.Posting
+	metadata  map[string]*commonpb.MetadataValue
+	reverted  bool
 }
 
 // revertEffect is a committed revert's predicted effect: the original
-// transaction id (echoed as reverted_transaction_id), the reversed postings, and
-// the metadata set on the revert transaction (echoed verbatim on its log).
+// transaction id (echoed as reverted_transaction_id) and the reversed postings.
+// The revert transaction's own metadata is verified through a read of its log
+// entry, not here.
 type revertEffect struct {
 	revertedID uint64
 	postings   []*commonpb.Posting
-	saved      map[string]*commonpb.MetadataValue
 }
 
 // ApplyResult is the predicted outcome of applying a whole bulk.
@@ -604,34 +574,32 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		}
 	}
 
-	// A reference becomes targetable. A duplicate rejects the whole bulk; the
-	// workload uses unique references, so this guard is never exercised.
+	// A reference must be unique; a duplicate rejects the whole bulk. The workload
+	// uses unique references, so this guard is never exercised.
 	ref := ct.GetReference()
 	if ref != "" {
-		if _, exists := s.txRefs[ref]; exists {
+		if _, exists := s.txByRef[ref]; exists {
 			return OrderResult{Reason: domain.ErrReasonTransactionReferenceConflict}
 		}
 	}
 
-	id := s.nextTxID
-	s.nextTxID++
+	// Append to the log; the id is its 1-based position. Metadata is stored
+	// verbatim (the declared type is applied only on read) and echoed on the
+	// CreatedTransaction log.
+	id := uint64(len(s.txs)) + 1
+	s.txs = append(s.txs, &txRecord{
+		id:        id,
+		reference: ref,
+		postings:  ct.GetPostings(),
+		metadata:  ct.GetMetadata(),
+	})
+	if ref != "" {
+		s.txByRef[ref] = int(id)
+	}
 
 	var meta *metaEffect
-
-	if ref != "" {
-		s.txRefs[ref] = &txRecord{id: id, postings: ct.GetPostings()}
-		s.txIDToRef[id] = ref
-
-		// Metadata is stored verbatim; the declared type is applied only on read.
-		if len(ct.GetMetadata()) > 0 {
-			saved := make(map[string]*commonpb.MetadataValue, len(ct.GetMetadata()))
-			for key, val := range ct.GetMetadata() {
-				s.txMeta[TxMetaKey{Reference: ref, Key: key}] = val
-				saved[key] = val
-			}
-
-			meta = &metaEffect{saved: saved}
-		}
+	if len(ct.GetMetadata()) > 0 {
+		meta = &metaEffect{saved: ct.GetMetadata()}
 	}
 
 	return OrderResult{OK: true, PCV: pcv, Meta: meta, TxID: id}
@@ -642,23 +610,23 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 // balance check, which the model does not track), moves the volumes, marks the
 // original reverted, and consumes a new transaction id for the revert itself.
 func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touched map[VolumeKey]bool) OrderResult {
-	ref, ok := s.txIDToRef[rt.GetTransactionId()]
-	if !ok {
-		// Unknown id (id >= NextTransactionId); the server rejects with
+	id := rt.GetTransactionId()
+	if id == 0 || id > uint64(len(s.txs)) {
+		// Unknown id (past the log frontier); the server rejects with
 		// TRANSACTION_NOT_FOUND. The generator targets committed transactions, so
 		// in commit order this is unreachable, but a candidate-base ordering may
 		// not have applied the create yet.
 		return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
 	}
 
-	rec := s.txRefs[ref]
+	orig := s.txs[id-1]
 
-	if rec.reverted {
+	if orig.reverted {
 		return OrderResult{Reason: domain.ErrReasonTransactionAlreadyReverted}
 	}
 
-	reversed := make([]*commonpb.Posting, len(rec.postings))
-	for i, p := range rec.postings {
+	reversed := make([]*commonpb.Posting, len(orig.postings))
+	for i, p := range orig.postings {
 		reversed[i] = &commonpb.Posting{
 			Source:      p.GetDestination(),
 			Destination: p.GetSource(),
@@ -673,16 +641,19 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 
 	pcv := s.applyPostings(reversed, touched)
 
-	id := s.nextTxID
-	s.nextTxID++
-	// Replace (don't mutate) so clones sharing the pointer are unaffected.
-	s.txRefs[ref] = &txRecord{id: rec.id, postings: rec.postings, reverted: true}
+	// Mark the original reverted (replace, don't mutate), then append the revert
+	// itself as a new unreferenced transaction carrying the reversed postings and
+	// any metadata the revert set.
+	s.txs[id-1] = &txRecord{id: orig.id, reference: orig.reference, postings: orig.postings, metadata: orig.metadata, reverted: true}
+
+	revertID := uint64(len(s.txs)) + 1
+	s.txs = append(s.txs, &txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata()})
 
 	return OrderResult{
 		OK:     true,
 		PCV:    pcv,
-		TxID:   id,
-		Revert: &revertEffect{revertedID: rec.id, postings: reversed, saved: rt.GetMetadata()},
+		TxID:   revertID,
+		Revert: &revertEffect{revertedID: orig.id, postings: reversed},
 	}
 }
 
@@ -772,20 +743,18 @@ func (s *LedgerState) applyAddAccountMetadata(addr string, md map[string]*common
 // applyAddTxMetadata sets transaction metadata last-writer-wins on a transaction
 // addressed by id. An unknown id rejects with TRANSACTION_NOT_FOUND.
 func (s *LedgerState) applyAddTxMetadata(id uint64, md map[string]*commonpb.MetadataValue) OrderResult {
-	ref, ok := s.txIDToRef[id]
-	if !ok {
+	if id == 0 || id > uint64(len(s.txs)) {
 		return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
 	}
 
-	saved := make(map[string]*commonpb.MetadataValue, len(md))
+	old := s.txs[id-1]
+	meta := make(map[string]*commonpb.MetadataValue, len(old.metadata)+len(md))
+	maps.Copy(meta, old.metadata)
+	maps.Copy(meta, md) // last-writer-wins
+	// Replace (don't mutate) so clones sharing the pointer are unaffected.
+	s.txs[id-1] = &txRecord{id: old.id, reference: old.reference, postings: old.postings, metadata: meta, reverted: old.reverted}
 
-	for key, val := range md {
-		tk := TxMetaKey{Reference: ref, Key: key}
-		s.txMeta[tk] = val
-		saved[key] = val
-	}
-
-	return OrderResult{OK: true, Meta: &metaEffect{saved: saved}}
+	return OrderResult{OK: true, Meta: &metaEffect{saved: md}}
 }
 
 // applyDeleteMetadata predicts a DeleteMetadata, dispatching on the target.
@@ -803,17 +772,21 @@ func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) O
 
 		return OrderResult{OK: true}
 	case *commonpb.Target_TransactionId:
-		ref, ok := s.txIDToRef[t.TransactionId]
-		if !ok {
+		id := t.TransactionId
+		if id == 0 || id > uint64(len(s.txs)) {
 			return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
 		}
 
-		tk := TxMetaKey{Reference: ref, Key: cmd.GetKey()}
-		if _, exists := s.txMeta[tk]; !exists {
+		old := s.txs[id-1]
+		if _, exists := old.metadata[cmd.GetKey()]; !exists {
 			return OrderResult{Reason: domain.ErrReasonMetadataNotFound}
 		}
 
-		delete(s.txMeta, tk)
+		meta := make(map[string]*commonpb.MetadataValue, len(old.metadata))
+		maps.Copy(meta, old.metadata)
+		delete(meta, cmd.GetKey())
+		// Replace (don't mutate) so clones sharing the pointer are unaffected.
+		s.txs[id-1] = &txRecord{id: old.id, reference: old.reference, postings: old.postings, metadata: meta, reverted: old.reverted}
 
 		return OrderResult{OK: true}
 	default:

@@ -38,9 +38,9 @@ const (
 	// account-type / balance invariants a foreign write would break.
 	PrefixTransientAccounts OwnedLedgerPrefix = "transient"
 	PrefixInsufficientFunds OwnedLedgerPrefix = "insuf"
-	PrefixDeltest           OwnedLedgerPrefix = "deltest"   // parallel_driver_concurrent_ledger_delete
-	PrefixMaintenance       OwnedLedgerPrefix = "maint"     // parallel_driver_maintenance
-	PrefixAccountTypes      OwnedLedgerPrefix = "accttype"  // parallel_driver_account_types
+	PrefixDeltest           OwnedLedgerPrefix = "deltest"  // parallel_driver_concurrent_ledger_delete
+	PrefixMaintenance       OwnedLedgerPrefix = "maint"    // parallel_driver_maintenance
+	PrefixAccountTypes      OwnedLedgerPrefix = "accttype" // parallel_driver_account_types
 	PrefixTypeViolation     OwnedLedgerPrefix = "typeviolation"
 	PrefixEphemeral         OwnedLedgerPrefix = "ephemeral" // parallel_driver_delete_ledger
 

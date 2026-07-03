@@ -179,56 +179,30 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	c.validateLedgerRead(maxTicket, ledger, info.GetAccountTypes(), info.GetMetadata())
 }
 
-// pickTransaction returns a committed transaction to read back, as
-// (ledger, reference, id), or ok=false when the model tracks none. Only
-// referenced transactions are tracked; drain/transient transactions set no
-// reference and so are unreadable by reference here.
-func pickTransaction(g oracle.GlobalState) (ledger, ref string, id uint64, ok bool) {
-	type txRef struct {
-		ledger string
-		ref    string
-		id     uint64
+// pickTransactionID picks a ledger and a transaction id to read back, probing up
+// to a small slack past the committed frontier so the id may land on a committed
+// transaction, an in-flight one, or an unassigned id (a legal NotFound).
+// ok=false only before any ledger exists.
+func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, id uint64, ok bool) {
+	if len(ledgers) == 0 {
+		return "", 0, false
 	}
 
-	var txs []txRef
-	for name, ls := range g.Ledgers() {
-		for r, rec := range ls.TxRefs() {
-			txs = append(txs, txRef{ledger: name, ref: r, id: rec.Id()})
-		}
-	}
+	ledger = random.RandomChoice(ledgers)
+	const slack = 8
+	frontier := uint64(len(g.Ledger(ledger).Txs()))
+	id = 1 + internal.Rand().Uint64()%(frontier+slack)
 
-	if len(txs) == 0 {
-		return "", "", 0, false
-	}
-
-	slices.SortFunc(txs, func(a, b txRef) int {
-		if a.ledger != b.ledger {
-			if a.ledger < b.ledger {
-				return -1
-			}
-			return 1
-		}
-		if a.ref < b.ref {
-			return -1
-		}
-		if a.ref > b.ref {
-			return 1
-		}
-		return 0
-	})
-
-	c := random.RandomChoice(txs)
-
-	return c.ledger, c.ref, c.id, true
+	return ledger, id, true
 }
 
-// runTransactionRead issues a linearizable GetTransaction on a committed
-// transaction and checks the server's snapshot — id, reverted flag, postings,
-// and whole metadata map — against the model (see validateTransactionRead). This
-// is the only path that reads accumulated transaction metadata back.
+// runTransactionRead issues a linearizable GetTransaction on a probed id and
+// checks the observation — a returned transaction, or NotFound — against the
+// model (see validateTransactionRead). This is the only path that reads
+// accumulated transaction metadata back.
 func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
-	ledger, ref, id, ok := pickTransaction(c.modelState)
+	ledger, id, ok := pickTransactionID(c.modelState, c.ledgerNames)
 	if !ok {
 		c.mu.Unlock()
 		return
@@ -246,18 +220,21 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		// The transaction is committed (drained into modelState), so a definitive
-		// error on a linearizable read — NotFound, Internal — is a real finding.
+		// NotFound is a legal outcome for an id not committed in the actual
+		// serialization — validate it like a returned transaction, not a finding.
+		if status.Code(err) == codes.NotFound {
+			c.validateTransactionRead(maxTicket, ledger, id, nil, false)
+			return
+		}
 		assert.Unreachable("singleton_driver_model: GetTransaction returned unexpected error", internal.Details{
-			"ledger":    ledger,
-			"reference": ref,
-			"id":        id,
-			"error":     err.Error(),
+			"ledger": ledger,
+			"id":     id,
+			"error":  err.Error(),
 		})
 		return
 	}
 
-	c.validateTransactionRead(maxTicket, ledger, ref, resp.GetTransaction())
+	c.validateTransactionRead(maxTicket, ledger, id, resp.GetTransaction(), true)
 }
 
 // runSchemaRead issues a GetMetadataSchemaStatus and checks the declared metadata
