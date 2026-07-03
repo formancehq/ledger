@@ -3,6 +3,7 @@ package ledgers
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -63,6 +64,14 @@ func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 	if src.GetBatchSize() > 0 {
 		pterm.Printf("  Batch:   %d\n", src.GetBatchSize())
 	}
+
+	if rules := src.GetAddressRewriteRules(); len(rules) > 0 {
+		pterm.Printf("  Rewrites:\n")
+
+		for _, rule := range rules {
+			pterm.Printf("    %s → %q\n", rule.GetPattern(), rule.GetReplacement())
+		}
+	}
 }
 
 // renderMirrorSyncProgress displays mirror sync progress information.
@@ -113,7 +122,8 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 		cmd.Flags().Changed("mirror-dsn") ||
 		cmd.Flags().Changed("mirror-aws-iam-region") ||
 		cmd.Flags().Changed("mirror-aws-iam-assume-role-arn") ||
-		cmd.Flags().Changed("mirror-batch-size")
+		cmd.Flags().Changed("mirror-batch-size") ||
+		cmd.Flags().Changed("mirror-address-rewrite")
 
 	if hasMirrorFlags && !cmd.Flags().Changed("mode") {
 		modeStr = "mirror"
@@ -141,9 +151,15 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 
 	batchSize, _ := cmd.Flags().GetUint32("mirror-batch-size")
 
+	rewriteRules, err := parseAddressRewriteRules(cmd)
+	if err != nil {
+		return 0, nil, err
+	}
+
 	cfg := &commonpb.MirrorSourceConfig{
-		LedgerName: sourceLedgerName,
-		BatchSize:  batchSize,
+		LedgerName:          sourceLedgerName,
+		BatchSize:           batchSize,
+		AddressRewriteRules: rewriteRules,
 	}
 
 	switch sourceType {
@@ -212,4 +228,31 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 	}
 
 	return commonpb.LedgerMode_LEDGER_MODE_MIRROR, cfg, nil
+}
+
+// parseAddressRewriteRules parses --mirror-address-rewrite flags, each of the
+// form "pattern=replacement" (split on the first '='). An empty replacement
+// drops the matched part.
+func parseAddressRewriteRules(cmd *cobra.Command) ([]*commonpb.AddressRewriteRule, error) {
+	raw, _ := cmd.Flags().GetStringArray("mirror-address-rewrite")
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	rules := make([]*commonpb.AddressRewriteRule, 0, len(raw))
+
+	for _, entry := range raw {
+		pattern, replacement, ok := strings.Cut(entry, "=")
+		if !ok {
+			return nil, fmt.Errorf("invalid --mirror-address-rewrite %q: expected 'pattern=replacement'", entry)
+		}
+
+		if pattern == "" {
+			return nil, fmt.Errorf("invalid --mirror-address-rewrite %q: pattern must not be empty", entry)
+		}
+
+		rules = append(rules, &commonpb.AddressRewriteRule{Pattern: pattern, Replacement: replacement})
+	}
+
+	return rules, nil
 }

@@ -3161,6 +3161,32 @@ components:
           minimum: 0
           default: 0
           description: Max logs per batch (0 = server default 100, capped by server's --mirror-max-batch-size)
+        addressRewriteRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddressRewriteRule'
+          description: >
+            Rewrite rules applied, in order, to every account address as v2 logs
+            are translated into v3 orders. Used to drop or rename address
+            segments v2 only carried as lock-avoidance shards.
+
+    AddressRewriteRule:
+      type: object
+      description: >
+        Rewrites account addresses during mirror translation. `pattern` is an
+        RE2 regular expression matched against the full account address; matches
+        are replaced with `replacement` (which may reference capture groups). An
+        empty `replacement` drops the matched part, e.g. pattern `(:worker:\d+)`
+        turns `payments:acme:worker:001:main` into `payments:acme:main`. The
+        rewritten address must still be a valid account address.
+      required:
+        - pattern
+        - replacement
+      properties:
+        pattern:
+          type: string
+        replacement:
+          type: string
 
     SaveNumscriptRequest:
       type: object

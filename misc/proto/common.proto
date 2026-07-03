@@ -777,6 +777,24 @@ message MirrorSourceConfig {
     PostgresMirrorSourceConfig postgres = 3;
   }
   uint32 batch_size = 4;  // Max logs per batch (0 = default 100). Client's responsibility to avoid saturating the instance.
+  // Rewrite rules applied, in order, to every account address as v2 logs are
+  // translated into v3 orders. Used to drop or rename address segments that v2
+  // only carried as lock-avoidance shards (e.g. ":worker:001"). See
+  // AddressRewriteRule.
+  repeated AddressRewriteRule address_rewrite_rules = 5;
+}
+
+// AddressRewriteRule rewrites account addresses during mirror translation.
+// pattern is a Go (RE2) regular expression matched against the full account
+// address; every match is replaced with replacement (which may reference
+// capture groups). An empty replacement drops the matched part, e.g. pattern
+// "(:worker:\\d+)" turns "payments:acme:worker:001:main" into
+// "payments:acme:main". Rewriting is a pure translation-time projection: the
+// source v2 ledger is never modified, and the rewritten address must still be
+// a valid ledger account address.
+message AddressRewriteRule {
+  string pattern = 1;
+  string replacement = 2;
 }
 
 message HttpMirrorSourceConfig {

@@ -51,6 +51,7 @@ func NewCreateCommand() *cobra.Command {
 	cmd.Flags().String("mirror-aws-iam-region", "", "Enable AWS RDS IAM authentication using the given region (for postgres source); credentials are taken from the ambient AWS chain (IRSA, instance profile, env)")
 	cmd.Flags().String("mirror-aws-iam-assume-role-arn", "", "Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors); requires --mirror-aws-iam-region")
 	cmd.Flags().Uint32("mirror-batch-size", 0, "Max logs per batch (0 = default 100)")
+	cmd.Flags().StringArray("mirror-address-rewrite", nil, "Account address rewrite rule as 'pattern=replacement' (RE2 regex applied during translation; empty replacement drops the match, e.g. '(:worker:\\d+)='; repeatable)")
 
 	return cmd
 }

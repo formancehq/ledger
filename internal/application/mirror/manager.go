@@ -165,12 +165,21 @@ func (m *Manager) reconcile() {
 			continue
 		}
 
+		rewriter, err := v2.NewAddressRewriter(info.GetMirrorSource().GetAddressRewriteRules())
+		if err != nil {
+			// Rules are validated at admission time, so a compile failure here
+			// indicates corrupted config; skip the worker rather than crash.
+			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to build mirror address rewriter: %v", err)
+
+			continue
+		}
+
 		batchSize := int(info.GetMirrorSource().GetBatchSize())
 		if m.maxBatchSize > 0 && (batchSize <= 0 || batchSize > m.maxBatchSize) {
 			batchSize = m.maxBatchSize
 		}
 
-		w := NewWorker(name, batchSize, source, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
+		w := NewWorker(name, batchSize, source, rewriter, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
 		w.Start()
 		m.workers[name] = w
 	}

@@ -6648,6 +6648,7 @@ func NewConfirmedArchiveChapterLogListReader(s []*ConfirmedArchiveChapterLog) Co
 type MirrorSourceConfigReader interface {
 	GetLedgerName() string
 	GetBatchSize() uint32
+	GetAddressRewriteRules() AddressRewriteRuleListReader
 	GetType() isMirrorSourceConfig_Type
 	Mutate() *MirrorSourceConfig
 }
@@ -6660,6 +6661,10 @@ func (r *mirrorSourceConfigReadonly) GetLedgerName() string {
 
 func (r *mirrorSourceConfigReadonly) GetBatchSize() uint32 {
 	return r.v.GetBatchSize()
+}
+
+func (r *mirrorSourceConfigReadonly) GetAddressRewriteRules() AddressRewriteRuleListReader {
+	return NewAddressRewriteRuleListReader(r.v.GetAddressRewriteRules())
 }
 
 func (r *mirrorSourceConfigReadonly) GetType() isMirrorSourceConfig_Type {
@@ -6718,6 +6723,78 @@ func (l mirrorSourceConfigListReadonly) Range(yield func(int, MirrorSourceConfig
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewMirrorSourceConfigListReader(s []*MirrorSourceConfig) MirrorSourceConfigListReader {
 	return mirrorSourceConfigListReadonly(s)
+}
+
+// AddressRewriteRuleReader provides read-only access to AddressRewriteRule.
+// Call Mutate() to obtain a mutable clone.
+type AddressRewriteRuleReader interface {
+	GetPattern() string
+	GetReplacement() string
+	Mutate() *AddressRewriteRule
+}
+
+type addressRewriteRuleReadonly struct{ v *AddressRewriteRule }
+
+func (r *addressRewriteRuleReadonly) GetPattern() string {
+	return r.v.GetPattern()
+}
+
+func (r *addressRewriteRuleReadonly) GetReplacement() string {
+	return r.v.GetReplacement()
+}
+
+func (r *addressRewriteRuleReadonly) Mutate() *AddressRewriteRule {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this AddressRewriteRule.
+func (m *AddressRewriteRule) AsReader() AddressRewriteRuleReader {
+	if m == nil {
+		return nil
+	}
+	return &addressRewriteRuleReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this AddressRewriteRule.
+func (m *AddressRewriteRule) Mutate() *AddressRewriteRule {
+	return m.CloneVT()
+}
+
+// AddressRewriteRuleListReader provides read-only iteration over []*AddressRewriteRule.
+type AddressRewriteRuleListReader interface {
+	Len() int
+	Get(i int) AddressRewriteRuleReader
+	Range(yield func(int, AddressRewriteRuleReader) bool)
+}
+
+type addressRewriteRuleListReadonly []*AddressRewriteRule
+
+func (l addressRewriteRuleListReadonly) Len() int { return len(l) }
+
+func (l addressRewriteRuleListReadonly) Get(i int) AddressRewriteRuleReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l addressRewriteRuleListReadonly) Range(yield func(int, AddressRewriteRuleReader) bool) {
+	for i, v := range l {
+		var r AddressRewriteRuleReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAddressRewriteRuleListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAddressRewriteRuleListReader(s []*AddressRewriteRule) AddressRewriteRuleListReader {
+	return addressRewriteRuleListReadonly(s)
 }
 
 // HttpMirrorSourceConfigReader provides read-only access to HttpMirrorSourceConfig.

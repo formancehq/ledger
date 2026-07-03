@@ -62,6 +62,16 @@ oneof payload {
 
 `FillGap` is the explicit "we know there's a v2 log here but we have no payload for it" marker — it lets the v3 ledger advance its own logical sequence even when the source skipped one.
 
+### Account-address rewriting
+
+Optional `address_rewrite_rules` on `MirrorSourceConfig` are applied, in order, to every account address as v2 logs are translated (`internal/adapter/v2/rewrite.go`, `AddressRewriter`). Each rule is a `{pattern, replacement}` pair where `pattern` is an RE2 regex matched against the full address and matches are replaced with `replacement`; an empty replacement drops the match. This exists to strip or rename segments that v2 only carried as lock-avoidance shards — e.g. `(:worker:\d+)` turns `payments:acme:worker:001:main` into `payments:acme:main`.
+
+Rewriting happens at the three address-bearing choke points in the translator — posting source/destination (`translatePostings`), metadata account targets (`translateTarget`), and account-metadata map keys (`translateAccountMetadata`). Because coverage/preload and the FSM read the already-translated payload, no change is needed downstream, and volumes are derived from the rewritten postings on apply. When two source addresses collapse onto one, their account-metadata maps are merged (value from the lexicographically-smallest source address wins on conflict).
+
+Properties:
+- **Pure projection** — the source v2 ledger is untouched; rewriting only shapes the v3 orders the leader proposes, so followers apply identical addresses (no cross-node determinism concern).
+- **Validated** — rule regexes are compile-checked at admission (`ErrMirrorAddressRewritePatternInvalid`) before the config is persisted; at translation time a rewrite that produces an invalid address fails the batch, so the cursor does not advance and the worker retries (the standard translation-error path).
+
 ## The Raft command
 
 `misc/proto/raft_cmd.proto:200-212` — `MirrorIngestOrder{MirrorLogEntry entry}`. Each order ingests **one** v2 log entry. A batch of 100 fetched logs becomes 100 orders inside one proposal.
@@ -109,6 +119,7 @@ message MirrorSourceConfig {
     PostgresMirrorSourceConfig postgres = 3;
   }
   uint32 batch_size = 4;
+  repeated AddressRewriteRule address_rewrite_rules = 5;  // see "Account-address rewriting"
 }
 ```
 

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestParseMirrorFlags_PostgresEmptyIAMRegionRejected(t *testing.T) {
@@ -20,6 +22,56 @@ func TestParseMirrorFlags_PostgresEmptyIAMRegionRejected(t *testing.T) {
 	_, _, err := parseMirrorFlags(cmd, "ledger-x")
 	require.Error(t, err, "explicit but empty --mirror-aws-iam-region must NOT silently fall back to password auth")
 	require.Contains(t, err.Error(), "non-empty region")
+}
+
+func TestParseMirrorFlags_AddressRewriteRules(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewCreateCommand()
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--mode=mirror",
+		"--mirror-base-url=http://v2:3068",
+		`--mirror-address-rewrite=(:worker:\d+)=`,
+		"--mirror-address-rewrite=^payments:=psp:",
+	}))
+
+	_, cfg, err := parseMirrorFlags(cmd, "ledger-x")
+	require.NoError(t, err)
+	require.Len(t, cfg.GetAddressRewriteRules(), 2)
+	require.Equal(t, `(:worker:\d+)`, cfg.GetAddressRewriteRules()[0].GetPattern())
+	require.Equal(t, "", cfg.GetAddressRewriteRules()[0].GetReplacement())
+	require.Equal(t, "^payments:", cfg.GetAddressRewriteRules()[1].GetPattern())
+	require.Equal(t, "psp:", cfg.GetAddressRewriteRules()[1].GetReplacement())
+}
+
+func TestParseMirrorFlags_AddressRewriteInfersMirrorMode(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewCreateCommand()
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--mirror-base-url=http://v2:3068",
+		`--mirror-address-rewrite=(:worker:\d+)=`,
+	}))
+
+	mode, cfg, err := parseMirrorFlags(cmd, "ledger-x")
+	require.NoError(t, err)
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, mode)
+	require.Len(t, cfg.GetAddressRewriteRules(), 1)
+}
+
+func TestParseMirrorFlags_AddressRewriteMissingSeparatorRejected(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewCreateCommand()
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--mode=mirror",
+		"--mirror-base-url=http://v2:3068",
+		"--mirror-address-rewrite=no-separator",
+	}))
+
+	_, _, err := parseMirrorFlags(cmd, "ledger-x")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "pattern=replacement")
 }
 
 func TestParseMirrorFlags_PostgresIAMRegionWiresAwsIamAuth(t *testing.T) {
