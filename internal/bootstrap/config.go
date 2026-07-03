@@ -30,12 +30,10 @@ type AuthFlagConfig struct {
 	// writes require a valid token. Empty (default) preserves the historical
 	// strict behavior where every request must authenticate.
 	AnonymousScopes string
-	// OIDCDiscoveryTimeout bounds the OIDC discovery + JWKS HTTP calls made
-	// during startup. A slow or blackholed issuer would otherwise hang the
-	// process indefinitely (the go-libs path injects http.DefaultClient with
-	// no Timeout, and the local fallback calls oidc.Discover with
-	// context.Background()). 0 keeps the legacy unbounded behavior; the
-	// default (set in cmd/server/server.go) is 10s.
+	// OIDCDiscoveryTimeout bounds OIDC discovery (via a context deadline) and the
+	// keyset's JWKS fetches (via the HTTP client timeout) under one
+	// operator-controlled ceiling. 0 leaves them unbounded; the default (set in
+	// cmd/server/server.go) is 10s.
 	OIDCDiscoveryTimeout time.Duration
 }
 

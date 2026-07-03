@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/require"
 
+	oidcclient "github.com/formancehq/go-libs/v5/pkg/authn/oidc/client"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
@@ -99,4 +101,44 @@ func TestDiscoveryContext(t *testing.T) {
 		cancel()
 		require.ErrorIs(t, ctx.Err(), context.Canceled)
 	})
+}
+
+// TestRemoteKeySet_JWKSReadRespectsTimeout verifies that the OIDC remote keyset
+// buildAuthConfig constructs — via TimeoutHTTPClient(OIDCDiscoveryTimeout) — bounds
+// its lazy JWKS fetch by that timeout: a blackholed JWKS endpoint makes token
+// verification fail quickly rather than stall on the goroutine that fetches keys.
+func TestRemoteKeySet_JWKSReadRespectsTimeout(t *testing.T) {
+	t.Parallel()
+
+	// The handler blocks until the client gives up; the request context is
+	// cancelled when the client's Timeout fires, letting srv.Close proceed.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+
+	timeout := 500 * time.Millisecond
+	keySet := oidcclient.NewRemoteKeySet(TimeoutHTTPClient(timeout), srv.URL)
+
+	// Any signed token forces a remote JWKS fetch, since the key cache is empty.
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: []byte("0123456789abcdef0123456789abcdef")}, nil)
+	require.NoError(t, err)
+	jws, err := signer.Sign([]byte("{}"))
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		_, verr := keySet.VerifySignature(context.Background(), jws)
+		done <- verr
+	}()
+
+	select {
+	case verr := <-done:
+		require.Error(t, verr, "a blackholed JWKS endpoint must fail, not hang")
+		require.Less(t, time.Since(start), 2*timeout,
+			"JWKS fetch should return inside ~timeout (%s)", timeout)
+	case <-time.After(3 * time.Second):
+		t.Fatal("VerifySignature did not respect the JWKS read timeout")
+	}
 }
