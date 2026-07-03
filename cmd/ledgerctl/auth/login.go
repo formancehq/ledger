@@ -200,22 +200,22 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 	scopes, _ := cmd.Flags().GetStringSlice("scopes")
 	signingKeyPath, _ := cmd.Flags().GetString("signing-key")
 
-	// The two flags identify the same key entry, and users routinely pass
-	// only one of them:
-	//   - Explicit --signing-key-id on the CLI must beat a profile-derived
-	//     --key-id (populated by PersistentPreRunE with Changed=false).
-	//     Otherwise `auth login --signing-key-id new` against an active
-	//     profile with signingKeyId=old signs the JWT with the stale
-	//     profile value.
-	//   - On a first-login bootstrap there is no profile for the
-	//     profile.signingKeyId -> --key-id fallback to read from, so the
-	//     empty-keyID fallback keeps --signing-key-id-only invocations working.
-	if cmd.Flags().Changed("signing-key-id") && !cmd.Flags().Changed("key-id") {
-		keyID, _ = cmd.Flags().GetString("signing-key-id")
-	}
-
-	if keyID == "" {
-		keyID, _ = cmd.Flags().GetString("signing-key-id")
+	// --signing-key-id and --key-id identify the same key entry, and users
+	// routinely pass only one of them. Whenever --key-id was NOT explicitly
+	// typed on the CLI, prefer --signing-key-id's value (regardless of its
+	// source: CLI, LEDGERCTL_SIGNING_KEY_ID, or the profile). This covers:
+	//   - CLI --signing-key-id overriding a profile-derived --key-id:
+	//     `auth login --signing-key-id new` against an active profile with
+	//     signingKeyId=old must sign the JWT with `new`, not `old`.
+	//   - env LEDGERCTL_SIGNING_KEY_ID doing the same when both flags are
+	//     Changed=false (env leaves Changed=false via Flag.Value.Set).
+	//   - Bootstrap with only --signing-key-id and no profile fallback.
+	// The bundle-override guard below still runs after this, so bundle
+	// values can still beat env/profile-derived --signing-key-id.
+	if !cmd.Flags().Changed("key-id") {
+		if sk, _ := cmd.Flags().GetString("signing-key-id"); sk != "" {
+			keyID = sk
+		}
 	}
 
 	var seed []byte

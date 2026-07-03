@@ -91,6 +91,42 @@ func TestResolveLoginParams_ExplicitSigningKeyIDBeatsProfileDerivedKeyID(t *test
 		"explicit --signing-key-id must beat a profile-derived --key-id")
 }
 
+// TestResolveLoginParams_EnvSigningKeyIDBeatsProfileDerivedKeyID covers the
+// env-var-derived variant of the sibling override: when LEDGERCTL_SIGNING_KEY_ID
+// populates --signing-key-id (Changed stays false), it must still beat the
+// stale profile-derived --key-id. Without this, an operator setting
+// LEDGERCTL_SIGNING_KEY_ID on a machine that inherits an old active profile
+// would silently keep signing with the profile's signingKeyId.
+func TestResolveLoginParams_EnvSigningKeyIDBeatsProfileDerivedKeyID(t *testing.T) {
+	seedPath := filepath.Join(t.TempDir(), "seed.hex")
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	require.NoError(t, os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)), 0o600))
+
+	cmd := newTestCmd(t)
+	cmd.Flags().StringSlice("scopes", nil, "")
+	cmd.Flags().Duration("expiration", 0, "")
+	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().String("subject", "", "")
+	cmd.Flags().String("bundle", "", "")
+
+	// Simulate PersistentPreRunE having applied both env and profile via
+	// Value.Set (Changed stays false in both cases).
+	require.NoError(t, cmd.Flags().Lookup("signing-key-id").Value.Set("env-new"))
+	require.NoError(t, cmd.Flags().Lookup("key-id").Value.Set("profile-old"))
+	require.NoError(t, cmd.Flags().Lookup("signing-key").Value.Set(seedPath))
+	require.NoError(t, cmd.Flags().Lookup("subject").Value.Set("svc"))
+	require.False(t, cmd.Flags().Changed("key-id"))
+	require.False(t, cmd.Flags().Changed("signing-key-id"))
+
+	p, err := resolveLoginParams(cmd)
+	require.NoError(t, err)
+	require.Equal(t, "env-new", p.keyID,
+		"env-derived --signing-key-id must beat a profile-derived --key-id")
+}
+
 // TestResolveLoginParams_BundleBeatsProfileDerivedKeyID guards the documented
 // precedence CLI > bundle > profile: a keyID resolved from the profile
 // (Changed=false) must be superseded by a bundle keyId when no CLI --key-id
