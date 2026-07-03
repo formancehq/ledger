@@ -51,6 +51,135 @@ func pinConfig(t *testing.T) {
 	t.Setenv("LEDGERCTL_PROFILE", "")
 }
 
+// fakeKeyring is a hermetic Keyring for testing runLogin's rollback path.
+// It records every call so tests can assert that a syncProfile failure
+// either restores the prior credential (re-login case) or removes the
+// just-stored token (bootstrap / no prior token case).
+type fakeKeyring struct {
+	store   map[string]string
+	setCall int
+	delCall int
+	setFail error
+	delFail error
+}
+
+func (f *fakeKeyring) Get(server string) (string, error) {
+	if f.store == nil {
+		return "", cmdutil.ErrTokenNotFound
+	}
+
+	t, ok := f.store[server]
+	if !ok {
+		return "", cmdutil.ErrTokenNotFound
+	}
+
+	return t, nil
+}
+
+func (f *fakeKeyring) Set(server, token string) error {
+	f.setCall++
+
+	if f.setFail != nil {
+		return f.setFail
+	}
+
+	if f.store == nil {
+		f.store = make(map[string]string)
+	}
+
+	f.store[server] = token
+
+	return nil
+}
+
+func (f *fakeKeyring) Delete(server string) error {
+	f.delCall++
+
+	if f.delFail != nil {
+		return f.delFail
+	}
+
+	delete(f.store, server)
+
+	return nil
+}
+
+// TestRunLogin_RollbackRestoresPriorToken guards the two-phase-commit
+// rollback: when syncProfile fails after keyring.Set overwrote a
+// pre-existing credential, runLogin must restore that credential rather
+// than delete it unconditionally. Otherwise a re-login whose config-write
+// step fails would wipe the user's still-valid previous session.
+func TestRunLogin_RollbackRestoresPriorToken(t *testing.T) {
+	// Point HOME at a read-only path AFTER the initial pre-existing token is
+	// seeded, so syncProfile's SaveConfig fails and triggers the rollback.
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+	t.Setenv("LOCALAPPDATA", tmp)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+
+	// Seed a valid config first so LoadConfig succeeds, then make the config
+	// directory read-only so SaveConfig inside syncProfile fails.
+	require.NoError(t, cmdutil.SaveConfig(cmdutil.Config{
+		ActiveProfile: "prod",
+		Profiles: map[string]cmdutil.Profile{
+			"prod": {Server: "prod.example.com:8888"},
+		},
+	}))
+
+	// Make the config file itself read-only so SaveConfig's WriteFile fails
+	// while LoadConfig still succeeds. Chmod'ing the parent dir wouldn't
+	// work: overwriting an existing writable inode doesn't require dir
+	// write perms on macOS/Linux.
+	configPath, err := cmdutil.ConfigPath()
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(configPath, 0o400))
+	t.Cleanup(func() { _ = os.Chmod(configPath, 0o600) })
+
+	// Fake keyring seeded with the prior session token.
+	kr := &fakeKeyring{store: map[string]string{"prod.example.com:9999": "prior-token"}}
+
+	seedPath := filepath.Join(t.TempDir(), "seed.hex")
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	require.NoError(t, os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)), 0o600))
+
+	// Reproduce the flag surface PersistentPreRunE would hand down: root's
+	// --profile, --server, --tls-ca-cert, --insecure, --signing-key-id,
+	// --response-verify-key, plus login's own local flags.
+	cmd := NewLoginCommand()
+	cmd.Flags().String("profile", "", "")
+	cmd.Flags().String("server", "localhost:8888", "")
+	cmd.Flags().Bool("insecure", false, "")
+	cmd.Flags().String("tls-ca-cert", "", "")
+	cmd.Flags().String("signing-key-id", "", "")
+	cmd.Flags().String("response-verify-key", "", "")
+	cmd.SetContext(cmdutil.WithKeyring(context.Background(), kr))
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--profile", "prod",
+		"--server", "prod.example.com:9999",
+		"--signing-key", seedPath,
+		"--key-id", "k",
+		"--subject", "svc",
+	}))
+
+	// runLogin must return an error (syncProfile fails) and the keyring
+	// must be back to "prior-token", not empty.
+	err = runLogin(cmd, nil)
+	require.Error(t, err, "runLogin must surface the syncProfile failure")
+
+	stored, getErr := kr.Get("prod.example.com:9999")
+	require.NoError(t, getErr,
+		"prior credential must be restored, not deleted")
+	require.Equal(t, "prior-token", stored)
+
+	require.Equal(t, 0, kr.delCall,
+		"rollback must NOT call Delete when a prior credential existed")
+}
+
 // TestResolveLoginParams_ExplicitSigningKeyIDBeatsProfileDerivedKeyID guards
 // the CLI-over-profile precedence for the sibling flag: when the active
 // profile provides `signingKeyId` (which PersistentPreRunE feeds into

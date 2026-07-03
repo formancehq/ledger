@@ -66,19 +66,33 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 	server, _ := cmd.Flags().GetString("server")
 
 	// Order: keychain first, then profile. If profile sync fails, roll back
-	// the just-stored token so we never leave the config pointing at a
-	// server whose keychain entry is absent (or worse, points at the wrong
-	// token). Bootstrap is an advertised feature of `auth login --profile
-	// <new>`, and this two-phase commit is the only way to keep exit code,
-	// keychain, and config aligned without introducing a lock file.
+	// the keychain to its prior state so we never leave the config pointing
+	// at a server whose keychain entry is absent (or worse, points at a
+	// token whose corresponding profile write never landed). Bootstrap is
+	// an advertised feature of `auth login --profile <new>`, and this
+	// two-phase commit is the only way to keep exit code, keychain, and
+	// config aligned without introducing a lock file.
 	keyring := cmdutil.GetKeyring(cmd)
+
+	// Snapshot any pre-existing token so a re-login that fails at sync time
+	// doesn't clobber the previously valid credential.
+	prevToken, prevErr := keyring.Get(server)
+
 	if err := keyring.Set(server, token); err != nil {
 		return fmt.Errorf("storing token in keychain: %w", err)
 	}
 
 	if err := syncProfile(cmd, server); err != nil {
-		if delErr := keyring.Delete(server); delErr != nil {
-			return fmt.Errorf("syncing profile: %w (also failed to remove stranded keychain token: %w)", err, delErr)
+		var restoreErr error
+
+		if prevErr == nil {
+			restoreErr = keyring.Set(server, prevToken)
+		} else {
+			restoreErr = keyring.Delete(server)
+		}
+
+		if restoreErr != nil {
+			return fmt.Errorf("syncing profile: %w (also failed to restore keychain: %w)", err, restoreErr)
 		}
 
 		return fmt.Errorf("syncing profile: %w", err)
