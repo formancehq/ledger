@@ -25,7 +25,9 @@ type Config struct {
 	Ticker time.Duration
 	// Wake, when non-nil, triggers an extra Tick as soon as it receives.
 	// A nil channel is never selectable, so leaving it nil yields a
-	// pure-ticker loop with no special-casing.
+	// pure-ticker loop with no special-casing. Do not close Wake: a closed
+	// channel is always selectable and would spin the loop, calling Tick
+	// continuously.
 	Wake <-chan struct{}
 	// Boot runs once before the ticker starts. A non-nil error aborts the
 	// loop (the worker does no further work). Optional.
@@ -38,8 +40,9 @@ type Config struct {
 
 // TailWorker runs Config.Tick on a ticker (and optional wake) until Stop.
 type TailWorker struct {
-	cfg Config
-	w   worker.Worker
+	cfg     Config
+	w       worker.Worker
+	started bool
 }
 
 // New constructs a TailWorker. It does not start any goroutine.
@@ -50,14 +53,18 @@ func New(cfg Config) *TailWorker {
 // Start launches the background loop.
 func (t *TailWorker) Start() {
 	t.w = worker.New()
+	t.started = true
 	t.w.RunCtx(t.loop)
 }
 
-// Stop signals the loop to stop and waits for it to finish. It must only be
-// called after Start (mirrors worker.Worker): calling it on a TailWorker that
-// was never started panics on a nil channel close. Consumers that start
-// conditionally must guard Stop with the same condition.
+// Stop signals the loop to stop and waits for it to finish. It is a no-op on a
+// TailWorker that was never started, so consumers that start conditionally do
+// not need to mirror the condition around Stop.
 func (t *TailWorker) Stop() {
+	if !t.started {
+		return
+	}
+
 	t.w.Stop()
 }
 

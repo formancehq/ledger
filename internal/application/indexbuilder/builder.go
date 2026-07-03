@@ -367,7 +367,9 @@ func (b *Builder) SetNotifications(n *signal.Notifications) {
 
 // Start begins the background index-building loop and registers OTEL metrics.
 func (b *Builder) Start() {
-	_ = b.registerMetrics()
+	if err := b.registerMetrics(); err != nil {
+		b.logger.Errorf("register index builder metrics: %v", err)
+	}
 
 	b.w = worker.New()
 	b.w.RunCtx(b.loop)
