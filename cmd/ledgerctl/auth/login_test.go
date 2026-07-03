@@ -331,13 +331,12 @@ func TestResolveLoginParams_ExplicitSigningKeyIDBeatsEnvKeyID(t *testing.T) {
 		"CLI --signing-key-id must beat env KEY_ID (CLI over env)")
 }
 
-// TestResolveLoginParams_EnvSigningKeyIDBeatsProfileDerivedKeyID covers the
-// env-var-derived variant of the sibling override: when LEDGERCTL_SIGNING_KEY_ID
-// populates --signing-key-id (Changed stays false), it must still beat the
-// stale profile-derived --key-id. Without this, an operator setting
-// LEDGERCTL_SIGNING_KEY_ID on a machine that inherits an old active profile
-// would silently keep signing with the profile's signingKeyId.
-func TestResolveLoginParams_EnvSigningKeyIDBeatsProfileDerivedKeyID(t *testing.T) {
+// TestResolveLoginParams_EnvKeyIDBeatsProfileSigningKeyID guards the
+// env-over-profile precedence when the env populates --key-id (via
+// bindSubcommandEnv) and the profile populates --signing-key-id (via
+// PersistentPreRunE's resolveFlag). Both leave Changed=false, but env is
+// higher-precedence than profile — resolveKeyID must return the env value.
+func TestResolveLoginParams_EnvKeyIDBeatsProfileSigningKeyID(t *testing.T) {
 	seedPath := filepath.Join(t.TempDir(), "seed.hex")
 	seed := make([]byte, 32)
 	for i := range seed {
@@ -352,10 +351,11 @@ func TestResolveLoginParams_EnvSigningKeyIDBeatsProfileDerivedKeyID(t *testing.T
 	cmd.Flags().String("subject", "", "")
 	cmd.Flags().String("bundle", "", "")
 
-	// Simulate PersistentPreRunE having applied both env and profile via
-	// Value.Set (Changed stays false in both cases).
-	require.NoError(t, cmd.Flags().Lookup("signing-key-id").Value.Set("env-new"))
-	require.NoError(t, cmd.Flags().Lookup("key-id").Value.Set("profile-old"))
+	// Simulate bindSubcommandEnv having applied KEY_ID and resolveFlag
+	// having applied profile.signingKeyId to --signing-key-id. Both leave
+	// Changed=false, but env should win over profile.
+	require.NoError(t, cmd.Flags().Lookup("key-id").Value.Set("env-key-id"))
+	require.NoError(t, cmd.Flags().Lookup("signing-key-id").Value.Set("profile-signing-key-id"))
 	require.NoError(t, cmd.Flags().Lookup("signing-key").Value.Set(seedPath))
 	require.NoError(t, cmd.Flags().Lookup("subject").Value.Set("svc"))
 	require.False(t, cmd.Flags().Changed("key-id"))
@@ -363,8 +363,8 @@ func TestResolveLoginParams_EnvSigningKeyIDBeatsProfileDerivedKeyID(t *testing.T
 
 	p, err := resolveLoginParams(cmd)
 	require.NoError(t, err)
-	require.Equal(t, "env-new", p.keyID,
-		"env-derived --signing-key-id must beat a profile-derived --key-id")
+	require.Equal(t, "env-key-id", p.keyID,
+		"env KEY_ID (--key-id) must beat profile-derived --signing-key-id")
 }
 
 // TestResolveLoginParams_BundleBeatsProfileDerivedKeyID guards the documented

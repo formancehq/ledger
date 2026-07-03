@@ -193,14 +193,17 @@ func TestSubcommandLocalFlagsIgnoreBareEnv(t *testing.T) {
 	}
 }
 
-// TestProfileSigningKeyIDFeedsKeyID exercises the profile.signingKeyId ->
-// auth login --key-id fallback added to PersistentPreRunE: when a profile
-// declares signingKeyId, `auth login --profile <name>` must not fail with
-// `required flag "key-id" not set` just because the caller trusted the
-// profile to provide it.
+// TestProfileSigningKeyIDReachesAuthCommandsViaSigningKeyID asserts the
+// profile.signingKeyId fallback chain that lets `auth login --profile <name>`
+// succeed without an explicit --key-id: PersistentPreRunE populates the
+// persistent --signing-key-id flag from the profile, and auth's resolveKeyID
+// reads it as the JWT key ID. --key-id itself is deliberately NOT
+// pre-populated here — doing so would clobber a bare KEY_ID env value that
+// bindSubcommandEnv applied first (both are Changed=false, so the two
+// sources cannot be told apart at this layer).
 //
 // Mutates process-wide environment, so it cannot run in parallel.
-func TestProfileSigningKeyIDFeedsKeyID(t *testing.T) {
+func TestProfileSigningKeyIDReachesAuthCommandsViaSigningKeyID(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 	t.Setenv("XDG_CONFIG_HOME", tmp)
@@ -233,24 +236,32 @@ func TestProfileSigningKeyIDFeedsKeyID(t *testing.T) {
 	root.SetArgs([]string{"auth", "login"})
 	require.NoError(t, root.Execute())
 
-	got, err := loginCmd.Flags().GetString("key-id")
+	// --signing-key-id must carry the profile value — that's what
+	// resolveKeyID reads as the fallback JWT key ID.
+	sk, err := loginCmd.Flags().GetString("signing-key-id")
 	require.NoError(t, err)
-	require.Equal(t, "prod-key-id", got,
-		"profile.signingKeyId must populate --key-id when the flag is not CLI-passed")
+	require.Equal(t, "prod-key-id", sk,
+		"profile.signingKeyId must populate --signing-key-id when neither CLI --signing-key-id nor LEDGERCTL_SIGNING_KEY_ID env is set")
+	require.False(t, loginCmd.Flags().Changed("signing-key-id"),
+		"profile-derived --signing-key-id must leave Changed=false")
 
-	require.False(t, loginCmd.Flags().Changed("key-id"),
-		"profile-derived --key-id must leave Changed=false")
+	// --key-id must NOT be pre-populated from the profile: that write
+	// would clobber a bindSubcommandEnv-derived bare KEY_ID env value.
+	keyID, err := loginCmd.Flags().GetString("key-id")
+	require.NoError(t, err)
+	require.Empty(t, keyID,
+		"--key-id must NOT be pre-populated from the profile — resolveKeyID handles the fallback via --signing-key-id")
 }
 
-// TestProfileSigningKeyIDFeedsGenerateToken asserts that the auth-scoped
-// profile.signingKeyId -> --key-id fallback covers `auth generate-token`
-// alongside `auth login`, matching the code comment that names both.
-// Without a test at this exact path, a future refactor that narrows
-// isAuthCommand to just "login" would silently regress the documented
-// behavior.
+// TestProfileSigningKeyIDReachesGenerateTokenViaSigningKeyID mirrors the
+// login case: `auth generate-token --profile <name>` must inherit the
+// profile.signingKeyId via --signing-key-id, and resolveKeyID picks it up.
+// generate-token isn't tested via the full RunE (which needs a signing key
+// on disk) — asserting the flag value is enough because the whole
+// resolveKeyID / signToken chain is covered by resolveLoginParams tests.
 //
 // Mutates process-wide environment, so it cannot run in parallel.
-func TestProfileSigningKeyIDFeedsGenerateToken(t *testing.T) {
+func TestProfileSigningKeyIDReachesGenerateTokenViaSigningKeyID(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 	t.Setenv("XDG_CONFIG_HOME", tmp)
@@ -278,13 +289,10 @@ func TestProfileSigningKeyIDFeedsGenerateToken(t *testing.T) {
 	root.SetArgs([]string{"auth", "generate-token"})
 	require.NoError(t, root.Execute())
 
-	got, err := genCmd.Flags().GetString("key-id")
+	sk, err := genCmd.Flags().GetString("signing-key-id")
 	require.NoError(t, err)
-	require.Equal(t, "prod-key-id", got,
-		"profile.signingKeyId must populate --key-id on `auth generate-token` too")
-
-	require.False(t, genCmd.Flags().Changed("key-id"),
-		"profile-derived --key-id must leave Changed=false")
+	require.Equal(t, "prod-key-id", sk,
+		"profile.signingKeyId must populate --signing-key-id on `auth generate-token`")
 }
 
 // TestProfileSigningKeyIDDoesNotFeedSigningKeyIDToSigningCommands guards the

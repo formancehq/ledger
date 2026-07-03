@@ -100,18 +100,14 @@ func newRootCommand() *cobra.Command {
 			resolveFlag(cmd, "response-verify-key", "LEDGERCTL_RESPONSE_VERIFY_KEY", cmdutil.ProfileFlagValue(p, "response-verify-key"))
 			resolveFlag(cmd, "result-file", "LEDGERCTL_RESULT_FILE", "")
 
-			// Feed the profile's signingKeyId into --key-id, but only for
-			// commands under "auth": in practice the JWT key ID and the
-			// request-signing key ID are the same key entry, so `auth login`
-			// / `auth generate-token` benefit from the fallback. Signing
-			// management commands (`signing register-key`, `signing
-			// revoke-key`) also declare --key-id but must not default to the
-			// active profile's signing key — a silent default there could
-			// revoke the current key on `ledgerctl signing revoke-key` with
-			// no arguments.
-			if isAuthCommand(cmd) {
-				resolveFlag(cmd, "key-id", "", cmdutil.ProfileFlagValue(p, "signing-key-id"))
-			}
+			// Deliberately no resolveFlag on --key-id here: pre-populating
+			// --key-id from profile.signingKeyId would clobber a bare KEY_ID
+			// env value already applied by bindSubcommandEnv (both are
+			// Changed=false, so we can't tell the two sources apart at this
+			// layer). Instead, auth's `resolveKeyID` reads --signing-key-id
+			// as the sibling fallback — that flag receives the profile value
+			// via the resolveFlag call above, and its precedence chain is
+			// CLI > LEDGERCTL_SIGNING_KEY_ID > profile.
 
 			return nil
 		},
@@ -326,20 +322,6 @@ func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
 		// place, matching resolveFlag's best-effort env handling.
 		_ = flag.Value.Set(value)
 	})
-}
-
-// isAuthCommand returns true when cmd is a subcommand of "auth". Only these
-// commands get the profile.signingKeyId -> --key-id fallback; signing-key
-// management commands share the --key-id name but must not inherit a default
-// from the active profile.
-func isAuthCommand(cmd *cobra.Command) bool {
-	for c := cmd; c != nil; c = c.Parent() {
-		if c.Name() == "auth" {
-			return true
-		}
-	}
-
-	return false
 }
 
 // isProfileBootstrapCommand returns true for commands that should work even
