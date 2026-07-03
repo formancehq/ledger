@@ -34,10 +34,13 @@ func NewCreateCommand() *cobra.Command {
 
 	// Account type enforcement
 	cmd.Flags().String("default-enforcement-mode", "", "Default enforcement mode for unmatched accounts: STRICT or AUDIT (default: STRICT)")
+	cmdutil.RegisterEnumCompletion(cmd, "default-enforcement-mode", "STRICT", "AUDIT")
 
 	// Mirror mode flags
 	cmd.Flags().String("mode", "normal", "Ledger mode: normal or mirror")
+	cmdutil.RegisterEnumCompletion(cmd, "mode", "normal", "mirror")
 	cmd.Flags().String("mirror-source-type", "http", "Mirror source type: http or postgres")
+	cmdutil.RegisterEnumCompletion(cmd, "mirror-source-type", "http", "postgres")
 	cmd.Flags().String("mirror-ledger-name", "", "Source ledger name in the v2 system (defaults to ledger name)")
 	cmd.Flags().String("mirror-base-url", "", "Base URL of the v2 API (for http source)")
 	cmd.Flags().String("mirror-oauth2-client-id", "", "OAuth2 client ID for the v2 API (for http source)")

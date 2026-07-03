@@ -34,8 +34,10 @@ Examples:
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
 	cmd.Flags().String("target", "", "Target type: account, transaction, or ledger")
+	cmdutil.RegisterEnumCompletion(cmd, "target", cmdutil.TargetTypeOptions()...)
 	cmd.Flags().String("key", "", "Metadata key name")
 	cmd.Flags().String("type", "", "Metadata type: string, int64, bool, uint64, int8, int16, int32, uint8, uint16, uint32, datetime")
+	cmdutil.RegisterEnumCompletion(cmd, "type", cmdutil.MetadataTypeOptions()...)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
