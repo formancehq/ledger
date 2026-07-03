@@ -265,6 +265,12 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// audit chain, so a malformed rule fails fast instead of stalling the mirror
 	// worker on every batch.
 	for _, rule := range src.GetAddressRewriteRules() {
+		// An empty pattern compiles fine but matches at every boundary, so it
+		// would rewrite every address; reject it explicitly.
+		if rule.GetPattern() == "" {
+			return ErrMirrorAddressRewritePatternInvalid
+		}
+
 		if _, err := regexp.Compile(rule.GetPattern()); err != nil {
 			return ErrMirrorAddressRewritePatternInvalid
 		}

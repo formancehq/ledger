@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 
@@ -38,6 +39,13 @@ func NewAddressRewriter(rules []*commonpb.AddressRewriteRule) (*AddressRewriter,
 
 	compiled := make([]compiledRule, 0, len(rules))
 	for _, rule := range rules {
+		// An empty pattern matches at every boundary and would rewrite every
+		// address; admission rejects it, but guard here too since this is the
+		// single point every rule is compiled.
+		if rule.GetPattern() == "" {
+			return nil, errors.New("address rewrite pattern must not be empty")
+		}
+
 		re, err := regexp.Compile(rule.GetPattern())
 		if err != nil {
 			return nil, fmt.Errorf("compiling address rewrite pattern %q: %w", rule.GetPattern(), err)

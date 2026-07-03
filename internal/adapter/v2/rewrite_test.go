@@ -29,6 +29,13 @@ func TestNewAddressRewriter(t *testing.T) {
 		_, err := NewAddressRewriter([]*commonpb.AddressRewriteRule{rule("(", "")})
 		require.Error(t, err)
 	})
+
+	t.Run("empty pattern errors", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewAddressRewriter([]*commonpb.AddressRewriteRule{rule("", "x")})
+		require.Error(t, err)
+	})
 }
 
 func TestAddressRewriter_Rewrite(t *testing.T) {
