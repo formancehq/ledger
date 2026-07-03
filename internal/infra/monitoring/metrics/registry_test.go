@@ -126,6 +126,12 @@ func collectInstrumentNamesFromCode(t *testing.T, root string) []string {
 	pattern := regexp.MustCompile(
 		`\.` + "(" + strings.Join(instrumentMethods, "|") + ")" + `\(\s*"([^"]+)"`,
 	)
+	// tailworker.RegisterTailGauges(meter, ns, source, ...) creates its three
+	// instruments with names built from the ns/source literals rather than a
+	// single literal at the Int64ObservableGauge call site, so the pattern
+	// above cannot see them. Expand each call site into the triplet it emits:
+	// {ns}.last_indexed_sequence, {ns}.{source}_last_sequence, {ns}.lag.
+	tailGaugePattern := regexp.MustCompile(`RegisterTailGauges\([^,]+,\s*"([^"]+)"\s*,\s*"([^"]+)"`)
 	seen := make(map[string]struct{})
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -150,6 +156,14 @@ func collectInstrumentNamesFromCode(t *testing.T, root string) []string {
 			if name != "" {
 				seen[name] = struct{}{}
 			}
+		}
+
+		for _, m := range tailGaugePattern.FindAllSubmatch(data, -1) {
+			ns := string(m[1])
+			source := string(m[2])
+			seen[ns+".last_indexed_sequence"] = struct{}{}
+			seen[ns+"."+source+"_last_sequence"] = struct{}{}
+			seen[ns+".lag"] = struct{}{}
 		}
 
 		return nil

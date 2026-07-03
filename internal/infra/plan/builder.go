@@ -36,6 +36,13 @@ type Builder struct {
 	bloomFilters *bloom.FilterSet
 	logger       logging.Logger
 
+	// resolvers[attrCode] holds the per-attribute-cache resolve pipeline
+	// (cache, loader, getValue, bloom, typeName). Populated once at
+	// NewBuilder; buildPreloadsAt iterates over needs.Attributes and
+	// dispatches through this map. Adding a new attribute cache is a
+	// single-line change in buildAttrResolvers.
+	resolvers map[byte]attrResolver
+
 	// maxPlanSize is the cap on the number of AttributePlan entries an
 	// ExecutionPlan may carry. Build returns domain.ErrExecutionPlanTooLarge
 	// past this threshold so admission rejects pathological payloads up
@@ -112,7 +119,7 @@ func (g *ProposalGuard) ReleaseAll() {
 // prediction. maxPlanSize caps the number of AttributePlan entries an
 // ExecutionPlan may carry (0 = unlimited); see Builder.maxPlanSize.
 func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger, maxPlanSize int) *Builder {
-	return &Builder{
+	b := &Builder{
 		tracker:      tracker,
 		cache:        c,
 		attrs:        attrs,
@@ -122,6 +129,9 @@ func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.At
 		logger:       logger,
 		maxPlanSize:  maxPlanSize,
 	}
+	b.resolvers = buildAttrResolvers(c, attrs, b.loaders, b.bloomFilter)
+
+	return b
 }
 
 // Loaders returns the shared preload.Loaders instance, allowing callers to
@@ -347,72 +357,71 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		}).Tracef("Builder: buildPreloadsAt")
 	}
 
-	// Each goroutine writes to a distinct results[slot]. Bump this constant
-	// whenever a new launch() call is added: with the Indexes attribute
-	// (PR #453) the count went from 12 to 13, and `results[12]` would
-	// otherwise panic with an out-of-range index when every category fires.
-	const maxTypes = 13
-	results := make([]buildResult, maxTypes)
+	// Pre-count active attribute caches so results[] can be
+	// fixed-size: each goroutine writes to a distinct index without
+	// any synchronization on the slice header.
+	activeAttrCodes := make([]byte, 0, len(needs.Attributes))
+	for attrCode, set := range needs.Attributes {
+		if len(set.Keys) == 0 {
+			continue
+		}
+
+		activeAttrCodes = append(activeAttrCodes, attrCode)
+	}
+
+	// Pre-validate every attrCode has a resolver BEFORE spawning any
+	// goroutine. Bailing mid-loop after a `launch` call would leave
+	// in-flight goroutines writing to results[] on a slice the caller
+	// no longer sees AND leak their `loader.LoadOrWait` inflight-map
+	// entries (no CleanupToken assembled → the loader keeps them
+	// pinned forever). Validating first makes the error path leak-free.
+	for _, attrCode := range activeAttrCodes {
+		if _, ok := p.resolvers[attrCode]; !ok {
+			// Admission emitted a preload for a cache the builder
+			// wasn't told about (new attrCode landed in dal.SubAttr*
+			// without a matching entry in buildAttrResolvers).
+			// Silent no-op would leave the FSM without seeded values
+			// on the apply side, violating invariant #6.
+			assert.Unreachable("plan builder: no resolver registered for attrCode — extend buildAttrResolvers", map[string]any{
+				"attrCode": attrCode,
+				"keys":     len(needs.Attributes[attrCode].Keys),
+			})
+
+			return nil, nil, fmt.Errorf("plan builder: no resolver for attrCode 0x%x", attrCode)
+		}
+	}
+
+	slotCount := len(activeAttrCodes)
+	if len(needs.IdempotencyKeys) > 0 {
+		slotCount++
+	}
+
+	results := make([]buildResult, slotCount)
 
 	var wg sync.WaitGroup
-
-	slot := 0
-
-	// launch spawns a resolve goroutine that writes to results[slot].
+	nextSlot := 0
 	launch := func(fn func(i int)) {
-		i := slot
-		slot++
+		i := nextSlot
+		nextSlot++
 
 		wg.Go(func() {
 			fn(i)
 		})
 	}
 
-	if len(needs.Ledgers) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Ledgers, nextIndex, boundary, snap.Epoch,
-				p.cache.Ledgers, p.loaders.Ledgers,
-				p.attrs.Ledger.Get, p.store,
-				dal.SubAttrLedger, nil,
-				p.bloomFilter(dal.SubAttrLedger),
-				p.logger, "ledgers",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.Ledgers
-		})
-	}
+	for _, attrCode := range activeAttrCodes {
+		set := needs.Attributes[attrCode]
+		resolver := p.resolvers[attrCode] // pre-validated non-nil above
 
-	if len(needs.Boundaries) > 0 {
 		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Boundaries, nextIndex, boundary, snap.Epoch,
-				p.cache.Boundaries, p.loaders.Boundaries,
-				p.attrs.Boundary.Get, p.store,
-				dal.SubAttrBoundary, nil,
-				p.bloomFilter(dal.SubAttrBoundary),
-				p.logger, "boundaries",
+			r, err := resolver.Resolve(
+				set.Keys,
+				nextIndex, boundary, snap.Epoch,
+				p.store, p.logger,
 			)
 			results[i].resolve = r
-			results[i].loader = p.loaders.Boundaries
-		})
-	}
-
-	if len(needs.Volumes) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Volumes, nextIndex, boundary, snap.Epoch,
-				p.cache.Volumes, p.loaders.Volumes,
-				p.attrs.Volume.Get, p.store,
-				dal.SubAttrVolume, nil,
-				p.bloomFilter(dal.SubAttrVolume),
-				p.logger, "volumes",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.Volumes
+			results[i].err = err
+			results[i].loader = resolver.Loader()
 		})
 	}
 
@@ -446,150 +455,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		})
 	}
 
-	if len(needs.References) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.References, nextIndex, boundary, snap.Epoch,
-				p.cache.References, p.loaders.References,
-				p.attrs.References.Get, p.store,
-				dal.SubAttrReference, nil,
-				p.bloomFilter(dal.SubAttrReference),
-				p.logger, "references",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.References
-		})
-	}
-
-	if len(needs.SinkConfigs) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.SinkConfigs, nextIndex, boundary, snap.Epoch,
-				p.cache.SinkConfigs, p.loaders.SinkConfigs,
-				p.attrs.SinkConfig.Get, p.store,
-				dal.SubAttrSinkConfig, nil,
-				p.bloomFilter(dal.SubAttrSinkConfig),
-				p.logger, "sink_configs",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.SinkConfigs
-		})
-	}
-
-	if len(needs.NumscriptVersions) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.NumscriptVersions, nextIndex, boundary, snap.Epoch,
-				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
-				p.attrs.NumscriptVersion.Get, p.store,
-				dal.SubAttrNumscriptVersion, nil,
-				p.bloomFilter(dal.SubAttrNumscriptVersion),
-				p.logger, "numscript_versions",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.NumscriptVersions
-		})
-	}
-
-	if len(needs.NumscriptContents) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.NumscriptContents, nextIndex, boundary, snap.Epoch,
-				p.cache.NumscriptContents, p.loaders.NumscriptContents,
-				p.attrs.NumscriptContent.Get, p.store,
-				dal.SubAttrNumscriptContent, nil,
-				p.bloomFilter(dal.SubAttrNumscriptContent),
-				p.logger, "numscript_contents",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.NumscriptContents
-		})
-	}
-
-	if len(needs.Transactions) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Transactions, nextIndex, boundary, snap.Epoch,
-				p.cache.Transactions, p.loaders.Transactions,
-				p.attrs.Transaction.Get, p.store,
-				dal.SubAttrTransaction, nil,
-				p.bloomFilter(dal.SubAttrTransaction),
-				p.logger, "transactions",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.Transactions
-		})
-	}
-
-	if len(needs.Metadata) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Metadata, nextIndex, boundary, snap.Epoch,
-				p.cache.AccountMetadata, p.loaders.AccountMetadata,
-				p.attrs.Metadata.Get, p.store,
-				dal.SubAttrMetadata, nil,
-				p.bloomFilter(dal.SubAttrMetadata),
-				p.logger, "metadata",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.AccountMetadata
-		})
-	}
-
-	if len(needs.PreparedQueries) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.PreparedQueries, nextIndex, boundary, snap.Epoch,
-				p.cache.PreparedQueries, p.loaders.PreparedQueries,
-				p.attrs.PreparedQuery.Get, p.store,
-				dal.SubAttrPreparedQuery, nil,
-				p.bloomFilter(dal.SubAttrPreparedQuery),
-				p.logger, "prepared_queries",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.PreparedQueries
-		})
-	}
-
-	if len(needs.LedgerMetadata) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.LedgerMetadata, nextIndex, boundary, snap.Epoch,
-				p.cache.LedgerMetadata, p.loaders.LedgerMetadata,
-				p.attrs.LedgerMetadata.Get, p.store,
-				dal.SubAttrLedgerMetadata, nil,
-				p.bloomFilter(dal.SubAttrLedgerMetadata),
-				p.logger, "ledger_metadata",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.LedgerMetadata
-		})
-	}
-
-	if len(needs.Indexes) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Indexes, nextIndex, boundary, snap.Epoch,
-				p.cache.Indexes, p.loaders.Indexes,
-				p.attrs.Index.Get, p.store,
-				dal.SubAttrIndex, nil,
-				p.bloomFilter(dal.SubAttrIndex),
-				p.logger, "indexes",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.Indexes
-		})
-	}
-
 	wg.Wait()
 
 	// Build preload.CleanupToken and merge results, returning first error encountered.
@@ -599,7 +464,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		CacheEpoch:         snap.Epoch,
 	}
 
-	for i := range slot {
+	for i := range results {
 		// Always promote any tracker entries into the cleanup token,
 		// even when the slot returned an error. resolveAttributePreload
 		// can populate the tracker for keys that loaded successfully

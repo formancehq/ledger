@@ -41,6 +41,7 @@ Examples:
 	cmd.Flags().StringArray("param", nil, "Query parameter as key=value (repeatable)")
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of results per page")
 	cmd.Flags().String("mode", "list", "Query mode: list or aggregate")
+	cmdutil.RegisterEnumCompletion(cmd, "mode", "list", "aggregate")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence before reading")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmdutil.AddAnalyzeFlag(cmd)

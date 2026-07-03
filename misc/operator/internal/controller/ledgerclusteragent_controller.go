@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -35,6 +36,19 @@ type LedgerClusterAgentReconciler struct {
 	client.Client
 
 	Scheme *runtime.Scheme
+
+	// OperatorNamespace is where the canonical seed Secret of every
+	// LedgerClusterAgent is stored. Injected at construction (from
+	// DiscoverOperatorNamespace in production, from a fixed namespace in
+	// envtest) so the reconciler does not depend on process-global state.
+	OperatorNamespace string
+
+	// APIReader is an uncached reader used exclusively for canonical Secret
+	// reads in the operator's own namespace. Going through the manager's
+	// cached client would either force us to widen --watch-namespace scope
+	// (surprising for multi-tenant deployments) or hit a cache-miss. Writes
+	// always bypass the cache and use the regular Client.
+	APIReader client.Reader
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerclusteragents,verbs=get;list;watch;create;update;patch;delete
@@ -92,24 +106,43 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Compute the desired target namespaces (matched services + additional).
 	desiredNamespaces := computeDesiredNamespaces(matchedServices, agent.Spec.AdditionalNamespaces)
 
-	// List existing replicas across all namespaces.
-	existingReplicas, err := r.listAgentSecrets(ctx, agent.Name)
+	// List existing replicas across all namespaces (canonical excluded via label filter).
+	existingReplicas, err := r.listAgentReplicaSecrets(ctx, agent.Name)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("listing agent secrets: %w", err)
+		return ctrl.Result{}, fmt.Errorf("listing agent replica secrets: %w", err)
 	}
 
-	// Replicate (and resolve canonical key material) only when at least one target exists.
-	// With no targets, the keypair is not persisted so it is not generated either.
+	// Resolve canonical seed material. The canonical Secret lives in the
+	// operator's namespace and is the sole source of truth for the seed;
+	// per-target replicas are pure projections of its content.
+	//
+	// Bootstrap conditions: at least one desired target OR at least one
+	// existing replica. The second case covers the no-target upgrade path:
+	// legacy replicas from a pre-canonical operator would otherwise be
+	// deleted by the aggressive GC below before their seed could be
+	// adopted, permanently losing the identity.
 	var (
 		canonicalData map[string][]byte
 		refs          = make([]ledgerv1alpha1.SecretReference, 0, len(desiredNamespaces))
 	)
-	if len(desiredNamespaces) > 0 {
-		canonicalData, err = canonicalKeyData(existingReplicas)
+	if len(desiredNamespaces) > 0 || len(existingReplicas) > 0 {
+		canonicalData, err = r.ensureCanonicalSecret(ctx, agent, existingReplicas)
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("resolving canonical key data: %w", err)
-		}
+			meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
+				Type:               "Ready",
+				Status:             metav1.ConditionFalse,
+				Reason:             "CanonicalFailed",
+				Message:            err.Error(),
+				ObservedGeneration: agent.Generation,
+			})
+			agent.Status.Phase = "Error"
+			_ = r.Status().Update(ctx, agent)
 
+			return ctrl.Result{}, fmt.Errorf("ensuring canonical secret: %w", err)
+		}
+	}
+
+	if len(desiredNamespaces) > 0 {
 		for _, ns := range desiredNamespaces {
 			if err := r.ensureReplica(ctx, agent, ns, canonicalData); err != nil {
 				meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
@@ -131,8 +164,11 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}
 
-	// Garbage-collect orphan replicas in namespaces no longer in scope (also covers
-	// the no-targets case: any leftover replica from a previous reconcile is removed).
+	// Aggressively garbage-collect replica Secrets in namespaces no longer
+	// in scope. Because the seed lives on the canonical Secret in the
+	// operator namespace, deleting stale replicas can never destroy the
+	// canonical key material — the "seed vanishes when the last target
+	// disappears" hazard the previous design had is gone.
 	desiredSet := make(map[string]struct{}, len(desiredNamespaces))
 	for _, ns := range desiredNamespaces {
 		desiredSet[ns] = struct{}{}
@@ -145,7 +181,7 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, fmt.Errorf("deleting orphan secret in %q: %w", secret.Namespace, err)
 		}
-		logger.Info("deleted orphan agent secret", "namespace", secret.Namespace, "name", secret.Name)
+		logger.Info("deleted orphan agent replica secret", "namespace", secret.Namespace, "name", secret.Name)
 	}
 
 	agent.Status.MatchedServices = matchedServices
@@ -159,7 +195,7 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 			Type:               "Ready",
 			Status:             metav1.ConditionFalse,
 			Reason:             "NoTargets",
-			Message:            "no matched LedgerServices or additional namespaces; agent keypair is not persisted",
+			Message:            "no matched LedgerServices or additional namespaces; canonical seed (if any) is preserved for later reuse",
 			ObservedGeneration: agent.Generation,
 		})
 	} else {
@@ -181,22 +217,34 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{}, nil
 }
 
-// handleDeletion removes every replica of the agent's Secret and then drops the finalizer.
+// handleDeletion removes the canonical Secret and every replica of the
+// agent's Secret, then drops the finalizer.
 func (r *LedgerClusterAgentReconciler) handleDeletion(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(agent, agentFinalizer) {
-		replicas, err := r.listAgentSecrets(ctx, agent.Name)
+		replicas, err := r.listAgentReplicaSecrets(ctx, agent.Name)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("listing agent secrets for deletion: %w", err)
 		}
 		for i := range replicas {
 			secret := &replicas[i]
 			if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
-				return ctrl.Result{}, fmt.Errorf("deleting agent secret in %q: %w", secret.Namespace, err)
+				return ctrl.Result{}, fmt.Errorf("deleting agent replica secret in %q: %w", secret.Namespace, err)
 			}
-			logger.Info("deleted agent secret", "namespace", secret.Namespace, "name", secret.Name)
+			logger.Info("deleted agent replica secret", "namespace", secret.Namespace, "name", secret.Name)
 		}
+
+		canonical := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      agentCanonicalSecretName(agent.Name),
+				Namespace: r.OperatorNamespace,
+			},
+		}
+		if err := r.Delete(ctx, canonical); err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("deleting canonical secret: %w", err)
+		}
+		logger.Info("deleted agent canonical secret", "namespace", r.OperatorNamespace, "name", canonical.Name)
 
 		controllerutil.RemoveFinalizer(agent, agentFinalizer)
 		if err := r.Update(ctx, agent); err != nil {
@@ -233,41 +281,151 @@ func (r *LedgerClusterAgentReconciler) resolveMatchedServices(ctx context.Contex
 	return matched, nil
 }
 
-// listAgentSecrets returns every Secret labeled as belonging to the given agent,
-// across all namespaces.
-func (r *LedgerClusterAgentReconciler) listAgentSecrets(ctx context.Context, agentName string) ([]corev1.Secret, error) {
+// listAgentReplicaSecrets returns every replica Secret belonging to the given
+// agent, across all namespaces. The canonical Secret is identified by
+// name + namespace and excluded from the result — filtering by name (rather
+// than by an additional label) means Secrets created by pre-canonical
+// versions of the operator are still discovered, so upgrade adopts them
+// instead of orphaning them.
+func (r *LedgerClusterAgentReconciler) listAgentReplicaSecrets(ctx context.Context, agentName string) ([]corev1.Secret, error) {
 	var secrets corev1.SecretList
-	if err := r.List(ctx, &secrets, client.MatchingLabels{agentNameLabel: agentName}); err != nil {
+	if err := r.List(ctx, &secrets, client.MatchingLabels{
+		agentNameLabel: agentName,
+	}); err != nil {
 		return nil, err
 	}
 
-	return secrets.Items, nil
+	canonicalName := agentCanonicalSecretName(agentName)
+
+	filtered := secrets.Items[:0]
+	for _, s := range secrets.Items {
+		if s.Name == canonicalName && s.Namespace == r.OperatorNamespace {
+			continue
+		}
+		filtered = append(filtered, s)
+	}
+
+	return filtered, nil
 }
 
-// canonicalKeyData returns the canonical Secret payload for the agent. If any
-// replica already exists, its data is used (all replicas carry identical content).
-// Otherwise, a fresh Ed25519 keypair is generated.
-func canonicalKeyData(existing []corev1.Secret) (map[string][]byte, error) {
-	for i := range existing {
-		if len(existing[i].Data["seed.hex"]) > 0 {
-			return existing[i].Data, nil
+// ensureCanonicalSecret creates the canonical seed Secret in the operator's
+// namespace on first call for the agent, and returns its data on every
+// subsequent call. The seed is generated exactly once and the Secret is
+// never updated after creation — the canonical value is stable across the
+// agent's lifetime, independent of the manager cache configuration.
+//
+// Reads go through r.APIReader (uncached) to avoid forcing the caller to
+// widen --watch-namespace scope for every controller in the manager just so
+// the operator namespace is covered. Writes hit the API server directly
+// regardless of cache.
+//
+// Upgrade path: existingReplicas is the set of Secrets carrying seed material
+// under the older (canonical-less) layout. When bootstrapping the canonical
+// for the first time, we adopt the seed from one of them instead of
+// generating fresh material — otherwise upgrading the operator would
+// silently invalidate every bundle already handed out.
+func (r *LedgerClusterAgentReconciler) ensureCanonicalSecret(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent, existingReplicas []corev1.Secret) (map[string][]byte, error) {
+	if r.OperatorNamespace == "" {
+		return nil, errors.New("operator namespace not configured")
+	}
+	if r.APIReader == nil {
+		return nil, errors.New("APIReader not configured")
+	}
+
+	key := types.NamespacedName{
+		Name:      agentCanonicalSecretName(agent.Name),
+		Namespace: r.OperatorNamespace,
+	}
+
+	existing := &corev1.Secret{}
+	switch err := r.APIReader.Get(ctx, key, existing); {
+	case err == nil:
+		if len(existing.Data[keySeedHex]) == 0 {
+			return nil, fmt.Errorf("canonical secret %s/%s exists but has no seed", key.Namespace, key.Name)
+		}
+
+		return existing.Data, nil
+	case !apierrors.IsNotFound(err):
+		return nil, fmt.Errorf("reading canonical secret: %w", err)
+	}
+
+	// Not found — mint a new canonical, adopting a legacy replica's seed
+	// when available to keep bundles valid across upgrades.
+	fresh := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      key.Name,
+			Namespace: key.Namespace,
+			Labels: map[string]string{
+				agentNameLabel: agent.Name,
+			},
+		},
+	}
+
+	if adopted := adoptSeedFromReplica(existingReplicas); adopted != nil {
+		fresh.Data = adopted
+	} else {
+		seed, pubKey, keyID, err := generateEd25519KeyPair()
+		if err != nil {
+			return nil, fmt.Errorf("generating Ed25519 keypair: %w", err)
+		}
+		fresh.Data = map[string][]byte{
+			keySeedHex:   []byte(hex.EncodeToString(seed)),
+			keyPubKeyHex: []byte(hex.EncodeToString(pubKey)),
+			keyKeyID:     []byte(keyID),
 		}
 	}
 
-	seed, pubKey, keyID, err := generateEd25519KeyPair()
-	if err != nil {
-		return nil, fmt.Errorf("generating Ed25519 keypair: %w", err)
+	if err := r.Create(ctx, fresh); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			// A concurrent reconcile beat us to it. Re-read via APIReader
+			// (the write may not be visible on the cached client yet).
+			if err := r.APIReader.Get(ctx, key, existing); err != nil {
+				return nil, fmt.Errorf("re-reading canonical secret after AlreadyExists: %w", err)
+			}
+
+			return existing.Data, nil
+		}
+
+		return nil, fmt.Errorf("creating canonical secret: %w", err)
 	}
 
-	return map[string][]byte{
-		"seed.hex":   []byte(hex.EncodeToString(seed)),
-		"pubkey.hex": []byte(hex.EncodeToString(pubKey)),
-		"key-id":     []byte(keyID),
-	}, nil
+	return fresh.Data, nil
 }
 
-// ensureReplica creates or updates the agent's Secret in the given namespace
-// with the canonical data.
+// adoptSeedFromReplica returns a copy of the seed material found on any
+// existing replica, or nil when no candidate carries a seed. The candidate
+// pool is sorted deterministically by namespace/name so the choice is stable
+// across reconciles when multiple replicas exist (all replicas should carry
+// the same content, but we do not rely on that invariant here).
+func adoptSeedFromReplica(replicas []corev1.Secret) map[string][]byte {
+	candidates := make([]*corev1.Secret, 0, len(replicas))
+	for i := range replicas {
+		if len(replicas[i].Data[keySeedHex]) > 0 {
+			candidates = append(candidates, &replicas[i])
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].Namespace != candidates[j].Namespace {
+			return candidates[i].Namespace < candidates[j].Namespace
+		}
+
+		return candidates[i].Name < candidates[j].Name
+	})
+
+	src := candidates[0].Data
+
+	return map[string][]byte{
+		keySeedHex:   append([]byte(nil), src[keySeedHex]...),
+		keyPubKeyHex: append([]byte(nil), src[keyPubKeyHex]...),
+		keyKeyID:     append([]byte(nil), src[keyKeyID]...),
+	}
+}
+
+// ensureReplica creates or updates the agent's replica Secret in the given
+// namespace with a projection of the canonical data.
 func (r *LedgerClusterAgentReconciler) ensureReplica(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent, namespace string, data map[string][]byte) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -313,7 +471,7 @@ func computeDesiredNamespaces(matched []ledgerv1alpha1.MatchedService, additiona
 	return out
 }
 
-// agentSecretName returns the name of the Secret managed by the agent.
+// agentSecretName returns the name of the replica Secret managed by the agent.
 func agentSecretName(agent *ledgerv1alpha1.LedgerClusterAgent) string {
 	return prefixedName(agent.Name) + "-agent-keys"
 }
@@ -361,6 +519,12 @@ func (r *LedgerClusterAgentReconciler) ledgerServiceToAgents(ctx context.Context
 
 	return requests
 }
+
+const (
+	keySeedHex   = "seed.hex"
+	keyPubKeyHex = "pubkey.hex"
+	keyKeyID     = "key-id"
+)
 
 // generateEd25519KeyPair generates a new Ed25519 keypair and returns the seed,
 // public key, and a key ID (SHA-256 fingerprint prefix, 16 hex chars).

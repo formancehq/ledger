@@ -18,6 +18,8 @@ Technical reference for the Ledger v3 distributed ledger system.
 | Learn about storage internals | [architecture/subsystems/storage/storage.md](architecture/subsystems/storage/storage.md) |
 | Understand ledgers and transactions | [architecture/data-model.md](architecture/data-model.md) |
 | See data flow diagrams | [architecture/data-flows.md](architecture/data-flows.md) |
+| Understand the audit trail (source of truth) | [architecture/subsystems/checker/audit-chain.md](architecture/subsystems/checker/audit-chain.md) |
+| Add a new persisted projection (checker duties) | [architecture/subsystems/checker/checker.md](architecture/subsystems/checker/checker.md) |
 | Learn the gRPC API | [architecture/subsystems/api/grpc-api.md](architecture/subsystems/api/grpc-api.md) |
 | Learn the HTTP API | [architecture/subsystems/api/http-api.md](architecture/subsystems/api/http-api.md) |
 | Set up the dev environment | [contributing/getting-started.md](contributing/getting-started.md) |

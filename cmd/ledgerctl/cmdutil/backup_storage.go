@@ -17,6 +17,7 @@ import (
 // BackupStorageConfigFromFlags to read it back.
 func AddBackupStorageFlags(cmd *cobra.Command) {
 	cmd.Flags().String("driver", "s3", "Backup storage driver: s3 or azure")
+	RegisterEnumCompletion(cmd, "driver", "s3", "azure")
 	// S3 flags
 	cmd.Flags().String("s3-bucket", "", "S3 bucket name (required when driver=s3)")
 	cmd.Flags().String("s3-region", "", "AWS region for S3 bucket")

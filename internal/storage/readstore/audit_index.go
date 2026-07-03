@@ -2,7 +2,6 @@ package readstore
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -12,29 +11,12 @@ import (
 
 // ReadAuditProgress returns the last indexed audit sequence (0 if unset).
 func (s *Store) ReadAuditProgress() (uint64, error) {
-	v, closer, err := s.db.Get(AuditProgressKey())
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
-		}
-
-		return 0, fmt.Errorf("reading audit progress: %w", err)
-	}
-	defer func() { _ = closer.Close() }()
-
-	if len(v) != 8 {
-		return 0, fmt.Errorf("audit progress: unexpected length %d", len(v))
-	}
-
-	return binary.BigEndian.Uint64(v), nil
+	return auditCursor.Read(s.db)
 }
 
 // WriteAuditProgress persists the audit indexing cursor in the batch.
 func (s *Store) WriteAuditProgress(batch *dal.WriteSession, sequence uint64) error {
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], sequence)
-
-	return batch.SetBytes(AuditProgressKey(), buf[:])
+	return auditCursor.Write(batch, sequence)
 }
 
 // DropAuditIndexInBatch stages deletion of every audit-index key (but NOT the

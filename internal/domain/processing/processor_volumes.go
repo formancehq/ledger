@@ -1,8 +1,6 @@
 package processing
 
 import (
-	"errors"
-
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -13,7 +11,15 @@ import (
 // pairs involved in the given postings. It reads the current volume state from the
 // in-memory store (after postings have been applied) and converts Known values
 // into concrete Input/Output values as big integer strings.
-func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) *commonpb.PostCommitVolumes {
+//
+// Reads go through readVolumeOrZero: a declared-but-absent key (domain.ErrNotFound)
+// is reported as a zero balance, while any other error — notably
+// *state.ErrCoverageMiss, an admission-contract violation (invariants #6/#9) that
+// is impossible by design under a correct preload — is propagated as an
+// ErrStorageOperation so the order is rejected loudly (invariant #7) rather than
+// returned to the client as a silently truncated volume map (EN-1440). This
+// mirrors applyPosting, which reads the same source+destination keys.
+func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) (*commonpb.PostCommitVolumes, domain.Describable) {
 	// Collect unique (account, asset) pairs
 	type accountAsset struct {
 		account string
@@ -43,22 +49,15 @@ func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Pos
 	var scratch uint256.Int
 
 	for _, pair := range pairs {
-		vol, err := s.Volumes().Get(domain.NewVolumeKey(ledgerName, pair.account, pair.asset))
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			continue
+		vol, err := readVolumeOrZero(s, domain.NewVolumeKey(ledgerName, pair.account, pair.asset))
+		if err != nil {
+			return nil, &domain.ErrStorageOperation{Operation: "loading post-commit volume", Cause: err}
 		}
 
-		var inputStr, outputStr string
-
-		if vol != nil {
-			vol.GetInput().IntoUint256(&scratch)
-			inputStr = scratch.Dec()
-			vol.GetOutput().IntoUint256(&scratch)
-			outputStr = scratch.Dec()
-		} else {
-			inputStr = "0"
-			outputStr = "0"
-		}
+		vol.GetInput().IntoUint256(&scratch)
+		inputStr := scratch.Dec()
+		vol.GetOutput().IntoUint256(&scratch)
+		outputStr := scratch.Dec()
 
 		byAssets, ok := volumesByAccount[pair.account]
 		if !ok {
@@ -76,5 +75,5 @@ func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Pos
 
 	return &commonpb.PostCommitVolumes{
 		VolumesByAccount: volumesByAccount,
-	}
+	}, nil
 }
