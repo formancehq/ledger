@@ -64,7 +64,7 @@ Using SST directly (rather than re-encoding into a portable format like Parquet 
 
 ## Configuration
 
-Operators configure cold storage at the cluster level (typically through the Operator's `LedgerService` CRD or `--cold-storage-*` flags on the server binary): driver type, S3 endpoint + bucket + creds, filesystem root. The configuration is **cluster-wide**, not per-ledger — every chapter from every ledger lands in the same configured cold-storage target.
+Operators configure cold storage at the cluster level (typically through the Operator's `Cluster` CRD or `--cold-storage-*` flags on the server binary): driver type, S3 endpoint + bucket + creds, filesystem root. The configuration is **cluster-wide**, not per-ledger — every chapter from every ledger lands in the same configured cold-storage target.
 
 A chapter that should never be archived can be kept in `CLOSED` indefinitely; the FSM does not auto-archive — archive is always triggered explicitly via `ArchiveChapterOrder`, either by an operator command or by the chapter-schedule mechanism (`SetChapterSchedule` log).
 
