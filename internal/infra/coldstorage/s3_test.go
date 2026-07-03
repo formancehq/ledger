@@ -5,6 +5,7 @@ package coldstorage
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -305,6 +306,47 @@ func TestS3Storage_ExistsRequiresMetadata(t *testing.T) {
 	exists, err = storage.Exists(ctx, "bucket", 2)
 	require.NoError(t, err)
 	require.True(t, exists)
+}
+
+// TestS3Storage_ArchiveMultipartLargeObject archives an object larger than the
+// uploader's part size, exercising the multipart path against MinIO and proving
+// the checksum metadata and Fetch round-trip survive it. A chapter SST can
+// exceed the 5 GB single-PutObject limit; multipart is what lifts that ceiling.
+func TestS3Storage_ArchiveMultipartLargeObject(t *testing.T) {
+	t.Parallel()
+
+	client, _ := setupMinIO(t)
+	storage := NewS3Storage(client, minioBucket)
+	ctx := context.Background()
+
+	// 12 MiB > the 5 MiB default part size → at least 3 parts.
+	const size = 12 << 20
+
+	payload := make([]byte, size)
+	for i := range payload {
+		payload[i] = byte(i * 7)
+	}
+
+	sum := ComputeSHA256OrPanic(payload)
+	require.NoError(t, storage.Archive(ctx, "big-bucket", 99, bytes.NewReader(payload), sum))
+
+	exists, err := storage.Exists(ctx, "big-bucket", 99)
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	got, err := storage.ExpectedChecksum(ctx, "big-bucket", 99)
+	require.NoError(t, err)
+	require.Equal(t, sum, got)
+
+	rc, err := storage.Fetch(ctx, "big-bucket", 99)
+	require.NoError(t, err)
+
+	defer func() { _ = rc.Close() }()
+
+	readBack, err := io.ReadAll(rc)
+	require.NoError(t, err)
+	require.Len(t, readBack, size)
+	require.Equal(t, sha256.Sum256(payload), sha256.Sum256(readBack))
 }
 
 func TestS3Storage_ExpectedChecksum(t *testing.T) {

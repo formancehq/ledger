@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -328,4 +329,244 @@ func TestRunIncrementalBackup_InvokesPruneForExportsOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Zero(t, result.OrphansDeleted)
+}
+
+// memStorage is an in-memory Storage that keeps uploaded bytes, so a test can
+// both inspect segments and feed them back through ApplyExports.
+type memStorage struct {
+	mu    sync.Mutex
+	files map[string][]byte
+}
+
+func newMemStorage() *memStorage {
+	return &memStorage{files: make(map[string][]byte)}
+}
+
+func (m *memStorage) PutFile(_ context.Context, key string, data io.Reader, _ int64) error {
+	b, err := io.ReadAll(data)
+	if err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	m.files[key] = b
+	m.mu.Unlock()
+
+	return nil
+}
+
+func (m *memStorage) GetFile(_ context.Context, key string) (io.ReadCloser, error) {
+	m.mu.Lock()
+	b, ok := m.files[key]
+	m.mu.Unlock()
+
+	if !ok {
+		return nil, ErrFileNotFound
+	}
+
+	return io.NopCloser(bytes.NewReader(b)), nil
+}
+
+func (m *memStorage) DeleteFile(_ context.Context, key string) error {
+	m.mu.Lock()
+	delete(m.files, key)
+	m.mu.Unlock()
+
+	return nil
+}
+
+func (m *memStorage) ListFiles(_ context.Context, prefix string) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var keys []string
+
+	for k := range m.files {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+
+	return keys, nil
+}
+
+func coldAuditItemKey(seq uint64, idx uint32) []byte {
+	return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(seq).PutUint32(idx).Build()
+}
+
+// TestExportEntries_SplitsLargeRangeAndRoundTrips is the headline coverage for
+// the fix: a range whose serialized entries exceed the segment cap streams into
+// several bounded segments (no full-segment buffer), those segments cover the
+// range contiguously, and applying them reconstructs every entry.
+func TestExportEntries_SplitsLargeRangeAndRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	src := newBackupTestStore(t)
+
+	const (
+		n         = 50
+		valueSize = 1024
+		capBytes  = 8 * 1024
+	)
+
+	want := make(map[uint64][]byte, n)
+
+	batch := src.OpenWriteSession()
+	for seq := uint64(1); seq <= n; seq++ {
+		val := bytes.Repeat([]byte{byte(seq)}, valueSize)
+		require.NoError(t, batch.SetBytes(coldLogKey(seq), val))
+		want[seq] = val
+	}
+
+	require.NoError(t, batch.Commit())
+
+	storage := newMemStorage()
+
+	readHandle, err := src.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = readHandle.Close() })
+
+	segs, count, err := exportEntries(ctx, storage, readHandle,
+		dal.ZoneCold, dal.SubColdLog, 0, n, "log",
+		func(part int) string { return ExportLogSegmentKey("bucket", 1, n, part) },
+		capBytes,
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint64(n), count)
+	require.Greater(t, len(segs), 1, "a range larger than the cap must split into multiple segments")
+
+	require.Equal(t, uint64(1), segs[0].StartSeq)
+	require.Equal(t, uint64(n), segs[len(segs)-1].EndSeq)
+
+	for i, seg := range segs {
+		require.Equal(t, "log", seg.Type)
+		require.LessOrEqual(t, seg.StartSeq, seg.EndSeq)
+		require.Positive(t, seg.Size)
+		require.Equal(t, ExportLogSegmentKey("bucket", 1, n, i), seg.Key)
+		require.Contains(t, storage.files, seg.Key)
+
+		if i > 0 {
+			require.Equal(t, segs[i-1].EndSeq+1, seg.StartSeq, "segments must be contiguous")
+		}
+
+		if i < len(segs)-1 {
+			require.GreaterOrEqual(t, seg.Size, int64(capBytes), "non-final segments are bounded near the cap")
+		}
+	}
+
+	// Restore round-trip: applying the split segments reconstructs every entry.
+	dst := newBackupTestStore(t)
+	require.NoError(t, ApplyExports(ctx, logging.Testing(), storage, dst, segs))
+
+	dstHandle, err := dst.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dstHandle.Close() })
+
+	for seq := uint64(1); seq <= n; seq++ {
+		got, closer, err := dstHandle.Get(coldLogKey(seq))
+		require.NoError(t, err, "seq %d", seq)
+		require.Equal(t, want[seq], got, "seq %d", seq)
+		_ = closer.Close()
+	}
+}
+
+// TestExportEntries_SplitsOnlyAtSequenceBoundaries proves a single sequence's
+// keys (audit items share a sequence) never straddle two segments, even when
+// the cap falls mid-sequence.
+func TestExportEntries_SplitsOnlyAtSequenceBoundaries(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	src := newBackupTestStore(t)
+
+	const (
+		seqs        = 10
+		itemsPerSeq = 5
+		valueSize   = 1024
+		capBytes    = 4 * 1024 // ~4 items → cap lands inside a sequence
+	)
+
+	batch := src.OpenWriteSession()
+	for seq := uint64(1); seq <= seqs; seq++ {
+		for idx := range uint32(itemsPerSeq) {
+			val := bytes.Repeat([]byte{byte(seq), byte(idx)}, valueSize/2)
+			require.NoError(t, batch.SetBytes(coldAuditItemKey(seq, idx), val))
+		}
+	}
+
+	require.NoError(t, batch.Commit())
+
+	storage := newMemStorage()
+
+	readHandle, err := src.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = readHandle.Close() })
+
+	segs, count, err := exportEntries(ctx, storage, readHandle,
+		dal.ZoneCold, dal.SubColdAuditItem, 0, seqs, "auditItem",
+		func(part int) string { return ExportAuditItemSegmentKey("bucket", 1, seqs, part) },
+		capBytes,
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint64(seqs*itemsPerSeq), count)
+	require.Greater(t, len(segs), 1)
+
+	// Each sequence's items must all live in exactly one segment.
+	seen := make(map[uint64]int)
+
+	for _, seg := range segs {
+		rc, err := storage.GetFile(ctx, seg.Key)
+		require.NoError(t, err)
+
+		reader := NewKVStreamReader(rc)
+		require.NoError(t, reader.ReadHeader())
+
+		segSeqs := make(map[uint64]int)
+
+		for {
+			k, _, err := reader.ReadEntry()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			require.NoError(t, err)
+			segSeqs[seqFromKey(k)]++
+		}
+
+		_ = rc.Close()
+
+		for seq, itemCount := range segSeqs {
+			require.Equal(t, itemsPerSeq, itemCount, "seq %d must have all its items in one segment", seq)
+			require.NotContains(t, seen, seq, "seq %d must not appear in more than one segment", seq)
+			seen[seq]++
+		}
+	}
+
+	require.Len(t, seen, seqs, "every sequence must be exported exactly once")
+}
+
+// TestExportEntries_EmptyRangeUploadsNothing verifies that a range with no
+// entries produces no segments and no upload — the appliedProposal-only-failures
+// case that must not leave a manifest entry pointing at a missing object.
+func TestExportEntries_EmptyRangeUploadsNothing(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	src := newBackupTestStore(t)
+	storage := newMemStorage()
+
+	readHandle, err := src.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = readHandle.Close() })
+
+	segs, count, err := exportEntries(ctx, storage, readHandle,
+		dal.ZoneCold, dal.SubColdAppliedProposal, 0, 100, "appliedProposal",
+		func(part int) string { return ExportAppliedProposalSegmentKey("bucket", 1, 100, part) },
+		maxExportSegmentBytes,
+	)
+	require.NoError(t, err)
+	require.Empty(t, segs)
+	require.Zero(t, count)
+	require.Empty(t, storage.files)
 }
