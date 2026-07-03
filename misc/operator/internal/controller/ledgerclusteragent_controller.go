@@ -255,27 +255,60 @@ func (r *LedgerClusterAgentReconciler) handleDeletion(ctx context.Context, agent
 	return ctrl.Result{}, nil
 }
 
-// resolveMatchedServices lists Clusters across all namespaces and returns
-// those matching the agent's label selector.
+// resolveMatchedServices lists Clusters (and, for the migration window,
+// legacy LedgerServices) across all namespaces and returns those matching
+// the agent's label selector. LedgerServices are included so that during
+// an in-place upgrade the agent does not see matched=∅ and treat every
+// existing replica Secret as an orphan to garbage-collect: that path
+// rotates keys mid-upgrade and breaks Cluster auth before the migrator
+// has had a chance to run. Once a legacy LS has been migrated it still
+// exists as a deprecated shadow but shares the Cluster's namespace+name,
+// so the resulting MatchedService list is de-duplicated.
 func (r *LedgerClusterAgentReconciler) resolveMatchedServices(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent) ([]ledgerv1alpha1.MatchedService, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&agent.Spec.Selector)
 	if err != nil {
 		return nil, fmt.Errorf("parsing label selector: %w", err)
 	}
 
-	var services ledgerv1alpha1.ClusterList
-	if err := r.List(ctx, &services, &client.ListOptions{LabelSelector: selector}); err != nil {
+	var clusters ledgerv1alpha1.ClusterList
+	if err := r.List(ctx, &clusters, &client.ListOptions{LabelSelector: selector}); err != nil {
 		return nil, fmt.Errorf("listing Clusters: %w", err)
 	}
 
-	matched := make([]ledgerv1alpha1.MatchedService, 0, len(services.Items))
-	for i := range services.Items {
-		if selector.Matches(labels.Set(services.Items[i].Labels)) {
-			matched = append(matched, ledgerv1alpha1.MatchedService{
-				Namespace: services.Items[i].Namespace,
-				Name:      services.Items[i].Name,
-			})
+	seen := make(map[string]struct{}, len(clusters.Items))
+	matched := make([]ledgerv1alpha1.MatchedService, 0, len(clusters.Items))
+	for i := range clusters.Items {
+		if !selector.Matches(labels.Set(clusters.Items[i].Labels)) {
+			continue
 		}
+		key := clusters.Items[i].Namespace + "/" + clusters.Items[i].Name
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		matched = append(matched, ledgerv1alpha1.MatchedService{
+			Namespace: clusters.Items[i].Namespace,
+			Name:      clusters.Items[i].Name,
+		})
+	}
+
+	var legacy ledgerv1alpha1.LedgerServiceList
+	if err := r.List(ctx, &legacy, &client.ListOptions{LabelSelector: selector}); err != nil {
+		return nil, fmt.Errorf("listing LedgerServices: %w", err)
+	}
+	for i := range legacy.Items {
+		if !selector.Matches(labels.Set(legacy.Items[i].Labels)) {
+			continue
+		}
+		key := legacy.Items[i].Namespace + "/" + legacy.Items[i].Name
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		matched = append(matched, ledgerv1alpha1.MatchedService{
+			Namespace: legacy.Items[i].Namespace,
+			Name:      legacy.Items[i].Name,
+		})
 	}
 
 	return matched, nil

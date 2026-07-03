@@ -10,7 +10,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,6 +45,15 @@ type LedgerServiceMigrator struct {
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices/status,verbs=get;update;patch
+
+// dnsEndpointGVK is the GroupVersionKind of the external-dns DNSEndpoint
+// CRD the Cluster reconciler may create. The CRD is optional, so the
+// migrator tolerates NoKindMatchError / NotFound when listing it.
+var dnsEndpointGVK = schema.GroupVersionKind{
+	Group:   "externaldns.k8s.io",
+	Version: "v1alpha1",
+	Kind:    "DNSEndpoint",
+}
 
 // Reconcile migrates a LedgerService to a Cluster. Idempotent by design:
 // callers must never rely on side effects beyond "Cluster exists, children
@@ -78,7 +89,6 @@ func (r *LedgerServiceMigrator) Reconcile(ctx context.Context, req ctrl.Request)
 			if !apierrors.IsAlreadyExists(err) {
 				return ctrl.Result{}, fmt.Errorf("creating Cluster from LedgerService: %w", err)
 			}
-			// Racy re-read to pick up the UID stamped by the server.
 			if err := r.Get(ctx, types.NamespacedName{Name: ls.Name, Namespace: ls.Namespace}, cluster); err != nil {
 				return ctrl.Result{}, fmt.Errorf("re-reading existing Cluster after AlreadyExists: %w", err)
 			}
@@ -121,19 +131,17 @@ func (r *LedgerServiceMigrator) Reconcile(ctx context.Context, req ctrl.Request)
 // ("object already has a different controller") and deleting the source
 // LedgerService would garbage-collect the live workload via cascade delete.
 //
-// Children are located by the operator's `app.kubernetes.io/instance=<name>`
-// label — the same label reconcile_*.go stamps on everything it creates.
-// Objects without a controller ownerRef to this LedgerService are ignored,
-// so the pass is safe to run repeatedly (idempotent) and cheap on already-
-// migrated services.
+// Children are matched by ownerReference UID (not by the operator's instance
+// label): a LedgerService whose spec.additionalLabels overrode
+// app.kubernetes.io/instance would leave its children with a different label
+// value, so a label filter here would silently miss every one of them.
+// Listing per-kind in the CR's namespace is bounded and the in-memory UID
+// check filters out unrelated objects, so this stays cheap.
 func (r *LedgerServiceMigrator) rehomeChildren(ctx context.Context, ls *ledgerv1alpha1.LedgerService, cluster *ledgerv1alpha1.Cluster) error {
-	listOpts := []client.ListOption{
-		client.InNamespace(ls.Namespace),
-		client.MatchingLabels{labelInstance: ls.Name},
-	}
+	nsOnly := []client.ListOption{client.InNamespace(ls.Namespace)}
 
 	var stsList appsv1.StatefulSetList
-	if err := r.List(ctx, &stsList, listOpts...); err != nil {
+	if err := r.List(ctx, &stsList, nsOnly...); err != nil {
 		return fmt.Errorf("listing StatefulSets: %w", err)
 	}
 	for i := range stsList.Items {
@@ -143,7 +151,7 @@ func (r *LedgerServiceMigrator) rehomeChildren(ctx context.Context, ls *ledgerv1
 	}
 
 	var svcList corev1.ServiceList
-	if err := r.List(ctx, &svcList, listOpts...); err != nil {
+	if err := r.List(ctx, &svcList, nsOnly...); err != nil {
 		return fmt.Errorf("listing Services: %w", err)
 	}
 	for i := range svcList.Items {
@@ -153,7 +161,7 @@ func (r *LedgerServiceMigrator) rehomeChildren(ctx context.Context, ls *ledgerv1
 	}
 
 	var saList corev1.ServiceAccountList
-	if err := r.List(ctx, &saList, listOpts...); err != nil {
+	if err := r.List(ctx, &saList, nsOnly...); err != nil {
 		return fmt.Errorf("listing ServiceAccounts: %w", err)
 	}
 	for i := range saList.Items {
@@ -163,7 +171,7 @@ func (r *LedgerServiceMigrator) rehomeChildren(ctx context.Context, ls *ledgerv1
 	}
 
 	var cmList corev1.ConfigMapList
-	if err := r.List(ctx, &cmList, listOpts...); err != nil {
+	if err := r.List(ctx, &cmList, nsOnly...); err != nil {
 		return fmt.Errorf("listing ConfigMaps: %w", err)
 	}
 	for i := range cmList.Items {
@@ -173,7 +181,7 @@ func (r *LedgerServiceMigrator) rehomeChildren(ctx context.Context, ls *ledgerv1
 	}
 
 	var secretList corev1.SecretList
-	if err := r.List(ctx, &secretList, listOpts...); err != nil {
+	if err := r.List(ctx, &secretList, nsOnly...); err != nil {
 		return fmt.Errorf("listing Secrets: %w", err)
 	}
 	for i := range secretList.Items {
@@ -183,7 +191,7 @@ func (r *LedgerServiceMigrator) rehomeChildren(ctx context.Context, ls *ledgerv1
 	}
 
 	var ingList networkingv1.IngressList
-	if err := r.List(ctx, &ingList, listOpts...); err != nil {
+	if err := r.List(ctx, &ingList, nsOnly...); err != nil {
 		return fmt.Errorf("listing Ingresses: %w", err)
 	}
 	for i := range ingList.Items {
@@ -193,7 +201,7 @@ func (r *LedgerServiceMigrator) rehomeChildren(ctx context.Context, ls *ledgerv1
 	}
 
 	var npList networkingv1.NetworkPolicyList
-	if err := r.List(ctx, &npList, listOpts...); err != nil {
+	if err := r.List(ctx, &npList, nsOnly...); err != nil {
 		return fmt.Errorf("listing NetworkPolicies: %w", err)
 	}
 	for i := range npList.Items {
@@ -202,12 +210,30 @@ func (r *LedgerServiceMigrator) rehomeChildren(ctx context.Context, ls *ledgerv1
 		}
 	}
 
+	// DNSEndpoint (external-dns) is optional — the CRD may not be installed.
+	// Tolerate NoKindMatchError / NotFound so a cluster without external-dns
+	// does not fail the whole migration.
+	dnsList := &unstructured.UnstructuredList{}
+	dnsList.SetGroupVersionKind(dnsEndpointGVK)
+	if err := r.List(ctx, dnsList, nsOnly...); err != nil {
+		if !meta.IsNoMatchError(err) && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("listing DNSEndpoints: %w", err)
+		}
+	} else {
+		for i := range dnsList.Items {
+			if err := r.rehomeOne(ctx, &dnsList.Items[i], ls, cluster); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
 // rehomeOne replaces any ownerReference on obj that points to ls with a
 // controller ownerReference to cluster. Returns nil (no update) when the
-// object was never owned by ls (label match without matching ownerRef).
+// object was never owned by ls — the pass is idempotent and cheap on
+// unrelated objects picked up by the namespace-wide list.
 func (r *LedgerServiceMigrator) rehomeOne(ctx context.Context, obj client.Object, ls *ledgerv1alpha1.LedgerService, cluster *ledgerv1alpha1.Cluster) error {
 	refs := obj.GetOwnerReferences()
 	changed := false
