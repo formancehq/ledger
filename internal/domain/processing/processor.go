@@ -242,7 +242,13 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		}
 
 		if overlay != nil {
-			overlay.Commit()
+			if err := overlay.Commit(); err != nil {
+				// Coverage-miss surfaced by a staged Delete (invariant #6):
+				// the FSM apply path must not silently drop tombstones —
+				// wrap as ErrStorageOperation so the order fails loudly
+				// (mirrors buildPostCommitVolumes / applyPosting).
+				return nil, &domain.ErrStorageOperation{Operation: "committing order overlay", Cause: err}
+			}
 		}
 
 		nextSequenceID := orderScope.IncrementNextSequenceID()

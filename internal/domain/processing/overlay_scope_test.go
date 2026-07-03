@@ -99,7 +99,7 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 	require.Equal(t, "v1", mgot.Mutate().GetStringValue())
 
 	// Account metadata: Delete then Get -> ErrNotFound.
-	overlay.AccountMetadata().Delete(mk)
+	require.NoError(t, overlay.AccountMetadata().Delete(mk))
 
 	_, err = overlay.AccountMetadata().Get(mk)
 	require.ErrorIs(t, err, domain.ErrNotFound)
@@ -112,7 +112,7 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "v1", lmgot.Mutate().GetStringValue())
 
-	overlay.LedgerMetadata().Delete(lmk)
+	require.NoError(t, overlay.LedgerMetadata().Delete(lmk))
 
 	_, err = overlay.LedgerMetadata().Get(lmk)
 	require.ErrorIs(t, err, domain.ErrNotFound)
@@ -220,7 +220,7 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	overlay.IncrementNextChapterID()
 	overlay.IncrementNextQueryCheckpointID()
 
-	overlay.Commit()
+	require.NoError(t, overlay.Commit())
 }
 
 // TestOrderOverlayScope_CounterDeltasMonotonicWithinOrder verifies that a
@@ -266,10 +266,10 @@ func TestOrderOverlayScope_DeleteOverridesPriorPut(t *testing.T) {
 
 	overlay := newOrderOverlayScope(s.parent)
 	overlay.AccountMetadata().Put(mk, commonpb.NewStringValue("v1"))
-	overlay.AccountMetadata().Delete(mk)
+	require.NoError(t, overlay.AccountMetadata().Delete(mk))
 
 	_, err := overlay.AccountMetadata().Get(mk)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	overlay.Commit()
+	require.NoError(t, overlay.Commit())
 }

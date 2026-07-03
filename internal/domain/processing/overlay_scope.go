@@ -214,14 +214,24 @@ func (o *orderOverlayScope) captureBaseCounters() {
 // If Commit is never called (because ProcessOrders decided to convert the
 // order to a skip), the overlay is dropped by going out of scope and the
 // parent state is never touched — the order is effectively rolled back.
-func (o *orderOverlayScope) Commit() {
-	o.ledgers.flush()
-	o.boundaries.flush()
-	o.volumes.flush()
-	o.accountMetadata.flush()
-	o.ledgerMetadata.flush()
-	o.transactionRefs.flush()
-	o.transactionStates.flush()
+//
+// Returns the first flush error encountered — a per-kind Delete may
+// surface a coverage-miss (invariant #6) and the caller (ProcessOrders)
+// must bubble that up rather than silently drop staged tombstones.
+func (o *orderOverlayScope) Commit() error {
+	for _, flush := range []func() error{
+		o.ledgers.flush,
+		o.boundaries.flush,
+		o.volumes.flush,
+		o.accountMetadata.flush,
+		o.ledgerMetadata.flush,
+		o.transactionRefs.flush,
+		o.transactionStates.flush,
+	} {
+		if err := flush(); err != nil {
+			return err
+		}
+	}
 
 	for k, v := range o.stagedReverted {
 		o.Scope.PutReverted(k, v)
@@ -242,6 +252,8 @@ func (o *orderOverlayScope) Commit() {
 	for range o.queryCheckpointDelta {
 		o.Scope.IncrementNextQueryCheckpointID()
 	}
+
+	return nil
 }
 
 var _ Scope = (*orderOverlayScope)(nil)
@@ -291,13 +303,15 @@ func (a *stagedAccessor[K, V, R]) Put(key K, value V) {
 	a.staged[key] = value
 }
 
-func (a *stagedAccessor[K, V, R]) Delete(key K) {
+func (a *stagedAccessor[K, V, R]) Delete(key K) error {
 	if a.deletes == nil {
 		a.deletes = make(map[K]struct{})
 	}
 
 	delete(a.staged, key)
 	a.deletes[key] = struct{}{}
+
+	return nil
 }
 
 // flush replays every staged write and tombstone onto the parent accessor.
@@ -305,12 +319,19 @@ func (a *stagedAccessor[K, V, R]) Delete(key K) {
 // state — but the caller is expected to invoke it at most once per
 // orderOverlayScope lifecycle. Maps iterate in random order; the parent
 // implementations do not depend on per-key order, so this is safe.
-func (a *stagedAccessor[K, V, R]) flush() {
+//
+// Returns the first Delete error encountered — a coverage miss (invariant
+// #6) at flush time is a real failure to surface, not a silent swallow.
+func (a *stagedAccessor[K, V, R]) flush() error {
 	for k, v := range a.staged {
 		a.parent.Put(k, v)
 	}
 
 	for k := range a.deletes {
-		a.parent.Delete(k)
+		if err := a.parent.Delete(k); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
