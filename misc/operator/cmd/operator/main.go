@@ -76,6 +76,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	operatorNamespace, err := controller.DiscoverOperatorNamespace()
+	if err != nil {
+		setupLog.Error(err, "unable to determine operator namespace")
+		os.Exit(1)
+	}
+
 	dynamicClient, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		setupLog.Error(err, "unable to create dynamic client")
@@ -94,8 +100,9 @@ func main() {
 	}
 
 	if err = (&controller.LedgerClusterAgentReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		OperatorNamespace: operatorNamespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LedgerClusterAgent")
 		os.Exit(1)

@@ -33,6 +33,11 @@ var (
 	nsCounter atomic.Int64
 )
 
+// testOperatorNamespace is the fixed namespace the LedgerClusterAgent
+// reconciler treats as the operator's own — where every canonical seed
+// Secret is created. Provisioned once in TestMain.
+const testOperatorNamespace = "ledger-operator-system"
+
 func TestMain(m *testing.M) {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
@@ -63,6 +68,12 @@ func TestMain(m *testing.M) {
 
 	ctx, cancel = context.WithCancel(context.Background())
 
+	if err := k8sClient.Create(ctx, &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: testOperatorNamespace},
+	}); err != nil {
+		panic(fmt.Sprintf("creating operator namespace: %v", err))
+	}
+
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -82,8 +93,9 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := (&LedgerClusterAgentReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		OperatorNamespace: testOperatorNamespace,
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up LedgerClusterAgent controller: %v", err))
 	}

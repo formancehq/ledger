@@ -238,16 +238,20 @@ func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
 	})
 
-	secretKey := types.NamespacedName{Namespace: ns, Name: "ledger-survive-agent-agent-keys"}
-	secret := &corev1.Secret{}
-	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, secretKey, secret) == nil
-	}, "Secret should be created while the LedgerService matches")
+	replicaKey := types.NamespacedName{Namespace: ns, Name: "ledger-survive-agent-agent-keys"}
+	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-survive-agent-agent-canonical"}
+	replica := &corev1.Secret{}
+	canonical := &corev1.Secret{}
 
-	initialSeed := string(secret.Data["seed.hex"])
-	initialPubKey := string(secret.Data["pubkey.hex"])
-	initialKeyID := string(secret.Data["key-id"])
+	requireEventually(t, func() bool {
+		return k8sClient.Get(ctx, replicaKey, replica) == nil && k8sClient.Get(ctx, canonicalKey, canonical) == nil
+	}, "both canonical and replica secrets should be created")
+
+	initialSeed := string(canonical.Data["seed.hex"])
+	initialPubKey := string(canonical.Data["pubkey.hex"])
+	initialKeyID := string(canonical.Data["key-id"])
 	require.NotEmpty(t, initialSeed)
+	assert.Equal(t, initialSeed, string(replica.Data["seed.hex"]), "replica must project canonical seed")
 
 	require.NoError(t, k8sClient.Delete(ctx, ls))
 	requireEventually(t, func() bool {
@@ -256,8 +260,7 @@ func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
 		return apierrors.IsNotFound(err)
 	}, "LedgerService should be deleted")
 
-	// The dormant Secret must survive the transient absence of the LedgerService
-	// so the seed identity is preserved across recreation.
+	// Replica must be aggressively GC'd; canonical must survive to preserve seed identity.
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "survive-agent"}, agent); err != nil {
 			return false
@@ -266,8 +269,14 @@ func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
 		return agent.Status.Phase == "Pending" && agent.Status.ObservedGeneration == agent.Generation
 	}, "agent should report Pending once no service matches")
 
-	require.NoError(t, k8sClient.Get(ctx, secretKey, secret), "Secret must remain dormant while no LedgerService matches")
-	assert.Equal(t, initialSeed, string(secret.Data["seed.hex"]), "dormant seed must not be regenerated")
+	requireEventually(t, func() bool {
+		err := k8sClient.Get(ctx, replicaKey, &corev1.Secret{})
+
+		return apierrors.IsNotFound(err)
+	}, "replica in unmatched namespace should be deleted")
+
+	require.NoError(t, k8sClient.Get(ctx, canonicalKey, canonical), "canonical seed must survive LedgerService deletion")
+	assert.Equal(t, initialSeed, string(canonical.Data["seed.hex"]), "canonical seed must not be regenerated")
 
 	lsAgain := newLedgerService("survive-svc", ns)
 	lsAgain.Labels = map[string]string{"tier": "survive"}
@@ -281,10 +290,32 @@ func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
 		return agent.Status.Phase == "Ready" && agent.Status.KeyID == initialKeyID
 	}, "agent should return to Ready with the original keyID")
 
-	require.NoError(t, k8sClient.Get(ctx, secretKey, secret))
-	assert.Equal(t, initialSeed, string(secret.Data["seed.hex"]), "seed must be identical after LedgerService recreation")
-	assert.Equal(t, initialPubKey, string(secret.Data["pubkey.hex"]))
-	assert.Equal(t, initialKeyID, string(secret.Data["key-id"]))
+	require.NoError(t, k8sClient.Get(ctx, replicaKey, replica))
+	assert.Equal(t, initialSeed, string(replica.Data["seed.hex"]), "seed must be identical after LedgerService recreation")
+	assert.Equal(t, initialPubKey, string(replica.Data["pubkey.hex"]))
+	assert.Equal(t, initialKeyID, string(replica.Data["key-id"]))
+}
+
+func TestReconcile_AgentCanonicalDeletedOnAgentRemoval(t *testing.T) {
+	ns := createTestNamespace(t)
+
+	agent := newLedgerClusterAgentWithAdditional("canonical-cleanup", []string{"read"}, map[string]string{"app": "ledger"}, ns)
+	require.NoError(t, k8sClient.Create(ctx, agent))
+
+	replicaKey := types.NamespacedName{Namespace: ns, Name: "ledger-canonical-cleanup-agent-keys"}
+	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-canonical-cleanup-agent-canonical"}
+	requireEventually(t, func() bool {
+		return k8sClient.Get(ctx, replicaKey, &corev1.Secret{}) == nil && k8sClient.Get(ctx, canonicalKey, &corev1.Secret{}) == nil
+	}, "canonical and replica should be created")
+
+	require.NoError(t, k8sClient.Delete(ctx, agent))
+
+	requireEventually(t, func() bool {
+		errReplica := k8sClient.Get(ctx, replicaKey, &corev1.Secret{})
+		errCanonical := k8sClient.Get(ctx, canonicalKey, &corev1.Secret{})
+
+		return apierrors.IsNotFound(errReplica) && apierrors.IsNotFound(errCanonical)
+	}, "canonical and replica should both be deleted after agent deletion")
 }
 
 func TestReconcile_AgentDeletion(t *testing.T) {
