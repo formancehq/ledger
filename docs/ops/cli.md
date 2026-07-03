@@ -2716,9 +2716,10 @@ ledgerctl auth login [flags]
 - Stores the token in the OS keychain (macOS Keychain, Linux libsecret, Windows Credential Manager)
 - Displays a JWT summary (subject, expiry, scopes)
 - Accepts a JSON key bundle via `--bundle <path>`, `--bundle -`, or a piped stdin
-- When `--profile <name>` targets a profile that does not yet exist, bootstraps it from the current connection flags (`--server`, `--insecure`, `--tls-ca-cert`, `--signing-key`, `--signing-key-id`, `--response-verify-key`); the first profile created also becomes the active one
+- When `--profile <name>` targets a profile that does not yet exist, bootstraps it from the current connection flags (`--server`, `--insecure`, `--tls-ca-cert`, `--signing-key`, `--signing-key-id`, `--response-verify-key`); if no active profile is set, the new one becomes active. A profile-write failure fails the command so the just-stored token never diverges from the config
 - When `--profile <name>` targets an existing profile and `--server` is explicitly passed on the CLI, updates that profile's `server` so subsequent commands find the just-stored token
-- The active profile's `signingKeyId` is used as the default for `--key-id`
+- When no `--profile` is passed and the config has an active profile, updates the active profile's `server` if `--server` was explicitly passed — keeps the active-profile keychain lookup in sync with the token that was just stored
+- The resolved profile's `signingKeyId` (from `--profile <name>`, `LEDGERCTL_PROFILE`, or the active profile) is used as the default for `--key-id`, but only under the `auth` command tree (`auth login`, `auth generate-token`); signing management commands (`signing register-key`, `signing revoke-key`) still require an explicit `--key-id`
 
 **Bundle format:**
 

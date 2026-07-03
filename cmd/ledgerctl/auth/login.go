@@ -65,12 +65,18 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 
 	server, _ := cmd.Flags().GetString("server")
 
-	if err := cmdutil.GetKeyring(cmd).Set(server, token); err != nil {
-		return fmt.Errorf("storing token in keychain: %w", err)
+	// Sync the profile before storing the token so the two stay aligned:
+	// bootstrap is an advertised feature of `auth login --profile <new>`,
+	// and storing the token first would let the command exit 0 with a
+	// warning even when the profile write failed — a CI wrapper chaining
+	// `auth login --profile prod ... && ledgerctl --profile prod ...`
+	// would then move on and hit `profile "prod" not found`.
+	if err := syncProfile(cmd, server); err != nil {
+		return fmt.Errorf("syncing profile: %w", err)
 	}
 
-	if err := syncProfile(cmd, server); err != nil {
-		pterm.Warning.Printfln("Could not sync profile: %v", err)
+	if err := cmdutil.GetKeyring(cmd).Set(server, token); err != nil {
+		return fmt.Errorf("storing token in keychain: %w", err)
 	}
 
 	pterm.Success.Printfln("Logged in to %s", pterm.Bold.Sprint(server))
@@ -160,7 +166,12 @@ func syncProfile(cmd *cobra.Command, server string) error {
 		ResponseVerifyKey: responseVerifyKey,
 	}
 
-	if len(cfg.Profiles) == 1 {
+	// Activate the new profile if this is the very first one OR the config
+	// currently has no active profile: without the second branch, running
+	// `auth login --profile new` on a config with an orphaned/blank
+	// activeProfile would leave commands without --profile falling back to
+	// the localhost default and missing the token we just stored.
+	if len(cfg.Profiles) == 1 || cfg.ActiveProfile == "" {
 		cfg.ActiveProfile = profileName
 	}
 

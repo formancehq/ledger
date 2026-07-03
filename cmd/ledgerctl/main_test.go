@@ -242,6 +242,51 @@ func TestProfileSigningKeyIDFeedsKeyID(t *testing.T) {
 		"profile-derived --key-id must leave Changed=false")
 }
 
+// TestProfileSigningKeyIDFeedsGenerateToken asserts that the auth-scoped
+// profile.signingKeyId -> --key-id fallback covers `auth generate-token`
+// alongside `auth login`, matching the code comment that names both.
+// Without a test at this exact path, a future refactor that narrows
+// isAuthCommand to just "login" would silently regress the documented
+// behavior.
+//
+// Mutates process-wide environment, so it cannot run in parallel.
+func TestProfileSigningKeyIDFeedsGenerateToken(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+	t.Setenv("LOCALAPPDATA", tmp)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+	t.Setenv("KEY_ID", "")
+
+	require.NoError(t, cmdutil.SaveConfig(cmdutil.Config{
+		ActiveProfile: "prod",
+		Profiles: map[string]cmdutil.Profile{
+			"prod": {Server: "prod.example.com:8888", SigningKeyID: "prod-key-id"},
+		},
+	}))
+
+	root := newRootCommand()
+	root.SilenceErrors = true
+
+	bindSubcommandEnv(root)
+
+	genCmd, _, err := root.Find([]string{"auth", "generate-token"})
+	require.NoError(t, err)
+	genCmd.RunE = func(_ *cobra.Command, _ []string) error { return nil }
+
+	root.SetArgs([]string{"auth", "generate-token"})
+	require.NoError(t, root.Execute())
+
+	got, err := genCmd.Flags().GetString("key-id")
+	require.NoError(t, err)
+	require.Equal(t, "prod-key-id", got,
+		"profile.signingKeyId must populate --key-id on `auth generate-token` too")
+
+	require.False(t, genCmd.Flags().Changed("key-id"),
+		"profile-derived --key-id must leave Changed=false")
+}
+
 // TestProfileSigningKeyIDDoesNotFeedSigningKeyIDToSigningCommands guards the
 // scoping of the profile.signingKeyId -> --key-id fallback: `signing
 // revoke-key` and `signing register-key` share the --key-id flag name but

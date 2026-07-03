@@ -51,6 +51,49 @@ func pinConfig(t *testing.T) {
 	t.Setenv("LEDGERCTL_PROFILE", "")
 }
 
+// TestResolveLoginParams_BundleBeatsProfileDerivedKeyID guards the documented
+// precedence CLI > bundle > profile: a keyID resolved from the profile
+// (Changed=false) must be superseded by a bundle keyId when no CLI --key-id
+// / --signing-key-id was passed.
+func TestResolveLoginParams_BundleBeatsProfileDerivedKeyID(t *testing.T) {
+	dir := t.TempDir()
+
+	seedBytes := make([]byte, 32)
+	for i := range seedBytes {
+		seedBytes[i] = byte(i + 1)
+	}
+	bundle := keyBundle{
+		SigningKey: hex.EncodeToString(seedBytes),
+		KeyID:      "bundle-key-id",
+		Subject:    "bundle-subject",
+	}
+	payload, err := json.Marshal(bundle)
+	require.NoError(t, err)
+
+	bundlePath := filepath.Join(dir, "bundle.json")
+	require.NoError(t, os.WriteFile(bundlePath, payload, 0o600))
+
+	cmd := newTestCmd(t)
+	cmd.Flags().StringSlice("scopes", nil, "")
+	cmd.Flags().Duration("expiration", 0, "")
+	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().String("subject", "", "")
+	cmd.Flags().String("bundle", "", "")
+
+	// Simulate PersistentPreRunE having resolved --key-id from the active
+	// profile: value populated via Value.Set (Changed=false).
+	require.NoError(t, cmd.Flags().Lookup("key-id").Value.Set("profile-derived"))
+	require.False(t, cmd.Flags().Changed("key-id"),
+		"guard: profile-derived key-id must leave Changed=false")
+
+	require.NoError(t, cmd.ParseFlags([]string{"--bundle", bundlePath}))
+
+	p, err := resolveLoginParams(cmd)
+	require.NoError(t, err)
+	require.Equal(t, "bundle-key-id", p.keyID,
+		"bundle keyId must beat a profile-derived --key-id when no CLI flag is passed")
+}
+
 // TestResolveLoginParams_FallsBackToSigningKeyIDForKeyID covers the bootstrap
 // path where the user passes --signing-key-id (matching the profile-config
 // field name) but not --key-id. On a first login there is no profile for
