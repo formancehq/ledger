@@ -193,6 +193,34 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 
 				return
 			}
+
+			// Account metadata set via the transaction payload is echoed verbatim
+			// on the CreatedTransaction log (the workload uses no numscript, so the
+			// server merges nothing else in).
+			if !accountMetaMapEqual(ct.GetAccountMetadata(), data.GetCreatedTransaction().GetAccountMetadata()) {
+				assert.Unreachable("singleton_driver_model: transaction account-metadata mismatch", internal.Details{
+					"ledger":    oracle.LedgerOf(req),
+					"requested": len(ct.GetAccountMetadata()),
+					"returned":  len(data.GetCreatedTransaction().GetAccountMetadata()),
+				})
+
+				return
+			}
+		}
+
+		// DeleteMetadata (account or transaction) echoes the deleted target and key
+		// on its log; the deletion's effect is verified separately by reads.
+		if dm := req.GetApply().GetAction().GetDeleteMetadata(); dm != nil {
+			logDM := data.GetDeletedMetadata()
+			if logDM.GetKey() != dm.GetKey() || metaTargetLabel(logDM.GetTarget()) != metaTargetLabel(dm.GetTarget()) {
+				assert.Unreachable("singleton_driver_model: delete-metadata response mismatch", internal.Details{
+					"ledger":    oracle.LedgerOf(req),
+					"requested": metaTargetLabel(dm.GetTarget()) + "/" + dm.GetKey(),
+					"returned":  metaTargetLabel(logDM.GetTarget()) + "/" + logDM.GetKey(),
+				})
+
+				return
+			}
 		}
 
 		switch r := req.GetType().(type) {
@@ -612,6 +640,23 @@ func metaMapEqual(a, b map[string]*commonpb.MetadataValue) bool {
 	for k, v := range a {
 		bv, ok := b[k]
 		if !ok || oracle.MetaValueString(v) != oracle.MetaValueString(bv) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// accountMetaMapEqual reports whether two account-metadata maps (address -> map)
+// hold the same addresses and, per address, the same metadata.
+func accountMetaMapEqual(a, b map[string]*commonpb.MetadataMap) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for addr, am := range a {
+		bm, ok := b[addr]
+		if !ok || !metaMapEqual(am.GetValues(), bm.GetValues()) {
 			return false
 		}
 	}
