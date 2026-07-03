@@ -121,7 +121,7 @@ func extractIncrementalOrder(p *raftcmdpb.Proposal) *raftcmdpb.IncrementalBackup
 // explicitly exercise leadership transitions construct the orchestrator
 // directly and drive OnLeadershipChange themselves.
 func newOrchestrator(prop Proposer, store *dal.Store) *Orchestrator {
-	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry())
+	o := NewOrchestrator(prop, store, logging.Testing(), 1, NewExecutorRegistry(), 0)
 	o.OnLeadershipChange(true)
 
 	return o
@@ -269,7 +269,7 @@ func TestOrchestrator_NonLeaderRunCtxStartsCancelled(t *testing.T) {
 	// Construct the orchestrator directly (not via newOrchestrator,
 	// which would call OnLeadershipChange(true)) so leaderCtx is the
 	// constructor's already-cancelled context.
-	o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry())
+	o := NewOrchestrator(nil, nil, logging.Testing(), 1, NewExecutorRegistry(), 0)
 
 	runCtx, cancel := o.runContext(context.Background())
 	defer cancel()

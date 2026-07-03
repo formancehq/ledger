@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
@@ -17,25 +18,30 @@ import (
 
 // S3Storage implements Storage using Amazon S3 (or S3-compatible stores like MinIO).
 type S3Storage struct {
-	client *s3.Client
-	bucket string
+	client   *s3.Client
+	uploader *manager.Uploader
+	bucket   string
 }
 
 // NewS3Storage creates a new S3Storage backed by the given S3 client and bucket.
 func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
 	return &S3Storage{
-		client: client,
-		bucket: bucket,
+		client:   client,
+		uploader: manager.NewUploader(client),
+		bucket:   bucket,
 	}
 }
 
-func (s *S3Storage) PutFile(ctx context.Context, key string, data io.Reader, size int64) error {
-	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:        aws.String(s.bucket),
-		Key:           aws.String(key),
-		Body:          data,
-		ContentLength: aws.Int64(size),
-		ContentType:   aws.String("application/octet-stream"),
+// PutFile uploads data via multipart upload. The size hint is ignored: the
+// uploader streams data in bounded parts (partSize × concurrency memory) and
+// lifts the 5 GB single-PutObject limit to the 5 TB multipart ceiling, so
+// callers can stream an object of unknown length (e.g. an io.Pipe).
+func (s *S3Storage) PutFile(ctx context.Context, key string, data io.Reader, _ int64) error {
+	_, err := s.uploader.Upload(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		Body:        data,
+		ContentType: aws.String("application/octet-stream"),
 	})
 	if err != nil {
 		return fmt.Errorf("s3 upload %s: %w", key, err)
