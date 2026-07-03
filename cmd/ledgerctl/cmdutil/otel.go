@@ -163,8 +163,14 @@ func newSpanExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
 	switch protocol {
 	case "grpc":
 		return otlptracegrpc.New(ctx)
-	case "http/protobuf", "http/json", "http":
+	case "http/protobuf", "http":
 		return otlptracehttp.New(ctx)
+	case "http/json":
+		// The OTel Go SDK ships no HTTP/JSON trace exporter — otlptracehttp only
+		// speaks protobuf. Accepting http/json and routing it here would send
+		// protobuf under a JSON-encoding request, which a JSON-only collector or
+		// proxy silently drops. Reject it rather than mis-encoding.
+		return nil, fmt.Errorf("unsupported OTLP protocol %q (the Go SDK has no HTTP/JSON exporter; use \"grpc\" or \"http/protobuf\")", protocol)
 	default:
 		return nil, fmt.Errorf("unsupported OTLP protocol %q (use \"grpc\" or \"http/protobuf\")", protocol)
 	}
