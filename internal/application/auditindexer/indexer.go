@@ -12,7 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/pkg/tailworker"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -62,8 +62,8 @@ type Indexer struct {
 	// Updated on each tick by lastAuditSequence(); used only for metric gauges.
 	auditLast atomic.Uint64
 
-	// w manages the background goroutine lifecycle.
-	w worker.Worker
+	// tw drives the steady-state tail loop (boot + ticker).
+	tw *tailworker.TailWorker
 
 	// reg is the OTEL metric registration; unregistered on Stop.
 	reg metric.Registration
@@ -269,11 +269,17 @@ func (i *Indexer) Start() {
 
 		return
 	}
-	if reg, err := i.registerMetrics(); err == nil {
+	if reg, err := tailworker.RegisterTailGauges(i.meter, "audit_index", "audit", &i.lastIndexed, &i.auditLast); err == nil {
 		i.reg = reg
 	}
-	i.w = worker.New()
-	i.w.RunCtx(i.loop)
+	i.tw = tailworker.New(tailworker.Config{
+		Name:   "audit-indexer",
+		Logger: i.logger,
+		Ticker: TickInterval,
+		Boot:   i.boot,
+		Tick:   i.processTick,
+	})
+	i.tw.Start()
 }
 
 // Stop halts the loop and unregisters metrics.
@@ -281,18 +287,21 @@ func (i *Indexer) Stop() {
 	if i.cfg.Disabled {
 		return
 	}
-	i.w.Stop()
+	i.tw.Stop()
 	if i.reg != nil {
 		_ = i.reg.Unregister()
 	}
 }
 
-func (i *Indexer) loop(ctx context.Context) {
+// boot runs once before the tail loop: it seeds the audit-head gauge and, when
+// the persisted cursor is missing / lagging beyond threshold / ahead of the
+// head, performs a full drop+rebuild. A cursor read error aborts the loop
+// (returned to tailworker, which logs and stops); a rebuild error is logged
+// and swallowed so steady-state indexing still starts.
+func (i *Indexer) boot(ctx context.Context) error {
 	cursor, err := i.readStore.ReadAuditProgress()
 	if err != nil {
-		i.logger.Errorf("read audit cursor: %v", err)
-
-		return
+		return fmt.Errorf("read audit cursor: %w", err)
 	}
 	if last, err := i.lastAuditSequence(); err == nil {
 		i.auditLast.Store(last)
@@ -304,18 +313,7 @@ func (i *Indexer) loop(ctx context.Context) {
 		}
 	}
 
-	ticker := time.NewTicker(TickInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-		if err := i.processTick(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			i.logger.Errorf("audit indexing: %v", err)
-		}
-	}
+	return nil
 }
 
 // processTick runs one steady-state iteration: refresh the audit-head gauge,
@@ -345,32 +343,4 @@ func (i *Indexer) processTick(ctx context.Context) error {
 	_, err := i.ProcessOnce(ctx)
 
 	return err
-}
-
-func (i *Indexer) registerMetrics() (metric.Registration, error) {
-	indexed, err := i.meter.Int64ObservableGauge("audit_index.last_indexed_sequence",
-		metric.WithDescription("Last audit sequence indexed"))
-	if err != nil {
-		return nil, err
-	}
-	last, err := i.meter.Int64ObservableGauge("audit_index.audit_last_sequence",
-		metric.WithDescription("Last audit sequence in the store"))
-	if err != nil {
-		return nil, err
-	}
-	lag, err := i.meter.Int64ObservableGauge("audit_index.lag",
-		metric.WithDescription("Audit entries the index is behind"))
-	if err != nil {
-		return nil, err
-	}
-
-	return i.meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
-		idx := int64(i.lastIndexed.Load())
-		al := int64(i.auditLast.Load())
-		o.ObserveInt64(indexed, idx)
-		o.ObserveInt64(last, al)
-		o.ObserveInt64(lag, max(al-idx, 0))
-
-		return nil
-	}, indexed, last, lag)
 }
