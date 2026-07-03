@@ -338,6 +338,27 @@ var _ = Describe("Metadata", Ordered, func() {
 			Expect(exists).To(BeFalse())
 		})
 
+		It("Should read back empty metadata after deleting the last key", func() {
+			// Create a transaction carrying a single metadata key at creation.
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+			}, map[string]string{"only": "value"}, nil)))
+			Expect(err).To(Succeed())
+			transactionID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
+
+			// Delete that key, emptying the transaction's metadata.
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "only")))
+			Expect(err).To(Succeed())
+
+			// The read reflects the state (now empty), not the create-time metadata.
+			tx, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+				Ledger:        ledgerName,
+				TransactionId: transactionID,
+			})
+			Expect(err).To(Succeed())
+			Expect(commonpb.MetadataToGoMap(tx.Transaction.Metadata)).To(BeEmpty())
+		})
+
 		It("Should preserve metadata set at transaction creation", func() {
 			// Create transaction with initial metadata
 			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
