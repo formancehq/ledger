@@ -157,6 +157,14 @@ func TestHandleError(t *testing.T) {
 			require.Equal(t, tc.expectedCode, resp.ErrorCode)
 			require.NotEmpty(t, resp.ErrorMessage)
 
+			// The fallthrough branch (non-domain errors) must be sanitized:
+			// the raw error text must never reach the client, only a generic
+			// message with a correlation ID (EN-1442).
+			if tc.expectedCode == "INTERNAL_ERROR" {
+				require.NotContains(t, resp.ErrorMessage, "something unexpected")
+				require.Contains(t, resp.ErrorMessage, "correlation ID")
+			}
+
 			if tc.checkRetry {
 				require.Equal(t, "1", w.Header().Get("Retry-After"))
 			}
