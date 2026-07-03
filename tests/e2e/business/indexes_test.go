@@ -168,7 +168,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 				indexes, err := listLedgerIndexes(sharedCtx, sharedClient, ledgerName)
 				g.Expect(err).To(Succeed())
 				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)).To(BeTrue())
-				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -182,7 +182,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)).To(BeFalse())
 				// Source and destination should still be enabled
 				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)).To(BeTrue())
-				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(indexes, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})

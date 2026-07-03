@@ -197,13 +197,13 @@ func (IndexBuildStatus) EnumDescriptor() ([]byte, []int) {
 type TransactionBuiltinIndex int32
 
 const (
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE      TransactionBuiltinIndex = 0 // requires Pebble "txref" index
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP      TransactionBuiltinIndex = 1 // requires Pebble "tstmp" index
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID             TransactionBuiltinIndex = 2 // range scan on existence bucket (no index)
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS        TransactionBuiltinIndex = 3 // account→transaction mapping (any role)
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS TransactionBuiltinIndex = 4 // source account→transaction mapping
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS   TransactionBuiltinIndex = 5 // destination account→transaction mapping
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT    TransactionBuiltinIndex = 6 // requires Pebble "txiat" index (inserted_at date)
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE           TransactionBuiltinIndex = 0 // requires Pebble "txref" index
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP           TransactionBuiltinIndex = 1 // requires Pebble "tstmp" index
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID                  TransactionBuiltinIndex = 2 // range scan on existence bucket (no index)
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS             TransactionBuiltinIndex = 3 // account→transaction mapping (any role)
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS      TransactionBuiltinIndex = 4 // source account→transaction mapping
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS TransactionBuiltinIndex = 5 // destination account→transaction mapping
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT         TransactionBuiltinIndex = 6 // requires Pebble "txiat" index (inserted_at date)
 )
 
 // Enum value maps for TransactionBuiltinIndex.
@@ -214,17 +214,17 @@ var (
 		2: "TX_BUILTIN_INDEX_ID",
 		3: "TX_BUILTIN_INDEX_ADDRESS",
 		4: "TX_BUILTIN_INDEX_SOURCE_ADDRESS",
-		5: "TX_BUILTIN_INDEX_DEST_ADDRESS",
+		5: "TX_BUILTIN_INDEX_DESTINATION_ADDRESS",
 		6: "TX_BUILTIN_INDEX_INSERTED_AT",
 	}
 	TransactionBuiltinIndex_value = map[string]int32{
-		"TX_BUILTIN_INDEX_REFERENCE":      0,
-		"TX_BUILTIN_INDEX_TIMESTAMP":      1,
-		"TX_BUILTIN_INDEX_ID":             2,
-		"TX_BUILTIN_INDEX_ADDRESS":        3,
-		"TX_BUILTIN_INDEX_SOURCE_ADDRESS": 4,
-		"TX_BUILTIN_INDEX_DEST_ADDRESS":   5,
-		"TX_BUILTIN_INDEX_INSERTED_AT":    6,
+		"TX_BUILTIN_INDEX_REFERENCE":           0,
+		"TX_BUILTIN_INDEX_TIMESTAMP":           1,
+		"TX_BUILTIN_INDEX_ID":                  2,
+		"TX_BUILTIN_INDEX_ADDRESS":             3,
+		"TX_BUILTIN_INDEX_SOURCE_ADDRESS":      4,
+		"TX_BUILTIN_INDEX_DESTINATION_ADDRESS": 5,
+		"TX_BUILTIN_INDEX_INSERTED_AT":         6,
 	}
 )
 
@@ -11418,14 +11418,14 @@ const file_common_proto_rawDesc = "" +
 	"\x10IndexBuildStatus\x12\"\n" +
 	"\x1eINDEX_BUILD_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bINDEX_BUILD_STATUS_BUILDING\x10\x01\x12\x1c\n" +
-	"\x18INDEX_BUILD_STATUS_READY\x10\x02*\xfa\x01\n" +
+	"\x18INDEX_BUILD_STATUS_READY\x10\x02*\x81\x02\n" +
 	"\x17TransactionBuiltinIndex\x12\x1e\n" +
 	"\x1aTX_BUILTIN_INDEX_REFERENCE\x10\x00\x12\x1e\n" +
 	"\x1aTX_BUILTIN_INDEX_TIMESTAMP\x10\x01\x12\x17\n" +
 	"\x13TX_BUILTIN_INDEX_ID\x10\x02\x12\x1c\n" +
 	"\x18TX_BUILTIN_INDEX_ADDRESS\x10\x03\x12#\n" +
-	"\x1fTX_BUILTIN_INDEX_SOURCE_ADDRESS\x10\x04\x12!\n" +
-	"\x1dTX_BUILTIN_INDEX_DEST_ADDRESS\x10\x05\x12 \n" +
+	"\x1fTX_BUILTIN_INDEX_SOURCE_ADDRESS\x10\x04\x12(\n" +
+	"$TX_BUILTIN_INDEX_DESTINATION_ADDRESS\x10\x05\x12 \n" +
 	"\x1cTX_BUILTIN_INDEX_INSERTED_AT\x10\x06*W\n" +
 	"\x13AccountBuiltinIndex\x12\"\n" +
 	"\x1eACCT_BUILTIN_INDEX_UNSPECIFIED\x10\x00\x12\x1c\n" +
