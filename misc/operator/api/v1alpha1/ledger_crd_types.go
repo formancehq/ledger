@@ -56,6 +56,33 @@ type MirrorSourceSpec struct {
 	// BatchSize is the max number of log entries per replication batch (0 = default 100).
 	// +optional
 	BatchSize *int32 `json:"batchSize,omitempty"`
+
+	// AddressRewriteRules are applied, in order, to every account address as the
+	// mirror translates v2 source logs into v3 orders. Each rule drops or renames
+	// an address segment (see AddressRewriteRule). Applies to both HTTP and
+	// Postgres sources.
+	// +optional
+	AddressRewriteRules []AddressRewriteRule `json:"addressRewriteRules,omitempty"`
+}
+
+// AddressRewriteRule rewrites account addresses during v2→v3 mirror translation.
+// Pattern is a Go (RE2) regular expression matched against the full account
+// address; every match is replaced with Replacement, which may reference capture
+// groups (e.g. "$1"). An empty Replacement drops the matched segment, e.g.
+// pattern "(:worker:\\d+)" turns "payments:acme:worker:001:main" into
+// "payments:acme:main". Rewriting is a translation-time projection only: the
+// source v2 ledger is never modified, and the rewritten address must still be a
+// valid ledger account address.
+type AddressRewriteRule struct {
+	// Pattern is the RE2 regular expression matched against every account address.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Pattern string `json:"pattern"`
+
+	// Replacement replaces each match of Pattern. May reference capture groups
+	// (e.g. "$1"). An empty replacement drops the matched segment.
+	// +optional
+	Replacement string `json:"replacement,omitempty"`
 }
 
 // HTTPMirrorSource configures HTTP-based mirror replication.
