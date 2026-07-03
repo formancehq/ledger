@@ -334,7 +334,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 
-	t.Run("merge deletion of non-existent key is not an error", func(t *testing.T) {
+	t.Run("merge deletion of non-existent key is dropped", func(t *testing.T) {
 		t.Parallel()
 
 		store := newTestKeyStore()
@@ -342,9 +342,13 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 
 		derived.Delete(testKey{name: "ghost"})
 
+		// Ghost deletions must NOT surface as a Deletion entry — otherwise
+		// flushAttributeAndCache would write an on-disk tombstone for a
+		// key the in-memory cache has no matching entry for, breaking the
+		// cache/disk equality invariant. See DerivedKeyStore.Merge.
 		updates, deletions, err := derived.Merge()
 		require.NoError(t, err)
 		require.Empty(t, updates)
-		require.Len(t, deletions, 1)
+		require.Empty(t, deletions)
 	})
 }

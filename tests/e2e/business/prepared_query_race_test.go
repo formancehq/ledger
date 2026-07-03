@@ -23,7 +23,7 @@ import (
 //   - create q-N again
 //
 // Both admit while the cache holds the entry, so CheckCache returns
-// CacheGuaranteed and neither admission emits a preload for q-N. If the
+// CacheHit and neither admission emits a preload for q-N. If the
 // delete is processed first in the batch, it clears the in-memory cache.
 // The create then runs in the same batch with no preload and an empty
 // cache: GetPreparedQuery returns ErrNotFound, which leaks out of

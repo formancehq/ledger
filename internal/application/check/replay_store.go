@@ -209,7 +209,7 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 // A 1-byte presence flag distinguishes a nil timestamp from a real
 // Timestamp{Data: 0} (Unix epoch) — the FSM persists the latter unchanged,
 // so collapsing both to 0 would surface as a CheckStore mismatch.
-func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue) error {
+func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	var metaBytes []byte
@@ -224,15 +224,40 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 		}
 	}
 
-	// [txOpCreate][uint64 seq][uint8 hasTimestamp][uint64 timestamp.Data][metaBytes]
-	buf := make([]byte, 1+8+1+8+len(metaBytes))
+	var postingsBytes []byte
+	if len(postings) > 0 {
+		// Wrap in a Transaction so vtproto handles the repeated Posting
+		// framing for us; only Postings is populated. The container fields
+		// (id, timestamp, metadata) stay at zero — the merger only reads
+		// GetPostings().
+		container := &commonpb.Transaction{Postings: postings}
+
+		var err error
+
+		postingsBytes, err = container.MarshalVT()
+		if err != nil {
+			return fmt.Errorf("marshaling tx postings: %w", err)
+		}
+	}
+
+	// [txOpCreate][uint64 seq][uint8 hasTimestamp][uint64 timestamp.Data]
+	// [uint32 metaLen][metaBytes][uint32 postingsLen][postingsBytes]
+	buf := make([]byte, 1+8+1+8+4+len(metaBytes)+4+len(postingsBytes))
 	buf[0] = txOpCreate
 	binary.BigEndian.PutUint64(buf[1:], seq)
 	if timestamp != nil {
 		buf[9] = 1
 		binary.BigEndian.PutUint64(buf[10:], timestamp.GetData())
 	}
-	copy(buf[18:], metaBytes)
+
+	off := 18
+	binary.BigEndian.PutUint32(buf[off:], uint32(len(metaBytes)))
+	off += 4
+	copy(buf[off:], metaBytes)
+	off += len(metaBytes)
+	binary.BigEndian.PutUint32(buf[off:], uint32(len(postingsBytes)))
+	off += 4
+	copy(buf[off:], postingsBytes)
 
 	return s.db.Merge(key, buf, pebble.NoSync)
 }
@@ -402,7 +427,10 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 
 		switch op[0] {
 		case txOpCreate:
-			if len(op) < 18 {
+			// [txOpCreate][uint64 seq][uint8 hasTimestamp][uint64 timestamp.Data]
+			// [uint32 metaLen][metaBytes][uint32 postingsLen][postingsBytes]
+			const headerLen = 1 + 8 + 1 + 8 + 4
+			if len(op) < headerLen {
 				return nil, nil, fmt.Errorf("txOpCreate too short: %d bytes", len(op))
 			}
 
@@ -412,13 +440,35 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 				state.Timestamp = &commonpb.Timestamp{Data: binary.BigEndian.Uint64(op[10:18])}
 			}
 
-			if len(op) > 18 {
+			metaLen := int(binary.BigEndian.Uint32(op[18:22]))
+			off := 22
+			if len(op) < off+metaLen+4 {
+				return nil, nil, fmt.Errorf("txOpCreate: metadata length %d overruns buffer of %d bytes", metaLen, len(op))
+			}
+
+			if metaLen > 0 {
 				mm := &commonpb.MetadataMap{}
-				if err := mm.UnmarshalVT(op[18:]); err != nil {
+				if err := mm.UnmarshalVT(op[off : off+metaLen]); err != nil {
 					return nil, nil, fmt.Errorf("unmarshaling create metadata: %w", err)
 				}
 
 				state.Metadata = mm.GetValues()
+			}
+
+			off += metaLen
+			postingsLen := int(binary.BigEndian.Uint32(op[off : off+4]))
+			off += 4
+			if len(op) < off+postingsLen {
+				return nil, nil, fmt.Errorf("txOpCreate: postings length %d overruns buffer of %d bytes", postingsLen, len(op))
+			}
+
+			if postingsLen > 0 {
+				container := &commonpb.Transaction{}
+				if err := container.UnmarshalVT(op[off : off+postingsLen]); err != nil {
+					return nil, nil, fmt.Errorf("unmarshaling create postings: %w", err)
+				}
+
+				state.Postings = container.GetPostings()
 			}
 
 		case txOpRevertedBy:

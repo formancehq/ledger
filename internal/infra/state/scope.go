@@ -81,7 +81,7 @@ type gatedScope struct {
 
 	// plans is the proposal's ExecutionPlan. NewScope re-applies a
 	// subset (selected by coverage_bits) into coverage every call.
-	plans []*raftcmdpb.AttributePlan
+	plans []*raftcmdpb.AttributeCoverage
 
 	// coverage is a dense slot table — one entry per supported
 	// sub-attribute kind (see cacheAttrKinds). coverageSlotIndex maps
@@ -112,36 +112,28 @@ type gatedScope struct {
 	gatedIndexes               *gatedAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 }
 
-// validatePlan rejects AttributePlans whose envelope is malformed:
+// validatePlan rejects AttributeCoverages whose envelope is malformed:
 //   - missing AttributeID or an ID payload that is not the 16-byte U128
 //     we expect (attributes.U128FromBytes would silently zero-pad);
-//   - missing intent oneof (the preloader would skip it but the scope
-//     would still admit the resulting coverage slot);
-//   - attr_code that the FSM does not handle (MirrorTouch /
-//     MirrorPreload route it to an orphan 0xFF Pebble slot; scope
-//     validation only catches selected plans later).
+//   - attr_code that the FSM does not handle (a seed intent's
+//     MirrorPreload would route the write to an orphan 0xFF Pebble
+//     slot; scope validation only catches selected plans later).
 //
 // Run at every gate that touches plans (Preload entry, applyPlans,
 // applyAllPlans) so a forged ExecutionPlan never reaches a side-effecting
 // call. The shared check keeps the three sites in lock-step.
-func validatePlan(plan *raftcmdpb.AttributePlan, idx int) *domain.ErrInvalidExecutionPlan {
+func validatePlan(plan *raftcmdpb.AttributeCoverage, idx int) *domain.ErrInvalidExecutionPlan {
 	id := plan.GetId()
 	if id == nil || len(id.GetId()) != 16 {
 		return &domain.ErrInvalidExecutionPlan{
-			Reason_: fmt.Sprintf("plans[%d]: AttributePlan must carry a 16-byte AttributeID (got %d bytes)", idx, len(id.GetId())),
-		}
-	}
-
-	if plan.GetIntent() == nil {
-		return &domain.ErrInvalidExecutionPlan{
-			Reason_: fmt.Sprintf("plans[%d]: AttributePlan has no intent set", idx),
+			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage must carry a 16-byte AttributeID (got %d bytes)", idx, len(id.GetId())),
 		}
 	}
 
 	kind := byte(plan.GetAttrCode())
 	if coverageSlotIndex[kind] < 0 {
 		return &domain.ErrInvalidExecutionPlan{
-			Reason_: fmt.Sprintf("plans[%d]: AttributePlan declares attr_code 0x%02x which the FSM does not handle", idx, kind),
+			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage declares attr_code 0x%02x which the FSM does not handle", idx, kind),
 		}
 	}
 
@@ -173,7 +165,7 @@ func validatePlan(plan *raftcmdpb.AttributePlan, idx int) *domain.ErrInvalidExec
 // plans slice or when a plan declares an attr_code the FSM does not
 // handle. On error, the partial reset is harmless: the caller does not
 // use the scope and the next NewScope call truncates again.
-func applyPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributePlan, coverageBits []byte) *domain.ErrInvalidExecutionPlan {
+func applyPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributeCoverage, coverageBits []byte) *domain.ErrInvalidExecutionPlan {
 	for i := range coverage {
 		coverage[i] = coverage[i][:0]
 	}
@@ -230,7 +222,7 @@ func applyPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributePlan, cover
 //
 // Returns *ErrInvalidExecutionPlan when a plan declares an attr_code
 // the FSM does not handle.
-func applyAllPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributePlan) *domain.ErrInvalidExecutionPlan {
+func applyAllPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributeCoverage) *domain.ErrInvalidExecutionPlan {
 	for i := range coverage {
 		coverage[i] = coverage[i][:0]
 	}
@@ -276,7 +268,7 @@ func NewScopeFactory(
 	missCounter metric.Int64Counter,
 	raftIndex uint64,
 ) processing.ScopeFactory {
-	var plans []*raftcmdpb.AttributePlan
+	var plans []*raftcmdpb.AttributeCoverage
 	if plan != nil {
 		plans = plan.GetAttributes()
 	}
@@ -323,7 +315,7 @@ func (g *gatedScope) NewScope(coverageBits []byte) (processing.Scope, error) {
 	return g, nil
 }
 
-// NewProposalScope reconfigures the scope to admit every AttributePlan
+// NewProposalScope reconfigures the scope to admit every AttributeCoverage
 // the proposal declared. Used by ValidateTransientVolumes and other
 // cross-order checks that must reach into any ledger the proposal may
 // have touched.

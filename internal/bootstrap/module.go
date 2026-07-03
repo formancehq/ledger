@@ -1277,7 +1277,7 @@ func Module() fx.Option {
 							// applyIdempotencyEviction works through
 							// Registry.Idempotency.Evict (no cache-keyed
 							// Registry.Get); no preload needed. One
-							// WriteOperation with nil Needs so the runner
+							// WriteOperation with nil Coverage so the runner
 							// takes the fast path.
 							operations := []plan.WriteOperation{{
 								SetCoverage: func(bits []byte) {

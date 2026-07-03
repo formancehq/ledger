@@ -22,72 +22,76 @@ import (
 const resolveParallelism = 16
 
 // resolveResult holds the output of a resolve call: a flat list of
-// per-attribute plans plus the tracker keys. Each AttributePlan carries
-// exactly one intent — Value (loaded from Pebble), Touch (Gen1→Gen0
-// promotion at apply), or Declare (already in Gen0 or verified absent —
-// coverage only). The FSM-side preload.View consumes the whole list as
-// its coverage set so reads on declared keys never trip a false-positive
-// "not preloaded" miss.
+// AttributeCoverage entries plus the tracker keys. Each entry is either
+// coverage-only (value = nil) or a seed (value = Pebble-loaded payload).
+//
+// The FSM's Preload path routes seed entries through MirrorPreload
+// (gen0+gen1 write with gen1-wins semantics). Coverage-only entries are
+// pure declarations: they contribute to coverage_bits (invariant #9) so
+// the scope admits their key in the FSM apply path, but they do NOT
+// mutate the cache — AttributeCache.Get's gen0→gen1 fallback and
+// AttributeCache.Del's lazy gen1→gen0 tombstone fabrication cover the
+// read and delete cases without a preemptive promote pass.
 //
 // Idempotency keys live on the parallel idempotencyKeys slice — they are
 // NOT cache attributes (the FSM applies them to a dedicated store) so
-// they bypass the AttributePlan list and ship on ExecutionPlan.idempotency_keys.
+// they bypass the AttributeCoverage list and ship on
+// ExecutionPlan.idempotency_keys.
 type resolveResult struct {
-	attributes      []*raftcmdpb.AttributePlan
+	attributes      []*raftcmdpb.AttributeCoverage
 	idempotencyKeys []*raftcmdpb.ReloadIdempotencyKey
 	tracker         []attributes.U128
 }
 
-// declarePlan returns an AttributePlan whose intent is Declare: the key
-// is either already in Gen0 or verified absent, so no FSM-side cache
-// mutation is required.
-func declarePlan(id attributes.U128, attrCode byte, tag uint64) *raftcmdpb.AttributePlan {
-	return &raftcmdpb.AttributePlan{
+// coverageEntry returns a coverage-only AttributeCoverage — no seed.
+// The entry is only a declaration for coverage_bits (invariant #9);
+// the FSM's Preload skips it (no cache mutation), and the handler's
+// Get / Del rely on AttributeCache's built-in gen0→gen1 fallback and
+// lazy tombstone fabrication.
+func coverageEntry(id attributes.U128, attrCode byte, tag uint64) *raftcmdpb.AttributeCoverage {
+	return &raftcmdpb.AttributeCoverage{
 		Id:       &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
 		AttrCode: uint32(attrCode),
-		Intent:   &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 	}
 }
 
-// touchPlan returns an AttributePlan whose intent is Touch: the FSM must
-// promote this key from Gen1 to Gen0 before order handlers run.
-func touchPlan(id attributes.U128, attrCode byte, tag uint64) *raftcmdpb.AttributePlan {
-	return &raftcmdpb.AttributePlan{
-		Id:       &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
-		AttrCode: uint32(attrCode),
-		Intent:   &raftcmdpb.AttributePlan_Touch{Touch: &raftcmdpb.Touch{}},
-	}
-}
-
-// preloadPlan wraps a typed AttributeValue into an AttributePlan. attr_code
-// lives on the plan envelope so the FSM apply path routes the dispatch
-// without unwrapping the oneof.
-func preloadPlan(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) *raftcmdpb.AttributePlan {
-	return &raftcmdpb.AttributePlan{
+// seedEntry returns an AttributeCoverage carrying a Pebble-loaded seed —
+// the FSM's Preload path calls MirrorPreload to write the value into both
+// generations. attr_code lives on the envelope so the FSM apply path
+// routes the typed unmarshal without inspecting the value payload itself.
+func seedEntry(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) *raftcmdpb.AttributeCoverage {
+	return &raftcmdpb.AttributeCoverage{
 		Id:       attrID,
 		AttrCode: uint32(attrCode),
-		Intent:   &raftcmdpb.AttributePlan_Value{Value: value},
+		Value:    value,
 	}
 }
 
-// resolveAttributePreload resolves one attribute cache for the plan
-// pipeline. Keys are passed as canonical byte strings (see AttributeSet
-// on Needs) — no K generic; the (attrCode, canonical) pair is the whole
-// identity.
+// resolveCoverage resolves one attribute cache for the plan pipeline.
+// Keys are passed as canonical byte strings (see Coverage.Attributes) —
+// no K generic; the (attrCode, canonical) pair is the whole identity.
 //
-// For each key, resolveAttributePreload emits ONE AttributePlan based on
-// admission's CheckCache verdict:
+// For each key, resolveCoverage emits ONE AttributeCoverage entry based
+// on admission's CheckCache verdict:
 //
 //   - CacheUnreachable → ErrCacheHorizonExceeded (admission rejection).
-//   - CacheGuaranteed → Declare (cache already has the key in Gen0 at
-//     apply time — no cache mutation needed).
-//   - CacheNeedsTouch → Touch (key sits in Gen1; the FSM promotes it back
-//     to Gen0 before order handlers run).
-//   - CacheMiss + bloom/Pebble-absent → Declare (coverage-only).
-//   - CacheMiss + Pebble-load-hit → Value(v) (MirrorPreload seeds gen0+gen1).
+//   - CacheHit → coverage-only (value nil); AttributeCache.Get's gen0→gen1
+//     fallback surfaces the entry on read, and AttributeCache.Del's lazy
+//     promote fabricates the gen0 tombstone if the handler deletes.
+//   - CacheMiss + bloom/Pebble-absent → coverage-only.
+//   - CacheMiss + Pebble-load-hit → seeded (value = the loaded payload;
+//     MirrorPreload writes gen0+gen1).
+//
+// FSM-side race protection is handled at Preload for seeds only (via
+// MirrorPreload's gen1-wins), and by the coverage_bits gate (invariant
+// #9) for reads. Keys a concurrent-write race populated are visible to
+// the handler via the gen0→gen1 fallback; keys nothing populated see
+// ErrNotFound and produce the expected NotFound business outcome.
+// Bounded by CacheUnreachable (2+ rotations rejected at admission), no
+// data can be lost between admission and apply.
 //
 // Keys are resolved with bounded parallelism to amortize I/O latency.
-func resolveAttributePreload[T interface {
+func resolveCoverage[T interface {
 	MarshalVT() ([]byte, error)
 }](
 	keys map[string]struct{},
@@ -106,7 +110,7 @@ func resolveAttributePreload[T interface {
 		mu       sync.Mutex
 		wg       sync.WaitGroup
 		firstErr error
-		plans    []*raftcmdpb.AttributePlan
+		plans    []*raftcmdpb.AttributeCoverage
 	)
 
 	sem := make(chan struct{}, resolveParallelism)
@@ -117,11 +121,15 @@ func resolveAttributePreload[T interface {
 
 		switch attrCache.CheckCache(nextIndex, id) {
 		case cache.CacheUnreachable:
-			// Admission predicts ≥2 rotations between propose and apply: a
-			// preload computed now would be rotated out before the FSM reads
-			// it. Record the rejection but continue processing so wg.Wait()
-			// below drains any CacheMiss loader goroutine earlier iterations
-			// already launched.
+			// Admission predicts ≥2 rotations between propose and apply.
+			// Any preload computed now would be discarded before the FSM
+			// reads it, so reject at admission and let the client retry
+			// against a fresher snapshot. Bounded to at most 1 rotation
+			// between admission and apply, which the gen0→gen1 read
+			// fallback and lazy Del promote handle correctly.
+			//
+			// Continue processing so wg.Wait() below drains any CacheMiss
+			// loader goroutine earlier iterations already launched.
 			if logger.Enabled(logging.TraceLevel) {
 				logger.WithFields(map[string]any{
 					"type":      typeName,
@@ -139,32 +147,14 @@ func resolveAttributePreload[T interface {
 
 			continue
 
-		case cache.CacheGuaranteed:
-			// Key is already in Gen0 and will still be there at apply.
-			// Emit Declare — the FSM's coverage view admits the read; no
-			// mutation required.
+		case cache.CacheHit:
+			// Cache has the key somewhere (gen0 or gen1). Emit a
+			// coverage-only entry — no cache mutation is needed at
+			// Preload: Get's gen0→gen1 fallback surfaces the value on
+			// read and Del's lazy promote fabricates a gen0 tombstone
+			// on delete. No Pebble read required.
 			mu.Lock()
-			plans = append(plans, declarePlan(id, attrCode, tag))
-			mu.Unlock()
-
-			continue
-
-		case cache.CacheNeedsTouch:
-			// Key sits in Gen1 (predicted-apply lands in the next
-			// generation). Emit Touch so the FSM promotes Gen1 → Gen0
-			// before the order runs — otherwise the next rotation would
-			// drop the entry.
-			if logger.Enabled(logging.TraceLevel) {
-				logger.WithFields(map[string]any{
-					"type":      typeName,
-					"key":       hex.EncodeToString(canonicalKey),
-					"nextIndex": nextIndex,
-					"boundary":  boundary,
-				}).Tracef("Cache touch: promoting key from gen1 to gen0")
-			}
-
-			mu.Lock()
-			plans = append(plans, touchPlan(id, attrCode, tag))
+			plans = append(plans, coverageEntry(id, attrCode, tag))
 			mu.Unlock()
 
 			continue
@@ -175,7 +165,7 @@ func resolveAttributePreload[T interface {
 			// (coverage-only, no value to seed).
 			if bloomFilter != nil && !bloomFilter.MayContain(id) {
 				mu.Lock()
-				plans = append(plans, declarePlan(id, attrCode, tag))
+				plans = append(plans, coverageEntry(id, attrCode, tag))
 				mu.Unlock()
 
 				continue
@@ -239,13 +229,16 @@ func resolveAttributePreload[T interface {
 						return
 					}
 
-					plans = append(plans, preloadPlan(attrID, attrCode, attrValue))
+					plans = append(plans, seedEntry(attrID, attrCode, attrValue))
 
 					return
 				}
 
-				// Pebble had no value either — coverage-only Declare.
-				plans = append(plans, declarePlan(id, attrCode, tag))
+				// Pebble had no value either — coverage-only entry. If a
+				// concurrent write populated the cache between admission
+				// and apply, Get's gen0→gen1 fallback will surface it at
+				// apply time (bounded by CacheUnreachable at ≥2 rotations).
+				plans = append(plans, coverageEntry(id, attrCode, tag))
 			})
 		}
 	}
@@ -266,8 +259,8 @@ func resolveAttributePreload[T interface {
 }
 
 // buildPreloadPayload marshals value into an AttributeValue envelope.
-// The kind (attrCode) lives on the parent AttributePlan, not here — the
-// FSM dispatches the typed unmarshal via AttributePlan.attr_code.
+// The kind (attrCode) lives on the parent AttributeCoverage, not here — the
+// FSM dispatches the typed unmarshal via AttributeCoverage.attr_code.
 func buildPreloadPayload[V interface {
 	MarshalVT() ([]byte, error)
 }](attrCode byte, value V) (*raftcmdpb.AttributeValue, error) {

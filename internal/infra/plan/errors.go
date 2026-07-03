@@ -1,6 +1,8 @@
 package plan
 
-import "errors"
+import (
+	"github.com/formancehq/ledger/v3/internal/infra/plan/planerr"
+)
 
 // ErrCacheHorizonExceeded is returned by Builder.Build when admission predicts
 // 2+ cache generation rotations will fire on the FSM side between this
@@ -23,4 +25,8 @@ import "errors"
 //
 // Mapped to gRPC codes.Unavailable in adapter/grpc/server.go so existing client
 // retry interceptors handle it transparently.
-var ErrCacheHorizonExceeded = errors.New("admission cache horizon exceeded: 2+ cache rotations predicted between propose and apply")
+//
+// The sentinel itself lives in the leaf planerr package so the state
+// package can reference it without an import cycle (state <- plan). Callers
+// keep using plan.ErrCacheHorizonExceeded through this re-export.
+var ErrCacheHorizonExceeded = planerr.ErrCacheHorizonExceeded

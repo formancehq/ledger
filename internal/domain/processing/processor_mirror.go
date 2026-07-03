@@ -163,6 +163,7 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     ct.GetMetadata(),
 		Timestamp:    timestamp,
+		Postings:     ct.GetPostings(),
 	})
 
 	// Store reference if provided
@@ -280,7 +281,9 @@ func processMirrorDeletedMetadata(ledger string, dm *raftcmdpb.MirrorDeletedMeta
 				AccountKey: domain.AccountKey{LedgerName: ledger, Account: target.Account.GetAddr()},
 				Key:        dm.GetKey(),
 			}
-			s.AccountMetadata().Delete(metaKey)
+			if err := s.AccountMetadata().Delete(metaKey); err != nil {
+				return nil, &domain.ErrStorageOperation{Operation: "deleting account metadata", Cause: err}
+			}
 		case *commonpb.Target_TransactionId:
 			txKey := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}
 
@@ -357,6 +360,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     rt.GetMetadata(),
 		Timestamp:    timestamp,
+		Postings:     rt.GetReversePostings(),
 	})
 
 	return &commonpb.LedgerLogPayload{

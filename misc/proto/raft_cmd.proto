@@ -692,18 +692,19 @@ message ExecutionPlan {
   fixed64 lastPersistedIndex = 1;
   // Cache epoch at admission time; FSM rejects on mismatch (cache was reset)
   fixed64 cache_epoch = 4;
-  // Per-attribute plans produced by admission. Each entry is either a
-  // value preload, a Gen1→Gen0 promotion, or a pure coverage declaration —
-  // every plan also feeds the FSM-side state.Plan coverage set, so the
-  // admission layer is the single source of truth for what the FSM may
-  // read during apply.
-  repeated AttributePlan attributes = 6;
+  // Coverage entries produced by admission. Each entry declares that the
+  // FSM apply path may access the key; entries with a `value` field set
+  // additionally seed the FSM cache with the Pebble-loaded value at
+  // admission time. Every entry feeds the FSM-side state.Plan coverage
+  // set, so the admission layer is the single source of truth for what
+  // the FSM may read (and delete) during apply.
+  repeated AttributeCoverage attributes = 6;
 
   // Idempotency keys preloaded for this proposal. They live outside the
-  // AttributePlan list because they are NOT a cache attribute: the FSM
-  // applies them to the dedicated IdempotencyStore and the state.Plan
+  // AttributeCoverage list because they are NOT a cache attribute: the
+  // FSM applies them to the dedicated IdempotencyStore and the state.Plan
   // does not track their coverage. Kept as a top-level field instead of
-  // an AttributePlan variant to make that distinction visible at the
+  // an AttributeCoverage variant to make that distinction visible at the
   // wire level.
   repeated ReloadIdempotencyKey idempotency_keys = 7;
 
@@ -711,43 +712,26 @@ message ExecutionPlan {
   reserved "preloads", "touches", "declared", "productions";
 }
 
-// AttributePlan describes what the FSM must do with a single attribute key
-// on apply. attr_code (dal.SubAttrXxx) lives on the plan itself, not on
-// the intent, so the kind/code can be read uniformly without inspecting
-// the oneof — keeps coverage indexing, dispatch, and unmarshal routing
-// all on the same field. Exactly one of declare/touch/value is set; that
-// choice tells the cache-mutation path (Touch promotes, AttributeValue
-// writes, Declare is a no-op) what to do.
-message AttributePlan {
+// AttributeCoverage declares the FSM apply path may access `id` under
+// `attr_code`. When `value` is set, the FSM's MirrorPreload seeds the
+// cache with it (CacheMiss + Pebble-load-hit at admission); when unset,
+// the entry is coverage-only and Preload skips it — AttributeCache.Get's
+// gen0→gen1 fallback and AttributeCache.Del's lazy Gen0-tombstone
+// fabrication handle reads and deletes without a preemptive promote pass.
+// attr_code (dal.SubAttrXxx) lives on the envelope so coverage indexing,
+// dispatch, and unmarshal routing all read the same field.
+message AttributeCoverage {
   AttributeID id = 1;
   uint32 attr_code = 2;
-  oneof intent {
-    // Declare: the key was already CacheGuaranteed (Gen0) at admission time.
-    // No FSM-side cache mutation; pure coverage declaration so state.Plan
-    // admits reads on hot keys without a false-positive miss.
-    Declare declare = 3;
-    // Touch: the key is in Gen1 and would not survive the next rotation.
-    // The FSM mirrors the promotion via MirrorTouch.
-    Touch touch = 4;
-    // AttributeValue: load the value into Gen0 cache. Carries the typed value.
-    AttributeValue value = 5;
-  }
+  // Optional seed: nil = coverage-only; non-nil = seed into the FSM cache.
+  AttributeValue value = 3;
 }
 
-// Declare is the sentinel intent for AttributePlan. Empty by design — the
-// presence of the field is the entire signal.
-message Declare {}
-
-// Touch is the sentinel intent for AttributePlan. Empty by design — the
-// presence of the field plus AttributePlan.attr_code drive the Gen1→Gen0
-// promotion on the FSM side.
-message Touch {}
-
-// AttributeValue carries the typed value to write into the FSM-side cache
-// for one AttributePlan. The value is type-erased on the wire (a vtproto-
-// marshaled blob) and the FSM dispatches the typed unmarshal via the
-// parent AttributePlan.attr_code (dal.SubAttrXxx) — kept off this message
-// to avoid carrying the kind in two places.
+// AttributeValue carries the typed value to seed the FSM-side cache for
+// one AttributeCoverage entry. The value is type-erased on the wire (a
+// vtproto-marshaled blob) and the FSM dispatches the typed unmarshal via
+// the parent AttributeCoverage.attr_code (dal.SubAttrXxx) — kept off
+// this message to avoid carrying the kind in two places.
 message AttributeValue {
   bytes raw_value = 1;
 }

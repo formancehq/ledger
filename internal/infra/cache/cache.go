@@ -12,11 +12,11 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // u128Hash extracts the low 64 bits of a U128 for shard selection.
@@ -32,7 +32,7 @@ func newShardedMap[T any]() *kv.ShardedMap[attributes.U128, attributes.Entry[T]]
 
 // AttributeCache is a dual-generation cache for attribute values.
 // It uses atomic.Pointer for Gen0/Gen1 backed by kv.ShardedMap (64 shards
-// with per-shard RWMutex). Readers (Get, IsGuaranteedInCache) take a shared
+// with per-shard RWMutex). Readers (Get, Lookup, CheckCache) take a shared
 // RLock on a single shard — no interface boxing, no heap allocation for U128 keys.
 // Writers (Put, Del) are called only from the FSM goroutine.
 // Only Rotate needs synchronization, which is done by the FSM goroutine
@@ -52,6 +52,17 @@ func (a *AttributeCache[T]) Gen1() *kv.ShardedMap[attributes.U128, attributes.En
 	return a.gen1.Load()
 }
 
+// Get returns the entry for k, falling back to Gen1 when Gen0 misses.
+//
+// The gen0 → gen1 fallback is safe under the FSM's coverage gate
+// (invariant #9): every read the apply path performs goes through
+// Scope.GetX with an admission-declared preload, so the fallback can
+// only surface keys the proposer explicitly authorized. Reads on
+// undeclared keys are rejected at the gate before ever reaching Get.
+//
+// Callers that need to distinguish Gen0 from Gen1 explicitly (e.g.
+// MirrorPreload's gen1-wins seed decision, snapshot persistence) use the
+// Gen0() / Gen1() accessors.
 func (a *AttributeCache[T]) Get(k attributes.U128) (attributes.Entry[T], bool) {
 	if v, ok := a.gen0.Load().Get(k); ok {
 		return v, true
@@ -74,33 +85,54 @@ func (a *AttributeCache[T]) GetAndPut(k attributes.U128, v attributes.Entry[T]) 
 	return a.gen1.Load().Get(k)
 }
 
-// Del marks the entry as a tombstone in both Gen0 and Gen1 instead of
-// removing it. This prevents pipelined MirrorTouch from failing when
-// the leader admitted a touch before the FSM processed the deletion —
-// admission relies on the tombstone being present in the cache to
-// distinguish "deleted" from "cache miss". Tombstones age out naturally
-// via rotation.
+// Del tombstones the entry in Gen0 in-place, mirroring the on-disk
+// writeCacheTombstone which writes a single row to the current gen0 byte.
+//
+// If Gen0 doesn't hold the entry, Del promotes the Gen1 entry's tag into
+// a fresh Gen0 tombstone (Deleted=true, Data=zero). Gen1's live row is
+// intentionally left untouched: the Gen0 tombstone shadows it on every
+// read (Get returns the tombstone via the gen0→gen1 fallback semantics —
+// gen0 hits first), and rotation purges the stale Gen1 row on the next
+// generation flip. This lazy promote replaces the historical
+// systematic-MirrorTouch-at-Preload pass: coverage_bits (invariant #9)
+// already prevents Del from firing on keys admission did not declare,
+// so promoting at Del time is both sufficient and cheaper than
+// pre-promoting every declared key upfront.
+//
+// Returns ErrNotFound if the key is genuinely absent from both
+// generations. Under proper admission, every Delete is preceded by a
+// Get that would surface the same ErrNotFound at the business layer,
+// so this error rarely reaches Del — DerivedKeyStore.Merge treats it
+// as a soft no-op.
 //
 // Data is reset to the zero value: a tombstone's payload is unreadable
-// by contract (every consumer checks Deleted first and returns
-// ErrNotFound), so retaining the pre-delete value yields zombie state
-// that has historically caused snapshot/restore foot-guns (see EN-1377
-// — the persist path used to marshal entry.Data unconditionally and
-// resurrect the deleted key on restore).
-func (a *AttributeCache[T]) Del(k attributes.U128) {
+// by contract (every consumer checks Deleted first), and retaining it
+// has historically caused snapshot/restore resurrection (EN-1377).
+//
+// Called only from the FSM goroutine.
+func (a *AttributeCache[T]) Del(k attributes.U128) error {
 	var zero T
 
-	if entry, ok := a.gen0.Load().Get(k); ok {
+	gen0 := a.gen0.Load()
+	if entry, ok := gen0.Get(k); ok {
 		entry.Deleted = true
 		entry.Data = zero
-		a.gen0.Load().Put(k, entry)
+		gen0.Put(k, entry)
+
+		return nil
 	}
 
-	if entry, ok := a.gen1.Load().Get(k); ok {
-		entry.Deleted = true
-		entry.Data = zero
-		a.gen1.Load().Put(k, entry)
+	// Gen0 miss — try Gen1 to reuse the entry's tag on the fabricated
+	// tombstone. The tag is what KeyStore.Delete matched against; a
+	// U128 collision on a different canonical key would already have
+	// been rejected upstream by KeyStore.Delete's tag check.
+	if gen1Entry, ok := a.gen1.Load().Get(k); ok {
+		gen0.Put(k, attributes.Entry[T]{Tag: gen1Entry.Tag, Deleted: true, Data: zero})
+
+		return nil
 	}
+
+	return domain.ErrNotFound
 }
 
 func (a *AttributeCache[T]) Size() uint64 {
@@ -142,12 +174,16 @@ func (a *AttributeCache[T]) Reset() {
 type CacheStatus int
 
 const (
-	// CacheGuaranteed means the key is in cache and will survive until the target index.
-	CacheGuaranteed CacheStatus = iota
-	// CacheNeedsTouch means the key is in Gen1 but not Gen0 — a touch (Gen1→Gen0 promotion)
-	// will keep it alive without a store read.
-	CacheNeedsTouch
-	// CacheMiss means the key is not in cache at all — a full preload from store is needed.
+	// CacheHit means the key is in cache somewhere within the reachable
+	// horizon (Gen0 hit now, or Gen1 hit that AttributeCache.Get's gen0→gen1
+	// fallback will surface at apply). No Pebble read is required. The
+	// coverage_bits gate (invariant #9) bounds the FSM's read horizon to
+	// admission's declared preload set, so the fallback can only reach
+	// keys the proposer explicitly authorized. Admission therefore does
+	// not need to distinguish "already in Gen0" from "Gen1-only".
+	CacheHit CacheStatus = iota
+	// CacheMiss means the key is not in cache at all — a full preload
+	// from store is needed.
 	CacheMiss
 	// CacheUnreachable means the target index is 2+ generations ahead of the
 	// current FSM-applied generation: any preload value computed now would be
@@ -161,7 +197,7 @@ const (
 )
 
 // CheckCache determines whether a key will survive in cache until the future raft
-// index `at`, needs a touch (promotion from Gen1 to Gen0), or is a full miss.
+// index `at`, or is a full miss.
 //
 // The cache uses a dual-generation system where:
 // - Gen0 contains data from the current generation
@@ -206,28 +242,34 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 
 	switch futureGeneration - actualGeneration {
 	case 0:
-		// Same generation — no rotation expected.
+		// Same generation — no rotation expected before apply. Either
+		// gen holds the key: the FSM apply path reads via Get which
+		// falls back to Gen1, so the caller only needs to know "in
+		// cache anywhere".
 		if _, ok := a.gen0.Load().Get(k); ok {
-			return CacheGuaranteed
+			return CacheHit
 		}
 
 		if _, ok := a.gen1.Load().Get(k); ok {
-			// Key in Gen1 but not Gen0 — will survive this generation,
-			// but needs a touch to survive the next rotation.
-			return CacheNeedsTouch
+			return CacheHit
 		}
 
 		return CacheMiss
 	case 1:
-		// Next generation — one rotation expected.
-		// Only Gen0 data survives (it becomes Gen1 after rotation).
+		// Next generation — one rotation expected before apply. Rotation
+		// moves old Gen0 into new Gen1 and empties new Gen0; old Gen1 is
+		// discarded.
+		//
+		// If Gen0 has the key now, post-rotation it sits in new Gen1 only.
+		// Get's gen0→gen1 fallback still surfaces it (and lazy Del promotes
+		// on tombstone if the handler deletes).
 		if _, ok := a.gen0.Load().Get(k); ok {
-			return CacheGuaranteed
+			return CacheHit
 		}
 
-		// A touch is NOT safe here: the FSM applies rotation BEFORE touches,
-		// so Gen1 would be discarded before the touch can promote the key.
-
+		// If Gen0 lacks the key, the entry (if it exists) lives in old
+		// Gen1 which rotation will discard — no promote can save it.
+		// Fall through to CacheMiss so the caller loads from store.
 		return CacheMiss
 	default:
 		// 2+ generations ahead — any preload value computed now would be
@@ -236,34 +278,6 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 		// transient error; the client retries and admission re-admits with
 		// a fresh prediction once the FSM apply has caught up.
 		return CacheUnreachable
-	}
-}
-
-// IsGuaranteedInCache checks if a key will still be in the cache when we reach
-// the future raft index `at`. Convenience wrapper around CheckCache.
-func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bool {
-	return a.CheckCache(at, k) == CacheGuaranteed
-}
-
-// Touch promotes a key from Gen1 to Gen0. This ensures the key survives
-// the next rotation without needing a full preload from store.
-// Called only from the FSM goroutine (same as Put/Del).
-//
-// IMPORTANT: Touch must NOT overwrite an existing Gen0 entry. After rotation,
-// entries processed earlier in the same batch may have already updated Gen0
-// with a newer value via Merge. If a later entry's proposal was admitted
-// concurrently (before the FSM applied the earlier entry's Touch+Merge),
-// it would carry a redundant CacheNeedsTouch. Blindly overwriting Gen0 with
-// the stale Gen1 value would discard the earlier entry's update, causing
-// volume corruption (lost deltas).
-func (a *AttributeCache[T]) Touch(k attributes.U128) {
-	gen0 := a.gen0.Load()
-	if _, ok := gen0.Get(k); ok {
-		return // Gen0 already has a (possibly newer) value — do not overwrite.
-	}
-
-	if v, ok := a.gen1.Load().Get(k); ok {
-		gen0.Put(k, v)
 	}
 }
 
@@ -286,7 +300,6 @@ type CacheOps interface {
 	Rotate()
 	Reset()
 	Size() uint64
-	Touch(attributes.U128)
 }
 
 type Cache struct {
@@ -311,10 +324,8 @@ type Cache struct {
 	caches []CacheOps
 	// cacheNames holds the metric label for each cache, parallel to caches.
 	cacheNames []string
-	// touchMap maps attribute code bytes to their cache for Touch dispatch.
-	touchMap map[byte]CacheOps
 
-	// currentGeneration is accessed atomically from IsGuaranteedInCache (hot path)
+	// currentGeneration is accessed atomically from CheckCache (hot path)
 	// and written under mu by rotateLocked/Reset.
 	currentGeneration atomic.Uint64
 
@@ -507,15 +518,6 @@ func (c *Cache) recordGeneration(gen int64) {
 	c.generationGauge.Record(context.Background(), gen)
 }
 
-// TouchByType promotes a key from Gen1 to Gen0 for the cache identified by the
-// given attribute code byte. This is the unified dispatch point used by the FSM
-// Preload path instead of a per-type switch.
-func (c *Cache) TouchByType(attrType byte, id attributes.U128) {
-	if tc, ok := c.touchMap[attrType]; ok {
-		tc.Touch(id)
-	}
-}
-
 // CurrentGeneration returns the current generation number.
 func (c *Cache) CurrentGeneration() uint64 {
 	return c.currentGeneration.Load()
@@ -618,22 +620,6 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 		"transactions", "sink_configs", "numscript_versions",
 		"numscript_contents", "prepared_queries", "ledger_metadata",
 		"indexes",
-	}
-
-	// Register touch dispatch map for attribute code byte -> cache.
-	ret.touchMap = map[byte]CacheOps{
-		dal.SubAttrVolume:           ret.Volumes,
-		dal.SubAttrReference:        ret.References,
-		dal.SubAttrLedger:           ret.Ledgers,
-		dal.SubAttrBoundary:         ret.Boundaries,
-		dal.SubAttrSinkConfig:       ret.SinkConfigs,
-		dal.SubAttrMetadata:         ret.AccountMetadata,
-		dal.SubAttrNumscriptVersion: ret.NumscriptVersions,
-		dal.SubAttrTransaction:      ret.Transactions,
-		dal.SubAttrNumscriptContent: ret.NumscriptContents,
-		dal.SubAttrPreparedQuery:    ret.PreparedQueries,
-		dal.SubAttrLedgerMetadata:   ret.LedgerMetadata,
-		dal.SubAttrIndex:            ret.Indexes,
 	}
 
 	err := ret.initMetrics(m)
