@@ -68,7 +68,7 @@ Two paths, however, must never expose internal error text to clients — the raw
 1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Describable` or a known sentinel.
 
-Both paths are sanitized identically to the gRPC adapter: the raw cause (and, for panics, the stack) is logged **server-side** with a `correlation_id` field and recorded on the OTel span, while the client receives only a generic body:
+Both paths are sanitized identically to the gRPC adapter: the raw cause is logged **server-side** with a `correlation_id` field (and, for a panic, additionally recorded on the OTel span together with the stack), while the client receives only a generic body:
 
 ```json
 {
