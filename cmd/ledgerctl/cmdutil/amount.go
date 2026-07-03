@@ -6,8 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/formancehq/invariants"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/invariants"
 )
 
 // RescaleFlagName is the name of the global flag that re-expresses amounts at a
