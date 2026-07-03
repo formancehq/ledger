@@ -39,8 +39,8 @@ Examples:
 	cmd.Flags().String("ledger", "", "Name of the ledger")
 	cmd.Flags().String("type", "", "Index type: address, source-address, dest-address, metadata")
 	cmdutil.RegisterEnumCompletion(cmd, "type", indexTypeOptions...)
-	cmd.Flags().String("target", "", "Target type for metadata index: account or transaction")
-	cmdutil.RegisterEnumCompletion(cmd, "target", "account", "transaction")
+	cmd.Flags().String("target", "", "Target type for metadata index: account, transaction, or ledger")
+	cmdutil.RegisterEnumCompletion(cmd, "target", cmdutil.TargetTypeOptions()...)
 	cmd.Flags().String("key", "", "Metadata key name (for metadata index)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
