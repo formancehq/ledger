@@ -147,6 +147,78 @@ func TestBuildCreateArgs_MirrorHTTPWithOptions(t *testing.T) {
 	}, args)
 }
 
+func TestBuildCreateArgs_MirrorHTTPWithAddressRewriteRules(t *testing.T) {
+	t.Parallel()
+
+	r := newTestLedgerReconciler()
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		AddressRewriteRules: []ledgerv1alpha1.AddressRewriteRule{
+			{Pattern: `(:worker:\d+)`},
+			{Pattern: "^payments:", Replacement: "psp:"},
+		},
+		HTTP: &ledgerv1alpha1.HTTPMirrorSource{
+			BaseURL: "https://source.example.com",
+		},
+	}
+
+	args, err := r.buildCreateArgs(context.Background(), ledger)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"ledgers", "create", "--name", "ledger1",
+		"--mode", "mirror",
+		"--mirror-address-rewrite", `(:worker:\d+)=`,
+		"--mirror-address-rewrite", "^payments:=psp:",
+		"--mirror-source-type", "http",
+		"--mirror-base-url", "https://source.example.com",
+	}, args)
+}
+
+func TestBuildCreateArgs_MirrorPostgresWithAddressRewriteRules(t *testing.T) {
+	t.Parallel()
+
+	secret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pg-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"password": []byte("s3cr3t"),
+		},
+	}
+
+	r := newTestLedgerReconciler(secret)
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		AddressRewriteRules: []ledgerv1alpha1.AddressRewriteRule{
+			{Pattern: `(:worker:\d+)`},
+		},
+		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
+			Host:     "db.example.com",
+			Port:     5432,
+			User:     "ledger",
+			Database: "ledger",
+			SSLMode:  "require",
+			PasswordFrom: &ledgerv1alpha1.SecretKeyRef{
+				Name: "pg-secret",
+				Key:  "password",
+			},
+		},
+	}
+
+	args, err := r.buildCreateArgs(context.Background(), ledger)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"ledgers", "create", "--name", "ledger1",
+		"--mode", "mirror",
+		"--mirror-address-rewrite", `(:worker:\d+)=`,
+		"--mirror-source-type", "postgres",
+		"--mirror-dsn", "postgres://ledger:s3cr3t@db.example.com:5432/ledger?sslmode=require",
+	}, args)
+}
+
 func TestBuildCreateArgs_MirrorHTTPWithOAuth2(t *testing.T) {
 	t.Parallel()
 

@@ -346,6 +346,14 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 			args = append(args, "--mirror-batch-size", strconv.Itoa(int(*src.BatchSize)))
 		}
 
+		// Address rewrite rules apply to the shared v2 translator, so they are
+		// independent of the source transport (HTTP or Postgres). Each rule is
+		// passed as a repeatable 'pattern=replacement' flag; an empty
+		// replacement drops the matched segment.
+		for _, rule := range src.AddressRewriteRules {
+			args = append(args, "--mirror-address-rewrite", rule.Pattern+"="+rule.Replacement)
+		}
+
 		switch {
 		case src.HTTP != nil:
 			args = append(args, "--mirror-source-type", "http")
