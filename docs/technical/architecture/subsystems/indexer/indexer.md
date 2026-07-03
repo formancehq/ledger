@@ -31,11 +31,14 @@ The ticker is intentional: an indexer that wakes only on signal would stall on s
 
 ### Boot
 
-On `Start()`, the builder:
+On `Start()`, the builder runs a boot prologue (`bootInit`) that rebuilds the in-memory index-config cache and seeds the progress cursors as a single **retryable unit**:
 
-1. Reads the persisted progress cursors (main + AppliedProposal) — see [Progress Cursors](#progress-cursors).
-2. Reads all `IndexVersionState` rows under `SubInternalIndexVersion` into an in-memory map.
-3. Performs an **initial catch-up pass** with a larger batch size, stripping `BUILDING` indexes from the dispatch set so partially-built keyspaces do not get half-populated rows before backfill resumes.
+1. Rebuilds the index-config cache (`initIndexConfig`): reads all `IndexVersionState` rows under `SubInternalIndexVersion`, seeds a per-ledger config from the active ledgers, and loads the `SubAttrIndex` registry, scheduling backfills/rewrites for `BUILDING` entries. `initIndexConfig` resets its own builder-local state at entry, so re-running it on retry is idempotent (no double-scheduled backfill/rewrite tasks).
+2. Reads the persisted progress cursors (main + AppliedProposal) and the last-known Pebble sequence — see [Progress Cursors](#progress-cursors).
+
+`bootInit` is wrapped in `worker.RetryWithBackoff` (100 ms → 10 s). A transient Pebble / read-store failure at boot must **not** advance the persisted cursor against an incomplete config, so boot retries until it succeeds or shutdown is requested. The config rebuild, `LastIndexedSequence`, and the Pebble read-handle open are fatal (retried); the AppliedProposal-progress and last-sequence reads stay best-effort. After the retry returns, a `ctx.Err()` check distinguishes "init succeeded" from "shutdown requested" so the loop never processes logs against a failed init. A boot *read* failure is thus treated as transient and retried, rather than the non-recoverable panic path noted above — which remains reserved for invariant violations during processing.
+
+Only once boot init succeeds does the builder perform an **initial catch-up pass** with a larger batch size, stripping `BUILDING` indexes from the dispatch set so partially-built keyspaces do not get half-populated rows before backfill resumes.
 
 ## `processLogs` — Two-Pass Commit
 
