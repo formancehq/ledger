@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/big"
@@ -17,6 +18,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
@@ -38,6 +40,32 @@ const (
 	restoreS3Bucket       = "restore-backup"
 	restoreS3Region       = "us-east-1"
 )
+
+// readS3Manifest fetches and parses the backup manifest from S3. bucketID
+// defaults to the cluster ID ("test-cluster") when the backup request omits it.
+func readS3Manifest(ctx context.Context, client *s3.Client) (*backup.Manifest, error) {
+	out, err := client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(restoreS3Bucket),
+		Key:    aws.String("test-cluster/backups/manifest.json"),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = out.Body.Close() }()
+
+	data, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var manifest backup.Manifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, err
+	}
+
+	return &manifest, nil
+}
 
 // newRestoreGRPCClient creates a gRPC connection with a RestoreServiceClient.
 func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.ClientConn, error) {
@@ -65,6 +93,7 @@ var _ = Describe("Restore", Ordered, func() {
 		restoreWalDir  string
 		restoreDataDir string
 		minioEndpoint  string
+		s3Client       *s3.Client
 	)
 
 	BeforeAll(func() {
@@ -97,7 +126,7 @@ var _ = Describe("Restore", Ordered, func() {
 		)
 		Expect(err).To(Succeed())
 
-		s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		s3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
 			o.BaseEndpoint = aws.String(minioEndpoint)
 			o.UsePathStyle = true
 		})
@@ -150,6 +179,10 @@ var _ = Describe("Restore", Ordered, func() {
 			// no full 0xF1 rescan) — the condition under which a
 			// post-checkpoint account can be bloom-false-negatived.
 			instruments = append(instruments, testserver.WithCacheRotationThreshold(3))
+			// A 1-byte segment cap forces the incremental export to split at every
+			// sequence boundary, so a multi-sequence post-checkpoint range fans out
+			// into several segments per type — exercising split-and-restore below.
+			instruments = append(instruments, testserver.WithBackupMaxSegmentBytes(1))
 
 			sourceServer = testservice.New(cmdserver.NewRunCommand,
 				testservice.WithInstruments(instruments...),
@@ -220,6 +253,16 @@ var _ = Describe("Restore", Ordered, func() {
 			}, map[string]string{"type": "post-checkpoint"}, nil)))
 			Expect(err).To(Succeed())
 
+			// More post-checkpoint transactions so the incremental log/audit
+			// ranges span many sequences; with the 1-byte segment cap the export
+			// splits into several segments per type.
+			for i := range 8 {
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", fmt.Sprintf("split-acct-%d", i), big.NewInt(100), "USD"),
+				}, nil, nil)))
+				Expect(err).To(Succeed())
+			}
+
 			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
@@ -231,6 +274,21 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0),
 				"incremental backup must export the post-checkpoint log entries")
 			Expect(resp.GetSegmentsUploaded()).To(BeNumerically(">", 0))
+
+			// The tiny segment cap must have split the log export into multiple
+			// segments — proving splitting through the real server → S3 path.
+			manifest, err := readS3Manifest(ctx, s3Client)
+			Expect(err).To(Succeed())
+
+			logSegments := 0
+			for _, seg := range manifest.Exports {
+				if seg.Type == "log" {
+					logSegments++
+				}
+			}
+
+			Expect(logSegments).To(BeNumerically(">", 1),
+				"a 1-byte segment cap must split the multi-sequence log export into multiple segments")
 		})
 	})
 

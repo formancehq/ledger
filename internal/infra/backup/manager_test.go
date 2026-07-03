@@ -128,7 +128,7 @@ func TestRunIncrementalBackup_AbortsOnSequenceReadFailure(t *testing.T) {
 
 	storage := &recordingStorage{manifestBody: body}
 
-	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket")
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 	require.Error(t, err, "RunIncrementalBackup must fail when a sequence read fails")
 
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -164,7 +164,7 @@ func TestRunIncrementalBackup_AbortsOnAuditSequenceReadFailure(t *testing.T) {
 
 	storage := &recordingStorage{} // empty manifest is fine; we fail before the no-op check
 
-	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket")
+	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 
 	require.Error(t, err, "RunIncrementalBackup must fail when the audit sequence read fails")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -195,7 +195,7 @@ func TestRunIncrementalBackup_AbortsOnCorruptManifest(t *testing.T) {
 	store := newBackupTestStore(t)
 	storage := &recordingStorage{manifestBody: []byte("{ not valid json")}
 
-	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket")
+	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 
 	require.Error(t, err, "RunIncrementalBackup must fail on a corrupt existing manifest")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -325,7 +325,7 @@ func TestRunIncrementalBackup_InvokesPruneForExportsOnly(t *testing.T) {
 	// data/ must NOT be listed by the incremental path. Any other ListFiles
 	// call would fail the strict mock.
 
-	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID)
+	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Zero(t, result.OrphansDeleted)

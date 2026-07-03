@@ -3941,6 +3941,7 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | `--raft-processing-tick-interval` | duration | `tick-interval/10` | Interval for processing committed entries (0 = tick-interval/10) |
 | `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
 | `--spool-segment-max-bytes` | ByteSize | `256Mi` | Maximum spool segment size before rotation/sealing (0 = use default 256Mi). Lower values seal (and thus prune) segments more often at the cost of more files |
+| `--backup-max-segment-bytes` | ByteSize | `4Gi` | Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi). Lower values produce more, smaller segments (smaller retry blast radius) at the cost of more objects |
 
 ```bash
 # Increase compaction margin for workloads with large snapshots
@@ -3948,6 +3949,9 @@ ledger run --raft-compaction-margin 5000 [other flags...]
 
 # Smaller spool segments (rotate/seal more often, e.g. for chaos testing)
 ledger run --spool-segment-max-bytes 256Ki [other flags...]
+
+# Smaller incremental-backup export segments
+ledger run --backup-max-segment-bytes 1Gi [other flags...]
 
 # More frequent maintenance (WAL snapshot + Pebble checkpoint)
 ledger run --maintenance-interval 15s [other flags...]

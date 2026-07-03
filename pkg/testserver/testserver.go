@@ -317,6 +317,14 @@ func WithCacheRotationThreshold(threshold uint64) testservice.InstrumentationFun
 	}
 }
 
+func WithBackupMaxSegmentBytes(maxBytes int64) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--backup-max-segment-bytes", strconv.FormatInt(maxBytes, 10))
+
+		return nil
+	}
+}
+
 func WithSentinelMode() testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--sentinel-mode")

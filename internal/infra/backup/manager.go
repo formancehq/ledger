@@ -270,14 +270,23 @@ func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, p
 // RunIncrementalBackup exports new log and audit entries since the last backup.
 // It reads the manifest to determine the starting sequences, streams new entries
 // as KV stream segments to S3, and updates the manifest.
+//
+// maxSegmentBytes caps the on-storage size of each export segment; a range
+// larger than that splits into multiple segments. 0 selects the default
+// (maxExportSegmentBytes).
 func RunIncrementalBackup(
 	ctx context.Context,
 	logger logging.Logger,
 	store *dal.Store,
 	storage Storage,
 	bucketID string,
+	maxSegmentBytes int64,
 ) (*IncrementalBackupResult, error) {
 	start := time.Now()
+
+	if maxSegmentBytes <= 0 {
+		maxSegmentBytes = maxExportSegmentBytes
+	}
 
 	manifestKey := ManifestKey(bucketID)
 
@@ -350,7 +359,7 @@ func RunIncrementalBackup(
 			ctx, storage, readHandle,
 			dal.ZoneCold, dal.SubColdLog, afterLogSeq, currentLogSeq, "log",
 			func(part int) string { return ExportLogSegmentKey(bucketID, afterLogSeq+1, currentLogSeq, part) },
-			maxExportSegmentBytes,
+			maxSegmentBytes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("exporting log entries: %w", err)
@@ -367,7 +376,7 @@ func RunIncrementalBackup(
 			ctx, storage, readHandle,
 			dal.ZoneCold, dal.SubColdAudit, afterAuditSeq, currentAuditSeq, "audit",
 			func(part int) string { return ExportAuditSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part) },
-			maxExportSegmentBytes,
+			maxSegmentBytes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("exporting audit entries: %w", err)
@@ -390,7 +399,7 @@ func RunIncrementalBackup(
 			func(part int) string {
 				return ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part)
 			},
-			maxExportSegmentBytes,
+			maxSegmentBytes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("exporting audit items: %w", err)
@@ -411,7 +420,7 @@ func RunIncrementalBackup(
 			func(part int) string {
 				return ExportAppliedProposalSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part)
 			},
-			maxExportSegmentBytes,
+			maxSegmentBytes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("exporting applied proposals: %w", err)
