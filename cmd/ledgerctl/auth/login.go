@@ -85,10 +85,20 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 	if err := syncProfile(cmd, server); err != nil {
 		var restoreErr error
 
-		if prevErr == nil {
+		switch {
+		case prevErr == nil:
+			// Prior token captured — restore it.
 			restoreErr = keyring.Set(server, prevToken)
-		} else {
+		case errors.Is(prevErr, cmdutil.ErrTokenNotFound):
+			// No prior token — delete the just-stored one.
 			restoreErr = keyring.Delete(server)
+		default:
+			// Get failed for a non-NotFound reason (transient backend
+			// error, permission issue). We don't know the prior state, so
+			// touching the keychain here could clobber a valid credential
+			// we couldn't read. Report the sync failure and the unknown
+			// state; the operator resolves manually.
+			return fmt.Errorf("syncing profile: %w (keychain rollback skipped: prior state unknown: %w)", err, prevErr)
 		}
 
 		if restoreErr != nil {

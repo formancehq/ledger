@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -61,9 +62,14 @@ type fakeKeyring struct {
 	delCall int
 	setFail error
 	delFail error
+	getFail error // when set, Get returns this error (bypasses store lookup)
 }
 
 func (f *fakeKeyring) Get(server string) (string, error) {
+	if f.getFail != nil {
+		return "", f.getFail
+	}
+
 	if f.store == nil {
 		return "", cmdutil.ErrTokenNotFound
 	}
@@ -178,6 +184,69 @@ func TestRunLogin_RollbackRestoresPriorToken(t *testing.T) {
 
 	require.Equal(t, 0, kr.delCall,
 		"rollback must NOT call Delete when a prior credential existed")
+}
+
+// TestRunLogin_SkipsRollbackOnOpaqueKeyringGetError guards against wiping a
+// prior credential we could not read: when keyring.Get fails with an error
+// that is NOT ErrTokenNotFound (transient backend, item permission issue),
+// runLogin's rollback must NOT call Delete — the store could still hold a
+// valid prior token we're unable to see. Report the sync failure and the
+// unknown-state hint; leave the just-stored token in place.
+func TestRunLogin_SkipsRollbackOnOpaqueKeyringGetError(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+	t.Setenv("LOCALAPPDATA", tmp)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+
+	require.NoError(t, cmdutil.SaveConfig(cmdutil.Config{
+		ActiveProfile: "prod",
+		Profiles: map[string]cmdutil.Profile{
+			"prod": {Server: "prod.example.com:8888"},
+		},
+	}))
+
+	configPath, err := cmdutil.ConfigPath()
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(configPath, 0o400))
+	t.Cleanup(func() { _ = os.Chmod(configPath, 0o600) })
+
+	// Fake keyring: Get errors with a NON-ErrTokenNotFound error, Set works.
+	kr := &fakeKeyring{getFail: errors.New("keychain backend transient error")}
+
+	seedPath := filepath.Join(t.TempDir(), "seed.hex")
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	require.NoError(t, os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)), 0o600))
+
+	cmd := NewLoginCommand()
+	cmd.Flags().String("profile", "", "")
+	cmd.Flags().String("server", "localhost:8888", "")
+	cmd.Flags().Bool("insecure", false, "")
+	cmd.Flags().String("tls-ca-cert", "", "")
+	cmd.Flags().String("signing-key-id", "", "")
+	cmd.Flags().String("response-verify-key", "", "")
+	cmd.SetContext(cmdutil.WithKeyring(context.Background(), kr))
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--profile", "prod",
+		"--server", "prod.example.com:9999",
+		"--signing-key", seedPath,
+		"--key-id", "k",
+		"--subject", "svc",
+	}))
+
+	err = runLogin(cmd, nil)
+	require.Error(t, err)
+
+	require.Equal(t, 0, kr.delCall,
+		"Delete must NOT run when the prior keychain state is unknown")
+	require.Equal(t, 1, kr.setCall,
+		"Set runs exactly once (initial store); no restore-Set on opaque prev-Get error")
+	require.Contains(t, err.Error(), "keychain rollback skipped",
+		"error must surface that rollback was intentionally skipped")
 }
 
 // TestResolveLoginParams_ExplicitSigningKeyIDBeatsProfileDerivedKeyID guards
