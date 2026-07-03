@@ -289,6 +289,48 @@ func TestResolveLoginParams_ExplicitSigningKeyIDBeatsProfileDerivedKeyID(t *test
 		"explicit --signing-key-id must beat a profile-derived --key-id")
 }
 
+// TestResolveLoginParams_ExplicitSigningKeyIDBeatsEnvKeyID covers the CLI-
+// over-env precedence when both siblings are populated from non-CLI sources:
+// KEY_ID is set in the environment (which bindSubcommandEnv writes to the
+// local --key-id flag via Value.Set — Changed=false), and the user passes
+// --signing-key-id on the CLI (Changed=true). resolveKeyID must return the
+// CLI value; otherwise auth login / auth generate-token would silently
+// keep signing JWTs with the stale env KEY_ID instead of the just-provided
+// --signing-key-id.
+func TestResolveLoginParams_ExplicitSigningKeyIDBeatsEnvKeyID(t *testing.T) {
+	seedPath := filepath.Join(t.TempDir(), "seed.hex")
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	require.NoError(t, os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)), 0o600))
+
+	cmd := newTestCmd(t)
+	cmd.Flags().StringSlice("scopes", nil, "")
+	cmd.Flags().Duration("expiration", 0, "")
+	cmd.Flags().Bool("god", false, "")
+	cmd.Flags().String("subject", "", "")
+	cmd.Flags().String("bundle", "", "")
+
+	// Simulate bindSubcommandEnv having applied KEY_ID via Value.Set
+	// (Changed stays false).
+	require.NoError(t, cmd.Flags().Lookup("key-id").Value.Set("env-key-id"))
+	require.False(t, cmd.Flags().Changed("key-id"),
+		"guard: env-derived key-id must leave Changed=false after the bindSubcommandEnv fix")
+
+	// User provides --signing-key-id on the CLI.
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--signing-key", seedPath,
+		"--signing-key-id", "cli-signing-key-id",
+		"--subject", "svc",
+	}))
+
+	p, err := resolveLoginParams(cmd)
+	require.NoError(t, err)
+	require.Equal(t, "cli-signing-key-id", p.keyID,
+		"CLI --signing-key-id must beat env KEY_ID (CLI over env)")
+}
+
 // TestResolveLoginParams_EnvSigningKeyIDBeatsProfileDerivedKeyID covers the
 // env-var-derived variant of the sibling override: when LEDGERCTL_SIGNING_KEY_ID
 // populates --signing-key-id (Changed stays false), it must still beat the

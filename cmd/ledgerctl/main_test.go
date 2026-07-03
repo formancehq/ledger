@@ -362,8 +362,12 @@ func TestBindEnvSkipsOwnedProfile(t *testing.T) {
 
 	// Control: a non-owned flag IS bound from its bare env name, proving the
 	// binder actually ran and the skip above is specific to the owned set.
+	// Value.Set semantics: the flag holds the env value, but Changed stays
+	// false — Changed must always mean "typed on the CLI" so auth login's
+	// resolveKeyID and bundle-override checks stay correct.
 	probe, err := set.GetString("probe-only")
 	require.NoError(t, err)
 	require.Equal(t, "bound-value", probe)
-	require.True(t, set.Changed("probe-only"))
+	require.False(t, set.Changed("probe-only"),
+		"env-derived non-owned flags must leave Changed=false so CLI-only intent stays distinguishable")
 }

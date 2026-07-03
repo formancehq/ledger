@@ -296,6 +296,14 @@ func bindEnvSkippingOwned(cmd *cobra.Command) {
 // bindFlagSetSkippingOwned binds each non-owned flag in set to its bare
 // uppercased env name (matching service.BindEnvToFlagSet, including the
 // stringSlice space-to-comma handling used by flags such as --scopes).
+//
+// Values are applied through Flag.Value.Set instead of FlagSet.Set so the
+// flag's Changed bit stays false: Changed must mean "the user typed the flag
+// on the CLI", not "we found a matching env var". auth login's resolveKeyID
+// and its bundle-override guards rely on this — otherwise a stray KEY_ID
+// env would beat an explicit CLI --signing-key-id, and env-derived
+// key-id/subject/scopes would silently override bundle values that
+// documentation says should win over env.
 func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
 	set.VisitAll(func(flag *pflag.Flag) {
 		if _, owned := ledgerctlOwnedFlagNames[flag.Name]; owned {
@@ -316,7 +324,7 @@ func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
 
 		// Ignore the error: an invalid env value leaves the cobra default in
 		// place, matching resolveFlag's best-effort env handling.
-		_ = set.Set(flag.Name, value)
+		_ = flag.Value.Set(value)
 	})
 }
 
