@@ -11,6 +11,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -100,8 +101,13 @@ func runDownload(cmd *cobra.Command, _ []string) error {
 		// the server to stop and wipe the staging dir.
 		if errors.Is(pollErr, context.Canceled) || status.Code(pollErr) == codes.Canceled {
 			// Use a fresh context so the cancel RPC itself is not killed by
-			// the same signal that ended the poll loop.
-			cancelCtx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+			// the same signal that ended the poll loop, but carry the
+			// invocation's span context so the CancelDownload span still joins
+			// the CLI trace instead of becoming an orphan root span.
+			cancelCtx, cancel := context.WithTimeout(
+				trace.ContextWithSpanContext(context.Background(), trace.SpanContextFromContext(rootCtx)),
+				rpcTimeout,
+			)
 			defer cancel()
 
 			_, cancelErr := client.CancelDownload(cancelCtx, &restorepb.CancelDownloadRequest{JobId: startResp.GetJobId()})

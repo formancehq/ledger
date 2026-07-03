@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -36,21 +37,42 @@ import (
 )
 
 func main() {
+	// run() owns all deferred cleanup (notably the OpenTelemetry span flush);
+	// keeping os.Exit out here guarantees those defers run before the process
+	// terminates, even on the error path.
+	os.Exit(run())
+}
+
+func run() int {
 	rootCmd := newRootCommand()
 	rootCmd.SilenceErrors = true
 
 	bindSubcommandEnv(rootCmd)
 
-	err := rootCmd.Execute()
+	// Initialise OpenTelemetry from the standard OTEL_* env vars. The root span
+	// created here parents every per-RPC span emitted by the gRPC client handler,
+	// so a single invocation produces one connected trace.
+	ctx := context.Background()
+	shutdownTracing := cmdutil.SetupTracing(ctx, version.Get().Version)
+	defer shutdownTracing(context.Background())
+
+	ctx, span := cmdutil.StartRootSpan(ctx)
+	defer span.End()
+
+	err := rootCmd.ExecuteContext(ctx)
 	if err != nil {
+		cmdutil.RecordSpanError(span, err)
+
 		var cliErr *cmdutil.CLIError
 		if !errors.As(err, &cliErr) {
 			// Error was not already displayed — print it now.
 			pterm.Error.Println(err.Error())
 		}
 
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
 
 func newRootCommand() *cobra.Command {
@@ -60,6 +82,10 @@ func newRootCommand() *cobra.Command {
 		Long:         "Command-line client for interacting with Ledger v3 servers via gRPC",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// Refine the root span name now that the target subcommand is known
+			// (e.g. "ledgerctl transactions get").
+			cmdutil.NameCommandSpan(cmd)
+
 			// Keep stdout reserved for machine-readable payloads when the
 			// caller asked for --json or --yaml. Spinners, success messages,
 			// errors — every pterm printer — gets redirected to stderr so a
