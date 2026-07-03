@@ -47,10 +47,11 @@ func main() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(ledgerv1alpha1.AddToScheme(scheme))
 
-	// Discover the operator's own namespace up-front. When --watch-namespace
-	// is used, the manager cache must include the operator namespace too so
-	// canonical seed Secret reads/writes are not silently truncated to the
-	// watched namespace.
+	// Discover the operator's own namespace up-front. Canonical seed
+	// Secrets live there and are accessed via an uncached APIReader (see
+	// LedgerClusterAgentReconciler.APIReader), so --watch-namespace scope
+	// stays exactly what the user asked for — the operator namespace is
+	// NOT added to the cache.
 	operatorNamespace, err := controller.DiscoverOperatorNamespace()
 	if err != nil {
 		setupLog.Error(err, "unable to determine operator namespace")
@@ -69,9 +70,6 @@ func main() {
 	if f.watchNamespace != "" {
 		mgrOpts.Cache.DefaultNamespaces = map[string]cache.Config{
 			f.watchNamespace: {},
-		}
-		if operatorNamespace != f.watchNamespace {
-			mgrOpts.Cache.DefaultNamespaces[operatorNamespace] = cache.Config{}
 		}
 	}
 
@@ -110,6 +108,7 @@ func main() {
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
 		OperatorNamespace: operatorNamespace,
+		APIReader:         mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LedgerClusterAgent")
 		os.Exit(1)

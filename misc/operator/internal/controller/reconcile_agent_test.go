@@ -349,6 +349,57 @@ func TestReconcile_AgentUpgradeAdoptsLegacyReplicaSeed(t *testing.T) {
 	assert.Equal(t, string(canonical.Data["seed.hex"]), string(legacyReplica.Data["seed.hex"]), "legacy replica seed must not be rotated on upgrade")
 }
 
+func TestReconcile_AgentUpgradeAdoptsLegacySeedWithoutTargets(t *testing.T) {
+	ns := createTestNamespace(t)
+
+	// Simulate an upgrade scenario where the old operator was stopped, the
+	// LedgerService was deleted while it was down, and now we upgrade. The
+	// only survivor is a legacy replica Secret sitting alone in a namespace
+	// no longer referenced by any LedgerService.
+	legacyReplica := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ledger-orphan-agent-agent-keys",
+			Namespace: ns,
+			Labels: map[string]string{
+				agentNameLabel: "orphan-agent",
+			},
+		},
+		Data: map[string][]byte{
+			"seed.hex":   []byte("cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe"),
+			"pubkey.hex": []byte("f00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeed"),
+			"key-id":     []byte("orphanseedxxxxx"),
+		},
+	}
+	require.NoError(t, k8sClient.Create(ctx, legacyReplica))
+
+	agent := newLedgerClusterAgent("orphan-agent", []string{"read"}, map[string]string{"tier": "never-matches"})
+	require.NoError(t, k8sClient.Create(ctx, agent))
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
+	})
+
+	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-orphan-agent-agent-canonical"}
+	canonical := &corev1.Secret{}
+	requireEventually(t, func() bool {
+		if err := k8sClient.Get(ctx, canonicalKey, canonical); err != nil {
+			return false
+		}
+
+		return len(canonical.Data["seed.hex"]) > 0
+	}, "canonical must be bootstrapped from the orphan legacy replica even with no matching services")
+
+	assert.Equal(t, string(legacyReplica.Data["seed.hex"]), string(canonical.Data["seed.hex"]), "canonical must adopt the legacy seed on no-target upgrade")
+	assert.Equal(t, string(legacyReplica.Data["key-id"]), string(canonical.Data["key-id"]))
+
+	// The orphan legacy replica is then aggressively GC'd because no target
+	// covers its namespace — but the seed identity is preserved on the canonical.
+	requireEventually(t, func() bool {
+		err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: legacyReplica.Name}, &corev1.Secret{})
+
+		return apierrors.IsNotFound(err)
+	}, "orphan legacy replica should be GC'd after its seed is adopted")
+}
+
 func TestReconcile_AgentCanonicalDeletedOnAgentRemoval(t *testing.T) {
 	ns := createTestNamespace(t)
 

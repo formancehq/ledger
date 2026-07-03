@@ -42,6 +42,13 @@ type LedgerClusterAgentReconciler struct {
 	// DiscoverOperatorNamespace in production, from a fixed namespace in
 	// envtest) so the reconciler does not depend on process-global state.
 	OperatorNamespace string
+
+	// APIReader is an uncached reader used exclusively for canonical Secret
+	// reads in the operator's own namespace. Going through the manager's
+	// cached client would either force us to widen --watch-namespace scope
+	// (surprising for multi-tenant deployments) or hit a cache-miss. Writes
+	// always bypass the cache and use the regular Client.
+	APIReader client.Reader
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerclusteragents,verbs=get;list;watch;create;update;patch;delete
@@ -107,16 +114,18 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	// Resolve canonical seed material. The canonical Secret lives in the
 	// operator's namespace and is the sole source of truth for the seed;
-	// per-target replicas are pure projections of its content. It is
-	// created lazily on first-ever target so an agent with no matching
-	// services never persists key material. Once it exists, it survives
-	// transient absence of every target — a LedgerService deletion no
-	// longer regenerates the seed.
+	// per-target replicas are pure projections of its content.
+	//
+	// Bootstrap conditions: at least one desired target OR at least one
+	// existing replica. The second case covers the no-target upgrade path:
+	// legacy replicas from a pre-canonical operator would otherwise be
+	// deleted by the aggressive GC below before their seed could be
+	// adopted, permanently losing the identity.
 	var (
 		canonicalData map[string][]byte
 		refs          = make([]ledgerv1alpha1.SecretReference, 0, len(desiredNamespaces))
 	)
-	if len(desiredNamespaces) > 0 {
+	if len(desiredNamespaces) > 0 || len(existingReplicas) > 0 {
 		canonicalData, err = r.ensureCanonicalSecret(ctx, agent, existingReplicas)
 		if err != nil {
 			meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
@@ -131,7 +140,9 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 			return ctrl.Result{}, fmt.Errorf("ensuring canonical secret: %w", err)
 		}
+	}
 
+	if len(desiredNamespaces) > 0 {
 		for _, ns := range desiredNamespaces {
 			if err := r.ensureReplica(ctx, agent, ns, canonicalData); err != nil {
 				meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
@@ -299,62 +310,86 @@ func (r *LedgerClusterAgentReconciler) listAgentReplicaSecrets(ctx context.Conte
 
 // ensureCanonicalSecret creates the canonical seed Secret in the operator's
 // namespace on first call for the agent, and returns its data on every
-// subsequent call. The seed is generated exactly once — the CreateOrUpdate
-// mutation only writes fresh key material when the Secret has no seed.hex
-// yet, so the canonical value is stable across the agent's lifetime.
+// subsequent call. The seed is generated exactly once and the Secret is
+// never updated after creation — the canonical value is stable across the
+// agent's lifetime, independent of the manager cache configuration.
+//
+// Reads go through r.APIReader (uncached) to avoid forcing the caller to
+// widen --watch-namespace scope for every controller in the manager just so
+// the operator namespace is covered. Writes hit the API server directly
+// regardless of cache.
 //
 // Upgrade path: existingReplicas is the set of Secrets carrying seed material
 // under the older (canonical-less) layout. When bootstrapping the canonical
 // for the first time, we adopt the seed from one of them instead of
 // generating fresh material — otherwise upgrading the operator would
-// silently invalidate every bundle already handed out from the pre-canonical
-// replica.
+// silently invalidate every bundle already handed out.
 func (r *LedgerClusterAgentReconciler) ensureCanonicalSecret(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent, existingReplicas []corev1.Secret) (map[string][]byte, error) {
 	if r.OperatorNamespace == "" {
 		return nil, errors.New("operator namespace not configured")
 	}
+	if r.APIReader == nil {
+		return nil, errors.New("APIReader not configured")
+	}
 
-	secret := &corev1.Secret{
+	key := types.NamespacedName{
+		Name:      agentCanonicalSecretName(agent.Name),
+		Namespace: r.OperatorNamespace,
+	}
+
+	existing := &corev1.Secret{}
+	switch err := r.APIReader.Get(ctx, key, existing); {
+	case err == nil:
+		if len(existing.Data[keySeedHex]) == 0 {
+			return nil, fmt.Errorf("canonical secret %s/%s exists but has no seed", key.Namespace, key.Name)
+		}
+
+		return existing.Data, nil
+	case !apierrors.IsNotFound(err):
+		return nil, fmt.Errorf("reading canonical secret: %w", err)
+	}
+
+	// Not found — mint a new canonical, adopting a legacy replica's seed
+	// when available to keep bundles valid across upgrades.
+	fresh := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      agentCanonicalSecretName(agent.Name),
-			Namespace: r.OperatorNamespace,
+			Name:      key.Name,
+			Namespace: key.Namespace,
+			Labels: map[string]string{
+				agentNameLabel: agent.Name,
+			},
 		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
-		if secret.Labels == nil {
-			secret.Labels = make(map[string]string, 1)
-		}
-		secret.Labels[agentNameLabel] = agent.Name
-
-		if len(secret.Data[keySeedHex]) > 0 {
-			return nil
-		}
-
-		if adopted := adoptSeedFromReplica(existingReplicas); adopted != nil {
-			secret.Data = adopted
-
-			return nil
-		}
-
+	if adopted := adoptSeedFromReplica(existingReplicas); adopted != nil {
+		fresh.Data = adopted
+	} else {
 		seed, pubKey, keyID, err := generateEd25519KeyPair()
 		if err != nil {
-			return fmt.Errorf("generating Ed25519 keypair: %w", err)
+			return nil, fmt.Errorf("generating Ed25519 keypair: %w", err)
 		}
-
-		secret.Data = map[string][]byte{
+		fresh.Data = map[string][]byte{
 			keySeedHex:   []byte(hex.EncodeToString(seed)),
 			keyPubKeyHex: []byte(hex.EncodeToString(pubKey)),
 			keyKeyID:     []byte(keyID),
 		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("upserting canonical secret: %w", err)
 	}
 
-	return secret.Data, nil
+	if err := r.Create(ctx, fresh); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			// A concurrent reconcile beat us to it. Re-read via APIReader
+			// (the write may not be visible on the cached client yet).
+			if err := r.APIReader.Get(ctx, key, existing); err != nil {
+				return nil, fmt.Errorf("re-reading canonical secret after AlreadyExists: %w", err)
+			}
+
+			return existing.Data, nil
+		}
+
+		return nil, fmt.Errorf("creating canonical secret: %w", err)
+	}
+
+	return fresh.Data, nil
 }
 
 // adoptSeedFromReplica returns a copy of the seed material found on any

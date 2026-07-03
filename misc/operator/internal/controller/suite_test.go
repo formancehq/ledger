@@ -96,6 +96,7 @@ func TestMain(m *testing.M) {
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
 		OperatorNamespace: testOperatorNamespace,
+		APIReader:         mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up LedgerClusterAgent controller: %v", err))
 	}
