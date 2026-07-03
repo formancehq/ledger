@@ -47,6 +47,16 @@ func main() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(ledgerv1alpha1.AddToScheme(scheme))
 
+	// Discover the operator's own namespace up-front. When --watch-namespace
+	// is used, the manager cache must include the operator namespace too so
+	// canonical seed Secret reads/writes are not silently truncated to the
+	// watched namespace.
+	operatorNamespace, err := controller.DiscoverOperatorNamespace()
+	if err != nil {
+		setupLog.Error(err, "unable to determine operator namespace")
+		os.Exit(1)
+	}
+
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -59,6 +69,9 @@ func main() {
 	if f.watchNamespace != "" {
 		mgrOpts.Cache.DefaultNamespaces = map[string]cache.Config{
 			f.watchNamespace: {},
+		}
+		if operatorNamespace != f.watchNamespace {
+			mgrOpts.Cache.DefaultNamespaces[operatorNamespace] = cache.Config{}
 		}
 	}
 
@@ -73,12 +86,6 @@ func main() {
 	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		setupLog.Error(err, "unable to create kubernetes clientset")
-		os.Exit(1)
-	}
-
-	operatorNamespace, err := controller.DiscoverOperatorNamespace()
-	if err != nil {
-		setupLog.Error(err, "unable to determine operator namespace")
 		os.Exit(1)
 	}
 

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -294,6 +295,58 @@ func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
 	assert.Equal(t, initialSeed, string(replica.Data["seed.hex"]), "seed must be identical after LedgerService recreation")
 	assert.Equal(t, initialPubKey, string(replica.Data["pubkey.hex"]))
 	assert.Equal(t, initialKeyID, string(replica.Data["key-id"]))
+}
+
+func TestReconcile_AgentUpgradeAdoptsLegacyReplicaSeed(t *testing.T) {
+	ns := createTestNamespace(t)
+
+	// Simulate a replica Secret produced by a pre-canonical version of the
+	// operator: it carries only the legacy agentNameLabel and holds seed
+	// material at the same well-known key set. The agent name matches what
+	// the reconciler will look up.
+	legacyReplica := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ledger-legacy-agent-agent-keys",
+			Namespace: ns,
+			Labels: map[string]string{
+				agentNameLabel: "legacy-agent",
+			},
+		},
+		Data: map[string][]byte{
+			"seed.hex":   []byte("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"),
+			"pubkey.hex": []byte("11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"),
+			"key-id":     []byte("legacyseed12345"),
+		},
+	}
+	require.NoError(t, k8sClient.Create(ctx, legacyReplica))
+
+	ls := newLedgerService("legacy-svc", ns)
+	ls.Labels = map[string]string{"tier": "legacy"}
+	require.NoError(t, k8sClient.Create(ctx, ls))
+
+	agent := newLedgerClusterAgent("legacy-agent", []string{"read"}, map[string]string{"tier": "legacy"})
+	require.NoError(t, k8sClient.Create(ctx, agent))
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
+	})
+
+	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-legacy-agent-agent-canonical"}
+	canonical := &corev1.Secret{}
+	requireEventually(t, func() bool {
+		if err := k8sClient.Get(ctx, canonicalKey, canonical); err != nil {
+			return false
+		}
+
+		return len(canonical.Data["seed.hex"]) > 0
+	}, "canonical secret should be created and seeded from the legacy replica")
+
+	assert.Equal(t, string(legacyReplica.Data["seed.hex"]), string(canonical.Data["seed.hex"]), "canonical must adopt the legacy replica seed")
+	assert.Equal(t, string(legacyReplica.Data["pubkey.hex"]), string(canonical.Data["pubkey.hex"]))
+	assert.Equal(t, string(legacyReplica.Data["key-id"]), string(canonical.Data["key-id"]))
+
+	// The legacy replica must keep the same seed content (no rotation).
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: legacyReplica.Name}, legacyReplica))
+	assert.Equal(t, string(canonical.Data["seed.hex"]), string(legacyReplica.Data["seed.hex"]), "legacy replica seed must not be rotated on upgrade")
 }
 
 func TestReconcile_AgentCanonicalDeletedOnAgentRemoval(t *testing.T) {

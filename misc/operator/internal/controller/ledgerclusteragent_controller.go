@@ -29,14 +29,6 @@ import (
 const (
 	agentFinalizer = "ledger.formance.com/agent-keys"
 	agentNameLabel = "ledger.formance.com/agent-name"
-
-	// agentRoleLabel distinguishes the canonical seed Secret (living in the
-	// operator's namespace) from per-target replica Secrets. Only replicas
-	// are listed for placement / GC purposes; the canonical Secret is
-	// managed on its own path so it survives every target coming and going.
-	agentRoleLabel     = "ledger.formance.com/agent-role"
-	agentRoleReplica   = "replica"
-	agentRoleCanonical = "canonical"
 )
 
 // LedgerClusterAgentReconciler reconciles a LedgerClusterAgent object.
@@ -125,7 +117,7 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 		refs          = make([]ledgerv1alpha1.SecretReference, 0, len(desiredNamespaces))
 	)
 	if len(desiredNamespaces) > 0 {
-		canonicalData, err = r.ensureCanonicalSecret(ctx, agent)
+		canonicalData, err = r.ensureCanonicalSecret(ctx, agent, existingReplicas)
 		if err != nil {
 			meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
 				Type:               "Ready",
@@ -279,18 +271,30 @@ func (r *LedgerClusterAgentReconciler) resolveMatchedServices(ctx context.Contex
 }
 
 // listAgentReplicaSecrets returns every replica Secret belonging to the given
-// agent, across all namespaces. The canonical Secret is deliberately excluded
-// (filtered via agentRoleLabel) so replica placement and GC cannot touch it.
+// agent, across all namespaces. The canonical Secret is identified by
+// name + namespace and excluded from the result — filtering by name (rather
+// than by an additional label) means Secrets created by pre-canonical
+// versions of the operator are still discovered, so upgrade adopts them
+// instead of orphaning them.
 func (r *LedgerClusterAgentReconciler) listAgentReplicaSecrets(ctx context.Context, agentName string) ([]corev1.Secret, error) {
 	var secrets corev1.SecretList
 	if err := r.List(ctx, &secrets, client.MatchingLabels{
 		agentNameLabel: agentName,
-		agentRoleLabel: agentRoleReplica,
 	}); err != nil {
 		return nil, err
 	}
 
-	return secrets.Items, nil
+	canonicalName := agentCanonicalSecretName(agentName)
+
+	filtered := secrets.Items[:0]
+	for _, s := range secrets.Items {
+		if s.Name == canonicalName && s.Namespace == r.OperatorNamespace {
+			continue
+		}
+		filtered = append(filtered, s)
+	}
+
+	return filtered, nil
 }
 
 // ensureCanonicalSecret creates the canonical seed Secret in the operator's
@@ -298,7 +302,14 @@ func (r *LedgerClusterAgentReconciler) listAgentReplicaSecrets(ctx context.Conte
 // subsequent call. The seed is generated exactly once — the CreateOrUpdate
 // mutation only writes fresh key material when the Secret has no seed.hex
 // yet, so the canonical value is stable across the agent's lifetime.
-func (r *LedgerClusterAgentReconciler) ensureCanonicalSecret(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent) (map[string][]byte, error) {
+//
+// Upgrade path: existingReplicas is the set of Secrets carrying seed material
+// under the older (canonical-less) layout. When bootstrapping the canonical
+// for the first time, we adopt the seed from one of them instead of
+// generating fresh material — otherwise upgrading the operator would
+// silently invalidate every bundle already handed out from the pre-canonical
+// replica.
+func (r *LedgerClusterAgentReconciler) ensureCanonicalSecret(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent, existingReplicas []corev1.Secret) (map[string][]byte, error) {
 	if r.OperatorNamespace == "" {
 		return nil, errors.New("operator namespace not configured")
 	}
@@ -312,12 +323,17 @@ func (r *LedgerClusterAgentReconciler) ensureCanonicalSecret(ctx context.Context
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
 		if secret.Labels == nil {
-			secret.Labels = make(map[string]string, 2)
+			secret.Labels = make(map[string]string, 1)
 		}
 		secret.Labels[agentNameLabel] = agent.Name
-		secret.Labels[agentRoleLabel] = agentRoleCanonical
 
 		if len(secret.Data[keySeedHex]) > 0 {
+			return nil
+		}
+
+		if adopted := adoptSeedFromReplica(existingReplicas); adopted != nil {
+			secret.Data = adopted
+
 			return nil
 		}
 
@@ -341,6 +357,38 @@ func (r *LedgerClusterAgentReconciler) ensureCanonicalSecret(ctx context.Context
 	return secret.Data, nil
 }
 
+// adoptSeedFromReplica returns a copy of the seed material found on any
+// existing replica, or nil when no candidate carries a seed. The candidate
+// pool is sorted deterministically by namespace/name so the choice is stable
+// across reconciles when multiple replicas exist (all replicas should carry
+// the same content, but we do not rely on that invariant here).
+func adoptSeedFromReplica(replicas []corev1.Secret) map[string][]byte {
+	candidates := make([]*corev1.Secret, 0, len(replicas))
+	for i := range replicas {
+		if len(replicas[i].Data[keySeedHex]) > 0 {
+			candidates = append(candidates, &replicas[i])
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].Namespace != candidates[j].Namespace {
+			return candidates[i].Namespace < candidates[j].Namespace
+		}
+
+		return candidates[i].Name < candidates[j].Name
+	})
+
+	src := candidates[0].Data
+
+	return map[string][]byte{
+		keySeedHex:   append([]byte(nil), src[keySeedHex]...),
+		keyPubKeyHex: append([]byte(nil), src[keyPubKeyHex]...),
+		keyKeyID:     append([]byte(nil), src[keyKeyID]...),
+	}
+}
+
 // ensureReplica creates or updates the agent's replica Secret in the given
 // namespace with a projection of the canonical data.
 func (r *LedgerClusterAgentReconciler) ensureReplica(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent, namespace string, data map[string][]byte) error {
@@ -353,10 +401,9 @@ func (r *LedgerClusterAgentReconciler) ensureReplica(ctx context.Context, agent 
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
 		if secret.Labels == nil {
-			secret.Labels = make(map[string]string, 2)
+			secret.Labels = make(map[string]string, 1)
 		}
 		secret.Labels[agentNameLabel] = agent.Name
-		secret.Labels[agentRoleLabel] = agentRoleReplica
 		secret.Data = data
 
 		return nil
