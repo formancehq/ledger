@@ -164,6 +164,38 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.True(t, hasBob, "should discover second destination")
 	})
 
+	t.Run("overdraft send discovers the unbounded-overdraft source (ledger#1500)", func(t *testing.T) {
+		t.Parallel()
+
+		script := `
+#![feature("experimental-overdraft-function", "experimental-mid-script-function-call")]
+			send overdraft(@credit, USD/2) (
+				source = @repay allowing unbounded overdraft
+				destination = @credit
+			)
+		`
+
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerName)
+		require.NoError(t, err)
+
+		// @repay is the source. overdraft() folds to zero against emulation's fake
+		// positive balance, so the send emits no posting and @repay is never seen
+		// by emulation alone — it is recovered only via the static involved-accounts
+		// union.
+		_, hasRepay := result.SourceVolumes[domain.VolumeKey{
+			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "repay"},
+			Asset:      "USD/2",
+		}]
+		require.True(t, hasRepay, "should discover the unbounded-overdraft source @repay")
+
+		// @credit is read by overdraft(), so it is captured via GetBalances too.
+		_, hasCredit := result.SourceVolumes[domain.VolumeKey{
+			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "credit"},
+			Asset:      "USD/2",
+		}]
+		require.True(t, hasCredit, "should discover @credit")
+	})
+
 	t.Run("parse error returns error", func(t *testing.T) {
 		t.Parallel()
 

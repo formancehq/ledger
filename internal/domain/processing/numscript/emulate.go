@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	numscriptlib "github.com/formancehq/numscript"
+	"github.com/formancehq/numscript/accounts"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -154,6 +155,46 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 		}
 	}
 
+	// Emulation gap fill: the discovery store returns fake infinite (positive)
+	// balances, so a balance-dependent amount can collapse to zero. In particular
+	// overdraft(@acc, A) folds to zero against a positive balance, turning
+	// `send overdraft(...)` into a zero-amount send that emits no posting. The
+	// source account then appears in neither queriedVolumes nor the postings and
+	// is missed entirely, causing "read of undeclared key" at execution
+	// (formancehq/ledger#1500).
+	//
+	// GetInvolvedAccounts statically walks the AST and reports every account each
+	// send touches — including `... allowing unbounded overdraft` sources —
+	// regardless of the resolved amount. We union the statically-resolvable pairs
+	// that emulation did not already classify as destinations into sourceVolumes.
+	// Over-preloading is safe (it only locks an extra row); under-preloading is
+	// the bug. Accounts already in destinationVolumes are skipped so the
+	// source/destination partition is preserved for scripts emulation handles.
+	//
+	// Best-effort: GetInvolvedAccounts can legitimately error on experimental
+	// constructs it does not model yet (e.g. asset scaling / colored sources).
+	// The script already emulated successfully, so on error we keep the
+	// emulation-only result rather than rejecting a transaction that works today.
+	if involved, _, involvedErr := parsed.GetInvolvedAccounts(variablesMap); involvedErr == nil {
+		for _, ia := range involved {
+			account, okAccount := resolveInvolvedAccount(ia.AccountExpr)
+			asset, okAsset := resolveInvolvedAsset(ia.AssetExpr)
+			if !okAccount || !okAsset {
+				continue
+			}
+
+			key := domain.VolumeKey{
+				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+				Asset:      asset,
+			}
+			if _, isDestination := destinationVolumes[key]; isDestination {
+				continue
+			}
+
+			sourceVolumes[key] = struct{}{}
+		}
+	}
+
 	// Collect account metadata keys written via set_account_meta.
 	var writtenMetadata map[domain.MetadataKey]struct{}
 	if len(execResult.AccountsMetadata) > 0 {
@@ -173,4 +214,56 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 		DestinationVolumes: destinationVolumes,
 		WrittenMetadata:    writtenMetadata,
 	}, nil
+}
+
+// resolveInvolvedAccount folds an involved-account name expression to a concrete
+// account string. Variables are already substituted (they are bound in
+// variablesMap during GetInvolvedAccounts) and meta() is rejected earlier, so
+// the only shapes that reach here are literals and concatenations of them.
+// Returns false for anything it cannot statically resolve, so the caller skips
+// it rather than preloading a wrong key.
+func resolveInvolvedAccount(expr accounts.InvolvedAccountExpr) (string, bool) {
+	switch e := expr.(type) {
+	case accounts.AccountLiteral:
+		return e.Account, true
+	case accounts.StringLiteral:
+		return e.String, true
+	case accounts.NumberLiteral:
+		if e.Amount == nil {
+			return "", false
+		}
+		return e.Amount.String(), true
+	case accounts.ConcatAccount:
+		left, ok := resolveInvolvedAccount(e.Left)
+		if !ok {
+			return "", false
+		}
+		right, ok := resolveInvolvedAccount(e.Right)
+		if !ok {
+			return "", false
+		}
+		return left + right, true
+	}
+	return "", false
+}
+
+// resolveInvolvedAsset folds an involved-account asset expression to a concrete
+// asset string. GetAsset is transparent, and the asset of a monetary produced by
+// balance()/overdraft()/a monetary literal is its asset argument, so the whole
+// chain (e.g. GetAsset{GetOverdraft{@credit, USD/2}}) collapses to the literal
+// "USD/2". Returns false for shapes it cannot statically resolve.
+func resolveInvolvedAsset(expr accounts.InvolvedAccountExpr) (string, bool) {
+	switch e := expr.(type) {
+	case accounts.AssetLiteral:
+		return e.Asset, true
+	case accounts.MakeMonetary:
+		return resolveInvolvedAsset(e.Asset)
+	case accounts.GetBalance:
+		return resolveInvolvedAsset(e.Asset)
+	case accounts.GetOverdraft:
+		return resolveInvolvedAsset(e.Asset)
+	case accounts.GetAsset:
+		return resolveInvolvedAsset(e.Monetary)
+	}
+	return "", false
 }
