@@ -652,7 +652,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	committerDone := make(chan struct{})
 
 	go func() {
-		a.runCommitter(ctx)
+		a.runCommitter(ctx, stop)
 		close(committerDone)
 	}()
 
@@ -1037,7 +1037,15 @@ func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture
 // runCommitter is the dedicated goroutine that processes commits sequentially.
 // It reads from commitCh and commits each batch, resolving futures on success
 // or failure. Exits when commitCh is closed.
-func (a *Applier) runCommitter(ctx context.Context) {
+//
+// stop is the Applier task's shutdown channel — closed by taskSet.stop() at
+// the same instant as orchestrate's stop. It's a second escape hatch on the
+// response-sink send: node.Stop closes the task stop channels but does NOT
+// cancel ctx (only fx OnStop's outer timeout might), so a runCommitter that
+// races into the sink send AFTER orchestrate stopped draining would sit
+// forever on ctx.Done alone (finding 70740916). Selecting on stop too
+// unblocks the send synchronously with orchestrate's exit.
+func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 	for work := range a.commitCh {
 		err := a.fsm.CommitPreparedBatch(ctx, work.prepared)
 
@@ -1057,6 +1065,7 @@ func (a *Applier) runCommitter(ctx context.Context) {
 			select {
 			case a.responseSink <- work.responses:
 			case <-ctx.Done():
+			case <-stop:
 			}
 		}
 
