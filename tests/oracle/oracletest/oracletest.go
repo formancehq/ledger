@@ -63,3 +63,29 @@ func TxReqL(ledger, src, dest, asset string, amount int64) *servicepb.Request {
 func TxReq(src, dest, asset string, amount int64) *servicepb.Request {
 	return TxReqL("L", src, dest, asset, amount)
 }
+
+// TxReqForce is TxReq with an explicit Force flag; Force=true skips the balance
+// floor (matches the SUT's skipBalanceCheck in applyPosting).
+func TxReqForce(src, dest, asset string, amount int64, force bool) *servicepb.Request {
+	req := TxReqL("L", src, dest, asset, amount)
+	req.GetApply().GetAction().GetCreateTransaction().Force = force
+
+	return req
+}
+
+// RevertReqL builds a RevertTransaction of txID in ledger. Force=true skips the
+// balance floor on the reversed postings (reverts always set it).
+func RevertReqL(ledger string, txID uint64, force bool) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledger,
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_RevertTransaction{
+						RevertTransaction: &servicepb.RevertTransactionPayload{TransactionId: txID, Force: force},
+					},
+				},
+			},
+		},
+	}
+}

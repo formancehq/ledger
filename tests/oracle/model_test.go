@@ -196,3 +196,90 @@ func TestMetaValueString(t *testing.T) {
 		require.Equal(t, want, MetaValueString(v))
 	}
 }
+
+func TestApplyTransaction_BalanceFloor(t *testing.T) {
+	t.Parallel()
+
+	// Fund x:1 with 10 from world (world is overdraftable, so this always commits).
+	funded := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "x:1", "USD", 10)))
+	require.True(t, funded.OK)
+
+	// A non-forced debit within balance commits and moves the source's output.
+	ok := funded.State.Apply(bulkOf(oracletest.TxReq("x:1", "y:1", "USD", 6)))
+	require.True(t, ok.OK)
+	okLedger := ok.State.Ledger("L")
+	require.Equal(t, "6", dec(okLedger.vol(VolumeKey{"x:1", "USD"}).Output))
+
+	// Exactly the balance is allowed (input >= output+amount, equality passes).
+	require.True(t, funded.State.Apply(bulkOf(oracletest.TxReq("x:1", "y:1", "USD", 10))).OK)
+
+	// One over the balance is rejected with INSUFFICIENT_FUNDS; nothing commits.
+	over := funded.State.Apply(bulkOf(oracletest.TxReq("x:1", "y:1", "USD", 11)))
+	require.False(t, over.OK)
+	require.Equal(t, domain.ErrReasonInsufficientFunds, over.Reason)
+	overLedger := over.State.Ledger("L")
+	require.Equal(t, "0", dec(overLedger.vol(VolumeKey{"x:1", "USD"}).Output))
+
+	// Force skips the floor: an over-balance forced debit commits.
+	require.True(t, funded.State.Apply(bulkOf(oracletest.TxReqForce("x:1", "y:1", "USD", 1000, true))).OK)
+
+	// world is never floored, regardless of the amount.
+	require.True(t, NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "z:1", "USD", 1_000_000))).OK)
+}
+
+func TestApplyTransaction_BalanceFloor_RunningVolumes(t *testing.T) {
+	t.Parallel()
+
+	// Within one bulk a later transaction may spend what an earlier one funded:
+	// the floor reads the running volumes, not the drained base.
+	chain := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReq("world", "a:1", "USD", 10),
+		oracletest.TxReq("a:1", "b:1", "USD", 10),
+	))
+	require.True(t, chain.OK)
+
+	// The same debit without the funding leg is rejected.
+	bare := NewGlobalState().Apply(bulkOf(oracletest.TxReq("a:1", "b:1", "USD", 10)))
+	require.False(t, bare.OK)
+	require.Equal(t, domain.ErrReasonInsufficientFunds, bare.Reason)
+}
+
+func TestApplyRevert_ForceSkipsFloor(t *testing.T) {
+	t.Parallel()
+
+	// tx1 funds x:1 with 10; x:1 then spends 6 (balance 4). Reverting tx1 debits
+	// x:1 by 10 — more than it now holds — but reverts set force, so it commits.
+	base := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "x:1", "USD", 10)))
+	require.True(t, base.OK)
+	spent := base.State.Apply(bulkOf(oracletest.TxReq("x:1", "y:1", "USD", 6)))
+	require.True(t, spent.OK)
+
+	require.True(t, spent.State.Apply(bulkOf(oracletest.RevertReqL("L", 1, true))).OK)
+
+	// Without force, the same revert would hit the floor.
+	unforced := spent.State.Apply(bulkOf(oracletest.RevertReqL("L", 1, false)))
+	require.False(t, unforced.OK)
+	require.Equal(t, domain.ErrReasonInsufficientFunds, unforced.Reason)
+}
+
+func TestApplyTransaction_FloorBeforeChart(t *testing.T) {
+	t.Parallel()
+
+	// A ledger with one account type, so the chart is enforced. "acct:{id}"
+	// matches acct:* but not x:1 / y:1.
+	typed := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReq("acct")))
+	require.True(t, typed.OK)
+
+	// A non-forced debit from an unfunded, chart-unmatched account: the server
+	// checks the balance while producing postings, BEFORE validating account
+	// types, so it reports INSUFFICIENT_FUNDS — not ACCOUNT_NOT_MATCHING_TYPE.
+	underfunded := typed.State.Apply(bulkOf(oracletest.TxReq("x:1", "y:1", "USD", 5)))
+	require.False(t, underfunded.OK)
+	require.Equal(t, domain.ErrReasonInsufficientFunds, underfunded.Reason)
+
+	// Funded from world (overdraftable, balance never fails) but the destination
+	// is chart-unmatched: now the type check is the deciding rejection.
+	unmatchedDest := typed.State.Apply(bulkOf(oracletest.TxReq("world", "y:1", "USD", 5)))
+	require.False(t, unmatchedDest.OK)
+	require.Equal(t, domain.ErrReasonAccountNotMatchingType, unmatchedDest.Reason)
+}

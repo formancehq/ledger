@@ -552,16 +552,22 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 	}
 }
 
-// applyTransaction predicts a CreateTransaction: STRICT chart enforcement
-// (every non-world address must match a type once any type exists), then volume
-// accumulation. Insufficient-funds is not modelled because the workload only
-// debits "world" (overdraftable) or uses Force.
+// applyTransaction predicts a CreateTransaction. The server produces the
+// postings — applying the per-posting balance floor (a non-forced debit from a
+// non-world account may not exceed its running balance — see applyPostings) —
+// BEFORE it validates account types (processor_transaction.go: produce() then
+// validatePostingsAgainstAccountTypes). So an underfunded transaction reports
+// INSUFFICIENT_FUNDS even when an address also fails the chart; match that order
+// — floor first, then STRICT chart enforcement, then volume accumulation.
 func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, touched map[VolumeKey]bool) OrderResult {
+	pcv, reason := s.applyPostings(ct.GetPostings(), ct.GetForce(), touched)
+	if reason != "" {
+		return OrderResult{Reason: reason}
+	}
+
 	if s.chartRejects(ct.GetPostings()) {
 		return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
 	}
-
-	pcv := s.applyPostings(ct.GetPostings(), touched)
 
 	// Account metadata attached to the transaction is applied verbatim, last-
 	// writer-wins. The server applies it without chart enforcement (unlike a
@@ -606,8 +612,8 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 }
 
 // applyRevert predicts a RevertTransaction: it reverses the original postings
-// (swap source/destination), enforces the chart on them (force skips only the
-// balance check, which the model does not track), moves the volumes, marks the
+// (swap source/destination), enforces the chart on them, applies the balance
+// floor unless force is set (see applyPostings), moves the volumes, marks the
 // original reverted, and consumes a new transaction id for the revert itself.
 func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touched map[VolumeKey]bool) OrderResult {
 	id := rt.GetTransactionId()
@@ -639,7 +645,10 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 		return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
 	}
 
-	pcv := s.applyPostings(reversed, touched)
+	pcv, reason := s.applyPostings(reversed, rt.GetForce(), touched)
+	if reason != "" {
+		return OrderResult{Reason: reason}
+	}
 
 	// Mark the original reverted (replace, don't mutate), then append the revert
 	// itself as a new unreferenced transaction carrying the reversed postings and
@@ -684,7 +693,13 @@ func (s *LedgerState) chartRejects(postings []*commonpb.Posting) bool {
 // applyPostings accumulates postings into volumes (source.output += amount,
 // destination.input += amount) read-modify-write per cell so postings touching
 // the same cell compose, returning the post-commit volumes of the touched cells.
-func (s *LedgerState) applyPostings(postings []*commonpb.Posting, touched map[VolumeKey]bool) map[VolumeKey]VolumePair {
+// applyPostings folds postings into the running volumes in order and returns the
+// per-cell post-commit volumes. A non-forced debit from a non-world account is
+// held to its balance floor (input - output): if the amount exceeds it the whole
+// bulk is rejected with INSUFFICIENT_FUNDS (returned reason != ""). The floor is
+// evaluated against the running volumes, so an earlier posting in the same bulk
+// can fund a later source — mirroring applyPosting in processor_posting.go.
+func (s *LedgerState) applyPostings(postings []*commonpb.Posting, force bool, touched map[VolumeKey]bool) (map[VolumeKey]VolumePair, string) {
 	pcv := map[VolumeKey]VolumePair{}
 	bump := func(key VolumeKey, addIn, addOut *uint256.Int) {
 		cur := s.vol(key)
@@ -700,11 +715,21 @@ func (s *LedgerState) applyPostings(postings []*commonpb.Posting, touched map[Vo
 		var amt uint256.Int
 		p.GetAmount().IntoUint256(&amt)
 		asset := p.GetAsset()
-		bump(VolumeKey{Address: p.GetSource(), Asset: asset}, &zero, &amt)
+		srcKey := VolumeKey{Address: p.GetSource(), Asset: asset}
+
+		if !force && p.GetSource() != "world" {
+			cur := s.vol(srcKey)
+			var sum uint256.Int
+			if _, overflow := sum.AddOverflow(&cur.Output, &amt); overflow || cur.Input.Lt(&sum) {
+				return pcv, domain.ErrReasonInsufficientFunds
+			}
+		}
+
+		bump(srcKey, &zero, &amt)
 		bump(VolumeKey{Address: p.GetDestination(), Asset: asset}, &amt, &zero)
 	}
 
-	return pcv
+	return pcv, ""
 }
 
 // applyAddMetadata predicts a SaveMetadata, dispatching on the target. Metadata
