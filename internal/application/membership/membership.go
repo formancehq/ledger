@@ -5,7 +5,7 @@
 // Two gRPC surfaces depend on these operations:
 //
 //   - ClusterService on the external ServiceServer, gated by user JWT
-//     scopes (cluster:write, cluster:read), used by ledgerctl and
+//     scopes (ledger:ClusterWrite, ledger:ClusterRead), used by ledgerctl and
 //     observability tooling.
 //   - ClusterBootstrapService on the inter-node RaftServer, gated by
 //     cluster-id metadata (+ cluster-secret bearer when configured),

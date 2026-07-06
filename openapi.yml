@@ -320,7 +320,7 @@ paths:
       description: |
         Lists log entries for a specific ledger, ordered by ledger-local log ID ascending.
         Requires the builtin `LOG` index to be enabled on the ledger via `CreateIndex`.
-        Supports cursor pagination via the `after` query parameter. Requires `ops:read` scope.
+        Supports cursor pagination via the `after` query parameter. Requires `ledger:OpsRead` scope.
       operationId: listLedgerLogs
       tags:
         - Logs
@@ -614,7 +614,7 @@ paths:
       description: |
         Returns aggregated volumes (input/output/balance per asset) across all accounts in the ledger.
         Supports filtering by account address prefix, grouping by account prefixes, and max-precision merging.
-        Requires `accounts:read` scope.
+        Requires `ledger:AccountRead` scope.
       operationId: aggregateVolumes
       tags:
         - Volumes
@@ -1548,7 +1548,7 @@ paths:
       summary: Create a prepared query
       description: |
         Creates a new prepared query for a ledger. A prepared query defines a reusable
-        filter that can be executed later with parameter substitution. Requires `queries:write` scope.
+        filter that can be executed later with parameter substitution. Requires `ledger:QueryWrite` scope.
       operationId: createPreparedQuery
       tags:
         - Prepared Queries
@@ -1585,7 +1585,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     get:
       summary: List prepared queries
-      description: Returns a list of all prepared queries for a ledger. Requires `queries:read` scope.
+      description: Returns a list of all prepared queries for a ledger. Requires `ledger:QueryRead` scope.
       operationId: listPreparedQueries
       tags:
         - Prepared Queries
@@ -1620,7 +1620,7 @@ paths:
     put:
       summary: Update a prepared query
       description: |
-        Updates the filter of an existing prepared query. Requires `queries:write` scope.
+        Updates the filter of an existing prepared query. Requires `ledger:QueryWrite` scope.
       operationId: updatePreparedQuery
       tags:
         - Prepared Queries
@@ -1655,7 +1655,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Delete a prepared query
-      description: Deletes a prepared query from a ledger. Requires `queries:write` scope.
+      description: Deletes a prepared query from a ledger. Requires `ledger:QueryWrite` scope.
       operationId: deletePreparedQuery
       tags:
         - Prepared Queries
@@ -1689,7 +1689,7 @@ paths:
       description: |
         Executes a prepared query with optional parameter substitution. Supports LIST and
         AGGREGATE_VOLUMES modes with cursor pagination. Also accepts pageSize and cursor
-        as query parameters. Requires `queries:read` scope.
+        as query parameters. Requires `ledger:QueryRead` scope.
       operationId: executePreparedQuery
       tags:
         - Prepared Queries
@@ -1743,7 +1743,7 @@ paths:
       summary: Add an account type
       description: |
         Adds a new account type to a ledger's chart of accounts. Account types define
-        address patterns for account validation. Requires `metadata:write` scope.
+        address patterns for account validation. Requires `ledger:MetadataWrite` scope.
       operationId: addAccountType
       tags:
         - Account Types
@@ -1781,7 +1781,7 @@ paths:
       summary: List account types
       description: |
         Returns all account types defined on a ledger, sorted by name.
-        Requires `accounts:read` scope.
+        Requires `ledger:AccountRead` scope.
       operationId: listAccountTypes
       tags:
         - Account Types
@@ -1817,7 +1817,7 @@ paths:
       summary: Set default enforcement mode
       description: |
         Sets the default enforcement mode for accounts that do not match any defined
-        account type. Must be STRICT or AUDIT. Requires `metadata:write` scope.
+        account type. Must be STRICT or AUDIT. Requires `ledger:MetadataWrite` scope.
       operationId: setDefaultEnforcementMode
       tags:
         - Account Types
@@ -1853,7 +1853,7 @@ paths:
   /v3/{ledgerName}/account-types/{typeName}:
     get:
       summary: Get an account type
-      description: Retrieves a specific account type by name from a ledger. Requires `accounts:read` scope.
+      description: Retrieves a specific account type by name from a ledger. Requires `ledger:AccountRead` scope.
       operationId: getAccountType
       tags:
         - Account Types
@@ -1886,7 +1886,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Remove an account type
-      description: Removes an account type from a ledger's chart of accounts. Requires `metadata:write` scope.
+      description: Removes an account type from a ledger's chart of accounts. Requires `ledger:MetadataWrite` scope.
       operationId: removeAccountType
       tags:
         - Account Types

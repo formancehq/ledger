@@ -50,7 +50,7 @@ func RequiredScopeForRequest(req *servicepb.Request) Scope {
 	case *servicepb.Request_DeletePreparedQuery:
 		return ScopeQueriesWrite
 	default:
-		// Unknown request type — default to ops:write (most restrictive write scope)
+		// Unknown request type — default to ledger:OpsWrite (most restrictive write scope)
 		return ScopeOpsWrite
 	}
 }

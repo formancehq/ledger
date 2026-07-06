@@ -963,7 +963,7 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 			Subject: "original-user",
 			Source:  &commonpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
 		},
-		Scopes: []string{"transactions:write"},
+		Scopes: []string{"ledger:TransactionWrite"},
 	}
 	ctx := auth.WithForwardedSnapshot(context.Background(), original)
 
@@ -975,5 +975,5 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	require.NotNil(t, fc)
 	require.Equal(t, "original-user", fc.GetIdentity().GetSubject())
 	require.Equal(t, "ed25519-7", fc.GetIdentity().GetKeyId())
-	require.Equal(t, []string{"transactions:write"}, fc.GetScopes())
+	require.Equal(t, []string{"ledger:TransactionWrite"}, fc.GetScopes())
 }

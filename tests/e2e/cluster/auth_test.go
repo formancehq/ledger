@@ -325,7 +325,7 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(st.Code()).To(Equal(codes.Unauthenticated))
 		})
 
-		It("should allow GetNumscript with ledger:read scope (queries:read mapped)", func() {
+		It("should allow GetNumscript with ledger:read scope (ledger:QueryRead mapped)", func() {
 			token, err := signJWT(privKey, makeAuthClaims(oidcServer.URL, "ledger:read"))
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
@@ -343,7 +343,7 @@ var _ = Describe("Auth", Ordered, func() {
 			}
 		})
 
-		It("should allow ListNumscripts with ledger:read scope (queries:read mapped)", func() {
+		It("should allow ListNumscripts with ledger:read scope (ledger:QueryRead mapped)", func() {
 			token, err := signJWT(privKey, makeAuthClaims(oidcServer.URL, "ledger:read"))
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)

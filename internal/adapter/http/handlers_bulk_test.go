@@ -20,7 +20,7 @@ import (
 )
 
 // bulkWriteBody is a single-element bulk payload whose action (CREATE_TRANSACTION)
-// requires the transactions:write granular scope.
+// requires the ledger:TransactionWrite granular scope.
 const bulkWriteBody = `[{"action":"CREATE_TRANSACTION","data":{"postings":[{"source":"world","destination":"bank","amount":100,"asset":"USD/2"}]}}]`
 
 func TestHandleBulk_InvalidBody(t *testing.T) {

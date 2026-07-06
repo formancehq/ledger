@@ -769,8 +769,8 @@ func TestBuildEnvVars_AuthScopeMapping(t *testing.T) {
 		ls := newMinimalLedgerService()
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			ScopeMapping: map[string][]string{
-				"ledger:read":  {"ledger:transactions:read", "ledger:accounts:read"},
-				"ledger:write": {"ledger:transactions:write"},
+				"ledger:read":  {"ledger:TransactionRead", "ledger:AccountRead"},
+				"ledger:write": {"ledger:TransactionWrite"},
 			},
 		}
 		envs := buildEnvVars(ls, "disabled", nil)
@@ -812,12 +812,12 @@ func TestBuildEnvVars_AuthAnonymousScopes(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
-			AnonymousScopes: []string{"ledgers:read", "accounts:read"},
+			AnonymousScopes: []string{"ledger:LedgerRead", "ledger:AccountRead"},
 		}
 		envs := buildEnvVars(ls, "disabled", nil)
 		e := findEnv(envs, "AUTH_ANONYMOUS_SCOPES")
 		require.NotNil(t, e)
-		assert.Equal(t, "ledgers:read,accounts:read", e.Value)
+		assert.Equal(t, "ledger:LedgerRead,ledger:AccountRead", e.Value)
 	})
 
 	t.Run("empty slice omitted", func(t *testing.T) {

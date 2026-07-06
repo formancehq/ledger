@@ -910,10 +910,10 @@ func (impl *BucketServiceServerImpl) ListIndexes(req *servicepb.ListIndexesReque
 	ctx := stream.Context()
 
 	// Per-ledger callers previously read indexes through GetLedger under
-	// ledgers:read, so we keep that scope for SCOPE_LEDGER to preserve
-	// granular-auth tokens that don't carry ops:read. SCOPE_BUCKET and
+	// ledger:LedgerRead, so we keep that scope for SCOPE_LEDGER to preserve
+	// granular-auth tokens that don't carry ledger:OpsRead. SCOPE_BUCKET and
 	// SCOPE_ALL surface cross-ledger / operator-grade visibility and stay
-	// under ops:read (PR #453 review).
+	// under ledger:OpsRead (PR #453 review).
 	requiredScope := internalauth.ScopeOpsRead
 	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
 		requiredScope = internalauth.ScopeLedgersRead
@@ -1626,7 +1626,7 @@ func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *serv
 func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
 	// Barrier proposes a no-op through Raft and waits for it to apply, so it
 	// consumes consensus capacity like a write. Require an authenticated scope
-	// (ops:read) so it can't be used anonymously as a DoS amplifier or a
+	// (ledger:OpsRead) so it can't be used anonymously as a DoS amplifier or a
 	// commit-index timing side channel. Leader-forwarded calls carry the
 	// cluster secret, which grants all scopes.
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
