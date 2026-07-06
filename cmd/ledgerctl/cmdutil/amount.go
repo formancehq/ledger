@@ -47,7 +47,7 @@ func Rescale(amount, asset string, toScale uint8) (string, string) {
 		return amount, asset
 	}
 
-	return RescaleAmount(n, precision, toScale), AssetLabel(base, toScale)
+	return RescaleAmount(n, precision, toScale), invariants.FormatAsset(base, toScale)
 }
 
 // RescaleAmount renders amount — an integer recorded at fromPrecision — expressed
@@ -65,14 +65,6 @@ func RescaleAmount(amount *big.Int, fromPrecision, toScale uint8) string {
 	default:
 		return amount.String()
 	}
-}
-
-// AssetLabel reconstructs an asset string for a bare currency at the given scale:
-// scale 0 yields the currency alone, otherwise "CUR/scale". It delegates to
-// invariants.FormatAsset so the "CUR/N" grammar has a single implementation
-// shared with the server side.
-func AssetLabel(base string, scale uint8) string {
-	return invariants.FormatAsset(base, scale)
 }
 
 // RawVolume holds an asset's raw integer input/output amounts as decimal

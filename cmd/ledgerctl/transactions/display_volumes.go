@@ -5,6 +5,8 @@ import (
 
 	"github.com/pterm/pterm"
 
+	"github.com/formancehq/invariants"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -46,7 +48,7 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) er
 			for _, av := range cmdutil.AggregateVolumes(raw) {
 				table = append(table, []string{
 					account,
-					cmdutil.AssetLabel(av.Asset, *rescale),
+					invariants.FormatAsset(av.Asset, *rescale),
 					cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
 					cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
 				})

@@ -8,6 +8,8 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/invariants"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -147,7 +149,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 				}
 
 				volumesTable = append(volumesTable, []string{
-					cmdutil.AssetLabel(av.Asset, *rescale),
+					invariants.FormatAsset(av.Asset, *rescale),
 					cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
 					cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
 					balanceColor(cmdutil.RescaleAmount(av.Balance, av.Precision, *rescale)),

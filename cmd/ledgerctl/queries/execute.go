@@ -10,6 +10,8 @@ import (
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/invariants"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -252,7 +254,7 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 
 			for _, av := range cmdutil.AggregateVolumes(raw) {
 				tableData = append(tableData, []string{
-					cmdutil.AssetLabel(av.Asset, *rescale),
+					invariants.FormatAsset(av.Asset, *rescale),
 					cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
 					cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
 				})
