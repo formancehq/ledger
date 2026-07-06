@@ -742,7 +742,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				// raft.Applied advances in lockstep with FSM-applied without
 				// serializing prepare-N+1 against commit-N (the
 				// applier→committer pipeline is preserved).
-				err := a.applyEntriesToFSM(ctx, work.confState, work.responses, work.entries...)
+				err := a.applyEntriesToFSM(ctx, stop, work.confState, work.responses, work.entries...)
 				if err != nil {
 					return err
 				}
@@ -1223,7 +1223,7 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 // When that happens we MUST continue processing the tail in subsequent FSM
 // batches; dropping it produces an "entry index gap detected" panic in the
 // next PrepareEntries call. Hence the loop.
-func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, responses []raftpb.Message, entries ...raftpb.Entry) error {
+func (a *Applier) applyEntriesToFSM(ctx context.Context, stop chan struct{}, confState *raftpb.ConfState, responses []raftpb.Message, entries ...raftpb.Entry) error {
 	// Decode once at the applier boundary so every downstream stage
 	// (checkpoint boundary scan, FSM apply, position validation) reads the
 	// already-decoded proposal instead of re-unmarshalling the raw payload.
@@ -1304,6 +1304,11 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 				}
 
 				return ctx.Err()
+			case <-stop:
+				// Shutdown races us; drop the response (raft.Applied stays
+				// behind, entries re-emit on next boot). Same escape hatch
+				// as the runCommitter response send (finding 70740916).
+				return checkpointErr
 			}
 		}
 
