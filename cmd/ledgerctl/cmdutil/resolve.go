@@ -22,10 +22,9 @@ func ResolveConnectionFlags(cmd *cobra.Command) error {
 	// During `__complete`, cobra runs the root PersistentPreRunE with cmd set to
 	// the completion helper command, whose args are the line being completed — so
 	// --profile is NOT parsed onto it and resolution would fall back to the
-	// *active* profile. Worse, resolveFlag writes that active profile's values
-	// onto the shared persistent flags and marks them Changed, which then blocks
-	// the real per-completion resolution (driven by the explicit --profile in the
-	// args) from overriding them. The connection-completion functions call
+	// *active* profile, writing that profile's values onto the shared persistent
+	// flags before the real per-completion resolution (driven by the explicit
+	// --profile in the args) runs. The connection-completion functions call
 	// ResolveConnectionFlags themselves with the real target command, so this
 	// pre-run pass during completion must be a no-op. EN-1295.
 	if cmd.Name() == cobra.ShellCompRequestCmd || cmd.Name() == cobra.ShellCompNoDescRequestCmd {
@@ -46,15 +45,7 @@ func ResolveConnectionFlags(cmd *cobra.Command) error {
 	}
 
 	// Resolve profile name: --profile flag > LEDGERCTL_PROFILE env > config activeProfile.
-	profileName, _ := cmd.Flags().GetString("profile")
-	profileExplicit := cmd.Flags().Changed("profile")
-
-	if profileName == "" {
-		if v, ok := os.LookupEnv("LEDGERCTL_PROFILE"); ok && v != "" {
-			profileName = strings.TrimSpace(v)
-			profileExplicit = true
-		}
-	}
+	profileName, profileExplicit := ResolveProfileName(cmd)
 
 	name, p := GetActiveProfile(cfg, profileName)
 	if profileExplicit && p == nil && !isProfileBootstrapCommand(cmd) {
@@ -72,26 +63,51 @@ func ResolveConnectionFlags(cmd *cobra.Command) error {
 	resolveFlag(cmd, "response-verify-key", "LEDGERCTL_RESPONSE_VERIFY_KEY", ProfileFlagValue(p, "response-verify-key"))
 	resolveFlag(cmd, "result-file", "LEDGERCTL_RESULT_FILE", "")
 
+	// Deliberately no resolveFlag on --key-id here: pre-populating --key-id
+	// from profile.signingKeyId would clobber a bare KEY_ID env value already
+	// applied by bindSubcommandEnv (both are Changed=false, so we can't tell
+	// the two sources apart at this layer). Instead, auth's `resolveKeyID`
+	// reads --signing-key-id as the sibling fallback — that flag receives the
+	// profile value via the resolveFlag call above, and its precedence chain
+	// is CLI > LEDGERCTL_SIGNING_KEY_ID > profile.
+
 	return nil
 }
 
 // resolveFlag sets a cobra flag's value using the first available source:
 // explicit CLI flag > environment variable > profile value > cobra default.
 // It only writes to the flag when it was not explicitly set on the command line.
+//
+// Env- and profile-derived values are applied through Flag.Value.Set instead of
+// FlagSet.Set so the flag's Changed bit stays false: Changed must keep meaning
+// "the user typed this on the CLI". auth login and cmdutil.ResolveTokenSource
+// both read Changed to distinguish CLI-passed from env/profile-derived values
+// — a Set() call here would light Changed even for env-only inputs and quietly
+// break both callers (e.g. LEDGERCTL_SERVER would silently overwrite the active
+// profile's server address on `auth login`).
 func resolveFlag(cmd *cobra.Command, flagName, envVar, profileValue string) {
 	if cmd.Flags().Changed(flagName) {
 		return
 	}
 
-	if v, ok := os.LookupEnv(envVar); ok && v != "" {
-		_ = cmd.Flags().Set(flagName, strings.TrimSpace(v))
+	var value string
 
+	switch {
+	case envVar != "" && os.Getenv(envVar) != "":
+		value = strings.TrimSpace(os.Getenv(envVar))
+	case profileValue != "":
+		value = profileValue
+	default:
 		return
 	}
 
-	if profileValue != "" {
-		_ = cmd.Flags().Set(flagName, profileValue)
+	f := cmd.Flags().Lookup(flagName)
+	if f == nil {
+		return
 	}
+
+	// Value.Set updates the underlying value without touching Flag.Changed.
+	_ = f.Value.Set(value)
 }
 
 // isProfileCommand returns true when cmd is a subcommand of "profile".

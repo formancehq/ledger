@@ -202,6 +202,14 @@ var ledgerctlOwnedFlagNames = map[string]struct{}{
 	"signing-key-id":      {},
 	"response-verify-key": {},
 	"result-file":         {},
+	// key-id is a per-command JWT/key identifier declared locally by
+	// auth login / auth generate-token / signing register-key / signing
+	// revoke-key. Skipping bare KEY_ID here keeps Changed("key-id") a
+	// reliable "CLI-typed" signal, which auth's resolveKeyID uses to
+	// prefer an explicit --signing-key-id over an env-derived KEY_ID.
+	// Callers who need env-driven auth setup use LEDGERCTL_SIGNING_KEY_ID
+	// (feeds --signing-key-id, which resolveKeyID falls back to).
+	"key-id": {},
 }
 
 // bindSubcommandEnv binds bare-name environment variables (the go-libs

@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
 
 // TestLedgerFlagCompletionRegistered asserts that every command exposing a
@@ -47,23 +49,31 @@ func TestLedgerFlagCompletionRegistered(t *testing.T) {
 // persistent flags into the subcommand flag sets (that merge happens during
 // Execute), so --server is absent from every flag set the binder visits.
 //
+// The wantChanged column also asserts that resolveFlag does NOT light the
+// flag's Changed bit for env-derived values: auth login's syncProfile treats
+// Changed("server") as "the user typed --server on the CLI", and a spurious
+// Changed=true would silently rewrite the active profile's server whenever
+// LEDGERCTL_SERVER is set.
+//
 // These cases mutate process-wide environment (env vars + config dir), so they
 // cannot run in parallel.
 func TestServerFlagEnvResolution(t *testing.T) {
 	const defaultServer = "localhost:8888"
 
 	tests := []struct {
-		name       string
-		envName    string
-		envValue   string
-		cliServer  string // when non-empty, passed as --server on the command line
-		wantServer string
+		name        string
+		envName     string
+		envValue    string
+		cliServer   string // when non-empty, passed as --server on the command line
+		wantServer  string
+		wantChanged bool
 	}{
 		{
-			name:       "LEDGERCTL_SERVER env, no CLI flag, resolves to env value",
-			envName:    "LEDGERCTL_SERVER",
-			envValue:   "env.example.com:443",
-			wantServer: "env.example.com:443",
+			name:        "LEDGERCTL_SERVER env, no CLI flag, resolves to env value with Changed=false",
+			envName:     "LEDGERCTL_SERVER",
+			envValue:    "env.example.com:443",
+			wantServer:  "env.example.com:443",
+			wantChanged: false,
 		},
 		{
 			name:       "bare SERVER env, no CLI flag, is ignored and falls back to default",
@@ -72,11 +82,12 @@ func TestServerFlagEnvResolution(t *testing.T) {
 			wantServer: defaultServer,
 		},
 		{
-			name:       "CLI --server wins over LEDGERCTL_SERVER env",
-			envName:    "LEDGERCTL_SERVER",
-			envValue:   "env.example.com:443",
-			cliServer:  "cli.example.com:443",
-			wantServer: "cli.example.com:443",
+			name:        "CLI --server wins over LEDGERCTL_SERVER env with Changed=true",
+			envName:     "LEDGERCTL_SERVER",
+			envValue:    "env.example.com:443",
+			cliServer:   "cli.example.com:443",
+			wantServer:  "cli.example.com:443",
+			wantChanged: true,
 		},
 	}
 
@@ -118,6 +129,9 @@ func TestServerFlagEnvResolution(t *testing.T) {
 			got, err := root.Flags().GetString("server")
 			require.NoError(t, err)
 			require.Equal(t, tc.wantServer, got)
+
+			require.Equal(t, tc.wantChanged, root.Flags().Changed("server"),
+				"Changed(\"server\") must reflect CLI-passed intent, not env resolution")
 		})
 	}
 }
@@ -156,6 +170,27 @@ func TestSubcommandLocalFlagsIgnoreBareEnv(t *testing.T) {
 			flag:    "signing-key",
 			bareEnv: "SIGNING_KEY",
 		},
+		{
+			// key-id is owned so auth's resolveKeyID can trust Changed("key-id")
+			// as a strict CLI-typed signal; a stray KEY_ID must not let env
+			// impersonate a CLI flag.
+			name:    "auth generate-token --key-id ignores bare KEY_ID",
+			path:    []string{"auth", "generate-token"},
+			flag:    "key-id",
+			bareEnv: "KEY_ID",
+		},
+		{
+			name:    "auth login --key-id ignores bare KEY_ID",
+			path:    []string{"auth", "login"},
+			flag:    "key-id",
+			bareEnv: "KEY_ID",
+		},
+		{
+			name:    "signing revoke-key --key-id ignores bare KEY_ID",
+			path:    []string{"signing", "revoke-key"},
+			flag:    "key-id",
+			bareEnv: "KEY_ID",
+		},
 	}
 
 	for _, tc := range tests {
@@ -175,6 +210,157 @@ func TestSubcommandLocalFlagsIgnoreBareEnv(t *testing.T) {
 			require.Empty(t, got, "bare %s must not populate local --%s", tc.bareEnv, tc.flag)
 			require.False(t, cmd.Flags().Changed(tc.flag),
 				"local --%s must not be marked changed by bare %s", tc.flag, tc.bareEnv)
+		})
+	}
+}
+
+// TestProfileSigningKeyIDReachesAuthCommandsViaSigningKeyID asserts the
+// profile.signingKeyId fallback chain that lets `auth login --profile <name>`
+// succeed without an explicit --key-id: PersistentPreRunE populates the
+// persistent --signing-key-id flag from the profile, and auth's resolveKeyID
+// reads it as the JWT key ID. --key-id itself is deliberately NOT
+// pre-populated here — doing so would clobber a bare KEY_ID env value that
+// bindSubcommandEnv applied first (both are Changed=false, so the two
+// sources cannot be told apart at this layer).
+//
+// Mutates process-wide environment, so it cannot run in parallel.
+func TestProfileSigningKeyIDReachesAuthCommandsViaSigningKeyID(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+	t.Setenv("LOCALAPPDATA", tmp)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+	t.Setenv("KEY_ID", "")
+
+	require.NoError(t, cmdutil.SaveConfig(cmdutil.Config{
+		ActiveProfile: "prod",
+		Profiles: map[string]cmdutil.Profile{
+			"prod": {
+				Server:       "prod.example.com:8888",
+				SigningKeyID: "prod-key-id",
+			},
+		},
+	}))
+
+	root := newRootCommand()
+	root.SilenceErrors = true
+
+	bindSubcommandEnv(root)
+
+	// Stub RunE on `auth login` so we can trigger PersistentPreRunE
+	// without hitting the real login flow (which would try to sign a JWT).
+	loginCmd, _, err := root.Find([]string{"auth", "login"})
+	require.NoError(t, err)
+	loginCmd.RunE = func(_ *cobra.Command, _ []string) error { return nil }
+
+	root.SetArgs([]string{"auth", "login"})
+	require.NoError(t, root.Execute())
+
+	// --signing-key-id must carry the profile value — that's what
+	// resolveKeyID reads as the fallback JWT key ID.
+	sk, err := loginCmd.Flags().GetString("signing-key-id")
+	require.NoError(t, err)
+	require.Equal(t, "prod-key-id", sk,
+		"profile.signingKeyId must populate --signing-key-id when neither CLI --signing-key-id nor LEDGERCTL_SIGNING_KEY_ID env is set")
+	require.False(t, loginCmd.Flags().Changed("signing-key-id"),
+		"profile-derived --signing-key-id must leave Changed=false")
+
+	// --key-id must NOT be pre-populated from the profile: that write
+	// would clobber a bindSubcommandEnv-derived bare KEY_ID env value.
+	keyID, err := loginCmd.Flags().GetString("key-id")
+	require.NoError(t, err)
+	require.Empty(t, keyID,
+		"--key-id must NOT be pre-populated from the profile — resolveKeyID handles the fallback via --signing-key-id")
+}
+
+// TestProfileSigningKeyIDReachesGenerateTokenViaSigningKeyID mirrors the
+// login case: `auth generate-token --profile <name>` must inherit the
+// profile.signingKeyId via --signing-key-id, and resolveKeyID picks it up.
+// generate-token isn't tested via the full RunE (which needs a signing key
+// on disk) — asserting the flag value is enough because the whole
+// resolveKeyID / signToken chain is covered by resolveLoginParams tests.
+//
+// Mutates process-wide environment, so it cannot run in parallel.
+func TestProfileSigningKeyIDReachesGenerateTokenViaSigningKeyID(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
+	t.Setenv("LOCALAPPDATA", tmp)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+	t.Setenv("KEY_ID", "")
+
+	require.NoError(t, cmdutil.SaveConfig(cmdutil.Config{
+		ActiveProfile: "prod",
+		Profiles: map[string]cmdutil.Profile{
+			"prod": {Server: "prod.example.com:8888", SigningKeyID: "prod-key-id"},
+		},
+	}))
+
+	root := newRootCommand()
+	root.SilenceErrors = true
+
+	bindSubcommandEnv(root)
+
+	genCmd, _, err := root.Find([]string{"auth", "generate-token"})
+	require.NoError(t, err)
+	genCmd.RunE = func(_ *cobra.Command, _ []string) error { return nil }
+
+	root.SetArgs([]string{"auth", "generate-token"})
+	require.NoError(t, root.Execute())
+
+	sk, err := genCmd.Flags().GetString("signing-key-id")
+	require.NoError(t, err)
+	require.Equal(t, "prod-key-id", sk,
+		"profile.signingKeyId must populate --signing-key-id on `auth generate-token`")
+}
+
+// TestProfileSigningKeyIDDoesNotFeedSigningKeyIDToSigningCommands guards the
+// scoping of the profile.signingKeyId -> --key-id fallback: `signing
+// revoke-key` and `signing register-key` share the --key-id flag name but
+// operate on the key store — silently defaulting them to the active
+// profile's signingKeyId would let `ledgerctl signing revoke-key` (no args)
+// revoke the current signing key.
+//
+// Mutates process-wide environment, so it cannot run in parallel.
+func TestProfileSigningKeyIDDoesNotFeedSigningCommands(t *testing.T) {
+	for _, path := range [][]string{
+		{"signing", "revoke-key"},
+		{"signing", "register-key"},
+	} {
+		t.Run(path[1], func(t *testing.T) {
+			tmp := t.TempDir()
+			t.Setenv("HOME", tmp)
+			t.Setenv("XDG_CONFIG_HOME", tmp)
+			t.Setenv("APPDATA", tmp)
+			t.Setenv("LOCALAPPDATA", tmp)
+			t.Setenv("LEDGERCTL_PROFILE", "")
+			t.Setenv("KEY_ID", "")
+
+			require.NoError(t, cmdutil.SaveConfig(cmdutil.Config{
+				ActiveProfile: "prod",
+				Profiles: map[string]cmdutil.Profile{
+					"prod": {Server: "prod.example.com:8888", SigningKeyID: "prod-key-id"},
+				},
+			}))
+
+			root := newRootCommand()
+			root.SilenceErrors = true
+
+			bindSubcommandEnv(root)
+
+			cmd, _, err := root.Find(path)
+			require.NoError(t, err)
+			cmd.RunE = func(_ *cobra.Command, _ []string) error { return nil }
+
+			root.SetArgs(path)
+			require.NoError(t, root.Execute())
+
+			got, err := cmd.Flags().GetString("key-id")
+			require.NoError(t, err)
+			require.Empty(t, got,
+				"signing/%s must not inherit --key-id from the active profile", path[1])
 		})
 	}
 }

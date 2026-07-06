@@ -108,7 +108,7 @@ func tokenParamsFromFlags(cmd *cobra.Command) (tokenParams, error) {
 		return tokenParams{}, errors.New("required flag \"signing-key\" not set")
 	}
 
-	keyID, _ := cmd.Flags().GetString("key-id")
+	keyID := resolveKeyID(cmd)
 	if keyID == "" {
 		return tokenParams{}, errors.New("required flag \"key-id\" not set")
 	}
