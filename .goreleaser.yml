@@ -68,6 +68,7 @@ archives:
   formats:
   - tar.gz
   name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
+  wrap_in_directory: true
 
 checksum:
   name_template: "checksums.txt"
