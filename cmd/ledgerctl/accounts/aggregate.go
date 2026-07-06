@@ -8,6 +8,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/invariants"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -82,11 +84,16 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 
 	var trailer metadata.MD
 
+	// With --rescale, ask the server to merge same-base assets under the highest
+	// precision observed (use_max_precision), so the group-by-base aggregation is
+	// done once, server-side, on the native uint256 volumes. The CLI then only
+	// re-expresses each merged row at the requested scale for display.
 	result, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
-		Ledger:         ledgerName,
-		Filter:         filter,
-		MinLogSequence: minLogSeq,
-		CheckpointId:   checkpointID,
+		Ledger:          ledgerName,
+		Filter:          filter,
+		MinLogSequence:  minLogSeq,
+		CheckpointId:    checkpointID,
+		UseMaxPrecision: rescale != nil,
 	}, grpc.Trailer(&trailer))
 	_ = spinner.Stop()
 
@@ -137,27 +144,24 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 	}
 
-	// With --rescale, currencies that differ only in precision are summed into
-	// a single base-currency row per color, re-expressed at the requested scale.
-	// Colors stay segregated: they are distinct balance buckets.
+	// With --rescale, the server has already merged currencies that differ only
+	// in precision into a single base-currency row expressed at the group's
+	// highest precision (use_max_precision above). Colors stay segregated: they
+	// are part of the server's merge key. The CLI only re-expresses each row at
+	// the requested scale.
 	if rescale != nil {
-		raw := make([]cmdutil.RawVolume, 0, len(result.GetVolumes()))
 		for _, vol := range result.GetVolumes() {
-			raw = append(raw, cmdutil.RawVolume{
-				Asset:  vol.GetAsset(),
-				Color:  vol.GetColor(),
-				Input:  vol.GetInput().ToBigInt().String(),
-				Output: vol.GetOutput().ToBigInt().String(),
-			})
-		}
+			base, precision := invariants.ParseAssetPrecision(vol.GetAsset())
+			input := vol.GetInput().ToBigInt()
+			output := vol.GetOutput().ToBigInt()
+			balance := new(big.Int).Sub(input, output)
 
-		for _, av := range cmdutil.AggregateVolumes(raw) {
 			tableData = append(tableData, []string{
-				cmdutil.AssetLabel(av.Asset, *rescale),
-				av.Color,
-				cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
-				cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
-				withSign(cmdutil.RescaleAmount(av.Balance, av.Precision, *rescale), av.Balance.Sign()),
+				cmdutil.AssetLabel(base, *rescale),
+				vol.GetColor(),
+				cmdutil.RescaleAmount(input, precision, *rescale),
+				cmdutil.RescaleAmount(output, precision, *rescale),
+				withSign(cmdutil.RescaleAmount(balance, precision, *rescale), balance.Sign()),
 			})
 		}
 	} else {
