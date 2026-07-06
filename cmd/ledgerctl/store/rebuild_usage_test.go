@@ -1,11 +1,34 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// TestEnsureDisjointDirs_Symlink verifies the guard resolves symlinks —
+// filepath.Abs alone would let a symlink pointing at <data-dir>/live slip
+// past the prefix check and get RemoveAll'd.
+func TestEnsureDisjointDirs_Symlink(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "data")
+	liveDir := filepath.Join(dataDir, "live")
+	require.NoError(t, os.MkdirAll(liveDir, 0o755))
+
+	// symlink-to-live: usage-dir is a symbolic link whose target is the
+	// primary Pebble live directory. Must be rejected even though the
+	// literal path string differs.
+	symlink := filepath.Join(root, "usage-symlink")
+	require.NoError(t, os.Symlink(liveDir, symlink))
+
+	err := ensureDisjointDirs(dataDir, symlink)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must not equal the primary Pebble live directory")
+}
 
 // TestEnsureDisjointDirs exercises the guards that prevent `--usage-dir`
 // from silently wiping the primary Pebble store. The command RemoveAlls the

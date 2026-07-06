@@ -163,6 +163,20 @@ func (b *Builder) boot(ctx context.Context) error {
 
 	pebbleLast, sampleErr := b.sampleAuditHead()
 	if sampleErr == nil {
+		// Cursor ahead of the audit head means the primary Pebble store
+		// was restored to an earlier checkpoint (or wiped) while the
+		// usagestore was kept. Silently resuming would leave stale
+		// counter / template rows for the rolled-back entries visible
+		// forever. Fail loud instead — the recovery path is
+		// `ledgerctl store rebuild-usage`, which drops the usagestore
+		// and replays from audit sequence 0.
+		if cursor > pebbleLast {
+			return fmt.Errorf(
+				"usage cursor (%d) is ahead of the audit head (%d): the primary store appears to have been restored to an earlier checkpoint — run `ledgerctl store rebuild-usage` to rebuild the usage projections from the current audit chain",
+				cursor, pebbleLast,
+			)
+		}
+
 		b.pebbleLastAuditSeq.Store(pebbleLast)
 	}
 

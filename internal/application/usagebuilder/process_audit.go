@@ -419,6 +419,11 @@ func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batc
 		state.addCounter(ledger, usagestore.CounterVolume, 1)
 	}
 
+	// Draining evictions: a volume that persisted with a non-zero balance
+	// and now goes back to zero. Both the volume counter (–1, it was
+	// counted before) and the eviction counter (+1, this is an eviction
+	// event) contribute. The pre-EN-1420 EphemeralEvictedCount tallied
+	// every log-level eviction, not just pure ephemeral tuples.
 	for _, v := range ann.purged {
 		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset()}
 		if _, ok := entry.seenPurged[k]; ok {
@@ -426,6 +431,7 @@ func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batc
 		}
 		entry.seenPurged[k] = struct{}{}
 		state.addCounter(ledger, usagestore.CounterVolume, -1)
+		state.addCounter(ledger, usagestore.CounterEphemeralEvicted, 1)
 	}
 
 	for _, v := range ann.ephemeral {

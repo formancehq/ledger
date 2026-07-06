@@ -1,7 +1,9 @@
 package store
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,12 +20,52 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
+// canonicalizeDir resolves p to its absolute, symlink-free form. If p (or
+// any leading ancestor) does not exist yet — typical for --usage-dir on a
+// first rebuild — the deepest existing ancestor is resolved and the missing
+// tail re-appended, so a symlinked parent still normalises before we do
+// prefix comparisons in ensureDisjointDirs.
+func canonicalizeDir(p string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", fmt.Errorf("resolving absolute path for %q: %w", p, err)
+	}
+
+	curr := abs
+	tail := ""
+
+	for {
+		resolved, err := filepath.EvalSymlinks(curr)
+		if err == nil {
+			if tail == "" {
+				return resolved, nil
+			}
+
+			return filepath.Join(resolved, tail), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("resolving symlinks for %q: %w", curr, err)
+		}
+
+		parent := filepath.Dir(curr)
+		if parent == curr {
+			// Reached the filesystem root without finding an existing
+			// ancestor. Fall back to the unresolved absolute path.
+			return abs, nil
+		}
+		tail = filepath.Join(filepath.Base(curr), tail)
+		curr = parent
+	}
+}
+
 // ensureDisjointDirs rejects any --usage-dir value that would overlap the
 // primary Pebble store — the rebuild command RemoveAlls the usage dir before
 // re-opening the data dir, so a colliding path silently wipes production
 // data.
 //
-// The four rejected shapes on cleaned absolute paths:
+// The four rejected shapes on canonicalised paths (symlinks resolved so an
+// operator cannot bypass the check by pointing --usage-dir at a symlinked
+// alias of the primary store):
 //   - usageDir == dataDir (obvious: wipes the whole data root)
 //   - usageDir is a parent of dataDir (wipes the whole data root)
 //   - usageDir == <dataDir>/live (wipes Pebble's actual live directory)
@@ -32,15 +74,18 @@ import (
 // The documented default is `<dataDir>/usage`, which is a sibling of
 // `<dataDir>/live` and therefore safe.
 func ensureDisjointDirs(dataDir, usageDir string) error {
-	absData, err := filepath.Abs(dataDir)
+	absData, err := canonicalizeDir(dataDir)
 	if err != nil {
 		return fmt.Errorf("resolving --data-dir: %w", err)
 	}
-	absUsage, err := filepath.Abs(usageDir)
+	absUsage, err := canonicalizeDir(usageDir)
 	if err != nil {
 		return fmt.Errorf("resolving --usage-dir: %w", err)
 	}
-	absLive := filepath.Join(absData, "live")
+	absLive, err := canonicalizeDir(filepath.Join(absData, "live"))
+	if err != nil {
+		return fmt.Errorf("resolving --data-dir/live: %w", err)
+	}
 
 	if absData == absUsage {
 		return fmt.Errorf("--usage-dir (%s) must not equal --data-dir — running this command would delete the primary Pebble store", absUsage)
