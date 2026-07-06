@@ -8,9 +8,13 @@ import (
 	"sort"
 	"strings"
 
+	"google.golang.org/grpc/status"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // MODEL_DEBUG=1 enables verbose per-transaction logging.
@@ -22,22 +26,42 @@ func dbg(format string, args ...any) {
 	}
 }
 
-// MODEL_DUMP_BATCHES=1 dumps each committed ApplyRequest (base64 vtproto) keyed
-// by its min committed log sequence, so the exact full sequence can be replayed
-// deterministically through the oracle (see tests/oracle/cmd/replay).
+// MODEL_DUMP_BATCHES=1 dumps every submitted ApplyRequest (base64 vtproto) with
+// its dispatch ticket, the server's outcome (OK / a rejection reason / TRANSIENT),
+// and — for committed bulks — its min committed log sequence. The replay tool
+// (tests/oracle/cmd/replay) uses this two ways: sorted by log sequence over the
+// committed (OK) bulks it reconstructs a concurrent run's true serialization;
+// sorted by dispatch ticket over all bulks — valid only single-worker, where
+// dispatch order IS the serialization — it compares each bulk's model outcome to
+// the server's, reproducing a divergence deterministically.
 var dumpBatches = os.Getenv("MODEL_DUMP_BATCHES") != ""
 
-func dumpBatch(seq uint64, req *servicepb.ApplyRequest) {
+func dumpBatch(ticket uint64, req *servicepb.ApplyRequest, resp *servicepb.ApplyResponse, err error) {
 	if !dumpBatches {
 		return
 	}
 
-	b, err := req.MarshalVT()
-	if err != nil {
+	outcome := "OK"
+	var seq uint64
+	switch {
+	case err != nil && (internal.IsTransient(err) || isShutdownError(err)):
+		outcome = "TRANSIENT"
+	case err != nil:
+		if r := internal.ErrorReason(err); r != "" {
+			outcome = r
+		} else {
+			outcome = "ERR:" + status.Code(err).String()
+		}
+	default:
+		seq = minLogSequence(resp.GetLogs())
+	}
+
+	b, mErr := req.MarshalVT()
+	if mErr != nil {
 		return
 	}
 
-	log.Printf("[batch-dump] seq=%d b64=%s", seq, base64.StdEncoding.EncodeToString(b))
+	log.Printf("[batch-dump] ticket=%d seq=%d outcome=%s b64=%s", ticket, seq, outcome, base64.StdEncoding.EncodeToString(b))
 }
 
 // Distinct ledgers a bulk touches, sorted — for debug lines.
@@ -135,6 +159,79 @@ func bulkMeta(b oracle.Bulk) string {
 	}
 
 	return "[" + strings.Join(parts, " ") + "]"
+}
+
+// typeOps renders the add/remove-account-type ops a bulk carries ("+name" /
+// "-name"), or "" if it carries none.
+func typeOps(b oracle.Bulk) string {
+	var ops []string
+	for _, r := range b.Requests {
+		switch t := r.GetType().(type) {
+		case *servicepb.Request_AddAccountType:
+			ops = append(ops, "+"+t.AddAccountType.GetAccountType().GetName())
+		case *servicepb.Request_RemoveAccountType:
+			ops = append(ops, "-"+t.RemoveAccountType.GetName())
+		}
+	}
+
+	return strings.Join(ops, "")
+}
+
+// failureDiag renders a failed bulk's transaction postings, the model's declared
+// account types for the ledgers it touches, and the type-ops sitting in the
+// pending/inflight buffer (with their ticket vs the failure's maxTicket) — so an
+// unexplained-failure finding shows which address the model treats as unmatched,
+// whether a type for it exists in the committed model, and whether a folding
+// candidate (an addType) is available in the buffer. Caller holds c.mu.
+func (c *Checker) failureDiag(b oracle.Bulk, maxTicket uint64) (postings, modelTypes, buffered string) {
+	var ps []string
+	ledgers := map[string]bool{}
+	for _, r := range b.Requests {
+		l := oracle.LedgerOf(r)
+		ledgers[l] = true
+		if ct := r.GetApply().GetAction().GetCreateTransaction(); ct != nil {
+			for _, p := range ct.GetPostings() {
+				ps = append(ps, fmt.Sprintf("%s:%s->%s(%s)", l, p.GetSource(), p.GetDestination(), p.GetAsset()))
+			}
+		}
+	}
+
+	var types []string
+	for l := range ledgers {
+		var names []string
+		for n, t := range c.modelState.Ledger(l).Types() {
+			names = append(names, fmt.Sprintf("%s(%s)", n, t.Pattern))
+		}
+		sort.Strings(names)
+		types = append(types, l+"=["+strings.Join(names, ",")+"]")
+	}
+	sort.Strings(types)
+
+	within := func(t uint64) string {
+		if t <= maxTicket {
+			return "≤"
+		}
+
+		return ">"
+	}
+
+	var pend, infl []string
+	for _, pe := range c.pending {
+		if ops := typeOps(pe.obs.bulk); ops != "" {
+			pend = append(pend, fmt.Sprintf("t%d%s%s", pe.obs.ticket, within(pe.obs.ticket), ops))
+		}
+	}
+	for tkt, bulk := range c.inflight {
+		if ops := typeOps(bulk); ops != "" {
+			infl = append(infl, fmt.Sprintf("t%d%s%s", tkt, within(tkt), ops))
+		}
+	}
+	sort.Strings(pend)
+	sort.Strings(infl)
+
+	buffered = fmt.Sprintf("max=%d pendingTypeOps=[%s] inflightTypeOps=[%s]", maxTicket, strings.Join(pend, " "), strings.Join(infl, " "))
+
+	return "[" + strings.Join(ps, " ") + "]", "[" + strings.Join(types, " ") + "]", buffered
 }
 
 // metaTargetLabel renders a metadata target for debug output: the account address

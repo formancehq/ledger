@@ -182,7 +182,10 @@ func runWorker(
 		ticket := c.registerInflight(bulk)
 		c.mu.Unlock()
 
-		resp, err := client.Apply(ctx, applyRequest(bulk))
+		req := applyRequest(bulk)
+		resp, err := client.Apply(ctx, req)
+
+		dumpBatch(ticket, req, resp, err)
 
 		// Snapshot the ticket high-water at observe (lock-free, atomic counter);
 		// the drain gate compares outstanding tickets against it (see tryDrain).

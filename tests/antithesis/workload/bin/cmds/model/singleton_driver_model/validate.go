@@ -6,6 +6,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -22,8 +23,7 @@ import (
 // validateBulkSuccess records a committed bulk and cross-checks it against the
 // forward model. Caller holds c.mu.
 func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
-	dbg("BULK OK: ledgers=%s reqKinds=%s logSeqs=%s meta=%s", bulkLedgers(bulk), requestKinds(bulk), logSeqs(resp.GetLogs()), bulkMeta(bulk))
-	dumpBatch(minLogSequence(resp.GetLogs()), applyRequest(bulk))
+	dbg("BULK OK: ledgers=%s reqKinds=%s logSeqs=%s typeOps=%s meta=%s", bulkLedgers(bulk), requestKinds(bulk), logSeqs(resp.GetLogs()), typeOps(bulk), bulkMeta(bulk))
 
 	c.crossCheckCommit(bulk, resp)
 }
@@ -311,17 +311,38 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 	})
 
 	if matched {
+		// Coverage: the balance floor's rejection must actually be exercised —
+		// if this stops firing, the generator has stopped emitting underfunded
+		// non-forced debits and insufficient-funds is no longer tested.
+		if reason == domain.ErrReasonInsufficientFunds {
+			assert.Reachable("singleton_driver_model: insufficient-funds rejection exercised", internal.Details{})
+		}
+
 		dbg("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)
 
 		return
 	}
 
-	dbg("MODEL FAIL FINDING: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(failedBulk), requestKinds(failedBulk), bulkMeta(failedBulk), reqErr)
+	// What the model makes of the same bulk on the drained (committed-prefix)
+	// state — surfaced so the finding says why the model disagreed (a different
+	// reject reason, or OK meaning the model thought it would commit).
+	mres := c.modelState.Apply(failedBulk)
+	modelReason := mres.Reason
+	if mres.OK {
+		modelReason = "OK"
+	}
+
+	postings, modelTypes, buffered := c.failureDiag(failedBulk, maxTicket)
+
+	dbg("MODEL FAIL FINDING: ledgers=%s kinds=%s postings=%s modelReason=%s modelTypes=%s %s err=%v", bulkLedgers(failedBulk), requestKinds(failedBulk), postings, modelReason, modelTypes, buffered, reqErr)
 	assert.Unreachable("singleton_driver_model: bulk failure not explained by any serialization", internal.Details{
-		"ledgers": bulkLedgers(failedBulk),
-		"error":   reqErr.Error(),
-		"kinds":   requestKinds(failedBulk),
-		"meta":    bulkMeta(failedBulk),
+		"ledgers":     bulkLedgers(failedBulk),
+		"error":       reqErr.Error(),
+		"kinds":       requestKinds(failedBulk),
+		"postings":    postings,
+		"modelReason": modelReason,
+		"modelTypes":  modelTypes,
+		"buffered":    buffered,
 	})
 }
 

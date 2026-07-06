@@ -378,6 +378,27 @@ func HasErrorReason(err error, reason string) bool {
 	return false
 }
 
+// ErrorReason returns the ErrorInfo reason carried by a gRPC status error, or
+// "" if the error is nil or carries no ErrorInfo detail.
+func ErrorReason(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		return ""
+	}
+
+	for _, detail := range st.Details() {
+		if info, ok := detail.(*errdetails.ErrorInfo); ok {
+			return info.GetReason()
+		}
+	}
+
+	return ""
+}
+
 // IsLedgerDeleted returns true if the error indicates a soft-deleted ledger.
 func IsLedgerDeleted(err error) bool {
 	return HasErrorReason(err, domain.ErrReasonLedgerDeleted)
