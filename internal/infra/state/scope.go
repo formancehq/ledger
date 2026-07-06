@@ -95,6 +95,13 @@ type gatedScope struct {
 	miss      metric.Int64Counter
 	raftIndex uint64
 
+	// scratch is a reusable buffer for building canonical key bytes on
+	// the fly (see CheckCoverage). The FSM apply path is single-threaded
+	// under fsm.mu, and every consumer of the produced bytes (xxh3 hash
+	// in attributes.MakeKey, hex encoding on miss) copies or consumes
+	// them synchronously — safe to reuse across every gated read/write.
+	scratch []byte
+
 	// Per-kind gated accessors — built once at NewScopeFactory time,
 	// wrap the embedded WriteSet's bare accessors with CheckCoverage on
 	// reads. The accessor pointers carry the gatedScope pointer (for
@@ -330,18 +337,28 @@ func (g *gatedScope) NewProposalScope() (processing.Scope, error) {
 // CheckCoverage exposes the gate for paths that bypass the engine's
 // overlay reads. ValidateTransientVolumes uses it before a direct
 // Derived.Volumes.Parent().GetKey to keep the coverage invariant.
-func (g *gatedScope) CheckCoverage(kind byte, canonical []byte) error {
-	id, _ := attributes.MakeKey(canonical)
+//
+// The key's canonical bytes are built into g.scratch — a single
+// per-scope buffer reused across every gated call on the FSM apply
+// path (single-threaded under fsm.mu). The bytes are consumed
+// synchronously by attributes.MakeKey (xxh3 hash) and, on miss, by
+// hex.EncodeToString (which copies into a fresh string) — no consumer
+// retains a reference past the return, so overwriting the scratch on
+// the next call is safe.
+func (g *gatedScope) CheckCoverage(kind byte, key processing.CoverageKey) error {
+	g.scratch = key.AppendBytes(g.scratch[:0])
+
+	id, _ := attributes.MakeKey(g.scratch)
 	slot := coverageSlotIndex[kind]
 	if slot < 0 {
-		return g.coverageMiss(kind, canonical, id)
+		return g.coverageMiss(kind, g.scratch, id)
 	}
 
 	if slices.Contains(g.coverage[slot], id) {
 		return nil
 	}
 
-	return g.coverageMiss(kind, canonical, id)
+	return g.coverageMiss(kind, g.scratch, id)
 }
 
 func (g *gatedScope) coverageMiss(kind byte, canonical []byte, id attributes.U128) *ErrCoverageMiss {
@@ -505,7 +522,7 @@ func (g *gatedScope) Indexes() processing.Accessor[domain.IndexKey, *commonpb.In
 // --- Gated discrete reads (signatures that do not fit the Accessor trio) ---
 
 func (g *gatedScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
-	if err := g.CheckCoverage(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: name}.Bytes()); err != nil {
+	if err := g.CheckCoverage(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: name}); err != nil {
 		return nil, err
 	}
 
@@ -513,7 +530,7 @@ func (g *gatedScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, erro
 }
 
 func (g *gatedScope) GetNumscriptLatestVersion(ledgerName string, name string) (string, error) {
-	if err := g.CheckCoverage(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}.Bytes()); err != nil {
+	if err := g.CheckCoverage(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}); err != nil {
 		return "", err
 	}
 
@@ -521,7 +538,7 @@ func (g *gatedScope) GetNumscriptLatestVersion(ledgerName string, name string) (
 }
 
 func (g *gatedScope) ResolveNumscriptContent(ledgerName string, name string, version string) (commonpb.NumscriptInfoReader, error) {
-	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}.Bytes()); err != nil {
+	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}); err != nil {
 		return nil, err
 	}
 
@@ -529,7 +546,7 @@ func (g *gatedScope) ResolveNumscriptContent(ledgerName string, name string, ver
 }
 
 func (g *gatedScope) NumscriptVersionExists(ledgerName string, name, version string) (bool, error) {
-	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}.Bytes()); err != nil {
+	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}); err != nil {
 		return false, err
 	}
 

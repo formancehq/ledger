@@ -1155,7 +1155,7 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 		// The gate is enforced explicitly via scope.CheckCoverage to
 		// preserve the coverage invariant on this otherwise-engine-
 		// internal read.
-		if err := scope.CheckCoverage(dal.SubAttrVolume, key.Bytes()); err != nil {
+		if err := scope.CheckCoverage(dal.SubAttrVolume, key); err != nil {
 			storageFaults = append(storageFaults, storageFault{key, &domain.ErrStorageOperation{Operation: "coverage check on transient base volume", Cause: err}})
 
 			continue

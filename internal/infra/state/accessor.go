@@ -101,7 +101,7 @@ func newGatedAccessor[K accessorKey, V any, R any](inner processing.Accessor[K, 
 }
 
 func (a *gatedAccessor[K, V, R]) Get(key K) (R, error) {
-	if err := a.g.CheckCoverage(a.sub, key.Bytes()); err != nil {
+	if err := a.g.CheckCoverage(a.sub, key); err != nil {
 		var zero R
 
 		return zero, err
@@ -111,7 +111,7 @@ func (a *gatedAccessor[K, V, R]) Get(key K) (R, error) {
 }
 
 func (a *gatedAccessor[K, V, R]) Delete(key K) error {
-	if err := a.g.CheckCoverage(a.sub, key.Bytes()); err != nil {
+	if err := a.g.CheckCoverage(a.sub, key); err != nil {
 		return err
 	}
 

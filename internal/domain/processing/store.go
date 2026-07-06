@@ -115,7 +115,21 @@ type Scope interface {
 	// invariant enforced. Used by ValidateTransientVolumes which reads
 	// Derived.Volumes.Parent() directly to fetch the pre-batch base
 	// volume. No-op on the bare *WriteSet implementation.
-	CheckCoverage(kind byte, canonical []byte) error
+	//
+	// The key is passed as a CoverageKey (something that knows how to
+	// append its canonical bytes to a scratch buffer) rather than a
+	// pre-built []byte. This lets the gate reuse a single scratch buffer
+	// across every call in a proposal — key.Bytes() would allocate a
+	// fresh slice on every gated read (100 allocs / 50-tx proposal on
+	// the world-to-bank benchmark).
+	CheckCoverage(kind byte, key CoverageKey) error
+}
+
+// CoverageKey is the minimal shape a canonical key type must expose to
+// participate in the coverage gate: append its canonical bytes to a
+// caller-provided buffer. Every domain.*Key satisfies it via AppendBytes.
+type CoverageKey interface {
+	AppendBytes(dst []byte) []byte
 }
 
 // ScopeFactory builds a per-order Scope from the order's coverage_bits.
