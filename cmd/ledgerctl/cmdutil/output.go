@@ -8,9 +8,9 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
-	"go.yaml.in/yaml/v3"
 )
 
 var (
