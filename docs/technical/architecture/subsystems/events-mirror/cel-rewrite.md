@@ -65,10 +65,16 @@ Metadata (transaction-level and per-account), posting addresses, and metadata-op
 ## Example
 
 ```yaml
-- cel: 'tx.rewriteAddress(":worker:\\d+", "")'          # strip lock-avoidance shards
-- match: 'tx.metadata["type"] == "payout"'
-  cel: 'tx.setMetadata("category", "external")'
+- match: null # always
+  cel: | # strip lock-avoidance shards
+    tx.rewriteAddress(":worker:\\d+", "")
+- match: |
+    "type" in tx.metadata && tx.metadata["type"] == "payout"
+  cel: |
+    tx.setMetadata("category", "external")
   stop: true
-- match: 'tx.metadata["internal"] == "true"'
-  cel: 'tx.drop()'                                        # never mirror internal txs
+- match: |
+    "internal" in tx.metadata && tx.metadata["internal"] == "true"
+  cel: | # never mirror internal txs
+    tx.drop()
 ```
