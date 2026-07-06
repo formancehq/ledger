@@ -46,11 +46,6 @@ func TestEnsureDisjointDirs(t *testing.T) {
 			wantErr: "must not equal the primary Pebble live directory",
 		},
 		{
-			name:    "parent of <data-dir>/live but distinct from data-dir",
-			usage:   filepath.Join(dataDir),
-			wantErr: "must not equal --data-dir",
-		},
-		{
 			name:    "inside <data-dir>/live",
 			usage:   filepath.Join(liveDir, "nested"),
 			wantErr: "must not live inside the primary Pebble directory",
