@@ -50,17 +50,27 @@ func newBatchState() *batchState {
 	}
 }
 
-// markLedgerDeleted flags a ledger as dropped by this batch. commitBatch
-// range-deletes every counter / template row for the ledger AFTER the
-// counter / template mutations are staged — the final ordering is
-// (writes → range delete → cursor advance), inside a single Pebble batch,
-// so the range delete wipes both pre-existing rows and any writes the same
-// batch may have added just above for the same ledger. This matches the
-// FSM's own DeleteLedger cascade (which purges the ledger's Pebble rows
-// unconditionally, regardless of whether earlier orders in the same
-// proposal updated them).
+// markLedgerDeleted flags a ledger as dropped by this batch and drops any
+// in-batch counter / template deltas already accumulated for it (they are
+// for the pre-delete incarnation and must not survive the DeleteLedger).
+//
+// commitBatch runs the DeleteRange cascade FIRST inside the Pebble batch,
+// then stages the counter / template Puts on top — later batch ops shadow
+// earlier ones at commit, so if the same audit batch contains a delete
+// followed by a same-name recreate + writes, the post-recreate Puts survive
+// while every pre-batch row for the old incarnation is wiped. Combined with
+// the accumulator reset here, that yields the same net semantics as the
+// FSM's own DeleteLedger cascade (which unconditionally purges the ledger's
+// Pebble rows regardless of earlier orders in the same proposal).
 func (s *batchState) markLedgerDeleted(ledger string) {
 	s.deletedLedgers[ledger] = struct{}{}
+	delete(s.counters, ledger)
+
+	for k := range s.templates {
+		if k.ledger == ledger {
+			delete(s.templates, k)
+		}
+	}
 }
 
 // addCounter accumulates a delta on the (ledger, counterID) slot.
@@ -290,9 +300,11 @@ func (b *Builder) dispatchOrder(
 
 	// Mirror ingests produce Created/Reverted transaction logs the same
 	// shape as the direct write path, so posting / revert / volume /
-	// ephemeral counters all apply. Numscript / reference metadata is
-	// absent on the mirror wire — no CounterReference /
-	// CounterNumscriptExecution / template usage contribution.
+	// ephemeral counters all apply. References ARE carried across the
+	// mirror wire (MirrorCreatedTransaction.reference) and counted the
+	// same as native creates. Numscript templates are not — v2 sources
+	// do not carry per-template invocation metadata, so we skip
+	// CounterNumscriptExecution and template usage for mirrored logs.
 	if mirror := scoped.GetMirrorIngest(); mirror != nil {
 		return b.dispatchMirrorIngest(ctx, handle, ledger, mirror.GetEntry(), logSeq, state, entry)
 	}
@@ -333,7 +345,7 @@ func (b *Builder) dispatchMirrorIngest(
 		return nil
 	}
 
-	switch mle.GetData().(type) {
+	switch data := mle.GetData().(type) {
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
 		ann, err := b.readLog(ctx, handle, logSeq)
 		if err != nil {
@@ -341,6 +353,9 @@ func (b *Builder) dispatchMirrorIngest(
 		}
 		if ann.postings > 0 {
 			state.addCounter(ledger, usagestore.CounterPosting, counterDelta(ann.postings))
+		}
+		if data.CreatedTransaction.GetReference() != "" {
+			state.addCounter(ledger, usagestore.CounterReference, 1)
 		}
 		applyVolumeAnnotations(ledger, ann, state, entry)
 	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
@@ -574,8 +589,26 @@ func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq u
 
 // commitBatch applies the accumulated counter / template deltas to the
 // usagestore and advances the cursor — all in a single Pebble batch commit.
+//
+// Ordering inside the batch: DeleteRange cascade FIRST, then counter /
+// template Puts. Pebble batches apply operations in enqueue order at commit,
+// so any Put on a key inside a DeleteRange range enqueued earlier still lands
+// (later ops shadow earlier ones). Combined with markLedgerDeleted clearing
+// in-batch counters for the deleted ledger, this yields the correct semantic
+// for a delete+recreate sequence within the same audit batch: every
+// pre-batch row for the old incarnation is wiped, while any post-recreate
+// Puts on the recycled name survive.
 func (b *Builder) commitBatch(state *batchState, cursor uint64) error {
 	batch := b.usageStore.NewBatch()
+
+	// Ledger deletions first — see the function comment.
+	for ledger := range state.deletedLedgers {
+		if err := usagestore.DeleteLedger(batch, ledger); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("dropping usage rows for deleted ledger %q: %w", ledger, err)
+		}
+	}
 
 	// Counter deltas: read-modify-write against the usagestore. Not the
 	// FSM's Pebble — invariant #3 does not apply here.
@@ -614,19 +647,6 @@ func (b *Builder) commitBatch(state *batchState, cursor uint64) error {
 			_ = batch.Cancel()
 
 			return fmt.Errorf("writing template usage %q/%q: %w", k.ledger, k.template, err)
-		}
-	}
-
-	// Ledger deletions come last inside the batch — the DeleteRange scoped
-	// to `[PrefixTemplate/Counter][ledger 64B]…` wipes every counter /
-	// template row for the deleted ledger, including any writes staged
-	// above by earlier orders in the same audit entry. Matches the FSM's
-	// DeleteLedger cascade semantics: post-commit, no trace remains.
-	for ledger := range state.deletedLedgers {
-		if err := usagestore.DeleteLedger(batch, ledger); err != nil {
-			_ = batch.Cancel()
-
-			return fmt.Errorf("dropping usage rows for deleted ledger %q: %w", ledger, err)
 		}
 	}
 

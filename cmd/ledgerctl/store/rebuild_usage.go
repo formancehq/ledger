@@ -18,12 +18,19 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
-// ensureDisjointDirs rejects overlapping --data-dir / --usage-dir values —
-// the rebuild command RemoveAlls the usage dir before opening the data dir,
-// so an operator who passes the same path (or a parent) would wipe the live
-// Pebble store. Comparison is done on cleaned absolute paths so relative
-// forms, trailing separators and symbolic paths all normalise before the
-// prefix check.
+// ensureDisjointDirs rejects any --usage-dir value that would overlap the
+// primary Pebble store — the rebuild command RemoveAlls the usage dir before
+// re-opening the data dir, so a colliding path silently wipes production
+// data.
+//
+// The four rejected shapes on cleaned absolute paths:
+//   - usageDir == dataDir (obvious: wipes the whole data root)
+//   - usageDir is a parent of dataDir (wipes the whole data root)
+//   - usageDir == <dataDir>/live (wipes Pebble's actual live directory)
+//   - usageDir is a parent or child of <dataDir>/live (wipes Pebble too)
+//
+// The documented default is `<dataDir>/usage`, which is a sibling of
+// `<dataDir>/live` and therefore safe.
 func ensureDisjointDirs(dataDir, usageDir string) error {
 	absData, err := filepath.Abs(dataDir)
 	if err != nil {
@@ -33,12 +40,22 @@ func ensureDisjointDirs(dataDir, usageDir string) error {
 	if err != nil {
 		return fmt.Errorf("resolving --usage-dir: %w", err)
 	}
+	absLive := filepath.Join(absData, "live")
 
 	if absData == absUsage {
 		return fmt.Errorf("--usage-dir (%s) must not equal --data-dir — running this command would delete the primary Pebble store", absUsage)
 	}
 	if strings.HasPrefix(absData+string(filepath.Separator), absUsage+string(filepath.Separator)) {
 		return fmt.Errorf("--usage-dir (%s) must not be a parent of --data-dir (%s) — running this command would delete the primary Pebble store", absUsage, absData)
+	}
+	if absUsage == absLive {
+		return fmt.Errorf("--usage-dir (%s) must not equal the primary Pebble live directory — running this command would delete it", absUsage)
+	}
+	if strings.HasPrefix(absLive+string(filepath.Separator), absUsage+string(filepath.Separator)) {
+		return fmt.Errorf("--usage-dir (%s) must not be a parent of the primary Pebble live directory (%s) — running this command would delete it", absUsage, absLive)
+	}
+	if strings.HasPrefix(absUsage+string(filepath.Separator), absLive+string(filepath.Separator)) {
+		return fmt.Errorf("--usage-dir (%s) must not live inside the primary Pebble directory (%s) — running this command would delete Pebble state", absUsage, absLive)
 	}
 
 	return nil
@@ -108,10 +125,12 @@ func runRebuildUsage(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Usage store dropped at " + usageDir)
 
-	// Open primary Pebble read-only — same as rebuild-indexes.
+	// Open primary Pebble read-only — same as rebuild-indexes /
+	// rebuild-audit-index (the live SSTs are at <dataDir>/live, not
+	// dataDir itself).
 	spinner, _ = pterm.DefaultSpinner.Start("Opening Pebble store (read-only)...")
 
-	pebbleStore, err := dal.OpenReadOnly(dataDir, logger)
+	pebbleStore, err := dal.OpenReadOnly(filepath.Join(dataDir, "live"), logger)
 	if err != nil {
 		spinner.Fail("Failed to open Pebble store")
 
