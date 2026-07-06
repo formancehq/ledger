@@ -115,10 +115,16 @@ type Machine struct {
 	BloomFilters *bloom.FilterSet
 
 	// Metrics
-	logsAppendedCounter       metric.Int64Counter
-	rotationDurationHistogram metric.Int64Histogram
-	batchCommitHistogram      metric.Int64Histogram
-	preloadMissCounter        metric.Int64Counter
+	logsAppendedCounter            metric.Int64Counter
+	rotationDurationHistogram      metric.Int64Histogram
+	batchCommitHistogram           metric.Int64Histogram
+	processOrdersDurationHistogram metric.Int64Histogram
+	mergeDurationHistogram         metric.Int64Histogram
+	auditDurationHistogram         metric.Int64Histogram
+	processOrdersTimeSpentCounter  metric.Int64Counter
+	mergeTimeSpentCounter          metric.Int64Counter
+	auditTimeSpentCounter          metric.Int64Counter
+	preloadMissCounter             metric.Int64Counter
 
 	// lastPersistedIndex is the highest Raft index whose FSM batch has been
 	// committed to Pebble's memtable and WAL with pebble.NoSync. It is NOT
@@ -225,6 +231,75 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
 	}
 
+	processOrdersDurationHistogram, err := raftMeter.Int64Histogram(
+		"raft.fsm.apply.process_orders.duration",
+		metric.WithDescription("Time spent in RequestProcessor.ProcessOrders inside applyProposal (per proposal, success path)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000, 500000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating process_orders_duration histogram: %w", err)
+	}
+
+	mergeDurationHistogram, err := raftMeter.Int64Histogram(
+		"raft.fsm.apply.merge.duration",
+		metric.WithDescription("Time spent in WriteSet.Merge inside applyProposal (per proposal, success path)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000, 500000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating merge_duration histogram: %w", err)
+	}
+
+	auditDurationHistogram, err := raftMeter.Int64Histogram(
+		"raft.fsm.apply.audit.duration",
+		metric.WithDescription("Time spent building the audit entry, computing the hash chain, and writing AppliedProposal inside applyProposal (per proposal, success path)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000, 500000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating audit_duration histogram: %w", err)
+	}
+
+	// Cumulative counters mirroring the three duration histograms above.
+	// The histograms serve distribution/percentile analysis; these counters
+	// give a plain rate()-friendly view of "microseconds spent per phase per
+	// second", exportable through any pipeline that garbles OTel exponential
+	// histograms (Signoz-native → Prom via yMin/yMax gauges, etc.) and
+	// removes the need for _sum/_count derivation.
+	processOrdersTimeSpentCounter, err := raftMeter.Int64Counter(
+		"raft.fsm.apply.process_orders.time_spent",
+		metric.WithDescription("Cumulative time spent in RequestProcessor.ProcessOrders inside applyProposal (success path). Use rate() to compare against merge/audit."),
+		metric.WithUnit("us"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating process_orders_time_spent counter: %w", err)
+	}
+
+	mergeTimeSpentCounter, err := raftMeter.Int64Counter(
+		"raft.fsm.apply.merge.time_spent",
+		metric.WithDescription("Cumulative time spent in WriteSet.Merge inside applyProposal (success path). Use rate() to compare against process_orders/audit."),
+		metric.WithUnit("us"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating merge_time_spent counter: %w", err)
+	}
+
+	auditTimeSpentCounter, err := raftMeter.Int64Counter(
+		"raft.fsm.apply.audit.time_spent",
+		metric.WithDescription("Cumulative time spent in the audit hash chain + AppliedProposal write inside applyProposal (success path). Use rate() to compare against process_orders/merge."),
+		metric.WithUnit("us"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating audit_time_spent counter: %w", err)
+	}
+
 	preloadMissCounter, err := raftMeter.Int64Counter(
 		"ledger.preload.coverage_miss",
 		metric.WithDescription("Reads on the FSM hot path of keys not declared in the proposal's ExecutionPlan. Labeled by attribute kind. The order observing the miss is rejected with a business error."),
@@ -248,6 +323,12 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		logsAppendedCounter:            logsAppendedCounter,
 		rotationDurationHistogram:      rotationDurationHistogram,
 		batchCommitHistogram:           batchCommitHistogram,
+		processOrdersDurationHistogram: processOrdersDurationHistogram,
+		mergeDurationHistogram:         mergeDurationHistogram,
+		auditDurationHistogram:         auditDurationHistogram,
+		processOrdersTimeSpentCounter:  processOrdersTimeSpentCounter,
+		mergeTimeSpentCounter:          mergeTimeSpentCounter,
+		auditTimeSpentCounter:          auditTimeSpentCounter,
 		preloadMissCounter:             preloadMissCounter,
 		processor:                      processor,
 		notifier:                       notifier,
@@ -1375,7 +1456,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// never re-walks `logs` to rebuild them.
 	var ordersResult *processing.OrdersResult
 	if err == nil {
+		processOrdersStart := time.Now()
 		ordersResult, err = fsm.processor.ProcessOrders(orders, scopeFactory, buffer)
+		elapsed := time.Since(processOrdersStart).Microseconds()
+		fsm.processOrdersDurationHistogram.Record(ctx, elapsed)
+		fsm.processOrdersTimeSpentCounter.Add(ctx, elapsed)
 		if ordersResult != nil {
 			logs = ordersResult.Logs
 		}
@@ -1567,9 +1652,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Merge consumes the per-order log slice (CreatedLog or ReferenceSequence)
 	// so it can inject Log.purged_volumes using per-order tracking before
 	// AppendLogs runs.
+	mergeStart := time.Now()
 	if err := buffer.Merge(batch, logs); err != nil {
 		return nil, err
 	}
+	mergeElapsed := time.Since(mergeStart).Microseconds()
+	fsm.mergeDurationHistogram.Record(ctx, mergeElapsed)
+	fsm.mergeTimeSpentCounter.Add(ctx, mergeElapsed)
 
 	// CreatedLogs is accumulated during ProcessOrders' single pass — no
 	// second walk over `logs` is needed.
@@ -1643,6 +1732,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// (see writeAuditEntry). The convention is to let that error
 	// propagate out of Run() and crash the process; a restart reloads
 	// from Pebble and Raft redelivers. Tracked for hardening in EN-1330.
+	auditStart := time.Now()
 	auditEntry := auditpb.AuditEntryFromVTPool()
 	auditEntry.Outcome = &auditpb.AuditEntry_Success{Success: auditSuccess}
 	appendErr := writeAuditEntry(auditEntry, logs, "success")
@@ -1667,6 +1757,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	if appendErr != nil {
 		return nil, fmt.Errorf("appending applied proposal: %w", appendErr)
 	}
+	auditElapsed := time.Since(auditStart).Microseconds()
+	fsm.auditDurationHistogram.Record(ctx, auditElapsed)
+	fsm.auditTimeSpentCounter.Add(ctx, auditElapsed)
 
 	// Update closing chapter's LastAuditHash if this batch contains a CloseChapter.
 	// We use preAuditHash (the hash before this proposal's audit entry) so the
