@@ -1,6 +1,7 @@
 package readstore
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -120,10 +121,10 @@ func (it *reverseAliasingIter) Next() bool {
 func (it *reverseAliasingIter) Current() []byte { return it.buf }
 
 func (it *reverseAliasingIter) SeekLE(target []byte) bool {
-	for i := len(it.keys) - 1; i >= 0; i-- {
-		if string(it.keys[i]) <= string(target) {
+	for i, v := range slices.Backward(it.keys) {
+		if string(v) <= string(target) {
 			it.idx = i
-			it.buf = append(it.buf[:0], it.keys[i]...)
+			it.buf = append(it.buf[:0], v...)
 
 			return true
 		}

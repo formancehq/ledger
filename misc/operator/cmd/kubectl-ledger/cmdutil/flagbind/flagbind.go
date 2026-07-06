@@ -76,7 +76,7 @@ func ApplyToStruct(target any, overrides map[string]any) error {
 // corresponding Go struct field types (bool, int32, float64, etc.).
 // String fields are left as-is.
 func coerceToSchema(m map[string]any, t reflect.Type) {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -101,7 +101,7 @@ func coerceToSchema(m map[string]any, t reflect.Type) {
 		}
 
 		ft := sf.Type
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 
@@ -160,7 +160,7 @@ func coerceSlice(arr []any, ft reflect.Type) {
 		return
 	}
 	elemType := ft.Elem()
-	if elemType.Kind() == reflect.Ptr {
+	if elemType.Kind() == reflect.Pointer {
 		elemType = elemType.Elem()
 	}
 

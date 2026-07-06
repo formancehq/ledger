@@ -1514,9 +1514,9 @@ func (b *WriteSet) IncrementNextChapterID() uint64 {
 // It checks changedChapters first (most recent modifications), then the chapters tracker.
 func (b *WriteSet) GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
 	// Check changedChapters (most recently changed first)
-	for i := len(b.changedChapters) - 1; i >= 0; i-- {
-		if b.changedChapters[i].GetId() == chapterID {
-			return b.changedChapters[i].AsReader(), true
+	for _, v := range slices.Backward(b.changedChapters) {
+		if v.GetId() == chapterID {
+			return v.AsReader(), true
 		}
 	}
 

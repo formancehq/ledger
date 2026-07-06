@@ -8,7 +8,7 @@ import (
 // fieldsFromType builds a []Field tree by reflecting on a Go struct type.
 // It extracts field names from json tags and maps Go types to schema type strings.
 func fieldsFromType(t reflect.Type) []Field {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -33,7 +33,7 @@ func fieldsFromType(t reflect.Type) []Field {
 
 		ft := sf.Type
 		isPtr := false
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 			isPtr = true
 		}
@@ -59,7 +59,7 @@ func resolveType(t reflect.Type) (string, []Field) {
 	// Handle slices/arrays.
 	if t.Kind() == reflect.Slice {
 		elem := t.Elem()
-		if elem.Kind() == reflect.Ptr {
+		if elem.Kind() == reflect.Pointer {
 			elem = elem.Elem()
 		}
 
@@ -128,7 +128,7 @@ func isK8sType(pkg string) bool {
 
 // typeName returns a short display name for a Go type.
 func typeName(t reflect.Type) string {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	name := t.Name()
