@@ -28,14 +28,14 @@ type AuditEntryReader interface {
 	Mutate() *AuditEntry
 }
 
-type auditEntryReadonly struct{ v *AuditEntry }
+type auditEntryReadonly AuditEntry
 
 func (r *auditEntryReadonly) GetSequence() uint64 {
-	return r.v.GetSequence()
+	return (*AuditEntry)(r).GetSequence()
 }
 
 func (r *auditEntryReadonly) GetTimestamp() commonpb.TimestampReader {
-	v := r.v.GetTimestamp()
+	v := (*AuditEntry)(r).GetTimestamp()
 	if v == nil {
 		return nil
 	}
@@ -43,31 +43,31 @@ func (r *auditEntryReadonly) GetTimestamp() commonpb.TimestampReader {
 }
 
 func (r *auditEntryReadonly) GetProposalId() uint64 {
-	return r.v.GetProposalId()
+	return (*AuditEntry)(r).GetProposalId()
 }
 
 func (r *auditEntryReadonly) GetOrderCount() uint32 {
-	return r.v.GetOrderCount()
+	return (*AuditEntry)(r).GetOrderCount()
 }
 
 func (r *auditEntryReadonly) GetItems() AuditItemListReader {
-	return NewAuditItemListReader(r.v.GetItems())
+	return NewAuditItemListReader((*AuditEntry)(r).GetItems())
 }
 
 func (r *auditEntryReadonly) GetLedgers() []string {
-	return slices.Clone(r.v.GetLedgers())
+	return slices.Clone((*AuditEntry)(r).GetLedgers())
 }
 
 func (r *auditEntryReadonly) GetHash() []byte {
-	return bytes.Clone(r.v.GetHash())
+	return bytes.Clone((*AuditEntry)(r).GetHash())
 }
 
 func (r *auditEntryReadonly) GetHashVersion() uint32 {
-	return r.v.GetHashVersion()
+	return (*AuditEntry)(r).GetHashVersion()
 }
 
 func (r *auditEntryReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
-	v := r.v.GetCallerSnapshot()
+	v := (*AuditEntry)(r).GetCallerSnapshot()
 	if v == nil {
 		return nil
 	}
@@ -75,7 +75,7 @@ func (r *auditEntryReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
 }
 
 func (r *auditEntryReadonly) GetIdempotency() commonpb.IdempotencyReader {
-	v := r.v.GetIdempotency()
+	v := (*AuditEntry)(r).GetIdempotency()
 	if v == nil {
 		return nil
 	}
@@ -83,7 +83,7 @@ func (r *auditEntryReadonly) GetIdempotency() commonpb.IdempotencyReader {
 }
 
 func (r *auditEntryReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
-	v := r.v.GetSignature()
+	v := (*AuditEntry)(r).GetSignature()
 	if v == nil {
 		return nil
 	}
@@ -91,11 +91,11 @@ func (r *auditEntryReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
 }
 
 func (r *auditEntryReadonly) GetOutcome() isAuditEntry_Outcome {
-	return r.v.GetOutcome()
+	return (*AuditEntry)(r).GetOutcome()
 }
 
 func (r *auditEntryReadonly) Mutate() *AuditEntry {
-	return r.v.CloneVT()
+	return (*AuditEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AuditEntry.
@@ -103,7 +103,7 @@ func (m *AuditEntry) AsReader() AuditEntryReader {
 	if m == nil {
 		return nil
 	}
-	return &auditEntryReadonly{v: m}
+	return (*auditEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AuditEntry.
@@ -155,22 +155,22 @@ type AuditItemReader interface {
 	Mutate() *AuditItem
 }
 
-type auditItemReadonly struct{ v *AuditItem }
+type auditItemReadonly AuditItem
 
 func (r *auditItemReadonly) GetOrderIndex() uint32 {
-	return r.v.GetOrderIndex()
+	return (*AuditItem)(r).GetOrderIndex()
 }
 
 func (r *auditItemReadonly) GetSerializedOrder() []byte {
-	return bytes.Clone(r.v.GetSerializedOrder())
+	return bytes.Clone((*AuditItem)(r).GetSerializedOrder())
 }
 
 func (r *auditItemReadonly) GetLogSequence() uint64 {
-	return r.v.GetLogSequence()
+	return (*AuditItem)(r).GetLogSequence()
 }
 
 func (r *auditItemReadonly) Mutate() *AuditItem {
-	return r.v.CloneVT()
+	return (*AuditItem)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AuditItem.
@@ -178,7 +178,7 @@ func (m *AuditItem) AsReader() AuditItemReader {
 	if m == nil {
 		return nil
 	}
-	return &auditItemReadonly{v: m}
+	return (*auditItemReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AuditItem.
@@ -229,18 +229,18 @@ type AuditSuccessReader interface {
 	Mutate() *AuditSuccess
 }
 
-type auditSuccessReadonly struct{ v *AuditSuccess }
+type auditSuccessReadonly AuditSuccess
 
 func (r *auditSuccessReadonly) GetMinLogSequence() uint64 {
-	return r.v.GetMinLogSequence()
+	return (*AuditSuccess)(r).GetMinLogSequence()
 }
 
 func (r *auditSuccessReadonly) GetMaxLogSequence() uint64 {
-	return r.v.GetMaxLogSequence()
+	return (*AuditSuccess)(r).GetMaxLogSequence()
 }
 
 func (r *auditSuccessReadonly) Mutate() *AuditSuccess {
-	return r.v.CloneVT()
+	return (*AuditSuccess)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AuditSuccess.
@@ -248,7 +248,7 @@ func (m *AuditSuccess) AsReader() AuditSuccessReader {
 	if m == nil {
 		return nil
 	}
-	return &auditSuccessReadonly{v: m}
+	return (*auditSuccessReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AuditSuccess.
@@ -302,22 +302,22 @@ type AuditFailureReader interface {
 	Mutate() *AuditFailure
 }
 
-type auditFailureReadonly struct{ v *AuditFailure }
+type auditFailureReadonly AuditFailure
 
 func (r *auditFailureReadonly) GetReason() commonpb.ErrorReason {
-	return r.v.GetReason()
+	return (*AuditFailure)(r).GetReason()
 }
 
 func (r *auditFailureReadonly) GetMessage() string {
-	return r.v.GetMessage()
+	return (*AuditFailure)(r).GetMessage()
 }
 
 func (r *auditFailureReadonly) GetContext() AuditFailure_ContextMapReader {
-	return auditFailure_contextMapReadonly(r.v.GetContext())
+	return auditFailure_contextMapReadonly((*AuditFailure)(r).GetContext())
 }
 
 func (r *auditFailureReadonly) Mutate() *AuditFailure {
-	return r.v.CloneVT()
+	return (*AuditFailure)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AuditFailure.
@@ -325,7 +325,7 @@ func (m *AuditFailure) AsReader() AuditFailureReader {
 	if m == nil {
 		return nil
 	}
-	return &auditFailureReadonly{v: m}
+	return (*auditFailureReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AuditFailure.

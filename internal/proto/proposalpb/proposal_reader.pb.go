@@ -17,26 +17,26 @@ type AppliedProposalReader interface {
 	Mutate() *AppliedProposal
 }
 
-type appliedProposalReadonly struct{ v *AppliedProposal }
+type appliedProposalReadonly AppliedProposal
 
 func (r *appliedProposalReadonly) GetSequence() uint64 {
-	return r.v.GetSequence()
+	return (*AppliedProposal)(r).GetSequence()
 }
 
 func (r *appliedProposalReadonly) GetMinLogSequence() uint64 {
-	return r.v.GetMinLogSequence()
+	return (*AppliedProposal)(r).GetMinLogSequence()
 }
 
 func (r *appliedProposalReadonly) GetMaxLogSequence() uint64 {
-	return r.v.GetMaxLogSequence()
+	return (*AppliedProposal)(r).GetMaxLogSequence()
 }
 
 func (r *appliedProposalReadonly) GetTransientVolumes() AppliedProposal_TransientVolumesMapReader {
-	return appliedProposal_transientVolumesMapReadonly(r.v.GetTransientVolumes())
+	return appliedProposal_transientVolumesMapReadonly((*AppliedProposal)(r).GetTransientVolumes())
 }
 
 func (r *appliedProposalReadonly) Mutate() *AppliedProposal {
-	return r.v.CloneVT()
+	return (*AppliedProposal)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AppliedProposal.
@@ -44,7 +44,7 @@ func (m *AppliedProposal) AsReader() AppliedProposalReader {
 	if m == nil {
 		return nil
 	}
-	return &appliedProposalReadonly{v: m}
+	return (*appliedProposalReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AppliedProposal.
@@ -127,14 +127,14 @@ type TouchedVolumeListReader interface {
 	Mutate() *TouchedVolumeList
 }
 
-type touchedVolumeListReadonly struct{ v *TouchedVolumeList }
+type touchedVolumeListReadonly TouchedVolumeList
 
 func (r *touchedVolumeListReadonly) GetVolumes() commonpb.TouchedVolumeListReader {
-	return commonpb.NewTouchedVolumeListReader(r.v.GetVolumes())
+	return commonpb.NewTouchedVolumeListReader((*TouchedVolumeList)(r).GetVolumes())
 }
 
 func (r *touchedVolumeListReadonly) Mutate() *TouchedVolumeList {
-	return r.v.CloneVT()
+	return (*TouchedVolumeList)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this TouchedVolumeList.
@@ -142,7 +142,7 @@ func (m *TouchedVolumeList) AsReader() TouchedVolumeListReader {
 	if m == nil {
 		return nil
 	}
-	return &touchedVolumeListReadonly{v: m}
+	return (*touchedVolumeListReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this TouchedVolumeList.
