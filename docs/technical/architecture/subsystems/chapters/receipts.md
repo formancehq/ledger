@@ -81,7 +81,7 @@ The resulting `RevertedTransaction` log is hash-bound by the audit chain exactly
 
 ## What a receipt does not authorise
 
-- **It does not authenticate the caller.** Receipt verification proves "this content was signed by the cluster" — it says nothing about who is allowed to invoke it. The standard [auth](../api/auth.md) flow (JWT bearer + scopes) still runs in front. A valid receipt without a valid `transactions:write` scope is rejected at admission.
+- **It does not authenticate the caller.** Receipt verification proves "this content was signed by the cluster" — it says nothing about who is allowed to invoke it. The standard [auth](../api/auth.md) flow (JWT bearer + scopes) still runs in front. A valid receipt without a valid `ledger:TransactionWrite` scope is rejected at admission.
 - **It is not idempotency.** Re-submitting the same receipt twice produces two revert attempts; the second one is rejected by the FSM because the original is already reverted (`checkReversionInvariants` enforces no-double-revert). If the client needs idempotent retries, it uses the standard idempotency key on the request — receipts and idempotency keys are orthogonal.
 - **It is not arbitrary forging power.** The receipt's `Postings` are fixed at issuance time; they cannot be edited and re-signed. A receipt revert produces a revert log that is, byte-for-byte, the revert the cluster would have produced from cold-storage replay.
 

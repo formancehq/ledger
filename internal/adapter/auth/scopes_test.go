@@ -65,7 +65,7 @@ func TestExpandScopes_IdentityPassThrough(t *testing.T) {
 
 	m := DefaultMapping("ledger")
 	// Token has a granular scope directly
-	effective := m.ExpandScopes([]string{"transactions:read"})
+	effective := m.ExpandScopes([]string{"ledger:TransactionRead"})
 
 	assert.Contains(t, effective, ScopeTransactionsRead)
 	// Should NOT expand to other scopes
@@ -76,7 +76,7 @@ func TestExpandScopes_MixedVirtualAndGranular(t *testing.T) {
 	t.Parallel()
 
 	m := DefaultMapping("ledger")
-	effective := m.ExpandScopes([]string{"ledger:admin", "transactions:read"})
+	effective := m.ExpandScopes([]string{"ledger:admin", "ledger:TransactionRead"})
 
 	// From virtual scope
 	assert.Contains(t, effective, ScopeClusterRead)
@@ -168,7 +168,7 @@ func TestExpandWildcardScope_Unknown(t *testing.T) {
 	_, ok := ExpandWildcardScope("*:admin")
 	assert.False(t, ok)
 
-	_, ok = ExpandWildcardScope("ledgers:read")
+	_, ok = ExpandWildcardScope("ledger:LedgerRead")
 	assert.False(t, ok)
 }
 

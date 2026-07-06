@@ -22,7 +22,7 @@ func TestLoadScopeMapping_FromFile(t *testing.T) {
 	mappingFile := filepath.Join(dir, "scope-mapping.json")
 
 	mapping := map[string][]string{
-		"custom:read": {"ledgers:read", "transactions:read"},
+		"custom:read": {"ledger:LedgerRead", "ledger:TransactionRead"},
 	}
 
 	data, err := json.Marshal(mapping)
@@ -49,7 +49,7 @@ func TestLoadScopeMapping_FromEnvJSON(t *testing.T) {
 
 	logger := logging.Testing()
 
-	rawJSON := `{"my-scope:write": ["ledgers:write", "metadata:write"]}`
+	rawJSON := `{"my-scope:write": ["ledger:LedgerWrite", "ledger:MetadataWrite"]}`
 	cfg := Config{
 		AuthConfig: AuthFlagConfig{
 			ScopeMappingJSON: rawJSON,
@@ -139,7 +139,7 @@ func TestLoadScopeMapping_FilePrecedenceOverJSON(t *testing.T) {
 	mappingFile := filepath.Join(dir, "scope-mapping.json")
 
 	mapping := map[string][]string{
-		"file:read": {"ledgers:read"},
+		"file:read": {"ledger:LedgerRead"},
 	}
 
 	data, err := json.Marshal(mapping)
@@ -150,7 +150,7 @@ func TestLoadScopeMapping_FilePrecedenceOverJSON(t *testing.T) {
 	cfg := Config{
 		AuthConfig: AuthFlagConfig{
 			ScopeMappingFile: mappingFile,
-			ScopeMappingJSON: `{"json:read": ["ledgers:read"]}`,
+			ScopeMappingJSON: `{"json:read": ["ledger:LedgerRead"]}`,
 		},
 	}
 
@@ -179,7 +179,7 @@ func TestApplyAnonymousScopes_ExplicitList(t *testing.T) {
 	t.Parallel()
 
 	mapping := internalauth.DefaultMapping("ledger")
-	require.NoError(t, applyAnonymousScopes(mapping, "ledgers:read, accounts:read", logging.Testing()))
+	require.NoError(t, applyAnonymousScopes(mapping, "ledger:LedgerRead, ledger:AccountRead", logging.Testing()))
 
 	anon := mapping.AnonymousScopes()
 	assert.Contains(t, anon, internalauth.ScopeLedgersRead)
@@ -200,7 +200,7 @@ func TestApplyAnonymousScopes_UnknownScope(t *testing.T) {
 	t.Parallel()
 
 	mapping := internalauth.DefaultMapping("ledger")
-	err := applyAnonymousScopes(mapping, "ledgers:read,bogus:scope", logging.Testing())
+	err := applyAnonymousScopes(mapping, "ledger:LedgerRead,bogus:scope", logging.Testing())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown granular scope")
 }

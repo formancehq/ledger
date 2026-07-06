@@ -165,6 +165,6 @@ func TestRequiredScopeForLedgerApply_NilApply(t *testing.T) {
 			Apply: nil,
 		},
 	}
-	// Nil apply defaults to ops:write (most restrictive)
+	// Nil apply defaults to ledger:OpsWrite (most restrictive)
 	assert.Equal(t, ScopeOpsWrite, RequiredScopeForRequest(req))
 }

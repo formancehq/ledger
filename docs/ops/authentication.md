@@ -30,15 +30,27 @@ When `--auth-enabled` is set:
 
 ## Scopes
 
-The ledger uses three authorization scopes. When `--auth-service=ledger`, the scopes are:
+The ledger accepts virtual scopes in JWTs and expands them to granular Ledger scopes. When `--auth-service=ledger`, the default virtual scopes are:
 
 | Scope | Operations |
 |-------|------------|
-| `ledger:read` | All read operations (GET HTTP, List*/Get* gRPC RPCs). Also covers `Barrier`, which is read-after-write tooling but proposes a no-op through Raft, so it is authenticated and requires the `ops:read` granular scope (included in the read bundle). |
+| `ledger:read` | All read operations (GET HTTP, List*/Get* gRPC RPCs). Also covers `Barrier`, which is read-after-write tooling but proposes a no-op through Raft, so it is authenticated and requires the `ledger:OpsRead` granular scope (included in the read bundle). |
 | `ledger:write` | All write operations (Apply: create/revert transactions, save/delete metadata, create/delete ledgers, set maintenance mode, etc.) |
 | `ledger:admin` | Cluster operations (GetClusterState, TransferLeadership, Backup, AddLearner, PromoteLearner, RemoveNode, GetDiskUsage, GetNodeTime) |
 
 If `--auth-service=myapp`, the scopes become `myapp:read`, `myapp:write`, `myapp:admin`.
+
+Granular scopes use the Ledger application namespace with the `ledger:<Resource><Action>` shape:
+
+```
+ledger:LedgerRead       ledger:LedgerWrite
+ledger:TransactionRead  ledger:TransactionWrite
+ledger:AccountRead      ledger:MetadataWrite
+ledger:AuditRead        ledger:AuditWrite
+ledger:OpsRead          ledger:OpsWrite
+ledger:QueryRead        ledger:QueryWrite
+ledger:ClusterRead      ledger:ClusterWrite
+```
 
 ## Configuration Invariants
 
@@ -79,9 +91,9 @@ Semantics:
 |---------|-------|---------|
 | Read endpoint | Absent | **200** — anonymous covers the required `*:read` scope |
 | Read endpoint | Invalid (bad signature, expired, malformed) | **401** — a broken token is a client error, never silently ignored |
-| Read endpoint | Valid with `*:read` | 200 — the token's scopes apply (no anonymous merging) |
+| Read endpoint | Valid with `ledger:read` or a matching granular read scope | 200 — the token's scopes apply (no anonymous merging) |
 | Write endpoint | Absent | **401** — anonymous does not cover writes |
-| Write endpoint | Valid with `*:write` | 200 |
+| Write endpoint | Valid with `ledger:write` or a matching granular write scope | 200 |
 | Write endpoint | Valid without write scope | 403 |
 
 Equivalent scope-mapping JSON (`--auth-scope-mapping-file`):
@@ -94,7 +106,7 @@ Both forms are supported — the CLI flag is shorthand for the JSON entry.
 
 When neither is set, the behavior is identical to before (every request must authenticate, no regression possible).
 
-Note: `/debug/pprof/*` endpoints require the `ops:read` scope when authentication is enabled.
+Note: `/debug/pprof/*` endpoints require the `ledger:OpsRead` scope when authentication is enabled.
 
 ## gRPC Authentication
 

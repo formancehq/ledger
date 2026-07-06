@@ -4332,7 +4332,7 @@ on/off TLS toggle workflow.
 | `--auth-anonymous-scopes` | string | `""` | Comma-separated granular scopes (or `*:read` / `*:write` wildcards) granted to requests that arrive without a bearer token |
 | `--auth-discovery-timeout` | duration | `10s` | Bound the HTTP calls used for OIDC discovery and JWKS fetches (`0` = unbounded). Applies one operator-controlled timeout to both the discovery call and later JWKS key fetches. |
 
-Allows expanding virtual scopes into fine-grained scopes. For example, mapping `ledger:read` to a set of more specific scopes. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
+Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:LedgerRead` and `ledger:TransactionRead`. Granular Ledger scopes use the `ledger:<Resource><Action>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
 
 ```bash
 ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
@@ -4349,7 +4349,7 @@ ledger run --auth-enabled --auth-issuer https://auth.example.com \
 
 With this configuration:
 
-- A read request without a token receives all `*:read` scopes and is allowed.
+- A read request without a token receives all granular read scopes matched by `*:read` and is allowed.
 - A read request with a **malformed/expired/invalid** token is rejected with `401` (a broken token is still treated as a client error — it is not silently ignored).
 - A write request without a token is rejected with `401` (anonymous scopes do not cover writes).
 - A write request with a valid token is allowed iff the token carries the required write scope (unchanged behavior).
@@ -4485,7 +4485,7 @@ ledger run \
   [other flags...]
 ```
 
-When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. Three scopes are used: `ledger:read`, `ledger:write`, `ledger:admin`.
+When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Resource><Action>` scopes.
 
 When `--auth-ed25519-keys` is set, both OIDC and Ed25519 authentication can coexist. See [Authentication Guide](authentication.md) for full Ed25519 setup instructions.
 

@@ -236,7 +236,7 @@ func TestFormatGRPCError_Unauthenticated_MissingToken(t *testing.T) {
 func TestFormatGRPCError_PermissionDenied(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := status.Error(codes.PermissionDenied, "missing required scope (required: [ledgers:read])")
+	grpcErr := status.Error(codes.PermissionDenied, "missing required scope (required: [ledger:LedgerRead])")
 	err := FormatGRPCError("list ledgers", grpcErr)
 	require.Contains(t, err.Error(), "missing required scope")
 }

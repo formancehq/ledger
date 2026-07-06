@@ -17,7 +17,7 @@ func LoadScopeMappingFromFile(path string) (ScopeMapping, error) {
 }
 
 // ParseScopeMappingJSON parses a JSON-encoded scope mapping.
-// Expected format: {"ledger:read": ["ledgers:read", "transactions:read", ...], ...}.
+// Expected format: {"ledger:read": ["ledger:LedgerRead", "ledger:TransactionRead", ...], ...}.
 func ParseScopeMappingJSON(data []byte) (ScopeMapping, error) {
 	var raw map[string][]string
 
