@@ -3,6 +3,8 @@ package cmdutil
 import (
 	"math/big"
 	"testing"
+
+	"github.com/formancehq/invariants"
 )
 
 func TestRescale(t *testing.T) {
@@ -124,12 +126,12 @@ func TestAggregateVolumesRescaleSpec(t *testing.T) {
 	av := got[0]
 
 	// --rescale (scale 0) → 69.129 USD
-	if bal, asset := RescaleAmount(av.Balance, av.Precision, 0), AssetLabel(av.Asset, 0); bal != "69.129" || asset != "USD" {
+	if bal, asset := RescaleAmount(av.Balance, av.Precision, 0), invariants.FormatAsset(av.Asset, 0); bal != "69.129" || asset != "USD" {
 		t.Errorf("scale 0: got %s %s, want 69.129 USD", bal, asset)
 	}
 
 	// --rescale=2 → 6912.9 USD/2
-	if bal, asset := RescaleAmount(av.Balance, av.Precision, 2), AssetLabel(av.Asset, 2); bal != "6912.9" || asset != "USD/2" {
+	if bal, asset := RescaleAmount(av.Balance, av.Precision, 2), invariants.FormatAsset(av.Asset, 2); bal != "6912.9" || asset != "USD/2" {
 		t.Errorf("scale 2: got %s %s, want 6912.9 USD/2", bal, asset)
 	}
 }
