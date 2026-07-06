@@ -558,6 +558,8 @@ type TransactionReader interface {
 	GetInsertedAt() TimestampReader
 	GetUpdatedAt() TimestampReader
 	GetRevertedAt() TimestampReader
+	GetRevertedByTransaction() uint64
+	GetRevertsTransaction() uint64
 	Mutate() *Transaction
 }
 
@@ -613,6 +615,14 @@ func (r *transactionReadonly) GetRevertedAt() TimestampReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *transactionReadonly) GetRevertedByTransaction() uint64 {
+	return r.v.GetRevertedByTransaction()
+}
+
+func (r *transactionReadonly) GetRevertsTransaction() uint64 {
+	return r.v.GetRevertsTransaction()
 }
 
 func (r *transactionReadonly) Mutate() *Transaction {
@@ -7658,6 +7668,8 @@ type TransactionStateReader interface {
 	GetMetadata() TransactionState_MetadataMapReader
 	GetTimestamp() TimestampReader
 	GetPostings() PostingListReader
+	GetRevertedAt() TimestampReader
+	GetRevertsTransaction() uint64
 	Mutate() *TransactionState
 }
 
@@ -7685,6 +7697,18 @@ func (r *transactionStateReadonly) GetTimestamp() TimestampReader {
 
 func (r *transactionStateReadonly) GetPostings() PostingListReader {
 	return NewPostingListReader(r.v.GetPostings())
+}
+
+func (r *transactionStateReadonly) GetRevertedAt() TimestampReader {
+	v := r.v.GetRevertedAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *transactionStateReadonly) GetRevertsTransaction() uint64 {
+	return r.v.GetRevertsTransaction()
 }
 
 func (r *transactionStateReadonly) Mutate() *TransactionState {

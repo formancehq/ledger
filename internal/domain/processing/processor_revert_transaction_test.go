@@ -51,15 +51,21 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 
 	mockStore.EXPECT().PutReverted(txKey, true)
 
-	// Processor reads original transaction state, then updates it with RevertedByTransaction
+	// Processor reads original transaction state, then records the reversion on it:
+	// the compensating transaction id and the effective time it was reverted.
 	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{
 		CreatedByLog: 42,
 	}).AsReader(), nil)
-	expectPutTransactionState(t, mockStore, txKey, nil)
+	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
+		require.Equal(t, uint64(5), st.GetRevertedByTransaction())
+		require.Equal(t, now, st.GetRevertedAt())
+	})
 
-	// Processor stores the new revert transaction state
+	// Processor stores the new revert transaction state, back-linked to the original.
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
-	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil)
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
+		require.Equal(t, uint64(3), st.GetRevertsTransaction())
+	})
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
@@ -106,6 +112,9 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 
 	// Without at_effective_date, the revert is stamped with the current FSM date.
 	require.Equal(t, now, revertedTx.GetRevertTransaction().GetTimestamp())
+
+	// The compensating transaction back-links to the transaction it reverts.
+	require.Equal(t, uint64(3), revertedTx.GetRevertTransaction().GetRevertsTransaction())
 }
 
 func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
@@ -144,10 +153,15 @@ func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
 		CreatedByLog: 42,
 		Timestamp:    originalTimestamp,
 	}).AsReader(), nil)
-	expectPutTransactionState(t, mockStore, txKey, nil)
+	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
+		require.Equal(t, uint64(5), st.GetRevertedByTransaction())
+		require.Equal(t, originalTimestamp, st.GetRevertedAt(), "with at_effective_date reverted_at inherits the original timestamp")
+	})
 
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
-	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil)
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
+		require.Equal(t, uint64(3), st.GetRevertsTransaction())
+	})
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
@@ -219,11 +233,12 @@ func TestProcessRevertTransaction_AtEffectiveDate_MissingOriginalTimestamp(t *te
 
 	// Simulate a TransactionState written before the Timestamp field existed (or
 	// otherwise inconsistent state). With at_effective_date=true this must surface
-	// loudly rather than silently falling back to s.GetDate().
+	// loudly rather than silently falling back to s.GetDate(). The timestamp is
+	// resolved before the reverted markers are written, so no transaction state is
+	// persisted on this path.
 	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{
 		CreatedByLog: 42,
 	}).AsReader(), nil)
-	expectPutTransactionState(t, mockStore, txKey, nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{

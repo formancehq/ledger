@@ -1622,18 +1622,22 @@ func (x *Posting) GetAsset() string {
 
 // Transaction represents a transaction
 type Transaction struct {
-	state         protoimpl.MessageState    `protogen:"open.v1"`
-	Postings      []*Posting                `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
-	Metadata      map[string]*MetadataValue `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Timestamp     *Timestamp                `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Reference     string                    `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
-	Id            uint64                    `protobuf:"fixed64,5,opt,name=id,proto3" json:"id,omitempty"`
-	Reverted      bool                      `protobuf:"varint,6,opt,name=reverted,proto3" json:"reverted,omitempty"`
-	InsertedAt    *Timestamp                `protobuf:"bytes,7,opt,name=inserted_at,json=insertedAt,proto3" json:"inserted_at,omitempty"`
-	UpdatedAt     *Timestamp                `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	RevertedAt    *Timestamp                `protobuf:"bytes,9,opt,name=reverted_at,json=revertedAt,proto3" json:"reverted_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState    `protogen:"open.v1"`
+	Postings   []*Posting                `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
+	Metadata   map[string]*MetadataValue `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Timestamp  *Timestamp                `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Reference  string                    `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
+	Id         uint64                    `protobuf:"fixed64,5,opt,name=id,proto3" json:"id,omitempty"`
+	Reverted   bool                      `protobuf:"varint,6,opt,name=reverted,proto3" json:"reverted,omitempty"`
+	InsertedAt *Timestamp                `protobuf:"bytes,7,opt,name=inserted_at,json=insertedAt,proto3" json:"inserted_at,omitempty"`
+	UpdatedAt  *Timestamp                `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	RevertedAt *Timestamp                `protobuf:"bytes,9,opt,name=reverted_at,json=revertedAt,proto3" json:"reverted_at,omitempty"`
+	// Id of the transaction that reverted this one. 0 = not reverted.
+	RevertedByTransaction uint64 `protobuf:"fixed64,10,opt,name=reverted_by_transaction,json=revertedByTransaction,proto3" json:"reverted_by_transaction,omitempty"`
+	// Id of the original transaction this transaction reverts. 0 = not a revert.
+	RevertsTransaction uint64 `protobuf:"fixed64,11,opt,name=reverts_transaction,json=revertsTransaction,proto3" json:"reverts_transaction,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Transaction) Reset() {
@@ -1727,6 +1731,20 @@ func (x *Transaction) GetRevertedAt() *Timestamp {
 		return x.RevertedAt
 	}
 	return nil
+}
+
+func (x *Transaction) GetRevertedByTransaction() uint64 {
+	if x != nil {
+		return x.RevertedByTransaction
+	}
+	return 0
+}
+
+func (x *Transaction) GetRevertsTransaction() uint64 {
+	if x != nil {
+		return x.RevertsTransaction
+	}
+	return 0
 }
 
 type Script struct {
@@ -7548,9 +7566,15 @@ type TransactionState struct {
 	// reads on the hot path) and invariant #8 (business decisions belong in
 	// the audit chain, so a revert of a non-existent tx must reach the FSM
 	// apply loop rather than fail-fast at admission).
-	Postings      []*Posting `protobuf:"bytes,5,rep,name=postings,proto3" json:"postings,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Postings []*Posting `protobuf:"bytes,5,rep,name=postings,proto3" json:"postings,omitempty"`
+	// Effective timestamp at which this transaction was reverted (the
+	// compensating transaction's timestamp). Nil when not reverted.
+	RevertedAt *Timestamp `protobuf:"bytes,6,opt,name=reverted_at,json=revertedAt,proto3" json:"reverted_at,omitempty"`
+	// On a compensating transaction, the id of the transaction it reverts.
+	// 0 = this transaction is not a revert.
+	RevertsTransaction uint64 `protobuf:"fixed64,7,opt,name=reverts_transaction,json=revertsTransaction,proto3" json:"reverts_transaction,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *TransactionState) Reset() {
@@ -7616,6 +7640,20 @@ func (x *TransactionState) GetPostings() []*Posting {
 		return x.Postings
 	}
 	return nil
+}
+
+func (x *TransactionState) GetRevertedAt() *Timestamp {
+	if x != nil {
+		return x.RevertedAt
+	}
+	return nil
+}
+
+func (x *TransactionState) GetRevertsTransaction() uint64 {
+	if x != nil {
+		return x.RevertsTransaction
+	}
+	return 0
 }
 
 // IdempotencyKeyValue stores the outcome associated with a proposal's
@@ -10732,7 +10770,7 @@ const file_common_proto_rawDesc = "" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +
 	"\vdestination\x18\x02 \x01(\tR\vdestination\x12'\n" +
 	"\x06amount\x18\x03 \x01(\v2\x0f.common.Uint256R\x06amount\x12\x14\n" +
-	"\x05asset\x18\x04 \x01(\tR\x05asset\"\xe2\x03\n" +
+	"\x05asset\x18\x04 \x01(\tR\x05asset\"\xcb\x04\n" +
 	"\vTransaction\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12=\n" +
 	"\bmetadata\x18\x02 \x03(\v2!.common.Transaction.MetadataEntryR\bmetadata\x12/\n" +
@@ -10745,7 +10783,10 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\b \x01(\v2\x11.common.TimestampR\tupdatedAt\x122\n" +
 	"\vreverted_at\x18\t \x01(\v2\x11.common.TimestampR\n" +
-	"revertedAt\x1aR\n" +
+	"revertedAt\x126\n" +
+	"\x17reverted_by_transaction\x18\n" +
+	" \x01(\x06R\x15revertedByTransaction\x12/\n" +
+	"\x13reverts_transaction\x18\v \x01(\x06R\x12revertsTransaction\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xa8\x01\n" +
@@ -11201,13 +11242,16 @@ const file_common_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"Q\n" +
 	"\x15DeleteMetadataCommand\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xe6\x02\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xcb\x03\n" +
 	"\x10TransactionState\x12$\n" +
 	"\x0ecreated_by_log\x18\x01 \x01(\x06R\fcreatedByLog\x126\n" +
 	"\x17reverted_by_transaction\x18\x02 \x01(\x06R\x15revertedByTransaction\x12B\n" +
 	"\bmetadata\x18\x03 \x03(\v2&.common.TransactionState.MetadataEntryR\bmetadata\x12/\n" +
 	"\ttimestamp\x18\x04 \x01(\v2\x11.common.TimestampR\ttimestamp\x12+\n" +
-	"\bpostings\x18\x05 \x03(\v2\x0f.common.PostingR\bpostings\x1aR\n" +
+	"\bpostings\x18\x05 \x03(\v2\x0f.common.PostingR\bpostings\x122\n" +
+	"\vreverted_at\x18\x06 \x01(\v2\x11.common.TimestampR\n" +
+	"revertedAt\x12/\n" +
+	"\x13reverts_transaction\x18\a \x01(\x06R\x12revertsTransaction\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xec\x01\n" +
@@ -11907,81 +11951,82 @@ var file_common_proto_depIdxs = []int32{
 	170, // 157: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
 	17,  // 158: common.TransactionState.timestamp:type_name -> common.Timestamp
 	23,  // 159: common.TransactionState.postings:type_name -> common.Posting
-	110, // 160: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
-	11,  // 161: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
-	171, // 162: common.IdempotencyFailure.metadata:type_name -> common.IdempotencyFailure.MetadataEntry
-	114, // 163: common.SegmentType.uuid:type_name -> common.UUIDConstraint
-	115, // 164: common.SegmentType.uint64:type_name -> common.Uint64Constraint
-	116, // 165: common.SegmentType.bytes:type_name -> common.BytesConstraint
-	13,  // 166: common.AccountType.persistence:type_name -> common.AccountTypePersistence
-	172, // 167: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
-	117, // 168: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
-	12,  // 169: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
-	132, // 170: common.QueryFilter.field:type_name -> common.FieldCondition
-	138, // 171: common.QueryFilter.address:type_name -> common.AddressMatch
-	128, // 172: common.QueryFilter.and:type_name -> common.AndFilter
-	129, // 173: common.QueryFilter.or:type_name -> common.OrFilter
-	130, // 174: common.QueryFilter.not:type_name -> common.NotFilter
-	122, // 175: common.QueryFilter.reference:type_name -> common.ReferenceCondition
-	125, // 176: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
-	123, // 177: common.QueryFilter.ledger:type_name -> common.LedgerCondition
-	124, // 178: common.QueryFilter.log_id:type_name -> common.LogIdCondition
-	126, // 179: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
-	127, // 180: common.QueryFilter.account_has_asset:type_name -> common.AccountHasAssetCondition
-	133, // 181: common.ReferenceCondition.cond:type_name -> common.StringCondition
-	133, // 182: common.LedgerCondition.cond:type_name -> common.StringCondition
-	135, // 183: common.LogIdCondition.cond:type_name -> common.UintCondition
-	3,   // 184: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
-	135, // 185: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
-	5,   // 186: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
-	135, // 187: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
-	121, // 188: common.AndFilter.filters:type_name -> common.QueryFilter
-	121, // 189: common.OrFilter.filters:type_name -> common.QueryFilter
-	121, // 190: common.NotFilter.filter:type_name -> common.QueryFilter
-	131, // 191: common.FieldCondition.field:type_name -> common.FieldRef
-	133, // 192: common.FieldCondition.string_cond:type_name -> common.StringCondition
-	134, // 193: common.FieldCondition.int_cond:type_name -> common.IntCondition
-	135, // 194: common.FieldCondition.uint_cond:type_name -> common.UintCondition
-	136, // 195: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
-	137, // 196: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
-	14,  // 197: common.AddressMatch.role:type_name -> common.AddressRole
-	121, // 198: common.PreparedQuery.filter:type_name -> common.QueryFilter
-	15,  // 199: common.PreparedQuery.target:type_name -> common.QueryTarget
-	22,  // 200: common.AggregatedVolume.input:type_name -> common.Uint256
-	22,  // 201: common.AggregatedVolume.output:type_name -> common.Uint256
-	140, // 202: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
-	142, // 203: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
-	140, // 204: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
-	30,  // 205: common.PreparedQueryCursor.account_data:type_name -> common.Account
-	24,  // 206: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
-	146, // 207: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
-	148, // 208: common.BackupStorage.s3:type_name -> common.S3StorageConfig
-	149, // 209: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
-	151, // 210: common.ListOptions.read:type_name -> common.ReadOptions
-	121, // 211: common.ListOptions.filter:type_name -> common.QueryFilter
-	19,  // 212: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
-	19,  // 213: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
-	26,  // 214: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	28,  // 215: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	19,  // 216: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
-	27,  // 217: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	33,  // 218: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	33,  // 219: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	33,  // 220: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	19,  // 221: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
-	117, // 222: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
-	20,  // 223: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	19,  // 224: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	117, // 225: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	19,  // 226: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
-	19,  // 227: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
-	19,  // 228: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
-	113, // 229: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
-	230, // [230:230] is the sub-list for method output_type
-	230, // [230:230] is the sub-list for method input_type
-	230, // [230:230] is the sub-list for extension type_name
-	230, // [230:230] is the sub-list for extension extendee
-	0,   // [0:230] is the sub-list for field type_name
+	17,  // 160: common.TransactionState.reverted_at:type_name -> common.Timestamp
+	110, // 161: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
+	11,  // 162: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
+	171, // 163: common.IdempotencyFailure.metadata:type_name -> common.IdempotencyFailure.MetadataEntry
+	114, // 164: common.SegmentType.uuid:type_name -> common.UUIDConstraint
+	115, // 165: common.SegmentType.uint64:type_name -> common.Uint64Constraint
+	116, // 166: common.SegmentType.bytes:type_name -> common.BytesConstraint
+	13,  // 167: common.AccountType.persistence:type_name -> common.AccountTypePersistence
+	172, // 168: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
+	117, // 169: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
+	12,  // 170: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
+	132, // 171: common.QueryFilter.field:type_name -> common.FieldCondition
+	138, // 172: common.QueryFilter.address:type_name -> common.AddressMatch
+	128, // 173: common.QueryFilter.and:type_name -> common.AndFilter
+	129, // 174: common.QueryFilter.or:type_name -> common.OrFilter
+	130, // 175: common.QueryFilter.not:type_name -> common.NotFilter
+	122, // 176: common.QueryFilter.reference:type_name -> common.ReferenceCondition
+	125, // 177: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
+	123, // 178: common.QueryFilter.ledger:type_name -> common.LedgerCondition
+	124, // 179: common.QueryFilter.log_id:type_name -> common.LogIdCondition
+	126, // 180: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
+	127, // 181: common.QueryFilter.account_has_asset:type_name -> common.AccountHasAssetCondition
+	133, // 182: common.ReferenceCondition.cond:type_name -> common.StringCondition
+	133, // 183: common.LedgerCondition.cond:type_name -> common.StringCondition
+	135, // 184: common.LogIdCondition.cond:type_name -> common.UintCondition
+	3,   // 185: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
+	135, // 186: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
+	5,   // 187: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
+	135, // 188: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
+	121, // 189: common.AndFilter.filters:type_name -> common.QueryFilter
+	121, // 190: common.OrFilter.filters:type_name -> common.QueryFilter
+	121, // 191: common.NotFilter.filter:type_name -> common.QueryFilter
+	131, // 192: common.FieldCondition.field:type_name -> common.FieldRef
+	133, // 193: common.FieldCondition.string_cond:type_name -> common.StringCondition
+	134, // 194: common.FieldCondition.int_cond:type_name -> common.IntCondition
+	135, // 195: common.FieldCondition.uint_cond:type_name -> common.UintCondition
+	136, // 196: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
+	137, // 197: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
+	14,  // 198: common.AddressMatch.role:type_name -> common.AddressRole
+	121, // 199: common.PreparedQuery.filter:type_name -> common.QueryFilter
+	15,  // 200: common.PreparedQuery.target:type_name -> common.QueryTarget
+	22,  // 201: common.AggregatedVolume.input:type_name -> common.Uint256
+	22,  // 202: common.AggregatedVolume.output:type_name -> common.Uint256
+	140, // 203: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
+	142, // 204: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
+	140, // 205: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
+	30,  // 206: common.PreparedQueryCursor.account_data:type_name -> common.Account
+	24,  // 207: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
+	146, // 208: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
+	148, // 209: common.BackupStorage.s3:type_name -> common.S3StorageConfig
+	149, // 210: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
+	151, // 211: common.ListOptions.read:type_name -> common.ReadOptions
+	121, // 212: common.ListOptions.filter:type_name -> common.QueryFilter
+	19,  // 213: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
+	19,  // 214: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
+	26,  // 215: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	28,  // 216: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	19,  // 217: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
+	27,  // 218: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	33,  // 219: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	33,  // 220: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	33,  // 221: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	19,  // 222: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
+	117, // 223: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
+	20,  // 224: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	19,  // 225: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	117, // 226: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	19,  // 227: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
+	19,  // 228: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
+	19,  // 229: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
+	113, // 230: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
+	231, // [231:231] is the sub-list for method output_type
+	231, // [231:231] is the sub-list for method input_type
+	231, // [231:231] is the sub-list for extension type_name
+	231, // [231:231] is the sub-list for extension extendee
+	0,   // [0:231] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }

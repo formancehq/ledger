@@ -156,6 +156,19 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - ✅ Revert metadata
 - ✅ Verification that transaction is not already reverted
 
+**Navigable revert relationship.** The revert link is a first-class part of the
+transaction representation (`GET`/list), not metadata — the platform never writes
+`com.formance.spec/*` keys. A transaction exposes:
+- `reverted` (bool) and `revertedAt` (timestamp) — set on the reverted original.
+- `revertedByTransactionId` — on the reverted original, the id of the compensating transaction.
+- `revertsTransactionId` — on the compensating transaction, the id of the original it reverts.
+
+`revertedAt` is the compensating transaction's effective timestamp (so under
+`atEffectiveDate` it equals the original's timestamp). All three are derived from
+the structural `TransactionState`, so they hold identically after replay/backfill
+and on the mirror revert path. `revertedByTransactionId`/`revertsTransactionId` are
+not yet queryable (see filtering note below).
+
 ### 3. Metadata Management
 
 **Endpoints:**
@@ -385,6 +398,13 @@ Prepared queries are reusable, named filter queries stored per-ledger. They can 
 | `account-asset` | `--type account-asset` | `AccountHasAssetCondition` — `has asset <BASE>[/<PRECISION>]` filter on account queries |
 
 > Filtering by transaction ID (`BuiltinUintCondition(ID)`) is always available with no index required.
+
+> **Not yet queryable: `reverted` / `revertedAt`.** Upstream `formancehq/ledger`
+> lets clients filter transactions by revert status. v3 exposes the revert
+> relationship on the transaction representation (`reverted`, `revertedAt`,
+> `revertedByTransactionId`, `revertsTransactionId`) but does not yet index it, so
+> there is no `QueryFilter` for it — parity holds only for the queryable subset
+> above. Adding it would require a new builtin index + `QueryFilter` variant.
 
 **CLI commands:**
 ```bash

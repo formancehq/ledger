@@ -35,8 +35,8 @@ const (
 // Transaction merge op tags — each Merge operand starts with one of these.
 const (
 	txOpFinalized  = 0x00 // [txOpFinalized][marshaledTransactionState] — output of a previous Finish
-	txOpCreate     = 0x01 // [txOpCreate][uint64 seq][marshaledMetadataMap]
-	txOpRevertedBy = 0x02 // [txOpRevertedBy][uint64 revertTxId]
+	txOpCreate     = 0x01 // [txOpCreate][uint64 seq][uint64 revertsTransaction][uint8 hasTimestamp][uint64 timestamp][uint32 metaLen][meta][uint32 postingsLen][postings]
+	txOpRevertedBy = 0x02 // [txOpRevertedBy][uint64 revertTxId][uint8 hasRevertedAt][uint64 revertedAt]
 	txOpSetMeta    = 0x03 // [txOpSetMeta][key\x00][marshaledMetadataValue]
 	txOpDeleteMeta = 0x04 // [txOpDeleteMeta][key string]
 )
@@ -209,7 +209,7 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 // A 1-byte presence flag distinguishes a nil timestamp from a real
 // Timestamp{Data: 0} (Unix epoch) — the FSM persists the latter unchanged,
 // so collapsing both to 0 would surface as a CheckStore mismatch.
-func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting) error {
+func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	var metaBytes []byte
@@ -240,17 +240,18 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 		}
 	}
 
-	// [txOpCreate][uint64 seq][uint8 hasTimestamp][uint64 timestamp.Data]
-	// [uint32 metaLen][metaBytes][uint32 postingsLen][postingsBytes]
-	buf := make([]byte, 1+8+1+8+4+len(metaBytes)+4+len(postingsBytes))
+	// [txOpCreate][uint64 seq][uint64 revertsTransaction][uint8 hasTimestamp]
+	// [uint64 timestamp.Data][uint32 metaLen][metaBytes][uint32 postingsLen][postingsBytes]
+	buf := make([]byte, 1+8+8+1+8+4+len(metaBytes)+4+len(postingsBytes))
 	buf[0] = txOpCreate
 	binary.BigEndian.PutUint64(buf[1:], seq)
+	binary.BigEndian.PutUint64(buf[9:], revertsTransaction)
 	if timestamp != nil {
-		buf[9] = 1
-		binary.BigEndian.PutUint64(buf[10:], timestamp.GetData())
+		buf[17] = 1
+		binary.BigEndian.PutUint64(buf[18:], timestamp.GetData())
 	}
 
-	off := 18
+	off := 26
 	binary.BigEndian.PutUint32(buf[off:], uint32(len(metaBytes)))
 	off += 4
 	copy(buf[off:], metaBytes)
@@ -263,12 +264,16 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 }
 
 // setRevertedBy records that a transaction was reverted via merge (no read).
-func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64) error {
+func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *commonpb.Timestamp) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
-	buf := make([]byte, 1+8)
+	buf := make([]byte, 1+8+1+8)
 	buf[0] = txOpRevertedBy
 	binary.BigEndian.PutUint64(buf[1:], revertTxID)
+	if revertedAt != nil {
+		buf[9] = 1
+		binary.BigEndian.PutUint64(buf[10:], revertedAt.GetData())
+	}
 
 	return s.db.Merge(key, buf, pebble.NoSync)
 }
@@ -427,21 +432,22 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 
 		switch op[0] {
 		case txOpCreate:
-			// [txOpCreate][uint64 seq][uint8 hasTimestamp][uint64 timestamp.Data]
-			// [uint32 metaLen][metaBytes][uint32 postingsLen][postingsBytes]
-			const headerLen = 1 + 8 + 1 + 8 + 4
+			// [txOpCreate][uint64 seq][uint64 revertsTransaction][uint8 hasTimestamp]
+			// [uint64 timestamp.Data][uint32 metaLen][metaBytes][uint32 postingsLen][postingsBytes]
+			const headerLen = 1 + 8 + 8 + 1 + 8 + 4
 			if len(op) < headerLen {
 				return nil, nil, fmt.Errorf("txOpCreate too short: %d bytes", len(op))
 			}
 
 			state.CreatedByLog = binary.BigEndian.Uint64(op[1:9])
+			state.RevertsTransaction = binary.BigEndian.Uint64(op[9:17])
 
-			if op[9] == 1 {
-				state.Timestamp = &commonpb.Timestamp{Data: binary.BigEndian.Uint64(op[10:18])}
+			if op[17] == 1 {
+				state.Timestamp = &commonpb.Timestamp{Data: binary.BigEndian.Uint64(op[18:26])}
 			}
 
-			metaLen := int(binary.BigEndian.Uint32(op[18:22]))
-			off := 22
+			metaLen := int(binary.BigEndian.Uint32(op[26:30]))
+			off := 30
 			if len(op) < off+metaLen+4 {
 				return nil, nil, fmt.Errorf("txOpCreate: metadata length %d overruns buffer of %d bytes", metaLen, len(op))
 			}
@@ -477,6 +483,10 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 			}
 
 			state.RevertedByTransaction = binary.BigEndian.Uint64(op[1:9])
+
+			if len(op) >= 18 && op[9] == 1 {
+				state.RevertedAt = &commonpb.Timestamp{Data: binary.BigEndian.Uint64(op[10:18])}
+			}
 
 		case txOpSetMeta:
 			// Wire format: [key\x00][marshaledMetadataValue]

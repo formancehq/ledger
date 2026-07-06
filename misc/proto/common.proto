@@ -74,6 +74,10 @@ message Transaction {
   Timestamp inserted_at = 7;
   Timestamp updated_at = 8;
   Timestamp reverted_at = 9;
+  // Id of the transaction that reverted this one. 0 = not reverted.
+  fixed64 reverted_by_transaction = 10;
+  // Id of the original transaction this transaction reverts. 0 = not a revert.
+  fixed64 reverts_transaction = 11;
 }
 
 message Script {
@@ -902,6 +906,12 @@ message TransactionState {
   // the audit chain, so a revert of a non-existent tx must reach the FSM
   // apply loop rather than fail-fast at admission).
   repeated Posting postings = 5;
+  // Effective timestamp at which this transaction was reverted (the
+  // compensating transaction's timestamp). Nil when not reverted.
+  Timestamp reverted_at = 6;
+  // On a compensating transaction, the id of the transaction it reverts.
+  // 0 = this transaction is not a revert.
+  fixed64 reverts_transaction = 7;
 }
 
 // IdempotencyKeyValue stores the outcome associated with a proposal's

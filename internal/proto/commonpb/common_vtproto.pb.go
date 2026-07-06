@@ -259,6 +259,8 @@ func (m *Transaction) CloneVT() *Transaction {
 	r.InsertedAt = m.InsertedAt.CloneVT()
 	r.UpdatedAt = m.UpdatedAt.CloneVT()
 	r.RevertedAt = m.RevertedAt.CloneVT()
+	r.RevertedByTransaction = m.RevertedByTransaction
+	r.RevertsTransaction = m.RevertsTransaction
 	if rhs := m.Postings; rhs != nil {
 		tmpContainer := make([]*Posting, len(rhs))
 		for k, v := range rhs {
@@ -2496,6 +2498,8 @@ func (m *TransactionState) CloneVT() *TransactionState {
 	r.CreatedByLog = m.CreatedByLog
 	r.RevertedByTransaction = m.RevertedByTransaction
 	r.Timestamp = m.Timestamp.CloneVT()
+	r.RevertedAt = m.RevertedAt.CloneVT()
+	r.RevertsTransaction = m.RevertsTransaction
 	if rhs := m.Metadata; rhs != nil {
 		tmpContainer := make(map[string]*MetadataValue, len(rhs))
 		for k, v := range rhs {
@@ -4143,6 +4147,12 @@ func (this *Transaction) EqualVT(that *Transaction) bool {
 		return false
 	}
 	if !this.RevertedAt.EqualVT(that.RevertedAt) {
+		return false
+	}
+	if this.RevertedByTransaction != that.RevertedByTransaction {
+		return false
+	}
+	if this.RevertsTransaction != that.RevertsTransaction {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7871,6 +7881,12 @@ func (this *TransactionState) EqualVT(that *TransactionState) bool {
 			}
 		}
 	}
+	if !this.RevertedAt.EqualVT(that.RevertedAt) {
+		return false
+	}
+	if this.RevertsTransaction != that.RevertsTransaction {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -10320,6 +10336,18 @@ func (m *Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.RevertsTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertsTransaction))
+		i--
+		dAtA[i] = 0x59
+	}
+	if m.RevertedByTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertedByTransaction))
+		i--
+		dAtA[i] = 0x51
 	}
 	if m.RevertedAt != nil {
 		size, err := m.RevertedAt.MarshalToSizedBufferVT(dAtA[:i])
@@ -16172,6 +16200,22 @@ func (m *TransactionState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RevertsTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertsTransaction))
+		i--
+		dAtA[i] = 0x39
+	}
+	if m.RevertedAt != nil {
+		size, err := m.RevertedAt.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
 	if len(m.Postings) > 0 {
 		for iNdEx := len(m.Postings) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.Postings[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -19335,6 +19379,12 @@ func (m *Transaction) SizeVT() (n int) {
 		l = m.RevertedAt.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.RevertedByTransaction != 0 {
+		n += 9
+	}
+	if m.RevertsTransaction != 0 {
+		n += 9
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -21822,6 +21872,13 @@ func (m *TransactionState) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.RevertedAt != nil {
+		l = m.RevertedAt.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.RevertsTransaction != 0 {
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -24368,6 +24425,26 @@ func (m *Transaction) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertedByTransaction", wireType)
+			}
+			m.RevertedByTransaction = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RevertedByTransaction = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 11:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertsTransaction", wireType)
+			}
+			m.RevertsTransaction = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RevertsTransaction = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -38900,6 +38977,52 @@ func (m *TransactionState) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertedAt", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.RevertedAt == nil {
+				m.RevertedAt = &Timestamp{}
+			}
+			if err := m.RevertedAt.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertsTransaction", wireType)
+			}
+			m.RevertsTransaction = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RevertsTransaction = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
