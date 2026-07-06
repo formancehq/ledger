@@ -1,7 +1,6 @@
 package node
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -214,11 +213,14 @@ func TestApplierMultipleBatchesOnlyLastResponsesFire(t *testing.T) {
 }
 
 // TestApplierRunCommitterDoesNotDeadlockOnFullSink — regression guard for
-// findings 34540caa/9047f08a. If the response sink stops being drained
-// (consumer down, orchestrate halted) and ctx is cancelled, runCommitter
-// must NOT return from mid-batch: it must fall through the ctx.Done arm and
-// still signal work.done, otherwise Applier.Run's deferred waitPendingCommit
-// blocks forever on <-a.pending.done.
+// findings 34540caa / 9047f08a / 70740916. If the response sink stops
+// being drained (consumer down, orchestrate halted) runCommitter must not
+// sit forever on the send: it must fall through on `<-stop` and still
+// signal work.done, otherwise Applier.Run's deferred waitPendingCommit
+// blocks on <-a.pending.done. Critically, this test does NOT cancel the
+// run context — node.Stop() closes the task stop channels but leaves the
+// runCtx alive, so ctx.Done() can't be relied on for shutdown unblocking
+// (that was the gap in the earlier fix that only listened on ctx.Done).
 func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 	t.Parallel()
 
@@ -226,8 +228,9 @@ func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 	sink := make(LocalResponses)
 	setup := newTestApplierSetupWithSink(t, sink)
 
-	ctx, cancel := context.WithCancel(logging.TestingContext())
-	defer cancel()
+	// Deliberately non-cancellable ctx: mimics the real shutdown flow where
+	// node.Stop closes the stop channels without touching the runCtx.
+	ctx := logging.TestingContext()
 
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
@@ -240,23 +243,16 @@ func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 	// unbuffered send. If the deadlock regressed, the test hangs here.
 	time.Sleep(200 * time.Millisecond)
 
-	// Cancel ctx → runCommitter's select takes the ctx.Done arm. The fix
-	// requires it to fall through (not return), so work.done fires and
-	// Applier.Run's deferred cleanup can drain pending without hanging.
-	cancel()
-
-	// Signal shutdown to Applier.Run.
+	// Signal shutdown to Applier.Run without cancelling ctx. runCommitter
+	// must observe <-stop on the response-sink select, fall through to
+	// work.done, and let waitPendingCommit unblock.
 	close(setup.stop)
 
 	select {
 	case err := <-runDone:
-		// Either nil (clean stop) or a ctx-related error — either is fine.
-		// The test PASSES as long as Run returned; the previous code
-		// (early `return` from runCommitter without signalling work.done)
-		// would hang forever here.
-		_ = err
+		require.NoError(t, err, "clean shutdown expected")
 	case <-time.After(5 * time.Second):
-		t.Fatal("Applier.Run did not return after ctx cancel + stop — deadlock regression on findings 34540caa/9047f08a")
+		t.Fatal("Applier.Run did not return after stop close (ctx still live) — deadlock regression on finding 70740916")
 	}
 }
 
