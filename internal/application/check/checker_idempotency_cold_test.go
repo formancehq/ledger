@@ -3,7 +3,6 @@ package check
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"sort"
 	"testing"
 
@@ -43,10 +42,14 @@ func TestCompareIdempotencyOutcomes_ArchivedFreezeWithinTTLWindow(t *testing.T) 
 		liveKey    = "live-key"    // frozen by an archived entry inside the TTL window
 		expiredKey = "expired-key" // frozen by an archived entry older than the window
 
-		ttlCutoff = 2000 // lower bound of the TTL window
+		ttlCutoff = 2000 // desired lower bound of the TTL window
 		tsExpired = 1500 // archived freeze below the window
 		tsLive    = 3000 // archived freeze inside the window
-		tsHot     = 5000 // surviving post-archive entry => verifiedRangeStartTs
+		tsHot     = 5000 // surviving post-archive entry => verified "now"
+
+		// verifyAuditHashChain derives the cutoff as (verified now − TTL); with
+		// a single hot entry, verified now == tsHot, so this TTL yields ttlCutoff.
+		ttlMicros = tsHot - ttlCutoff
 
 		chapterNewer = 7 // archived chapter holding audit seq 3-4 (straddles the cutoff)
 		chapterOlder = 3 // archived chapter holding audit seq 1-2 (entirely below the window)
@@ -118,7 +121,8 @@ func TestCompareIdempotencyOutcomes_ArchivedFreezeWithinTTLWindow(t *testing.T) 
 
 		var got []*servicepb.CheckStoreError
 
-		require.NoError(t, checker.verifyAuditHashChain(context.Background(), handle, chapters, nil, ttlCutoff,
+		ttl := uint64(ttlMicros)
+		require.NoError(t, checker.verifyAuditHashChain(context.Background(), handle, chapters, nil, &ttl,
 			func(event *servicepb.CheckStoreEvent) {
 				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 					e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
@@ -226,9 +230,10 @@ func TestCompareIdempotencyOutcomes_NeverExpireScansFullArchivedHistory(t *testi
 
 		var got []*servicepb.CheckStoreError
 
-		// ttlCutoff == 0 is the never-expire window: the cold pass scans the
-		// full archived history.
-		require.NoError(t, checker.verifyAuditHashChain(context.Background(), handle, chapters, nil, 0,
+		// TTL 0 is never-expire: the derived cutoff is 0, so the cold pass scans
+		// the full archived history.
+		neverExpire := uint64(0)
+		require.NoError(t, checker.verifyAuditHashChain(context.Background(), handle, chapters, nil, &neverExpire,
 			func(event *servicepb.CheckStoreEvent) {
 				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 					e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
@@ -336,12 +341,54 @@ func TestReDeriveArchivedIdempotency_Bounds(t *testing.T) {
 		_, ok := expected[idemExpectedKey{keyHash: state.HashIdempotencyKey("k"), createdAt: 3000}]
 		require.True(t, ok, "the in-window keyed entry must be re-derived")
 	})
+
+	t.Run("success outcomes are re-derived from cold storage", func(t *testing.T) {
+		t.Parallel()
+
+		serialized := (&raftcmdpb.Order{}).MarshalDeterministicVT(nil)
+
+		sst := buildColdAuditSST(t, []*auditpb.AuditEntry{
+			{
+				Sequence: 5, Timestamp: &commonpb.Timestamp{Data: 3000}, Idempotency: &commonpb.Idempotency{Key: "s"},
+				Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{MinLogSequence: 10, MaxLogSequence: 12}},
+			},
+		}, map[uint64][]*auditpb.AuditItem{5: {{OrderIndex: 0, SerializedOrder: serialized}}})
+
+		reader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{30: sst})
+		c := NewChecker(store, attributes.New(), "x", reader, logging.Testing())
+
+		expected := map[idemExpectedKey]expectedIdempotency{}
+		require.True(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(30, 5)}, 2000, expected))
+
+		got, ok := expected[idemExpectedKey{keyHash: state.HashIdempotencyKey("s"), createdAt: 3000}]
+		require.True(t, ok, "the success freeze must be re-derived")
+		require.False(t, got.failure)
+		require.Equal(t, uint64(10), got.firstLog)
+		require.Equal(t, uint32(3), got.logCount, "log count is max−min+1")
+	})
+
+	t.Run("a chapter with no audit entries is skipped", func(t *testing.T) {
+		t.Parallel()
+
+		// SST holds only a (non-audit) log key, so ReadLastAuditEntry returns
+		// nil and the chapter is skipped without error.
+		logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(1).Build()
+		sst := writeSSTBytes(t, [][2][]byte{{logKey, []byte("x")}})
+
+		reader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{40: sst})
+		c := NewChecker(store, attributes.New(), "x", reader, logging.Testing())
+
+		expected := map[idemExpectedKey]expectedIdempotency{}
+		require.True(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(40, 2)}, 2000, expected))
+		require.Empty(t, expected)
+	})
 }
 
 // TestCheck_DerivesIdempotencyTTLWindowFromPersistedConfig exercises the
-// end-to-end path in Check that reads the persisted idempotency TTL and the
-// last-applied timestamp and computes the window cutoff. A clean store with a
-// non-zero TTL configured must still pass.
+// end-to-end path in Check that reads the persisted idempotency TTL and passes
+// it to the hash-chain pass, which derives the window cutoff from the verified
+// "now". A short TTL keeps the cutoff bounded (verified now − TTL > 0). A clean
+// store must still pass.
 func TestCheck_DerivesIdempotencyTTLWindowFromPersistedConfig(t *testing.T) {
 	t.Parallel()
 
@@ -350,12 +397,12 @@ func TestCheck_DerivesIdempotencyTTLWindowFromPersistedConfig(t *testing.T) {
 	engine.processAndCommit(createTransactionOrder("test", true,
 		newPosting("world", "user:alice", "USD", 100)))
 
-	// Non-zero TTL + a last-applied timestamp ahead of it, so Check computes a
-	// bounded (non-zero) cutoff.
-	writeGlobalUint64(t, engine.store, dal.SubGlobLastAppliedTimestamp, 1_700_000_100_000_000)
+	// A 1s TTL is well below the engine's audit timestamps, so the derived
+	// cutoff is non-zero (exercises the bounded-window branch). "now" comes from
+	// the verified chain, not a persisted last-applied timestamp.
 	writePersistedConfig(t, engine.store, &commonpb.PersistedConfig{
 		ClusterId:             engine.clusterID,
-		IdempotencyTtlSeconds: 3600,
+		IdempotencyTtlSeconds: 1,
 	})
 
 	require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs),
@@ -372,19 +419,6 @@ func writePersistedConfig(t *testing.T, store *dal.Store, cfg *commonpb.Persiste
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, data))
-	require.NoError(t, batch.Commit())
-}
-
-// writeGlobalUint64 stores a big-endian uint64 under a Global-zone sub-key, the
-// encoding dal.ReadUint64 expects.
-func writeGlobalUint64(t *testing.T, store *dal.Store, sub byte, v uint64) {
-	t.Helper()
-
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, v)
-
-	batch := store.OpenWriteSession()
-	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, sub}, buf))
 	require.NoError(t, batch.Commit())
 }
 
@@ -423,9 +457,7 @@ func idemAuditFailure(message string, ctx map[string]string) *auditpb.AuditEntry
 func buildColdAuditSST(t *testing.T, entries []*auditpb.AuditEntry, items map[uint64][]*auditpb.AuditItem) []byte {
 	t.Helper()
 
-	type kv struct{ k, v []byte }
-
-	var kvs []kv
+	var kvs [][2][]byte
 
 	for _, e := range entries {
 		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(e.GetSequence()).Build()
@@ -433,7 +465,7 @@ func buildColdAuditSST(t *testing.T, entries []*auditpb.AuditEntry, items map[ui
 		val, err := e.MarshalVT()
 		require.NoError(t, err)
 
-		kvs = append(kvs, kv{key, val})
+		kvs = append(kvs, [2][]byte{key, val})
 	}
 
 	for seq, list := range items {
@@ -443,11 +475,19 @@ func buildColdAuditSST(t *testing.T, entries []*auditpb.AuditEntry, items map[ui
 			val, err := it.MarshalVT()
 			require.NoError(t, err)
 
-			kvs = append(kvs, kv{key, val})
+			kvs = append(kvs, [2][]byte{key, val})
 		}
 	}
 
-	sort.Slice(kvs, func(i, j int) bool { return bytes.Compare(kvs[i].k, kvs[j].k) < 0 })
+	return writeSSTBytes(t, kvs)
+}
+
+// writeSSTBytes writes an SST (sorted by key) with the given key/value pairs and
+// returns its bytes.
+func writeSSTBytes(t *testing.T, kvs [][2][]byte) []byte {
+	t.Helper()
+
+	sort.Slice(kvs, func(i, j int) bool { return bytes.Compare(kvs[i][0], kvs[j][0]) < 0 })
 
 	var buf bytes.Buffer
 
@@ -456,8 +496,8 @@ func buildColdAuditSST(t *testing.T, entries []*auditpb.AuditEntry, items map[ui
 		FilterPolicy: bloom.FilterPolicy(10),
 	})
 
-	for _, p := range kvs {
-		require.NoError(t, w.Set(p.k, p.v))
+	for _, kv := range kvs {
+		require.NoError(t, w.Set(kv[0], kv[1]))
 	}
 
 	require.NoError(t, w.Close())

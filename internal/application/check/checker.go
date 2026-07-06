@@ -2,13 +2,14 @@ package check
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
-	"sort"
+	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
@@ -149,39 +150,29 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = replay.Close() }()
 
-	// Lower bound of the idempotency TTL window: an entry frozen before this
-	// timestamp can no longer be live (past its TTL relative to the latest
-	// applied HLC timestamp), so it never needs cold-storage re-derivation.
-	// Read from the same snapshot so the window is deterministic for this run.
-	//
-	// A cutoff of 0 means an unbounded window — every frozen entry can still be
-	// live, so the cold pass scans the whole archived history. This is the
-	// configured behaviour for idempotency-ttl=0 (never expire; see
-	// cmd/server "0 = never expire") and also holds for a ledger younger than
-	// its TTL.
+	// Idempotency TTL, in microseconds, used by the hash-chain pass to bound the
+	// cold re-derivation window. The TTL is a Pebble projection (not chain-
+	// bound); "now" for the window is NOT read from a projection — it is the
+	// highest timestamp the hash chain verifies in this same run (see
+	// verifyAuditHashChain), so a tampered lastAppliedTimestamp cannot shift the
+	// window. nil = PersistedConfig absent: the window is unknown, so the cold
+	// pass is skipped rather than guessed.
 	persisted, err := query.ReadPersistedConfig(snap)
 	if err != nil {
 		return fmt.Errorf("reading persisted config: %w", err)
 	}
 
-	lastAppliedTs, err := query.ReadLastAppliedTimestamp(snap)
-	if err != nil {
-		return fmt.Errorf("reading last applied timestamp: %w", err)
-	}
+	var idempotencyTTLMicros *uint64
 
-	var idempotencyTTLCutoff uint64
-
-	if ttlSeconds := persisted.GetIdempotencyTtlSeconds(); ttlSeconds != 0 {
-		ttlMicros := ttlSeconds * 1_000_000
-		if lastAppliedTs > ttlMicros {
-			idempotencyTTLCutoff = lastAppliedTs - ttlMicros
-		}
+	if persisted != nil {
+		micros := persisted.GetIdempotencyTtlSeconds() * 1_000_000
+		idempotencyTTLMicros = &micros
 	}
 
 	// Verify the audit hash chain before log replay.
 	// This iterates all non-archived audit entries and recomputes each hash
 	// from the stored orders, chaining from archiveLastAuditHash.
-	if err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, idempotencyTTLCutoff, callback); err != nil {
+	if err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, idempotencyTTLMicros, callback); err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
 
@@ -1497,7 +1488,7 @@ func (c *Checker) verifyAuditHashChain(
 	reader dal.PebbleReader,
 	chapters []*commonpb.Chapter,
 	archiveLastAuditHash []byte,
-	idempotencyTTLCutoff uint64,
+	idempotencyTTLMicros *uint64,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
 	// Find the last archived audit sequence to start iteration after it.
@@ -1534,12 +1525,16 @@ func (c *Checker) verifyAuditHashChain(
 		// Frozen idempotency outcomes the projection should hold, re-derived
 		// from each verified audit entry and compared to SubIdempKeys below.
 		expectedIdem = make(map[idemExpectedKey]expectedIdempotency)
-		// Timestamp of the first (lowest-sequence) verified entry — the archive
-		// boundary. HLC timestamps are monotonic with sequence, so the verified
-		// range always re-derives every freeze at/after it; it is the default
-		// idempotency report floor (see the idemReportFloor computation below).
-		// 0 = no verified entry.
+		// hasVerifiedRange records whether any entry was verified; a dedicated
+		// bool rather than a 0-sentinel, since HLC timestamp 0 is a legitimate
+		// value (mirrors the *uint64 idemReportFloor tri-state below).
+		hasVerifiedRange bool
+		// Timestamps of the first (lowest-sequence) and last (highest-sequence)
+		// verified entries. HLC timestamps are monotonic with sequence, so the
+		// first is the archive boundary (default idempotency report floor) and
+		// the last is the hash-chain-verified "now" used to size the TTL window.
 		verifiedRangeStartTs uint64
+		verifiedRangeEndTs   uint64
 	)
 
 	for {
@@ -1556,9 +1551,14 @@ func (c *Checker) verifyAuditHashChain(
 			return fmt.Errorf("reading audit entry for hash chain verification: %w", err)
 		}
 
-		if verifiedRangeStartTs == 0 {
+		if !hasVerifiedRange {
+			hasVerifiedRange = true
 			verifiedRangeStartTs = entry.GetTimestamp().GetData()
 		}
+
+		// Entries arrive in ascending sequence (hence ascending HLC), so the
+		// last one seen carries the highest verified timestamp.
+		verifiedRangeEndTs = entry.GetTimestamp().GetData()
 
 		// `items` on the stored AuditEntry value is reserved for
 		// GetAuditEntry response shaping — the apply path forces it
@@ -1663,17 +1663,26 @@ func (c *Checker) verifyAuditHashChain(
 	//
 	// The post-archive (verified) range always covers [verifiedRangeStartTs, ∞).
 	// When the TTL window reaches before that boundary, the still-live archived
-	// freezes in [ttlCutoff, boundary) are re-derived from cold storage; if that
-	// succeeds the floor drops to ttlCutoff. If cold storage is unavailable the
+	// freezes in [cutoff, boundary) are re-derived from cold storage; if that
+	// succeeds the floor drops to cutoff. If cold storage is unavailable the
 	// floor stays at the boundary — the residual gap, not a false positive.
+	//
+	// "now" is verifiedRangeEndTs — the highest hash-chain-verified timestamp —
+	// not a Pebble projection, so a tampered lastAppliedTimestamp cannot shrink
+	// the window. The TTL itself is still a projection (see idempotencyTTLMicros).
 	var idemReportFloor *uint64
 
-	if verifiedRangeStartTs != 0 {
+	if hasVerifiedRange {
 		idemReportFloor = &verifiedRangeStartTs
 
-		if idempotencyTTLCutoff < verifiedRangeStartTs {
-			if c.reDeriveArchivedIdempotency(ctx, chapters, idempotencyTTLCutoff, expectedIdem) {
-				idemReportFloor = &idempotencyTTLCutoff
+		if idempotencyTTLMicros == nil {
+			// PersistedConfig absent: the window is unknown. Skip the cold pass
+			// rather than treat it as never-expire — distinct from a genuine
+			// cold-storage read failure below.
+			c.logger.Debug("persisted idempotency TTL unavailable; verifying only the post-archive idempotency range")
+		} else if cutoff := idempotencyWindowCutoff(verifiedRangeEndTs, *idempotencyTTLMicros); cutoff < verifiedRangeStartTs {
+			if c.reDeriveArchivedIdempotency(ctx, chapters, cutoff, expectedIdem) {
+				idemReportFloor = &cutoff
 			} else {
 				c.logger.Info("idempotency TTL window extends before the archive boundary but archived audit entries are not readable; verifying only the post-archive range")
 			}
@@ -1685,6 +1694,18 @@ func (c *Checker) verifyAuditHashChain(
 	}
 
 	return nil
+}
+
+// idempotencyWindowCutoff returns the lower bound of the idempotency TTL window
+// given the hash-chain-verified "now" and the configured TTL. A ttlMicros of 0
+// (idempotency-ttl=0, never expire) or a ledger younger than its TTL yields 0 —
+// an unbounded window that re-derives the whole archived history.
+func idempotencyWindowCutoff(now, ttlMicros uint64) uint64 {
+	if ttlMicros != 0 && now > ttlMicros {
+		return now - ttlMicros
+	}
+
+	return 0
 }
 
 // idemExpectedKey identifies the frozen idempotency entry an audit outcome
@@ -1809,15 +1830,17 @@ func (c *Checker) reDeriveArchivedIdempotency(
 		return false
 	}
 
-	// ttlCutoff == 0 means never-expire (idempotency-ttl=0): the window spans
-	// all history, so every archived chapter is read. Flag it — the read is
-	// O(history) by configuration, not a bug.
+	// ttlCutoff == 0 means an unbounded window (idempotency-ttl=0 never-expire,
+	// or a ledger younger than its TTL): the whole archived history is read.
+	// Flag it — the O(history) read is by configuration, not a bug.
 	if ttlCutoff == 0 {
-		c.logger.Infof("idempotency-ttl is never-expire; scanning all %d archived chapters to verify frozen outcomes", len(archived))
+		c.logger.Infof("idempotency TTL window is unbounded; scanning all %d archived chapters to verify frozen outcomes", len(archived))
 	}
 
-	sort.Slice(archived, func(i, j int) bool {
-		return archived[i].GetCloseAuditSequence() > archived[j].GetCloseAuditSequence()
+	// Newest first, so the scan can stop at the first chapter whose newest entry
+	// predates the cutoff.
+	slices.SortFunc(archived, func(a, b *commonpb.Chapter) int {
+		return cmp.Compare(b.GetCloseAuditSequence(), a.GetCloseAuditSequence())
 	})
 
 	for _, ch := range archived {
@@ -1861,6 +1884,11 @@ func (c *Checker) reDeriveArchivedIdempotency(
 // entry at/after ttlCutoff, and merges it into expected. It returns true when
 // the chapter's oldest entry predates ttlCutoff — the window starts inside this
 // chapter, so older chapters need not be read.
+//
+// Scan order does not matter here: every in-window keyed entry is added
+// regardless of direction, and windowStartsHere only needs to observe whether
+// any entry predates the cutoff — so this is correct even if ReadAuditEntries'
+// ordering ever changes.
 func (c *Checker) collectChapterIdempotency(
 	ctx context.Context,
 	coldPebble dal.PebbleReader,
@@ -1945,6 +1973,17 @@ func (c *Checker) collectChapterIdempotency(
 // audit entries that anchor the live range are hash-chain-verified above; the
 // archived entries used for the TTL window are trusted as-is because cold
 // storage is outside that follower-disk reach (see reDeriveArchivedIdempotency).
+//
+// Coverage frontier — the report floor depends on two inputs beyond the audit
+// chain:
+//   - "now" (verifiedRangeEndTs) is the highest hash-chain-verified timestamp,
+//     NOT a projection — a tampered lastAppliedTimestamp cannot move the floor.
+//   - the idempotency TTL comes from PersistedConfig, a Pebble projection that
+//     is NOT chain-bound. An on-disk TTL shrink moves the floor up and makes
+//     entries just below it tamper-safe until the next boot, when config
+//     validation catches the mismatch. Binding the TTL to the chain would close
+//     this but is a larger design change (invariant #8 trusts projections
+//     between reboots).
 func (c *Checker) compareIdempotencyOutcomes(
 	reader dal.PebbleReader,
 	expected map[idemExpectedKey]expectedIdempotency,
