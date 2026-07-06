@@ -52,6 +52,39 @@ ledgerctl --consistency leader ledgers list
 ledgerctl ledgers list
 ```
 
+### Distributed Tracing (OpenTelemetry)
+
+Every `ledgerctl` invocation is instrumented with OpenTelemetry. Each command opens a root span named after the command path (e.g. `ledgerctl transactions get`), and every gRPC call to the server is recorded as a child span. The W3C `traceparent` header is always propagated to the server, so the server-side spans join the same trace — this happens regardless of whether spans are exported, giving a single connected trace per invocation.
+
+Tracing is configured **entirely through the standard [OpenTelemetry SDK environment variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/)** — there are no `ledgerctl`-specific flags. Spans are only **exported** to a backend when an OTLP endpoint is configured; without one, the CLI never attempts a connection, so default usage is unaffected.
+
+| Environment variable | Default | Description |
+|----------------------|---------|-------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | | OTLP endpoint (e.g. `http://collector:4317`). Setting it enables span export. `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` takes precedence for traces. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | Transport: `grpc` or `http/protobuf`. `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` takes precedence for traces. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | | Extra headers sent to the collector (e.g. auth tokens). |
+| `OTEL_EXPORTER_OTLP_INSECURE` | `false` | Disable TLS for the OTLP connection. |
+| `OTEL_TRACES_EXPORTER` | | Set to `otlp` to force export, or `none` to disable. Only `otlp` and `none` are supported. |
+| `OTEL_SERVICE_NAME` | `ledgerctl` | Service name reported on spans. |
+| `OTEL_RESOURCE_ATTRIBUTES` | | Extra resource attributes (e.g. `deployment.environment=prod`). |
+| `OTEL_SDK_DISABLED` | `false` | Set to `true` to disable tracing entirely (no spans, no propagation). |
+
+```bash
+# Export traces to a local OpenTelemetry Collector over gRPC
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_INSECURE=true
+ledgerctl transactions list --ledger my-ledger
+
+# Export over HTTP to a remote collector with an auth header
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS="authorization=Bearer <token>"
+export OTEL_SERVICE_NAME=ledgerctl-ci
+ledgerctl ledgers list
+```
+
+Buffered spans are flushed (with a 5s timeout) before the process exits — on both success and error paths — so short-lived invocations still deliver their traces.
+
 ### Shared Flag Contract
 
 All read subcommands (`list`, `get`, `inspect`) follow a uniform set of flags

@@ -1,6 +1,8 @@
 package indexbuilder
 
 import (
+	"bytes"
+
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -22,14 +24,18 @@ import (
 //     covers every v_n (both null and non-null variants).
 //   - 0x03 (reverse map): keys are
 //     [ns:][entityID\x00][version:4B BE][metaKey] — metaKey is the
-//     suffix but it's preceded by a fixed-width version block, so we
-//     scan the per-namespace range and use extractMetadataKeyFromReverseMap
-//     (which already accounts for the version block) to delete every
-//     row matching this metaKey regardless of version.
+//     suffix but it's preceded by a fixed-width version block, so it
+//     can't be range-deleted by (ns, key). purgeReverseMapForKey scans
+//     the per-namespace range and deletes every row matching this
+//     metaKey regardless of version.
 //
-// The reverse-map scan reuses the in-flight indexed batch as snapshot
-// would not see uncommitted writes, but the scan iterates from a fresh
-// Pebble snapshot for consistency. The handler also strips the
+// Unlike the forward/entity-exists range deletes — whose range tombstone
+// gets a higher sequence number than earlier same-batch SETs and so
+// shadows uncommitted rows too — the reverse-map point-delete scan reads
+// a committed-only Pebble snapshot. It therefore also consults the
+// batch's read-your-writes overlay to purge reverse-map PUTs written
+// earlier in this same uncommitted batch (see purgeReverseMapForKey).
+// The handler also strips the
 // corresponding entry from the local ledgerIndexConfig cache so the
 // live path stops considering the index as active immediately, and
 // drops the per-replica IndexVersionState entry so the boot orphan
@@ -111,21 +117,38 @@ func (b *Builder) handleRemovedMetadataFieldType(
 	return nil
 }
 
-// purgeReverseMapForKey scans the reverse map for a (ns, key) pair and
-// deletes every entry whose metadata key field matches, across every
-// per-replica forward-encoding version. The reverse map can't be
-// range-deleted by (ns, key) because the rmap key shape is
-// [entity\x00][version:4B BE][metaKey] — metaKey sits after a
-// fixed-width version block, not directly after the entity null. The
-// scan cost is bounded by the number of (entity, version) tuples that
-// ever held this metadata key.
+// purgeReverseMapForKey deletes every reverse-map entry whose metadata key
+// field matches (ns, key), across every per-replica forward-encoding version.
+// The reverse map can't be range-deleted by (ns, key) because the rmap key
+// shape is [entity\x00][version:4B BE][metaKey] — metaKey sits after a
+// fixed-width version block, not directly after the entity null.
+//
+// Two sources are purged:
+//   - Committed rows: scanned from a fresh Pebble snapshot (committed data
+//     only). Scan cost is bounded by the number of (entity, version) tuples
+//     that ever held this metadata key.
+//   - In-flight rows: reverse-map PUTs written earlier in this same
+//     uncommitted batch are invisible to the snapshot, so we also consult the
+//     batch's read-your-writes overlay. Without this, a SavedMetadata on the
+//     indexed field in the same batch as the removal would commit an orphaned
+//     reverse-map row for a field that no longer exists (EN-1443).
 func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerName string, ns, key string) error {
 	rmapPrefix := readstore.ReverseMapPrefix(kb, ledgerName, ns)
 	upper := readstore.IncrementBytes(rmapPrefix)
 
-	// Use a Pebble snapshot so the scan sees committed data only; the
-	// in-flight batch writes from the same processing pass would otherwise
-	// surface as ghost entries.
+	// Deduplicate so a key present in both committed state and the in-flight
+	// overlay is deleted only once.
+	seen := make(map[string]struct{})
+	deleteMatch := func(k []byte) error {
+		if _, done := seen[string(k)]; done {
+			return nil
+		}
+		seen[string(k)] = struct{}{}
+
+		return b.wb.DeleteReverseMapKey(k)
+	}
+
+	// Committed rows.
 	snap := b.readStore.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
@@ -147,7 +170,33 @@ func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerName string, n
 			continue
 		}
 
-		if err := b.wb.Batch().DeleteKey(append([]byte(nil), k...)); err != nil {
+		// iter.Key() is only valid until the next iterator move — clone it
+		// before it outlives this iteration in the batch/dedup set.
+		if err := deleteMatch(append([]byte(nil), k...)); err != nil {
+			return err
+		}
+	}
+
+	// In-flight rows from the same uncommitted batch.
+	var pending [][]byte
+	b.wb.RangeReverseMapOverlay(func(reverseKey []byte, value []byte) {
+		if value == nil {
+			return // already deleted in this batch
+		}
+		if !bytes.HasPrefix(reverseKey, rmapPrefix) {
+			return // different ledger / namespace
+		}
+
+		_, mk, _, parsed := parseReverseMapKey(reverseKey, rmapPrefix, ns)
+		if !parsed || mk != key {
+			return
+		}
+
+		pending = append(pending, reverseKey)
+	})
+
+	for _, k := range pending {
+		if err := deleteMatch(k); err != nil {
 			return err
 		}
 	}

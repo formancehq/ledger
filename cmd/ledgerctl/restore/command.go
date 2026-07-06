@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -43,6 +44,7 @@ func getRestoreClient(cmd *cobra.Command) (restorepb.RestoreServiceClient, *grpc
 
 	conn, err := grpc.NewClient(serverAddr,
 		grpc.WithTransportCredentials(creds),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()), // Emit a client span per RPC and propagate W3C trace context.
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)

@@ -269,10 +269,10 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 
 	tx.Reverted = state.GetRevertedByTransaction() > 0
 
-	// Override metadata from the state (which is the current truth)
-	if len(state.GetMetadata()) > 0 {
-		tx.Metadata = state.GetMetadata()
-	}
+	// The state carries the current metadata (the create-time snapshot plus
+	// every applied add/delete) and is authoritative even when empty; the
+	// create log only holds the create-time snapshot.
+	tx.Metadata = state.GetMetadata()
 
 	return tx, nil
 }
