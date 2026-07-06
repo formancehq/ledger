@@ -493,24 +493,34 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	// Load Pebble configuration with defaults
 	cfg.PebbleConfig = loadPebbleConfig(cmd)
 
-	// Parse transport reception queues
-	// Default values based on commented code in transport.go: [10, 512, 512, 512, 128]
+	// Parse transport reception queues.
+	// Priority-0 is heartbeats + high-priority raft traffic (votes, MsgApp
+	// leader→follower during ConfChange bursts). Under AsyncStorageWrites
+	// each Ready cycle produces MORE rawNode.Step calls on the orchestrate
+	// goroutine (one per MsgStorageAppendResp / MsgStorageApplyResp instead
+	// of the single Advance() call in sync mode), so orchestrate spends
+	// more time between select turns and the per-peer high-priority recv
+	// queue can saturate faster. Antithesis 2h k8s run 81691b87... hit
+	// this: 47 "Channel full" events in 15s on priority-0 during a
+	// 3→7→5 scale-up/down burst. Bumped from 10 to 128 to absorb the burst
+	// without changing the code path.
 	receptionQueues := getIntSlice("raft-transport-reception-queues")
 	if len(receptionQueues) > 0 {
 		cfg.TransportConfig.Reception = receptionQueues
 	} else {
-		// Default values: [10, 512, 512, 512, 128] for priorities 0-4
-		cfg.TransportConfig.Reception = []int{10, 512, 512}
+		cfg.TransportConfig.Reception = []int{128, 512, 512}
 	}
 
-	// Parse transport send queues
-	// Default values based on commented code in transport.go: [10, 512, 512, 512, 128]
+	// Parse transport send queues.
+	// Symmetric bump on priority-0 send: same rationale — a stressed
+	// receiver rejects with peer-respond-with-error, which cascades to
+	// the sender's per-peer send buffer if it isn't sized to absorb the
+	// re-transmit / retry pressure.
 	sendQueues := getIntSlice("raft-transport-send-queues")
 	if len(sendQueues) > 0 {
 		cfg.TransportConfig.Send = sendQueues
 	} else {
-		// Default values: [10, 512, 512, 512, 128] for priorities 0-4
-		cfg.TransportConfig.Send = []int{10, 512, 512}
+		cfg.TransportConfig.Send = []int{128, 512, 512}
 	}
 
 	if cfg.RaftConfig.AdvertiseAddr == "" {
