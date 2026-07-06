@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // Manifest describes the current state of a backup, combining a full checkpoint
@@ -36,9 +37,9 @@ type ExportSegment struct {
 // LastExportLogSequence returns the highest exported log sequence,
 // checking exports first then falling back to the checkpoint.
 func (m *Manifest) LastExportLogSequence() uint64 {
-	for i := len(m.Exports) - 1; i >= 0; i-- {
-		if m.Exports[i].Type == "log" {
-			return m.Exports[i].EndSeq
+	for _, v := range slices.Backward(m.Exports) {
+		if v.Type == "log" {
+			return v.EndSeq
 		}
 	}
 
@@ -52,9 +53,9 @@ func (m *Manifest) LastExportLogSequence() uint64 {
 // LastExportAuditSequence returns the highest exported audit sequence,
 // checking exports first then falling back to the checkpoint.
 func (m *Manifest) LastExportAuditSequence() uint64 {
-	for i := len(m.Exports) - 1; i >= 0; i-- {
-		if m.Exports[i].Type == "audit" {
-			return m.Exports[i].EndSeq
+	for _, v := range slices.Backward(m.Exports) {
+		if v.Type == "audit" {
+			return v.EndSeq
 		}
 	}
 

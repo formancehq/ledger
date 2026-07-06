@@ -3,6 +3,7 @@ package readstore
 import (
 	"encoding/binary"
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -49,8 +50,8 @@ func (s *Store) DropAuditIndex() error {
 func prefixUpperBound(prefix []byte) []byte {
 	end := make([]byte, len(prefix))
 	copy(end, prefix)
-	for i := len(end) - 1; i >= 0; i-- {
-		if end[i] != 0xFF {
+	for i, v := range slices.Backward(end) {
+		if v != 0xFF {
 			end[i]++
 
 			return end[:i+1]

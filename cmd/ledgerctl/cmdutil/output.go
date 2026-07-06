@@ -291,7 +291,7 @@ func protoToAny(msg proto.Message) (any, error) {
 func isNilProto(msg proto.Message) bool {
 	rv := reflect.ValueOf(msg)
 
-	return rv.Kind() == reflect.Ptr && rv.IsNil()
+	return rv.Kind() == reflect.Pointer && rv.IsNil()
 }
 
 // IsStructuredOutput returns true when --json or --yaml is active.
