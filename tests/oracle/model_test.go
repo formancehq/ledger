@@ -1,6 +1,7 @@
 package oracle
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/holiman/uint256"
@@ -282,4 +283,31 @@ func TestApplyTransaction_FloorBeforeChart(t *testing.T) {
 	unmatchedDest := typed.State.Apply(bulkOf(oracletest.TxReq("world", "y:1", "USD", 5)))
 	require.False(t, unmatchedDest.OK)
 	require.Equal(t, domain.ErrReasonAccountNotMatchingType, unmatchedDest.Reason)
+}
+
+func TestApplyTransaction_MultiPosting(t *testing.T) {
+	t.Parallel()
+
+	// Fund-then-spend in one transaction: world funds a:1, then a:1 pays b:1
+	// within the same tx. The per-posting floor reads the running volumes, so the
+	// second posting spends what the first funded; PCV covers every touched cell.
+	ok := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
+		commonpb.NewPosting("world", "a:1", "USD", big.NewInt(10)),
+		commonpb.NewPosting("a:1", "b:1", "USD", big.NewInt(10)),
+	)))
+	require.True(t, ok.OK)
+	ls := ok.State.Ledger("L")
+	require.Equal(t, "10", dec(ls.vol(VolumeKey{"a:1", "USD"}).Input))
+	require.Equal(t, "10", dec(ls.vol(VolumeKey{"a:1", "USD"}).Output))
+	require.Equal(t, "10", dec(ls.vol(VolumeKey{"b:1", "USD"}).Input))
+
+	// A later posting that exceeds a:1's running balance rejects the whole tx;
+	// the atomic bulk commits nothing.
+	over := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
+		commonpb.NewPosting("world", "a:1", "USD", big.NewInt(10)),
+		commonpb.NewPosting("a:1", "b:1", "USD", big.NewInt(15)),
+	)))
+	require.False(t, over.OK)
+	require.Equal(t, domain.ErrReasonInsufficientFunds, over.Reason)
+	require.NotContains(t, over.State.Ledger("L").volumes, VolumeKey{"a:1", "USD"})
 }

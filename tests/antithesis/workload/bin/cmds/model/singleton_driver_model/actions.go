@@ -240,10 +240,11 @@ func randomTransientType(ls oracle.LedgerState) *oracle.TypeState {
 
 // --- Per-action generators ------------------------------------------------
 
-// A chaos posting between two blindly-picked pool addresses (source may be
-// "world"), amount and force rolled at random so the server resolves typing,
-// the balance floor, and — with force — overdrafts uniformly; or, ~1/4 of the
-// time, a deliberate drain of an EPHEMERAL cell to exercise the purge sweep.
+// A chaos transaction of 1–4 postings between blindly-picked pool addresses
+// (source may be "world"), amounts and force rolled at random so the server
+// resolves typing, the balance floor, intra-transaction posting composition,
+// and — with force — overdrafts uniformly; or, ~1/4 of the time, a deliberate
+// drain of an EPHEMERAL cell to exercise the purge sweep.
 func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 		if req := generateDrainTransaction(ledger, ls); req != nil {
@@ -251,19 +252,22 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 		}
 	}
 
-	src := sourceAddress()
-	dest := poolAddress()
-	asset := assets[int(random.RandomChoice([]uint8{0, 1, 2}))]
-	amount := internal.RandomBigInt()
 	// Force (~1/8) skips the balance floor, letting a non-world source overdraft.
 	force := random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) == 0
+
+	// 1–4 postings, each between blindly-picked accounts. Multiple postings
+	// commit atomically and compose in order — an earlier posting can fund a
+	// later one's source (the running balance floor is per-posting).
+	n := 1 + int(random.RandomChoice([]uint8{0, 1, 2, 3}))
+	postings := make([]*commonpb.Posting, n)
+	for i := range postings {
+		postings[i] = commonpb.NewPosting(sourceAddress(), poolAddress(), assets[int(random.RandomChoice([]uint8{0, 1, 2}))], internal.RandomBigInt())
+	}
 
 	// Every transaction gets a unique reference so it is targetable by later
 	// transaction-metadata writes. ~half also carry metadata at creation.
 	payload := &servicepb.CreateTransactionPayload{
-		Postings: []*commonpb.Posting{
-			commonpb.NewPosting(src, dest, asset, amount),
-		},
+		Postings:  postings,
 		Reference: txRef(),
 		Force:     force,
 		// Need PCV for validation.
@@ -275,12 +279,12 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 	}
 
 	// ~1/3 also set account metadata via the transaction payload, applied
-	// atomically with the tx. Target the transaction's own destination: it
-	// already passes the posting chart check when the tx commits, so the
-	// account-metadata write never introduces a chart rejection.
+	// atomically with the tx. Target a posting's own destination: it already
+	// passes the posting chart check when the tx commits, so the account-metadata
+	// write never introduces a chart rejection.
 	if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
 		payload.AccountMetadata = map[string]*commonpb.MetadataMap{
-			dest: {Values: randomMetaMap()},
+			postings[n-1].GetDestination(): {Values: randomMetaMap()},
 		}
 	}
 

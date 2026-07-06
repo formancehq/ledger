@@ -73,6 +73,24 @@ func TxReqForce(src, dest, asset string, amount int64, force bool) *servicepb.Re
 	return req
 }
 
+// TxReqMulti builds a multi-posting CreateTransaction (ledger "L") with an
+// explicit Force flag. The postings compose in order — an earlier one can fund a
+// later one's source within the same transaction.
+func TxReqMulti(force bool, postings ...*commonpb.Posting) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "L",
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{Postings: postings, Force: force},
+					},
+				},
+			},
+		},
+	}
+}
+
 // RevertReqL builds a RevertTransaction of txID in ledger. Force=true skips the
 // balance floor on the reversed postings (reverts always set it).
 func RevertReqL(ledger string, txID uint64, force bool) *servicepb.Request {
