@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/invariants"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -351,7 +353,7 @@ func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) []
 			}
 
 			balance := cmdutil.RescaleAmount(av.Balance, av.Precision, *rescale)
-			label := balanceLabel(cmdutil.AssetLabel(av.Asset, *rescale), av.Color)
+			label := balanceLabel(invariants.FormatAsset(av.Asset, *rescale), av.Color)
 			lines = append(lines, fmt.Sprintf("%s %s", label, balanceColor(balance)))
 		}
 

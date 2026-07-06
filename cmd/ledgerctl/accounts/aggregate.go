@@ -157,7 +157,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 			balance := new(big.Int).Sub(input, output)
 
 			tableData = append(tableData, []string{
-				cmdutil.AssetLabel(base, *rescale),
+				invariants.FormatAsset(base, *rescale),
 				vol.GetColor(),
 				cmdutil.RescaleAmount(input, precision, *rescale),
 				cmdutil.RescaleAmount(output, precision, *rescale),
