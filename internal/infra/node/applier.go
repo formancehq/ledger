@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -165,7 +166,7 @@ func NewApplier(
 	responseSink LocalResponses,
 ) (*Applier, error) {
 	if responseSink == nil {
-		return nil, fmt.Errorf("responseSink is required (nil LocalResponses)")
+		return nil, errors.New("responseSink is required (nil LocalResponses)")
 	}
 
 	initialStatus := atomic.Int32{}
