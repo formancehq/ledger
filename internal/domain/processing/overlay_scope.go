@@ -38,6 +38,8 @@ type orderOverlayScope struct {
 	ledgerMetadata    *stagedAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
 	transactionRefs   *stagedAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
 	transactionStates *stagedAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+	preparedQueries   *stagedAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
+	indexes           *stagedAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 
 	// Reverted is bool-valued (no Reader). Kept as a discrete map.
 	stagedReverted map[domain.TransactionKey]bool
@@ -75,6 +77,10 @@ func newOrderOverlayScope(parent Scope) *orderOverlayScope {
 			}),
 		transactionStates: newStagedAccessor(parent.TransactionStates(),
 			func(v *commonpb.TransactionState) commonpb.TransactionStateReader { return v.AsReader() }),
+		preparedQueries: newStagedAccessor(parent.PreparedQueries(),
+			func(v *commonpb.PreparedQuery) commonpb.PreparedQueryReader { return v.AsReader() }),
+		indexes: newStagedAccessor(parent.Indexes(),
+			func(v *commonpb.Index) commonpb.IndexReader { return v.AsReader() }),
 	}
 }
 
@@ -108,6 +114,14 @@ func (o *orderOverlayScope) TransactionReferences() Accessor[domain.TransactionR
 
 func (o *orderOverlayScope) TransactionStates() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
 	return o.transactionStates
+}
+
+func (o *orderOverlayScope) PreparedQueries() Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
+	return o.preparedQueries
+}
+
+func (o *orderOverlayScope) Indexes() Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
+	return o.indexes
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -227,6 +241,8 @@ func (o *orderOverlayScope) Commit() error {
 		o.ledgerMetadata.flush,
 		o.transactionRefs.flush,
 		o.transactionStates.flush,
+		o.preparedQueries.flush,
+		o.indexes.flush,
 	} {
 		if err := flush(); err != nil {
 			return err

@@ -192,12 +192,24 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		// is dropped without Commit() and the parent state stays untouched
 		// — the order is effectively rolled back. Orders without
 		// skippable_reasons retain the historical zero-overhead path.
+		//
+		// The overlay is wrapped in a skipSafeScope: any mutation whose
+		// effect the overlay does NOT buffer (signing keys, maintenance
+		// mode, chapter mutations, numscript library, query-checkpoint
+		// state) panics via trapUnbuffered rather than silently leaking to
+		// the parent — assert.Unreachable is layered on top so the same
+		// call surfaces as a first-class finding under Antithesis, but
+		// the panic is the hard-stop that catches the invariant outside
+		// Antithesis where the SDK's assert.Unreachable is a no-op.
+		// skipSafeScope does not embed Scope, so a future method added to
+		// the interface fails to compile until it is explicitly
+		// classified there.
 		processScope := orderScope
 
 		var overlay *orderOverlayScope
 		if len(order.GetSkippableReasons()) > 0 {
 			overlay = newOrderOverlayScope(orderScope)
-			processScope = overlay
+			processScope = newSkipSafeScope(overlay)
 		}
 
 		payload, err := p.processOrder(order, processScope, ctx)

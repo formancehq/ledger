@@ -26,6 +26,8 @@ type overlayMockStubs struct {
 	ledgerMetadata    *kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
 	transactionStates *kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
 	transactionRefs   *kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
+	preparedQueries   *kindStub[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
+	indexes           *kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 }
 
 func wireOverlayParent(ctrl *gomock.Controller) *overlayMockStubs {
@@ -38,6 +40,8 @@ func wireOverlayParent(ctrl *gomock.Controller) *overlayMockStubs {
 		ledgerMetadata:    &kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{},
 		transactionStates: &kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{},
 		transactionRefs:   &kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]{},
+		preparedQueries:   &kindStub[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]{},
+		indexes:           &kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]{},
 	}
 	s.parent.EXPECT().Ledgers().Return(s.ledgers).AnyTimes()
 	s.parent.EXPECT().Boundaries().Return(s.boundaries).AnyTimes()
@@ -46,6 +50,8 @@ func wireOverlayParent(ctrl *gomock.Controller) *overlayMockStubs {
 	s.parent.EXPECT().LedgerMetadata().Return(s.ledgerMetadata).AnyTimes()
 	s.parent.EXPECT().TransactionStates().Return(s.transactionStates).AnyTimes()
 	s.parent.EXPECT().TransactionReferences().Return(s.transactionRefs).AnyTimes()
+	s.parent.EXPECT().PreparedQueries().Return(s.preparedQueries).AnyTimes()
+	s.parent.EXPECT().Indexes().Return(s.indexes).AnyTimes()
 
 	return s
 }
@@ -141,6 +147,21 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), stGot.GetCreatedByLog())
 
+	// Prepared queries
+	pqk := domain.PreparedQueryKey{LedgerName: "L", Name: "q1"}
+	overlay.PreparedQueries().Put(pqk, &commonpb.PreparedQuery{Name: "q1"})
+
+	pqGot, err := overlay.PreparedQueries().Get(pqk)
+	require.NoError(t, err)
+	require.Equal(t, "q1", pqGot.GetName())
+
+	// Indexes
+	ik := domain.IndexKey{LedgerName: "L", Canonical: "canon"}
+	overlay.Indexes().Put(ik, &commonpb.Index{})
+
+	_, err = overlay.Indexes().Get(ik)
+	require.NoError(t, err)
+
 	// No Commit. The kindStubs receive no expectPut/expectDelete — any
 	// flush leak would surface as an unexpected Put/Delete via the
 	// stub's bookkeeping.
@@ -196,6 +217,8 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	tk := domain.TransactionKey{LedgerName: "L", ID: 1}
 	trk := domain.TransactionReferenceKey{LedgerName: "L", Reference: "ref"}
 	tsk := domain.TransactionKey{LedgerName: "L", ID: 7}
+	pqk := domain.PreparedQueryKey{LedgerName: "L", Name: "q1"}
+	ik := domain.IndexKey{LedgerName: "L", Canonical: "canon"}
 
 	s.ledgers.expectPut(t, lk, nil)
 	s.boundaries.expectPut(t, lk, nil)
@@ -204,6 +227,8 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	s.ledgerMetadata.expectPut(t, lmk, nil)
 	s.transactionRefs.expectPut(t, trk, nil)
 	s.transactionStates.expectPut(t, tsk, nil)
+	s.preparedQueries.expectPut(t, pqk, nil)
+	s.indexes.expectPut(t, ik, nil)
 
 	overlay := newOrderOverlayScope(s.parent)
 	overlay.Ledgers().Put(lk, &commonpb.LedgerInfo{Name: "L"})
@@ -214,6 +239,8 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	overlay.PutReverted(tk, true)
 	overlay.TransactionReferences().Put(trk, &commonpb.TransactionReferenceValue{TransactionId: 7})
 	overlay.TransactionStates().Put(tsk, &commonpb.TransactionState{})
+	overlay.PreparedQueries().Put(pqk, &commonpb.PreparedQuery{Name: "q1"})
+	overlay.Indexes().Put(ik, &commonpb.Index{})
 	overlay.IncrementNextSequenceID()
 	overlay.IncrementNextSequenceID()
 	overlay.IncrementNextLedgerID()
