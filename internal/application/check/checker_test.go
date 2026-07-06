@@ -365,6 +365,7 @@ type scopeFuncAccessor[K processing.AccessorKey, V any, R any] struct {
 	get    func(K) (R, error)
 	put    func(K, V)
 	delete func(K)
+	mutate func(K) (V, error)
 }
 
 func (a *scopeFuncAccessor[K, V, R]) Get(key K) (R, error) {
@@ -383,6 +384,32 @@ func (a *scopeFuncAccessor[K, V, R]) Delete(key K) error {
 	}
 
 	return nil
+}
+
+// Mutate mirrors the production rawAccessor semantics: Get the parent
+// reader, then use its Mutate() to obtain a mutable clone via a runtime
+// interface assertion (R is unconstrained here). Tests wire their
+// existing get closures and see the same clone path the production code
+// exercises. Set the mutate closure explicitly to override.
+func (a *scopeFuncAccessor[K, V, R]) Mutate(key K) (V, error) {
+	if a.mutate != nil {
+		return a.mutate(key)
+	}
+
+	r, err := a.get(key)
+	if err != nil {
+		var zero V
+
+		return zero, err
+	}
+
+	if m, ok := any(r).(interface{ Mutate() V }); ok {
+		return m.Mutate(), nil
+	}
+
+	var zero V
+
+	return zero, nil
 }
 
 func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {

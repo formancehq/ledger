@@ -12,9 +12,9 @@ import (
 )
 
 // zeroVolumePair is the canonical "fresh (account, asset)" balance. It is
-// frozen at package load and only ever surfaced as a VolumePairReader, whose
-// Mutate() returns a deep CloneVT — callers writing into the balance get an
-// independent clone, the shared instance stays immutable.
+// frozen at package load and only ever surfaced through Mutate() (deep
+// CloneVT) — callers writing into the balance get an independent clone,
+// the shared instance stays immutable.
 var zeroVolumePair = &raftcmdpb.VolumePair{
 	Input:  commonpb.NewUint256FromUint64(0),
 	Output: commonpb.NewUint256FromUint64(0),
@@ -38,6 +38,34 @@ func readVolumeOrZero(s Scope, key domain.VolumeKey) (raftcmdpb.VolumePairReader
 
 	if errors.Is(err, domain.ErrNotFound) {
 		return zeroVolumePair.AsReader(), nil
+	}
+
+	return nil, err
+}
+
+// mutateVolumeOrZero returns a mutable *VolumePair for key, suitable for
+// in-place mutation by the caller. If the batch overlay already owns a
+// value for key (Put earlier in the same proposal), the overlay pointer is
+// returned directly — no CloneVT. Otherwise the parent's value is cloned
+// once into the overlay and returned. Absent keys (EN-1378 declared but
+// missing) get a fresh clone of zeroVolumePair inserted into the overlay
+// so subsequent Mutate calls hit the overlay path.
+//
+// This is the write-intent counterpart of readVolumeOrZero. Every
+// applyPosting inside a single proposal that touches the same
+// (account, asset) after the first pays only a map lookup + slot record
+// on subsequent touches — no VolumePair or Uint256 allocations.
+func mutateVolumeOrZero(s Scope, key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
+	vol, err := s.Volumes().Mutate(key)
+	if err == nil {
+		return vol, nil
+	}
+
+	if errors.Is(err, domain.ErrNotFound) {
+		vol = zeroVolumePair.Mutate()
+		s.Volumes().Put(key, vol)
+
+		return vol, nil
 	}
 
 	return nil, err
@@ -85,28 +113,17 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	var amount uint256.Int
 	posting.GetAmount().IntoUint256(&amount)
 
-	// Get current volume pair for source as a mutable *VolumePair. Clone
-	// once up-front so the balance check reads from the mutable pointer
-	// directly — each `sourceReader.GetInput()` / `.GetOutput()` on the
-	// reader wrapper would allocate a fresh Uint256Reader per call
-	// (~10 wrapper allocs per posting between the null checks and the
-	// balance arithmetic). With the *VolumePair in hand, GetInput /
-	// GetOutput return the underlying *Uint256 directly, zero allocation.
-	//
-	// readVolumeOrZero treats a declared-but-absent key as a fresh zero
-	// balance (EN-1378); a coverage miss (admission contract violation)
-	// propagates unchanged through the ErrStorageOperation wrap,
-	// preserving the cause for downstream errors.As.
-	sourceReader, err := readVolumeOrZero(s, sourceKey)
+	// Get a mutable *VolumePair for the source. mutateVolumeOrZero returns
+	// the overlay pointer directly on repeat touches within a proposal
+	// (no CloneVT), and clones from the parent cache on first touch. A
+	// declared-but-absent key (EN-1378) resolves to a fresh clone of the
+	// zero pair; a coverage miss propagates through the ErrStorageOperation
+	// wrap, preserving the cause for downstream errors.As.
+	sourceVol, err := mutateVolumeOrZero(s, sourceKey)
 	if err != nil {
 		return &domain.ErrStorageOperation{Operation: "loading source volume", Cause: err}
 	}
-	if sourceReader == nil {
-		return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset()}
-	}
-
-	sourceVol := sourceReader.Mutate()
-	if sourceVol.GetInput() == nil || sourceVol.GetOutput() == nil {
+	if sourceVol == nil || sourceVol.GetInput() == nil || sourceVol.GetOutput() == nil {
 		return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset()}
 	}
 
@@ -155,21 +172,19 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	}
 
 	sourceVol.GetOutput().SetFromUint256(&sum)
+	// Trailing Put records the slot touch (recorderAccessor.Put) even
+	// though the map assignment is a no-op — sourceVol is already the
+	// overlay-owned pointer.
 	s.Volumes().Put(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
 	destKey := cachedVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset(), assetCache)
 
-	destReader, err := readVolumeOrZero(s, destKey)
+	destVol, err := mutateVolumeOrZero(s, destKey)
 	if err != nil {
 		return &domain.ErrStorageOperation{Operation: "loading destination volume", Cause: err}
 	}
-	if destReader == nil {
-		return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset()}
-	}
-
-	destVol := destReader.Mutate()
-	if destVol.GetInput() == nil || destVol.GetOutput() == nil {
+	if destVol == nil || destVol.GetInput() == nil || destVol.GetOutput() == nil {
 		return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset()}
 	}
 

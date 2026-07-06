@@ -17,6 +17,14 @@ type readable[R any] interface {
 	AsReader() R
 }
 
+// mutator is a per-Reader constraint used by rawAccessor to obtain a
+// mutable clone when Mutate falls through to the parent store. Every
+// generated proto reader satisfies it (Mutate() *ProtoT), so the
+// instantiation is a no-op at every call site.
+type mutator[V any] interface {
+	Mutate() V
+}
+
 // accessorKey is the combined constraint for the per-attribute key K:
 // comparable + AppendBytes (so attributes.DerivedKeyStore can serialize
 // the key into Pebble form) + Bytes() (so the gate can hash the
@@ -39,11 +47,11 @@ type accessorKey interface {
 // bloom-confirms-absent; see cache_snapshotter.go protoSnapshotSlot
 // MirrorPreload). Without the second normalisation, callers that read
 // strictly via `if err != nil` would dereference a nil Reader and panic.
-type rawAccessor[K accessorKey, V readable[R], R any] struct {
+type rawAccessor[K accessorKey, V readable[R], R mutator[V]] struct {
 	store *attributes.DerivedKeyStore[K, V]
 }
 
-func newRawAccessor[K accessorKey, V readable[R], R any](store *attributes.DerivedKeyStore[K, V]) *rawAccessor[K, V, R] {
+func newRawAccessor[K accessorKey, V readable[R], R mutator[V]](store *attributes.DerivedKeyStore[K, V]) *rawAccessor[K, V, R] {
 	return &rawAccessor[K, V, R]{store: store}
 }
 
@@ -82,6 +90,44 @@ func (a *rawAccessor[K, V, R]) Delete(key K) error {
 	return nil
 }
 
+// Mutate returns a mutable V for key. Overlay-owned values are returned
+// directly (no clone); parent-only values are cloned once via R.Mutate()
+// and stored back in the overlay. See processing.Accessor.Mutate for the
+// full contract.
+func (a *rawAccessor[K, V, R]) Mutate(key K) (V, error) {
+	if v, ok := a.store.GetOwned(key); ok {
+		var zeroV V
+		if v == zeroV {
+			// Typed-nil overlay entry (MirrorPreload bloom-confirmed-absent).
+			// Fall through to the Get-based clone path so the caller sees
+			// the same ErrNotFound it would from a plain Get.
+			return a.getAndClone(key)
+		}
+
+		return v, nil
+	}
+
+	return a.getAndClone(key)
+}
+
+// getAndClone is the parent-fallback path for Mutate: Get the parent's
+// reader (or bail out on error), CloneVT to obtain a mutable value, and
+// Put it into the overlay so subsequent Mutate/Get calls observe the
+// same pointer.
+func (a *rawAccessor[K, V, R]) getAndClone(key K) (V, error) {
+	r, err := a.Get(key)
+	if err != nil {
+		var zero V
+
+		return zero, err
+	}
+
+	v := r.Mutate()
+	a.store.Put(key, v)
+
+	return v, nil
+}
+
 // gatedAccessor decorates an inner processing.Accessor with the per-scope
 // coverage gate. Get and Delete both check CheckCoverage(sub, key.Bytes())
 // before delegating — every FSM hot-path read AND deletion is bound to
@@ -116,6 +162,21 @@ func (a *gatedAccessor[K, V, R]) Delete(key K) error {
 	}
 
 	return a.Accessor.Delete(key)
+}
+
+// Mutate gates the coverage check on the read half. The underlying
+// Accessor's Mutate performs the clone-on-first-touch and returns the
+// overlay pointer on subsequent calls; the gate here mirrors what Get
+// enforces so an undeclared key can't smuggle a mutation into the
+// overlay via the Mutate path.
+func (a *gatedAccessor[K, V, R]) Mutate(key K) (V, error) {
+	if err := a.g.CheckCoverage(a.sub, key); err != nil {
+		var zero V
+
+		return zero, err
+	}
+
+	return a.Accessor.Mutate(key)
 }
 
 // recorderAccessor decorates an inner Accessor by recording every

@@ -51,4 +51,22 @@ type Accessor[K AccessorKey, V any, R any] interface {
 	Get(key K) (R, error)
 	Put(key K, value V)
 	Delete(key K) error
+
+	// Mutate returns a mutable V for key, suitable for in-place mutation
+	// by the caller. If the batch overlay already owns a value for key,
+	// the overlay pointer is returned directly (no clone). Otherwise the
+	// parent's value is cloned into the overlay via the R.Mutate() pattern
+	// and the fresh clone is returned. Subsequent Mutate / Get calls on
+	// the same key within the batch observe the caller's mutations.
+	//
+	// Returns the same error semantics as Get for the parent-fallback path
+	// (ErrNotFound / *ErrCoverageMiss / kind-specific silent miss). On a
+	// hit, err is nil and the returned V is the overlay-owned pointer.
+	//
+	// Callers must NOT Put the returned pointer under a different key; the
+	// overlay associates it with the key passed to Mutate. Callers MAY Put
+	// the same key back with the same pointer to trigger side effects
+	// (slot recording via recorderAccessor) — this is a no-op for the
+	// underlying map assignment.
+	Mutate(key K) (V, error)
 }

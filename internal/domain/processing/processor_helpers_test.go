@@ -122,6 +122,28 @@ func (s *kindStub[K, V, R]) Delete(k K) error {
 	return nil
 }
 
+// Mutate mirrors the production rawAccessor semantics for the test stub:
+// dispatches to Get for the reader, then uses the reader's Mutate() to
+// obtain a mutable clone (via runtime interface assertion, since R is
+// unconstrained here). Tests that program `gets[k]` see the same clone
+// path the production code exercises.
+func (s *kindStub[K, V, R]) Mutate(k K) (V, error) {
+	r, err := s.Get(k)
+	if err != nil {
+		var zero V
+
+		return zero, err
+	}
+
+	if m, ok := any(r).(interface{ Mutate() V }); ok {
+		return m.Mutate(), nil
+	}
+
+	var zero V
+
+	return zero, nil
+}
+
 // expectDelete asserts that Delete is called for k by the end of the
 // test. Registers a t.Cleanup() that fails the test on miss — restoring
 // the per-key Delete coverage that the bare `.AnyTimes()` no-op

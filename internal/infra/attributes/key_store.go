@@ -220,6 +220,31 @@ func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
 	s.values[canonical] = value
 }
 
+// GetOwned returns the overlay value for canonical if this batch has already
+// written it (via Put), along with true. Returns the zero value and false
+// when the key is not in the overlay — the caller must fall back to Get to
+// consult the parent store.
+//
+// The returned pointer is the exact one stored in the overlay: the caller
+// may mutate it in place. Because the overlay is the sole consumer of this
+// pointer between Put and Merge, in-place mutation is safe and observable
+// by subsequent Get / GetOwned calls on the same batch. Merge later drains
+// the same pointer into the underlying KeyStore.
+//
+// A key marked for deletion in this batch returns (zero, false) — deletions
+// mask any earlier Put on the same key.
+func (s *DerivedKeyStore[K, T]) GetOwned(canonical K) (T, bool) {
+	if _, ok := s.deletions[canonical]; ok {
+		var zero T
+
+		return zero, false
+	}
+
+	v, ok := s.values[canonical]
+
+	return v, ok
+}
+
 // Get returns a value from local writes, or falls back to the parent
 // KeyStore. A key deleted in this batch returns ErrNotFound, like a
 // committed tombstone in the parent store. The returned value MUST NOT
