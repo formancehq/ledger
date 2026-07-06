@@ -112,36 +112,36 @@ func TestBuildEnvVars_AuthEd25519Keys(t *testing.T) {
 
 	falseBool := false
 	trueBool := true
-	agent := agentKeyInfo{KeyID: "k1", PublicKey: "deadbeef", ConfigMapPrefix: "agent", AgentName: "a1", Scopes: []string{"read"}}
+	credentials := credentialsKeyInfo{KeyID: "k1", PublicKey: "deadbeef", ConfigMapPrefix: "credentials", CredentialsName: "a1", Scopes: []string{"read"}}
 
 	tests := []struct {
 		name        string
 		authEnabled *bool
-		agents      []agentKeyInfo
+		credentials []credentialsKeyInfo
 		wantEnv     bool
 	}{
 		{
-			name:        "agents present, auth nil → env var set",
+			name:        "credentials present, auth nil → env var set",
 			authEnabled: nil,
-			agents:      []agentKeyInfo{agent},
+			credentials: []credentialsKeyInfo{credentials},
 			wantEnv:     true,
 		},
 		{
-			name:        "agents present, auth explicitly true → env var set",
+			name:        "credentials present, auth explicitly true → env var set",
 			authEnabled: &trueBool,
-			agents:      []agentKeyInfo{agent},
+			credentials: []credentialsKeyInfo{credentials},
 			wantEnv:     true,
 		},
 		{
-			name:        "agents present, auth explicitly false → env var absent",
+			name:        "credentials present, auth explicitly false → env var absent",
 			authEnabled: &falseBool,
-			agents:      []agentKeyInfo{agent},
+			credentials: []credentialsKeyInfo{credentials},
 			wantEnv:     false,
 		},
 		{
-			name:    "no agents → env var absent",
-			agents:  nil,
-			wantEnv: false,
+			name:        "no credentials → env var absent",
+			credentials: nil,
+			wantEnv:     false,
 		},
 	}
 
@@ -153,7 +153,7 @@ func TestBuildEnvVars_AuthEd25519Keys(t *testing.T) {
 			if tt.authEnabled != nil {
 				ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: tt.authEnabled}
 			}
-			envs := buildEnvVars(ls, "disabled", tt.agents)
+			envs := buildEnvVars(ls, "disabled", tt.credentials)
 			if tt.wantEnv {
 				assertEnv(t, envs, "AUTH_ED25519_KEYS", "/auth-keys/auth-keys.json")
 			} else {

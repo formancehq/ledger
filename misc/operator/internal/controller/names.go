@@ -55,12 +55,12 @@ func clusterSecretName(crName string) string {
 	return resourceName(crName) + "-cluster-secret"
 }
 
-// agentCanonicalSecretName returns the name of the canonical seed Secret for a
+// credentialsCanonicalSecretName returns the name of the canonical seed Secret for a
 // Credentials. This Secret lives in the operator's own namespace and
-// holds the sole source of truth for the agent's Ed25519 keypair; the
+// holds the sole source of truth for the credentials's Ed25519 keypair; the
 // per-target replicas are pure projections of its content.
-func agentCanonicalSecretName(agentName string) string {
-	return prefixedName(agentName) + "-agent-canonical"
+func credentialsCanonicalSecretName(credentialsName string) string {
+	return prefixedName(credentialsName) + "-credentials-canonical"
 }
 
 // podName returns the StatefulSet pod name for the given ordinal. The StatefulSet

@@ -39,11 +39,11 @@ func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
-// computeAuthKeysHash returns a SHA-256 hash of the sorted agent key info list.
+// computeAuthKeysHash returns a SHA-256 hash of the sorted credentials key info list.
 // This is used as a pod template annotation to trigger rolling updates when
 // the set of auth keys changes.
-func computeAuthKeysHash(agents []agentKeyInfo) string {
-	data, _ := json.Marshal(agents) //nolint:errchkjson // agents is always serializable
+func computeAuthKeysHash(credentials []credentialsKeyInfo) string {
+	data, _ := json.Marshal(credentials) //nolint:errchkjson // credentials is always serializable
 
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }

@@ -37,40 +37,40 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	agent, err := cmdutil.GetCredentials(ctx, crdClient, name)
+	credentials, err := cmdutil.GetCredentials(ctx, crdClient, name)
 	if err != nil {
-		return fmt.Errorf("getting agent %q: %w", name, err)
+		return fmt.Errorf("getting credentials %q: %w", name, err)
 	}
 
 	switch opts.OutputFormat() {
 	case "json":
-		return cmdutil.OutputJSON(agent)
+		return cmdutil.OutputJSON(credentials)
 	case "yaml":
-		return cmdutil.OutputYAML(agent)
+		return cmdutil.OutputYAML(credentials)
 	default:
-		return renderAgentDetails(agent)
+		return renderAgentDetails(credentials)
 	}
 }
 
-func renderAgentDetails(agent *ledgerv1alpha1.Credentials) error {
+func renderAgentDetails(credentials *ledgerv1alpha1.Credentials) error {
 	pterm.Println()
 
 	// Overview section
-	phase := cmdutil.PhaseColor(agentPhaseColor(agent.Status.Phase))
-	keyID := agent.Status.KeyID
+	phase := cmdutil.PhaseColor(credentialsPhaseColor(credentials.Status.Phase))
+	keyID := credentials.Status.KeyID
 	if keyID == "" {
 		keyID = pterm.Gray("<pending>")
 	}
 	secretRef := pterm.Gray("<none>")
-	if n := len(agent.Status.DistributedSecretRefs); n > 0 {
-		first := agent.Status.DistributedSecretRefs[0]
+	if n := len(credentials.Status.DistributedSecretRefs); n > 0 {
+		first := credentials.Status.DistributedSecretRefs[0]
 		if n == 1 {
 			secretRef = fmt.Sprintf("%s/%s", first.Namespace, first.Name)
 		} else {
 			secretRef = fmt.Sprintf("%s/%s (+%d more)", first.Namespace, first.Name, n-1)
 		}
 	}
-	scopes := strings.Join(agent.Spec.Scopes, ", ")
+	scopes := strings.Join(credentials.Spec.Scopes, ", ")
 	if scopes == "" {
 		scopes = pterm.Gray("<none>")
 	}
@@ -79,33 +79,33 @@ func renderAgentDetails(agent *ledgerv1alpha1.Credentials) error {
 	cmdutil.RenderTable(
 		[]string{"FIELD", "VALUE"},
 		[][]string{
-			{"Name", pterm.Cyan(agent.Name)},
+			{"Name", pterm.Cyan(credentials.Name)},
 			{"Phase", phase},
 			{"Key ID", keyID},
 			{"Secret", secretRef},
 			{"Scopes", scopes},
-			{"Matched Services", strconv.Itoa(len(agent.Status.MatchedServices))},
-			{"Age", cmdutil.FormatAge(time.Since(agent.CreationTimestamp.Time))},
+			{"Matched Clusters", strconv.Itoa(len(credentials.Status.MatchedClusters))},
+			{"Age", cmdutil.FormatAge(time.Since(credentials.CreationTimestamp.Time))},
 		},
 	)
 
-	// Matched services section
-	if len(agent.Status.MatchedServices) > 0 {
-		pterm.DefaultSection.Println("Matched Services")
-		svcRows := make([][]string, 0, len(agent.Status.MatchedServices))
-		for i := range agent.Status.MatchedServices {
-			ms := &agent.Status.MatchedServices[i]
+	// Matched clusters section
+	if len(credentials.Status.MatchedClusters) > 0 {
+		pterm.DefaultSection.Println("Matched Clusters")
+		svcRows := make([][]string, 0, len(credentials.Status.MatchedClusters))
+		for i := range credentials.Status.MatchedClusters {
+			ms := &credentials.Status.MatchedClusters[i]
 			svcRows = append(svcRows, []string{ms.Namespace, ms.Name})
 		}
 		cmdutil.RenderTable([]string{"NAMESPACE", "NAME"}, svcRows)
 	}
 
 	// Conditions section
-	if len(agent.Status.Conditions) > 0 {
+	if len(credentials.Status.Conditions) > 0 {
 		pterm.DefaultSection.Println("Conditions")
-		condRows := make([][]string, 0, len(agent.Status.Conditions))
-		for i := range agent.Status.Conditions {
-			c := &agent.Status.Conditions[i]
+		condRows := make([][]string, 0, len(credentials.Status.Conditions))
+		for i := range credentials.Status.Conditions {
+			c := &credentials.Status.Conditions[i]
 			condRows = append(condRows, []string{
 				c.Type,
 				string(c.Status),

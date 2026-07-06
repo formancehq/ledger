@@ -132,26 +132,26 @@ func ResolveCredentialsName(ctx context.Context, opts *Options, args []string) (
 
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching Credentials resources...")
 
-	agents, err := ListCredentials(ctx, crdClient)
+	credentials, err := ListCredentials(ctx, crdClient)
 	if err != nil {
 		spinner.Fail("Failed to list Credentials resources")
 
-		return "", fmt.Errorf("listing agents: %w", err)
+		return "", fmt.Errorf("listing credentials: %w", err)
 	}
 
 	_ = spinner.Stop()
 
-	if len(agents.Items) == 0 {
+	if len(credentials.Items) == 0 {
 		return "", errors.New("no Credentials resources found")
 	}
 
-	names := make([]string, len(agents.Items))
-	for i := range agents.Items {
-		names[i] = agents.Items[i].Name
+	names := make([]string, len(credentials.Items))
+	for i := range credentials.Items {
+		names[i] = credentials.Items[i].Name
 	}
 
 	if len(names) == 1 {
-		pterm.Info.Printfln("Using agent: %s", pterm.Cyan(names[0]))
+		pterm.Info.Printfln("Using credentials: %s", pterm.Cyan(names[0]))
 
 		return names[0], nil
 	}
@@ -161,7 +161,7 @@ func ResolveCredentialsName(ctx context.Context, opts *Options, args []string) (
 		WithDefaultText("Select a Credentials").
 		Show()
 	if err != nil {
-		return "", fmt.Errorf("failed to select agent: %w", err)
+		return "", fmt.Errorf("failed to select credentials: %w", err)
 	}
 
 	return selected, nil

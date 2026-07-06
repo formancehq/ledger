@@ -145,12 +145,12 @@ func ListLedgerBackupRuns(ctx context.Context, c client.Client, namespace, backu
 
 // GetCredentials fetches a single cluster-scoped Credentials CR.
 func GetCredentials(ctx context.Context, c client.Client, name string) (*ledgerv1alpha1.Credentials, error) {
-	var agent ledgerv1alpha1.Credentials
-	if err := c.Get(ctx, types.NamespacedName{Name: name}, &agent); err != nil {
+	var credentials ledgerv1alpha1.Credentials
+	if err := c.Get(ctx, types.NamespacedName{Name: name}, &credentials); err != nil {
 		return nil, err
 	}
 
-	return &agent, nil
+	return &credentials, nil
 }
 
 // ListCredentials lists all cluster-scoped Credentials CRs.

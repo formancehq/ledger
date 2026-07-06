@@ -44,9 +44,9 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		return fmt.Errorf("creating CRD client: %w", err)
 	}
 
-	agent, err := cmdutil.GetCredentials(ctx, crdClient, name)
+	credentials, err := cmdutil.GetCredentials(ctx, crdClient, name)
 	if err != nil {
-		return fmt.Errorf("getting agent %q: %w", name, err)
+		return fmt.Errorf("getting credentials %q: %w", name, err)
 	}
 
 	if !f.yes {
@@ -54,12 +54,12 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		rows := [][]string{
 			{"Name", pterm.Cyan(name)},
 			{"Scope", "Cluster"},
-			{"Key ID", agent.Status.KeyID},
+			{"Key ID", credentials.Status.KeyID},
 		}
-		if len(agent.Status.MatchedServices) > 0 {
+		if len(credentials.Status.MatchedClusters) > 0 {
 			rows = append(rows, []string{
-				"Matched Services",
-				pterm.Yellow(fmt.Sprintf("%d Cluster(s)", len(agent.Status.MatchedServices))),
+				"Matched Clusters",
+				pterm.Yellow(fmt.Sprintf("%d Cluster(s)", len(credentials.Status.MatchedClusters))),
 			})
 		}
 		cmdutil.RenderBoxedTable(rows)
@@ -83,10 +83,10 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 
 	spinner, _ := pterm.DefaultSpinner.Start("Deleting Credentials...")
 
-	if err := crdClient.Delete(ctx, agent); err != nil {
+	if err := crdClient.Delete(ctx, credentials); err != nil {
 		spinner.Fail("Failed to delete Credentials")
 
-		return fmt.Errorf("deleting agent %q: %w", name, err)
+		return fmt.Errorf("deleting credentials %q: %w", name, err)
 	}
 
 	spinner.Success(fmt.Sprintf("Credentials %s deleted", pterm.Cyan(name)))

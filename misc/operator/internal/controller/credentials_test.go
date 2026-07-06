@@ -36,13 +36,13 @@ func TestGenerateEd25519KeyPair(t *testing.T) {
 func TestComputeAuthKeysHash_Deterministic(t *testing.T) {
 	t.Parallel()
 
-	agents := []agentKeyInfo{
-		{ConfigMapPrefix: "agent", AgentName: "agent-a", KeyID: "abc123", PublicKey: "deadbeef", Scopes: []string{"read"}},
-		{ConfigMapPrefix: "agent", AgentName: "agent-b", KeyID: "def456", PublicKey: "cafebabe", Scopes: []string{"write"}},
+	credentials := []credentialsKeyInfo{
+		{ConfigMapPrefix: "credentials", CredentialsName: "credentials-a", KeyID: "abc123", PublicKey: "deadbeef", Scopes: []string{"read"}},
+		{ConfigMapPrefix: "credentials", CredentialsName: "credentials-b", KeyID: "def456", PublicKey: "cafebabe", Scopes: []string{"write"}},
 	}
 
-	hash1 := computeAuthKeysHash(agents)
-	hash2 := computeAuthKeysHash(agents)
+	hash1 := computeAuthKeysHash(credentials)
+	hash2 := computeAuthKeysHash(credentials)
 
 	assert.Equal(t, hash1, hash2, "same input must produce same hash")
 	assert.Len(t, hash1, 64, "SHA-256 hex digest must be 64 chars")
@@ -51,15 +51,15 @@ func TestComputeAuthKeysHash_Deterministic(t *testing.T) {
 func TestComputeAuthKeysHash_DifferentInput(t *testing.T) {
 	t.Parallel()
 
-	agents1 := []agentKeyInfo{
-		{ConfigMapPrefix: "agent", AgentName: "agent-a", KeyID: "abc123", PublicKey: "deadbeef", Scopes: []string{"read"}},
+	credentials1 := []credentialsKeyInfo{
+		{ConfigMapPrefix: "credentials", CredentialsName: "credentials-a", KeyID: "abc123", PublicKey: "deadbeef", Scopes: []string{"read"}},
 	}
-	agents2 := []agentKeyInfo{
-		{ConfigMapPrefix: "agent", AgentName: "agent-b", KeyID: "def456", PublicKey: "cafebabe", Scopes: []string{"write"}},
+	credentials2 := []credentialsKeyInfo{
+		{ConfigMapPrefix: "credentials", CredentialsName: "credentials-b", KeyID: "def456", PublicKey: "cafebabe", Scopes: []string{"write"}},
 	}
 
-	hash1 := computeAuthKeysHash(agents1)
-	hash2 := computeAuthKeysHash(agents2)
+	hash1 := computeAuthKeysHash(credentials1)
+	hash2 := computeAuthKeysHash(credentials2)
 
 	assert.NotEqual(t, hash1, hash2, "different inputs must produce different hashes")
 }

@@ -29,7 +29,7 @@ import (
 // StatefulSet status churn.
 const volumeBindRequeueInterval = 10 * time.Second
 
-func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, agents []agentKeyInfo) (ctrl.Result, error) {
+func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	name := resourceName(ledger.Name)
 
@@ -84,7 +84,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 			ledger.Spec.Replicas = &previousReplicas
 			_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 				sts.Labels = commonLabels(ledger)
-				desired := buildStatefulSetSpec(ledger, specHash, agents, targetTLSMode)
+				desired := buildStatefulSetSpec(ledger, specHash, credentials, targetTLSMode)
 
 				if sts.CreationTimestamp.IsZero() {
 					sts.Spec = desired
@@ -124,7 +124,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 		},
 	}
 
-	desired := buildStatefulSetSpec(ledger, specHash, agents, targetTLSMode)
+	desired := buildStatefulSetSpec(ledger, specHash, credentials, targetTLSMode)
 
 	// Check if VolumeClaimTemplates changed on an existing StatefulSet.
 	// VCTs are immutable — we must delete-recreate with orphan propagation.
@@ -203,7 +203,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 	return ctrl.Result{}, nil
 }
 
-func buildStatefulSetSpec(ledger *ledgerv1alpha1.Cluster, specHash string, agents []agentKeyInfo, targetTLSMode string) appsv1.StatefulSetSpec {
+func buildStatefulSetSpec(ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo, targetTLSMode string) appsv1.StatefulSetSpec {
 	replicas := int32(3)
 	if ledger.Spec.Replicas != nil {
 		replicas = *ledger.Spec.Replicas
@@ -229,7 +229,7 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.Cluster, specHash string, agent
 			MatchLabels: selectorLabels(ledger),
 		},
 		PersistentVolumeClaimRetentionPolicy: buildRetentionPolicy(ledger),
-		Template:                             buildPodTemplate(ledger, specHash, agents, targetTLSMode),
+		Template:                             buildPodTemplate(ledger, specHash, credentials, targetTLSMode),
 		VolumeClaimTemplates:                 buildVolumeClaimTemplates(ledger),
 	}
 
@@ -256,15 +256,15 @@ func buildRetentionPolicy(ledger *ledgerv1alpha1.Cluster) *appsv1.StatefulSetPer
 	}
 }
 
-func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, agents []agentKeyInfo, targetTLSMode string) corev1.PodTemplateSpec {
+func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo, targetTLSMode string) corev1.PodTemplateSpec {
 	spec := &ledger.Spec
 
 	// Pod annotations with spec hash for rolling updates
 	podAnnotations := make(map[string]string)
 	maps.Copy(podAnnotations, ledger.Spec.PodAnnotations)
 	podAnnotations[annotationSpecHash] = specHash
-	if len(agents) > 0 {
-		podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(agents)
+	if len(credentials) > 0 {
+		podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(credentials)
 	}
 
 	// Container ports
@@ -361,7 +361,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, agents []
 		})
 	}
 
-	if len(agents) > 0 {
+	if len(credentials) > 0 {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "auth-keys",
 			MountPath: "/auth-keys",
@@ -379,7 +379,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, agents []
 		})
 	}
 
-	envVars := buildEnvVars(ledger, targetTLSMode, agents)
+	envVars := buildEnvVars(ledger, targetTLSMode, credentials)
 	// Inject CLUSTER_SECRET only when TLS is at least partially active:
 	// the secret is a static bearer token and must never travel in
 	// plaintext. During a TLS toggle, the secret appears together with the

@@ -25,7 +25,7 @@ func newCreateCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create [name]",
 		Short: "Create a new Credentials resource",
-		Long:  "Create a new Credentials.\nExample: kubectl-ledger agents create my-agent --set scopes=read,write --set selector.matchLabels.env=prod",
+		Long:  "Create a new Credentials.\nExample: kubectl-ledger credentials create my-creds --set scopes=read,write --set selector.matchLabels.env=prod",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, opts, setValues, dryRun, args)
@@ -39,7 +39,7 @@ func newCreateCommand(opts *cmdutil.Options) *cobra.Command {
 }
 
 func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dryRun bool, args []string) error {
-	name, err := resolveAgentName(args)
+	name, err := resolveCredentialsName(args)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		return err
 	}
 
-	agent := &ledgerv1alpha1.Credentials{
+	credentials := &ledgerv1alpha1.Credentials{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "ledger.formance.com/v1alpha1",
 			Kind:       "Credentials",
@@ -59,7 +59,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		},
 	}
 
-	if err := flagbind.ApplyToStruct(&agent.Spec, overrides); err != nil {
+	if err := flagbind.ApplyToStruct(&credentials.Spec, overrides); err != nil {
 		return fmt.Errorf("applying spec: %w", err)
 	}
 
@@ -70,10 +70,10 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		{"Name", pterm.Cyan(name)},
 		{"Scope", "Cluster"},
 	}
-	if len(agent.Spec.Scopes) > 0 {
-		previewRows = append(previewRows, []string{"Scopes", strings.Join(agent.Spec.Scopes, ", ")})
+	if len(credentials.Spec.Scopes) > 0 {
+		previewRows = append(previewRows, []string{"Scopes", strings.Join(credentials.Spec.Scopes, ", ")})
 	}
-	if agent.Spec.God {
+	if credentials.Spec.God {
 		previewRows = append(previewRows, []string{"God Mode", pterm.Yellow("enabled")})
 	}
 	previewRows = append(previewRows, flagbind.PreviewRows(overrides, "", "scopes", "god")...)
@@ -81,7 +81,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 	pterm.Println()
 
 	if dryRun {
-		b, err := yaml.Marshal(agent)
+		b, err := yaml.Marshal(credentials)
 		if err != nil {
 			return fmt.Errorf("marshaling YAML: %w", err)
 		}
@@ -109,10 +109,10 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 
 	spinner, _ := pterm.DefaultSpinner.Start("Creating Credentials...")
 
-	if err := crdClient.Create(cmd.Context(), agent); err != nil {
+	if err := crdClient.Create(cmd.Context(), credentials); err != nil {
 		spinner.Fail("Failed to create Credentials")
 
-		return fmt.Errorf("creating agent %q: %w", name, err)
+		return fmt.Errorf("creating credentials %q: %w", name, err)
 	}
 
 	spinner.Success(fmt.Sprintf("Credentials %s created", pterm.Cyan(name)))
@@ -120,7 +120,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 	return nil
 }
 
-func resolveAgentName(args []string) (string, error) {
+func resolveCredentialsName(args []string) (string, error) {
 	if len(args) > 0 {
 		return args[0], nil
 	}

@@ -34,34 +34,34 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching Credentials resources...")
 
-	agents, err := cmdutil.ListCredentials(ctx, crdClient)
+	credentials, err := cmdutil.ListCredentials(ctx, crdClient)
 	if err != nil {
 		spinner.Fail("Failed to list Credentials resources")
 
-		return fmt.Errorf("listing agents: %w", err)
+		return fmt.Errorf("listing credentials: %w", err)
 	}
 
 	_ = spinner.Stop()
 
 	switch opts.OutputFormat() {
 	case "json":
-		return cmdutil.OutputJSON(agents)
+		return cmdutil.OutputJSON(credentials)
 	case "yaml":
-		return cmdutil.OutputYAML(agents)
+		return cmdutil.OutputYAML(credentials)
 	default:
-		return renderAgentListTable(agents)
+		return renderCredentialsListTable(credentials)
 	}
 }
 
-func renderAgentListTable(agents *ledgerv1alpha1.CredentialsList) error {
-	header := []string{"NAME", "KEY ID", "SCOPES", "MATCHED SERVICES", "PHASE", "AGE"}
+func renderCredentialsListTable(credentials *ledgerv1alpha1.CredentialsList) error {
+	header := []string{"NAME", "KEY ID", "SCOPES", "MATCHED CLUSTERS", "PHASE", "AGE"}
 
-	rows := make([][]string, 0, len(agents.Items))
-	for i := range agents.Items {
-		a := &agents.Items[i]
+	rows := make([][]string, 0, len(credentials.Items))
+	for i := range credentials.Items {
+		a := &credentials.Items[i]
 		scopes := strings.Join(a.Spec.Scopes, ", ")
-		matched := strconv.Itoa(len(a.Status.MatchedServices))
-		phase := cmdutil.PhaseColor(agentPhaseColor(a.Status.Phase))
+		matched := strconv.Itoa(len(a.Status.MatchedClusters))
+		phase := cmdutil.PhaseColor(credentialsPhaseColor(a.Status.Phase))
 		age := cmdutil.FormatAge(time.Since(a.CreationTimestamp.Time))
 		keyID := a.Status.KeyID
 		if keyID == "" {
@@ -80,7 +80,7 @@ func renderAgentListTable(agents *ledgerv1alpha1.CredentialsList) error {
 
 	if len(rows) == 0 {
 		pterm.Info.Println("No Credentials resources found.")
-		pterm.Println(pterm.Gray("Create one with: kubectl ledger agents create"))
+		pterm.Println(pterm.Gray("Create one with: kubectl ledger credentials create"))
 
 		return nil
 	}
@@ -91,7 +91,7 @@ func renderAgentListTable(agents *ledgerv1alpha1.CredentialsList) error {
 	return nil
 }
 
-func agentPhaseColor(phase string) string {
+func credentialsPhaseColor(phase string) string {
 	switch phase {
 	case "Ready":
 		return "Running" // Reuse PhaseColor's "Running" for green

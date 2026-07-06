@@ -11,7 +11,7 @@ The Ledger Operator manages `Cluster` custom resources to automate the lifecycle
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
 - **Cold storage** archival to S3-compatible backends
-- **Agent credentials** for application-level access control
+- **Credentials** for application-level access control
 
 ## Custom Resources
 
@@ -222,9 +222,9 @@ kubectl ledger portforward <name>         # Port-forward to a pod
 kubectl ledger config view <name>         # View configuration
 kubectl ledger config edit <name>         # Edit configuration
 kubectl ledger explain [field.path]       # Explore the CRD schema
-kubectl ledger agents list                # List cluster agents
-kubectl ledger agents create <name>       # Create agent with API key
-kubectl ledger agents get-key <name>      # Retrieve agent API key
+kubectl ledger credentials list           # List cluster credentials
+kubectl ledger credentials create <name>  # Create credentials with API key
+kubectl ledger credentials get-key <name> # Retrieve credentials API key
 kubectl ledger version                    # Print version info
 ```
 

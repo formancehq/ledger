@@ -223,7 +223,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Reconcile auth keys from Credentials (before StatefulSet).
-	agents, err := r.reconcileAuthKeys(ctx, ledger)
+	credentials, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
 		logger.Error(err, "failed to reconcile auth keys")
 
@@ -259,8 +259,8 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// StatefulSet needs the specHash and agent info
-	result, err := r.reconcileStatefulSet(ctx, ledger, specHash, agents)
+	// StatefulSet needs the specHash and credentials info
+	result, err := r.reconcileStatefulSet(ctx, ledger, specHash, credentials)
 	if err != nil {
 		logger.Error(err, "failed to reconcile StatefulSet")
 

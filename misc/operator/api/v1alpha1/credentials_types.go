@@ -11,7 +11,7 @@ import (
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Credentials is a cluster-scoped resource that describes an agent with
+// Credentials is a cluster-scoped resource that describes an credentials with
 // Ed25519 authentication keys. The operator generates the keypair, stores the seed
 // in a Secret, and injects the public key into matching Cluster clusters.
 type Credentials struct {
@@ -34,20 +34,20 @@ type CredentialsList struct {
 
 // CredentialsSpec defines the desired state of a Credentials.
 type CredentialsSpec struct {
-	// Scopes is the list of authorization scopes this agent is allowed (e.g. "read", "write").
+	// Scopes is the list of authorization scopes this credentials is allowed (e.g. "read", "write").
 	// +optional
 	Scopes []string `json:"scopes,omitempty"`
 
-	// God enables god mode for this agent. God-mode agents receive all scopes
+	// God enables god mode for this credentials. God-mode credentials receive all scopes
 	// regardless of the Scopes field and can bypass scope checks entirely.
 	// +optional
 	God bool `json:"god,omitempty"`
 
-	// Selector selects which Cluster resources this agent applies to.
+	// Selector selects which Cluster resources this credentials applies to.
 	Selector metav1.LabelSelector `json:"selector"`
 
 	// AdditionalNamespaces is an optional list of extra namespaces where the
-	// agent's Secret must also be created, in addition to the namespaces of
+	// credentials's Secret must also be created, in addition to the namespaces of
 	// the Clusters matched by Selector.
 	// +optional
 	AdditionalNamespaces []string `json:"additionalNamespaces,omitempty"`
@@ -63,15 +63,15 @@ type CredentialsStatus struct {
 	// +optional
 	KeyID string `json:"keyID,omitempty"`
 
-	// DistributedSecretRefs lists every namespace where the agent's Secret has
+	// DistributedSecretRefs lists every namespace where the credentials's Secret has
 	// been written. All replicas carry identical data; consumers can read any
 	// entry — typically the first.
 	// +optional
 	DistributedSecretRefs []SecretReference `json:"distributedSecretRefs,omitempty"`
 
-	// MatchedServices lists the Cluster resources matched by the selector.
+	// MatchedClusters lists the Cluster resources matched by the selector.
 	// +optional
-	MatchedServices []MatchedService `json:"matchedServices,omitempty"`
+	MatchedClusters []MatchedCluster `json:"matchedClusters,omitempty"`
 
 	// ObservedGeneration is the generation last observed by the controller.
 	// +optional
@@ -91,8 +91,8 @@ type SecretReference struct {
 	Name string `json:"name"`
 }
 
-// MatchedService identifies a namespaced Cluster matched by the agent selector.
-type MatchedService struct {
+// MatchedCluster identifies a namespaced Cluster matched by the credentials selector.
+type MatchedCluster struct {
 	// Namespace of the Cluster.
 	Namespace string `json:"namespace"`
 

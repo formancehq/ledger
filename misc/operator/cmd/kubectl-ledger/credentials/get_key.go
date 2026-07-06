@@ -25,7 +25,7 @@ func newGetKeyCommand(opts *cmdutil.Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "get-key [name]",
-		Short: "Retrieve the Ed25519 key material from an agent's Secret",
+		Short: "Retrieve the Ed25519 key material from an credentials's Secret",
 		Long: `Retrieves the Ed25519 keypair (seed and public key) from the Secret
 associated with a Credentials. By default, displays key-id, public key,
 and seed in a formatted table.
@@ -61,17 +61,17 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	agent, err := cmdutil.GetCredentials(ctx, crdClient, name)
+	credentials, err := cmdutil.GetCredentials(ctx, crdClient, name)
 	if err != nil {
-		return fmt.Errorf("getting agent %q: %w", name, err)
+		return fmt.Errorf("getting credentials %q: %w", name, err)
 	}
 
-	if len(agent.Status.DistributedSecretRefs) == 0 {
-		return fmt.Errorf("agent %q does not have a distributed secret yet (phase: %s)", name, agent.Status.Phase)
+	if len(credentials.Status.DistributedSecretRefs) == 0 {
+		return fmt.Errorf("credentials %q does not have a distributed secret yet (phase: %s)", name, credentials.Status.Phase)
 	}
 
 	// Read the Secret. All replicas carry identical data; the first entry is canonical.
-	ref := agent.Status.DistributedSecretRefs[0]
+	ref := credentials.Status.DistributedSecretRefs[0]
 	secret := &corev1.Secret{}
 	secretKey := types.NamespacedName{
 		Namespace: ref.Namespace,
@@ -101,9 +101,9 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 		}{
 			SigningKey: seedHex,
 			KeyID:      keyID,
-			Scopes:     agent.Spec.Scopes,
+			Scopes:     credentials.Spec.Scopes,
 			Subject:    name,
-			God:        agent.Spec.God,
+			God:        credentials.Spec.God,
 		}
 
 		if f.bundle == "-" {
@@ -159,7 +159,7 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 
 	// Default: show formatted table.
 	pterm.Println()
-	pterm.DefaultSection.Printfln("Agent Key: %s", pterm.Cyan(name))
+	pterm.DefaultSection.Printfln("Credentials Key: %s", pterm.Cyan(name))
 	cmdutil.RenderBoxedTable([][]string{
 		{"Key ID", keyID},
 		{"Public Key", pubKeyHex},

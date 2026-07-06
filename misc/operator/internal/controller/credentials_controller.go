@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	agentFinalizer = "ledger.formance.com/agent-keys"
-	agentNameLabel = "ledger.formance.com/agent-name"
+	credentialsFinalizer = "ledger.formance.com/credentials-keys"
+	credentialsNameLabel = "ledger.formance.com/credentials-name"
 )
 
 // CredentialsReconciler reconciles a Credentials object.
@@ -60,56 +60,56 @@ type CredentialsReconciler struct {
 func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	agent := &ledgerv1alpha1.Credentials{}
-	if err := r.Get(ctx, req.NamespacedName, agent); err != nil {
+	credentials := &ledgerv1alpha1.Credentials{}
+	if err := r.Get(ctx, req.NamespacedName, credentials); err != nil {
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
 
 	// Handle deletion with finalizer.
-	if !agent.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, agent)
+	if !credentials.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, credentials)
 	}
 
 	// Ensure finalizer is present.
-	if !controllerutil.ContainsFinalizer(agent, agentFinalizer) {
-		controllerutil.AddFinalizer(agent, agentFinalizer)
-		if err := r.Update(ctx, agent); err != nil {
+	if !controllerutil.ContainsFinalizer(credentials, credentialsFinalizer) {
+		controllerutil.AddFinalizer(credentials, credentialsFinalizer)
+		if err := r.Update(ctx, credentials); err != nil {
 			return ctrl.Result{}, fmt.Errorf("adding finalizer: %w", err)
 		}
 	}
 
-	// Resolve matched services.
-	matchedServices, err := r.resolveMatchedServices(ctx, agent)
+	// Resolve matched clusters.
+	matchedClusters, err := r.resolveMatchedClusters(ctx, credentials)
 	if err != nil {
-		logger.Error(err, "failed to resolve matched services")
-		meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
+		logger.Error(err, "failed to resolve matched clusters")
+		meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
 			Type:               "SelectorResolved",
 			Status:             metav1.ConditionFalse,
 			Reason:             "SelectorFailed",
 			Message:            err.Error(),
-			ObservedGeneration: agent.Generation,
+			ObservedGeneration: credentials.Generation,
 		})
-		agent.Status.Phase = "Error"
-		_ = r.Status().Update(ctx, agent)
+		credentials.Status.Phase = "Error"
+		_ = r.Status().Update(ctx, credentials)
 
-		return ctrl.Result{}, fmt.Errorf("resolving matched services: %w", err)
+		return ctrl.Result{}, fmt.Errorf("resolving matched clusters: %w", err)
 	}
 
-	meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
+	meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
 		Type:               "SelectorResolved",
 		Status:             metav1.ConditionTrue,
 		Reason:             "Resolved",
-		Message:            fmt.Sprintf("matched %d service(s)", len(matchedServices)),
-		ObservedGeneration: agent.Generation,
+		Message:            fmt.Sprintf("matched %d service(s)", len(matchedClusters)),
+		ObservedGeneration: credentials.Generation,
 	})
 
-	// Compute the desired target namespaces (matched services + additional).
-	desiredNamespaces := computeDesiredNamespaces(matchedServices, agent.Spec.AdditionalNamespaces)
+	// Compute the desired target namespaces (matched clusters + additional).
+	desiredNamespaces := computeDesiredNamespaces(matchedClusters, credentials.Spec.AdditionalNamespaces)
 
 	// List existing replicas across all namespaces (canonical excluded via label filter).
-	existingReplicas, err := r.listAgentReplicaSecrets(ctx, agent.Name)
+	existingReplicas, err := r.listCredentialsReplicaSecrets(ctx, credentials.Name)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("listing agent replica secrets: %w", err)
+		return ctrl.Result{}, fmt.Errorf("listing credentials replica secrets: %w", err)
 	}
 
 	// Resolve canonical seed material. The canonical Secret lives in the
@@ -126,17 +126,17 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		refs          = make([]ledgerv1alpha1.SecretReference, 0, len(desiredNamespaces))
 	)
 	if len(desiredNamespaces) > 0 || len(existingReplicas) > 0 {
-		canonicalData, err = r.ensureCanonicalSecret(ctx, agent, existingReplicas)
+		canonicalData, err = r.ensureCanonicalSecret(ctx, credentials, existingReplicas)
 		if err != nil {
-			meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
+			meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
 				Type:               "Ready",
 				Status:             metav1.ConditionFalse,
 				Reason:             "CanonicalFailed",
 				Message:            err.Error(),
-				ObservedGeneration: agent.Generation,
+				ObservedGeneration: credentials.Generation,
 			})
-			agent.Status.Phase = "Error"
-			_ = r.Status().Update(ctx, agent)
+			credentials.Status.Phase = "Error"
+			_ = r.Status().Update(ctx, credentials)
 
 			return ctrl.Result{}, fmt.Errorf("ensuring canonical secret: %w", err)
 		}
@@ -144,22 +144,22 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if len(desiredNamespaces) > 0 {
 		for _, ns := range desiredNamespaces {
-			if err := r.ensureReplica(ctx, agent, ns, canonicalData); err != nil {
-				meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
+			if err := r.ensureReplica(ctx, credentials, ns, canonicalData); err != nil {
+				meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
 					Type:               "Ready",
 					Status:             metav1.ConditionFalse,
 					Reason:             "SecretFailed",
 					Message:            err.Error(),
-					ObservedGeneration: agent.Generation,
+					ObservedGeneration: credentials.Generation,
 				})
-				agent.Status.Phase = "Error"
-				_ = r.Status().Update(ctx, agent)
+				credentials.Status.Phase = "Error"
+				_ = r.Status().Update(ctx, credentials)
 
 				return ctrl.Result{}, fmt.Errorf("ensuring secret in %q: %w", ns, err)
 			}
 			refs = append(refs, ledgerv1alpha1.SecretReference{
 				Namespace: ns,
-				Name:      agentSecretName(agent),
+				Name:      credentialsSecretName(credentials),
 			})
 		}
 	}
@@ -181,36 +181,36 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, fmt.Errorf("deleting orphan secret in %q: %w", secret.Namespace, err)
 		}
-		logger.Info("deleted orphan agent replica secret", "namespace", secret.Namespace, "name", secret.Name)
+		logger.Info("deleted orphan credentials replica secret", "namespace", secret.Namespace, "name", secret.Name)
 	}
 
-	agent.Status.MatchedServices = matchedServices
-	agent.Status.DistributedSecretRefs = refs
-	agent.Status.ObservedGeneration = agent.Generation
+	credentials.Status.MatchedClusters = matchedClusters
+	credentials.Status.DistributedSecretRefs = refs
+	credentials.Status.ObservedGeneration = credentials.Generation
 
 	if len(refs) == 0 {
-		agent.Status.KeyID = ""
-		agent.Status.Phase = "Pending"
-		meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
+		credentials.Status.KeyID = ""
+		credentials.Status.Phase = "Pending"
+		meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
 			Type:               "Ready",
 			Status:             metav1.ConditionFalse,
 			Reason:             "NoTargets",
 			Message:            "no matched Clusters or additional namespaces; canonical seed (if any) is preserved for later reuse",
-			ObservedGeneration: agent.Generation,
+			ObservedGeneration: credentials.Generation,
 		})
 	} else {
-		agent.Status.KeyID = string(canonicalData["key-id"])
-		agent.Status.Phase = "Ready"
-		meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
+		credentials.Status.KeyID = string(canonicalData["key-id"])
+		credentials.Status.Phase = "Ready"
+		meta.SetStatusCondition(&credentials.Status.Conditions, metav1.Condition{
 			Type:               "Ready",
 			Status:             metav1.ConditionTrue,
 			Reason:             "KeyPairReady",
 			Message:            fmt.Sprintf("Ed25519 keypair distributed to %d namespace(s)", len(refs)),
-			ObservedGeneration: agent.Generation,
+			ObservedGeneration: credentials.Generation,
 		})
 	}
 
-	if err := r.Status().Update(ctx, agent); err != nil {
+	if err := r.Status().Update(ctx, credentials); err != nil {
 		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
 	}
 
@@ -218,36 +218,36 @@ func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 // handleDeletion removes the canonical Secret and every replica of the
-// agent's Secret, then drops the finalizer.
-func (r *CredentialsReconciler) handleDeletion(ctx context.Context, agent *ledgerv1alpha1.Credentials) (ctrl.Result, error) {
+// credentials's Secret, then drops the finalizer.
+func (r *CredentialsReconciler) handleDeletion(ctx context.Context, credentials *ledgerv1alpha1.Credentials) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	if controllerutil.ContainsFinalizer(agent, agentFinalizer) {
-		replicas, err := r.listAgentReplicaSecrets(ctx, agent.Name)
+	if controllerutil.ContainsFinalizer(credentials, credentialsFinalizer) {
+		replicas, err := r.listCredentialsReplicaSecrets(ctx, credentials.Name)
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("listing agent secrets for deletion: %w", err)
+			return ctrl.Result{}, fmt.Errorf("listing credentials secrets for deletion: %w", err)
 		}
 		for i := range replicas {
 			secret := &replicas[i]
 			if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
-				return ctrl.Result{}, fmt.Errorf("deleting agent replica secret in %q: %w", secret.Namespace, err)
+				return ctrl.Result{}, fmt.Errorf("deleting credentials replica secret in %q: %w", secret.Namespace, err)
 			}
-			logger.Info("deleted agent replica secret", "namespace", secret.Namespace, "name", secret.Name)
+			logger.Info("deleted credentials replica secret", "namespace", secret.Namespace, "name", secret.Name)
 		}
 
 		canonical := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      agentCanonicalSecretName(agent.Name),
+				Name:      credentialsCanonicalSecretName(credentials.Name),
 				Namespace: r.OperatorNamespace,
 			},
 		}
 		if err := r.Delete(ctx, canonical); err != nil && !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, fmt.Errorf("deleting canonical secret: %w", err)
 		}
-		logger.Info("deleted agent canonical secret", "namespace", r.OperatorNamespace, "name", canonical.Name)
+		logger.Info("deleted credentials canonical secret", "namespace", r.OperatorNamespace, "name", canonical.Name)
 
-		controllerutil.RemoveFinalizer(agent, agentFinalizer)
-		if err := r.Update(ctx, agent); err != nil {
+		controllerutil.RemoveFinalizer(credentials, credentialsFinalizer)
+		if err := r.Update(ctx, credentials); err != nil {
 			return ctrl.Result{}, fmt.Errorf("removing finalizer: %w", err)
 		}
 	}
@@ -255,10 +255,10 @@ func (r *CredentialsReconciler) handleDeletion(ctx context.Context, agent *ledge
 	return ctrl.Result{}, nil
 }
 
-// resolveMatchedServices lists Clusters across all namespaces and returns
-// those matching the agent's label selector.
-func (r *CredentialsReconciler) resolveMatchedServices(ctx context.Context, agent *ledgerv1alpha1.Credentials) ([]ledgerv1alpha1.MatchedService, error) {
-	selector, err := metav1.LabelSelectorAsSelector(&agent.Spec.Selector)
+// resolveMatchedClusters lists Clusters across all namespaces and returns
+// those matching the credentials's label selector.
+func (r *CredentialsReconciler) resolveMatchedClusters(ctx context.Context, credentials *ledgerv1alpha1.Credentials) ([]ledgerv1alpha1.MatchedCluster, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&credentials.Spec.Selector)
 	if err != nil {
 		return nil, fmt.Errorf("parsing label selector: %w", err)
 	}
@@ -268,12 +268,12 @@ func (r *CredentialsReconciler) resolveMatchedServices(ctx context.Context, agen
 		return nil, fmt.Errorf("listing Clusters: %w", err)
 	}
 
-	matched := make([]ledgerv1alpha1.MatchedService, 0, len(clusters.Items))
+	matched := make([]ledgerv1alpha1.MatchedCluster, 0, len(clusters.Items))
 	for i := range clusters.Items {
 		if !selector.Matches(labels.Set(clusters.Items[i].Labels)) {
 			continue
 		}
-		matched = append(matched, ledgerv1alpha1.MatchedService{
+		matched = append(matched, ledgerv1alpha1.MatchedCluster{
 			Namespace: clusters.Items[i].Namespace,
 			Name:      clusters.Items[i].Name,
 		})
@@ -282,21 +282,21 @@ func (r *CredentialsReconciler) resolveMatchedServices(ctx context.Context, agen
 	return matched, nil
 }
 
-// listAgentReplicaSecrets returns every replica Secret belonging to the given
-// agent, across all namespaces. The canonical Secret is identified by
+// listCredentialsReplicaSecrets returns every replica Secret belonging to the given
+// credentials, across all namespaces. The canonical Secret is identified by
 // name + namespace and excluded from the result — filtering by name (rather
 // than by an additional label) means Secrets created by pre-canonical
 // versions of the operator are still discovered, so upgrade adopts them
 // instead of orphaning them.
-func (r *CredentialsReconciler) listAgentReplicaSecrets(ctx context.Context, agentName string) ([]corev1.Secret, error) {
+func (r *CredentialsReconciler) listCredentialsReplicaSecrets(ctx context.Context, credentialsName string) ([]corev1.Secret, error) {
 	var secrets corev1.SecretList
 	if err := r.List(ctx, &secrets, client.MatchingLabels{
-		agentNameLabel: agentName,
+		credentialsNameLabel: credentialsName,
 	}); err != nil {
 		return nil, err
 	}
 
-	canonicalName := agentCanonicalSecretName(agentName)
+	canonicalName := credentialsCanonicalSecretName(credentialsName)
 
 	filtered := secrets.Items[:0]
 	for _, s := range secrets.Items {
@@ -310,10 +310,10 @@ func (r *CredentialsReconciler) listAgentReplicaSecrets(ctx context.Context, age
 }
 
 // ensureCanonicalSecret creates the canonical seed Secret in the operator's
-// namespace on first call for the agent, and returns its data on every
+// namespace on first call for the credentials, and returns its data on every
 // subsequent call. The seed is generated exactly once and the Secret is
 // never updated after creation — the canonical value is stable across the
-// agent's lifetime, independent of the manager cache configuration.
+// credentials's lifetime, independent of the manager cache configuration.
 //
 // Reads go through r.APIReader (uncached) to avoid forcing the caller to
 // widen --watch-namespace scope for every controller in the manager just so
@@ -325,7 +325,7 @@ func (r *CredentialsReconciler) listAgentReplicaSecrets(ctx context.Context, age
 // for the first time, we adopt the seed from one of them instead of
 // generating fresh material — otherwise upgrading the operator would
 // silently invalidate every bundle already handed out.
-func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, agent *ledgerv1alpha1.Credentials, existingReplicas []corev1.Secret) (map[string][]byte, error) {
+func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, credentials *ledgerv1alpha1.Credentials, existingReplicas []corev1.Secret) (map[string][]byte, error) {
 	if r.OperatorNamespace == "" {
 		return nil, errors.New("operator namespace not configured")
 	}
@@ -334,7 +334,7 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, agent
 	}
 
 	key := types.NamespacedName{
-		Name:      agentCanonicalSecretName(agent.Name),
+		Name:      credentialsCanonicalSecretName(credentials.Name),
 		Namespace: r.OperatorNamespace,
 	}
 
@@ -357,7 +357,7 @@ func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, agent
 			Name:      key.Name,
 			Namespace: key.Namespace,
 			Labels: map[string]string{
-				agentNameLabel: agent.Name,
+				credentialsNameLabel: credentials.Name,
 			},
 		},
 	}
@@ -425,12 +425,12 @@ func adoptSeedFromReplica(replicas []corev1.Secret) map[string][]byte {
 	}
 }
 
-// ensureReplica creates or updates the agent's replica Secret in the given
+// ensureReplica creates or updates the credentials's replica Secret in the given
 // namespace with a projection of the canonical data.
-func (r *CredentialsReconciler) ensureReplica(ctx context.Context, agent *ledgerv1alpha1.Credentials, namespace string, data map[string][]byte) error {
+func (r *CredentialsReconciler) ensureReplica(ctx context.Context, credentials *ledgerv1alpha1.Credentials, namespace string, data map[string][]byte) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      agentSecretName(agent),
+			Name:      credentialsSecretName(credentials),
 			Namespace: namespace,
 		},
 	}
@@ -439,7 +439,7 @@ func (r *CredentialsReconciler) ensureReplica(ctx context.Context, agent *ledger
 		if secret.Labels == nil {
 			secret.Labels = make(map[string]string, 1)
 		}
-		secret.Labels[agentNameLabel] = agent.Name
+		secret.Labels[credentialsNameLabel] = credentials.Name
 		secret.Data = data
 
 		return nil
@@ -449,8 +449,8 @@ func (r *CredentialsReconciler) ensureReplica(ctx context.Context, agent *ledger
 }
 
 // computeDesiredNamespaces returns the sorted, deduplicated list of namespaces
-// that must hold a replica of the agent's Secret.
-func computeDesiredNamespaces(matched []ledgerv1alpha1.MatchedService, additional []string) []string {
+// that must hold a replica of the credentials's Secret.
+func computeDesiredNamespaces(matched []ledgerv1alpha1.MatchedCluster, additional []string) []string {
 	set := make(map[string]struct{}, len(matched)+len(additional))
 	for _, m := range matched {
 		if m.Namespace != "" {
@@ -472,9 +472,9 @@ func computeDesiredNamespaces(matched []ledgerv1alpha1.MatchedService, additiona
 	return out
 }
 
-// agentSecretName returns the name of the replica Secret managed by the agent.
-func agentSecretName(agent *ledgerv1alpha1.Credentials) string {
-	return prefixedName(agent.Name) + "-agent-keys"
+// credentialsSecretName returns the name of the replica Secret managed by the credentials.
+func credentialsSecretName(credentials *ledgerv1alpha1.Credentials) string {
+	return prefixedName(credentials.Name) + "-credentials-keys"
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -482,14 +482,14 @@ func (r *CredentialsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ledgerv1alpha1.Credentials{}).
 		Watches(&ledgerv1alpha1.Cluster{},
-			handler.EnqueueRequestsFromMapFunc(r.clusterToAgents)).
+			handler.EnqueueRequestsFromMapFunc(r.clusterToCredentials)).
 		Complete(r)
 }
 
-// clusterToAgents maps a Cluster change to all Credentials
+// clusterToCredentials maps a Cluster change to all Credentials
 // whose selector matches the service, so replica state is kept in sync with
 // service membership and namespace placement.
-func (r *CredentialsReconciler) clusterToAgents(ctx context.Context, obj client.Object) []ctrl.Request {
+func (r *CredentialsReconciler) clusterToCredentials(ctx context.Context, obj client.Object) []ctrl.Request {
 	logger := log.FromContext(ctx)
 
 	service, ok := obj.(*ledgerv1alpha1.Cluster)
@@ -497,23 +497,23 @@ func (r *CredentialsReconciler) clusterToAgents(ctx context.Context, obj client.
 		return nil
 	}
 
-	var agents ledgerv1alpha1.CredentialsList
-	if err := r.List(ctx, &agents); err != nil {
+	var credentials ledgerv1alpha1.CredentialsList
+	if err := r.List(ctx, &credentials); err != nil {
 		logger.Error(err, "listing Credentials for service mapping")
 
 		return nil
 	}
 
 	requests := make([]ctrl.Request, 0)
-	for i := range agents.Items {
-		agent := &agents.Items[i]
-		selector, err := metav1.LabelSelectorAsSelector(&agent.Spec.Selector)
+	for i := range credentials.Items {
+		credentials := &credentials.Items[i]
+		selector, err := metav1.LabelSelectorAsSelector(&credentials.Spec.Selector)
 		if err != nil {
 			continue
 		}
 		if selector.Matches(labels.Set(service.Labels)) {
 			requests = append(requests, ctrl.Request{
-				NamespacedName: types.NamespacedName{Name: agent.Name},
+				NamespacedName: types.NamespacedName{Name: credentials.Name},
 			})
 		}
 	}

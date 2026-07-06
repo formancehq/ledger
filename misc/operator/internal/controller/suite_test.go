@@ -174,12 +174,12 @@ func newCredentials(name string, scopes []string, matchLabels map[string]string)
 
 // newCredentialsWithAdditional returns a cluster-scoped Credentials
 // that distributes its Secret to the given additional namespaces (regardless of
-// matched services). Useful for tests that only need a Secret to exist somewhere.
+// matched clusters). Useful for tests that only need a Secret to exist somewhere.
 func newCredentialsWithAdditional(name string, scopes []string, matchLabels map[string]string, additional ...string) *ledgerv1alpha1.Credentials {
-	agent := newCredentials(name, scopes, matchLabels)
-	agent.Spec.AdditionalNamespaces = additional
+	credentials := newCredentials(name, scopes, matchLabels)
+	credentials.Spec.AdditionalNamespaces = additional
 
-	return agent
+	return credentials
 }
 
 // requireEventually wraps require.Eventually with standard timeouts for envtest.
