@@ -1,7 +1,6 @@
 package cmdutil
 
 import (
-	"fmt"
 	"math/big"
 	"sort"
 	"strings"
@@ -69,13 +68,11 @@ func RescaleAmount(amount *big.Int, fromPrecision, toScale uint8) string {
 }
 
 // AssetLabel reconstructs an asset string for a bare currency at the given scale:
-// scale 0 yields the currency alone, otherwise "CUR/scale".
+// scale 0 yields the currency alone, otherwise "CUR/scale". It delegates to
+// invariants.FormatAsset so the "CUR/N" grammar has a single implementation
+// shared with the server side.
 func AssetLabel(base string, scale uint8) string {
-	if scale == 0 {
-		return base
-	}
-
-	return fmt.Sprintf("%s/%d", base, scale)
+	return invariants.FormatAsset(base, scale)
 }
 
 // RawVolume holds an asset's raw integer input/output amounts as decimal
