@@ -333,7 +333,7 @@ func TestTranslatePostings_LargeAmount(t *testing.T) {
 		Asset:       "BTC/8",
 	}}
 
-	result, err := translatePostings(postings, nil)
+	result, err := translatePostings(postings)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	require.NotNil(t, result[0].GetAmount())
@@ -349,7 +349,7 @@ func TestTranslatePostings_NegativeAmount(t *testing.T) {
 		Asset:       "USD",
 	}}
 
-	_, err := translatePostings(postings, nil)
+	_, err := translatePostings(postings)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "negative amount")
 }
@@ -364,7 +364,7 @@ func TestTranslatePostings_InvalidAmount(t *testing.T) {
 		Asset:       "USD",
 	}}
 
-	_, err := translatePostings(postings, nil)
+	_, err := translatePostings(postings)
 	require.Error(t, err)
 }
 
@@ -372,7 +372,7 @@ func TestTranslateTarget_TransactionString(t *testing.T) {
 	t.Parallel()
 
 	// v2 sometimes encodes transaction IDs as strings
-	target, err := translateTarget("TRANSACTION", json.RawMessage(`"42"`), nil)
+	target, err := translateTarget("TRANSACTION", json.RawMessage(`"42"`))
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), target.GetTransactionId())
 }
@@ -380,7 +380,7 @@ func TestTranslateTarget_TransactionString(t *testing.T) {
 func TestTranslateTarget_TransactionUint(t *testing.T) {
 	t.Parallel()
 
-	target, err := translateTarget("TRANSACTION", json.RawMessage(`42`), nil)
+	target, err := translateTarget("TRANSACTION", json.RawMessage(`42`))
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), target.GetTransactionId())
 }
@@ -388,7 +388,7 @@ func TestTranslateTarget_TransactionUint(t *testing.T) {
 func TestTranslateTarget_Account(t *testing.T) {
 	t.Parallel()
 
-	target, err := translateTarget("ACCOUNT", json.RawMessage(`"users:001"`), nil)
+	target, err := translateTarget("ACCOUNT", json.RawMessage(`"users:001"`))
 	require.NoError(t, err)
 	require.Equal(t, "users:001", target.GetAccount().GetAddr())
 }
@@ -396,7 +396,7 @@ func TestTranslateTarget_Account(t *testing.T) {
 func TestTranslateTarget_UnknownType(t *testing.T) {
 	t.Parallel()
 
-	_, err := translateTarget("UNKNOWN", json.RawMessage(`"whatever"`), nil)
+	_, err := translateTarget("UNKNOWN", json.RawMessage(`"whatever"`))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unknown target type")
 }

@@ -28,16 +28,18 @@ type mirrorSourceBody struct {
 	OAuth2Scopes        []string `json:"oauth2Scopes,omitempty"`        // HTTP source OAuth2
 	DSN                 string   `json:"dsn,omitempty"`                 // Postgres source
 	BatchSize           uint32   `json:"batchSize,omitempty"`           // Max logs per batch (0 = default 100)
-	// AddressRewriteRules rewrite account addresses during translation (drop /
-	// rename v2 lock-avoidance segments). Applied in order to every address.
-	AddressRewriteRules []addressRewriteRuleBody `json:"addressRewriteRules,omitempty"`
+	// RewriteRules are CEL rewrite rules applied, in order, to every mirror log
+	// entry during translation (rename addresses, transform metadata, drop txs).
+	RewriteRules []rewriteRuleBody `json:"rewriteRules,omitempty"`
 }
 
-// addressRewriteRuleBody is one account-address rewrite rule. Pattern is an RE2
-// regex; an empty replacement drops the matched part.
-type addressRewriteRuleBody struct {
-	Pattern     string `json:"pattern"`
-	Replacement string `json:"replacement"`
+// rewriteRuleBody is one CEL rewrite rule. Match is a boolean CEL expression
+// selecting which transactions the rule fires on (empty = always); Cel is the
+// rewrite expression; Stop halts the rule chain once this rule matches.
+type rewriteRuleBody struct {
+	Match string `json:"match,omitempty"`
+	Cel   string `json:"cel"`
+	Stop  bool   `json:"stop,omitempty"`
 }
 
 // handleCreateLedger handles POST /{ledgerName} to create a new ledger.
@@ -122,10 +124,11 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 		BatchSize:  body.BatchSize,
 	}
 
-	for _, rule := range body.AddressRewriteRules {
-		cfg.AddressRewriteRules = append(cfg.AddressRewriteRules, &commonpb.AddressRewriteRule{
-			Pattern:     rule.Pattern,
-			Replacement: rule.Replacement,
+	for _, rule := range body.RewriteRules {
+		cfg.RewriteRules = append(cfg.RewriteRules, &commonpb.MirrorRewriteRule{
+			Match: rule.Match,
+			Cel:   rule.Cel,
+			Stop:  rule.Stop,
 		})
 	}
 

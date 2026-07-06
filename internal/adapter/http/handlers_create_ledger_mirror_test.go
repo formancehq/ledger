@@ -222,29 +222,30 @@ func TestMirrorSourceToProto_EmptyType(t *testing.T) {
 	require.Nil(t, httpCfg.GetOauth2ClientCredentials())
 }
 
-func TestMirrorSourceToProto_AddressRewriteRules(t *testing.T) {
+func TestMirrorSourceToProto_RewriteRules(t *testing.T) {
 	t.Parallel()
 
 	body := &mirrorSourceBody{
 		LedgerName: "src-ledger",
 		Type:       "http",
 		BaseURL:    "http://localhost:3068",
-		AddressRewriteRules: []addressRewriteRuleBody{
-			{Pattern: `(:worker:\d+)`, Replacement: ""},
-			{Pattern: `^payments:`, Replacement: "psp:"},
+		RewriteRules: []rewriteRuleBody{
+			{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
+			{Match: `tx.metadata["type"] == "payout"`, Cel: `tx.setMetadata("category", "external")`, Stop: true},
 		},
 	}
 
 	cfg, err := mirrorSourceToProto(body)
 	require.NoError(t, err)
-	require.Len(t, cfg.GetAddressRewriteRules(), 2)
-	require.Equal(t, `(:worker:\d+)`, cfg.GetAddressRewriteRules()[0].GetPattern())
-	require.Equal(t, "", cfg.GetAddressRewriteRules()[0].GetReplacement())
-	require.Equal(t, "^payments:", cfg.GetAddressRewriteRules()[1].GetPattern())
-	require.Equal(t, "psp:", cfg.GetAddressRewriteRules()[1].GetReplacement())
+	require.Len(t, cfg.GetRewriteRules(), 2)
+	require.Equal(t, `tx.rewriteAddress(":worker:\\d+", "")`, cfg.GetRewriteRules()[0].GetCel())
+	require.Equal(t, "", cfg.GetRewriteRules()[0].GetMatch())
+	require.False(t, cfg.GetRewriteRules()[0].GetStop())
+	require.Equal(t, `tx.metadata["type"] == "payout"`, cfg.GetRewriteRules()[1].GetMatch())
+	require.True(t, cfg.GetRewriteRules()[1].GetStop())
 }
 
-func TestHandleCreateLedger_MirrorAddressRewriteRules(t *testing.T) {
+func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 	t.Parallel()
 
 	var capturedReq *servicepb.Request
@@ -267,7 +268,7 @@ func TestHandleCreateLedger_MirrorAddressRewriteRules(t *testing.T) {
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","addressRewriteRules":[{"pattern":"(:worker:\\d+)","replacement":""}]}}`
+	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","rewriteRules":[{"cel":"tx.rewriteAddress(\":worker:\\\\d+\", \"\")"}]}}`
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/mirror-rw", strings.NewReader(body), map[string]string{
 		"ledgerName": "mirror-rw",
@@ -277,10 +278,9 @@ func TestHandleCreateLedger_MirrorAddressRewriteRules(t *testing.T) {
 	srv.handleCreateLedger(w, r)
 
 	require.Equal(t, http.StatusCreated, w.Code)
-	rules := capturedReq.GetCreateLedger().GetMirrorSource().GetAddressRewriteRules()
+	rules := capturedReq.GetCreateLedger().GetMirrorSource().GetRewriteRules()
 	require.Len(t, rules, 1)
-	require.Equal(t, `(:worker:\d+)`, rules[0].GetPattern())
-	require.Equal(t, "", rules[0].GetReplacement())
+	require.Equal(t, `tx.rewriteAddress(":worker:\\d+", "")`, rules[0].GetCel())
 }
 
 func TestMirrorSourceToProto_Unsupported(t *testing.T) {

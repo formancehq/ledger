@@ -877,39 +877,52 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			}},
 		},
 		{
-			name: "valid address rewrite rules accepted",
+			name: "valid rewrite rules accepted",
 			src: &commonpb.MirrorSourceConfig{
 				Type: &commonpb.MirrorSourceConfig_Http{
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				AddressRewriteRules: []*commonpb.AddressRewriteRule{
-					{Pattern: `(:worker:\d+)`, Replacement: ""},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
+					{Match: `tx.metadata["type"] == "payout"`, Cel: `tx.setMetadata("category", "external")`, Stop: true},
 				},
 			},
 		},
 		{
-			name: "invalid address rewrite pattern rejected at admission",
+			name: "invalid cel expression rejected at admission",
 			src: &commonpb.MirrorSourceConfig{
 				Type: &commonpb.MirrorSourceConfig_Http{
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				AddressRewriteRules: []*commonpb.AddressRewriteRule{
-					{Pattern: `(unbalanced`, Replacement: ""},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Cel: `this is not valid cel`},
 				},
 			},
-			wantErr: ErrMirrorAddressRewritePatternInvalid,
+			wantErr: ErrMirrorRewriteRuleInvalid,
 		},
 		{
-			name: "empty address rewrite pattern rejected at admission",
+			name: "non-boolean match rejected at admission",
 			src: &commonpb.MirrorSourceConfig{
 				Type: &commonpb.MirrorSourceConfig_Http{
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				AddressRewriteRules: []*commonpb.AddressRewriteRule{
-					{Pattern: "", Replacement: "x"},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Match: `"a string"`, Cel: `tx`},
 				},
 			},
-			wantErr: ErrMirrorAddressRewritePatternInvalid,
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "cel not returning a transaction rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Cel: `"not a tx"`},
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
 		},
 	}
 

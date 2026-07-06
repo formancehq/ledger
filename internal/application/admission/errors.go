@@ -21,11 +21,11 @@ var (
 	// must not transit cleartext.
 	ErrMirrorIAMRequiresTLS = domain.NewValidationSentinel("mirrorSource.postgres: awsIamAuth requires sslmode in {require, verify-ca, verify-full}")
 
-	// ErrMirrorAddressRewritePatternInvalid rejects a mirror config whose
-	// addressRewriteRules contain a pattern that is empty or not a valid Go (RE2)
-	// regular expression. An empty pattern matches at every boundary and would
-	// silently rewrite every address (including "world"); both are rejected at
+	// ErrMirrorRewriteRuleInvalid rejects a mirror config whose rewriteRules
+	// contain a rule that fails to compile: invalid CEL syntax, a match that is
+	// not boolean, a cel expression that does not return a transaction, an empty
+	// cel expression, or a rule set that exceeds the static caps. Rejected at
 	// admission so a malformed rule fails fast before the config is persisted,
 	// instead of stalling — or corrupting — the mirror on every batch.
-	ErrMirrorAddressRewritePatternInvalid = domain.NewValidationSentinel("mirrorSource.addressRewriteRules: pattern must be a non-empty valid regular expression")
+	ErrMirrorRewriteRuleInvalid = domain.NewValidationSentinel("mirrorSource.rewriteRules: each rule must have a boolean match and a cel expression returning a transaction")
 )

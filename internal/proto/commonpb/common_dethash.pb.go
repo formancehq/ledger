@@ -2113,7 +2113,7 @@ func (m *MirrorSourceConfig) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *AddressRewriteRule) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *MirrorRewriteRule) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

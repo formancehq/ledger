@@ -11,6 +11,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
+	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -165,11 +166,11 @@ func (m *Manager) reconcile() {
 			continue
 		}
 
-		rewriter, err := v2.NewAddressRewriter(info.GetMirrorSource().GetAddressRewriteRules())
+		rewriter, err := celrewrite.NewRewriter(info.GetMirrorSource().GetRewriteRules())
 		if err != nil {
 			// Rules are validated at admission time, so a compile failure here
 			// indicates corrupted config; skip the worker rather than crash.
-			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to build mirror address rewriter: %v", err)
+			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to build mirror rewriter: %v", err)
 
 			continue
 		}

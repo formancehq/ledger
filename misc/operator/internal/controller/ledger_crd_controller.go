@@ -346,12 +346,18 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 			args = append(args, "--mirror-batch-size", strconv.Itoa(int(*src.BatchSize)))
 		}
 
-		// Address rewrite rules apply to the shared v2 translator, so they are
+		// CEL rewrite rules apply to the shared v2 translator, so they are
 		// independent of the source transport (HTTP or Postgres). Each rule is
-		// passed as a repeatable 'pattern=replacement' flag; an empty
-		// replacement drops the matched segment.
-		for _, rule := range src.AddressRewriteRules {
-			args = append(args, "--mirror-address-rewrite", rule.Pattern+"="+rule.Replacement)
+		// passed as a repeatable JSON object via --mirror-rewrite-rule (ledgerctl
+		// runs over k8s exec with an arg list, so a JSON arg composes where a file
+		// path would not).
+		for _, rule := range src.RewriteRules {
+			encoded, err := json.Marshal(rule)
+			if err != nil {
+				return nil, fmt.Errorf("encoding rewrite rule: %w", err)
+			}
+
+			args = append(args, "--mirror-rewrite-rule", string(encoded))
 		}
 
 		switch {

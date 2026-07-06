@@ -73,6 +73,7 @@ require (
 	github.com/formancehq/go-libs/v5 v5.7.0
 	github.com/formancehq/invariants v0.11.0
 	github.com/fsnotify/fsnotify v1.5.4
+	github.com/google/cel-go v0.28.1
 	github.com/google/uuid v1.6.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/soheilhy/cmux v0.1.5
@@ -89,6 +90,7 @@ require (
 	atomicgo.dev/cursor v0.2.0 // indirect
 	atomicgo.dev/keyboard v0.2.9 // indirect
 	atomicgo.dev/schedule v0.1.0 // indirect
+	cel.dev/expr v0.25.1 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect

@@ -2238,12 +2238,12 @@ func (m *MirrorSourceConfig) CloneVT() *MirrorSourceConfig {
 			CloneVT() isMirrorSourceConfig_Type
 		}).CloneVT()
 	}
-	if rhs := m.AddressRewriteRules; rhs != nil {
-		tmpContainer := make([]*AddressRewriteRule, len(rhs))
+	if rhs := m.RewriteRules; rhs != nil {
+		tmpContainer := make([]*MirrorRewriteRule, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
-		r.AddressRewriteRules = tmpContainer
+		r.RewriteRules = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -2274,13 +2274,14 @@ func (m *MirrorSourceConfig_Postgres) CloneVT() isMirrorSourceConfig_Type {
 	return r
 }
 
-func (m *AddressRewriteRule) CloneVT() *AddressRewriteRule {
+func (m *MirrorRewriteRule) CloneVT() *MirrorRewriteRule {
 	if m == nil {
-		return (*AddressRewriteRule)(nil)
+		return (*MirrorRewriteRule)(nil)
 	}
-	r := new(AddressRewriteRule)
-	r.Pattern = m.Pattern
-	r.Replacement = m.Replacement
+	r := new(MirrorRewriteRule)
+	r.Match = m.Match
+	r.Cel = m.Cel
+	r.Stop = m.Stop
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2288,7 +2289,7 @@ func (m *AddressRewriteRule) CloneVT() *AddressRewriteRule {
 	return r
 }
 
-func (m *AddressRewriteRule) CloneMessageVT() proto.Message {
+func (m *MirrorRewriteRule) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -7459,17 +7460,17 @@ func (this *MirrorSourceConfig) EqualVT(that *MirrorSourceConfig) bool {
 	if this.BatchSize != that.BatchSize {
 		return false
 	}
-	if len(this.AddressRewriteRules) != len(that.AddressRewriteRules) {
+	if len(this.RewriteRules) != len(that.RewriteRules) {
 		return false
 	}
-	for i, vx := range this.AddressRewriteRules {
-		vy := that.AddressRewriteRules[i]
+	for i, vx := range this.RewriteRules {
+		vy := that.RewriteRules[i]
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &AddressRewriteRule{}
+				p = &MirrorRewriteRule{}
 			}
 			if q == nil {
-				q = &AddressRewriteRule{}
+				q = &MirrorRewriteRule{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -7536,23 +7537,26 @@ func (this *MirrorSourceConfig_Postgres) EqualVT(thatIface isMirrorSourceConfig_
 	return true
 }
 
-func (this *AddressRewriteRule) EqualVT(that *AddressRewriteRule) bool {
+func (this *MirrorRewriteRule) EqualVT(that *MirrorRewriteRule) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Pattern != that.Pattern {
+	if this.Match != that.Match {
 		return false
 	}
-	if this.Replacement != that.Replacement {
+	if this.Cel != that.Cel {
+		return false
+	}
+	if this.Stop != that.Stop {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *AddressRewriteRule) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*AddressRewriteRule)
+func (this *MirrorRewriteRule) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MirrorRewriteRule)
 	if !ok {
 		return false
 	}
@@ -15538,16 +15542,16 @@ func (m *MirrorSourceConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
-	if len(m.AddressRewriteRules) > 0 {
-		for iNdEx := len(m.AddressRewriteRules) - 1; iNdEx >= 0; iNdEx-- {
-			size, err := m.AddressRewriteRules[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+	if len(m.RewriteRules) > 0 {
+		for iNdEx := len(m.RewriteRules) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.RewriteRules[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
 			if err != nil {
 				return 0, err
 			}
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x32
 		}
 	}
 	if m.BatchSize != 0 {
@@ -15603,7 +15607,7 @@ func (m *MirrorSourceConfig_Postgres) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	}
 	return len(dAtA) - i, nil
 }
-func (m *AddressRewriteRule) MarshalVT() (dAtA []byte, err error) {
+func (m *MirrorRewriteRule) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15616,12 +15620,12 @@ func (m *AddressRewriteRule) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *AddressRewriteRule) MarshalToVT(dAtA []byte) (int, error) {
+func (m *MirrorRewriteRule) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *AddressRewriteRule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *MirrorRewriteRule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15633,17 +15637,27 @@ func (m *AddressRewriteRule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Replacement) > 0 {
-		i -= len(m.Replacement)
-		copy(dAtA[i:], m.Replacement)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Replacement)))
+	if m.Stop {
+		i--
+		if m.Stop {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.Cel) > 0 {
+		i -= len(m.Cel)
+		copy(dAtA[i:], m.Cel)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Cel)))
 		i--
 		dAtA[i] = 0x12
 	}
-	if len(m.Pattern) > 0 {
-		i -= len(m.Pattern)
-		copy(dAtA[i:], m.Pattern)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Pattern)))
+	if len(m.Match) > 0 {
+		i -= len(m.Match)
+		copy(dAtA[i:], m.Match)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Match)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -21678,8 +21692,8 @@ func (m *MirrorSourceConfig) SizeVT() (n int) {
 	if m.BatchSize != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.BatchSize))
 	}
-	if len(m.AddressRewriteRules) > 0 {
-		for _, e := range m.AddressRewriteRules {
+	if len(m.RewriteRules) > 0 {
+		for _, e := range m.RewriteRules {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
@@ -21712,19 +21726,22 @@ func (m *MirrorSourceConfig_Postgres) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *AddressRewriteRule) SizeVT() (n int) {
+func (m *MirrorRewriteRule) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = len(m.Pattern)
+	l = len(m.Match)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.Replacement)
+	l = len(m.Cel)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Stop {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -37015,9 +37032,9 @@ func (m *MirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 6:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddressRewriteRules", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field RewriteRules", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -37044,8 +37061,8 @@ func (m *MirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.AddressRewriteRules = append(m.AddressRewriteRules, &AddressRewriteRule{})
-			if err := m.AddressRewriteRules[len(m.AddressRewriteRules)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			m.RewriteRules = append(m.RewriteRules, &MirrorRewriteRule{})
+			if err := m.RewriteRules[len(m.RewriteRules)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -37071,7 +37088,7 @@ func (m *MirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *AddressRewriteRule) UnmarshalVT(dAtA []byte) error {
+func (m *MirrorRewriteRule) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -37094,15 +37111,15 @@ func (m *AddressRewriteRule) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AddressRewriteRule: wiretype end group for non-group")
+			return fmt.Errorf("proto: MirrorRewriteRule: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AddressRewriteRule: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: MirrorRewriteRule: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Pattern", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Match", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -37130,11 +37147,11 @@ func (m *AddressRewriteRule) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Pattern = string(dAtA[iNdEx:postIndex])
+			m.Match = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Replacement", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Cel", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -37162,8 +37179,28 @@ func (m *AddressRewriteRule) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Replacement = string(dAtA[iNdEx:postIndex])
+			m.Cel = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Stop", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Stop = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -58,37 +58,6 @@ spec:
                   MirrorSource configures the replication source when mode is "mirror".
                   Required when mode is "mirror".
                 properties:
-                  addressRewriteRules:
-                    description: |-
-                      AddressRewriteRules are applied, in order, to every account address as the
-                      mirror translates v2 source logs into v3 orders. Each rule drops or renames
-                      an address segment (see AddressRewriteRule). Applies to both HTTP and
-                      Postgres sources.
-                    items:
-                      description: |-
-                        AddressRewriteRule rewrites account addresses during v2→v3 mirror translation.
-                        Pattern is a Go (RE2) regular expression matched against the full account
-                        address; every match is replaced with Replacement, which may reference capture
-                        groups (e.g. "$1"). An empty Replacement drops the matched segment, e.g.
-                        pattern "(:worker:\\d+)" turns "payments:acme:worker:001:main" into
-                        "payments:acme:main". Rewriting is a translation-time projection only: the
-                        source v2 ledger is never modified, and the rewritten address must still be a
-                        valid ledger account address.
-                      properties:
-                        pattern:
-                          description: Pattern is the RE2 regular expression matched
-                            against every account address.
-                          minLength: 1
-                          type: string
-                        replacement:
-                          description: |-
-                            Replacement replaces each match of Pattern. May reference capture groups
-                            (e.g. "$1"). An empty replacement drops the matched segment.
-                          type: string
-                      required:
-                      - pattern
-                      type: object
-                    type: array
                   batchSize:
                     description: BatchSize is the max number of log entries per replication
                       batch (0 = default 100).
@@ -251,6 +220,40 @@ spec:
                         token travel in cleartext
                       rule: '!has(self.awsIamAuth) || !has(self.sslMode) || self.sslMode
                         in [''require'',''verify-ca'',''verify-full'']'
+                  rewriteRules:
+                    description: |-
+                      RewriteRules are CEL rewrite rules applied, in order, to every mirror log
+                      entry as the mirror translates v2 source logs into v3 orders. Each rule can
+                      rename address segments, transform metadata, or drop transactions (see
+                      MirrorRewriteRule). Applies to both HTTP and Postgres sources.
+                    items:
+                      description: |-
+                        MirrorRewriteRule transforms a mirror log entry during v2→v3 translation.
+                        Match is a CEL boolean expression over the transaction (`tx`) selecting which
+                        entries the rule fires on (empty = always). Cel is a CEL expression evaluating
+                        to the rewritten `tx`, built with helper functions (tx.rewriteAddress,
+                        tx.setMetadata, tx.deleteMetadata, tx.setAccountMetadata,
+                        tx.deleteAccountMetadata, tx.drop). When Stop is true and the rule matches, no
+                        further rules are evaluated. Rewriting is a deterministic translation-time
+                        projection only: the source v2 ledger is never modified.
+                      properties:
+                        cel:
+                          description: Cel is the CEL rewrite expression, evaluating
+                            to the rewritten transaction.
+                          minLength: 1
+                          type: string
+                        match:
+                          description: |-
+                            Match is a CEL boolean expression selecting which transactions the rule
+                            fires on. Empty means the rule always applies.
+                          type: string
+                        stop:
+                          description: Stop halts the rule chain once this rule matches.
+                          type: boolean
+                      required:
+                      - cel
+                      type: object
+                    type: array
                 type: object
               mode:
                 default: normal
