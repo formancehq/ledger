@@ -16,22 +16,22 @@ type SignedApplyBatchReader interface {
 	Mutate() *SignedApplyBatch
 }
 
-type signedApplyBatchReadonly struct{ v *SignedApplyBatch }
+type signedApplyBatchReadonly SignedApplyBatch
 
 func (r *signedApplyBatchReadonly) GetKeyId() string {
-	return r.v.GetKeyId()
+	return (*SignedApplyBatch)(r).GetKeyId()
 }
 
 func (r *signedApplyBatchReadonly) GetSignature() []byte {
-	return bytes.Clone(r.v.GetSignature())
+	return bytes.Clone((*SignedApplyBatch)(r).GetSignature())
 }
 
 func (r *signedApplyBatchReadonly) GetPayload() []byte {
-	return bytes.Clone(r.v.GetPayload())
+	return bytes.Clone((*SignedApplyBatch)(r).GetPayload())
 }
 
 func (r *signedApplyBatchReadonly) Mutate() *SignedApplyBatch {
-	return r.v.CloneVT()
+	return (*SignedApplyBatch)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SignedApplyBatch.
@@ -39,7 +39,7 @@ func (m *SignedApplyBatch) AsReader() SignedApplyBatchReader {
 	if m == nil {
 		return nil
 	}
-	return &signedApplyBatchReadonly{v: m}
+	return (*signedApplyBatchReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SignedApplyBatch.
@@ -93,22 +93,22 @@ type SignedLogReader interface {
 	Mutate() *SignedLog
 }
 
-type signedLogReadonly struct{ v *SignedLog }
+type signedLogReadonly SignedLog
 
 func (r *signedLogReadonly) GetKeyId() string {
-	return r.v.GetKeyId()
+	return (*SignedLog)(r).GetKeyId()
 }
 
 func (r *signedLogReadonly) GetSignature() []byte {
-	return bytes.Clone(r.v.GetSignature())
+	return bytes.Clone((*SignedLog)(r).GetSignature())
 }
 
 func (r *signedLogReadonly) GetPayload() []byte {
-	return bytes.Clone(r.v.GetPayload())
+	return bytes.Clone((*SignedLog)(r).GetPayload())
 }
 
 func (r *signedLogReadonly) Mutate() *SignedLog {
-	return r.v.CloneVT()
+	return (*SignedLog)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SignedLog.
@@ -116,7 +116,7 @@ func (m *SignedLog) AsReader() SignedLogReader {
 	if m == nil {
 		return nil
 	}
-	return &signedLogReadonly{v: m}
+	return (*signedLogReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SignedLog.

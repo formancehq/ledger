@@ -18,18 +18,18 @@ type EventReader interface {
 	Mutate() *Event
 }
 
-type eventReadonly struct{ v *Event }
+type eventReadonly Event
 
 func (r *eventReadonly) GetType() commonpb.EventType {
-	return r.v.GetType()
+	return (*Event)(r).GetType()
 }
 
 func (r *eventReadonly) GetLedger() string {
-	return r.v.GetLedger()
+	return (*Event)(r).GetLedger()
 }
 
 func (r *eventReadonly) GetDate() commonpb.TimestampReader {
-	v := r.v.GetDate()
+	v := (*Event)(r).GetDate()
 	if v == nil {
 		return nil
 	}
@@ -37,11 +37,11 @@ func (r *eventReadonly) GetDate() commonpb.TimestampReader {
 }
 
 func (r *eventReadonly) GetLogSequence() uint64 {
-	return r.v.GetLogSequence()
+	return (*Event)(r).GetLogSequence()
 }
 
 func (r *eventReadonly) GetLog() commonpb.LogReader {
-	v := r.v.GetLog()
+	v := (*Event)(r).GetLog()
 	if v == nil {
 		return nil
 	}
@@ -49,7 +49,7 @@ func (r *eventReadonly) GetLog() commonpb.LogReader {
 }
 
 func (r *eventReadonly) Mutate() *Event {
-	return r.v.CloneVT()
+	return (*Event)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this Event.
@@ -57,7 +57,7 @@ func (m *Event) AsReader() EventReader {
 	if m == nil {
 		return nil
 	}
-	return &eventReadonly{v: m}
+	return (*eventReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this Event.

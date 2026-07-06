@@ -18,18 +18,18 @@ type OrderReader interface {
 	Mutate() *Order
 }
 
-type orderReadonly struct{ v *Order }
+type orderReadonly Order
 
 func (r *orderReadonly) GetCoverageBits() []byte {
-	return bytes.Clone(r.v.GetCoverageBits())
+	return bytes.Clone((*Order)(r).GetCoverageBits())
 }
 
 func (r *orderReadonly) GetType() isOrder_Type {
-	return r.v.GetType()
+	return (*Order)(r).GetType()
 }
 
 func (r *orderReadonly) Mutate() *Order {
-	return r.v.CloneVT()
+	return (*Order)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this Order.
@@ -37,7 +37,7 @@ func (m *Order) AsReader() OrderReader {
 	if m == nil {
 		return nil
 	}
-	return &orderReadonly{v: m}
+	return (*orderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this Order.
@@ -88,18 +88,18 @@ type LedgerScopedOrderReader interface {
 	Mutate() *LedgerScopedOrder
 }
 
-type ledgerScopedOrderReadonly struct{ v *LedgerScopedOrder }
+type ledgerScopedOrderReadonly LedgerScopedOrder
 
 func (r *ledgerScopedOrderReadonly) GetLedger() string {
-	return r.v.GetLedger()
+	return (*LedgerScopedOrder)(r).GetLedger()
 }
 
 func (r *ledgerScopedOrderReadonly) GetPayload() isLedgerScopedOrder_Payload {
-	return r.v.GetPayload()
+	return (*LedgerScopedOrder)(r).GetPayload()
 }
 
 func (r *ledgerScopedOrderReadonly) Mutate() *LedgerScopedOrder {
-	return r.v.CloneVT()
+	return (*LedgerScopedOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this LedgerScopedOrder.
@@ -107,7 +107,7 @@ func (m *LedgerScopedOrder) AsReader() LedgerScopedOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &ledgerScopedOrderReadonly{v: m}
+	return (*ledgerScopedOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this LedgerScopedOrder.
@@ -159,14 +159,14 @@ type SystemScopedOrderReader interface {
 	Mutate() *SystemScopedOrder
 }
 
-type systemScopedOrderReadonly struct{ v *SystemScopedOrder }
+type systemScopedOrderReadonly SystemScopedOrder
 
 func (r *systemScopedOrderReadonly) GetPayload() isSystemScopedOrder_Payload {
-	return r.v.GetPayload()
+	return (*SystemScopedOrder)(r).GetPayload()
 }
 
 func (r *systemScopedOrderReadonly) Mutate() *SystemScopedOrder {
-	return r.v.CloneVT()
+	return (*SystemScopedOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SystemScopedOrder.
@@ -174,7 +174,7 @@ func (m *SystemScopedOrder) AsReader() SystemScopedOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &systemScopedOrderReadonly{v: m}
+	return (*systemScopedOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SystemScopedOrder.
@@ -226,10 +226,10 @@ type CreatePreparedQueryOrderReader interface {
 	Mutate() *CreatePreparedQueryOrder
 }
 
-type createPreparedQueryOrderReadonly struct{ v *CreatePreparedQueryOrder }
+type createPreparedQueryOrderReadonly CreatePreparedQueryOrder
 
 func (r *createPreparedQueryOrderReadonly) GetQuery() commonpb.PreparedQueryReader {
-	v := r.v.GetQuery()
+	v := (*CreatePreparedQueryOrder)(r).GetQuery()
 	if v == nil {
 		return nil
 	}
@@ -237,7 +237,7 @@ func (r *createPreparedQueryOrderReadonly) GetQuery() commonpb.PreparedQueryRead
 }
 
 func (r *createPreparedQueryOrderReadonly) Mutate() *CreatePreparedQueryOrder {
-	return r.v.CloneVT()
+	return (*CreatePreparedQueryOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CreatePreparedQueryOrder.
@@ -245,7 +245,7 @@ func (m *CreatePreparedQueryOrder) AsReader() CreatePreparedQueryOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &createPreparedQueryOrderReadonly{v: m}
+	return (*createPreparedQueryOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CreatePreparedQueryOrder.
@@ -298,14 +298,14 @@ type UpdatePreparedQueryOrderReader interface {
 	Mutate() *UpdatePreparedQueryOrder
 }
 
-type updatePreparedQueryOrderReadonly struct{ v *UpdatePreparedQueryOrder }
+type updatePreparedQueryOrderReadonly UpdatePreparedQueryOrder
 
 func (r *updatePreparedQueryOrderReadonly) GetName() string {
-	return r.v.GetName()
+	return (*UpdatePreparedQueryOrder)(r).GetName()
 }
 
 func (r *updatePreparedQueryOrderReadonly) GetFilter() commonpb.QueryFilterReader {
-	v := r.v.GetFilter()
+	v := (*UpdatePreparedQueryOrder)(r).GetFilter()
 	if v == nil {
 		return nil
 	}
@@ -313,7 +313,7 @@ func (r *updatePreparedQueryOrderReadonly) GetFilter() commonpb.QueryFilterReade
 }
 
 func (r *updatePreparedQueryOrderReadonly) Mutate() *UpdatePreparedQueryOrder {
-	return r.v.CloneVT()
+	return (*UpdatePreparedQueryOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this UpdatePreparedQueryOrder.
@@ -321,7 +321,7 @@ func (m *UpdatePreparedQueryOrder) AsReader() UpdatePreparedQueryOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &updatePreparedQueryOrderReadonly{v: m}
+	return (*updatePreparedQueryOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this UpdatePreparedQueryOrder.
@@ -373,14 +373,14 @@ type DeletePreparedQueryOrderReader interface {
 	Mutate() *DeletePreparedQueryOrder
 }
 
-type deletePreparedQueryOrderReadonly struct{ v *DeletePreparedQueryOrder }
+type deletePreparedQueryOrderReadonly DeletePreparedQueryOrder
 
 func (r *deletePreparedQueryOrderReadonly) GetName() string {
-	return r.v.GetName()
+	return (*DeletePreparedQueryOrder)(r).GetName()
 }
 
 func (r *deletePreparedQueryOrderReadonly) Mutate() *DeletePreparedQueryOrder {
-	return r.v.CloneVT()
+	return (*DeletePreparedQueryOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this DeletePreparedQueryOrder.
@@ -388,7 +388,7 @@ func (m *DeletePreparedQueryOrder) AsReader() DeletePreparedQueryOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &deletePreparedQueryOrderReadonly{v: m}
+	return (*deletePreparedQueryOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this DeletePreparedQueryOrder.
@@ -440,10 +440,10 @@ type AddEventsSinkOrderReader interface {
 	Mutate() *AddEventsSinkOrder
 }
 
-type addEventsSinkOrderReadonly struct{ v *AddEventsSinkOrder }
+type addEventsSinkOrderReadonly AddEventsSinkOrder
 
 func (r *addEventsSinkOrderReadonly) GetConfig() commonpb.SinkConfigReader {
-	v := r.v.GetConfig()
+	v := (*AddEventsSinkOrder)(r).GetConfig()
 	if v == nil {
 		return nil
 	}
@@ -451,7 +451,7 @@ func (r *addEventsSinkOrderReadonly) GetConfig() commonpb.SinkConfigReader {
 }
 
 func (r *addEventsSinkOrderReadonly) Mutate() *AddEventsSinkOrder {
-	return r.v.CloneVT()
+	return (*AddEventsSinkOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AddEventsSinkOrder.
@@ -459,7 +459,7 @@ func (m *AddEventsSinkOrder) AsReader() AddEventsSinkOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &addEventsSinkOrderReadonly{v: m}
+	return (*addEventsSinkOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AddEventsSinkOrder.
@@ -511,14 +511,14 @@ type RemoveEventsSinkOrderReader interface {
 	Mutate() *RemoveEventsSinkOrder
 }
 
-type removeEventsSinkOrderReadonly struct{ v *RemoveEventsSinkOrder }
+type removeEventsSinkOrderReadonly RemoveEventsSinkOrder
 
 func (r *removeEventsSinkOrderReadonly) GetName() string {
-	return r.v.GetName()
+	return (*RemoveEventsSinkOrder)(r).GetName()
 }
 
 func (r *removeEventsSinkOrderReadonly) Mutate() *RemoveEventsSinkOrder {
-	return r.v.CloneVT()
+	return (*RemoveEventsSinkOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RemoveEventsSinkOrder.
@@ -526,7 +526,7 @@ func (m *RemoveEventsSinkOrder) AsReader() RemoveEventsSinkOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &removeEventsSinkOrderReadonly{v: m}
+	return (*removeEventsSinkOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RemoveEventsSinkOrder.
@@ -580,22 +580,22 @@ type RegisterSigningKeyOrderReader interface {
 	Mutate() *RegisterSigningKeyOrder
 }
 
-type registerSigningKeyOrderReadonly struct{ v *RegisterSigningKeyOrder }
+type registerSigningKeyOrderReadonly RegisterSigningKeyOrder
 
 func (r *registerSigningKeyOrderReadonly) GetKeyId() string {
-	return r.v.GetKeyId()
+	return (*RegisterSigningKeyOrder)(r).GetKeyId()
 }
 
 func (r *registerSigningKeyOrderReadonly) GetPublicKey() []byte {
-	return bytes.Clone(r.v.GetPublicKey())
+	return bytes.Clone((*RegisterSigningKeyOrder)(r).GetPublicKey())
 }
 
 func (r *registerSigningKeyOrderReadonly) GetParentKeyId() string {
-	return r.v.GetParentKeyId()
+	return (*RegisterSigningKeyOrder)(r).GetParentKeyId()
 }
 
 func (r *registerSigningKeyOrderReadonly) Mutate() *RegisterSigningKeyOrder {
-	return r.v.CloneVT()
+	return (*RegisterSigningKeyOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RegisterSigningKeyOrder.
@@ -603,7 +603,7 @@ func (m *RegisterSigningKeyOrder) AsReader() RegisterSigningKeyOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &registerSigningKeyOrderReadonly{v: m}
+	return (*registerSigningKeyOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RegisterSigningKeyOrder.
@@ -656,18 +656,18 @@ type RevokeSigningKeyOrderReader interface {
 	Mutate() *RevokeSigningKeyOrder
 }
 
-type revokeSigningKeyOrderReadonly struct{ v *RevokeSigningKeyOrder }
+type revokeSigningKeyOrderReadonly RevokeSigningKeyOrder
 
 func (r *revokeSigningKeyOrderReadonly) GetKeyId() string {
-	return r.v.GetKeyId()
+	return (*RevokeSigningKeyOrder)(r).GetKeyId()
 }
 
 func (r *revokeSigningKeyOrderReadonly) GetCascade() bool {
-	return r.v.GetCascade()
+	return (*RevokeSigningKeyOrder)(r).GetCascade()
 }
 
 func (r *revokeSigningKeyOrderReadonly) Mutate() *RevokeSigningKeyOrder {
-	return r.v.CloneVT()
+	return (*RevokeSigningKeyOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RevokeSigningKeyOrder.
@@ -675,7 +675,7 @@ func (m *RevokeSigningKeyOrder) AsReader() RevokeSigningKeyOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &revokeSigningKeyOrderReadonly{v: m}
+	return (*revokeSigningKeyOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RevokeSigningKeyOrder.
@@ -727,14 +727,14 @@ type SetSigningConfigOrderReader interface {
 	Mutate() *SetSigningConfigOrder
 }
 
-type setSigningConfigOrderReadonly struct{ v *SetSigningConfigOrder }
+type setSigningConfigOrderReadonly SetSigningConfigOrder
 
 func (r *setSigningConfigOrderReadonly) GetRequireSignatures() bool {
-	return r.v.GetRequireSignatures()
+	return (*SetSigningConfigOrder)(r).GetRequireSignatures()
 }
 
 func (r *setSigningConfigOrderReadonly) Mutate() *SetSigningConfigOrder {
-	return r.v.CloneVT()
+	return (*SetSigningConfigOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SetSigningConfigOrder.
@@ -742,7 +742,7 @@ func (m *SetSigningConfigOrder) AsReader() SetSigningConfigOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &setSigningConfigOrderReadonly{v: m}
+	return (*setSigningConfigOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SetSigningConfigOrder.
@@ -793,10 +793,10 @@ type CloseChapterOrderReader interface {
 	Mutate() *CloseChapterOrder
 }
 
-type closeChapterOrderReadonly struct{ v *CloseChapterOrder }
+type closeChapterOrderReadonly CloseChapterOrder
 
 func (r *closeChapterOrderReadonly) Mutate() *CloseChapterOrder {
-	return r.v.CloneVT()
+	return (*CloseChapterOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CloseChapterOrder.
@@ -804,7 +804,7 @@ func (m *CloseChapterOrder) AsReader() CloseChapterOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &closeChapterOrderReadonly{v: m}
+	return (*closeChapterOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CloseChapterOrder.
@@ -858,22 +858,22 @@ type SealChapterOrderReader interface {
 	Mutate() *SealChapterOrder
 }
 
-type sealChapterOrderReadonly struct{ v *SealChapterOrder }
+type sealChapterOrderReadonly SealChapterOrder
 
 func (r *sealChapterOrderReadonly) GetChapterId() uint64 {
-	return r.v.GetChapterId()
+	return (*SealChapterOrder)(r).GetChapterId()
 }
 
 func (r *sealChapterOrderReadonly) GetSealingHash() []byte {
-	return bytes.Clone(r.v.GetSealingHash())
+	return bytes.Clone((*SealChapterOrder)(r).GetSealingHash())
 }
 
 func (r *sealChapterOrderReadonly) GetStateHash() []byte {
-	return bytes.Clone(r.v.GetStateHash())
+	return bytes.Clone((*SealChapterOrder)(r).GetStateHash())
 }
 
 func (r *sealChapterOrderReadonly) Mutate() *SealChapterOrder {
-	return r.v.CloneVT()
+	return (*SealChapterOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SealChapterOrder.
@@ -881,7 +881,7 @@ func (m *SealChapterOrder) AsReader() SealChapterOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &sealChapterOrderReadonly{v: m}
+	return (*sealChapterOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SealChapterOrder.
@@ -933,14 +933,14 @@ type ArchiveChapterOrderReader interface {
 	Mutate() *ArchiveChapterOrder
 }
 
-type archiveChapterOrderReadonly struct{ v *ArchiveChapterOrder }
+type archiveChapterOrderReadonly ArchiveChapterOrder
 
 func (r *archiveChapterOrderReadonly) GetChapterId() uint64 {
-	return r.v.GetChapterId()
+	return (*ArchiveChapterOrder)(r).GetChapterId()
 }
 
 func (r *archiveChapterOrderReadonly) Mutate() *ArchiveChapterOrder {
-	return r.v.CloneVT()
+	return (*ArchiveChapterOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this ArchiveChapterOrder.
@@ -948,7 +948,7 @@ func (m *ArchiveChapterOrder) AsReader() ArchiveChapterOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &archiveChapterOrderReadonly{v: m}
+	return (*archiveChapterOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this ArchiveChapterOrder.
@@ -1000,14 +1000,14 @@ type ConfirmArchiveChapterOrderReader interface {
 	Mutate() *ConfirmArchiveChapterOrder
 }
 
-type confirmArchiveChapterOrderReadonly struct{ v *ConfirmArchiveChapterOrder }
+type confirmArchiveChapterOrderReadonly ConfirmArchiveChapterOrder
 
 func (r *confirmArchiveChapterOrderReadonly) GetChapterId() uint64 {
-	return r.v.GetChapterId()
+	return (*ConfirmArchiveChapterOrder)(r).GetChapterId()
 }
 
 func (r *confirmArchiveChapterOrderReadonly) Mutate() *ConfirmArchiveChapterOrder {
-	return r.v.CloneVT()
+	return (*ConfirmArchiveChapterOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this ConfirmArchiveChapterOrder.
@@ -1015,7 +1015,7 @@ func (m *ConfirmArchiveChapterOrder) AsReader() ConfirmArchiveChapterOrderReader
 	if m == nil {
 		return nil
 	}
-	return &confirmArchiveChapterOrderReadonly{v: m}
+	return (*confirmArchiveChapterOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this ConfirmArchiveChapterOrder.
@@ -1067,14 +1067,14 @@ type SetMaintenanceModeOrderReader interface {
 	Mutate() *SetMaintenanceModeOrder
 }
 
-type setMaintenanceModeOrderReadonly struct{ v *SetMaintenanceModeOrder }
+type setMaintenanceModeOrderReadonly SetMaintenanceModeOrder
 
 func (r *setMaintenanceModeOrderReadonly) GetEnabled() bool {
-	return r.v.GetEnabled()
+	return (*SetMaintenanceModeOrder)(r).GetEnabled()
 }
 
 func (r *setMaintenanceModeOrderReadonly) Mutate() *SetMaintenanceModeOrder {
-	return r.v.CloneVT()
+	return (*SetMaintenanceModeOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SetMaintenanceModeOrder.
@@ -1082,7 +1082,7 @@ func (m *SetMaintenanceModeOrder) AsReader() SetMaintenanceModeOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &setMaintenanceModeOrderReadonly{v: m}
+	return (*setMaintenanceModeOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SetMaintenanceModeOrder.
@@ -1134,14 +1134,14 @@ type SetChapterScheduleOrderReader interface {
 	Mutate() *SetChapterScheduleOrder
 }
 
-type setChapterScheduleOrderReadonly struct{ v *SetChapterScheduleOrder }
+type setChapterScheduleOrderReadonly SetChapterScheduleOrder
 
 func (r *setChapterScheduleOrderReadonly) GetCron() string {
-	return r.v.GetCron()
+	return (*SetChapterScheduleOrder)(r).GetCron()
 }
 
 func (r *setChapterScheduleOrderReadonly) Mutate() *SetChapterScheduleOrder {
-	return r.v.CloneVT()
+	return (*SetChapterScheduleOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SetChapterScheduleOrder.
@@ -1149,7 +1149,7 @@ func (m *SetChapterScheduleOrder) AsReader() SetChapterScheduleOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &setChapterScheduleOrderReadonly{v: m}
+	return (*setChapterScheduleOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SetChapterScheduleOrder.
@@ -1200,10 +1200,10 @@ type DeleteChapterScheduleOrderReader interface {
 	Mutate() *DeleteChapterScheduleOrder
 }
 
-type deleteChapterScheduleOrderReadonly struct{ v *DeleteChapterScheduleOrder }
+type deleteChapterScheduleOrderReadonly DeleteChapterScheduleOrder
 
 func (r *deleteChapterScheduleOrderReadonly) Mutate() *DeleteChapterScheduleOrder {
-	return r.v.CloneVT()
+	return (*DeleteChapterScheduleOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this DeleteChapterScheduleOrder.
@@ -1211,7 +1211,7 @@ func (m *DeleteChapterScheduleOrder) AsReader() DeleteChapterScheduleOrderReader
 	if m == nil {
 		return nil
 	}
-	return &deleteChapterScheduleOrderReadonly{v: m}
+	return (*deleteChapterScheduleOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this DeleteChapterScheduleOrder.
@@ -1265,22 +1265,22 @@ type SaveNumscriptOrderReader interface {
 	Mutate() *SaveNumscriptOrder
 }
 
-type saveNumscriptOrderReadonly struct{ v *SaveNumscriptOrder }
+type saveNumscriptOrderReadonly SaveNumscriptOrder
 
 func (r *saveNumscriptOrderReadonly) GetName() string {
-	return r.v.GetName()
+	return (*SaveNumscriptOrder)(r).GetName()
 }
 
 func (r *saveNumscriptOrderReadonly) GetContent() string {
-	return r.v.GetContent()
+	return (*SaveNumscriptOrder)(r).GetContent()
 }
 
 func (r *saveNumscriptOrderReadonly) GetVersion() string {
-	return r.v.GetVersion()
+	return (*SaveNumscriptOrder)(r).GetVersion()
 }
 
 func (r *saveNumscriptOrderReadonly) Mutate() *SaveNumscriptOrder {
-	return r.v.CloneVT()
+	return (*SaveNumscriptOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SaveNumscriptOrder.
@@ -1288,7 +1288,7 @@ func (m *SaveNumscriptOrder) AsReader() SaveNumscriptOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &saveNumscriptOrderReadonly{v: m}
+	return (*saveNumscriptOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SaveNumscriptOrder.
@@ -1340,14 +1340,14 @@ type DeleteNumscriptOrderReader interface {
 	Mutate() *DeleteNumscriptOrder
 }
 
-type deleteNumscriptOrderReadonly struct{ v *DeleteNumscriptOrder }
+type deleteNumscriptOrderReadonly DeleteNumscriptOrder
 
 func (r *deleteNumscriptOrderReadonly) GetName() string {
-	return r.v.GetName()
+	return (*DeleteNumscriptOrder)(r).GetName()
 }
 
 func (r *deleteNumscriptOrderReadonly) Mutate() *DeleteNumscriptOrder {
-	return r.v.CloneVT()
+	return (*DeleteNumscriptOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this DeleteNumscriptOrder.
@@ -1355,7 +1355,7 @@ func (m *DeleteNumscriptOrder) AsReader() DeleteNumscriptOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &deleteNumscriptOrderReadonly{v: m}
+	return (*deleteNumscriptOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this DeleteNumscriptOrder.
@@ -1406,10 +1406,10 @@ type CreateQueryCheckpointOrderReader interface {
 	Mutate() *CreateQueryCheckpointOrder
 }
 
-type createQueryCheckpointOrderReadonly struct{ v *CreateQueryCheckpointOrder }
+type createQueryCheckpointOrderReadonly CreateQueryCheckpointOrder
 
 func (r *createQueryCheckpointOrderReadonly) Mutate() *CreateQueryCheckpointOrder {
-	return r.v.CloneVT()
+	return (*CreateQueryCheckpointOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CreateQueryCheckpointOrder.
@@ -1417,7 +1417,7 @@ func (m *CreateQueryCheckpointOrder) AsReader() CreateQueryCheckpointOrderReader
 	if m == nil {
 		return nil
 	}
-	return &createQueryCheckpointOrderReadonly{v: m}
+	return (*createQueryCheckpointOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CreateQueryCheckpointOrder.
@@ -1469,14 +1469,14 @@ type DeleteQueryCheckpointOrderReader interface {
 	Mutate() *DeleteQueryCheckpointOrder
 }
 
-type deleteQueryCheckpointOrderReadonly struct{ v *DeleteQueryCheckpointOrder }
+type deleteQueryCheckpointOrderReadonly DeleteQueryCheckpointOrder
 
 func (r *deleteQueryCheckpointOrderReadonly) GetCheckpointId() uint64 {
-	return r.v.GetCheckpointId()
+	return (*DeleteQueryCheckpointOrder)(r).GetCheckpointId()
 }
 
 func (r *deleteQueryCheckpointOrderReadonly) Mutate() *DeleteQueryCheckpointOrder {
-	return r.v.CloneVT()
+	return (*DeleteQueryCheckpointOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this DeleteQueryCheckpointOrder.
@@ -1484,7 +1484,7 @@ func (m *DeleteQueryCheckpointOrder) AsReader() DeleteQueryCheckpointOrderReader
 	if m == nil {
 		return nil
 	}
-	return &deleteQueryCheckpointOrderReadonly{v: m}
+	return (*deleteQueryCheckpointOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this DeleteQueryCheckpointOrder.
@@ -1538,18 +1538,18 @@ type QueryCheckpointStateReader interface {
 	Mutate() *QueryCheckpointState
 }
 
-type queryCheckpointStateReadonly struct{ v *QueryCheckpointState }
+type queryCheckpointStateReadonly QueryCheckpointState
 
 func (r *queryCheckpointStateReadonly) GetCheckpointId() uint64 {
-	return r.v.GetCheckpointId()
+	return (*QueryCheckpointState)(r).GetCheckpointId()
 }
 
 func (r *queryCheckpointStateReadonly) GetMaxSequence() uint64 {
-	return r.v.GetMaxSequence()
+	return (*QueryCheckpointState)(r).GetMaxSequence()
 }
 
 func (r *queryCheckpointStateReadonly) GetCreatedAt() commonpb.TimestampReader {
-	v := r.v.GetCreatedAt()
+	v := (*QueryCheckpointState)(r).GetCreatedAt()
 	if v == nil {
 		return nil
 	}
@@ -1557,7 +1557,7 @@ func (r *queryCheckpointStateReadonly) GetCreatedAt() commonpb.TimestampReader {
 }
 
 func (r *queryCheckpointStateReadonly) Mutate() *QueryCheckpointState {
-	return r.v.CloneVT()
+	return (*QueryCheckpointState)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this QueryCheckpointState.
@@ -1565,7 +1565,7 @@ func (m *QueryCheckpointState) AsReader() QueryCheckpointStateReader {
 	if m == nil {
 		return nil
 	}
-	return &queryCheckpointStateReadonly{v: m}
+	return (*queryCheckpointStateReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this QueryCheckpointState.
@@ -1617,16 +1617,14 @@ type SetQueryCheckpointScheduleOrderReader interface {
 	Mutate() *SetQueryCheckpointScheduleOrder
 }
 
-type setQueryCheckpointScheduleOrderReadonly struct {
-	v *SetQueryCheckpointScheduleOrder
-}
+type setQueryCheckpointScheduleOrderReadonly SetQueryCheckpointScheduleOrder
 
 func (r *setQueryCheckpointScheduleOrderReadonly) GetCron() string {
-	return r.v.GetCron()
+	return (*SetQueryCheckpointScheduleOrder)(r).GetCron()
 }
 
 func (r *setQueryCheckpointScheduleOrderReadonly) Mutate() *SetQueryCheckpointScheduleOrder {
-	return r.v.CloneVT()
+	return (*SetQueryCheckpointScheduleOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SetQueryCheckpointScheduleOrder.
@@ -1634,7 +1632,7 @@ func (m *SetQueryCheckpointScheduleOrder) AsReader() SetQueryCheckpointScheduleO
 	if m == nil {
 		return nil
 	}
-	return &setQueryCheckpointScheduleOrderReadonly{v: m}
+	return (*setQueryCheckpointScheduleOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SetQueryCheckpointScheduleOrder.
@@ -1685,12 +1683,10 @@ type DeleteQueryCheckpointScheduleOrderReader interface {
 	Mutate() *DeleteQueryCheckpointScheduleOrder
 }
 
-type deleteQueryCheckpointScheduleOrderReadonly struct {
-	v *DeleteQueryCheckpointScheduleOrder
-}
+type deleteQueryCheckpointScheduleOrderReadonly DeleteQueryCheckpointScheduleOrder
 
 func (r *deleteQueryCheckpointScheduleOrderReadonly) Mutate() *DeleteQueryCheckpointScheduleOrder {
-	return r.v.CloneVT()
+	return (*DeleteQueryCheckpointScheduleOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this DeleteQueryCheckpointScheduleOrder.
@@ -1698,7 +1694,7 @@ func (m *DeleteQueryCheckpointScheduleOrder) AsReader() DeleteQueryCheckpointSch
 	if m == nil {
 		return nil
 	}
-	return &deleteQueryCheckpointScheduleOrderReadonly{v: m}
+	return (*deleteQueryCheckpointScheduleOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this DeleteQueryCheckpointScheduleOrder.
@@ -1754,18 +1750,18 @@ type CreateLedgerOrderReader interface {
 	Mutate() *CreateLedgerOrder
 }
 
-type createLedgerOrderReadonly struct{ v *CreateLedgerOrder }
+type createLedgerOrderReadonly CreateLedgerOrder
 
 func (r *createLedgerOrderReadonly) GetInitialSchema() commonpb.SetMetadataFieldTypeCommandListReader {
-	return commonpb.NewSetMetadataFieldTypeCommandListReader(r.v.GetInitialSchema())
+	return commonpb.NewSetMetadataFieldTypeCommandListReader((*CreateLedgerOrder)(r).GetInitialSchema())
 }
 
 func (r *createLedgerOrderReadonly) GetMode() commonpb.LedgerMode {
-	return r.v.GetMode()
+	return (*CreateLedgerOrder)(r).GetMode()
 }
 
 func (r *createLedgerOrderReadonly) GetMirrorSource() commonpb.MirrorSourceConfigReader {
-	v := r.v.GetMirrorSource()
+	v := (*CreateLedgerOrder)(r).GetMirrorSource()
 	if v == nil {
 		return nil
 	}
@@ -1773,15 +1769,15 @@ func (r *createLedgerOrderReadonly) GetMirrorSource() commonpb.MirrorSourceConfi
 }
 
 func (r *createLedgerOrderReadonly) GetAccountTypes() CreateLedgerOrder_AccountTypesMapReader {
-	return createLedgerOrder_accountTypesMapReadonly(r.v.GetAccountTypes())
+	return createLedgerOrder_accountTypesMapReadonly((*CreateLedgerOrder)(r).GetAccountTypes())
 }
 
 func (r *createLedgerOrderReadonly) GetDefaultEnforcementMode() commonpb.ChartEnforcementMode {
-	return r.v.GetDefaultEnforcementMode()
+	return (*CreateLedgerOrder)(r).GetDefaultEnforcementMode()
 }
 
 func (r *createLedgerOrderReadonly) Mutate() *CreateLedgerOrder {
-	return r.v.CloneVT()
+	return (*CreateLedgerOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CreateLedgerOrder.
@@ -1789,7 +1785,7 @@ func (m *CreateLedgerOrder) AsReader() CreateLedgerOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &createLedgerOrderReadonly{v: m}
+	return (*createLedgerOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CreateLedgerOrder.
@@ -1872,10 +1868,10 @@ type MirrorIngestOrderReader interface {
 	Mutate() *MirrorIngestOrder
 }
 
-type mirrorIngestOrderReadonly struct{ v *MirrorIngestOrder }
+type mirrorIngestOrderReadonly MirrorIngestOrder
 
 func (r *mirrorIngestOrderReadonly) GetEntry() MirrorLogEntryReader {
-	v := r.v.GetEntry()
+	v := (*MirrorIngestOrder)(r).GetEntry()
 	if v == nil {
 		return nil
 	}
@@ -1883,7 +1879,7 @@ func (r *mirrorIngestOrderReadonly) GetEntry() MirrorLogEntryReader {
 }
 
 func (r *mirrorIngestOrderReadonly) Mutate() *MirrorIngestOrder {
-	return r.v.CloneVT()
+	return (*MirrorIngestOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this MirrorIngestOrder.
@@ -1891,7 +1887,7 @@ func (m *MirrorIngestOrder) AsReader() MirrorIngestOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &mirrorIngestOrderReadonly{v: m}
+	return (*mirrorIngestOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this MirrorIngestOrder.
@@ -1944,18 +1940,18 @@ type MirrorLogEntryReader interface {
 	Mutate() *MirrorLogEntry
 }
 
-type mirrorLogEntryReadonly struct{ v *MirrorLogEntry }
+type mirrorLogEntryReadonly MirrorLogEntry
 
 func (r *mirrorLogEntryReadonly) GetV2LogId() uint64 {
-	return r.v.GetV2LogId()
+	return (*MirrorLogEntry)(r).GetV2LogId()
 }
 
 func (r *mirrorLogEntryReadonly) GetData() isMirrorLogEntry_Data {
-	return r.v.GetData()
+	return (*MirrorLogEntry)(r).GetData()
 }
 
 func (r *mirrorLogEntryReadonly) Mutate() *MirrorLogEntry {
-	return r.v.CloneVT()
+	return (*MirrorLogEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this MirrorLogEntry.
@@ -1963,7 +1959,7 @@ func (m *MirrorLogEntry) AsReader() MirrorLogEntryReader {
 	if m == nil {
 		return nil
 	}
-	return &mirrorLogEntryReadonly{v: m}
+	return (*mirrorLogEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this MirrorLogEntry.
@@ -2015,14 +2011,14 @@ type MirrorFillGapReader interface {
 	Mutate() *MirrorFillGap
 }
 
-type mirrorFillGapReadonly struct{ v *MirrorFillGap }
+type mirrorFillGapReadonly MirrorFillGap
 
 func (r *mirrorFillGapReadonly) GetSkippedTransactionIds() []uint64 {
-	return slices.Clone(r.v.GetSkippedTransactionIds())
+	return slices.Clone((*MirrorFillGap)(r).GetSkippedTransactionIds())
 }
 
 func (r *mirrorFillGapReadonly) Mutate() *MirrorFillGap {
-	return r.v.CloneVT()
+	return (*MirrorFillGap)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this MirrorFillGap.
@@ -2030,7 +2026,7 @@ func (m *MirrorFillGap) AsReader() MirrorFillGapReader {
 	if m == nil {
 		return nil
 	}
-	return &mirrorFillGapReadonly{v: m}
+	return (*mirrorFillGapReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this MirrorFillGap.
@@ -2087,22 +2083,22 @@ type MirrorCreatedTransactionReader interface {
 	Mutate() *MirrorCreatedTransaction
 }
 
-type mirrorCreatedTransactionReadonly struct{ v *MirrorCreatedTransaction }
+type mirrorCreatedTransactionReadonly MirrorCreatedTransaction
 
 func (r *mirrorCreatedTransactionReadonly) GetTransactionId() uint64 {
-	return r.v.GetTransactionId()
+	return (*MirrorCreatedTransaction)(r).GetTransactionId()
 }
 
 func (r *mirrorCreatedTransactionReadonly) GetPostings() commonpb.PostingListReader {
-	return commonpb.NewPostingListReader(r.v.GetPostings())
+	return commonpb.NewPostingListReader((*MirrorCreatedTransaction)(r).GetPostings())
 }
 
 func (r *mirrorCreatedTransactionReadonly) GetMetadata() MirrorCreatedTransaction_MetadataMapReader {
-	return mirrorCreatedTransaction_metadataMapReadonly(r.v.GetMetadata())
+	return mirrorCreatedTransaction_metadataMapReadonly((*MirrorCreatedTransaction)(r).GetMetadata())
 }
 
 func (r *mirrorCreatedTransactionReadonly) GetTimestamp() commonpb.TimestampReader {
-	v := r.v.GetTimestamp()
+	v := (*MirrorCreatedTransaction)(r).GetTimestamp()
 	if v == nil {
 		return nil
 	}
@@ -2110,15 +2106,15 @@ func (r *mirrorCreatedTransactionReadonly) GetTimestamp() commonpb.TimestampRead
 }
 
 func (r *mirrorCreatedTransactionReadonly) GetReference() string {
-	return r.v.GetReference()
+	return (*MirrorCreatedTransaction)(r).GetReference()
 }
 
 func (r *mirrorCreatedTransactionReadonly) GetAccountMetadata() MirrorCreatedTransaction_AccountMetadataMapReader {
-	return mirrorCreatedTransaction_accountMetadataMapReadonly(r.v.GetAccountMetadata())
+	return mirrorCreatedTransaction_accountMetadataMapReadonly((*MirrorCreatedTransaction)(r).GetAccountMetadata())
 }
 
 func (r *mirrorCreatedTransactionReadonly) Mutate() *MirrorCreatedTransaction {
-	return r.v.CloneVT()
+	return (*MirrorCreatedTransaction)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this MirrorCreatedTransaction.
@@ -2126,7 +2122,7 @@ func (m *MirrorCreatedTransaction) AsReader() MirrorCreatedTransactionReader {
 	if m == nil {
 		return nil
 	}
-	return &mirrorCreatedTransactionReadonly{v: m}
+	return (*mirrorCreatedTransactionReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this MirrorCreatedTransaction.
@@ -2241,10 +2237,10 @@ type MirrorSavedMetadataReader interface {
 	Mutate() *MirrorSavedMetadata
 }
 
-type mirrorSavedMetadataReadonly struct{ v *MirrorSavedMetadata }
+type mirrorSavedMetadataReadonly MirrorSavedMetadata
 
 func (r *mirrorSavedMetadataReadonly) GetTarget() commonpb.TargetReader {
-	v := r.v.GetTarget()
+	v := (*MirrorSavedMetadata)(r).GetTarget()
 	if v == nil {
 		return nil
 	}
@@ -2252,11 +2248,11 @@ func (r *mirrorSavedMetadataReadonly) GetTarget() commonpb.TargetReader {
 }
 
 func (r *mirrorSavedMetadataReadonly) GetMetadata() MirrorSavedMetadata_MetadataMapReader {
-	return mirrorSavedMetadata_metadataMapReadonly(r.v.GetMetadata())
+	return mirrorSavedMetadata_metadataMapReadonly((*MirrorSavedMetadata)(r).GetMetadata())
 }
 
 func (r *mirrorSavedMetadataReadonly) Mutate() *MirrorSavedMetadata {
-	return r.v.CloneVT()
+	return (*MirrorSavedMetadata)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this MirrorSavedMetadata.
@@ -2264,7 +2260,7 @@ func (m *MirrorSavedMetadata) AsReader() MirrorSavedMetadataReader {
 	if m == nil {
 		return nil
 	}
-	return &mirrorSavedMetadataReadonly{v: m}
+	return (*mirrorSavedMetadataReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this MirrorSavedMetadata.
@@ -2351,26 +2347,26 @@ type MirrorRevertedTransactionReader interface {
 	Mutate() *MirrorRevertedTransaction
 }
 
-type mirrorRevertedTransactionReadonly struct{ v *MirrorRevertedTransaction }
+type mirrorRevertedTransactionReadonly MirrorRevertedTransaction
 
 func (r *mirrorRevertedTransactionReadonly) GetRevertedTransactionId() uint64 {
-	return r.v.GetRevertedTransactionId()
+	return (*MirrorRevertedTransaction)(r).GetRevertedTransactionId()
 }
 
 func (r *mirrorRevertedTransactionReadonly) GetNewTransactionId() uint64 {
-	return r.v.GetNewTransactionId()
+	return (*MirrorRevertedTransaction)(r).GetNewTransactionId()
 }
 
 func (r *mirrorRevertedTransactionReadonly) GetReversePostings() commonpb.PostingListReader {
-	return commonpb.NewPostingListReader(r.v.GetReversePostings())
+	return commonpb.NewPostingListReader((*MirrorRevertedTransaction)(r).GetReversePostings())
 }
 
 func (r *mirrorRevertedTransactionReadonly) GetMetadata() MirrorRevertedTransaction_MetadataMapReader {
-	return mirrorRevertedTransaction_metadataMapReadonly(r.v.GetMetadata())
+	return mirrorRevertedTransaction_metadataMapReadonly((*MirrorRevertedTransaction)(r).GetMetadata())
 }
 
 func (r *mirrorRevertedTransactionReadonly) GetTimestamp() commonpb.TimestampReader {
-	v := r.v.GetTimestamp()
+	v := (*MirrorRevertedTransaction)(r).GetTimestamp()
 	if v == nil {
 		return nil
 	}
@@ -2378,7 +2374,7 @@ func (r *mirrorRevertedTransactionReadonly) GetTimestamp() commonpb.TimestampRea
 }
 
 func (r *mirrorRevertedTransactionReadonly) Mutate() *MirrorRevertedTransaction {
-	return r.v.CloneVT()
+	return (*MirrorRevertedTransaction)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this MirrorRevertedTransaction.
@@ -2386,7 +2382,7 @@ func (m *MirrorRevertedTransaction) AsReader() MirrorRevertedTransactionReader {
 	if m == nil {
 		return nil
 	}
-	return &mirrorRevertedTransactionReadonly{v: m}
+	return (*mirrorRevertedTransactionReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this MirrorRevertedTransaction.
@@ -2470,10 +2466,10 @@ type MirrorDeletedMetadataReader interface {
 	Mutate() *MirrorDeletedMetadata
 }
 
-type mirrorDeletedMetadataReadonly struct{ v *MirrorDeletedMetadata }
+type mirrorDeletedMetadataReadonly MirrorDeletedMetadata
 
 func (r *mirrorDeletedMetadataReadonly) GetTarget() commonpb.TargetReader {
-	v := r.v.GetTarget()
+	v := (*MirrorDeletedMetadata)(r).GetTarget()
 	if v == nil {
 		return nil
 	}
@@ -2481,11 +2477,11 @@ func (r *mirrorDeletedMetadataReadonly) GetTarget() commonpb.TargetReader {
 }
 
 func (r *mirrorDeletedMetadataReadonly) GetKey() string {
-	return r.v.GetKey()
+	return (*MirrorDeletedMetadata)(r).GetKey()
 }
 
 func (r *mirrorDeletedMetadataReadonly) Mutate() *MirrorDeletedMetadata {
-	return r.v.CloneVT()
+	return (*MirrorDeletedMetadata)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this MirrorDeletedMetadata.
@@ -2493,7 +2489,7 @@ func (m *MirrorDeletedMetadata) AsReader() MirrorDeletedMetadataReader {
 	if m == nil {
 		return nil
 	}
-	return &mirrorDeletedMetadataReadonly{v: m}
+	return (*mirrorDeletedMetadataReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this MirrorDeletedMetadata.
@@ -2544,10 +2540,10 @@ type PromoteLedgerOrderReader interface {
 	Mutate() *PromoteLedgerOrder
 }
 
-type promoteLedgerOrderReadonly struct{ v *PromoteLedgerOrder }
+type promoteLedgerOrderReadonly PromoteLedgerOrder
 
 func (r *promoteLedgerOrderReadonly) Mutate() *PromoteLedgerOrder {
-	return r.v.CloneVT()
+	return (*PromoteLedgerOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this PromoteLedgerOrder.
@@ -2555,7 +2551,7 @@ func (m *PromoteLedgerOrder) AsReader() PromoteLedgerOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &promoteLedgerOrderReadonly{v: m}
+	return (*promoteLedgerOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this PromoteLedgerOrder.
@@ -2606,10 +2602,10 @@ type DeleteLedgerOrderReader interface {
 	Mutate() *DeleteLedgerOrder
 }
 
-type deleteLedgerOrderReadonly struct{ v *DeleteLedgerOrder }
+type deleteLedgerOrderReadonly DeleteLedgerOrder
 
 func (r *deleteLedgerOrderReadonly) Mutate() *DeleteLedgerOrder {
-	return r.v.CloneVT()
+	return (*DeleteLedgerOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this DeleteLedgerOrder.
@@ -2617,7 +2613,7 @@ func (m *DeleteLedgerOrder) AsReader() DeleteLedgerOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &deleteLedgerOrderReadonly{v: m}
+	return (*deleteLedgerOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this DeleteLedgerOrder.
@@ -2669,14 +2665,14 @@ type LedgerApplyOrderReader interface {
 	Mutate() *LedgerApplyOrder
 }
 
-type ledgerApplyOrderReadonly struct{ v *LedgerApplyOrder }
+type ledgerApplyOrderReadonly LedgerApplyOrder
 
 func (r *ledgerApplyOrderReadonly) GetData() isLedgerApplyOrder_Data {
-	return r.v.GetData()
+	return (*LedgerApplyOrder)(r).GetData()
 }
 
 func (r *ledgerApplyOrderReadonly) Mutate() *LedgerApplyOrder {
-	return r.v.CloneVT()
+	return (*LedgerApplyOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this LedgerApplyOrder.
@@ -2684,7 +2680,7 @@ func (m *LedgerApplyOrder) AsReader() LedgerApplyOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &ledgerApplyOrderReadonly{v: m}
+	return (*ledgerApplyOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this LedgerApplyOrder.
@@ -2736,10 +2732,10 @@ type CreateIndexOrderReader interface {
 	Mutate() *CreateIndexOrder
 }
 
-type createIndexOrderReadonly struct{ v *CreateIndexOrder }
+type createIndexOrderReadonly CreateIndexOrder
 
 func (r *createIndexOrderReadonly) GetId() commonpb.IndexIDReader {
-	v := r.v.GetId()
+	v := (*CreateIndexOrder)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -2747,7 +2743,7 @@ func (r *createIndexOrderReadonly) GetId() commonpb.IndexIDReader {
 }
 
 func (r *createIndexOrderReadonly) Mutate() *CreateIndexOrder {
-	return r.v.CloneVT()
+	return (*CreateIndexOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CreateIndexOrder.
@@ -2755,7 +2751,7 @@ func (m *CreateIndexOrder) AsReader() CreateIndexOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &createIndexOrderReadonly{v: m}
+	return (*createIndexOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CreateIndexOrder.
@@ -2807,10 +2803,10 @@ type DropIndexOrderReader interface {
 	Mutate() *DropIndexOrder
 }
 
-type dropIndexOrderReadonly struct{ v *DropIndexOrder }
+type dropIndexOrderReadonly DropIndexOrder
 
 func (r *dropIndexOrderReadonly) GetId() commonpb.IndexIDReader {
-	v := r.v.GetId()
+	v := (*DropIndexOrder)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -2818,7 +2814,7 @@ func (r *dropIndexOrderReadonly) GetId() commonpb.IndexIDReader {
 }
 
 func (r *dropIndexOrderReadonly) Mutate() *DropIndexOrder {
-	return r.v.CloneVT()
+	return (*DropIndexOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this DropIndexOrder.
@@ -2826,7 +2822,7 @@ func (m *DropIndexOrder) AsReader() DropIndexOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &dropIndexOrderReadonly{v: m}
+	return (*dropIndexOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this DropIndexOrder.
@@ -2878,10 +2874,10 @@ type AddAccountTypeOrderReader interface {
 	Mutate() *AddAccountTypeOrder
 }
 
-type addAccountTypeOrderReadonly struct{ v *AddAccountTypeOrder }
+type addAccountTypeOrderReadonly AddAccountTypeOrder
 
 func (r *addAccountTypeOrderReadonly) GetAccountType() commonpb.AccountTypeReader {
-	v := r.v.GetAccountType()
+	v := (*AddAccountTypeOrder)(r).GetAccountType()
 	if v == nil {
 		return nil
 	}
@@ -2889,7 +2885,7 @@ func (r *addAccountTypeOrderReadonly) GetAccountType() commonpb.AccountTypeReade
 }
 
 func (r *addAccountTypeOrderReadonly) Mutate() *AddAccountTypeOrder {
-	return r.v.CloneVT()
+	return (*AddAccountTypeOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AddAccountTypeOrder.
@@ -2897,7 +2893,7 @@ func (m *AddAccountTypeOrder) AsReader() AddAccountTypeOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &addAccountTypeOrderReadonly{v: m}
+	return (*addAccountTypeOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AddAccountTypeOrder.
@@ -2949,14 +2945,14 @@ type RemoveAccountTypeOrderReader interface {
 	Mutate() *RemoveAccountTypeOrder
 }
 
-type removeAccountTypeOrderReadonly struct{ v *RemoveAccountTypeOrder }
+type removeAccountTypeOrderReadonly RemoveAccountTypeOrder
 
 func (r *removeAccountTypeOrderReadonly) GetName() string {
-	return r.v.GetName()
+	return (*RemoveAccountTypeOrder)(r).GetName()
 }
 
 func (r *removeAccountTypeOrderReadonly) Mutate() *RemoveAccountTypeOrder {
-	return r.v.CloneVT()
+	return (*RemoveAccountTypeOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RemoveAccountTypeOrder.
@@ -2964,7 +2960,7 @@ func (m *RemoveAccountTypeOrder) AsReader() RemoveAccountTypeOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &removeAccountTypeOrderReadonly{v: m}
+	return (*removeAccountTypeOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RemoveAccountTypeOrder.
@@ -3016,16 +3012,14 @@ type UpdateDefaultEnforcementModeOrderReader interface {
 	Mutate() *UpdateDefaultEnforcementModeOrder
 }
 
-type updateDefaultEnforcementModeOrderReadonly struct {
-	v *UpdateDefaultEnforcementModeOrder
-}
+type updateDefaultEnforcementModeOrderReadonly UpdateDefaultEnforcementModeOrder
 
 func (r *updateDefaultEnforcementModeOrderReadonly) GetEnforcementMode() commonpb.ChartEnforcementMode {
-	return r.v.GetEnforcementMode()
+	return (*UpdateDefaultEnforcementModeOrder)(r).GetEnforcementMode()
 }
 
 func (r *updateDefaultEnforcementModeOrderReadonly) Mutate() *UpdateDefaultEnforcementModeOrder {
-	return r.v.CloneVT()
+	return (*UpdateDefaultEnforcementModeOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this UpdateDefaultEnforcementModeOrder.
@@ -3033,7 +3027,7 @@ func (m *UpdateDefaultEnforcementModeOrder) AsReader() UpdateDefaultEnforcementM
 	if m == nil {
 		return nil
 	}
-	return &updateDefaultEnforcementModeOrderReadonly{v: m}
+	return (*updateDefaultEnforcementModeOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this UpdateDefaultEnforcementModeOrder.
@@ -3087,22 +3081,22 @@ type SetMetadataFieldTypeOrderReader interface {
 	Mutate() *SetMetadataFieldTypeOrder
 }
 
-type setMetadataFieldTypeOrderReadonly struct{ v *SetMetadataFieldTypeOrder }
+type setMetadataFieldTypeOrderReadonly SetMetadataFieldTypeOrder
 
 func (r *setMetadataFieldTypeOrderReadonly) GetTargetType() commonpb.TargetType {
-	return r.v.GetTargetType()
+	return (*SetMetadataFieldTypeOrder)(r).GetTargetType()
 }
 
 func (r *setMetadataFieldTypeOrderReadonly) GetKey() string {
-	return r.v.GetKey()
+	return (*SetMetadataFieldTypeOrder)(r).GetKey()
 }
 
 func (r *setMetadataFieldTypeOrderReadonly) GetType() commonpb.MetadataType {
-	return r.v.GetType()
+	return (*SetMetadataFieldTypeOrder)(r).GetType()
 }
 
 func (r *setMetadataFieldTypeOrderReadonly) Mutate() *SetMetadataFieldTypeOrder {
-	return r.v.CloneVT()
+	return (*SetMetadataFieldTypeOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SetMetadataFieldTypeOrder.
@@ -3110,7 +3104,7 @@ func (m *SetMetadataFieldTypeOrder) AsReader() SetMetadataFieldTypeOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &setMetadataFieldTypeOrderReadonly{v: m}
+	return (*setMetadataFieldTypeOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SetMetadataFieldTypeOrder.
@@ -3163,18 +3157,18 @@ type RemoveMetadataFieldTypeOrderReader interface {
 	Mutate() *RemoveMetadataFieldTypeOrder
 }
 
-type removeMetadataFieldTypeOrderReadonly struct{ v *RemoveMetadataFieldTypeOrder }
+type removeMetadataFieldTypeOrderReadonly RemoveMetadataFieldTypeOrder
 
 func (r *removeMetadataFieldTypeOrderReadonly) GetTargetType() commonpb.TargetType {
-	return r.v.GetTargetType()
+	return (*RemoveMetadataFieldTypeOrder)(r).GetTargetType()
 }
 
 func (r *removeMetadataFieldTypeOrderReadonly) GetKey() string {
-	return r.v.GetKey()
+	return (*RemoveMetadataFieldTypeOrder)(r).GetKey()
 }
 
 func (r *removeMetadataFieldTypeOrderReadonly) Mutate() *RemoveMetadataFieldTypeOrder {
-	return r.v.CloneVT()
+	return (*RemoveMetadataFieldTypeOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RemoveMetadataFieldTypeOrder.
@@ -3182,7 +3176,7 @@ func (m *RemoveMetadataFieldTypeOrder) AsReader() RemoveMetadataFieldTypeOrderRe
 	if m == nil {
 		return nil
 	}
-	return &removeMetadataFieldTypeOrderReadonly{v: m}
+	return (*removeMetadataFieldTypeOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RemoveMetadataFieldTypeOrder.
@@ -3242,14 +3236,14 @@ type CreateTransactionOrderReader interface {
 	Mutate() *CreateTransactionOrder
 }
 
-type createTransactionOrderReadonly struct{ v *CreateTransactionOrder }
+type createTransactionOrderReadonly CreateTransactionOrder
 
 func (r *createTransactionOrderReadonly) GetPostings() commonpb.PostingListReader {
-	return commonpb.NewPostingListReader(r.v.GetPostings())
+	return commonpb.NewPostingListReader((*CreateTransactionOrder)(r).GetPostings())
 }
 
 func (r *createTransactionOrderReadonly) GetScript() commonpb.ScriptReader {
-	v := r.v.GetScript()
+	v := (*CreateTransactionOrder)(r).GetScript()
 	if v == nil {
 		return nil
 	}
@@ -3257,7 +3251,7 @@ func (r *createTransactionOrderReadonly) GetScript() commonpb.ScriptReader {
 }
 
 func (r *createTransactionOrderReadonly) GetTimestamp() commonpb.TimestampReader {
-	v := r.v.GetTimestamp()
+	v := (*CreateTransactionOrder)(r).GetTimestamp()
 	if v == nil {
 		return nil
 	}
@@ -3265,27 +3259,27 @@ func (r *createTransactionOrderReadonly) GetTimestamp() commonpb.TimestampReader
 }
 
 func (r *createTransactionOrderReadonly) GetReference() string {
-	return r.v.GetReference()
+	return (*CreateTransactionOrder)(r).GetReference()
 }
 
 func (r *createTransactionOrderReadonly) GetMetadata() CreateTransactionOrder_MetadataMapReader {
-	return createTransactionOrder_metadataMapReadonly(r.v.GetMetadata())
+	return createTransactionOrder_metadataMapReadonly((*CreateTransactionOrder)(r).GetMetadata())
 }
 
 func (r *createTransactionOrderReadonly) GetAccountMetadata() CreateTransactionOrder_AccountMetadataMapReader {
-	return createTransactionOrder_accountMetadataMapReadonly(r.v.GetAccountMetadata())
+	return createTransactionOrder_accountMetadataMapReadonly((*CreateTransactionOrder)(r).GetAccountMetadata())
 }
 
 func (r *createTransactionOrderReadonly) GetForce() bool {
-	return r.v.GetForce()
+	return (*CreateTransactionOrder)(r).GetForce()
 }
 
 func (r *createTransactionOrderReadonly) GetExpandVolumes() bool {
-	return r.v.GetExpandVolumes()
+	return (*CreateTransactionOrder)(r).GetExpandVolumes()
 }
 
 func (r *createTransactionOrderReadonly) GetNumscriptReference() NumscriptReferenceReader {
-	v := r.v.GetNumscriptReference()
+	v := (*CreateTransactionOrder)(r).GetNumscriptReference()
 	if v == nil {
 		return nil
 	}
@@ -3293,7 +3287,7 @@ func (r *createTransactionOrderReadonly) GetNumscriptReference() NumscriptRefere
 }
 
 func (r *createTransactionOrderReadonly) Mutate() *CreateTransactionOrder {
-	return r.v.CloneVT()
+	return (*CreateTransactionOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CreateTransactionOrder.
@@ -3301,7 +3295,7 @@ func (m *CreateTransactionOrder) AsReader() CreateTransactionOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &createTransactionOrderReadonly{v: m}
+	return (*createTransactionOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CreateTransactionOrder.
@@ -3417,22 +3411,22 @@ type NumscriptReferenceReader interface {
 	Mutate() *NumscriptReference
 }
 
-type numscriptReferenceReadonly struct{ v *NumscriptReference }
+type numscriptReferenceReadonly NumscriptReference
 
 func (r *numscriptReferenceReadonly) GetName() string {
-	return r.v.GetName()
+	return (*NumscriptReference)(r).GetName()
 }
 
 func (r *numscriptReferenceReadonly) GetVersion() string {
-	return r.v.GetVersion()
+	return (*NumscriptReference)(r).GetVersion()
 }
 
 func (r *numscriptReferenceReadonly) GetVars() NumscriptReference_VarsMapReader {
-	return numscriptReference_varsMapReadonly(r.v.GetVars())
+	return numscriptReference_varsMapReadonly((*NumscriptReference)(r).GetVars())
 }
 
 func (r *numscriptReferenceReadonly) Mutate() *NumscriptReference {
-	return r.v.CloneVT()
+	return (*NumscriptReference)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this NumscriptReference.
@@ -3440,7 +3434,7 @@ func (m *NumscriptReference) AsReader() NumscriptReferenceReader {
 	if m == nil {
 		return nil
 	}
-	return &numscriptReferenceReadonly{v: m}
+	return (*numscriptReferenceReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this NumscriptReference.
@@ -3517,10 +3511,10 @@ type SaveMetadataOrderReader interface {
 	Mutate() *SaveMetadataOrder
 }
 
-type saveMetadataOrderReadonly struct{ v *SaveMetadataOrder }
+type saveMetadataOrderReadonly SaveMetadataOrder
 
 func (r *saveMetadataOrderReadonly) GetTarget() commonpb.TargetReader {
-	v := r.v.GetTarget()
+	v := (*SaveMetadataOrder)(r).GetTarget()
 	if v == nil {
 		return nil
 	}
@@ -3528,11 +3522,11 @@ func (r *saveMetadataOrderReadonly) GetTarget() commonpb.TargetReader {
 }
 
 func (r *saveMetadataOrderReadonly) GetMetadata() SaveMetadataOrder_MetadataMapReader {
-	return saveMetadataOrder_metadataMapReadonly(r.v.GetMetadata())
+	return saveMetadataOrder_metadataMapReadonly((*SaveMetadataOrder)(r).GetMetadata())
 }
 
 func (r *saveMetadataOrderReadonly) Mutate() *SaveMetadataOrder {
-	return r.v.CloneVT()
+	return (*SaveMetadataOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SaveMetadataOrder.
@@ -3540,7 +3534,7 @@ func (m *SaveMetadataOrder) AsReader() SaveMetadataOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &saveMetadataOrderReadonly{v: m}
+	return (*saveMetadataOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SaveMetadataOrder.
@@ -3628,34 +3622,34 @@ type RevertTransactionOrderReader interface {
 	Mutate() *RevertTransactionOrder
 }
 
-type revertTransactionOrderReadonly struct{ v *RevertTransactionOrder }
+type revertTransactionOrderReadonly RevertTransactionOrder
 
 func (r *revertTransactionOrderReadonly) GetTransactionId() uint64 {
-	return r.v.GetTransactionId()
+	return (*RevertTransactionOrder)(r).GetTransactionId()
 }
 
 func (r *revertTransactionOrderReadonly) GetForce() bool {
-	return r.v.GetForce()
+	return (*RevertTransactionOrder)(r).GetForce()
 }
 
 func (r *revertTransactionOrderReadonly) GetAtEffectiveDate() bool {
-	return r.v.GetAtEffectiveDate()
+	return (*RevertTransactionOrder)(r).GetAtEffectiveDate()
 }
 
 func (r *revertTransactionOrderReadonly) GetMetadata() RevertTransactionOrder_MetadataMapReader {
-	return revertTransactionOrder_metadataMapReadonly(r.v.GetMetadata())
+	return revertTransactionOrder_metadataMapReadonly((*RevertTransactionOrder)(r).GetMetadata())
 }
 
 func (r *revertTransactionOrderReadonly) GetOriginalPostings() commonpb.PostingListReader {
-	return commonpb.NewPostingListReader(r.v.GetOriginalPostings())
+	return commonpb.NewPostingListReader((*RevertTransactionOrder)(r).GetOriginalPostings())
 }
 
 func (r *revertTransactionOrderReadonly) GetExpandVolumes() bool {
-	return r.v.GetExpandVolumes()
+	return (*RevertTransactionOrder)(r).GetExpandVolumes()
 }
 
 func (r *revertTransactionOrderReadonly) Mutate() *RevertTransactionOrder {
-	return r.v.CloneVT()
+	return (*RevertTransactionOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RevertTransactionOrder.
@@ -3663,7 +3657,7 @@ func (m *RevertTransactionOrder) AsReader() RevertTransactionOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &revertTransactionOrderReadonly{v: m}
+	return (*revertTransactionOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RevertTransactionOrder.
@@ -3747,10 +3741,10 @@ type DeleteMetadataOrderReader interface {
 	Mutate() *DeleteMetadataOrder
 }
 
-type deleteMetadataOrderReadonly struct{ v *DeleteMetadataOrder }
+type deleteMetadataOrderReadonly DeleteMetadataOrder
 
 func (r *deleteMetadataOrderReadonly) GetTarget() commonpb.TargetReader {
-	v := r.v.GetTarget()
+	v := (*DeleteMetadataOrder)(r).GetTarget()
 	if v == nil {
 		return nil
 	}
@@ -3758,11 +3752,11 @@ func (r *deleteMetadataOrderReadonly) GetTarget() commonpb.TargetReader {
 }
 
 func (r *deleteMetadataOrderReadonly) GetKey() string {
-	return r.v.GetKey()
+	return (*DeleteMetadataOrder)(r).GetKey()
 }
 
 func (r *deleteMetadataOrderReadonly) Mutate() *DeleteMetadataOrder {
-	return r.v.CloneVT()
+	return (*DeleteMetadataOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this DeleteMetadataOrder.
@@ -3770,7 +3764,7 @@ func (m *DeleteMetadataOrder) AsReader() DeleteMetadataOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &deleteMetadataOrderReadonly{v: m}
+	return (*deleteMetadataOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this DeleteMetadataOrder.
@@ -3822,14 +3816,14 @@ type SaveLedgerMetadataOrderReader interface {
 	Mutate() *SaveLedgerMetadataOrder
 }
 
-type saveLedgerMetadataOrderReadonly struct{ v *SaveLedgerMetadataOrder }
+type saveLedgerMetadataOrderReadonly SaveLedgerMetadataOrder
 
 func (r *saveLedgerMetadataOrderReadonly) GetMetadata() SaveLedgerMetadataOrder_MetadataMapReader {
-	return saveLedgerMetadataOrder_metadataMapReadonly(r.v.GetMetadata())
+	return saveLedgerMetadataOrder_metadataMapReadonly((*SaveLedgerMetadataOrder)(r).GetMetadata())
 }
 
 func (r *saveLedgerMetadataOrderReadonly) Mutate() *SaveLedgerMetadataOrder {
-	return r.v.CloneVT()
+	return (*SaveLedgerMetadataOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SaveLedgerMetadataOrder.
@@ -3837,7 +3831,7 @@ func (m *SaveLedgerMetadataOrder) AsReader() SaveLedgerMetadataOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &saveLedgerMetadataOrderReadonly{v: m}
+	return (*saveLedgerMetadataOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SaveLedgerMetadataOrder.
@@ -3920,14 +3914,14 @@ type DeleteLedgerMetadataOrderReader interface {
 	Mutate() *DeleteLedgerMetadataOrder
 }
 
-type deleteLedgerMetadataOrderReadonly struct{ v *DeleteLedgerMetadataOrder }
+type deleteLedgerMetadataOrderReadonly DeleteLedgerMetadataOrder
 
 func (r *deleteLedgerMetadataOrderReadonly) GetKey() string {
-	return r.v.GetKey()
+	return (*DeleteLedgerMetadataOrder)(r).GetKey()
 }
 
 func (r *deleteLedgerMetadataOrderReadonly) Mutate() *DeleteLedgerMetadataOrder {
-	return r.v.CloneVT()
+	return (*DeleteLedgerMetadataOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this DeleteLedgerMetadataOrder.
@@ -3935,7 +3929,7 @@ func (m *DeleteLedgerMetadataOrder) AsReader() DeleteLedgerMetadataOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &deleteLedgerMetadataOrderReadonly{v: m}
+	return (*deleteLedgerMetadataOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this DeleteLedgerMetadataOrder.
@@ -3995,18 +3989,18 @@ type ProposalReader interface {
 	Mutate() *Proposal
 }
 
-type proposalReadonly struct{ v *Proposal }
+type proposalReadonly Proposal
 
 func (r *proposalReadonly) GetId() uint64 {
-	return r.v.GetId()
+	return (*Proposal)(r).GetId()
 }
 
 func (r *proposalReadonly) GetOrders() OrderListReader {
-	return NewOrderListReader(r.v.GetOrders())
+	return NewOrderListReader((*Proposal)(r).GetOrders())
 }
 
 func (r *proposalReadonly) GetDate() commonpb.TimestampReader {
-	v := r.v.GetDate()
+	v := (*Proposal)(r).GetDate()
 	if v == nil {
 		return nil
 	}
@@ -4014,7 +4008,7 @@ func (r *proposalReadonly) GetDate() commonpb.TimestampReader {
 }
 
 func (r *proposalReadonly) GetExecutionPlan() ExecutionPlanReader {
-	v := r.v.GetExecutionPlan()
+	v := (*Proposal)(r).GetExecutionPlan()
 	if v == nil {
 		return nil
 	}
@@ -4022,11 +4016,11 @@ func (r *proposalReadonly) GetExecutionPlan() ExecutionPlanReader {
 }
 
 func (r *proposalReadonly) GetPredictedIndex() uint64 {
-	return r.v.GetPredictedIndex()
+	return (*Proposal)(r).GetPredictedIndex()
 }
 
 func (r *proposalReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
-	v := r.v.GetCallerSnapshot()
+	v := (*Proposal)(r).GetCallerSnapshot()
 	if v == nil {
 		return nil
 	}
@@ -4034,7 +4028,7 @@ func (r *proposalReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
 }
 
 func (r *proposalReadonly) GetIdempotency() commonpb.IdempotencyReader {
-	v := r.v.GetIdempotency()
+	v := (*Proposal)(r).GetIdempotency()
 	if v == nil {
 		return nil
 	}
@@ -4042,7 +4036,7 @@ func (r *proposalReadonly) GetIdempotency() commonpb.IdempotencyReader {
 }
 
 func (r *proposalReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
-	v := r.v.GetSignature()
+	v := (*Proposal)(r).GetSignature()
 	if v == nil {
 		return nil
 	}
@@ -4050,11 +4044,11 @@ func (r *proposalReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
 }
 
 func (r *proposalReadonly) GetTechnicalUpdates() TechnicalUpdateListReader {
-	return NewTechnicalUpdateListReader(r.v.GetTechnicalUpdates())
+	return NewTechnicalUpdateListReader((*Proposal)(r).GetTechnicalUpdates())
 }
 
 func (r *proposalReadonly) Mutate() *Proposal {
-	return r.v.CloneVT()
+	return (*Proposal)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this Proposal.
@@ -4062,7 +4056,7 @@ func (m *Proposal) AsReader() ProposalReader {
 	if m == nil {
 		return nil
 	}
-	return &proposalReadonly{v: m}
+	return (*proposalReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this Proposal.
@@ -4113,18 +4107,18 @@ type TechnicalUpdateReader interface {
 	Mutate() *TechnicalUpdate
 }
 
-type technicalUpdateReadonly struct{ v *TechnicalUpdate }
+type technicalUpdateReadonly TechnicalUpdate
 
 func (r *technicalUpdateReadonly) GetCoverageBits() []byte {
-	return bytes.Clone(r.v.GetCoverageBits())
+	return bytes.Clone((*TechnicalUpdate)(r).GetCoverageBits())
 }
 
 func (r *technicalUpdateReadonly) GetKind() isTechnicalUpdate_Kind {
-	return r.v.GetKind()
+	return (*TechnicalUpdate)(r).GetKind()
 }
 
 func (r *technicalUpdateReadonly) Mutate() *TechnicalUpdate {
-	return r.v.CloneVT()
+	return (*TechnicalUpdate)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this TechnicalUpdate.
@@ -4132,7 +4126,7 @@ func (m *TechnicalUpdate) AsReader() TechnicalUpdateReader {
 	if m == nil {
 		return nil
 	}
-	return &technicalUpdateReadonly{v: m}
+	return (*technicalUpdateReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this TechnicalUpdate.
@@ -4186,22 +4180,22 @@ type BackupDestinationReader interface {
 	Mutate() *BackupDestination
 }
 
-type backupDestinationReadonly struct{ v *BackupDestination }
+type backupDestinationReadonly BackupDestination
 
 func (r *backupDestinationReadonly) GetBasePath() string {
-	return r.v.GetBasePath()
+	return (*BackupDestination)(r).GetBasePath()
 }
 
 func (r *backupDestinationReadonly) GetBucketId() string {
-	return r.v.GetBucketId()
+	return (*BackupDestination)(r).GetBucketId()
 }
 
 func (r *backupDestinationReadonly) GetTarget() isBackupDestination_Target {
-	return r.v.GetTarget()
+	return (*BackupDestination)(r).GetTarget()
 }
 
 func (r *backupDestinationReadonly) Mutate() *BackupDestination {
-	return r.v.CloneVT()
+	return (*BackupDestination)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this BackupDestination.
@@ -4209,7 +4203,7 @@ func (m *BackupDestination) AsReader() BackupDestinationReader {
 	if m == nil {
 		return nil
 	}
-	return &backupDestinationReadonly{v: m}
+	return (*backupDestinationReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this BackupDestination.
@@ -4263,22 +4257,22 @@ type S3BackupTargetReader interface {
 	Mutate() *S3BackupTarget
 }
 
-type s3BackupTargetReadonly struct{ v *S3BackupTarget }
+type s3BackupTargetReadonly S3BackupTarget
 
 func (r *s3BackupTargetReadonly) GetBucket() string {
-	return r.v.GetBucket()
+	return (*S3BackupTarget)(r).GetBucket()
 }
 
 func (r *s3BackupTargetReadonly) GetRegion() string {
-	return r.v.GetRegion()
+	return (*S3BackupTarget)(r).GetRegion()
 }
 
 func (r *s3BackupTargetReadonly) GetEndpoint() string {
-	return r.v.GetEndpoint()
+	return (*S3BackupTarget)(r).GetEndpoint()
 }
 
 func (r *s3BackupTargetReadonly) Mutate() *S3BackupTarget {
-	return r.v.CloneVT()
+	return (*S3BackupTarget)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this S3BackupTarget.
@@ -4286,7 +4280,7 @@ func (m *S3BackupTarget) AsReader() S3BackupTargetReader {
 	if m == nil {
 		return nil
 	}
-	return &s3BackupTargetReadonly{v: m}
+	return (*s3BackupTargetReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this S3BackupTarget.
@@ -4340,22 +4334,22 @@ type AzureBackupTargetReader interface {
 	Mutate() *AzureBackupTarget
 }
 
-type azureBackupTargetReadonly struct{ v *AzureBackupTarget }
+type azureBackupTargetReadonly AzureBackupTarget
 
 func (r *azureBackupTargetReadonly) GetAccountName() string {
-	return r.v.GetAccountName()
+	return (*AzureBackupTarget)(r).GetAccountName()
 }
 
 func (r *azureBackupTargetReadonly) GetContainer() string {
-	return r.v.GetContainer()
+	return (*AzureBackupTarget)(r).GetContainer()
 }
 
 func (r *azureBackupTargetReadonly) GetEndpoint() string {
-	return r.v.GetEndpoint()
+	return (*AzureBackupTarget)(r).GetEndpoint()
 }
 
 func (r *azureBackupTargetReadonly) Mutate() *AzureBackupTarget {
-	return r.v.CloneVT()
+	return (*AzureBackupTarget)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AzureBackupTarget.
@@ -4363,7 +4357,7 @@ func (m *AzureBackupTarget) AsReader() AzureBackupTargetReader {
 	if m == nil {
 		return nil
 	}
-	return &azureBackupTargetReadonly{v: m}
+	return (*azureBackupTargetReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AzureBackupTarget.
@@ -4428,22 +4422,22 @@ type BackupJobReader interface {
 	Mutate() *BackupJob
 }
 
-type backupJobReadonly struct{ v *BackupJob }
+type backupJobReadonly BackupJob
 
 func (r *backupJobReadonly) GetJobId() uint64 {
-	return r.v.GetJobId()
+	return (*BackupJob)(r).GetJobId()
 }
 
 func (r *backupJobReadonly) GetKind() BackupKind {
-	return r.v.GetKind()
+	return (*BackupJob)(r).GetKind()
 }
 
 func (r *backupJobReadonly) GetStatus() BackupJobStatus {
-	return r.v.GetStatus()
+	return (*BackupJob)(r).GetStatus()
 }
 
 func (r *backupJobReadonly) GetDestination() BackupDestinationReader {
-	v := r.v.GetDestination()
+	v := (*BackupJob)(r).GetDestination()
 	if v == nil {
 		return nil
 	}
@@ -4451,47 +4445,47 @@ func (r *backupJobReadonly) GetDestination() BackupDestinationReader {
 }
 
 func (r *backupJobReadonly) GetDestinationKey() []byte {
-	return bytes.Clone(r.v.GetDestinationKey())
+	return bytes.Clone((*BackupJob)(r).GetDestinationKey())
 }
 
 func (r *backupJobReadonly) GetExecutorNodeId() uint64 {
-	return r.v.GetExecutorNodeId()
+	return (*BackupJob)(r).GetExecutorNodeId()
 }
 
 func (r *backupJobReadonly) GetStartedAtAppliedIndex() uint64 {
-	return r.v.GetStartedAtAppliedIndex()
+	return (*BackupJob)(r).GetStartedAtAppliedIndex()
 }
 
 func (r *backupJobReadonly) GetFilesUploaded() uint64 {
-	return r.v.GetFilesUploaded()
+	return (*BackupJob)(r).GetFilesUploaded()
 }
 
 func (r *backupJobReadonly) GetSegmentsUploaded() uint64 {
-	return r.v.GetSegmentsUploaded()
+	return (*BackupJob)(r).GetSegmentsUploaded()
 }
 
 func (r *backupJobReadonly) GetCompletedAtAppliedIndex() uint64 {
-	return r.v.GetCompletedAtAppliedIndex()
+	return (*BackupJob)(r).GetCompletedAtAppliedIndex()
 }
 
 func (r *backupJobReadonly) GetFailureMessage() string {
-	return r.v.GetFailureMessage()
+	return (*BackupJob)(r).GetFailureMessage()
 }
 
 func (r *backupJobReadonly) GetLastLogSequence() uint64 {
-	return r.v.GetLastLogSequence()
+	return (*BackupJob)(r).GetLastLogSequence()
 }
 
 func (r *backupJobReadonly) GetLastAuditSequence() uint64 {
-	return r.v.GetLastAuditSequence()
+	return (*BackupJob)(r).GetLastAuditSequence()
 }
 
 func (r *backupJobReadonly) GetLastAppliedIndex() uint64 {
-	return r.v.GetLastAppliedIndex()
+	return (*BackupJob)(r).GetLastAppliedIndex()
 }
 
 func (r *backupJobReadonly) Mutate() *BackupJob {
-	return r.v.CloneVT()
+	return (*BackupJob)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this BackupJob.
@@ -4499,7 +4493,7 @@ func (m *BackupJob) AsReader() BackupJobReader {
 	if m == nil {
 		return nil
 	}
-	return &backupJobReadonly{v: m}
+	return (*backupJobReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this BackupJob.
@@ -4549,14 +4543,14 @@ type BackupOrderReader interface {
 	Mutate() *BackupOrder
 }
 
-type backupOrderReadonly struct{ v *BackupOrder }
+type backupOrderReadonly BackupOrder
 
 func (r *backupOrderReadonly) GetOp() isBackupOrder_Op {
-	return r.v.GetOp()
+	return (*BackupOrder)(r).GetOp()
 }
 
 func (r *backupOrderReadonly) Mutate() *BackupOrder {
-	return r.v.CloneVT()
+	return (*BackupOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this BackupOrder.
@@ -4564,7 +4558,7 @@ func (m *BackupOrder) AsReader() BackupOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &backupOrderReadonly{v: m}
+	return (*backupOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this BackupOrder.
@@ -4616,14 +4610,14 @@ type IncrementalBackupOrderReader interface {
 	Mutate() *IncrementalBackupOrder
 }
 
-type incrementalBackupOrderReadonly struct{ v *IncrementalBackupOrder }
+type incrementalBackupOrderReadonly IncrementalBackupOrder
 
 func (r *incrementalBackupOrderReadonly) GetOp() isIncrementalBackupOrder_Op {
-	return r.v.GetOp()
+	return (*IncrementalBackupOrder)(r).GetOp()
 }
 
 func (r *incrementalBackupOrderReadonly) Mutate() *IncrementalBackupOrder {
-	return r.v.CloneVT()
+	return (*IncrementalBackupOrder)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this IncrementalBackupOrder.
@@ -4631,7 +4625,7 @@ func (m *IncrementalBackupOrder) AsReader() IncrementalBackupOrderReader {
 	if m == nil {
 		return nil
 	}
-	return &incrementalBackupOrderReadonly{v: m}
+	return (*incrementalBackupOrderReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this IncrementalBackupOrder.
@@ -4685,14 +4679,14 @@ type BackupOrderStartReader interface {
 	Mutate() *BackupOrderStart
 }
 
-type backupOrderStartReadonly struct{ v *BackupOrderStart }
+type backupOrderStartReadonly BackupOrderStart
 
 func (r *backupOrderStartReadonly) GetJobId() uint64 {
-	return r.v.GetJobId()
+	return (*BackupOrderStart)(r).GetJobId()
 }
 
 func (r *backupOrderStartReadonly) GetDestination() BackupDestinationReader {
-	v := r.v.GetDestination()
+	v := (*BackupOrderStart)(r).GetDestination()
 	if v == nil {
 		return nil
 	}
@@ -4700,11 +4694,11 @@ func (r *backupOrderStartReadonly) GetDestination() BackupDestinationReader {
 }
 
 func (r *backupOrderStartReadonly) GetExecutorNodeId() uint64 {
-	return r.v.GetExecutorNodeId()
+	return (*BackupOrderStart)(r).GetExecutorNodeId()
 }
 
 func (r *backupOrderStartReadonly) Mutate() *BackupOrderStart {
-	return r.v.CloneVT()
+	return (*BackupOrderStart)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this BackupOrderStart.
@@ -4712,7 +4706,7 @@ func (m *BackupOrderStart) AsReader() BackupOrderStartReader {
 	if m == nil {
 		return nil
 	}
-	return &backupOrderStartReadonly{v: m}
+	return (*backupOrderStartReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this BackupOrderStart.
@@ -4769,34 +4763,34 @@ type BackupOrderCompleteReader interface {
 	Mutate() *BackupOrderComplete
 }
 
-type backupOrderCompleteReadonly struct{ v *BackupOrderComplete }
+type backupOrderCompleteReadonly BackupOrderComplete
 
 func (r *backupOrderCompleteReadonly) GetJobId() uint64 {
-	return r.v.GetJobId()
+	return (*BackupOrderComplete)(r).GetJobId()
 }
 
 func (r *backupOrderCompleteReadonly) GetLastLogSequence() uint64 {
-	return r.v.GetLastLogSequence()
+	return (*BackupOrderComplete)(r).GetLastLogSequence()
 }
 
 func (r *backupOrderCompleteReadonly) GetLastAuditSequence() uint64 {
-	return r.v.GetLastAuditSequence()
+	return (*BackupOrderComplete)(r).GetLastAuditSequence()
 }
 
 func (r *backupOrderCompleteReadonly) GetLastAppliedIndex() uint64 {
-	return r.v.GetLastAppliedIndex()
+	return (*BackupOrderComplete)(r).GetLastAppliedIndex()
 }
 
 func (r *backupOrderCompleteReadonly) GetFilesUploaded() uint64 {
-	return r.v.GetFilesUploaded()
+	return (*BackupOrderComplete)(r).GetFilesUploaded()
 }
 
 func (r *backupOrderCompleteReadonly) GetSegmentsUploaded() uint64 {
-	return r.v.GetSegmentsUploaded()
+	return (*BackupOrderComplete)(r).GetSegmentsUploaded()
 }
 
 func (r *backupOrderCompleteReadonly) Mutate() *BackupOrderComplete {
-	return r.v.CloneVT()
+	return (*BackupOrderComplete)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this BackupOrderComplete.
@@ -4804,7 +4798,7 @@ func (m *BackupOrderComplete) AsReader() BackupOrderCompleteReader {
 	if m == nil {
 		return nil
 	}
-	return &backupOrderCompleteReadonly{v: m}
+	return (*backupOrderCompleteReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this BackupOrderComplete.
@@ -4857,18 +4851,18 @@ type BackupOrderFailReader interface {
 	Mutate() *BackupOrderFail
 }
 
-type backupOrderFailReadonly struct{ v *BackupOrderFail }
+type backupOrderFailReadonly BackupOrderFail
 
 func (r *backupOrderFailReadonly) GetJobId() uint64 {
-	return r.v.GetJobId()
+	return (*BackupOrderFail)(r).GetJobId()
 }
 
 func (r *backupOrderFailReadonly) GetMessage() string {
-	return r.v.GetMessage()
+	return (*BackupOrderFail)(r).GetMessage()
 }
 
 func (r *backupOrderFailReadonly) Mutate() *BackupOrderFail {
-	return r.v.CloneVT()
+	return (*BackupOrderFail)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this BackupOrderFail.
@@ -4876,7 +4870,7 @@ func (m *BackupOrderFail) AsReader() BackupOrderFailReader {
 	if m == nil {
 		return nil
 	}
-	return &backupOrderFailReadonly{v: m}
+	return (*backupOrderFailReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this BackupOrderFail.
@@ -4930,14 +4924,14 @@ type IdempotencyEvictionReader interface {
 	Mutate() *IdempotencyEviction
 }
 
-type idempotencyEvictionReadonly struct{ v *IdempotencyEviction }
+type idempotencyEvictionReadonly IdempotencyEviction
 
 func (r *idempotencyEvictionReadonly) GetCutoffMicros() uint64 {
-	return r.v.GetCutoffMicros()
+	return (*IdempotencyEviction)(r).GetCutoffMicros()
 }
 
 func (r *idempotencyEvictionReadonly) GetPebbleKeyHashes() [][]byte {
-	src := r.v.GetPebbleKeyHashes()
+	src := (*IdempotencyEviction)(r).GetPebbleKeyHashes()
 	if src == nil {
 		return nil
 	}
@@ -4949,11 +4943,11 @@ func (r *idempotencyEvictionReadonly) GetPebbleKeyHashes() [][]byte {
 }
 
 func (r *idempotencyEvictionReadonly) GetLastScannedTimeIndexKey() []byte {
-	return bytes.Clone(r.v.GetLastScannedTimeIndexKey())
+	return bytes.Clone((*IdempotencyEviction)(r).GetLastScannedTimeIndexKey())
 }
 
 func (r *idempotencyEvictionReadonly) Mutate() *IdempotencyEviction {
-	return r.v.CloneVT()
+	return (*IdempotencyEviction)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this IdempotencyEviction.
@@ -4961,7 +4955,7 @@ func (m *IdempotencyEviction) AsReader() IdempotencyEvictionReader {
 	if m == nil {
 		return nil
 	}
-	return &idempotencyEvictionReadonly{v: m}
+	return (*idempotencyEvictionReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this IdempotencyEviction.
@@ -5017,18 +5011,18 @@ type MirrorSyncUpdateReader interface {
 	Mutate() *MirrorSyncUpdate
 }
 
-type mirrorSyncUpdateReadonly struct{ v *MirrorSyncUpdate }
+type mirrorSyncUpdateReadonly MirrorSyncUpdate
 
 func (r *mirrorSyncUpdateReadonly) GetLedgerName() string {
-	return r.v.GetLedgerName()
+	return (*MirrorSyncUpdate)(r).GetLedgerName()
 }
 
 func (r *mirrorSyncUpdateReadonly) GetCursor() uint64 {
-	return r.v.GetCursor()
+	return (*MirrorSyncUpdate)(r).GetCursor()
 }
 
 func (r *mirrorSyncUpdateReadonly) GetError() commonpb.MirrorSyncErrorReader {
-	v := r.v.GetError()
+	v := (*MirrorSyncUpdate)(r).GetError()
 	if v == nil {
 		return nil
 	}
@@ -5036,15 +5030,15 @@ func (r *mirrorSyncUpdateReadonly) GetError() commonpb.MirrorSyncErrorReader {
 }
 
 func (r *mirrorSyncUpdateReadonly) GetClearError() bool {
-	return r.v.GetClearError()
+	return (*MirrorSyncUpdate)(r).GetClearError()
 }
 
 func (r *mirrorSyncUpdateReadonly) GetSourceLogCount() uint64 {
-	return r.v.GetSourceLogCount()
+	return (*MirrorSyncUpdate)(r).GetSourceLogCount()
 }
 
 func (r *mirrorSyncUpdateReadonly) Mutate() *MirrorSyncUpdate {
-	return r.v.CloneVT()
+	return (*MirrorSyncUpdate)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this MirrorSyncUpdate.
@@ -5052,7 +5046,7 @@ func (m *MirrorSyncUpdate) AsReader() MirrorSyncUpdateReader {
 	if m == nil {
 		return nil
 	}
-	return &mirrorSyncUpdateReadonly{v: m}
+	return (*mirrorSyncUpdateReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this MirrorSyncUpdate.
@@ -5107,18 +5101,18 @@ type EventsSinkUpdateReader interface {
 	Mutate() *EventsSinkUpdate
 }
 
-type eventsSinkUpdateReadonly struct{ v *EventsSinkUpdate }
+type eventsSinkUpdateReadonly EventsSinkUpdate
 
 func (r *eventsSinkUpdateReadonly) GetSinkName() string {
-	return r.v.GetSinkName()
+	return (*EventsSinkUpdate)(r).GetSinkName()
 }
 
 func (r *eventsSinkUpdateReadonly) GetCursor() uint64 {
-	return r.v.GetCursor()
+	return (*EventsSinkUpdate)(r).GetCursor()
 }
 
 func (r *eventsSinkUpdateReadonly) GetError() commonpb.SinkErrorReader {
-	v := r.v.GetError()
+	v := (*EventsSinkUpdate)(r).GetError()
 	if v == nil {
 		return nil
 	}
@@ -5126,11 +5120,11 @@ func (r *eventsSinkUpdateReadonly) GetError() commonpb.SinkErrorReader {
 }
 
 func (r *eventsSinkUpdateReadonly) GetClearError() bool {
-	return r.v.GetClearError()
+	return (*EventsSinkUpdate)(r).GetClearError()
 }
 
 func (r *eventsSinkUpdateReadonly) Mutate() *EventsSinkUpdate {
-	return r.v.CloneVT()
+	return (*EventsSinkUpdate)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this EventsSinkUpdate.
@@ -5138,7 +5132,7 @@ func (m *EventsSinkUpdate) AsReader() EventsSinkUpdateReader {
 	if m == nil {
 		return nil
 	}
-	return &eventsSinkUpdateReadonly{v: m}
+	return (*eventsSinkUpdateReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this EventsSinkUpdate.
@@ -5190,14 +5184,14 @@ type CreatedLogOrReferenceReader interface {
 	Mutate() *CreatedLogOrReference
 }
 
-type createdLogOrReferenceReadonly struct{ v *CreatedLogOrReference }
+type createdLogOrReferenceReadonly CreatedLogOrReference
 
 func (r *createdLogOrReferenceReadonly) GetType() isCreatedLogOrReference_Type {
-	return r.v.GetType()
+	return (*CreatedLogOrReference)(r).GetType()
 }
 
 func (r *createdLogOrReferenceReadonly) Mutate() *CreatedLogOrReference {
-	return r.v.CloneVT()
+	return (*CreatedLogOrReference)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CreatedLogOrReference.
@@ -5205,7 +5199,7 @@ func (m *CreatedLogOrReference) AsReader() CreatedLogOrReferenceReader {
 	if m == nil {
 		return nil
 	}
-	return &createdLogOrReferenceReadonly{v: m}
+	return (*createdLogOrReferenceReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CreatedLogOrReference.
@@ -5266,50 +5260,50 @@ type LedgerBoundariesReader interface {
 	Mutate() *LedgerBoundaries
 }
 
-type ledgerBoundariesReadonly struct{ v *LedgerBoundaries }
+type ledgerBoundariesReadonly LedgerBoundaries
 
 func (r *ledgerBoundariesReadonly) GetNextTransactionId() uint64 {
-	return r.v.GetNextTransactionId()
+	return (*LedgerBoundaries)(r).GetNextTransactionId()
 }
 
 func (r *ledgerBoundariesReadonly) GetNextLogId() uint64 {
-	return r.v.GetNextLogId()
+	return (*LedgerBoundaries)(r).GetNextLogId()
 }
 
 func (r *ledgerBoundariesReadonly) GetVolumeCount() uint64 {
-	return r.v.GetVolumeCount()
+	return (*LedgerBoundaries)(r).GetVolumeCount()
 }
 
 func (r *ledgerBoundariesReadonly) GetMetadataCount() uint64 {
-	return r.v.GetMetadataCount()
+	return (*LedgerBoundaries)(r).GetMetadataCount()
 }
 
 func (r *ledgerBoundariesReadonly) GetReferenceCount() uint64 {
-	return r.v.GetReferenceCount()
+	return (*LedgerBoundaries)(r).GetReferenceCount()
 }
 
 func (r *ledgerBoundariesReadonly) GetPostingCount() uint64 {
-	return r.v.GetPostingCount()
+	return (*LedgerBoundaries)(r).GetPostingCount()
 }
 
 func (r *ledgerBoundariesReadonly) GetEphemeralEvictedCount() uint64 {
-	return r.v.GetEphemeralEvictedCount()
+	return (*LedgerBoundaries)(r).GetEphemeralEvictedCount()
 }
 
 func (r *ledgerBoundariesReadonly) GetTransientUsedCount() uint64 {
-	return r.v.GetTransientUsedCount()
+	return (*LedgerBoundaries)(r).GetTransientUsedCount()
 }
 
 func (r *ledgerBoundariesReadonly) GetRevertCount() uint64 {
-	return r.v.GetRevertCount()
+	return (*LedgerBoundaries)(r).GetRevertCount()
 }
 
 func (r *ledgerBoundariesReadonly) GetNumscriptExecutionCount() uint64 {
-	return r.v.GetNumscriptExecutionCount()
+	return (*LedgerBoundaries)(r).GetNumscriptExecutionCount()
 }
 
 func (r *ledgerBoundariesReadonly) Mutate() *LedgerBoundaries {
-	return r.v.CloneVT()
+	return (*LedgerBoundaries)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this LedgerBoundaries.
@@ -5317,7 +5311,7 @@ func (m *LedgerBoundaries) AsReader() LedgerBoundariesReader {
 	if m == nil {
 		return nil
 	}
-	return &ledgerBoundariesReadonly{v: m}
+	return (*ledgerBoundariesReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this LedgerBoundaries.
@@ -5370,10 +5364,10 @@ type VolumePairReader interface {
 	Mutate() *VolumePair
 }
 
-type volumePairReadonly struct{ v *VolumePair }
+type volumePairReadonly VolumePair
 
 func (r *volumePairReadonly) GetInput() commonpb.Uint256Reader {
-	v := r.v.GetInput()
+	v := (*VolumePair)(r).GetInput()
 	if v == nil {
 		return nil
 	}
@@ -5381,7 +5375,7 @@ func (r *volumePairReadonly) GetInput() commonpb.Uint256Reader {
 }
 
 func (r *volumePairReadonly) GetOutput() commonpb.Uint256Reader {
-	v := r.v.GetOutput()
+	v := (*VolumePair)(r).GetOutput()
 	if v == nil {
 		return nil
 	}
@@ -5389,7 +5383,7 @@ func (r *volumePairReadonly) GetOutput() commonpb.Uint256Reader {
 }
 
 func (r *volumePairReadonly) Mutate() *VolumePair {
-	return r.v.CloneVT()
+	return (*VolumePair)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this VolumePair.
@@ -5397,7 +5391,7 @@ func (m *VolumePair) AsReader() VolumePairReader {
 	if m == nil {
 		return nil
 	}
-	return &volumePairReadonly{v: m}
+	return (*volumePairReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this VolumePair.
@@ -5450,26 +5444,26 @@ type ExecutionPlanReader interface {
 	Mutate() *ExecutionPlan
 }
 
-type executionPlanReadonly struct{ v *ExecutionPlan }
+type executionPlanReadonly ExecutionPlan
 
 func (r *executionPlanReadonly) GetLastPersistedIndex() uint64 {
-	return r.v.GetLastPersistedIndex()
+	return (*ExecutionPlan)(r).GetLastPersistedIndex()
 }
 
 func (r *executionPlanReadonly) GetCacheEpoch() uint64 {
-	return r.v.GetCacheEpoch()
+	return (*ExecutionPlan)(r).GetCacheEpoch()
 }
 
 func (r *executionPlanReadonly) GetAttributes() AttributeCoverageListReader {
-	return NewAttributeCoverageListReader(r.v.GetAttributes())
+	return NewAttributeCoverageListReader((*ExecutionPlan)(r).GetAttributes())
 }
 
 func (r *executionPlanReadonly) GetIdempotencyKeys() ReloadIdempotencyKeyListReader {
-	return NewReloadIdempotencyKeyListReader(r.v.GetIdempotencyKeys())
+	return NewReloadIdempotencyKeyListReader((*ExecutionPlan)(r).GetIdempotencyKeys())
 }
 
 func (r *executionPlanReadonly) Mutate() *ExecutionPlan {
-	return r.v.CloneVT()
+	return (*ExecutionPlan)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this ExecutionPlan.
@@ -5477,7 +5471,7 @@ func (m *ExecutionPlan) AsReader() ExecutionPlanReader {
 	if m == nil {
 		return nil
 	}
-	return &executionPlanReadonly{v: m}
+	return (*executionPlanReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this ExecutionPlan.
@@ -5531,10 +5525,10 @@ type AttributeCoverageReader interface {
 	Mutate() *AttributeCoverage
 }
 
-type attributeCoverageReadonly struct{ v *AttributeCoverage }
+type attributeCoverageReadonly AttributeCoverage
 
 func (r *attributeCoverageReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
+	v := (*AttributeCoverage)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -5542,11 +5536,11 @@ func (r *attributeCoverageReadonly) GetId() AttributeIDReader {
 }
 
 func (r *attributeCoverageReadonly) GetAttrCode() uint32 {
-	return r.v.GetAttrCode()
+	return (*AttributeCoverage)(r).GetAttrCode()
 }
 
 func (r *attributeCoverageReadonly) GetValue() AttributeValueReader {
-	v := r.v.GetValue()
+	v := (*AttributeCoverage)(r).GetValue()
 	if v == nil {
 		return nil
 	}
@@ -5554,7 +5548,7 @@ func (r *attributeCoverageReadonly) GetValue() AttributeValueReader {
 }
 
 func (r *attributeCoverageReadonly) Mutate() *AttributeCoverage {
-	return r.v.CloneVT()
+	return (*AttributeCoverage)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AttributeCoverage.
@@ -5562,7 +5556,7 @@ func (m *AttributeCoverage) AsReader() AttributeCoverageReader {
 	if m == nil {
 		return nil
 	}
-	return &attributeCoverageReadonly{v: m}
+	return (*attributeCoverageReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AttributeCoverage.
@@ -5614,14 +5608,14 @@ type AttributeValueReader interface {
 	Mutate() *AttributeValue
 }
 
-type attributeValueReadonly struct{ v *AttributeValue }
+type attributeValueReadonly AttributeValue
 
 func (r *attributeValueReadonly) GetRawValue() []byte {
-	return bytes.Clone(r.v.GetRawValue())
+	return bytes.Clone((*AttributeValue)(r).GetRawValue())
 }
 
 func (r *attributeValueReadonly) Mutate() *AttributeValue {
-	return r.v.CloneVT()
+	return (*AttributeValue)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AttributeValue.
@@ -5629,7 +5623,7 @@ func (m *AttributeValue) AsReader() AttributeValueReader {
 	if m == nil {
 		return nil
 	}
-	return &attributeValueReadonly{v: m}
+	return (*attributeValueReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AttributeValue.
@@ -5682,14 +5676,14 @@ type ReloadIdempotencyKeyReader interface {
 	Mutate() *ReloadIdempotencyKey
 }
 
-type reloadIdempotencyKeyReadonly struct{ v *ReloadIdempotencyKey }
+type reloadIdempotencyKeyReadonly ReloadIdempotencyKey
 
 func (r *reloadIdempotencyKeyReadonly) GetKey() string {
-	return r.v.GetKey()
+	return (*ReloadIdempotencyKey)(r).GetKey()
 }
 
 func (r *reloadIdempotencyKeyReadonly) GetValue() commonpb.IdempotencyKeyValueReader {
-	v := r.v.GetValue()
+	v := (*ReloadIdempotencyKey)(r).GetValue()
 	if v == nil {
 		return nil
 	}
@@ -5697,7 +5691,7 @@ func (r *reloadIdempotencyKeyReadonly) GetValue() commonpb.IdempotencyKeyValueRe
 }
 
 func (r *reloadIdempotencyKeyReadonly) Mutate() *ReloadIdempotencyKey {
-	return r.v.CloneVT()
+	return (*ReloadIdempotencyKey)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this ReloadIdempotencyKey.
@@ -5705,7 +5699,7 @@ func (m *ReloadIdempotencyKey) AsReader() ReloadIdempotencyKeyReader {
 	if m == nil {
 		return nil
 	}
-	return &reloadIdempotencyKeyReadonly{v: m}
+	return (*reloadIdempotencyKeyReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this ReloadIdempotencyKey.
@@ -5757,14 +5751,14 @@ type CacheGenerationMetaReader interface {
 	Mutate() *CacheGenerationMeta
 }
 
-type cacheGenerationMetaReadonly struct{ v *CacheGenerationMeta }
+type cacheGenerationMetaReadonly CacheGenerationMeta
 
 func (r *cacheGenerationMetaReadonly) GetBaseIndex() uint64 {
-	return r.v.GetBaseIndex()
+	return (*CacheGenerationMeta)(r).GetBaseIndex()
 }
 
 func (r *cacheGenerationMetaReadonly) Mutate() *CacheGenerationMeta {
-	return r.v.CloneVT()
+	return (*CacheGenerationMeta)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CacheGenerationMeta.
@@ -5772,7 +5766,7 @@ func (m *CacheGenerationMeta) AsReader() CacheGenerationMetaReader {
 	if m == nil {
 		return nil
 	}
-	return &cacheGenerationMetaReadonly{v: m}
+	return (*cacheGenerationMetaReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CacheGenerationMeta.
@@ -5824,14 +5818,14 @@ type CacheSnapshotMetaReader interface {
 	Mutate() *CacheSnapshotMeta
 }
 
-type cacheSnapshotMetaReadonly struct{ v *CacheSnapshotMeta }
+type cacheSnapshotMetaReadonly CacheSnapshotMeta
 
 func (r *cacheSnapshotMetaReadonly) GetCurrentGeneration() uint64 {
-	return r.v.GetCurrentGeneration()
+	return (*CacheSnapshotMeta)(r).GetCurrentGeneration()
 }
 
 func (r *cacheSnapshotMetaReadonly) Mutate() *CacheSnapshotMeta {
-	return r.v.CloneVT()
+	return (*CacheSnapshotMeta)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CacheSnapshotMeta.
@@ -5839,7 +5833,7 @@ func (m *CacheSnapshotMeta) AsReader() CacheSnapshotMetaReader {
 	if m == nil {
 		return nil
 	}
-	return &cacheSnapshotMetaReadonly{v: m}
+	return (*cacheSnapshotMetaReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CacheSnapshotMeta.
@@ -5893,22 +5887,22 @@ type PeerAddressReader interface {
 	Mutate() *PeerAddress
 }
 
-type peerAddressReadonly struct{ v *PeerAddress }
+type peerAddressReadonly PeerAddress
 
 func (r *peerAddressReadonly) GetNodeId() uint64 {
-	return r.v.GetNodeId()
+	return (*PeerAddress)(r).GetNodeId()
 }
 
 func (r *peerAddressReadonly) GetRaftAddress() string {
-	return r.v.GetRaftAddress()
+	return (*PeerAddress)(r).GetRaftAddress()
 }
 
 func (r *peerAddressReadonly) GetServiceAddress() string {
-	return r.v.GetServiceAddress()
+	return (*PeerAddress)(r).GetServiceAddress()
 }
 
 func (r *peerAddressReadonly) Mutate() *PeerAddress {
-	return r.v.CloneVT()
+	return (*PeerAddress)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this PeerAddress.
@@ -5916,7 +5910,7 @@ func (m *PeerAddress) AsReader() PeerAddressReader {
 	if m == nil {
 		return nil
 	}
-	return &peerAddressReadonly{v: m}
+	return (*peerAddressReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this PeerAddress.
@@ -5975,42 +5969,42 @@ type GenerationSnapshotReader interface {
 	Mutate() *GenerationSnapshot
 }
 
-type generationSnapshotReadonly struct{ v *GenerationSnapshot }
+type generationSnapshotReadonly GenerationSnapshot
 
 func (r *generationSnapshotReadonly) GetBaseIndex() uint64 {
-	return r.v.GetBaseIndex()
+	return (*GenerationSnapshot)(r).GetBaseIndex()
 }
 
 func (r *generationSnapshotReadonly) GetVolumes() VolumeAttributeSnapshotEntryListReader {
-	return NewVolumeAttributeSnapshotEntryListReader(r.v.GetVolumes())
+	return NewVolumeAttributeSnapshotEntryListReader((*GenerationSnapshot)(r).GetVolumes())
 }
 
 func (r *generationSnapshotReadonly) GetMetadata() MetadataAttributeEntryListReader {
-	return NewMetadataAttributeEntryListReader(r.v.GetMetadata())
+	return NewMetadataAttributeEntryListReader((*GenerationSnapshot)(r).GetMetadata())
 }
 
 func (r *generationSnapshotReadonly) GetLedgerMetadata() MetadataAttributeEntryListReader {
-	return NewMetadataAttributeEntryListReader(r.v.GetLedgerMetadata())
+	return NewMetadataAttributeEntryListReader((*GenerationSnapshot)(r).GetLedgerMetadata())
 }
 
 func (r *generationSnapshotReadonly) GetLedgers() LedgerAttributeEntryListReader {
-	return NewLedgerAttributeEntryListReader(r.v.GetLedgers())
+	return NewLedgerAttributeEntryListReader((*GenerationSnapshot)(r).GetLedgers())
 }
 
 func (r *generationSnapshotReadonly) GetBoundaries() BoundaryAttributeEntryListReader {
-	return NewBoundaryAttributeEntryListReader(r.v.GetBoundaries())
+	return NewBoundaryAttributeEntryListReader((*GenerationSnapshot)(r).GetBoundaries())
 }
 
 func (r *generationSnapshotReadonly) GetReferences() TransactionReferenceAttributeEntryListReader {
-	return NewTransactionReferenceAttributeEntryListReader(r.v.GetReferences())
+	return NewTransactionReferenceAttributeEntryListReader((*GenerationSnapshot)(r).GetReferences())
 }
 
 func (r *generationSnapshotReadonly) GetTransactions() TransactionStateAttributeEntryListReader {
-	return NewTransactionStateAttributeEntryListReader(r.v.GetTransactions())
+	return NewTransactionStateAttributeEntryListReader((*GenerationSnapshot)(r).GetTransactions())
 }
 
 func (r *generationSnapshotReadonly) Mutate() *GenerationSnapshot {
-	return r.v.CloneVT()
+	return (*GenerationSnapshot)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this GenerationSnapshot.
@@ -6018,7 +6012,7 @@ func (m *GenerationSnapshot) AsReader() GenerationSnapshotReader {
 	if m == nil {
 		return nil
 	}
-	return &generationSnapshotReadonly{v: m}
+	return (*generationSnapshotReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this GenerationSnapshot.
@@ -6072,10 +6066,10 @@ type VolumeAttributeSnapshotEntryReader interface {
 	Mutate() *VolumeAttributeSnapshotEntry
 }
 
-type volumeAttributeSnapshotEntryReadonly struct{ v *VolumeAttributeSnapshotEntry }
+type volumeAttributeSnapshotEntryReadonly VolumeAttributeSnapshotEntry
 
 func (r *volumeAttributeSnapshotEntryReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
+	v := (*VolumeAttributeSnapshotEntry)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -6083,7 +6077,7 @@ func (r *volumeAttributeSnapshotEntryReadonly) GetId() AttributeIDReader {
 }
 
 func (r *volumeAttributeSnapshotEntryReadonly) GetInput() commonpb.Uint256Reader {
-	v := r.v.GetInput()
+	v := (*VolumeAttributeSnapshotEntry)(r).GetInput()
 	if v == nil {
 		return nil
 	}
@@ -6091,7 +6085,7 @@ func (r *volumeAttributeSnapshotEntryReadonly) GetInput() commonpb.Uint256Reader
 }
 
 func (r *volumeAttributeSnapshotEntryReadonly) GetOutput() commonpb.Uint256Reader {
-	v := r.v.GetOutput()
+	v := (*VolumeAttributeSnapshotEntry)(r).GetOutput()
 	if v == nil {
 		return nil
 	}
@@ -6099,7 +6093,7 @@ func (r *volumeAttributeSnapshotEntryReadonly) GetOutput() commonpb.Uint256Reade
 }
 
 func (r *volumeAttributeSnapshotEntryReadonly) Mutate() *VolumeAttributeSnapshotEntry {
-	return r.v.CloneVT()
+	return (*VolumeAttributeSnapshotEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this VolumeAttributeSnapshotEntry.
@@ -6107,7 +6101,7 @@ func (m *VolumeAttributeSnapshotEntry) AsReader() VolumeAttributeSnapshotEntryRe
 	if m == nil {
 		return nil
 	}
-	return &volumeAttributeSnapshotEntryReadonly{v: m}
+	return (*volumeAttributeSnapshotEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this VolumeAttributeSnapshotEntry.
@@ -6160,10 +6154,10 @@ type MetadataAttributeEntryReader interface {
 	Mutate() *MetadataAttributeEntry
 }
 
-type metadataAttributeEntryReadonly struct{ v *MetadataAttributeEntry }
+type metadataAttributeEntryReadonly MetadataAttributeEntry
 
 func (r *metadataAttributeEntryReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
+	v := (*MetadataAttributeEntry)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -6171,7 +6165,7 @@ func (r *metadataAttributeEntryReadonly) GetId() AttributeIDReader {
 }
 
 func (r *metadataAttributeEntryReadonly) GetValue() commonpb.MetadataValueReader {
-	v := r.v.GetValue()
+	v := (*MetadataAttributeEntry)(r).GetValue()
 	if v == nil {
 		return nil
 	}
@@ -6179,7 +6173,7 @@ func (r *metadataAttributeEntryReadonly) GetValue() commonpb.MetadataValueReader
 }
 
 func (r *metadataAttributeEntryReadonly) Mutate() *MetadataAttributeEntry {
-	return r.v.CloneVT()
+	return (*MetadataAttributeEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this MetadataAttributeEntry.
@@ -6187,7 +6181,7 @@ func (m *MetadataAttributeEntry) AsReader() MetadataAttributeEntryReader {
 	if m == nil {
 		return nil
 	}
-	return &metadataAttributeEntryReadonly{v: m}
+	return (*metadataAttributeEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this MetadataAttributeEntry.
@@ -6240,10 +6234,10 @@ type LedgerAttributeEntryReader interface {
 	Mutate() *LedgerAttributeEntry
 }
 
-type ledgerAttributeEntryReadonly struct{ v *LedgerAttributeEntry }
+type ledgerAttributeEntryReadonly LedgerAttributeEntry
 
 func (r *ledgerAttributeEntryReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
+	v := (*LedgerAttributeEntry)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -6251,7 +6245,7 @@ func (r *ledgerAttributeEntryReadonly) GetId() AttributeIDReader {
 }
 
 func (r *ledgerAttributeEntryReadonly) GetInfo() commonpb.LedgerInfoReader {
-	v := r.v.GetInfo()
+	v := (*LedgerAttributeEntry)(r).GetInfo()
 	if v == nil {
 		return nil
 	}
@@ -6259,7 +6253,7 @@ func (r *ledgerAttributeEntryReadonly) GetInfo() commonpb.LedgerInfoReader {
 }
 
 func (r *ledgerAttributeEntryReadonly) Mutate() *LedgerAttributeEntry {
-	return r.v.CloneVT()
+	return (*LedgerAttributeEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this LedgerAttributeEntry.
@@ -6267,7 +6261,7 @@ func (m *LedgerAttributeEntry) AsReader() LedgerAttributeEntryReader {
 	if m == nil {
 		return nil
 	}
-	return &ledgerAttributeEntryReadonly{v: m}
+	return (*ledgerAttributeEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this LedgerAttributeEntry.
@@ -6320,10 +6314,10 @@ type BoundaryAttributeEntryReader interface {
 	Mutate() *BoundaryAttributeEntry
 }
 
-type boundaryAttributeEntryReadonly struct{ v *BoundaryAttributeEntry }
+type boundaryAttributeEntryReadonly BoundaryAttributeEntry
 
 func (r *boundaryAttributeEntryReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
+	v := (*BoundaryAttributeEntry)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -6331,7 +6325,7 @@ func (r *boundaryAttributeEntryReadonly) GetId() AttributeIDReader {
 }
 
 func (r *boundaryAttributeEntryReadonly) GetBoundaries() LedgerBoundariesReader {
-	v := r.v.GetBoundaries()
+	v := (*BoundaryAttributeEntry)(r).GetBoundaries()
 	if v == nil {
 		return nil
 	}
@@ -6339,7 +6333,7 @@ func (r *boundaryAttributeEntryReadonly) GetBoundaries() LedgerBoundariesReader 
 }
 
 func (r *boundaryAttributeEntryReadonly) Mutate() *BoundaryAttributeEntry {
-	return r.v.CloneVT()
+	return (*BoundaryAttributeEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this BoundaryAttributeEntry.
@@ -6347,7 +6341,7 @@ func (m *BoundaryAttributeEntry) AsReader() BoundaryAttributeEntryReader {
 	if m == nil {
 		return nil
 	}
-	return &boundaryAttributeEntryReadonly{v: m}
+	return (*boundaryAttributeEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this BoundaryAttributeEntry.
@@ -6400,12 +6394,10 @@ type TransactionReferenceAttributeEntryReader interface {
 	Mutate() *TransactionReferenceAttributeEntry
 }
 
-type transactionReferenceAttributeEntryReadonly struct {
-	v *TransactionReferenceAttributeEntry
-}
+type transactionReferenceAttributeEntryReadonly TransactionReferenceAttributeEntry
 
 func (r *transactionReferenceAttributeEntryReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
+	v := (*TransactionReferenceAttributeEntry)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -6413,7 +6405,7 @@ func (r *transactionReferenceAttributeEntryReadonly) GetId() AttributeIDReader {
 }
 
 func (r *transactionReferenceAttributeEntryReadonly) GetValue() commonpb.TransactionReferenceValueReader {
-	v := r.v.GetValue()
+	v := (*TransactionReferenceAttributeEntry)(r).GetValue()
 	if v == nil {
 		return nil
 	}
@@ -6421,7 +6413,7 @@ func (r *transactionReferenceAttributeEntryReadonly) GetValue() commonpb.Transac
 }
 
 func (r *transactionReferenceAttributeEntryReadonly) Mutate() *TransactionReferenceAttributeEntry {
-	return r.v.CloneVT()
+	return (*TransactionReferenceAttributeEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this TransactionReferenceAttributeEntry.
@@ -6429,7 +6421,7 @@ func (m *TransactionReferenceAttributeEntry) AsReader() TransactionReferenceAttr
 	if m == nil {
 		return nil
 	}
-	return &transactionReferenceAttributeEntryReadonly{v: m}
+	return (*transactionReferenceAttributeEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this TransactionReferenceAttributeEntry.
@@ -6482,12 +6474,10 @@ type TransactionStateAttributeEntryReader interface {
 	Mutate() *TransactionStateAttributeEntry
 }
 
-type transactionStateAttributeEntryReadonly struct {
-	v *TransactionStateAttributeEntry
-}
+type transactionStateAttributeEntryReadonly TransactionStateAttributeEntry
 
 func (r *transactionStateAttributeEntryReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
+	v := (*TransactionStateAttributeEntry)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -6495,7 +6485,7 @@ func (r *transactionStateAttributeEntryReadonly) GetId() AttributeIDReader {
 }
 
 func (r *transactionStateAttributeEntryReadonly) GetState() commonpb.TransactionStateReader {
-	v := r.v.GetState()
+	v := (*TransactionStateAttributeEntry)(r).GetState()
 	if v == nil {
 		return nil
 	}
@@ -6503,7 +6493,7 @@ func (r *transactionStateAttributeEntryReadonly) GetState() commonpb.Transaction
 }
 
 func (r *transactionStateAttributeEntryReadonly) Mutate() *TransactionStateAttributeEntry {
-	return r.v.CloneVT()
+	return (*TransactionStateAttributeEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this TransactionStateAttributeEntry.
@@ -6511,7 +6501,7 @@ func (m *TransactionStateAttributeEntry) AsReader() TransactionStateAttributeEnt
 	if m == nil {
 		return nil
 	}
-	return &transactionStateAttributeEntryReadonly{v: m}
+	return (*transactionStateAttributeEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this TransactionStateAttributeEntry.
@@ -6564,10 +6554,10 @@ type IdempotencyKeyAttributeEntryReader interface {
 	Mutate() *IdempotencyKeyAttributeEntry
 }
 
-type idempotencyKeyAttributeEntryReadonly struct{ v *IdempotencyKeyAttributeEntry }
+type idempotencyKeyAttributeEntryReadonly IdempotencyKeyAttributeEntry
 
 func (r *idempotencyKeyAttributeEntryReadonly) GetId() AttributeIDReader {
-	v := r.v.GetId()
+	v := (*IdempotencyKeyAttributeEntry)(r).GetId()
 	if v == nil {
 		return nil
 	}
@@ -6575,7 +6565,7 @@ func (r *idempotencyKeyAttributeEntryReadonly) GetId() AttributeIDReader {
 }
 
 func (r *idempotencyKeyAttributeEntryReadonly) GetValue() commonpb.IdempotencyKeyValueReader {
-	v := r.v.GetValue()
+	v := (*IdempotencyKeyAttributeEntry)(r).GetValue()
 	if v == nil {
 		return nil
 	}
@@ -6583,7 +6573,7 @@ func (r *idempotencyKeyAttributeEntryReadonly) GetValue() commonpb.IdempotencyKe
 }
 
 func (r *idempotencyKeyAttributeEntryReadonly) Mutate() *IdempotencyKeyAttributeEntry {
-	return r.v.CloneVT()
+	return (*IdempotencyKeyAttributeEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this IdempotencyKeyAttributeEntry.
@@ -6591,7 +6581,7 @@ func (m *IdempotencyKeyAttributeEntry) AsReader() IdempotencyKeyAttributeEntryRe
 	if m == nil {
 		return nil
 	}
-	return &idempotencyKeyAttributeEntryReadonly{v: m}
+	return (*idempotencyKeyAttributeEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this IdempotencyKeyAttributeEntry.
@@ -6644,18 +6634,18 @@ type AttributeIDReader interface {
 	Mutate() *AttributeID
 }
 
-type attributeIDReadonly struct{ v *AttributeID }
+type attributeIDReadonly AttributeID
 
 func (r *attributeIDReadonly) GetId() []byte {
-	return bytes.Clone(r.v.GetId())
+	return bytes.Clone((*AttributeID)(r).GetId())
 }
 
 func (r *attributeIDReadonly) GetTag() uint64 {
-	return r.v.GetTag()
+	return (*AttributeID)(r).GetTag()
 }
 
 func (r *attributeIDReadonly) Mutate() *AttributeID {
-	return r.v.CloneVT()
+	return (*AttributeID)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this AttributeID.
@@ -6663,7 +6653,7 @@ func (m *AttributeID) AsReader() AttributeIDReader {
 	if m == nil {
 		return nil
 	}
-	return &attributeIDReadonly{v: m}
+	return (*attributeIDReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this AttributeID.

@@ -15,18 +15,18 @@ type RaftRequestMessageReader interface {
 	Mutate() *RaftRequestMessage
 }
 
-type raftRequestMessageReadonly struct{ v *RaftRequestMessage }
+type raftRequestMessageReadonly RaftRequestMessage
 
 func (r *raftRequestMessageReadonly) GetId() uint64 {
-	return r.v.GetId()
+	return (*RaftRequestMessage)(r).GetId()
 }
 
 func (r *raftRequestMessageReadonly) GetMessage() []byte {
-	return bytes.Clone(r.v.GetMessage())
+	return bytes.Clone((*RaftRequestMessage)(r).GetMessage())
 }
 
 func (r *raftRequestMessageReadonly) Mutate() *RaftRequestMessage {
-	return r.v.CloneVT()
+	return (*RaftRequestMessage)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RaftRequestMessage.
@@ -34,7 +34,7 @@ func (m *RaftRequestMessage) AsReader() RaftRequestMessageReader {
 	if m == nil {
 		return nil
 	}
-	return &raftRequestMessageReadonly{v: m}
+	return (*raftRequestMessageReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RaftRequestMessage.
@@ -86,14 +86,14 @@ type RaftRequestBatchReader interface {
 	Mutate() *RaftRequestBatch
 }
 
-type raftRequestBatchReadonly struct{ v *RaftRequestBatch }
+type raftRequestBatchReadonly RaftRequestBatch
 
 func (r *raftRequestBatchReadonly) GetMessages() RaftRequestMessageListReader {
-	return NewRaftRequestMessageListReader(r.v.GetMessages())
+	return NewRaftRequestMessageListReader((*RaftRequestBatch)(r).GetMessages())
 }
 
 func (r *raftRequestBatchReadonly) Mutate() *RaftRequestBatch {
-	return r.v.CloneVT()
+	return (*RaftRequestBatch)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RaftRequestBatch.
@@ -101,7 +101,7 @@ func (m *RaftRequestBatch) AsReader() RaftRequestBatchReader {
 	if m == nil {
 		return nil
 	}
-	return &raftRequestBatchReadonly{v: m}
+	return (*raftRequestBatchReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RaftRequestBatch.
@@ -155,22 +155,22 @@ type RaftResponseMessageReader interface {
 	Mutate() *RaftResponseMessage
 }
 
-type raftResponseMessageReadonly struct{ v *RaftResponseMessage }
+type raftResponseMessageReadonly RaftResponseMessage
 
 func (r *raftResponseMessageReadonly) GetRequestId() uint64 {
-	return r.v.GetRequestId()
+	return (*RaftResponseMessage)(r).GetRequestId()
 }
 
 func (r *raftResponseMessageReadonly) GetSuccess() bool {
-	return r.v.GetSuccess()
+	return (*RaftResponseMessage)(r).GetSuccess()
 }
 
 func (r *raftResponseMessageReadonly) GetError() string {
-	return r.v.GetError()
+	return (*RaftResponseMessage)(r).GetError()
 }
 
 func (r *raftResponseMessageReadonly) Mutate() *RaftResponseMessage {
-	return r.v.CloneVT()
+	return (*RaftResponseMessage)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RaftResponseMessage.
@@ -178,7 +178,7 @@ func (m *RaftResponseMessage) AsReader() RaftResponseMessageReader {
 	if m == nil {
 		return nil
 	}
-	return &raftResponseMessageReadonly{v: m}
+	return (*raftResponseMessageReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RaftResponseMessage.
@@ -230,14 +230,14 @@ type RaftResponseBatchReader interface {
 	Mutate() *RaftResponseBatch
 }
 
-type raftResponseBatchReadonly struct{ v *RaftResponseBatch }
+type raftResponseBatchReadonly RaftResponseBatch
 
 func (r *raftResponseBatchReadonly) GetMessages() RaftResponseMessageListReader {
-	return NewRaftResponseMessageListReader(r.v.GetMessages())
+	return NewRaftResponseMessageListReader((*RaftResponseBatch)(r).GetMessages())
 }
 
 func (r *raftResponseBatchReadonly) Mutate() *RaftResponseBatch {
-	return r.v.CloneVT()
+	return (*RaftResponseBatch)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RaftResponseBatch.
@@ -245,7 +245,7 @@ func (m *RaftResponseBatch) AsReader() RaftResponseBatchReader {
 	if m == nil {
 		return nil
 	}
-	return &raftResponseBatchReadonly{v: m}
+	return (*raftResponseBatchReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RaftResponseBatch.
@@ -297,14 +297,14 @@ type PingMessageReader interface {
 	Mutate() *PingMessage
 }
 
-type pingMessageReadonly struct{ v *PingMessage }
+type pingMessageReadonly PingMessage
 
 func (r *pingMessageReadonly) GetSeqId() uint64 {
-	return r.v.GetSeqId()
+	return (*PingMessage)(r).GetSeqId()
 }
 
 func (r *pingMessageReadonly) Mutate() *PingMessage {
-	return r.v.CloneVT()
+	return (*PingMessage)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this PingMessage.
@@ -312,7 +312,7 @@ func (m *PingMessage) AsReader() PingMessageReader {
 	if m == nil {
 		return nil
 	}
-	return &pingMessageReadonly{v: m}
+	return (*pingMessageReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this PingMessage.
@@ -364,14 +364,14 @@ type PongResponseReader interface {
 	Mutate() *PongResponse
 }
 
-type pongResponseReadonly struct{ v *PongResponse }
+type pongResponseReadonly PongResponse
 
 func (r *pongResponseReadonly) GetSeqId() uint64 {
-	return r.v.GetSeqId()
+	return (*PongResponse)(r).GetSeqId()
 }
 
 func (r *pongResponseReadonly) Mutate() *PongResponse {
-	return r.v.CloneVT()
+	return (*PongResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this PongResponse.
@@ -379,7 +379,7 @@ func (m *PongResponse) AsReader() PongResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &pongResponseReadonly{v: m}
+	return (*pongResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this PongResponse.
@@ -431,14 +431,14 @@ type SendMessageRequestReader interface {
 	Mutate() *SendMessageRequest
 }
 
-type sendMessageRequestReadonly struct{ v *SendMessageRequest }
+type sendMessageRequestReadonly SendMessageRequest
 
 func (r *sendMessageRequestReadonly) GetMessage() isSendMessageRequest_Message {
-	return r.v.GetMessage()
+	return (*SendMessageRequest)(r).GetMessage()
 }
 
 func (r *sendMessageRequestReadonly) Mutate() *SendMessageRequest {
-	return r.v.CloneVT()
+	return (*SendMessageRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SendMessageRequest.
@@ -446,7 +446,7 @@ func (m *SendMessageRequest) AsReader() SendMessageRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &sendMessageRequestReadonly{v: m}
+	return (*sendMessageRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SendMessageRequest.
@@ -498,14 +498,14 @@ type SendMessageResponseReader interface {
 	Mutate() *SendMessageResponse
 }
 
-type sendMessageResponseReadonly struct{ v *SendMessageResponse }
+type sendMessageResponseReadonly SendMessageResponse
 
 func (r *sendMessageResponseReadonly) GetMessage() isSendMessageResponse_Message {
-	return r.v.GetMessage()
+	return (*SendMessageResponse)(r).GetMessage()
 }
 
 func (r *sendMessageResponseReadonly) Mutate() *SendMessageResponse {
-	return r.v.CloneVT()
+	return (*SendMessageResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SendMessageResponse.
@@ -513,7 +513,7 @@ func (m *SendMessageResponse) AsReader() SendMessageResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &sendMessageResponseReadonly{v: m}
+	return (*sendMessageResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SendMessageResponse.
