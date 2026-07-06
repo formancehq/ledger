@@ -1,4 +1,4 @@
-package agents
+package credentials
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ func newDeleteCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "delete [name]",
 		Aliases: []string{"rm", "del"},
-		Short:   "Delete a LedgerClusterAgent resource",
+		Short:   "Delete a Credentials resource",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDelete(cmd, opts, &f, args)
@@ -34,7 +34,7 @@ func newDeleteCommand(opts *cmdutil.Options) *cobra.Command {
 func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args []string) error {
 	ctx := cmd.Context()
 
-	name, err := cmdutil.ResolveLedgerClusterAgentName(ctx, opts, args)
+	name, err := cmdutil.ResolveCredentialsName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -44,7 +44,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		return fmt.Errorf("creating CRD client: %w", err)
 	}
 
-	agent, err := cmdutil.GetLedgerClusterAgent(ctx, crdClient, name)
+	agent, err := cmdutil.GetCredentials(ctx, crdClient, name)
 	if err != nil {
 		return fmt.Errorf("getting agent %q: %w", name, err)
 	}
@@ -68,7 +68,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		pterm.Warning.Println("This will also delete the associated Secret containing the Ed25519 keypair.")
 
 		confirm, err := cmdutil.PromptConfirm(
-			fmt.Sprintf("Delete LedgerClusterAgent %s?", pterm.Cyan(name)),
+			fmt.Sprintf("Delete Credentials %s?", pterm.Cyan(name)),
 			false,
 		)
 		if err != nil {
@@ -81,15 +81,15 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		}
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Deleting LedgerClusterAgent...")
+	spinner, _ := pterm.DefaultSpinner.Start("Deleting Credentials...")
 
 	if err := crdClient.Delete(ctx, agent); err != nil {
-		spinner.Fail("Failed to delete LedgerClusterAgent")
+		spinner.Fail("Failed to delete Credentials")
 
 		return fmt.Errorf("deleting agent %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("LedgerClusterAgent %s deleted", pterm.Cyan(name)))
+	spinner.Success(fmt.Sprintf("Credentials %s deleted", pterm.Cyan(name)))
 
 	return nil
 }

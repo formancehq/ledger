@@ -31,14 +31,14 @@ const (
 	agentNameLabel = "ledger.formance.com/agent-name"
 )
 
-// LedgerClusterAgentReconciler reconciles a LedgerClusterAgent object.
-type LedgerClusterAgentReconciler struct {
+// CredentialsReconciler reconciles a Credentials object.
+type CredentialsReconciler struct {
 	client.Client
 
 	Scheme *runtime.Scheme
 
 	// OperatorNamespace is where the canonical seed Secret of every
-	// LedgerClusterAgent is stored. Injected at construction (from
+	// Credentials is stored. Injected at construction (from
 	// DiscoverOperatorNamespace in production, from a fixed namespace in
 	// envtest) so the reconciler does not depend on process-global state.
 	OperatorNamespace string
@@ -51,16 +51,16 @@ type LedgerClusterAgentReconciler struct {
 	APIReader client.Reader
 }
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerclusteragents,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerclusteragents/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerclusteragents/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile handles the reconciliation loop for LedgerClusterAgent resources.
-func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// Reconcile handles the reconciliation loop for Credentials resources.
+func (r *CredentialsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	agent := &ledgerv1alpha1.LedgerClusterAgent{}
+	agent := &ledgerv1alpha1.Credentials{}
 	if err := r.Get(ctx, req.NamespacedName, agent); err != nil {
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
@@ -219,7 +219,7 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 // handleDeletion removes the canonical Secret and every replica of the
 // agent's Secret, then drops the finalizer.
-func (r *LedgerClusterAgentReconciler) handleDeletion(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent) (ctrl.Result, error) {
+func (r *CredentialsReconciler) handleDeletion(ctx context.Context, agent *ledgerv1alpha1.Credentials) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(agent, agentFinalizer) {
@@ -255,16 +255,9 @@ func (r *LedgerClusterAgentReconciler) handleDeletion(ctx context.Context, agent
 	return ctrl.Result{}, nil
 }
 
-// resolveMatchedServices lists Clusters (and, for the migration window,
-// legacy LedgerServices) across all namespaces and returns those matching
-// the agent's label selector. LedgerServices are included so that during
-// an in-place upgrade the agent does not see matched=∅ and treat every
-// existing replica Secret as an orphan to garbage-collect: that path
-// rotates keys mid-upgrade and breaks Cluster auth before the migrator
-// has had a chance to run. Once a legacy LS has been migrated it still
-// exists as a deprecated shadow but shares the Cluster's namespace+name,
-// so the resulting MatchedService list is de-duplicated.
-func (r *LedgerClusterAgentReconciler) resolveMatchedServices(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent) ([]ledgerv1alpha1.MatchedService, error) {
+// resolveMatchedServices lists Clusters across all namespaces and returns
+// those matching the agent's label selector.
+func (r *CredentialsReconciler) resolveMatchedServices(ctx context.Context, agent *ledgerv1alpha1.Credentials) ([]ledgerv1alpha1.MatchedService, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&agent.Spec.Selector)
 	if err != nil {
 		return nil, fmt.Errorf("parsing label selector: %w", err)
@@ -275,39 +268,14 @@ func (r *LedgerClusterAgentReconciler) resolveMatchedServices(ctx context.Contex
 		return nil, fmt.Errorf("listing Clusters: %w", err)
 	}
 
-	seen := make(map[string]struct{}, len(clusters.Items))
 	matched := make([]ledgerv1alpha1.MatchedService, 0, len(clusters.Items))
 	for i := range clusters.Items {
 		if !selector.Matches(labels.Set(clusters.Items[i].Labels)) {
 			continue
 		}
-		key := clusters.Items[i].Namespace + "/" + clusters.Items[i].Name
-		if _, dup := seen[key]; dup {
-			continue
-		}
-		seen[key] = struct{}{}
 		matched = append(matched, ledgerv1alpha1.MatchedService{
 			Namespace: clusters.Items[i].Namespace,
 			Name:      clusters.Items[i].Name,
-		})
-	}
-
-	var legacy ledgerv1alpha1.LedgerServiceList
-	if err := r.List(ctx, &legacy, &client.ListOptions{LabelSelector: selector}); err != nil {
-		return nil, fmt.Errorf("listing LedgerServices: %w", err)
-	}
-	for i := range legacy.Items {
-		if !selector.Matches(labels.Set(legacy.Items[i].Labels)) {
-			continue
-		}
-		key := legacy.Items[i].Namespace + "/" + legacy.Items[i].Name
-		if _, dup := seen[key]; dup {
-			continue
-		}
-		seen[key] = struct{}{}
-		matched = append(matched, ledgerv1alpha1.MatchedService{
-			Namespace: legacy.Items[i].Namespace,
-			Name:      legacy.Items[i].Name,
 		})
 	}
 
@@ -320,7 +288,7 @@ func (r *LedgerClusterAgentReconciler) resolveMatchedServices(ctx context.Contex
 // than by an additional label) means Secrets created by pre-canonical
 // versions of the operator are still discovered, so upgrade adopts them
 // instead of orphaning them.
-func (r *LedgerClusterAgentReconciler) listAgentReplicaSecrets(ctx context.Context, agentName string) ([]corev1.Secret, error) {
+func (r *CredentialsReconciler) listAgentReplicaSecrets(ctx context.Context, agentName string) ([]corev1.Secret, error) {
 	var secrets corev1.SecretList
 	if err := r.List(ctx, &secrets, client.MatchingLabels{
 		agentNameLabel: agentName,
@@ -357,7 +325,7 @@ func (r *LedgerClusterAgentReconciler) listAgentReplicaSecrets(ctx context.Conte
 // for the first time, we adopt the seed from one of them instead of
 // generating fresh material — otherwise upgrading the operator would
 // silently invalidate every bundle already handed out.
-func (r *LedgerClusterAgentReconciler) ensureCanonicalSecret(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent, existingReplicas []corev1.Secret) (map[string][]byte, error) {
+func (r *CredentialsReconciler) ensureCanonicalSecret(ctx context.Context, agent *ledgerv1alpha1.Credentials, existingReplicas []corev1.Secret) (map[string][]byte, error) {
 	if r.OperatorNamespace == "" {
 		return nil, errors.New("operator namespace not configured")
 	}
@@ -459,7 +427,7 @@ func adoptSeedFromReplica(replicas []corev1.Secret) map[string][]byte {
 
 // ensureReplica creates or updates the agent's replica Secret in the given
 // namespace with a projection of the canonical data.
-func (r *LedgerClusterAgentReconciler) ensureReplica(ctx context.Context, agent *ledgerv1alpha1.LedgerClusterAgent, namespace string, data map[string][]byte) error {
+func (r *CredentialsReconciler) ensureReplica(ctx context.Context, agent *ledgerv1alpha1.Credentials, namespace string, data map[string][]byte) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agentSecretName(agent),
@@ -505,23 +473,23 @@ func computeDesiredNamespaces(matched []ledgerv1alpha1.MatchedService, additiona
 }
 
 // agentSecretName returns the name of the replica Secret managed by the agent.
-func agentSecretName(agent *ledgerv1alpha1.LedgerClusterAgent) string {
+func agentSecretName(agent *ledgerv1alpha1.Credentials) string {
 	return prefixedName(agent.Name) + "-agent-keys"
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *LedgerClusterAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *CredentialsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&ledgerv1alpha1.LedgerClusterAgent{}).
+		For(&ledgerv1alpha1.Credentials{}).
 		Watches(&ledgerv1alpha1.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(r.clusterToAgents)).
 		Complete(r)
 }
 
-// clusterToAgents maps a Cluster change to all LedgerClusterAgents
+// clusterToAgents maps a Cluster change to all Credentials
 // whose selector matches the service, so replica state is kept in sync with
 // service membership and namespace placement.
-func (r *LedgerClusterAgentReconciler) clusterToAgents(ctx context.Context, obj client.Object) []ctrl.Request {
+func (r *CredentialsReconciler) clusterToAgents(ctx context.Context, obj client.Object) []ctrl.Request {
 	logger := log.FromContext(ctx)
 
 	service, ok := obj.(*ledgerv1alpha1.Cluster)
@@ -529,9 +497,9 @@ func (r *LedgerClusterAgentReconciler) clusterToAgents(ctx context.Context, obj 
 		return nil
 	}
 
-	var agents ledgerv1alpha1.LedgerClusterAgentList
+	var agents ledgerv1alpha1.CredentialsList
 	if err := r.List(ctx, &agents); err != nil {
-		logger.Error(err, "listing LedgerClusterAgents for service mapping")
+		logger.Error(err, "listing Credentials for service mapping")
 
 		return nil
 	}

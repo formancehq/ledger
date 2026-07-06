@@ -1,4 +1,4 @@
-package agents
+package credentials
 
 import (
 	"encoding/json"
@@ -27,7 +27,7 @@ func newGetKeyCommand(opts *cmdutil.Options) *cobra.Command {
 		Use:   "get-key [name]",
 		Short: "Retrieve the Ed25519 key material from an agent's Secret",
 		Long: `Retrieves the Ed25519 keypair (seed and public key) from the Secret
-associated with a LedgerClusterAgent. By default, displays key-id, public key,
+associated with a Credentials. By default, displays key-id, public key,
 and seed in a formatted table.
 
 Use --output-dir to write seed.hex and pubkey.hex files to a directory.
@@ -51,7 +51,7 @@ Use --bundle <path> to write the bundle to a file.`,
 func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args []string) error {
 	ctx := cmd.Context()
 
-	name, err := cmdutil.ResolveLedgerClusterAgentName(ctx, opts, args)
+	name, err := cmdutil.ResolveCredentialsName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	agent, err := cmdutil.GetLedgerClusterAgent(ctx, crdClient, name)
+	agent, err := cmdutil.GetCredentials(ctx, crdClient, name)
 	if err != nil {
 		return fmt.Errorf("getting agent %q: %w", name, err)
 	}

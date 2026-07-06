@@ -56,7 +56,7 @@ func clusterSecretName(crName string) string {
 }
 
 // agentCanonicalSecretName returns the name of the canonical seed Secret for a
-// LedgerClusterAgent. This Secret lives in the operator's own namespace and
+// Credentials. This Secret lives in the operator's own namespace and
 // holds the sole source of truth for the agent's Ed25519 keypair; the
 // per-target replicas are pure projections of its content.
 func agentCanonicalSecretName(agentName string) string {

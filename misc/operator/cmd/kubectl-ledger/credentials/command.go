@@ -1,4 +1,4 @@
-package agents
+package credentials
 
 import (
 	"github.com/spf13/cobra"
@@ -6,12 +6,12 @@ import (
 	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
 )
 
-// NewCommand returns the "agents" parent command.
+// NewCommand returns the "credentials" parent command.
 func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "agents",
-		Aliases: []string{"agent", "ag"},
-		Short:   "Manage cluster-scoped LedgerClusterAgent resources",
+		Use:     "credentials",
+		Aliases: []string{"credential", "creds", "cred"},
+		Short:   "Manage cluster-scoped Credentials resources",
 	}
 
 	cmd.AddCommand(

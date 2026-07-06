@@ -18,7 +18,7 @@ The Ledger Operator manages `Cluster` custom resources to automate the lifecycle
 | Resource | Scope | Description |
 |----------|-------|-------------|
 | `Cluster` | Namespaced | Main resource - deploys a ledger cluster |
-| `LedgerClusterAgent` | Cluster | Cluster-level API credentials |
+| `Credentials` | Cluster | Cluster-level API credentials |
 
 ## Quick Start
 

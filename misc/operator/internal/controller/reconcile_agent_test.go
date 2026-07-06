@@ -19,7 +19,7 @@ import (
 func TestReconcile_AgentDistributesToAdditionalNamespace(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	agent := newLedgerClusterAgentWithAdditional("creates-secret", []string{"read"}, map[string]string{"app": "ledger"}, ns)
+	agent := newCredentialsWithAdditional("creates-secret", []string{"read"}, map[string]string{"app": "ledger"}, ns)
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -55,7 +55,7 @@ func TestReconcile_AgentDistributesToMatchedServiceNamespaces(t *testing.T) {
 		require.NoError(t, k8sClient.Create(ctx, ls))
 	}
 
-	agent := newLedgerClusterAgent("multi-distrib", []string{"read"}, map[string]string{"tier": "multi"})
+	agent := newCredentials("multi-distrib", []string{"read"}, map[string]string{"tier": "multi"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -78,7 +78,7 @@ func TestReconcile_AgentDistributesToMatchedServiceNamespaces(t *testing.T) {
 func TestReconcile_AgentSecretIdempotent(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	agent := newLedgerClusterAgentWithAdditional("idempotent", []string{"read"}, map[string]string{"app": "ledger"}, ns)
+	agent := newCredentialsWithAdditional("idempotent", []string{"read"}, map[string]string{"app": "ledger"}, ns)
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -118,7 +118,7 @@ func TestReconcile_AgentSecretIdempotent(t *testing.T) {
 func TestReconcile_AgentStatus(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	agent := newLedgerClusterAgentWithAdditional("status-check", []string{"read"}, map[string]string{"app": "ledger"}, ns)
+	agent := newCredentialsWithAdditional("status-check", []string{"read"}, map[string]string{"app": "ledger"}, ns)
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -139,7 +139,7 @@ func TestReconcile_AgentStatus(t *testing.T) {
 }
 
 func TestReconcile_AgentNoTargets(t *testing.T) {
-	agent := newLedgerClusterAgent("no-targets", []string{"read"}, map[string]string{"app": "nothing-matches-this"})
+	agent := newCredentials("no-targets", []string{"read"}, map[string]string{"app": "nothing-matches-this"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -168,7 +168,7 @@ func TestReconcile_AgentMatchesServices(t *testing.T) {
 	ls.Labels = map[string]string{"app": "matched"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	agent := newLedgerClusterAgent("matcher", []string{"read"}, map[string]string{"app": "matched"})
+	agent := newCredentials("matcher", []string{"read"}, map[string]string{"app": "matched"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -198,7 +198,7 @@ func TestReconcile_AgentOrphanCleanup(t *testing.T) {
 		require.NoError(t, k8sClient.Create(ctx, ls))
 	}
 
-	agent := newLedgerClusterAgent("orphan-cleanup", []string{"read"}, map[string]string{"tier": "cleanup"})
+	agent := newCredentials("orphan-cleanup", []string{"read"}, map[string]string{"tier": "cleanup"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -226,14 +226,14 @@ func TestReconcile_AgentOrphanCleanup(t *testing.T) {
 	require.NoError(t, k8sClient.Get(ctx, keyA, &corev1.Secret{}), "matched-namespace replica must remain")
 }
 
-func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
+func TestReconcile_AgentSeedSurvivesClusterRecreation(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newLedgerService("survive-svc", ns)
+	ls := newCluster("survive-svc", ns)
 	ls.Labels = map[string]string{"tier": "survive"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	agent := newLedgerClusterAgent("survive-agent", []string{"read"}, map[string]string{"tier": "survive"})
+	agent := newCredentials("survive-agent", []string{"read"}, map[string]string{"tier": "survive"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -256,10 +256,10 @@ func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
 
 	require.NoError(t, k8sClient.Delete(ctx, ls))
 	requireEventually(t, func() bool {
-		err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "survive-svc"}, &ledgerv1alpha1.LedgerService{})
+		err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "survive-svc"}, &ledgerv1alpha1.Cluster{})
 
 		return apierrors.IsNotFound(err)
-	}, "LedgerService should be deleted")
+	}, "Cluster should be deleted")
 
 	// Replica must be aggressively GC'd; canonical must survive to preserve seed identity.
 	requireEventually(t, func() bool {
@@ -276,10 +276,10 @@ func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
 		return apierrors.IsNotFound(err)
 	}, "replica in unmatched namespace should be deleted")
 
-	require.NoError(t, k8sClient.Get(ctx, canonicalKey, canonical), "canonical seed must survive LedgerService deletion")
+	require.NoError(t, k8sClient.Get(ctx, canonicalKey, canonical), "canonical seed must survive Cluster deletion")
 	assert.Equal(t, initialSeed, string(canonical.Data["seed.hex"]), "canonical seed must not be regenerated")
 
-	lsAgain := newLedgerService("survive-svc", ns)
+	lsAgain := newCluster("survive-svc", ns)
 	lsAgain.Labels = map[string]string{"tier": "survive"}
 	require.NoError(t, k8sClient.Create(ctx, lsAgain))
 
@@ -292,7 +292,7 @@ func TestReconcile_AgentSeedSurvivesLedgerServiceRecreation(t *testing.T) {
 	}, "agent should return to Ready with the original keyID")
 
 	require.NoError(t, k8sClient.Get(ctx, replicaKey, replica))
-	assert.Equal(t, initialSeed, string(replica.Data["seed.hex"]), "seed must be identical after LedgerService recreation")
+	assert.Equal(t, initialSeed, string(replica.Data["seed.hex"]), "seed must be identical after Cluster recreation")
 	assert.Equal(t, initialPubKey, string(replica.Data["pubkey.hex"]))
 	assert.Equal(t, initialKeyID, string(replica.Data["key-id"]))
 }
@@ -320,11 +320,11 @@ func TestReconcile_AgentUpgradeAdoptsLegacyReplicaSeed(t *testing.T) {
 	}
 	require.NoError(t, k8sClient.Create(ctx, legacyReplica))
 
-	ls := newLedgerService("legacy-svc", ns)
+	ls := newCluster("legacy-svc", ns)
 	ls.Labels = map[string]string{"tier": "legacy"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	agent := newLedgerClusterAgent("legacy-agent", []string{"read"}, map[string]string{"tier": "legacy"})
+	agent := newCredentials("legacy-agent", []string{"read"}, map[string]string{"tier": "legacy"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -353,9 +353,9 @@ func TestReconcile_AgentUpgradeAdoptsLegacySeedWithoutTargets(t *testing.T) {
 	ns := createTestNamespace(t)
 
 	// Simulate an upgrade scenario where the old operator was stopped, the
-	// LedgerService was deleted while it was down, and now we upgrade. The
+	// Cluster was deleted while it was down, and now we upgrade. The
 	// only survivor is a legacy replica Secret sitting alone in a namespace
-	// no longer referenced by any LedgerService.
+	// no longer referenced by any Cluster.
 	legacyReplica := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "ledger-orphan-agent-agent-keys",
@@ -372,7 +372,7 @@ func TestReconcile_AgentUpgradeAdoptsLegacySeedWithoutTargets(t *testing.T) {
 	}
 	require.NoError(t, k8sClient.Create(ctx, legacyReplica))
 
-	agent := newLedgerClusterAgent("orphan-agent", []string{"read"}, map[string]string{"tier": "never-matches"})
+	agent := newCredentials("orphan-agent", []string{"read"}, map[string]string{"tier": "never-matches"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -403,7 +403,7 @@ func TestReconcile_AgentUpgradeAdoptsLegacySeedWithoutTargets(t *testing.T) {
 func TestReconcile_AgentCanonicalDeletedOnAgentRemoval(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	agent := newLedgerClusterAgentWithAdditional("canonical-cleanup", []string{"read"}, map[string]string{"app": "ledger"}, ns)
+	agent := newCredentialsWithAdditional("canonical-cleanup", []string{"read"}, map[string]string{"app": "ledger"}, ns)
 	require.NoError(t, k8sClient.Create(ctx, agent))
 
 	replicaKey := types.NamespacedName{Namespace: ns, Name: "ledger-canonical-cleanup-agent-keys"}
@@ -426,7 +426,7 @@ func TestReconcile_AgentDeletion(t *testing.T) {
 	nsA := createTestNamespace(t)
 	nsB := createTestNamespace(t)
 
-	agent := newLedgerClusterAgentWithAdditional("to-delete", []string{"read"}, map[string]string{"app": "ledger"}, nsA, nsB)
+	agent := newCredentialsWithAdditional("to-delete", []string{"read"}, map[string]string{"app": "ledger"}, nsA, nsB)
 	require.NoError(t, k8sClient.Create(ctx, agent))
 
 	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-to-delete-agent-keys"}
@@ -445,7 +445,7 @@ func TestReconcile_AgentDeletion(t *testing.T) {
 	}, "all replicas should be deleted after agent deletion")
 
 	requireEventually(t, func() bool {
-		err := k8sClient.Get(ctx, types.NamespacedName{Name: "to-delete"}, &ledgerv1alpha1.LedgerClusterAgent{})
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: "to-delete"}, &ledgerv1alpha1.Credentials{})
 
 		return apierrors.IsNotFound(err)
 	}, "agent should be deleted")

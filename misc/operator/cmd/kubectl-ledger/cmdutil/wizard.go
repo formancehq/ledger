@@ -118,9 +118,9 @@ func ResolveLedgerBackupName(ctx context.Context, opts *Options, args []string) 
 	return selected, ns, nil
 }
 
-// ResolveLedgerClusterAgentName returns the LedgerClusterAgent name from args
-// or by interactive selection. LedgerClusterAgent is cluster-scoped so no namespace needed.
-func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []string) (string, error) {
+// ResolveCredentialsName returns the Credentials name from args
+// or by interactive selection. Credentials is cluster-scoped so no namespace needed.
+func ResolveCredentialsName(ctx context.Context, opts *Options, args []string) (string, error) {
 	if len(args) > 0 {
 		return args[0], nil
 	}
@@ -130,11 +130,11 @@ func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []st
 		return "", fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerClusterAgent resources...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Credentials resources...")
 
-	agents, err := ListLedgerClusterAgents(ctx, crdClient)
+	agents, err := ListCredentials(ctx, crdClient)
 	if err != nil {
-		spinner.Fail("Failed to list LedgerClusterAgent resources")
+		spinner.Fail("Failed to list Credentials resources")
 
 		return "", fmt.Errorf("listing agents: %w", err)
 	}
@@ -142,7 +142,7 @@ func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []st
 	_ = spinner.Stop()
 
 	if len(agents.Items) == 0 {
-		return "", errors.New("no LedgerClusterAgent resources found")
+		return "", errors.New("no Credentials resources found")
 	}
 
 	names := make([]string, len(agents.Items))
@@ -158,7 +158,7 @@ func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []st
 
 	selected, err := pterm.DefaultInteractiveSelect.
 		WithOptions(names).
-		WithDefaultText("Select a LedgerClusterAgent").
+		WithDefaultText("Select a Credentials").
 		Show()
 	if err != nil {
 		return "", fmt.Errorf("failed to select agent: %w", err)

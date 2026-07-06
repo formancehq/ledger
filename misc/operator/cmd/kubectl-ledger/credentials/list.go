@@ -1,4 +1,4 @@
-package agents
+package credentials
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ func newListCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List LedgerClusterAgent resources",
+		Short:   "List Credentials resources",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runList(cmd, opts)
 		},
@@ -32,11 +32,11 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerClusterAgent resources...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Credentials resources...")
 
-	agents, err := cmdutil.ListLedgerClusterAgents(ctx, crdClient)
+	agents, err := cmdutil.ListCredentials(ctx, crdClient)
 	if err != nil {
-		spinner.Fail("Failed to list LedgerClusterAgent resources")
+		spinner.Fail("Failed to list Credentials resources")
 
 		return fmt.Errorf("listing agents: %w", err)
 	}
@@ -53,7 +53,7 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 	}
 }
 
-func renderAgentListTable(agents *ledgerv1alpha1.LedgerClusterAgentList) error {
+func renderAgentListTable(agents *ledgerv1alpha1.CredentialsList) error {
 	header := []string{"NAME", "KEY ID", "SCOPES", "MATCHED SERVICES", "PHASE", "AGE"}
 
 	rows := make([][]string, 0, len(agents.Items))
@@ -79,7 +79,7 @@ func renderAgentListTable(agents *ledgerv1alpha1.LedgerClusterAgentList) error {
 	}
 
 	if len(rows) == 0 {
-		pterm.Info.Println("No LedgerClusterAgent resources found.")
+		pterm.Info.Println("No Credentials resources found.")
 		pterm.Println(pterm.Gray("Create one with: kubectl ledger agents create"))
 
 		return nil

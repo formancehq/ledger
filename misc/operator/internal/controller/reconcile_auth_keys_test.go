@@ -23,7 +23,7 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Create agent with matching selector.
-	agent := newLedgerClusterAgent("authcm-agent", []string{"read", "write"}, map[string]string{"tier": "authcm"})
+	agent := newCredentials("authcm-agent", []string{"read", "write"}, map[string]string{"tier": "authcm"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -70,7 +70,7 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Create agent with matching selector.
-	agent := newLedgerClusterAgent("authsts-agent", []string{"read"}, map[string]string{"tier": "authsts"})
+	agent := newCredentials("authsts-agent", []string{"read"}, map[string]string{"tier": "authsts"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
@@ -158,7 +158,7 @@ func TestReconcile_AuthKeysHashAnnotation(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Create agent with matching selector.
-	agent := newLedgerClusterAgent("authhash-agent", []string{"read"}, map[string]string{"tier": "authhash"})
+	agent := newCredentials("authhash-agent", []string{"read"}, map[string]string{"tier": "authhash"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
 	t.Cleanup(func() {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup

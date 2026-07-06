@@ -44,13 +44,13 @@ type authKeyEntry struct {
 	God           bool     `json:"god,omitempty"`
 }
 
-// reconcileAuthKeys resolves all LedgerClusterAgents matching the given Cluster,
+// reconcileAuthKeys resolves all Credentials matching the given Cluster,
 // creates/updates (or deletes) a ConfigMap with aggregated auth keys, and returns the
 // list of agent key info for use by the StatefulSet reconciler.
 func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]agentKeyInfo, error) {
 	logger := log.FromContext(ctx)
 
-	// Collect keys from cluster-scoped LedgerClusterAgents.
+	// Collect keys from cluster-scoped Credentials.
 	agents, err := r.collectClusterAgentKeys(ctx, ledger)
 	if err != nil {
 		return nil, err
@@ -131,14 +131,14 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	return agents, nil
 }
 
-// collectClusterAgentKeys lists all LedgerClusterAgents and returns keys for those
+// collectClusterAgentKeys lists all Credentials and returns keys for those
 // whose selector matches the given Cluster.
 func (r *ClusterReconciler) collectClusterAgentKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]agentKeyInfo, error) {
 	logger := log.FromContext(ctx)
 
-	var agentList ledgerv1alpha1.LedgerClusterAgentList
+	var agentList ledgerv1alpha1.CredentialsList
 	if err := r.List(ctx, &agentList); err != nil {
-		return nil, fmt.Errorf("listing LedgerClusterAgents: %w", err)
+		return nil, fmt.Errorf("listing Credentials: %w", err)
 	}
 
 	var agents []agentKeyInfo
@@ -224,10 +224,10 @@ func (r *ClusterReconciler) readAgentKeyFromSecret(
 	}, true, nil
 }
 
-// ledgerClusterAgentToClusters maps a LedgerClusterAgent change to all
+// credentialsToClusters maps a Credentials change to all
 // Clusters matched by its selector, triggering their re-reconciliation.
-func (r *ClusterReconciler) ledgerClusterAgentToClusters(ctx context.Context, obj client.Object) []ctrl.Request {
-	agent, ok := obj.(*ledgerv1alpha1.LedgerClusterAgent)
+func (r *ClusterReconciler) credentialsToClusters(ctx context.Context, obj client.Object) []ctrl.Request {
+	agent, ok := obj.(*ledgerv1alpha1.Credentials)
 	if !ok {
 		return nil
 	}

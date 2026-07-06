@@ -21,7 +21,7 @@ metadata:
     helm.sh/hook-delete-policy: hook-succeeded,hook-failed
 rules:
 - apiGroups: ["ledger.formance.com"]
-  resources: ["ledgerclusteragents"]
+  resources: ["credentials"]
   verbs: ["get", "list", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -76,9 +76,9 @@ spec:
         - /bin/sh
         - -ec
         - |
-          # Delete all LedgerClusterAgents while the operator is still
+          # Delete all Credentials while the operator is still
           # running so it can process finalizers (clean up cross-namespace
           # Secrets) before Helm tears down the Deployment.
-          kubectl delete ledgerclusteragents.ledger.formance.com --all \
+          kubectl delete credentials.ledger.formance.com --all \
             --wait --timeout=60s 2>/dev/null || true
           echo "done"

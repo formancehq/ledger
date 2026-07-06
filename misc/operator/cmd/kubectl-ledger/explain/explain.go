@@ -45,9 +45,9 @@ func SpecFields() []Field {
 	return cachedSpecFields
 }
 
-// LedgerClusterAgentSpecFields returns the schema fields for the LedgerClusterAgent spec.
-func LedgerClusterAgentSpecFields() []Field {
-	return fieldsFromType(reflect.TypeFor[ledgerv1alpha1.LedgerClusterAgentSpec]())
+// CredentialsSpecFields returns the schema fields for the Credentials spec.
+func CredentialsSpecFields() []Field {
+	return fieldsFromType(reflect.TypeFor[ledgerv1alpha1.CredentialsSpec]())
 }
 
 // Lookup finds a field by dotted path (e.g. "raft.electionTick").

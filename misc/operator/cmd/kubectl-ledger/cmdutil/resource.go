@@ -143,9 +143,9 @@ func ListLedgerBackupRuns(ctx context.Context, c client.Client, namespace, backu
 	return &list, nil
 }
 
-// GetLedgerClusterAgent fetches a single cluster-scoped LedgerClusterAgent CR.
-func GetLedgerClusterAgent(ctx context.Context, c client.Client, name string) (*ledgerv1alpha1.LedgerClusterAgent, error) {
-	var agent ledgerv1alpha1.LedgerClusterAgent
+// GetCredentials fetches a single cluster-scoped Credentials CR.
+func GetCredentials(ctx context.Context, c client.Client, name string) (*ledgerv1alpha1.Credentials, error) {
+	var agent ledgerv1alpha1.Credentials
 	if err := c.Get(ctx, types.NamespacedName{Name: name}, &agent); err != nil {
 		return nil, err
 	}
@@ -153,9 +153,9 @@ func GetLedgerClusterAgent(ctx context.Context, c client.Client, name string) (*
 	return &agent, nil
 }
 
-// ListLedgerClusterAgents lists all cluster-scoped LedgerClusterAgent CRs.
-func ListLedgerClusterAgents(ctx context.Context, c client.Client) (*ledgerv1alpha1.LedgerClusterAgentList, error) {
-	var list ledgerv1alpha1.LedgerClusterAgentList
+// ListCredentials lists all cluster-scoped Credentials CRs.
+func ListCredentials(ctx context.Context, c client.Client) (*ledgerv1alpha1.CredentialsList, error) {
+	var list ledgerv1alpha1.CredentialsList
 	if err := c.List(ctx, &list); err != nil {
 		return nil, err
 	}

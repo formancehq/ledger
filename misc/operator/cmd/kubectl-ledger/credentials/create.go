@@ -1,4 +1,4 @@
-package agents
+package credentials
 
 import (
 	"errors"
@@ -24,8 +24,8 @@ func newCreateCommand(opts *cmdutil.Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "create [name]",
-		Short: "Create a new LedgerClusterAgent resource",
-		Long:  "Create a new LedgerClusterAgent.\nExample: kubectl-ledger agents create my-agent --set scopes=read,write --set selector.matchLabels.env=prod",
+		Short: "Create a new Credentials resource",
+		Long:  "Create a new Credentials.\nExample: kubectl-ledger agents create my-agent --set scopes=read,write --set selector.matchLabels.env=prod",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, opts, setValues, dryRun, args)
@@ -33,7 +33,7 @@ func newCreateCommand(opts *cmdutil.Options) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print YAML without applying")
-	flagbind.RegisterSetFlag(cmd, &setValues, explain.LedgerClusterAgentSpecFields)
+	flagbind.RegisterSetFlag(cmd, &setValues, explain.CredentialsSpecFields)
 
 	return cmd
 }
@@ -49,10 +49,10 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		return err
 	}
 
-	agent := &ledgerv1alpha1.LedgerClusterAgent{
+	agent := &ledgerv1alpha1.Credentials{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "ledger.formance.com/v1alpha1",
-			Kind:       "LedgerClusterAgent",
+			Kind:       "Credentials",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -65,7 +65,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 
 	// Show preview.
 	pterm.Println()
-	pterm.DefaultSection.Println("Create LedgerClusterAgent Preview")
+	pterm.DefaultSection.Println("Create Credentials Preview")
 	previewRows := [][]string{
 		{"Name", pterm.Cyan(name)},
 		{"Scope", "Cluster"},
@@ -92,7 +92,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		return nil
 	}
 
-	confirm, err := cmdutil.PromptConfirm("Create this LedgerClusterAgent?", true)
+	confirm, err := cmdutil.PromptConfirm("Create this Credentials?", true)
 	if err != nil {
 		return err
 	}
@@ -107,15 +107,15 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Creating LedgerClusterAgent...")
+	spinner, _ := pterm.DefaultSpinner.Start("Creating Credentials...")
 
 	if err := crdClient.Create(cmd.Context(), agent); err != nil {
-		spinner.Fail("Failed to create LedgerClusterAgent")
+		spinner.Fail("Failed to create Credentials")
 
 		return fmt.Errorf("creating agent %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("LedgerClusterAgent %s created", pterm.Cyan(name)))
+	spinner.Success(fmt.Sprintf("Credentials %s created", pterm.Cyan(name)))
 
 	return nil
 }
@@ -125,7 +125,7 @@ func resolveAgentName(args []string) (string, error) {
 		return args[0], nil
 	}
 
-	name, err := cmdutil.PromptText("LedgerClusterAgent name", "")
+	name, err := cmdutil.PromptText("Credentials name", "")
 	if err != nil {
 		return "", err
 	}

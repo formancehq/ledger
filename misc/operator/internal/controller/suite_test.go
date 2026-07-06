@@ -33,7 +33,7 @@ var (
 	nsCounter atomic.Int64
 )
 
-// testOperatorNamespace is the fixed namespace the LedgerClusterAgent
+// testOperatorNamespace is the fixed namespace the Credentials
 // reconciler treats as the operator's own — where every canonical seed
 // Secret is created. Provisioned once in TestMain.
 const testOperatorNamespace = "ledger-operator-system"
@@ -92,13 +92,13 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("setting up Cluster controller: %v", err))
 	}
 
-	if err := (&LedgerClusterAgentReconciler{
+	if err := (&CredentialsReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
 		OperatorNamespace: testOperatorNamespace,
 		APIReader:         mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
-		panic(fmt.Sprintf("setting up LedgerClusterAgent controller: %v", err))
+		panic(fmt.Sprintf("setting up Credentials controller: %v", err))
 	}
 
 	if err := (&LedgerBackupReconciler{
@@ -157,13 +157,13 @@ func newCluster(name, namespace string) *ledgerv1alpha1.Cluster {
 	}
 }
 
-// newLedgerClusterAgent returns a cluster-scoped LedgerClusterAgent with a label selector.
-func newLedgerClusterAgent(name string, scopes []string, matchLabels map[string]string) *ledgerv1alpha1.LedgerClusterAgent {
-	return &ledgerv1alpha1.LedgerClusterAgent{
+// newCredentials returns a cluster-scoped Credentials with a label selector.
+func newCredentials(name string, scopes []string, matchLabels map[string]string) *ledgerv1alpha1.Credentials {
+	return &ledgerv1alpha1.Credentials{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: ledgerv1alpha1.LedgerClusterAgentSpec{
+		Spec: ledgerv1alpha1.CredentialsSpec{
 			Scopes: scopes,
 			Selector: metav1.LabelSelector{
 				MatchLabels: matchLabels,
@@ -172,11 +172,11 @@ func newLedgerClusterAgent(name string, scopes []string, matchLabels map[string]
 	}
 }
 
-// newLedgerClusterAgentWithAdditional returns a cluster-scoped LedgerClusterAgent
+// newCredentialsWithAdditional returns a cluster-scoped Credentials
 // that distributes its Secret to the given additional namespaces (regardless of
 // matched services). Useful for tests that only need a Secret to exist somewhere.
-func newLedgerClusterAgentWithAdditional(name string, scopes []string, matchLabels map[string]string, additional ...string) *ledgerv1alpha1.LedgerClusterAgent {
-	agent := newLedgerClusterAgent(name, scopes, matchLabels)
+func newCredentialsWithAdditional(name string, scopes []string, matchLabels map[string]string, additional ...string) *ledgerv1alpha1.Credentials {
+	agent := newCredentials(name, scopes, matchLabels)
 	agent.Spec.AdditionalNamespaces = additional
 
 	return agent

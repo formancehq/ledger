@@ -49,7 +49,7 @@ func main() {
 
 	// Discover the operator's own namespace up-front. Canonical seed
 	// Secrets live there and are accessed via an uncached APIReader (see
-	// LedgerClusterAgentReconciler.APIReader), so --watch-namespace scope
+	// CredentialsReconciler.APIReader), so --watch-namespace scope
 	// stays exactly what the user asked for — the operator namespace is
 	// NOT added to the cache.
 	operatorNamespace, err := controller.DiscoverOperatorNamespace()
@@ -104,13 +104,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.LedgerClusterAgentReconciler{
+	if err = (&controller.CredentialsReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
 		OperatorNamespace: operatorNamespace,
 		APIReader:         mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LedgerClusterAgent")
+		setupLog.Error(err, "unable to create controller", "controller", "Credentials")
 		os.Exit(1)
 	}
 
@@ -141,14 +141,6 @@ func main() {
 		Clientset: clientset,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LedgerBackupRun")
-		os.Exit(1)
-	}
-
-	if err = (&controller.LedgerServiceMigrator{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LedgerServiceMigrator")
 		os.Exit(1)
 	}
 

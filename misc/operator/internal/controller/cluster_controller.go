@@ -40,7 +40,7 @@ type ClusterReconciler struct {
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/finalizers,verbs=update
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerclusteragents,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -222,7 +222,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// Reconcile auth keys from LedgerClusterAgents (before StatefulSet).
+	// Reconcile auth keys from Credentials (before StatefulSet).
 	agents, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
 		logger.Error(err, "failed to reconcile auth keys")
@@ -306,7 +306,7 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Owns(&networkingv1.Ingress{}).
 		Owns(&networkingv1.NetworkPolicy{}).
-		Watches(&ledgerv1alpha1.LedgerClusterAgent{}, handler.EnqueueRequestsFromMapFunc(r.ledgerClusterAgentToClusters)).
+		Watches(&ledgerv1alpha1.Credentials{}, handler.EnqueueRequestsFromMapFunc(r.credentialsToClusters)).
 		Complete(r)
 }
 

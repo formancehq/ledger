@@ -1,4 +1,4 @@
-package agents
+package credentials
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ import (
 func newGetCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get [name]",
-		Short: "Show details of a LedgerClusterAgent resource",
+		Short: "Show details of a Credentials resource",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd, opts, args)
@@ -27,7 +27,7 @@ func newGetCommand(opts *cmdutil.Options) *cobra.Command {
 func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	ctx := cmd.Context()
 
-	name, err := cmdutil.ResolveLedgerClusterAgentName(ctx, opts, args)
+	name, err := cmdutil.ResolveCredentialsName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -37,7 +37,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	agent, err := cmdutil.GetLedgerClusterAgent(ctx, crdClient, name)
+	agent, err := cmdutil.GetCredentials(ctx, crdClient, name)
 	if err != nil {
 		return fmt.Errorf("getting agent %q: %w", name, err)
 	}
@@ -52,7 +52,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 }
 
-func renderAgentDetails(agent *ledgerv1alpha1.LedgerClusterAgent) error {
+func renderAgentDetails(agent *ledgerv1alpha1.Credentials) error {
 	pterm.Println()
 
 	// Overview section

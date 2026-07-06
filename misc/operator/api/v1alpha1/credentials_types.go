@@ -11,29 +11,29 @@ import (
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// LedgerClusterAgent is a cluster-scoped resource that describes an agent with
+// Credentials is a cluster-scoped resource that describes an agent with
 // Ed25519 authentication keys. The operator generates the keypair, stores the seed
 // in a Secret, and injects the public key into matching Cluster clusters.
-type LedgerClusterAgent struct {
+type Credentials struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   LedgerClusterAgentSpec   `json:"spec,omitempty"`
-	Status LedgerClusterAgentStatus `json:"status,omitempty"`
+	Spec   CredentialsSpec   `json:"spec,omitempty"`
+	Status CredentialsStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// LedgerClusterAgentList contains a list of LedgerClusterAgent.
-type LedgerClusterAgentList struct {
+// CredentialsList contains a list of Credentials.
+type CredentialsList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 
-	Items []LedgerClusterAgent `json:"items"`
+	Items []Credentials `json:"items"`
 }
 
-// LedgerClusterAgentSpec defines the desired state of a LedgerClusterAgent.
-type LedgerClusterAgentSpec struct {
+// CredentialsSpec defines the desired state of a Credentials.
+type CredentialsSpec struct {
 	// Scopes is the list of authorization scopes this agent is allowed (e.g. "read", "write").
 	// +optional
 	Scopes []string `json:"scopes,omitempty"`
@@ -53,9 +53,9 @@ type LedgerClusterAgentSpec struct {
 	AdditionalNamespaces []string `json:"additionalNamespaces,omitempty"`
 }
 
-// LedgerClusterAgentStatus defines the observed state of a LedgerClusterAgent.
-type LedgerClusterAgentStatus struct {
-	// Phase of the LedgerClusterAgent: Pending, Ready, Error.
+// CredentialsStatus defines the observed state of a Credentials.
+type CredentialsStatus struct {
+	// Phase of the Credentials: Pending, Ready, Error.
 	// +optional
 	Phase string `json:"phase,omitempty"`
 
@@ -101,5 +101,5 @@ type MatchedService struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&LedgerClusterAgent{}, &LedgerClusterAgentList{})
+	SchemeBuilder.Register(&Credentials{}, &CredentialsList{})
 }

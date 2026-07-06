@@ -85,23 +85,6 @@ func (r *LedgerBackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		Name:      backup.Spec.ServiceRef,
 		Namespace: backup.Namespace,
 	}, &cluster); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return ctrl.Result{}, fmt.Errorf("looking up Cluster %q: %w", backup.Spec.ServiceRef, err)
-		}
-		// Migration window: a legacy LedgerService of the same name may still
-		// exist and the migrator has not yet created the Cluster. Requeue so
-		// this transient state does not become a permanent terminal failure
-		// for an in-flight or manual backup run.
-		var legacy ledgerv1alpha1.LedgerService
-		if lerr := r.Get(ctx, types.NamespacedName{
-			Name:      backup.Spec.ServiceRef,
-			Namespace: backup.Namespace,
-		}, &legacy); lerr == nil {
-			logger.Info("Cluster not yet created for legacy LedgerService, requeueing", "serviceRef", backup.Spec.ServiceRef)
-
-			return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
-		}
-
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ServiceRef, err))
 	}
 
