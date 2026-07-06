@@ -1372,7 +1372,14 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// applyResponses (MsgStorageApplyResp) are deferred to the applier: they
 	// are Step()-ed back into rawNode only after applyEntriesToFSM (or the
 	// spool append) completes, so raft.Applied tracks FSM-applied.
-	if len(rd.CommittedEntries) > 0 || len(result.applyResponses) > 0 {
+	//
+	// The guard is CommittedEntries-only by design. etcd/raft only emits
+	// MsgStorageApply (source of applyResponses) when CommittedEntries > 0
+	// (rawnode.go's needStorageApplyMsg). So `len(applyResponses) > 0 &&
+	// len(CommittedEntries) == 0` is unreachable — a defensive OR would only
+	// hide a future contract violation, since applyEntriesToFSM's decode+loop
+	// would silently drop responses when entries is empty (CLAUDE.md #7).
+	if len(rd.CommittedEntries) > 0 {
 		node.applier.Submit(rd.CommittedEntries, node.confState.Load(), result.applyResponses, stop)
 	}
 
@@ -1525,6 +1532,23 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		}
 	}
 
+	// stepResponses drains a batch from node.localResponseCh: it Steps the
+	// responses back into rawNode (bumping Applied for the batch that
+	// runCommitter just committed) and then checks whether the new state
+	// unlocks another Ready cycle. Broken out because the orchestrate select
+	// arms drain localResponseCh from three different priority tiers, and
+	// having one function makes it impossible for those three sites to drift
+	// in error handling.
+	stepResponses := func(msgs []raftpb.Message) error {
+		if err := stepMessages(msgs); err != nil {
+			return err
+		}
+
+		maybeCreateReady()
+
+		return nil
+	}
+
 	for {
 		select {
 		case <-ticker.C:
@@ -1547,12 +1571,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 			maybeCreateReady()
 		case msgs := <-node.localResponseCh:
-			err := stepMessages(msgs)
-			if err != nil {
+			if err := stepResponses(msgs); err != nil {
 				return err
 			}
-
-			maybeCreateReady()
 		case <-stop:
 			node.logger.Infof("Stopping readyLoop as context was cancelled")
 			node.applier.Interrupt()
@@ -1568,12 +1589,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 				maybeCreateReady()
 			case msgs := <-node.localResponseCh:
-				err := stepMessages(msgs)
-				if err != nil {
+				if err := stepResponses(msgs); err != nil {
 					return err
 				}
-
-				maybeCreateReady()
 			case msgs := <-node.transport.RecvMediumPriority():
 				err := stepMessages(msgs)
 				if err != nil {
@@ -1644,12 +1662,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 					maybeCreateReady()
 				case msgs := <-node.localResponseCh:
-					err := stepMessages(msgs)
-					if err != nil {
+					if err := stepResponses(msgs); err != nil {
 						return err
 					}
-
-					maybeCreateReady()
 				case msgs := <-node.transport.RecvMediumPriority():
 					err := stepMessages(msgs)
 					if err != nil {

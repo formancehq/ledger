@@ -595,6 +595,48 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// fireOutcome enumerates the ways fireResponses can return, so each caller
+// can react without duplicating the select-plus-drop plumbing.
+type fireOutcome int
+
+const (
+	// fireSent — responses reached the sink; raft.Applied will advance
+	// once orchestrate Steps them.
+	fireSent fireOutcome = iota
+	// fireStopped — the task's stop channel closed. Caller should treat
+	// this as a shutdown signal and return without further work.
+	fireStopped
+	// fireCtxDone — ctx cancelled. Same shutdown story as fireStopped,
+	// but arriving via the context path (fx OnStop outer timeout, etc.).
+	fireCtxDone
+)
+
+// fireResponses hands a batch of MsgStorageApplyResp / MsgStorageAppendResp
+// messages to the response sink, aborting on stop or ctx cancellation. It
+// is the single place that owns the "fire before work.done, drop on
+// shutdown" contract that findings af4915f6 / 34540caa / 9047f08a /
+// 70740916 accumulated across separate call sites. Callers decide via the
+// returned outcome whether to fall through, propagate an existing error,
+// or terminate.
+//
+// len(responses) == 0 is a no-op (returns fireSent) so callers can hand a
+// possibly-empty slice unconditionally — the empty-guard doesn't need to
+// live at every call site.
+func (a *Applier) fireResponses(ctx context.Context, stop chan struct{}, responses []raftpb.Message) fireOutcome {
+	if len(responses) == 0 {
+		return fireSent
+	}
+
+	select {
+	case a.responseSink <- responses:
+		return fireSent
+	case <-ctx.Done():
+		return fireCtxDone
+	case <-stop:
+		return fireStopped
+	}
+}
+
 // Submit sends committed entries to the Applier goroutine for asynchronous
 // FSM application (or spooling if the node is in a non-normal state).
 //
@@ -764,12 +806,8 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				// Entries are durably staged in the spool and will be
 				// re-applied via unspool without further raft involvement,
 				// so acknowledging Applied now is safe.
-				if len(work.responses) > 0 {
-					select {
-					case a.responseSink <- work.responses:
-					case <-stop:
-						return nil
-					}
+				if a.fireResponses(ctx, stop, work.responses) == fireStopped {
+					return nil
 				}
 			}
 
@@ -1058,16 +1096,14 @@ func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 		// on the next boot (raft.Config.Applied re-reads from Pebble), and
 		// re-apply is idempotent via the applied-index guard.
 		//
-		// On ctx.Done we drop the response and fall through — we MUST NOT
-		// return here, otherwise the trailing `work.done <- err` never fires
-		// and Applier.Run's deferred `waitPendingCommit` deadlocks on
-		// `<-a.pending.done` during shutdown (finding 34540caa/9047f08a).
-		if err == nil && len(work.responses) > 0 {
-			select {
-			case a.responseSink <- work.responses:
-			case <-ctx.Done():
-			case <-stop:
-			}
+		// The fireResponses outcome is intentionally ignored: on ctx.Done or
+		// stop we drop the response and fall through — we MUST NOT return
+		// here, otherwise the trailing `work.done <- err` never fires and
+		// Applier.Run's deferred `waitPendingCommit` deadlocks on
+		// `<-a.pending.done` during shutdown (findings 34540caa / 9047f08a /
+		// 70740916).
+		if err == nil {
+			_ = a.fireResponses(ctx, stop, work.responses)
 		}
 
 		if err == nil {
@@ -1234,15 +1270,6 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, stop chan struct{}, con
 
 	defer state.ReleaseDecodedEntries(decoded)
 
-	// responsesAttached tracks whether the async-storage response batch has
-	// been handed off to a submitAsyncCommit (via a sub-batch whose end
-	// reaches len(decoded) — the only sub-batch whose commit completion
-	// means "everything in this applyWork is durably in the FSM"). If a
-	// checkpoint fires on a sub-batch that ends short of len(decoded),
-	// nothing was attached and we fall back to eager delivery after
-	// handleCheckpointRequired has drained the tail through the spool.
-	responsesAttached := false
-
 	for offset := 0; offset < len(decoded); {
 		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
 
@@ -1250,10 +1277,16 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, stop chan struct{}, con
 		head := decoded[offset:end]
 		tail := decoded[end:]
 
+		// Attach responses only to the sub-batch that reaches the end of
+		// the decoded slice — that commit's completion means "everything
+		// in this applyWork is durably in the FSM". Earlier sub-batches
+		// commit head-only, so their responses would ack tail-not-yet-
+		// applied. If a checkpoint fires here (end < len(decoded)), the
+		// tail is spooled below and we fire responses eagerly after
+		// handleCheckpointRequired returns.
 		var subResponses []raftpb.Message
 		if end == len(decoded) {
 			subResponses = responses
-			responsesAttached = true
 		}
 
 		result, err := a.applyEntriesPipelined(ctx, subResponses, head...)
@@ -1290,25 +1323,25 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, stop chan struct{}, con
 			checkpointErr = a.handleCheckpointRequired(ctx, headRaw, result)
 		}
 
-		// Checkpoint returned. If responses weren't attached to any commit
-		// above (checkpoint triggered on a sub-batch that ended short of
-		// len(decoded)), the tail is durable in the spool and will apply via
-		// unspool without further raft involvement — safe to acknowledge
-		// Applied now.
-		if !responsesAttached && len(responses) > 0 {
-			select {
-			case a.responseSink <- responses:
-			case <-ctx.Done():
+		// Checkpoint returned. If end < len(decoded) then subResponses was
+		// nil (no commit above carried the responses); tail is now durable
+		// in the spool and will apply via unspool without further raft
+		// involvement — safe to acknowledge Applied. When end reaches
+		// len(decoded), runCommitter already fired the response after
+		// applyEntriesPipelined's synchronous drain (line ~1147), so we
+		// skip the fallback fire.
+		if end < len(decoded) {
+			switch a.fireResponses(ctx, stop, responses) {
+			case fireCtxDone:
 				if checkpointErr != nil {
 					return checkpointErr
 				}
 
 				return ctx.Err()
-			case <-stop:
-				// Shutdown races us; drop the response (raft.Applied stays
-				// behind, entries re-emit on next boot). Same escape hatch
-				// as the runCommitter response send (finding 70740916).
-				return checkpointErr
+			case fireStopped, fireSent:
+				// Shutdown-stopped: drop the response and return normally
+				// (raft.Applied stays behind, entries re-emit on next boot).
+				// Sent: nothing more to do.
 			}
 		}
 

@@ -7,8 +7,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
 	raftpb "go.etcd.io/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/spool"
+	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
 // makeApplyResp builds a MsgStorageApplyResp targeted at nodeID for use as
@@ -107,26 +115,89 @@ func TestApplierFiresResponsesFromSpoolBranch(t *testing.T) {
 	}
 }
 
-// TestApplierNoFireWhenSinkNil — regression guard: a nil responseSink must
-// not panic even when work.responses is populated. Sync-mode callers (and
-// tests that don't wire a sink) rely on this.
-func TestApplierNoFireWhenSinkNil(t *testing.T) {
+// TestApplierNewApplierRejectsNilSink pins the wiring contract: NewApplier
+// must fail-fast on a nil LocalResponses instead of accepting it and
+// panicking later on the first response send. The check is the runtime
+// counterpart of the constructor-injection convention (see
+// feedback_constructor_injection).
+func TestApplierNewApplierRejectsNilSink(t *testing.T) {
+	t.Parallel()
+
+	logger := logging.Testing()
+	meterProvider := noop.NewMeterProvider()
+	meter := meterProvider.Meter("test")
+
+	walDir := t.TempDir()
+	dataDir := t.TempDir()
+	spoolDir := t.TempDir()
+
+	w, err := wal.New(walDir, logger, meter)
+	require.NoError(t, err)
+
+	defaultSpool, err := spool.NewDefault(spool.DefaultSpoolConfig{Dir: spoolDir})
+	require.NoError(t, err)
+
+	pebbleStore, err := dal.NewStore(dataDir, logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = pebbleStore.Close()
+		_ = defaultSpool.Close()
+		_ = w.Close()
+	})
+
+	confState := raftpb.ConfState{Voters: []uint64{1}}
+	require.NoError(t, w.CreateSnapshot(0, &confState, nil))
+
+	nodeCache, err := cache.New(1000, nil)
+	require.NoError(t, err)
+
+	nodeRegistry := state.NewStateRegistry(nodeCache, attributes.New(), 0)
+	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
+	fsm, err := state.NewMachine(
+		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
+		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
+		func(raftpb.Entry, *dal.WriteSession) error { return nil },
+	)
+	require.NoError(t, err)
+
+	recovery := state.NewRecovery(fsm, pebbleStore)
+	require.NoError(t, recovery.RecoverState())
+	synchronizer := state.NewSynchronizer(fsm, recovery, dal.NewIncomingRestoreFactory(pebbleStore))
+
+	applier, err := NewApplier(
+		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
+		0, 1000, nil, func() {}, nil, // ← nil LocalResponses
+	)
+	require.Error(t, err, "NewApplier must reject a nil responseSink")
+	require.Nil(t, applier)
+}
+
+// TestApplierNoFireWhenResponseObserverAbsent — regression guard: when a
+// batch flows through the applier with responses, and the observer end of
+// the sink is not draining, the applier must still make forward progress
+// (apply the entry, resolve futures, return from Drain). This tests the
+// sink-consumer decoupling: the buffered sink prevents runCommitter from
+// serializing on orchestrate under normal loads. Named to reflect what it
+// actually exercises — the earlier "SinkNil" name was misleading because
+// NewApplier rejects nil sinks at construction.
+func TestApplierNoFireWhenResponseObserverAbsent(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t) // sink is nil
+	setup := newTestApplierSetup(t) // buffered sink, no observer draining it
 
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	entry, _ := makeCreateLedgerEntry(t, 1, "async-nil-sink")
+	entry, _ := makeCreateLedgerEntry(t, 1, "async-no-observer")
 	resp := makeApplyResp(1, entry.Index)
 	setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, []raftpb.Message{resp}, setup.stop)
 
 	setup.applier.Drain(setup.stop)
 
-	require.True(t, listLedgerContains(setup.store, "async-nil-sink"),
-		"entry must still be applied even when sink is nil")
+	require.True(t, listLedgerContains(setup.store, "async-no-observer"),
+		"entry must be applied even when nothing is draining the response sink")
 
 	close(setup.stop)
 	select {
