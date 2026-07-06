@@ -85,11 +85,13 @@ type testApplierSetup struct {
 }
 
 // newTestApplierSetup creates a minimal Applier with real infrastructure (Pebble, WAL, spool, FSM)
-// and no async-storage response sink.
+// and a buffered async-storage response sink that no test observer drains. Tests that assert on
+// response delivery use newTestApplierSetupWithSink and pass their own channel; tests that don't
+// care get a large-enough buffer so runCommitter never blocks on the send during Drain.
 func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	t.Helper()
 
-	return newTestApplierSetupWithSink(t, nil)
+	return newTestApplierSetupWithSink(t, make(LocalResponses, 1024))
 }
 
 // newTestApplierSetupWithSink is newTestApplierSetup with a caller-provided

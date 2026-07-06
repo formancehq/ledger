@@ -1892,18 +1892,18 @@ func (node *Node) LastPersistedIndex() uint64 {
 // SAME closure to eliminate the OUTER temporal race: without it, status was
 // captured on the orchestrate goroutine and LastPersistedIndex was loaded
 // much later on the caller goroutine, with arbitrary cross-goroutine work
-// (further Ready cycles, commits) interleaving — leading to an exaggerated
-// skew between the two reported cursors.
+// (further Ready cycles, commits) interleaving — leading to a larger skew
+// between the two reported cursors.
 //
-// The same-closure capture does NOT make the pair monotonically related.
-// `status.Applied` is bumped by rawNode.Advance on the orchestrate goroutine
-// (after `readyTerminated`); `LastPersistedIndex` is bumped by
-// Machine.publishApplied on the committer goroutine (after pb.batch.Commit()
-// returns). Neither depends on the other, and the orchestrate select
-// services clusterCommandCh before draining readyTerminated, so this closure
-// can run between `publishApplied(I)` and `Advance(I)` — observing
-// lpi = I, Applied = I-1. Consumers must treat the two cursors as
-// independent (see clusterpb.RaftStatus.last_persisted_index).
+// Under AsyncStorageWrites the two cursors are close but still advance on
+// distinct goroutines: `status.Applied` is bumped when the orchestrate
+// goroutine Step()s a MsgStorageApplyResp; `LastPersistedIndex` is bumped
+// by Machine.publishApplied inside runCommitter's CommitPreparedBatch call,
+// just before the response that carries that index is emitted on the sink.
+// Ordering is publishApplied(I) → response send → orchestrate Step →
+// rawNode.Applied = I. So this closure can run in the window between the
+// FSM publish and the raft-side Step and observe lpi = I, Applied = I-1
+// — but the reverse (Applied ahead of persisted) no longer happens.
 func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
 	var (
 		status             raft.Status
@@ -1992,20 +1992,24 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 
 	// Build complete Raft status.
 	//
-	// `Applied` is the Raft-layer cursor: bumped by rawNode.Advance on the
-	// orchestrate goroutine after `readyTerminated` is consumed.
+	// `Applied` is the Raft-layer cursor: bumped when the orchestrate
+	// goroutine Step()s the MsgStorageApplyResp for the batch (fired from
+	// runCommitter after CommitPreparedBatch succeeds).
 	// `LastPersistedIndex` is the durable FSM-side cursor: bumped by
-	// Machine.publishApplied on the committer goroutine after
-	// pb.batch.Commit() returns. The two advance independently on different
-	// goroutines (orchestrate vs committer), so a single snapshot can
-	// observe either cursor temporarily ahead of the other — do NOT assume
-	// LastPersistedIndex <= Applied.
+	// Machine.publishApplied inside CommitPreparedBatch, immediately after
+	// pb.batch.Commit() returns and before runCommitter emits the response.
+	//
+	// Under AsyncStorageWrites both are downstream of the same
+	// CommitPreparedBatch call and advance in tight lockstep: `Applied`
+	// arrives a channel-hop + orchestrate Step after `LastPersistedIndex`,
+	// never before. So `LastPersistedIndex >= Applied` in this snapshot.
 	//
 	// Anything that reads from Pebble (stale-consistency GetAccount, test
-	// oracles, cross-node identity comparisons) MUST gate on
-	// LastPersistedIndex — that is the only cursor that guarantees a Pebble
-	// read will see entries up to that index. Gating on Applied races the
-	// apply pipeline and returns stale data.
+	// oracles, cross-node identity comparisons) SHOULD still gate on
+	// LastPersistedIndex — it is the durable-in-Pebble contract by name,
+	// which is what those readers actually need. Gating on Applied works
+	// too now, but couples the reader to a Raft-consensus cursor when the
+	// semantic they want is "is Pebble caught up".
 	raftStatus := &clusterpb.RaftStatus{
 		State:              stateStr,
 		Term:               hardState.Term,

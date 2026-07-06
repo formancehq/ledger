@@ -88,8 +88,8 @@ type Applier struct {
 
 	// responseSink receives MsgStorageApplyResp messages after the apply (or
 	// spool append) completes for a batch. Same channel instance the Node
-	// drains in its orchestrate loop. Nil-safe (no-op when the channel is
-	// unwired in tests).
+	// drains in its orchestrate loop. Required (non-nil) — NewApplier
+	// rejects a nil sink; tests build it via newTestApplierSetupWithSink.
 	responseSink LocalResponses
 
 	// Metrics
@@ -164,6 +164,10 @@ func NewApplier(
 	onSnapshotInstalled func(),
 	responseSink LocalResponses,
 ) (*Applier, error) {
+	if responseSink == nil {
+		return nil, fmt.Errorf("responseSink is required (nil LocalResponses)")
+	}
+
 	initialStatus := atomic.Int32{}
 	initialStatus.Store(statusNormal)
 
@@ -759,7 +763,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				// Entries are durably staged in the spool and will be
 				// re-applied via unspool without further raft involvement,
 				// so acknowledging Applied now is safe.
-				if len(work.responses) > 0 && a.responseSink != nil {
+				if len(work.responses) > 0 {
 					select {
 					case a.responseSink <- work.responses:
 					case <-stop:
@@ -1049,7 +1053,7 @@ func (a *Applier) runCommitter(ctx context.Context) {
 		// return here, otherwise the trailing `work.done <- err` never fires
 		// and Applier.Run's deferred `waitPendingCommit` deadlocks on
 		// `<-a.pending.done` during shutdown (finding 34540caa/9047f08a).
-		if err == nil && len(work.responses) > 0 && a.responseSink != nil {
+		if err == nil && len(work.responses) > 0 {
 			select {
 			case a.responseSink <- work.responses:
 			case <-ctx.Done():
@@ -1281,7 +1285,7 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		// len(decoded)), the tail is durable in the spool and will apply via
 		// unspool without further raft involvement — safe to acknowledge
 		// Applied now.
-		if !responsesAttached && len(responses) > 0 && a.responseSink != nil {
+		if !responsesAttached && len(responses) > 0 {
 			select {
 			case a.responseSink <- responses:
 			case <-ctx.Done():
