@@ -2812,6 +2812,17 @@ func (m *ReferenceCondition) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
+func (m *RevertedCondition) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
 func (m *LedgerCondition) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA

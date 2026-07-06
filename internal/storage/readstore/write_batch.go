@@ -323,6 +323,13 @@ func (wb *WriteBatch) WriteTransactionInsertedAtIndex(kb *dal.KeyBuilder, ledger
 	return wb.put(key, nil)
 }
 
+// WriteTransactionRevertedAtIndex inserts an entry in the transaction reverted_at index.
+func (wb *WriteBatch) WriteTransactionRevertedAtIndex(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) error {
+	key := TransactionRevertedAtKey(kb, ledgerName, timestamp, txID)
+
+	return wb.put(key, nil)
+}
+
 // WriteLedgerLogDateIndex inserts an entry in the per-ledger log date index.
 func (wb *WriteBatch) WriteLedgerLogDateIndex(kb *dal.KeyBuilder, ledgerName string, timestamp, logID uint64) error {
 	key := LedgerLogDateKey(kb, ledgerName, timestamp, logID)

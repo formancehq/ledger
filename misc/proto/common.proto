@@ -206,6 +206,7 @@ enum TransactionBuiltinIndex {
   TX_BUILTIN_INDEX_SOURCE_ADDRESS = 4;   // source account→transaction mapping
   TX_BUILTIN_INDEX_DESTINATION_ADDRESS = 5;     // destination account→transaction mapping
   TX_BUILTIN_INDEX_INSERTED_AT = 6;     // requires Pebble "txiat" index (inserted_at date)
+  TX_BUILTIN_INDEX_REVERTED_AT = 7;     // requires Pebble "rvat" index (reverted_at date)
 }
 
 // AccountBuiltinIndex identifies a built-in account field that can be indexed.
@@ -1096,12 +1097,20 @@ message QueryFilter {
     LogIdCondition log_id = 9;
     LogBuiltinUintCondition log_builtin_uint = 10;
     AccountHasAssetCondition account_has_asset = 11;
+    RevertedCondition reverted = 12;
   }
 }
 
 // ReferenceCondition filters transactions by reference (exact match).
 message ReferenceCondition {
   StringCondition cond = 1;
+}
+
+// RevertedCondition filters transactions by revert status. Served from the
+// per-ledger reversion bitset (no index required): value=true matches reverted
+// originals, value=false matches everything else.
+message RevertedCondition {
+  bool value = 1;
 }
 
 // LedgerCondition filters logs by ledger name (exact match).

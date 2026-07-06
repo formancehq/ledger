@@ -166,8 +166,12 @@ transaction representation (`GET`/list), not metadata — the platform never wri
 `revertedAt` is the compensating transaction's effective timestamp (so under
 `atEffectiveDate` it equals the original's timestamp). All three are derived from
 the structural `TransactionState`, so they hold identically after replay/backfill
-and on the mirror revert path. `revertedByTransactionId`/`revertsTransactionId` are
-not yet queryable (see filtering note below).
+and on the mirror revert path.
+
+Both `reverted` and `revertedAt` are queryable (upstream v2 parity). `reverted` is
+always available (served from the reversion bitset, no index); `revertedAt` requires
+the `reverted-at` builtin index. `revertedByTransactionId`/`revertsTransactionId` are
+navigable in the representation but not queryable (v3-only, no parity baseline).
 
 ### 3. Metadata Management
 
@@ -381,7 +385,9 @@ Prepared queries are reusable, named filter queries stored per-ledger. They can 
 | `ReferenceCondition` — transaction reference exact match | transactions | yes (`reference` builtin index) |
 | `BuiltinUintCondition` with `TIMESTAMP` — effective date range | transactions | yes (`timestamp` builtin index) |
 | `BuiltinUintCondition` with `INSERTED_AT` — creation date range | transactions | yes (`inserted_at` builtin index) |
+| `BuiltinUintCondition` with `REVERTED_AT` — revert date range | transactions | yes (`reverted_at` builtin index) |
 | `BuiltinUintCondition` with `ID` — transaction ID range or equality | transactions | no (direct range scan) |
+| `RevertedCondition` — transaction revert status (true/false) | transactions | no (reversion bitset) |
 | `AccountHasAssetCondition` — accounts that have ever touched an asset | accounts | yes (`account-asset` index) |
 
 **User-configurable indexes** control which filters are available. Each index has a lifecycle: BUILDING (backfill in progress) → READY (queries enabled).
@@ -395,16 +401,19 @@ Prepared queries are reusable, named filter queries stored per-ledger. They can 
 | `reference` | `--type reference` | `ReferenceCondition` |
 | `timestamp` | `--type timestamp` | `BuiltinUintCondition(TIMESTAMP)` |
 | `inserted-at` | `--type inserted-at` | `BuiltinUintCondition(INSERTED_AT)` |
+| `reverted-at` | `--type reverted-at` | `BuiltinUintCondition(REVERTED_AT)` |
 | `account-asset` | `--type account-asset` | `AccountHasAssetCondition` — `has asset <BASE>[/<PRECISION>]` filter on account queries |
 
-> Filtering by transaction ID (`BuiltinUintCondition(ID)`) is always available with no index required.
+> Filtering by transaction ID (`BuiltinUintCondition(ID)`) and by revert status
+> (`RevertedCondition`) are always available with no index required — the latter is
+> served from the per-ledger reversion bitset.
 
-> **Not yet queryable: `reverted` / `revertedAt`.** Upstream `formancehq/ledger`
-> lets clients filter transactions by revert status. v3 exposes the revert
-> relationship on the transaction representation (`reverted`, `revertedAt`,
-> `revertedByTransactionId`, `revertsTransactionId`) but does not yet index it, so
-> there is no `QueryFilter` for it — parity holds only for the queryable subset
-> above. Adding it would require a new builtin index + `QueryFilter` variant.
+> **Revert querying (upstream v2 parity).** v2 queries transactions by both
+> `reverted` and `reverted_at`; v3 matches this: `RevertedCondition` for the boolean
+> and `BuiltinUintCondition(REVERTED_AT)` (behind the `reverted-at` index) for the
+> date range. The v3-only navigable ids `revertedByTransactionId` /
+> `revertsTransactionId` are exposed in the representation but are not queryable
+> (no v2 baseline); adding them would follow the same builtin-index recipe.
 
 **CLI commands:**
 ```bash

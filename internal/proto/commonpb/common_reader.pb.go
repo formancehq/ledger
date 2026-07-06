@@ -8838,6 +8838,73 @@ func NewReferenceConditionListReader(s []*ReferenceCondition) ReferenceCondition
 	return referenceConditionListReadonly(s)
 }
 
+// RevertedConditionReader provides read-only access to RevertedCondition.
+// Call Mutate() to obtain a mutable clone.
+type RevertedConditionReader interface {
+	GetValue() bool
+	Mutate() *RevertedCondition
+}
+
+type revertedConditionReadonly struct{ v *RevertedCondition }
+
+func (r *revertedConditionReadonly) GetValue() bool {
+	return r.v.GetValue()
+}
+
+func (r *revertedConditionReadonly) Mutate() *RevertedCondition {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this RevertedCondition.
+func (m *RevertedCondition) AsReader() RevertedConditionReader {
+	if m == nil {
+		return nil
+	}
+	return &revertedConditionReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this RevertedCondition.
+func (m *RevertedCondition) Mutate() *RevertedCondition {
+	return m.CloneVT()
+}
+
+// RevertedConditionListReader provides read-only iteration over []*RevertedCondition.
+type RevertedConditionListReader interface {
+	Len() int
+	Get(i int) RevertedConditionReader
+	Range(yield func(int, RevertedConditionReader) bool)
+}
+
+type revertedConditionListReadonly []*RevertedCondition
+
+func (l revertedConditionListReadonly) Len() int { return len(l) }
+
+func (l revertedConditionListReadonly) Get(i int) RevertedConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l revertedConditionListReadonly) Range(yield func(int, RevertedConditionReader) bool) {
+	for i, v := range l {
+		var r RevertedConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRevertedConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRevertedConditionListReader(s []*RevertedCondition) RevertedConditionListReader {
+	return revertedConditionListReadonly(s)
+}
+
 // LedgerConditionReader provides read-only access to LedgerCondition.
 // Call Mutate() to obtain a mutable clone.
 type LedgerConditionReader interface {

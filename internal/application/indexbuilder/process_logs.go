@@ -670,6 +670,14 @@ func (b *Builder) indexRevertedTransaction(
 		}
 	}
 
+	// reverted_at indexes the original transaction (the one being reverted) by
+	// the time it was reverted — the compensating transaction's timestamp.
+	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT) && revertTxn.GetTimestamp() != nil {
+		if err := wb.WriteTransactionRevertedAtIndex(kb, ledger, revertTxn.GetTimestamp().GetData(), rt.GetRevertedTransactionId()); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

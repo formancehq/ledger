@@ -16,6 +16,7 @@ var indexTypeOptions = []string{
 	"reference",
 	"timestamp",
 	"inserted-at",
+	"reverted-at",
 	"account-asset",
 }
 

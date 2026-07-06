@@ -112,11 +112,14 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	case "inserted-at":
 		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)
 		indexDesc = "inserted-at"
+	case "reverted-at":
+		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
+		indexDesc = "reverted-at"
 	case "account-asset":
 		req.Id = accountBuiltinIndexID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
 		indexDesc = "account has-asset"
 	default:
-		return fmt.Errorf("invalid index type %q: must be address, source-address, destination-address, metadata, reference, timestamp, inserted-at, or account-asset", indexType)
+		return fmt.Errorf("invalid index type %q: must be address, source-address, destination-address, metadata, reference, timestamp, inserted-at, reverted-at, or account-asset", indexType)
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)
