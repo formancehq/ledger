@@ -247,6 +247,8 @@ ledgerctl ledgers create [flags]
 | `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
 | `--mirror-aws-iam-assume-role-arn` | | Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors). Requires `--mirror-aws-iam-region`. |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
+| `--mirror-rewrite-file` | | Path to a YAML/JSON file with CEL rewrite rules (`[{match, cel, stop}]`) applied to every mirror log entry during translation |
+| `--mirror-rewrite-rule` | | A single CEL rewrite rule as a JSON object `{"match":..,"cel":..,"stop":..}` (repeatable; appended after any `--mirror-rewrite-file` rules) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -282,6 +284,13 @@ ledgerctl ledgers create --name my-mirror \
   --mode mirror \
   --mirror-source-type postgres \
   --mirror-dsn "postgres://user:pass@host:5432/ledger?sslmode=disable"
+
+# Create a mirror ledger with CEL rewrite rules (rewrite.yaml holds
+# [{match, cel, stop}] rules applied to every mirror log entry)
+ledgerctl ledgers create --name my-mirror \
+  --mode mirror \
+  --mirror-base-url https://v2-api.example.com \
+  --mirror-rewrite-file rewrite.yaml
 
 # Create a mirror ledger from an AWS RDS v2 source using IAM authentication
 ledgerctl ledgers create --name my-mirror \

@@ -1,6 +1,8 @@
 package ledgers
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,54 +26,81 @@ func TestParseMirrorFlags_PostgresEmptyIAMRegionRejected(t *testing.T) {
 	require.Contains(t, err.Error(), "non-empty region")
 }
 
-func TestParseMirrorFlags_AddressRewriteRules(t *testing.T) {
+func TestParseMirrorFlags_RewriteRulesInline(t *testing.T) {
 	t.Parallel()
 
 	cmd := NewCreateCommand()
 	require.NoError(t, cmd.ParseFlags([]string{
 		"--mode=mirror",
 		"--mirror-base-url=http://v2:3068",
-		`--mirror-address-rewrite=(:worker:\d+)=`,
-		"--mirror-address-rewrite=^payments:=psp:",
+		"--mirror-rewrite-rule", `{"cel":"tx.rewriteAddress(\":worker:\\\\d+\", \"\")"}`,
+		"--mirror-rewrite-rule", `{"match":"tx.metadata[\"type\"] == \"payout\"","cel":"tx.setMetadata(\"category\", \"external\")","stop":true}`,
 	}))
 
 	_, cfg, err := parseMirrorFlags(cmd, "ledger-x")
 	require.NoError(t, err)
-	require.Len(t, cfg.GetAddressRewriteRules(), 2)
-	require.Equal(t, `(:worker:\d+)`, cfg.GetAddressRewriteRules()[0].GetPattern())
-	require.Equal(t, "", cfg.GetAddressRewriteRules()[0].GetReplacement())
-	require.Equal(t, "^payments:", cfg.GetAddressRewriteRules()[1].GetPattern())
-	require.Equal(t, "psp:", cfg.GetAddressRewriteRules()[1].GetReplacement())
+	require.Len(t, cfg.GetRewriteRules(), 2)
+	require.Equal(t, `tx.rewriteAddress(":worker:\\d+", "")`, cfg.GetRewriteRules()[0].GetCel())
+	require.Equal(t, "", cfg.GetRewriteRules()[0].GetMatch())
+	require.Equal(t, `tx.metadata["type"] == "payout"`, cfg.GetRewriteRules()[1].GetMatch())
+	require.True(t, cfg.GetRewriteRules()[1].GetStop())
 }
 
-func TestParseMirrorFlags_AddressRewriteInfersMirrorMode(t *testing.T) {
+func TestParseMirrorFlags_RewriteFile(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "rules.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+- cel: 'tx.rewriteAddress(":worker:\\d+", "")'
+- match: 'tx.metadata["type"] == "payout"'
+  cel: 'tx.setMetadata("category", "external")'
+  stop: true
+`), 0o600))
+
+	cmd := NewCreateCommand()
+	require.NoError(t, cmd.ParseFlags([]string{
+		"--mode=mirror",
+		"--mirror-base-url=http://v2:3068",
+		"--mirror-rewrite-file=" + path,
+	}))
+
+	_, cfg, err := parseMirrorFlags(cmd, "ledger-x")
+	require.NoError(t, err)
+	require.Len(t, cfg.GetRewriteRules(), 2)
+	// YAML single-quoted scalars keep backslashes literal, so the stored CEL
+	// source retains "\\d" (CEL unescapes it to "\d" at compile time).
+	require.Equal(t, `tx.rewriteAddress(":worker:\\d+", "")`, cfg.GetRewriteRules()[0].GetCel())
+	require.True(t, cfg.GetRewriteRules()[1].GetStop())
+}
+
+func TestParseMirrorFlags_RewriteInfersMirrorMode(t *testing.T) {
 	t.Parallel()
 
 	cmd := NewCreateCommand()
 	require.NoError(t, cmd.ParseFlags([]string{
 		"--mirror-base-url=http://v2:3068",
-		`--mirror-address-rewrite=(:worker:\d+)=`,
+		"--mirror-rewrite-rule", `{"cel":"tx"}`,
 	}))
 
 	mode, cfg, err := parseMirrorFlags(cmd, "ledger-x")
 	require.NoError(t, err)
 	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, mode)
-	require.Len(t, cfg.GetAddressRewriteRules(), 1)
+	require.Len(t, cfg.GetRewriteRules(), 1)
 }
 
-func TestParseMirrorFlags_AddressRewriteMissingSeparatorRejected(t *testing.T) {
+func TestParseMirrorFlags_RewriteEmptyCelRejected(t *testing.T) {
 	t.Parallel()
 
 	cmd := NewCreateCommand()
 	require.NoError(t, cmd.ParseFlags([]string{
 		"--mode=mirror",
 		"--mirror-base-url=http://v2:3068",
-		"--mirror-address-rewrite=no-separator",
+		"--mirror-rewrite-rule", `{"match":"true"}`,
 	}))
 
 	_, _, err := parseMirrorFlags(cmd, "ledger-x")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "pattern=replacement")
+	require.Contains(t, err.Error(), "cel must not be empty")
 }
 
 func TestParseMirrorFlags_PostgresIAMRegionWiresAwsIamAuth(t *testing.T) {

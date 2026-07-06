@@ -57,32 +57,36 @@ type MirrorSourceSpec struct {
 	// +optional
 	BatchSize *int32 `json:"batchSize,omitempty"`
 
-	// AddressRewriteRules are applied, in order, to every account address as the
-	// mirror translates v2 source logs into v3 orders. Each rule drops or renames
-	// an address segment (see AddressRewriteRule). Applies to both HTTP and
-	// Postgres sources.
+	// RewriteRules are CEL rewrite rules applied, in order, to every mirror log
+	// entry as the mirror translates v2 source logs into v3 orders. Each rule can
+	// rename address segments, transform metadata, or drop transactions (see
+	// MirrorRewriteRule). Applies to both HTTP and Postgres sources.
 	// +optional
-	AddressRewriteRules []AddressRewriteRule `json:"addressRewriteRules,omitempty"`
+	RewriteRules []MirrorRewriteRule `json:"rewriteRules,omitempty"`
 }
 
-// AddressRewriteRule rewrites account addresses during v2→v3 mirror translation.
-// Pattern is a Go (RE2) regular expression matched against the full account
-// address; every match is replaced with Replacement, which may reference capture
-// groups (e.g. "$1"). An empty Replacement drops the matched segment, e.g.
-// pattern "(:worker:\\d+)" turns "payments:acme:worker:001:main" into
-// "payments:acme:main". Rewriting is a translation-time projection only: the
-// source v2 ledger is never modified, and the rewritten address must still be a
-// valid ledger account address.
-type AddressRewriteRule struct {
-	// Pattern is the RE2 regular expression matched against every account address.
+// MirrorRewriteRule transforms a mirror log entry during v2→v3 translation.
+// Match is a CEL boolean expression over the transaction (`tx`) selecting which
+// entries the rule fires on (empty = always). Cel is a CEL expression evaluating
+// to the rewritten `tx`, built with helper functions (tx.rewriteAddress,
+// tx.setMetadata, tx.deleteMetadata, tx.setAccountMetadata,
+// tx.deleteAccountMetadata, tx.drop). When Stop is true and the rule matches, no
+// further rules are evaluated. Rewriting is a deterministic translation-time
+// projection only: the source v2 ledger is never modified.
+type MirrorRewriteRule struct {
+	// Match is a CEL boolean expression selecting which transactions the rule
+	// fires on. Empty means the rule always applies.
+	// +optional
+	Match string `json:"match,omitempty"`
+
+	// Cel is the CEL rewrite expression, evaluating to the rewritten transaction.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
-	Pattern string `json:"pattern"`
+	Cel string `json:"cel"`
 
-	// Replacement replaces each match of Pattern. May reference capture groups
-	// (e.g. "$1"). An empty replacement drops the matched segment.
+	// Stop halts the rule chain once this rule matches.
 	// +optional
-	Replacement string `json:"replacement,omitempty"`
+	Stop bool `json:"stop,omitempty"`
 }
 
 // HTTPMirrorSource configures HTTP-based mirror replication.

@@ -147,16 +147,16 @@ func TestBuildCreateArgs_MirrorHTTPWithOptions(t *testing.T) {
 	}, args)
 }
 
-func TestBuildCreateArgs_MirrorHTTPWithAddressRewriteRules(t *testing.T) {
+func TestBuildCreateArgs_MirrorHTTPWithRewriteRules(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
 	ledger := newLedger("test", "default", "svc", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
-		AddressRewriteRules: []ledgerv1alpha1.AddressRewriteRule{
-			{Pattern: `(:worker:\d+)`},
-			{Pattern: "^payments:", Replacement: "psp:"},
+		RewriteRules: []ledgerv1alpha1.MirrorRewriteRule{
+			{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
+			{Match: `tx.metadata["type"] == "payout"`, Cel: `tx.setMetadata("category", "external")`, Stop: true},
 		},
 		HTTP: &ledgerv1alpha1.HTTPMirrorSource{
 			BaseURL: "https://source.example.com",
@@ -168,14 +168,14 @@ func TestBuildCreateArgs_MirrorHTTPWithAddressRewriteRules(t *testing.T) {
 	assert.Equal(t, []string{
 		"ledgers", "create", "--name", "ledger1",
 		"--mode", "mirror",
-		"--mirror-address-rewrite", `(:worker:\d+)=`,
-		"--mirror-address-rewrite", "^payments:=psp:",
+		"--mirror-rewrite-rule", `{"cel":"tx.rewriteAddress(\":worker:\\\\d+\", \"\")"}`,
+		"--mirror-rewrite-rule", `{"match":"tx.metadata[\"type\"] == \"payout\"","cel":"tx.setMetadata(\"category\", \"external\")","stop":true}`,
 		"--mirror-source-type", "http",
 		"--mirror-base-url", "https://source.example.com",
 	}, args)
 }
 
-func TestBuildCreateArgs_MirrorPostgresWithAddressRewriteRules(t *testing.T) {
+func TestBuildCreateArgs_MirrorPostgresWithRewriteRules(t *testing.T) {
 	t.Parallel()
 
 	secret := corev1.Secret{
@@ -192,8 +192,8 @@ func TestBuildCreateArgs_MirrorPostgresWithAddressRewriteRules(t *testing.T) {
 	ledger := newLedger("test", "default", "svc", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
-		AddressRewriteRules: []ledgerv1alpha1.AddressRewriteRule{
-			{Pattern: `(:worker:\d+)`},
+		RewriteRules: []ledgerv1alpha1.MirrorRewriteRule{
+			{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
 		},
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
 			Host:     "db.example.com",
@@ -213,7 +213,7 @@ func TestBuildCreateArgs_MirrorPostgresWithAddressRewriteRules(t *testing.T) {
 	assert.Equal(t, []string{
 		"ledgers", "create", "--name", "ledger1",
 		"--mode", "mirror",
-		"--mirror-address-rewrite", `(:worker:\d+)=`,
+		"--mirror-rewrite-rule", `{"cel":"tx.rewriteAddress(\":worker:\\\\d+\", \"\")"}`,
 		"--mirror-source-type", "postgres",
 		"--mirror-dsn", "postgres://ledger:s3cr3t@db.example.com:5432/ledger?sslmode=require",
 	}, args)

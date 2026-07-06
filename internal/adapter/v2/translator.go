@@ -3,7 +3,6 @@ package v2
 import (
 	stdjson "encoding/json"
 	"fmt"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -37,7 +37,7 @@ var (
 // TranslateBatch translates a batch of v2 logs into v3 Raft orders.
 // It generates FillGap orders for any gaps in log IDs or transaction IDs.
 // expectedNextLogID and expectedNextTxID are used to detect gaps.
-func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNextTxID uint64, rewriter *AddressRewriter) ([]*raftcmdpb.Order, uint64, uint64, error) {
+func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNextTxID uint64, rewriter *celrewrite.Rewriter) ([]*raftcmdpb.Order, uint64, uint64, error) {
 	orders := make([]*raftcmdpb.Order, 0, len(v2Logs))
 
 	for _, v2Log := range v2Logs {
@@ -52,7 +52,7 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 			expectedNextLogID++
 		}
 
-		entry, newNextTxID, err := translateV2Log(v2Log, expectedNextTxID, rewriter)
+		entry, newNextTxID, err := translateV2Log(v2Log, expectedNextTxID)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("translating v2 log %d (type=%s): %w", v2Log.ID, v2Log.Type, err)
 		}
@@ -60,6 +60,15 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 		expectedNextTxID = newNextTxID
 
 		if entry != nil {
+			// Apply the mirror's CEL rewrite rules to the translated entry. This
+			// runs on the leader and its output is baked into the proposed order,
+			// so followers apply identical bytes. A rule may drop the entry, in
+			// which case Apply returns a fill-gap that still advances the tx ID.
+			entry, err = rewriter.Apply(entry)
+			if err != nil {
+				return nil, 0, 0, fmt.Errorf("rewriting v2 log %d (type=%s): %w", v2Log.ID, v2Log.Type, err)
+			}
+
 			orders = append(orders, makeMirrorOrder(ledger, entry))
 		}
 
@@ -84,18 +93,18 @@ func makeMirrorOrder(ledger string, entry *raftcmdpb.MirrorLogEntry) *raftcmdpb.
 	}
 }
 
-func translateV2Log(v2Log V2Log, expectedNextTxID uint64, rewriter *AddressRewriter) (*raftcmdpb.MirrorLogEntry, uint64, error) {
+func translateV2Log(v2Log V2Log, expectedNextTxID uint64) (*raftcmdpb.MirrorLogEntry, uint64, error) {
 	switch v2Log.Type {
 	case "NEW_TRANSACTION":
-		return translateNewTransaction(v2Log, expectedNextTxID, rewriter)
+		return translateNewTransaction(v2Log, expectedNextTxID)
 	case "SET_METADATA":
-		entry, err := translateSetMetadata(v2Log, rewriter)
+		entry, err := translateSetMetadata(v2Log)
 
 		return entry, expectedNextTxID, err
 	case "REVERTED_TRANSACTION":
-		return translateRevertedTransaction(v2Log, expectedNextTxID, rewriter)
+		return translateRevertedTransaction(v2Log, expectedNextTxID)
 	case "DELETE_METADATA":
-		entry, err := translateDeleteMetadata(v2Log, rewriter)
+		entry, err := translateDeleteMetadata(v2Log)
 
 		return entry, expectedNextTxID, err
 	default:
@@ -109,7 +118,7 @@ func translateV2Log(v2Log V2Log, expectedNextTxID uint64, rewriter *AddressRewri
 	}
 }
 
-func translateNewTransaction(v2Log V2Log, _ uint64, rewriter *AddressRewriter) (*raftcmdpb.MirrorLogEntry, uint64, error) {
+func translateNewTransaction(v2Log V2Log, _ uint64) (*raftcmdpb.MirrorLogEntry, uint64, error) {
 	data, ok := v2NewTxPool.Get().(*V2NewTransactionData)
 	if !ok {
 		panic("unexpected type from v2NewTxPool")
@@ -124,7 +133,7 @@ func translateNewTransaction(v2Log V2Log, _ uint64, rewriter *AddressRewriter) (
 
 	txID := data.Transaction.ID
 
-	postings, err := translatePostings(data.Transaction.Postings, rewriter)
+	postings, err := translatePostings(data.Transaction.Postings)
 	if err != nil {
 		resetV2NewTxData(data)
 		v2NewTxPool.Put(data)
@@ -143,13 +152,7 @@ func translateNewTransaction(v2Log V2Log, _ uint64, rewriter *AddressRewriter) (
 		}
 	}
 
-	accountMetadata, err := translateAccountMetadata(data.AccountMetadata, rewriter)
-	if err != nil {
-		resetV2NewTxData(data)
-		v2NewTxPool.Put(data)
-
-		return nil, 0, err
-	}
+	accountMetadata := translateAccountMetadata(data.AccountMetadata)
 
 	entry := &raftcmdpb.MirrorLogEntry{
 		V2LogId: v2Log.ID,
@@ -178,13 +181,13 @@ func resetV2NewTxData(d *V2NewTransactionData) {
 	d.Transaction.Postings = postings
 }
 
-func translateSetMetadata(v2Log V2Log, rewriter *AddressRewriter) (*raftcmdpb.MirrorLogEntry, error) {
+func translateSetMetadata(v2Log V2Log) (*raftcmdpb.MirrorLogEntry, error) {
 	var data V2SetMetadataData
 	if err := sonic.Unmarshal(v2Log.Data, &data); err != nil {
 		return nil, fmt.Errorf("unmarshaling SET_METADATA data: %w", err)
 	}
 
-	target, err := translateTarget(data.TargetType, data.TargetID, rewriter)
+	target, err := translateTarget(data.TargetType, data.TargetID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +203,7 @@ func translateSetMetadata(v2Log V2Log, rewriter *AddressRewriter) (*raftcmdpb.Mi
 	}, nil
 }
 
-func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64, rewriter *AddressRewriter) (*raftcmdpb.MirrorLogEntry, uint64, error) {
+func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64) (*raftcmdpb.MirrorLogEntry, uint64, error) {
 	data := v2RevertPool.Get().(*V2RevertedTransactionData)
 
 	if err := sonic.Unmarshal(v2Log.Data, data); err != nil {
@@ -212,7 +215,7 @@ func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64, rewriter
 
 	revertTxID := data.RevertTransaction.ID
 
-	postings, err := translatePostings(data.RevertTransaction.Postings, rewriter)
+	postings, err := translatePostings(data.RevertTransaction.Postings)
 	if err != nil {
 		resetV2RevertData(data)
 		v2RevertPool.Put(data)
@@ -260,13 +263,13 @@ func resetV2RevertData(d *V2RevertedTransactionData) {
 	d.RevertTransaction.Postings = postings
 }
 
-func translateDeleteMetadata(v2Log V2Log, rewriter *AddressRewriter) (*raftcmdpb.MirrorLogEntry, error) {
+func translateDeleteMetadata(v2Log V2Log) (*raftcmdpb.MirrorLogEntry, error) {
 	var data V2DeleteMetadataData
 	if err := sonic.Unmarshal(v2Log.Data, &data); err != nil {
 		return nil, fmt.Errorf("unmarshaling DELETE_METADATA data: %w", err)
 	}
 
-	target, err := translateTarget(data.TargetType, data.TargetID, rewriter)
+	target, err := translateTarget(data.TargetType, data.TargetID)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +288,7 @@ func translateDeleteMetadata(v2Log V2Log, rewriter *AddressRewriter) (*raftcmdpb
 // translatePostings converts v2 postings to v3 proto postings.
 // Uses batch-allocated backing arrays to reduce per-posting heap allocations
 // from 3N+1 to 3 (one []Posting, one []Uint256, one []*Posting).
-func translatePostings(v2Postings []V2Posting, rewriter *AddressRewriter) ([]*commonpb.Posting, error) {
+func translatePostings(v2Postings []V2Posting) ([]*commonpb.Posting, error) {
 	n := len(v2Postings)
 	postingBuf := make([]commonpb.Posting, n)
 	uint256Buf := make([]commonpb.Uint256, n)
@@ -297,19 +300,9 @@ func translatePostings(v2Postings []V2Posting, rewriter *AddressRewriter) ([]*co
 			return nil, fmt.Errorf("parsing posting amount %q: %w", p.Amount.String(), err)
 		}
 
-		source, err := rewriter.Rewrite(p.Source)
-		if err != nil {
-			return nil, fmt.Errorf("rewriting posting source: %w", err)
-		}
-
-		destination, err := rewriter.Rewrite(p.Destination)
-		if err != nil {
-			return nil, fmt.Errorf("rewriting posting destination: %w", err)
-		}
-
 		postingBuf[i] = commonpb.Posting{
-			Source:      source,
-			Destination: destination,
+			Source:      p.Source,
+			Destination: p.Destination,
 			Amount:      &uint256Buf[i],
 			Asset:       p.Asset,
 		}
@@ -341,7 +334,7 @@ func parseUint256Into(s string, dst *commonpb.Uint256) error {
 }
 
 // translateTarget converts v2 target type and ID to a v3 Target.
-func translateTarget(targetType string, rawID stdjson.RawMessage, rewriter *AddressRewriter) (*commonpb.Target, error) {
+func translateTarget(targetType string, rawID stdjson.RawMessage) (*commonpb.Target, error) {
 	switch targetType {
 	case "TRANSACTION":
 		var txID uint64
@@ -375,11 +368,6 @@ func translateTarget(targetType string, rawID stdjson.RawMessage, rewriter *Addr
 			return nil, fmt.Errorf("parsing account target ID: %w", err)
 		}
 
-		addr, err = rewriter.Rewrite(addr)
-		if err != nil {
-			return nil, fmt.Errorf("rewriting account target: %w", err)
-		}
-
 		return &commonpb.Target{
 			Target: &commonpb.Target_Account{
 				Account: &commonpb.TargetAccount{Addr: addr},
@@ -390,56 +378,20 @@ func translateTarget(targetType string, rawID stdjson.RawMessage, rewriter *Addr
 	}
 }
 
-// translateAccountMetadata rebuilds the account-address-keyed metadata map with
-// rewritten addresses. When two source addresses collapse onto the same
-// rewritten address, their metadata maps are merged; on a conflicting key the
-// value from the lexicographically-smallest source address wins, so the result
-// is deterministic regardless of Go map iteration order.
-func translateAccountMetadata(accountMetadata map[string]map[string]string, rewriter *AddressRewriter) (map[string]*commonpb.MetadataMap, error) {
+// translateAccountMetadata builds the account-address-keyed metadata map.
+// Address rewriting (and any collision merging it induces) is handled later by
+// the CEL rewrite engine, so this is a plain, distinct-keyed projection.
+func translateAccountMetadata(accountMetadata map[string]map[string]string) map[string]*commonpb.MetadataMap {
 	if len(accountMetadata) == 0 {
-		return nil, nil
+		return nil
 	}
-
-	accounts := make([]string, 0, len(accountMetadata))
-	for account := range accountMetadata {
-		accounts = append(accounts, account)
-	}
-
-	sort.Strings(accounts)
 
 	result := make(map[string]*commonpb.MetadataMap, len(accountMetadata))
-
-	for _, account := range accounts {
-		rewritten, err := rewriter.Rewrite(account)
-		if err != nil {
-			return nil, fmt.Errorf("rewriting account metadata target %q: %w", account, err)
-		}
-
-		existing, ok := result[rewritten]
-		if !ok {
-			result[rewritten] = &commonpb.MetadataMap{Values: translateMetadataMap(accountMetadata[account])}
-
-			continue
-		}
-
-		// Collision: merge, keeping the value already present (from the
-		// lexicographically-smaller source address) on key conflicts.
-		for key, value := range accountMetadata[account] {
-			if _, conflict := existing.GetValues()[key]; conflict {
-				continue
-			}
-
-			if existing.Values == nil {
-				existing.Values = make(map[string]*commonpb.MetadataValue)
-			}
-
-			existing.Values[key] = &commonpb.MetadataValue{
-				Type: &commonpb.MetadataValue_StringValue{StringValue: value},
-			}
-		}
+	for account, meta := range accountMetadata {
+		result[account] = &commonpb.MetadataMap{Values: translateMetadataMap(meta)}
 	}
 
-	return result, nil
+	return result
 }
 
 // translateMetadataMap converts v2 string metadata to proto metadata values.

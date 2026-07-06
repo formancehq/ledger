@@ -6795,13 +6795,12 @@ type MirrorSourceConfig struct {
 	//	*MirrorSourceConfig_Postgres
 	Type      isMirrorSourceConfig_Type `protobuf_oneof:"type"`
 	BatchSize uint32                    `protobuf:"varint,4,opt,name=batch_size,json=batchSize,proto3" json:"batch_size,omitempty"` // Max logs per batch (0 = default 100). Client's responsibility to avoid saturating the instance.
-	// Rewrite rules applied, in order, to every account address as v2 logs are
-	// translated into v3 orders. Used to drop or rename address segments that v2
-	// only carried as lock-avoidance shards (e.g. ":worker:001"). See
-	// AddressRewriteRule.
-	AddressRewriteRules []*AddressRewriteRule `protobuf:"bytes,5,rep,name=address_rewrite_rules,json=addressRewriteRules,proto3" json:"address_rewrite_rules,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Ordered CEL rewrite rules applied to every mirror log entry as v2 logs are
+	// translated into v3 orders. Each rule can rename address segments, transform
+	// metadata, or drop transactions. See MirrorRewriteRule.
+	RewriteRules  []*MirrorRewriteRule `protobuf:"bytes,6,rep,name=rewrite_rules,json=rewriteRules,proto3" json:"rewrite_rules,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MirrorSourceConfig) Reset() {
@@ -6873,9 +6872,9 @@ func (x *MirrorSourceConfig) GetBatchSize() uint32 {
 	return 0
 }
 
-func (x *MirrorSourceConfig) GetAddressRewriteRules() []*AddressRewriteRule {
+func (x *MirrorSourceConfig) GetRewriteRules() []*MirrorRewriteRule {
 	if x != nil {
-		return x.AddressRewriteRules
+		return x.RewriteRules
 	}
 	return nil
 }
@@ -6896,36 +6895,39 @@ func (*MirrorSourceConfig_Http) isMirrorSourceConfig_Type() {}
 
 func (*MirrorSourceConfig_Postgres) isMirrorSourceConfig_Type() {}
 
-// AddressRewriteRule rewrites account addresses during mirror translation.
-// pattern is a Go (RE2) regular expression matched against the full account
-// address; every match is replaced with replacement (which may reference
-// capture groups). An empty replacement drops the matched part, e.g. pattern
-// "(:worker:\\d+)" turns "payments:acme:worker:001:main" into
-// "payments:acme:main". Rewriting is a pure translation-time projection: the
-// source v2 ledger is never modified, and the rewritten address must still be
-// a valid ledger account address.
-type AddressRewriteRule struct {
+// MirrorRewriteRule transforms a mirror log entry during v2->v3 translation.
+// `match` is a CEL boolean expression over the transaction (`tx`) selecting
+// which entries the rule fires on (empty = always). `cel` is a CEL expression
+// evaluating to the rewritten `tx`, built with helper functions
+// (tx.rewriteAddress, tx.setMetadata, tx.deleteMetadata, tx.setAccountMetadata,
+// tx.deleteAccountMetadata, tx.drop). When `stop` is true and the rule matches,
+// no further rules are evaluated. Rewriting is a pure, deterministic
+// translation-time projection performed on the mirror leader: the source v2
+// ledger is never modified, and any rewritten address must remain a valid
+// ledger account address.
+type MirrorRewriteRule struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Pattern       string                 `protobuf:"bytes,1,opt,name=pattern,proto3" json:"pattern,omitempty"`
-	Replacement   string                 `protobuf:"bytes,2,opt,name=replacement,proto3" json:"replacement,omitempty"`
+	Match         string                 `protobuf:"bytes,1,opt,name=match,proto3" json:"match,omitempty"`
+	Cel           string                 `protobuf:"bytes,2,opt,name=cel,proto3" json:"cel,omitempty"`
+	Stop          bool                   `protobuf:"varint,3,opt,name=stop,proto3" json:"stop,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AddressRewriteRule) Reset() {
-	*x = AddressRewriteRule{}
+func (x *MirrorRewriteRule) Reset() {
+	*x = MirrorRewriteRule{}
 	mi := &file_common_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AddressRewriteRule) String() string {
+func (x *MirrorRewriteRule) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AddressRewriteRule) ProtoMessage() {}
+func (*MirrorRewriteRule) ProtoMessage() {}
 
-func (x *AddressRewriteRule) ProtoReflect() protoreflect.Message {
+func (x *MirrorRewriteRule) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -6937,23 +6939,30 @@ func (x *AddressRewriteRule) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AddressRewriteRule.ProtoReflect.Descriptor instead.
-func (*AddressRewriteRule) Descriptor() ([]byte, []int) {
+// Deprecated: Use MirrorRewriteRule.ProtoReflect.Descriptor instead.
+func (*MirrorRewriteRule) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{81}
 }
 
-func (x *AddressRewriteRule) GetPattern() string {
+func (x *MirrorRewriteRule) GetMatch() string {
 	if x != nil {
-		return x.Pattern
+		return x.Match
 	}
 	return ""
 }
 
-func (x *AddressRewriteRule) GetReplacement() string {
+func (x *MirrorRewriteRule) GetCel() string {
 	if x != nil {
-		return x.Replacement
+		return x.Cel
 	}
 	return ""
+}
+
+func (x *MirrorRewriteRule) GetStop() bool {
+	if x != nil {
+		return x.Stop
+	}
+	return false
 }
 
 type HttpMirrorSourceConfig struct {
@@ -11240,19 +11249,20 @@ const file_common_proto_rawDesc = "" +
 	"\x12ArchivedChapterLog\x12)\n" +
 	"\achapter\x18\x01 \x01(\v2\x0f.common.ChapterR\achapter\"G\n" +
 	"\x1aConfirmedArchiveChapterLog\x12)\n" +
-	"\achapter\x18\x01 \x01(\v2\x0f.common.ChapterR\achapter\"\xa4\x02\n" +
+	"\achapter\x18\x01 \x01(\v2\x0f.common.ChapterR\achapter\"\xb1\x02\n" +
 	"\x12MirrorSourceConfig\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\x124\n" +
 	"\x04http\x18\x02 \x01(\v2\x1e.common.HttpMirrorSourceConfigH\x00R\x04http\x12@\n" +
 	"\bpostgres\x18\x03 \x01(\v2\".common.PostgresMirrorSourceConfigH\x00R\bpostgres\x12\x1d\n" +
 	"\n" +
-	"batch_size\x18\x04 \x01(\rR\tbatchSize\x12N\n" +
-	"\x15address_rewrite_rules\x18\x05 \x03(\v2\x1a.common.AddressRewriteRuleR\x13addressRewriteRulesB\x06\n" +
-	"\x04type\"P\n" +
-	"\x12AddressRewriteRule\x12\x18\n" +
-	"\apattern\x18\x01 \x01(\tR\apattern\x12 \n" +
-	"\vreplacement\x18\x02 \x01(\tR\vreplacement\"\x90\x01\n" +
+	"batch_size\x18\x04 \x01(\rR\tbatchSize\x12>\n" +
+	"\rrewrite_rules\x18\x06 \x03(\v2\x19.common.MirrorRewriteRuleR\frewriteRulesB\x06\n" +
+	"\x04typeJ\x04\b\x05\x10\x06R\x15address_rewrite_rules\"O\n" +
+	"\x11MirrorRewriteRule\x12\x14\n" +
+	"\x05match\x18\x01 \x01(\tR\x05match\x12\x10\n" +
+	"\x03cel\x18\x02 \x01(\tR\x03cel\x12\x12\n" +
+	"\x04stop\x18\x03 \x01(\bR\x04stop\"\x90\x01\n" +
 	"\x16HttpMirrorSourceConfig\x12\x19\n" +
 	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12[\n" +
 	"\x19oauth2_client_credentials\x18\x02 \x01(\v2\x1f.common.OAuth2ClientCredentialsR\x17oauth2ClientCredentials\"\x9a\x01\n" +
@@ -11783,7 +11793,7 @@ var file_common_proto_goTypes = []any{
 	(*ArchivedChapterLog)(nil),                // 95: common.ArchivedChapterLog
 	(*ConfirmedArchiveChapterLog)(nil),        // 96: common.ConfirmedArchiveChapterLog
 	(*MirrorSourceConfig)(nil),                // 97: common.MirrorSourceConfig
-	(*AddressRewriteRule)(nil),                // 98: common.AddressRewriteRule
+	(*MirrorRewriteRule)(nil),                 // 98: common.MirrorRewriteRule
 	(*HttpMirrorSourceConfig)(nil),            // 99: common.HttpMirrorSourceConfig
 	(*OAuth2ClientCredentials)(nil),           // 100: common.OAuth2ClientCredentials
 	(*PostgresMirrorSourceConfig)(nil),        // 101: common.PostgresMirrorSourceConfig
@@ -12001,7 +12011,7 @@ var file_common_proto_depIdxs = []int32{
 	92,  // 136: common.ConfirmedArchiveChapterLog.chapter:type_name -> common.Chapter
 	99,  // 137: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
 	101, // 138: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
-	98,  // 139: common.MirrorSourceConfig.address_rewrite_rules:type_name -> common.AddressRewriteRule
+	98,  // 139: common.MirrorSourceConfig.rewrite_rules:type_name -> common.MirrorRewriteRule
 	100, // 140: common.HttpMirrorSourceConfig.oauth2_client_credentials:type_name -> common.OAuth2ClientCredentials
 	102, // 141: common.PostgresMirrorSourceConfig.aws_iam_auth:type_name -> common.PostgresAwsIamAuth
 	17,  // 142: common.MirrorSyncError.occurred_at:type_name -> common.Timestamp
