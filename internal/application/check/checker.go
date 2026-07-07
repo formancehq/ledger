@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/big"
 	"slices"
+	"time"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
@@ -49,20 +50,29 @@ type Checker struct {
 	// is not configured (e.g. the CLI / restore call sites) — the pass then
 	// keeps the post-archive boundary as its verification floor.
 	coldReader *coldstorage.ColdReader
+	// idempotencyTTL is the boot-validated runtime idempotency TTL, used to
+	// size the cold re-derivation window. It is preferred over the persisted
+	// projection because it lives in process memory (not on the audited disk),
+	// so a disk-tampered PersistedConfig cannot shrink the window. nil where no
+	// trusted runtime config exists (CLI / restore backup validation) — the
+	// pass then falls back to the persisted TTL.
+	idempotencyTTL *time.Duration
 }
 
 // NewChecker creates a new Checker. clusterID is used to derive the
 // per-cluster key for verifying audit-hash chain entries — it must match
 // the value the FSM used when writing those entries (enforced via
 // PersistedConfig immutability). coldReader may be nil when cold storage is
-// not configured.
-func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, coldReader *coldstorage.ColdReader, logger logging.Logger) *Checker {
+// not configured. idempotencyTTL may be nil when no trusted runtime config is
+// available (the pass then falls back to the persisted TTL).
+func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, coldReader *coldstorage.ColdReader, idempotencyTTL *time.Duration, logger logging.Logger) *Checker {
 	return &Checker{
-		store:      store,
-		attrs:      attrs,
-		logger:     logger,
-		clusterID:  clusterID,
-		coldReader: coldReader,
+		store:          store,
+		attrs:          attrs,
+		logger:         logger,
+		clusterID:      clusterID,
+		coldReader:     coldReader,
+		idempotencyTTL: idempotencyTTL,
 	}
 }
 
@@ -151,23 +161,22 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	defer func() { _ = replay.Close() }()
 
 	// Idempotency TTL, in microseconds, used by the hash-chain pass to bound the
-	// cold re-derivation window. The TTL is a Pebble projection (not chain-
-	// bound); "now" for the window is NOT read from a projection — it is the
-	// highest timestamp the hash chain verifies in this same run (see
-	// verifyAuditHashChain), so a tampered lastAppliedTimestamp cannot shift the
-	// window. nil = PersistedConfig absent: the window is unknown, so the cold
-	// pass is skipped rather than guessed.
+	// cold re-derivation window. Prefer the boot-validated runtime config (in
+	// process memory, off the audited disk) over the persisted projection, so a
+	// disk-tampered PersistedConfig cannot shrink the window; fall back to the
+	// persisted value where no runtime config exists (CLI / restore). nil (no
+	// runtime config and no persisted config) means the window is unknown, so
+	// the cold pass is skipped rather than guessed.
+	//
+	// "now" for the window is NOT a projection either — it is the highest
+	// timestamp the hash chain verifies in this same run (see
+	// verifyAuditHashChain), so a tampered lastAppliedTimestamp cannot shift it.
 	persisted, err := query.ReadPersistedConfig(snap)
 	if err != nil {
 		return fmt.Errorf("reading persisted config: %w", err)
 	}
 
-	var idempotencyTTLMicros *uint64
-
-	if persisted != nil {
-		micros := persisted.GetIdempotencyTtlSeconds() * 1_000_000
-		idempotencyTTLMicros = &micros
-	}
+	idempotencyTTLMicros := resolveIdempotencyTTLMicros(c.idempotencyTTL, persisted)
 
 	// Verify the audit hash chain before log replay.
 	// This iterates all non-archived audit entries and recomputes each hash
@@ -1696,6 +1705,28 @@ func (c *Checker) verifyAuditHashChain(
 	return nil
 }
 
+// resolveIdempotencyTTLMicros picks the TTL (in microseconds) that bounds the
+// cold re-derivation window. The boot-validated runtime config is preferred
+// because it is not read from the audited store; the persisted projection is
+// the fallback for paths with no runtime config (CLI / restore backup
+// validation). Returns nil when neither is available — the window is then
+// unknown and the cold pass is skipped.
+func resolveIdempotencyTTLMicros(runtime *time.Duration, persisted *commonpb.PersistedConfig) *uint64 {
+	if runtime != nil {
+		micros := uint64(runtime.Microseconds())
+
+		return &micros
+	}
+
+	if persisted != nil {
+		micros := persisted.GetIdempotencyTtlSeconds() * 1_000_000
+
+		return &micros
+	}
+
+	return nil
+}
+
 // idempotencyWindowCutoff returns the lower bound of the idempotency TTL window
 // given the hash-chain-verified "now" and the configured TTL. A ttlMicros of 0
 // (idempotency-ttl=0, never expire) or a ledger younger than its TTL yields 0 —
@@ -1978,12 +2009,13 @@ func (c *Checker) collectChapterIdempotency(
 // chain:
 //   - "now" (verifiedRangeEndTs) is the highest hash-chain-verified timestamp,
 //     NOT a projection — a tampered lastAppliedTimestamp cannot move the floor.
-//   - the idempotency TTL comes from PersistedConfig, a Pebble projection that
-//     is NOT chain-bound. An on-disk TTL shrink moves the floor up and makes
-//     entries just below it tamper-safe until the next boot, when config
-//     validation catches the mismatch. Binding the TTL to the chain would close
-//     this but is a larger design change (invariant #8 trusts projections
-//     between reboots).
+//   - the idempotency TTL is taken from the boot-validated runtime config when
+//     available (in process memory, off the audited disk), falling back to the
+//     PersistedConfig projection only where no runtime config exists (CLI /
+//     restore backup validation). On those fallback paths a disk-tampered TTL
+//     could move the floor up until the next boot revalidates config; the TTL
+//     is boot config, not an audit projection, so the checker cannot re-derive
+//     it from the chain.
 func (c *Checker) compareIdempotencyOutcomes(
 	reader dal.PebbleReader,
 	expected map[idemExpectedKey]expectedIdempotency,

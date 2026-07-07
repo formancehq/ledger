@@ -282,7 +282,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 	collectIdempotencyMismatches := func(store *dal.Store) []*servicepb.CheckStoreError {
 		attrs := attributes.New()
-		checker := NewChecker(store, attrs, clusterID, nil, logging.Testing())
+		checker := NewChecker(store, attrs, clusterID, nil, nil, logging.Testing())
 
 		handle, err := store.NewReadHandle()
 		require.NoError(t, err)
@@ -407,7 +407,7 @@ func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*servi
 	t.Helper()
 
 	attrs := attributes.New()
-	checker := NewChecker(store, attrs, clusterID, nil, logging.Testing())
+	checker := NewChecker(store, attrs, clusterID, nil, nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
