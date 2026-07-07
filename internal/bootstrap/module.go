@@ -291,6 +291,7 @@ func Module() fx.Option {
 					cfg.SnapshotSyncConfig.FileRetryCount,
 				)
 			},
+			node.NewLocalResponses,
 			func(
 				cfg node.NodeConfig,
 				logger logging.Logger,
@@ -303,6 +304,7 @@ func Module() fx.Option {
 				recovery *state.Recovery,
 				synchronizer *state.Synchronizer,
 				membership *raftmembership.Membership,
+				localResponses node.LocalResponses,
 			) (*node.Applier, error) {
 				return node.NewApplier(
 					machine,
@@ -317,6 +319,7 @@ func Module() fx.Option {
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
 					membership.OnSnapshotInstalled,
+					localResponses,
 				)
 			},
 			// Recovery owns the Pebble read capability for boot/post-sync rehydrate.
@@ -434,16 +437,17 @@ func Module() fx.Option {
 				params struct {
 					fx.In
 
-					NodeConfig    node.NodeConfig
-					Logger        logging.Logger
-					Transport     *node.DefaultTransport
-					MeterProvider metric.MeterProvider
-					WAL           *wal.DefaultWAL
-					Applier       *node.Applier
-					Machine       *state.Machine
-					Recovery      *state.Recovery
-					Synchronizer  *state.Synchronizer
-					Membership    *raftmembership.Membership
+					NodeConfig     node.NodeConfig
+					Logger         logging.Logger
+					Transport      *node.DefaultTransport
+					MeterProvider  metric.MeterProvider
+					WAL            *wal.DefaultWAL
+					Applier        *node.Applier
+					Machine        *state.Machine
+					Recovery       *state.Recovery
+					Synchronizer   *state.Synchronizer
+					Membership     *raftmembership.Membership
+					LocalResponses node.LocalResponses
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -472,6 +476,7 @@ func Module() fx.Option {
 					params.Recovery,
 					params.Synchronizer,
 					params.Membership,
+					params.LocalResponses,
 				)
 				if err != nil {
 					return nodeProvideResult{}, err

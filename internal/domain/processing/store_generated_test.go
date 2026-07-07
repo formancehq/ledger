@@ -249,17 +249,17 @@ func (c *MockScopeBoundariesCall) DoAndReturn(f func() Accessor[domain.LedgerKey
 }
 
 // CheckCoverage mocks base method.
-func (m *MockScope) CheckCoverage(kind byte, canonical []byte) error {
+func (m *MockScope) CheckCoverage(kind byte, key CoverageKey) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckCoverage", kind, canonical)
+	ret := m.ctrl.Call(m, "CheckCoverage", kind, key)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CheckCoverage indicates an expected call of CheckCoverage.
-func (mr *MockScopeMockRecorder) CheckCoverage(kind, canonical any) *MockScopeCheckCoverageCall {
+func (mr *MockScopeMockRecorder) CheckCoverage(kind, key any) *MockScopeCheckCoverageCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckCoverage", reflect.TypeOf((*MockScope)(nil).CheckCoverage), kind, canonical)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckCoverage", reflect.TypeOf((*MockScope)(nil).CheckCoverage), kind, key)
 	return &MockScopeCheckCoverageCall{Call: call}
 }
 
@@ -275,13 +275,13 @@ func (c *MockScopeCheckCoverageCall) Return(arg0 error) *MockScopeCheckCoverageC
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeCheckCoverageCall) Do(f func(byte, []byte) error) *MockScopeCheckCoverageCall {
+func (c *MockScopeCheckCoverageCall) Do(f func(byte, CoverageKey) error) *MockScopeCheckCoverageCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeCheckCoverageCall) DoAndReturn(f func(byte, []byte) error) *MockScopeCheckCoverageCall {
+func (c *MockScopeCheckCoverageCall) DoAndReturn(f func(byte, CoverageKey) error) *MockScopeCheckCoverageCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1712,6 +1712,68 @@ func (c *MockScopeVolumesCall) Do(f func() Accessor[domain.VolumeKey, *raftcmdpb
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeVolumesCall) DoAndReturn(f func() Accessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]) *MockScopeVolumesCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// MockCoverageKey is a mock of CoverageKey interface.
+type MockCoverageKey struct {
+	ctrl     *gomock.Controller
+	recorder *MockCoverageKeyMockRecorder
+	isgomock struct{}
+}
+
+// MockCoverageKeyMockRecorder is the mock recorder for MockCoverageKey.
+type MockCoverageKeyMockRecorder struct {
+	mock *MockCoverageKey
+}
+
+// NewMockCoverageKey creates a new mock instance.
+func NewMockCoverageKey(ctrl *gomock.Controller) *MockCoverageKey {
+	mock := &MockCoverageKey{ctrl: ctrl}
+	mock.recorder = &MockCoverageKeyMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockCoverageKey) EXPECT() *MockCoverageKeyMockRecorder {
+	return m.recorder
+}
+
+// AppendBytes mocks base method.
+func (m *MockCoverageKey) AppendBytes(dst []byte) []byte {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AppendBytes", dst)
+	ret0, _ := ret[0].([]byte)
+	return ret0
+}
+
+// AppendBytes indicates an expected call of AppendBytes.
+func (mr *MockCoverageKeyMockRecorder) AppendBytes(dst any) *MockCoverageKeyAppendBytesCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendBytes", reflect.TypeOf((*MockCoverageKey)(nil).AppendBytes), dst)
+	return &MockCoverageKeyAppendBytesCall{Call: call}
+}
+
+// MockCoverageKeyAppendBytesCall wrap *gomock.Call
+type MockCoverageKeyAppendBytesCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockCoverageKeyAppendBytesCall) Return(arg0 []byte) *MockCoverageKeyAppendBytesCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockCoverageKeyAppendBytesCall) Do(f func([]byte) []byte) *MockCoverageKeyAppendBytesCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockCoverageKeyAppendBytesCall) DoAndReturn(f func([]byte) []byte) *MockCoverageKeyAppendBytesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

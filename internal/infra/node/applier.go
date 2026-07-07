@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -33,6 +34,12 @@ type applyWork struct {
 	barrier         chan struct{} // non-nil = drain; closed when processed
 	syncLeader      uint64        // non-zero = trigger SyncSnapshot from Run goroutine
 	installSnapshot chan struct{} // non-nil = prepare for snapshot install; closed when ready
+	// responses are MsgStorageApplyResp messages attached to the
+	// MsgStorageApply that carried these entries. They must be Step()-ed back
+	// into rawNode AFTER the entries are applied to the FSM — that is what
+	// bumps raft.Applied and aligns it with FSM-applied. Used only when
+	// raft.Config.AsyncStorageWrites is true.
+	responses []raftpb.Message
 }
 
 // gatingResult carries the outcome of a maintenance task back to the Run
@@ -80,6 +87,12 @@ type Applier struct {
 	// cache + transport. (EN-1413)
 	onSnapshotInstalled func()
 
+	// responseSink receives MsgStorageApplyResp messages after the apply (or
+	// spool append) completes for a batch. Same channel instance the Node
+	// drains in its orchestrate loop. Required (non-nil) — NewApplier
+	// rejects a nil sink; tests build it via newTestApplierSetupWithSink.
+	responseSink LocalResponses
+
 	// Metrics
 	applyEntriesHistogram           metric.Int64Histogram
 	applyEntriesBatchSizeCounter    metric.Int64Counter
@@ -123,7 +136,13 @@ type commitWork struct {
 	// uses it to fail any pending future whose stored term is strictly
 	// smaller — those proposals were truncated.
 	maxTerm uint64
-	done    chan error
+	// responses are MsgStorageApplyResp messages tied to this commit. On
+	// commit success, runCommitter sends them on Applier.responseSink so
+	// raft.Applied advances only after CommitPreparedBatch has landed.
+	// Empty on all but the last sub-batch of an applyEntriesToFSM call,
+	// and always empty for the replay path (applyEntriesAndResolveCommands).
+	responses []raftpb.Message
+	done      chan error
 }
 
 type pendingCommit struct {
@@ -144,7 +163,12 @@ func NewApplier(
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
 	onSnapshotInstalled func(),
+	responseSink LocalResponses,
 ) (*Applier, error) {
+	if responseSink == nil {
+		return nil, errors.New("responseSink is required (nil LocalResponses)")
+	}
+
 	initialStatus := atomic.Int32{}
 	initialStatus.Store(statusNormal)
 
@@ -162,6 +186,7 @@ func NewApplier(
 		compactionMargin:        compactionMargin,
 		replayBatchSize:         replayBatchSize,
 		snapshotFetcherProvider: snapshotFetcherProvider,
+		responseSink:            responseSink,
 		status:                  &initialStatus,
 		ch:                      make(chan applyWork, 1),
 		commitCh:                make(chan commitWork, 1),
@@ -570,11 +595,57 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// fireOutcome enumerates the ways fireResponses can return, so each caller
+// can react without duplicating the select-plus-drop plumbing.
+type fireOutcome int
+
+const (
+	// fireSent — responses reached the sink; raft.Applied will advance
+	// once orchestrate Steps them.
+	fireSent fireOutcome = iota
+	// fireStopped — the task's stop channel closed. Caller should treat
+	// this as a shutdown signal and return without further work.
+	fireStopped
+	// fireCtxDone — ctx cancelled. Same shutdown story as fireStopped,
+	// but arriving via the context path (fx OnStop outer timeout, etc.).
+	fireCtxDone
+)
+
+// fireResponses hands a batch of MsgStorageApplyResp / MsgStorageAppendResp
+// messages to the response sink, aborting on stop or ctx cancellation. It
+// is the single place that owns the "fire before work.done, drop on
+// shutdown" contract that findings af4915f6 / 34540caa / 9047f08a /
+// 70740916 accumulated across separate call sites. Callers decide via the
+// returned outcome whether to fall through, propagate an existing error,
+// or terminate.
+//
+// len(responses) == 0 is a no-op (returns fireSent) so callers can hand a
+// possibly-empty slice unconditionally — the empty-guard doesn't need to
+// live at every call site.
+func (a *Applier) fireResponses(ctx context.Context, stop chan struct{}, responses []raftpb.Message) fireOutcome {
+	if len(responses) == 0 {
+		return fireSent
+	}
+
+	select {
+	case a.responseSink <- responses:
+		return fireSent
+	case <-ctx.Done():
+		return fireCtxDone
+	case <-stop:
+		return fireStopped
+	}
+}
+
 // Submit sends committed entries to the Applier goroutine for asynchronous
 // FSM application (or spooling if the node is in a non-normal state).
-func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, stop chan struct{}) {
+//
+// responses (AsyncStorageWrites only) are MsgStorageApplyResp messages that
+// must be Step()-ed back into rawNode after the apply completes for this
+// batch. Pass nil in tests / sync mode.
+func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, responses []raftpb.Message, stop chan struct{}) {
 	select {
-	case a.ch <- applyWork{entries: entries, confState: confState}:
+	case a.ch <- applyWork{entries: entries, confState: confState, responses: responses}:
 	case <-stop:
 	}
 }
@@ -624,7 +695,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	committerDone := make(chan struct{})
 
 	go func() {
-		a.runCommitter(ctx)
+		a.runCommitter(ctx, stop)
 		close(committerDone)
 	}()
 
@@ -706,7 +777,14 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 			switch a.status.Load() {
 			case statusNormal:
-				err := a.applyEntriesToFSM(ctx, work.confState, work.entries...)
+				// applyEntriesToFSM threads work.responses down to the last
+				// applyEntriesPipelined call, which attaches them to the
+				// commitWork sent to runCommitter. runCommitter fires the
+				// responses AFTER CommitPreparedBatch succeeds, so
+				// raft.Applied advances in lockstep with FSM-applied without
+				// serializing prepare-N+1 against commit-N (the
+				// applier→committer pipeline is preserved).
+				err := a.applyEntriesToFSM(ctx, stop, work.confState, work.responses, work.entries...)
 				if err != nil {
 					return err
 				}
@@ -723,6 +801,13 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				err := a.spool.AppendCommittedEntries(ctx, work.entries...)
 				if err != nil {
 					return fmt.Errorf("spooling committed entries: %w", err)
+				}
+
+				// Entries are durably staged in the spool and will be
+				// re-applied via unspool without further raft involvement,
+				// so acknowledging Applied now is safe.
+				if a.fireResponses(ctx, stop, work.responses) == fireStopped {
+					return nil
 				}
 			}
 
@@ -980,18 +1065,47 @@ func (a *Applier) waitPendingCommit(ctx context.Context) error {
 // submitAsyncCommit sends a commit to the dedicated committer goroutine.
 // maxTerm carries the highest term seen in the source entries so the
 // committer can fail older-term pending futures after resolving this batch.
-func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture, maxTerm uint64) {
+// responses (AsyncStorageWrites only) are MsgStorageApplyResp messages to
+// fire on the response sink AFTER commit completes; pass nil to skip.
+func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture, maxTerm uint64, responses []raftpb.Message) {
 	done := make(chan error, 1)
 	a.pending = &pendingCommit{done: done}
-	a.commitCh <- commitWork{prepared: pb, futures: pfs, maxTerm: maxTerm, done: done}
+	a.commitCh <- commitWork{prepared: pb, futures: pfs, maxTerm: maxTerm, responses: responses, done: done}
 }
 
 // runCommitter is the dedicated goroutine that processes commits sequentially.
 // It reads from commitCh and commits each batch, resolving futures on success
 // or failure. Exits when commitCh is closed.
-func (a *Applier) runCommitter(ctx context.Context) {
+//
+// stop is the Applier task's shutdown channel — closed by taskSet.stop() at
+// the same instant as orchestrate's stop. It's a second escape hatch on the
+// response-sink send: node.Stop closes the task stop channels but does NOT
+// cancel ctx (only fx OnStop's outer timeout might), so a runCommitter that
+// races into the sink send AFTER orchestrate stopped draining would sit
+// forever on ctx.Done alone (finding 70740916). Selecting on stop too
+// unblocks the send synchronously with orchestrate's exit.
+func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 	for work := range a.commitCh {
 		err := a.fsm.CommitPreparedBatch(ctx, work.prepared)
+
+		// Fire MsgStorageApplyResp responses BEFORE resolving futures /
+		// failing older-term stragglers, and only on success. This is what
+		// bumps raft.Applied in lockstep with FSM-applied under
+		// AsyncStorageWrites. On commit failure we intentionally don't fire:
+		// raft.Applied stays behind, the committed entries will be re-emitted
+		// on the next boot (raft.Config.Applied re-reads from Pebble), and
+		// re-apply is idempotent via the applied-index guard.
+		//
+		// The fireResponses outcome is intentionally ignored: on ctx.Done or
+		// stop we drop the response and fall through — we MUST NOT return
+		// here, otherwise the trailing `work.done <- err` never fires and
+		// Applier.Run's deferred `waitPendingCommit` deadlocks on
+		// `<-a.pending.done` during shutdown (findings 34540caa / 9047f08a /
+		// 70740916).
+		if err == nil {
+			_ = a.fireResponses(ctx, stop, work.responses)
+		}
+
 		if err == nil {
 			// 1. Resolve futures owned by THIS batch. Ownership was taken
 			//    via extractBatchFutures in applyEntriesPipelined (which
@@ -1062,7 +1176,7 @@ func (a *Applier) runCommitter(ctx context.Context) {
 //
 // The caller (applyEntriesToFSM) owns the lifetime of decoded[].Proposal
 // pointers — this method does not release them.
-func (a *Applier) applyEntriesPipelined(ctx context.Context, decoded ...state.DecodedEntry) (*state.ApplyEntriesResult, error) {
+func (a *Applier) applyEntriesPipelined(ctx context.Context, responses []raftpb.Message, decoded ...state.DecodedEntry) (*state.ApplyEntriesResult, error) {
 	prepareStart := time.Now()
 
 	pb, err := a.fsm.PrepareDecodedEntries(ctx, a.store, decoded...)
@@ -1096,8 +1210,11 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, decoded ...state.De
 	maxTerm := batchMaxTermDecoded(decoded)
 
 	// Send to the committer goroutine. Futures are resolved when the
-	// commit completes. No need to wait for the next batch.
-	a.submitAsyncCommit(pb, pfs, maxTerm)
+	// commit completes. No need to wait for the next batch. responses (may be
+	// nil for non-last sub-batches of the current applyEntriesToFSM call, or
+	// when AsyncStorageWrites is off) rides with the commit and is fired by
+	// runCommitter on success.
+	a.submitAsyncCommit(pb, pfs, maxTerm, responses)
 
 	// Checkpoint batches must be drained synchronously so the caller can
 	// safely create the Pebble checkpoint on a fully-committed store. Without
@@ -1142,7 +1259,7 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 // When that happens we MUST continue processing the tail in subsequent FSM
 // batches; dropping it produces an "entry index gap detected" panic in the
 // next PrepareEntries call. Hence the loop.
-func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
+func (a *Applier) applyEntriesToFSM(ctx context.Context, stop chan struct{}, confState *raftpb.ConfState, responses []raftpb.Message, entries ...raftpb.Entry) error {
 	// Decode once at the applier boundary so every downstream stage
 	// (checkpoint boundary scan, FSM apply, position validation) reads the
 	// already-decoded proposal instead of re-unmarshalling the raw payload.
@@ -1160,7 +1277,19 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		head := decoded[offset:end]
 		tail := decoded[end:]
 
-		result, err := a.applyEntriesPipelined(ctx, head...)
+		// Attach responses only to the sub-batch that reaches the end of
+		// the decoded slice — that commit's completion means "everything
+		// in this applyWork is durably in the FSM". Earlier sub-batches
+		// commit head-only, so their responses would ack tail-not-yet-
+		// applied. If a checkpoint fires here (end < len(decoded)), the
+		// tail is spooled below and we fire responses eagerly after
+		// handleCheckpointRequired returns.
+		var subResponses []raftpb.Message
+		if end == len(decoded) {
+			subResponses = responses
+		}
+
+		result, err := a.applyEntriesPipelined(ctx, subResponses, head...)
 		if err != nil {
 			return err
 		}
@@ -1187,11 +1316,36 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 
 		headRaw := rawEntriesFromDecoded(head)
 
+		var checkpointErr error
 		if result.QueryCheckpointID > 0 {
-			return a.handleQueryCheckpointRequired(ctx, headRaw, result)
+			checkpointErr = a.handleQueryCheckpointRequired(ctx, headRaw, result)
+		} else {
+			checkpointErr = a.handleCheckpointRequired(ctx, headRaw, result)
 		}
 
-		return a.handleCheckpointRequired(ctx, headRaw, result)
+		// Checkpoint returned. If end < len(decoded) then subResponses was
+		// nil (no commit above carried the responses); tail is now durable
+		// in the spool and will apply via unspool without further raft
+		// involvement — safe to acknowledge Applied. When end reaches
+		// len(decoded), runCommitter already fired the response after
+		// applyEntriesPipelined's synchronous drain (line ~1147), so we
+		// skip the fallback fire.
+		if end < len(decoded) {
+			switch a.fireResponses(ctx, stop, responses) {
+			case fireCtxDone:
+				if checkpointErr != nil {
+					return checkpointErr
+				}
+
+				return ctx.Err()
+			case fireStopped, fireSent:
+				// Shutdown-stopped: drop the response and return normally
+				// (raft.Applied stays behind, entries re-emit on next boot).
+				// Sent: nothing more to do.
+			}
+		}
+
+		return checkpointErr
 	}
 
 	return nil

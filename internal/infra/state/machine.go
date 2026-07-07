@@ -301,10 +301,10 @@ func (fsm *Machine) LastPersistedIndex() uint64 {
 // path, which reads it once (before node.Run starts) to seed
 // raft.Config.Applied so etcd-raft does not re-emit already-applied
 // entries on the first Ready. Other callers should prefer
-// LastPersistedIndex (the post-commit durable cursor) — there is exactly
-// one apply-cycle window during which LastPersistedIndex < LastAppliedIndex
-// (between PrepareEntries bumping the in-memory value and publishApplied
-// firing after Commit), so the two are NOT interchangeable for live
+// LastPersistedIndex (the post-commit durable cursor) — the two diverge
+// briefly during each apply cycle (LastAppliedIndex bumps in
+// PrepareEntries, LastPersistedIndex bumps in publishApplied at the tail
+// of CommitPreparedBatch), so they are NOT interchangeable for live
 // "is this index durable?" checks.
 func (fsm *Machine) LastAppliedIndex() uint64 {
 	return fsm.State.LastAppliedIndex
@@ -338,6 +338,13 @@ func (fsm *Machine) RestoreState(s *FSMState) {
 // sleeps until ctx cancellation. On an idle cluster (no further
 // publishes) the wake-up never arrives and node.Run's startup gate or
 // ReadIndex stalls until the context times out (#327).
+//
+// Called by CommitPreparedBatch immediately after pb.batch.Commit()
+// returns, and just before runCommitter emits the batch's
+// MsgStorageApplyResp on the response sink. That ordering makes
+// lastPersistedIndex the earliest post-commit visibility signal for the
+// batch — reads gating on it see the Pebble-durable state before raft's
+// own `Applied` cursor observes the same index.
 //
 // lastPersistedIndex stays atomic for the fast-path callers that only
 // need a one-shot read with no readiness wait (e.g. PrepareEntries).

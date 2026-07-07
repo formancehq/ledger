@@ -85,25 +85,38 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	var amount uint256.Int
 	posting.GetAmount().IntoUint256(&amount)
 
-	// Get current volume pair for source. readVolumeOrZero treats a
-	// declared-but-absent key as a fresh zero balance (EN-1378); a coverage
-	// miss (admission contract violation) propagates unchanged through the
-	// ErrStorageOperation wrap, preserving the cause for downstream errors.As.
+	// Get current volume pair for source as a mutable *VolumePair. Clone
+	// once up-front so the balance check reads from the mutable pointer
+	// directly — each `sourceReader.GetInput()` / `.GetOutput()` on the
+	// reader wrapper would allocate a fresh Uint256Reader per call
+	// (~10 wrapper allocs per posting between the null checks and the
+	// balance arithmetic). With the *VolumePair in hand, GetInput /
+	// GetOutput return the underlying *Uint256 directly, zero allocation.
+	//
+	// readVolumeOrZero treats a declared-but-absent key as a fresh zero
+	// balance (EN-1378); a coverage miss (admission contract violation)
+	// propagates unchanged through the ErrStorageOperation wrap,
+	// preserving the cause for downstream errors.As.
 	sourceReader, err := readVolumeOrZero(s, sourceKey)
 	if err != nil {
 		return &domain.ErrStorageOperation{Operation: "loading source volume", Cause: err}
 	}
-	if sourceReader == nil || sourceReader.GetInput() == nil || sourceReader.GetOutput() == nil {
+	if sourceReader == nil {
+		return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset()}
+	}
+
+	sourceVol := sourceReader.Mutate()
+	if sourceVol.GetInput() == nil || sourceVol.GetOutput() == nil {
 		return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset()}
 	}
 
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
 	if !skipBalanceCheck && posting.GetSource() != "world" {
 		var inputValue uint256.Int
-		sourceReader.GetInput().IntoUint256(&inputValue)
+		sourceVol.GetInput().IntoUint256(&inputValue)
 
 		var outputValue, outputPlusAmount uint256.Int
-		sourceReader.GetOutput().IntoUint256(&outputValue)
+		sourceVol.GetOutput().IntoUint256(&outputValue)
 
 		sum, overflow := outputPlusAmount.AddOverflow(&outputValue, &amount)
 		if overflow || inputValue.Lt(sum) {
@@ -129,7 +142,6 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	var scratch, sum uint256.Int
 
 	// Increase Output for source (money going out).
-	sourceVol := sourceReader.Mutate()
 	sourceVol.GetOutput().IntoUint256(&scratch)
 
 	if _, overflow := sum.AddOverflow(&scratch, &amount); overflow {
@@ -152,11 +164,15 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	if err != nil {
 		return &domain.ErrStorageOperation{Operation: "loading destination volume", Cause: err}
 	}
-	if destReader == nil || destReader.GetInput() == nil || destReader.GetOutput() == nil {
+	if destReader == nil {
 		return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset()}
 	}
 
 	destVol := destReader.Mutate()
+	if destVol.GetInput() == nil || destVol.GetOutput() == nil {
+		return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset()}
+	}
+
 	destVol.GetInput().IntoUint256(&scratch)
 
 	if _, overflow := sum.AddOverflow(&scratch, &amount); overflow {
