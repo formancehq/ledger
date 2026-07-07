@@ -71,6 +71,12 @@ func (r *Rewriter) Apply(entry *raftcmdpb.MirrorLogEntry) (*raftcmdpb.MirrorLogE
 		return fillGapFor(entry), nil
 	}
 
+	// hasAccountTarget is a property of the source entry, not of the rewritten
+	// value. Pin it from the original view so target validation cannot be
+	// weakened by the rule chain (construction of TxView is already blocked at
+	// compile time, so this is defense in depth).
+	cur.hasAccountTarget = view.hasAccountTarget
+
 	if err := validateAddresses(cur); err != nil {
 		return nil, err
 	}

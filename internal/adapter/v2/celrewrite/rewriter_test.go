@@ -228,21 +228,24 @@ func TestMatchOnMissingKeyDoesNotStall(t *testing.T) {
 	require.Equal(t, uint64(1), out.GetCreatedTransaction().GetTransactionId())
 }
 
-func TestPostingCountChangeRejected(t *testing.T) {
+func TestViewConstructionRejected(t *testing.T) {
 	t.Parallel()
 
-	// A hand-built TxView literal that changes the posting count must be
-	// rejected rather than silently mis-aligning addresses with the wrong
-	// amounts. An empty literal has zero postings.
-	r, err := NewRewriter(rules(
-		rule("true", `celrewrite.TxView{}`, false),
-	))
-	require.NoError(t, err)
+	// Constructing the internal view types in CEL is rejected at compile time —
+	// a rule must derive its result from tx via the helpers. This closes the
+	// literal-based bypass of the posting-count, account-target and metadata
+	// guarantees.
+	cases := []string{
+		`celrewrite.TxView{}`,                                 // zero postings
+		`celrewrite.TxView{metadata: {"bad key": "v"}}`,       // unvalidated metadata
+		`celrewrite.TxView{postings: [celrewrite.Posting{}]}`, // nested Posting literal
+	}
 
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
-	_, err = r.Apply(entry)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "posting count")
+	for _, expr := range cases {
+		_, err := NewRewriter(rules(rule("true", expr, false)))
+		require.Error(t, err, expr)
+		require.Contains(t, err.Error(), "is not allowed", expr)
+	}
 }
 
 func TestEmptyRegexPatternRejectedAtRuntime(t *testing.T) {
