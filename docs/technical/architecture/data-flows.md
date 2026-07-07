@@ -651,7 +651,7 @@ sequenceDiagram
     participant RaftNode
     participant FSM
     
-    Client->>BulkHandler: POST /{ledger}/_bulk
+    Client->>BulkHandler: POST /v3/{ledger}/bulk
     BulkHandler->>BulkHandler: Parse Elements
     
     loop for each element
@@ -675,7 +675,7 @@ sequenceDiagram
     participant RaftNode
     participant FSM
     
-    Client->>BulkHandler: POST /{ledger}/_bulk?atomic=true
+    Client->>BulkHandler: POST /v3/{ledger}/bulk?atomic=true
     BulkHandler->>BulkHandler: Parse All Elements
     BulkHandler->>RaftNode: Apply(action1, action2, ..., actionN)
     Note over RaftNode,FSM: Single Raft Command with N actions

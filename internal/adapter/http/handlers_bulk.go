@@ -8,11 +8,12 @@ import (
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// handleBulk handles POST /{ledgerName}/_bulk to create multiple transactions/operations.
+// handleBulk handles POST /{ledgerName}/bulk to create multiple transactions/operations.
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
@@ -78,7 +79,7 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	results := s.runBulk(r.Context(), ledgerName, elements, opts)
 
 	// Write response
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, opts.continueOnFailure)
 }
 
 // bulkOptions contains options for bulk processing.
@@ -189,8 +190,11 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 	return results
 }
 
-// writeBulkResponse writes the bulk response.
-func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult) {
+// writeBulkResponse writes the bulk response. When continueOnFailure is true
+// the caller opted into per-element failures being non-fatal, so the top-level
+// status stays 200 regardless of any element errors (per-element errorCode
+// still reports the failure). When false, any element error surfaces as 400.
+func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult, continueOnFailure bool) {
 	hasError := false
 	apiResults := make([]bulkAPIResult, len(results))
 
@@ -203,7 +207,7 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 			hasError = true
 			apiResults[i] = bulkAPIResult{
 				ResponseType:     "ERROR",
-				ErrorCode:        "ERROR",
+				ErrorCode:        bulkErrorCode(result.err),
 				ErrorDescription: result.err.Error(),
 			}
 
@@ -228,12 +232,24 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 	}
 
 	statusCode := http.StatusOK
-	if hasError {
+	if hasError && !continueOnFailure {
 		statusCode = http.StatusBadRequest
 	}
 
 	response := bulkResponse{Data: apiResults}
 	writeJSONResponse(w, statusCode, response)
+}
+
+// bulkErrorCode returns a machine-readable code for a per-element bulk failure.
+// Domain-typed errors expose it through the Describable contract; anything else
+// keeps the generic "ERROR" fallback rather than leaking a raw string.
+func bulkErrorCode(err error) string {
+	var d domain.Describable
+	if errors.As(err, &d) {
+		return d.Reason()
+	}
+
+	return "ERROR"
 }
 
 // writeBulkErrorResponse writes a bulk error response.

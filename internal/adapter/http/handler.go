@@ -157,9 +157,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Put("/{ledgerName}/account-types/default-enforcement-mode", server.handleSetDefaultEnforcementMode)
 			})
 
-			// Bulk endpoints: per-element scope check handled inside the handler
+			// Bulk endpoint: per-element scope check handled inside the handler
 			r.Post("/{ledgerName}/bulk", server.handleBulk)
-			r.Post("/{ledgerName}/_bulk", server.handleBulk)
 
 			// Prepared queries (read)
 			r.With(requireQueriesRead).Group(func(r chi.Router) {

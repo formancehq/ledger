@@ -1419,78 +1419,18 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v3/{ledgerName}/_bulk:
-    post:
-      summary: Bulk operations
-      description: Execute multiple operations (create transactions, add metadata, revert transactions, delete metadata) in a single request. Requires `ledger:write` scope.
-      operationId: bulkOperations
-      tags:
-        - Transactions
-      security:
-        - BearerAuth: []
-        - {}
-      parameters:
-        - $ref: '#/components/parameters/LedgerName'
-        - name: continueOnFailure
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Continue processing remaining operations even if one fails
-        - name: atomic
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Execute all operations atomically (not yet supported)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/BulkElement'
-      responses:
-        '200':
-          description: Bulk operations completed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BulkResponse'
-        '400':
-          description: Bulk operations completed with errors, or invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BulkResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '413':
-          description: Request entity too large
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '405':
-          $ref: '#/components/responses/MethodNotAllowed'
-
   /v3/{ledgerName}/bulk:
     post:
-      summary: Bulk operations (alternate path)
+      summary: Bulk operations
       description: |
-        Alias for `POST /{ledgerName}/_bulk`. Execute multiple operations
-        (create transactions, add metadata, revert transactions, delete metadata)
-        in a single request. Requires `ledger:write` scope.
-      operationId: bulkOperationsAlternate
+        Execute multiple operations (create transactions, add metadata,
+        revert transactions, delete metadata) in a single request. When
+        `continueOnFailure=true` the response always uses status 200 and
+        callers must inspect the per-element `errorCode` for individual
+        failures; otherwise a per-element failure surfaces as status 400
+        with `errorCode` set on the failing element. Requires
+        `ledger:write` scope.
+      operationId: bulkOperations
       tags:
         - Transactions
       security:

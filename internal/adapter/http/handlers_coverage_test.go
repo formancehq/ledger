@@ -950,9 +950,47 @@ func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestWriteBulkResponse_ContinueOnFailure(t *testing.T) {
+	t.Parallel()
+
+	elements := []*servicepb.BulkElement{
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
+			},
+		}},
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
+			},
+		}},
+	}
+
+	results := []bulkResult{
+		{err: errors.New("something failed")},
+		{
+			log: &commonpb.LedgerLog{
+				Id: 2,
+				Data: &commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+						CreatedTransaction: &commonpb.CreatedTransaction{
+							Transaction: &commonpb.Transaction{Id: 2},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	w := httptest.NewRecorder()
+	writeBulkResponse(w, elements, results, true)
+
+	require.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestWriteBulkResponse_AllSuccess(t *testing.T) {
@@ -982,7 +1020,7 @@ func TestWriteBulkResponse_AllSuccess(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
@@ -1001,7 +1039,7 @@ func TestWriteBulkResponse_NilLog(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
@@ -1102,8 +1140,10 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 
 	srv.handleBulk(w, r)
 
-	// Should have errors, so 400
-	require.Equal(t, http.StatusBadRequest, w.Code)
+	// continueOnFailure=true → per-element failures don't turn the request
+	// itself into a top-level failure. Response stays 200 and the caller reads
+	// per-element errorCode.
+	require.Equal(t, http.StatusOK, w.Code)
 }
 
 // --------------------------------------------------------------------------
@@ -1267,7 +1307,7 @@ func TestWriteBulkResponse_LogWithCreatedTransaction(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), "CREATE_TRANSACTION")
@@ -1292,7 +1332,7 @@ func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }

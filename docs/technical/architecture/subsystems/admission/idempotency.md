@@ -168,7 +168,7 @@ All write operations support idempotency keys:
 | Delete transaction metadata | `DELETE /{ledger}/transactions/{id}/metadata/{key}` | Yes |
 | Create ledger | `POST /{ledger}` | Yes |
 | Delete ledger | `DELETE /{ledger}` | Yes |
-| Bulk operations | `POST /{ledger}/_bulk` | Yes (per action) |
+| Bulk operations | `POST /{ledger}/bulk` | Yes (per action) |
 
 ## Key Validation
 
