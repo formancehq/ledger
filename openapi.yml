@@ -1424,12 +1424,20 @@ paths:
       summary: Bulk operations
       description: |
         Execute multiple operations (create transactions, add metadata,
-        revert transactions, delete metadata) in a single request. When
-        `continueOnFailure=true` the response always uses status 200 and
-        callers must inspect the per-element `errorCode` for individual
-        failures; otherwise a per-element failure surfaces as status 400
-        with `errorCode` set on the failing element. Requires
+        revert transactions, delete metadata) in a single request. Requires
         `ledger:write` scope.
+
+        Request-level failures (malformed body, size limit, missing scope)
+        return the usual `400` / `401` / `403` / `413` before any element
+        is processed.
+
+        Once the request is accepted, `continueOnFailure` controls how
+        per-element failures roll up to the response status:
+        - `continueOnFailure=true` → status stays `200`, and per-element
+          success or failure is reported via the `errorCode` on each
+          element in `data`.
+        - `continueOnFailure=false` (default) → the bulk aborts on the
+          first per-element failure and the response is `400`.
       operationId: bulkOperations
       tags:
         - Transactions
