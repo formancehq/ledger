@@ -85,8 +85,9 @@ Metadata (transaction-level and per-account), posting addresses, and metadata-op
 ```
 
 Deriving account metadata from an address — capture the last segment of every
-matching acquirer account and store it as `acquirer-type` (note metadata keys use
-the charset `[a-zA-Z0-9._:-]`, so `/` is not allowed):
+matching acquirer account and store it as `acquirer-type` (metadata keys use the
+charset `[a-zA-Z0-9._:/-]`, so a namespaced key like `formance.com/acquirer-type`
+is also valid):
 
 ```yaml
 - cel: |
