@@ -95,9 +95,9 @@ func TestUint256_JSON(t *testing.T) {
 		value uint64
 		json  string
 	}{
-		{"zero", 0, "0"},
-		{"one", 1, "1"},
-		{"large", 1_000_000_000, "1000000000"},
+		{"zero", 0, `"0"`},
+		{"one", 1, `"1"`},
+		{"large", 1_000_000_000, `"1000000000"`},
 	}
 
 	for _, tt := range tests {
@@ -119,6 +119,18 @@ func TestUint256_JSON(t *testing.T) {
 			require.Equal(t, proto.GetV3(), proto2.GetV3())
 		})
 	}
+}
+
+// TestUint256_UnmarshalJSON_LegacyUnquoted asserts we still accept the pre-EN-1469
+// unquoted decimal form (`1000` without surrounding quotes) so wire-format
+// migrations don't break older clients still emitting the raw number.
+func TestUint256_UnmarshalJSON_LegacyUnquoted(t *testing.T) {
+	t.Parallel()
+
+	var proto Uint256
+
+	require.NoError(t, proto.UnmarshalJSON([]byte("1000")))
+	require.Equal(t, uint64(1000), proto.GetV0())
 }
 
 func TestUint256_MaxValue(t *testing.T) {

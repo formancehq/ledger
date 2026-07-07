@@ -88,16 +88,34 @@ func (u *Uint256) Dec() string {
 	return v.Dec()
 }
 
-// MarshalJSON encodes the Uint256 as a decimal string (no quotes) for JSON.
+// MarshalJSON encodes the Uint256 as a quoted decimal string. Uint256 values
+// exceed the safe-integer range of a JSON number (2^53), so emitting the raw
+// decimal without quotes silently loses precision in JavaScript clients — the
+// wire format is a string that consumers must parse as a BigInt/BigNumber.
 func (u *Uint256) MarshalJSON() ([]byte, error) {
-	return []byte(u.Dec()), nil
+	dec := u.Dec()
+	buf := make([]byte, 0, len(dec)+2)
+	buf = append(buf, '"')
+	buf = append(buf, dec...)
+	buf = append(buf, '"')
+
+	return buf, nil
 }
 
-// UnmarshalJSON decodes a decimal string (no quotes) into the Uint256.
+// UnmarshalJSON decodes a decimal representation into the Uint256. It accepts
+// both the current quoted form (`"1000"`) and the legacy unquoted form
+// (`1000`) so wire-format changes don't break older callers mid-transition.
 func (u *Uint256) UnmarshalJSON(data []byte) error {
+	// Strip surrounding double quotes if present; the raw decimal is what
+	// uint256.SetFromDecimal accepts.
+	s := string(data)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
+
 	var v uint256.Int
 
-	err := v.SetFromDecimal(string(data))
+	err := v.SetFromDecimal(s)
 	if err != nil {
 		return err
 	}
