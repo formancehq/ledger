@@ -39,6 +39,7 @@ Read-only fields (usable in `match` and `cel`):
 Helper member functions (each returns a new copy-on-write `tx`; helpers never mutate in place, and the result is committed to the proto only after the whole rule chain succeeds):
 
 - `tx.rewriteAddress(pattern, replacement)` — RE2 replace across every address (posting source/destination, target, account-metadata keys). Account-metadata keys are rewritten in sorted order with a deterministic last-writer-wins merge on collision.
+- `tx.annotateAccounts(pattern, key, replacement)` — for every posting account address matching `pattern`, sets `accountMetadata[address][key]` to `ReplaceAllString(address, replacement)`. Used to derive per-account metadata from the address, e.g. capture a segment with a group and store it. Account metadata is only persisted for created transactions.
 - `tx.setMetadata(key, value)` / `tx.deleteMetadata(key)` — edit the entry's metadata map.
 - `tx.setAccountMetadata(account, key, value)` / `tx.deleteAccountMetadata(account, key)` — created/reverted only.
 - `tx.drop()` — mark the entry to be dropped (see below).
@@ -78,3 +79,15 @@ Metadata (transaction-level and per-account), posting addresses, and metadata-op
   cel: | # never mirror internal txs
     tx.drop()
 ```
+
+Deriving account metadata from an address — capture the last segment of every
+matching acquirer account and store it as `acquirer-type` (note metadata keys use
+the charset `[a-zA-Z0-9._:-]`, so `/` is not allowed):
+
+```yaml
+- cel: |
+    tx.annotateAccounts("^acquirer:Stripe_NL:worker:\\d+:([^:]+)$", "acquirer-type", "$1")
+```
+
+For `acquirer:Stripe_NL:worker:001:bank` this sets that account's
+`acquirer-type` metadata to `bank`.

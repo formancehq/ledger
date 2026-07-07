@@ -252,32 +252,39 @@ func rejectViewConstruction(ast *cel.Ast) error {
 	return nil
 }
 
+// regexHelpers are the CEL helper functions whose first argument is an RE2
+// pattern (compiled by compileRegex at run time).
+var regexHelpers = []string{"rewriteAddress", "annotateAccounts"}
+
 // validateLiteralRegexes eagerly compiles every literal regex pattern passed to
-// rewriteAddress in the expression, so a malformed pattern (bad RE2 or empty) is
+// a regex helper in the expression, so a malformed pattern (bad RE2 or empty) is
 // rejected at compile/admission time instead of stalling a mirror batch at
 // runtime — restoring the fail-fast guarantee that an admitted config is safe on
 // the worker. It also warms the regex cache. Non-literal (computed) patterns
 // cannot be checked statically and are validated when the rule runs.
 func (r *Rewriter) validateLiteralRegexes(ast *cel.Ast) error {
 	root := celast.NavigateAST(ast.NativeRep())
-	for _, call := range celast.MatchDescendants(root, celast.FunctionMatcher("rewriteAddress")) {
-		args := call.AsCall().Args()
-		if len(args) == 0 {
-			continue
-		}
 
-		pattern := args[0]
-		if pattern.Kind() != celast.LiteralKind {
-			continue
-		}
+	for _, fn := range regexHelpers {
+		for _, call := range celast.MatchDescendants(root, celast.FunctionMatcher(fn)) {
+			args := call.AsCall().Args()
+			if len(args) == 0 {
+				continue
+			}
 
-		lit, ok := pattern.AsLiteral().Value().(string)
-		if !ok {
-			continue
-		}
+			pattern := args[0]
+			if pattern.Kind() != celast.LiteralKind {
+				continue
+			}
 
-		if _, err := r.compileRegex(lit); err != nil {
-			return fmt.Errorf("rewriteAddress pattern %q: %w", lit, err)
+			lit, ok := pattern.AsLiteral().Value().(string)
+			if !ok {
+				continue
+			}
+
+			if _, err := r.compileRegex(lit); err != nil {
+				return fmt.Errorf("%s pattern %q: %w", fn, lit, err)
+			}
 		}
 	}
 
@@ -298,6 +305,10 @@ func (r *Rewriter) buildEnv() (*cel.Env, error) {
 			cel.MemberOverload("txview_rewriteAddress_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
 				cel.FunctionBinding(r.bindRewriteAddress))),
+		cel.Function("annotateAccounts",
+			cel.MemberOverload("txview_annotateAccounts_string_string_string",
+				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType}, tx,
+				cel.FunctionBinding(r.bindAnnotateAccounts))),
 		cel.Function("setMetadata",
 			cel.MemberOverload("txview_setMetadata_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
@@ -363,6 +374,85 @@ func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
 	}
 
 	nv.AccountMetadata = rewriteAccountMetadataKeys(nv.AccountMetadata, re, replacement)
+
+	return r.adapter.NativeToValue(nv)
+}
+
+// bindAnnotateAccounts implements tx.annotateAccounts(pattern, key, replacement):
+// for every posting account address matching pattern, it sets
+// accountMetadata[address][key] = re.ReplaceAllString(address, replacement) —
+// the mirror of rewriteAddress, used to derive per-account metadata from the
+// address (e.g. capture a segment via a group and store it). Account metadata is
+// only persisted for created transactions.
+func (r *Rewriter) bindAnnotateAccounts(args ...ref.Val) ref.Val {
+	tv, errv := receiver(args[0])
+	if tv == nil {
+		return errv
+	}
+
+	pattern, ok := args[1].Value().(string)
+	if !ok {
+		return types.NewErr("annotateAccounts: pattern must be a string")
+	}
+
+	key, ok := args[2].Value().(string)
+	if !ok {
+		return types.NewErr("annotateAccounts: key must be a string")
+	}
+
+	replacement, ok := args[3].Value().(string)
+	if !ok {
+		return types.NewErr("annotateAccounts: replacement must be a string")
+	}
+
+	if err := invariants.ValidateMetadataKey(key); err != nil {
+		return types.NewErr("annotateAccounts: invalid metadata key %q: %v", key, err)
+	}
+
+	re, err := r.compileRegex(pattern)
+	if err != nil {
+		return types.NewErr("annotateAccounts: %v", err)
+	}
+
+	nv := tv.clone()
+
+	// Collect the unique matching posting addresses, in sorted order, so the
+	// resulting map is built deterministically.
+	seen := map[string]struct{}{}
+	matched := make([]string, 0, len(nv.Postings)*2)
+
+	for _, p := range nv.Postings {
+		for _, addr := range [...]string{p.Source, p.Destination} {
+			if _, dup := seen[addr]; dup {
+				continue
+			}
+
+			seen[addr] = struct{}{}
+
+			if re.MatchString(addr) {
+				matched = append(matched, addr)
+			}
+		}
+	}
+
+	sort.Strings(matched)
+
+	for _, addr := range matched {
+		value := re.ReplaceAllString(addr, replacement)
+		if err := invariants.ValidateMetadataString(value); err != nil {
+			return types.NewErr("annotateAccounts: invalid metadata value %q for %q: %v", value, addr, err)
+		}
+
+		if nv.AccountMetadata == nil {
+			nv.AccountMetadata = map[string]map[string]string{}
+		}
+
+		if nv.AccountMetadata[addr] == nil {
+			nv.AccountMetadata[addr] = map[string]string{}
+		}
+
+		nv.AccountMetadata[addr][key] = value
+	}
 
 	return r.adapter.NativeToValue(nv)
 }
