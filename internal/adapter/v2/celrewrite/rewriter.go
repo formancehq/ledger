@@ -94,7 +94,16 @@ type TxView struct {
 	dropped bool
 }
 
-func (v *TxView) setMetadataType(key string, t commonpb.MetadataType) {
+// applyMetadataType records the declared type for key, or clears any previous
+// declaration when the write is untyped, so metadataTypes never drifts from
+// Metadata (an untyped overwrite must revert the key to the default string).
+func (v *TxView) applyMetadataType(key string, t commonpb.MetadataType, typed bool) {
+	if !typed {
+		delete(v.metadataTypes, key)
+
+		return
+	}
+
 	if v.metadataTypes == nil {
 		v.metadataTypes = map[string]commonpb.MetadataType{}
 	}
@@ -102,7 +111,20 @@ func (v *TxView) setMetadataType(key string, t commonpb.MetadataType) {
 	v.metadataTypes[key] = t
 }
 
-func (v *TxView) setAccountMetadataType(account, key string, t commonpb.MetadataType) {
+// clearMetadataType drops the declared type for key (used when the value is
+// deleted).
+func (v *TxView) clearMetadataType(key string) {
+	delete(v.metadataTypes, key)
+}
+
+// applyAccountMetadataType is the per-account analogue of applyMetadataType.
+func (v *TxView) applyAccountMetadataType(account, key string, t commonpb.MetadataType, typed bool) {
+	if !typed {
+		v.clearAccountMetadataType(account, key)
+
+		return
+	}
+
 	if v.accountMetadataTypes == nil {
 		v.accountMetadataTypes = map[string]map[string]commonpb.MetadataType{}
 	}
@@ -112,6 +134,19 @@ func (v *TxView) setAccountMetadataType(account, key string, t commonpb.Metadata
 	}
 
 	v.accountMetadataTypes[account][key] = t
+}
+
+func (v *TxView) clearAccountMetadataType(account, key string) {
+	inner := v.accountMetadataTypes[account]
+	if inner == nil {
+		return
+	}
+
+	delete(inner, key)
+
+	if len(inner) == 0 {
+		delete(v.accountMetadataTypes, account)
+	}
 }
 
 func (v *TxView) clone() *TxView {
@@ -471,7 +506,10 @@ func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
 		nv.Target = re.ReplaceAllString(nv.Target, replacement)
 	}
 
-	nv.AccountMetadata = rewriteAccountMetadataKeys(nv.AccountMetadata, re, replacement)
+	// Remap the account-metadata keys and their parallel type map identically so
+	// declared types survive an address rewrite.
+	nv.AccountMetadata = rewriteAddrKeyedMap(nv.AccountMetadata, re, replacement)
+	nv.accountMetadataTypes = rewriteAddrKeyedMap(nv.accountMetadataTypes, re, replacement)
 
 	return r.adapter.NativeToValue(nv)
 }
@@ -557,10 +595,7 @@ func (r *Rewriter) bindSetAccountMetadataFromAddress(args ...ref.Val) ref.Val {
 		}
 
 		nv.AccountMetadata[addr][key] = value
-
-		if typed {
-			nv.setAccountMetadataType(addr, key, mdType)
-		}
+		nv.applyAccountMetadataType(addr, key, mdType, typed)
 	}
 
 	return r.adapter.NativeToValue(nv)
@@ -618,10 +653,7 @@ func (r *Rewriter) bindSetMetadata(args ...ref.Val) ref.Val {
 	}
 
 	nv.Metadata[key] = value
-
-	if typed {
-		nv.setMetadataType(key, mdType)
-	}
+	nv.applyMetadataType(key, mdType, typed)
 
 	return r.adapter.NativeToValue(nv)
 }
@@ -655,6 +687,7 @@ func (r *Rewriter) bindDeleteMetadata(args ...ref.Val) ref.Val {
 
 	nv := tv.clone()
 	delete(nv.Metadata, key)
+	nv.clearMetadataType(key)
 
 	return r.adapter.NativeToValue(nv)
 }
@@ -699,10 +732,7 @@ func (r *Rewriter) bindSetAccountMetadata(args ...ref.Val) ref.Val {
 	}
 
 	nv.AccountMetadata[account][key] = value
-
-	if typed {
-		nv.setAccountMetadataType(account, key, mdType)
-	}
+	nv.applyAccountMetadataType(account, key, mdType, typed)
 
 	return r.adapter.NativeToValue(nv)
 }
@@ -731,6 +761,8 @@ func (r *Rewriter) bindDeleteAccountMetadata(args ...ref.Val) ref.Val {
 		}
 	}
 
+	nv.clearAccountMetadataType(account, key)
+
 	return r.adapter.NativeToValue(nv)
 }
 
@@ -750,7 +782,11 @@ func (r *Rewriter) bindDrop(args ...ref.Val) ref.Val {
 // two source accounts collapse onto the same rewritten key their maps are
 // merged; iteration is over sorted source keys so the last writer on a metadata
 // conflict is deterministic regardless of Go map order.
-func rewriteAccountMetadataKeys(in map[string]map[string]string, re *regexp.Regexp, replacement string) map[string]map[string]string {
+// rewriteAddrKeyedMap rewrites the account-address keys of an account-keyed map
+// (account metadata values or their declared types). It is generic so the value
+// map and the parallel type map are remapped identically — same sorted iteration
+// and same last-writer-wins merge on collision — keeping them in sync.
+func rewriteAddrKeyedMap[V any](in map[string]map[string]V, re *regexp.Regexp, replacement string) map[string]map[string]V {
 	if len(in) == 0 {
 		return in
 	}
@@ -762,13 +798,13 @@ func rewriteAccountMetadataKeys(in map[string]map[string]string, re *regexp.Rege
 
 	sort.Strings(keys)
 
-	out := make(map[string]map[string]string, len(in))
+	out := make(map[string]map[string]V, len(in))
 	for _, account := range keys {
 		rewritten := re.ReplaceAllString(account, replacement)
 
 		existing, ok := out[rewritten]
 		if !ok {
-			existing = make(map[string]string, len(in[account]))
+			existing = make(map[string]V, len(in[account]))
 			out[rewritten] = existing
 		}
 

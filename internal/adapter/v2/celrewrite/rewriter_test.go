@@ -451,6 +451,40 @@ func TestNonConstantTypeTokenRejected(t *testing.T) {
 	require.Contains(t, err.Error(), "must be a constant")
 }
 
+func TestUntypedOverwriteResetsType(t *testing.T) {
+	t.Parallel()
+
+	// An untyped write to a key previously set with a type must revert it to
+	// string, not keep coercing to the stale type.
+	r, err := NewRewriter(rules(
+		rule("true", `tx.setMetadata("k", "42", "int64").setMetadata("k", "abc")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+	require.Equal(t, "abc", out.GetCreatedTransaction().GetMetadata()["k"].GetStringValue())
+}
+
+func TestRewriteAddressPreservesAccountMetadataType(t *testing.T) {
+	t.Parallel()
+
+	// A typed account metadata value must keep its type when a later
+	// rewriteAddress remaps the account key.
+	r, err := NewRewriter(rules(
+		rule("true", `tx.setAccountMetadata("acct:worker:001", "id", "7", "int64").rewriteAddress(":worker:\\d+", "")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+
+	v := out.GetCreatedTransaction().GetAccountMetadata()["acct"].GetValues()["id"]
+	require.Equal(t, int64(7), v.GetIntValue())
+}
+
 func TestDeterministicOutput(t *testing.T) {
 	t.Parallel()
 
