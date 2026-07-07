@@ -36,6 +36,15 @@ const (
 	qrCooldown         = 5 * time.Minute
 	qrScaleDownTimeout = 8 * time.Minute
 	qrScaleUpTimeout   = 15 * time.Minute
+
+	// qrConfChangeLatencyBudget is the "should be fast" threshold for the
+	// force-remove ConfChange to bring voters down to 1 after scale-down.
+	// Healthy runs converge in a handful of WaitForVoters poll cycles (5s
+	// each); the EN-1043 regression pushed this past 47s in one antithesis
+	// run. 30s is chosen to sit comfortably between the two, so a
+	// Sometimes assertion catches a regression without flaking on operator
+	// polling variance.
+	qrConfChangeLatencyBudget = 30 * time.Second
 )
 
 func main() {
@@ -158,6 +167,16 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		return
 	}
 
+	// EN-1043 regression sentinel: measure how long it takes for the
+	// operator's force-remove ConfChange to actually reduce the voter
+	// count to 1. When the transport silently drops MsgApp carrying the
+	// ConfChange (channels full, no Unreachable emitted), etcd/raft
+	// keeps optimistically retrying and recovery stalls ~47s in the
+	// worst antithesis observation (2026-06-08). With Unreachable
+	// emitted on drop, Raft transitions the dead peers to StateProbe
+	// and the ConfChange applies on the next heartbeat.
+	scaleDownStart := time.Now()
+
 	if !internal.WaitForVoters(ctx, clusterClient, 1, qrScaleDownTimeout, details) {
 		// The deferred cleanup restores replicas=3. Sentinel verify is best
 		// effort: the cluster may be in an oscillating (1)↔(1,3) state until
@@ -167,6 +186,14 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		return
 	}
 	assert.Reachable("force-remove path executed (voters=1)", details)
+
+	// EN-1043: healthy runs should converge well under qrConfChangeLatencyBudget.
+	// WaitForVoters polls every 5s, so the observed elapsed time is bounded
+	// below by ~5s; the buggy behavior pushes it past 47s.
+	elapsed := time.Since(scaleDownStart)
+	assert.Sometimes(elapsed < qrConfChangeLatencyBudget,
+		"force-remove ConfChange applies within latency budget after scale-down (EN-1043)",
+		details.With(internal.Details{"elapsed": elapsed.String(), "budget": qrConfChangeLatencyBudget.String()}))
 
 	sentinel.Verify(ctx, client, "after_quorum_recovery")
 }
