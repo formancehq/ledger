@@ -368,3 +368,81 @@ func TestApplyRevert_AtEffectiveDate(t *testing.T) {
 	require.True(t, r3.OK)
 	require.Nil(t, r3.State.Ledger("L").Txs()[1].Timestamp())
 }
+
+func TestApplyTransaction_EmptyRejected(t *testing.T) {
+	t.Parallel()
+
+	// No postings and no script: admission rejects it as empty (VALIDATION).
+	res := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false)))
+	require.False(t, res.OK)
+	require.Equal(t, domain.ErrReasonValidation, res.Reason)
+}
+
+func TestApplyTransaction_DuplicateReference(t *testing.T) {
+	t.Parallel()
+
+	first := NewGlobalState().Apply(bulkOf(oracletest.TxReqRefL("L", "r1", "world", "a:1", "USD", 5)))
+	require.True(t, first.OK)
+
+	dup := first.State.Apply(bulkOf(oracletest.TxReqRefL("L", "r1", "world", "a:2", "USD", 7)))
+	require.False(t, dup.OK)
+	require.Equal(t, domain.ErrReasonTransactionReferenceConflict, dup.Reason)
+}
+
+// A duplicate reference is reported even when the same transaction would also
+// fail the balance floor: the FSM checks reference uniqueness before produce().
+func TestApplyTransaction_ReferenceConflictBeatsFloor(t *testing.T) {
+	t.Parallel()
+
+	seeded := NewGlobalState().Apply(bulkOf(oracletest.TxReqRefL("L", "r1", "world", "a:1", "USD", 5)))
+	require.True(t, seeded.OK)
+
+	// Reuses ref "r1" and overdraws a:1 (holds 5, non-forced) — the reference
+	// conflict wins over INSUFFICIENT_FUNDS.
+	res := seeded.State.Apply(bulkOf(oracletest.TxReqRefL("L", "r1", "a:1", "b:1", "USD", 100)))
+	require.False(t, res.OK)
+	require.Equal(t, domain.ErrReasonTransactionReferenceConflict, res.Reason)
+}
+
+func TestApplyTransaction_VolumeOverflow_SourceOutput(t *testing.T) {
+	t.Parallel()
+
+	// Two 2^255 sends from world to the same account: the second overflows world's
+	// running Output (2^255 + 2^255 = 2^256).
+	half := new(big.Int).Lsh(big.NewInt(1), 255)
+	res := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
+		commonpb.NewPosting("world", "d:1", "USD", half),
+		commonpb.NewPosting("world", "d:1", "USD", half),
+	)))
+	require.False(t, res.OK)
+	require.Equal(t, domain.ErrReasonVolumeOverflow, res.Reason)
+}
+
+func TestApplyTransaction_VolumeOverflow_DestInput(t *testing.T) {
+	t.Parallel()
+
+	// Two 2^255 credits into d:1 from distinct sources (forced, so the floor is
+	// skipped and neither source Output overflows): d:1's Input overflows.
+	half := new(big.Int).Lsh(big.NewInt(1), 255)
+	res := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(true,
+		commonpb.NewPosting("world", "d:1", "USD", half),
+		commonpb.NewPosting("a:1", "d:1", "USD", half),
+	)))
+	require.False(t, res.OK)
+	require.Equal(t, domain.ErrReasonVolumeOverflow, res.Reason)
+}
+
+// A bulk mixing an empty create with an FSM-rejecting order reports VALIDATION:
+// admission validates the whole batch's structure before the FSM, so the empty
+// order rejects everything ahead of the floor/chart reason the sequential FSM
+// pass would otherwise reach.
+func TestApplyTransaction_EmptyBeatsFsmRejection(t *testing.T) {
+	t.Parallel()
+
+	res := NewGlobalState().Apply(Bulk{Requests: []*servicepb.Request{
+		oracletest.TxReq("a:1", "b:1", "USD", 100), // unfunded non-world debit → INSUFFICIENT_FUNDS at the FSM
+		oracletest.TxReqMulti(false),               // empty → VALIDATION at admission
+	}})
+	require.False(t, res.OK)
+	require.Equal(t, domain.ErrReasonValidation, res.Reason)
+}

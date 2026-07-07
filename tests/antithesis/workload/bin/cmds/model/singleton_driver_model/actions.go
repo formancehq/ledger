@@ -252,6 +252,15 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 		}
 	}
 
+	// ~1/16: a deliberately-malformed transaction exercising a create rejection
+	// branch (empty / duplicate-reference / volume-overflow). The server rejects
+	// it and the oracle reproduces the reason, so validateFailure explains it.
+	if random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
+		if req := generateRejectedTransaction(ledger, ls); req != nil {
+			return req
+		}
+	}
+
 	// Force (~1/8) skips the balance floor, letting a non-world source overdraft.
 	force := random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) == 0
 
@@ -294,6 +303,11 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 		}
 	}
 
+	return applyCreate(ledger, payload)
+}
+
+// applyCreate wraps a CreateTransactionPayload as a ledger Apply request.
+func applyCreate(ledger string, payload *servicepb.CreateTransactionPayload) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -306,6 +320,59 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 			},
 		},
 	}
+}
+
+// generateRejectedTransaction builds a transaction the server must reject,
+// cycling the create rejection branches that valid traffic never triggers.
+// Returns nil when the chosen branch is not currently applicable (no committed
+// reference to duplicate yet).
+func generateRejectedTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
+	switch random.RandomChoice([]uint8{0, 1, 2}) {
+	case 0:
+		return emptyTransaction(ledger)
+	case 1:
+		return duplicateReferenceTransaction(ledger, ls)
+	default:
+		return overflowTransaction(ledger)
+	}
+}
+
+// emptyTransaction carries no postings and no script, so admission rejects it as
+// having no content source (VALIDATION).
+func emptyTransaction(ledger string) *servicepb.Request {
+	return applyCreate(ledger, &servicepb.CreateTransactionPayload{ExpandVolumes: true})
+}
+
+// duplicateReferenceTransaction reuses a committed reference; the FSM rejects it
+// with TRANSACTION_REFERENCE_CONFLICT before any floor/chart check. Nil when the
+// ledger holds no committed reference yet.
+func duplicateReferenceTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
+	ref := pickTxRef(ls)
+	if ref == "" {
+		return nil
+	}
+
+	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
+		Postings:      []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(), assets[0], big.NewInt(1))},
+		Reference:     ref,
+		ExpandVolumes: true,
+	})
+}
+
+// overflowTransaction sends two near-maximal (2^255) amounts from world to the
+// same account, so the running volume exceeds 2^256 and the server rejects with
+// VOLUME_OVERFLOW (the world Output overflows on the second posting).
+func overflowTransaction(ledger string) *servicepb.Request {
+	half := new(big.Int).Lsh(big.NewInt(1), 255)
+	dst := poolAddress()
+
+	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
+		Postings: []*commonpb.Posting{
+			commonpb.NewPosting("world", dst, assets[0], half),
+			commonpb.NewPosting("world", dst, assets[0], half),
+		},
+		ExpandVolumes: true,
+	})
 }
 
 // AddAccountType at a random pool prefix with a freshly-rolled

@@ -350,11 +350,18 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 	})
 
 	if matched {
-		// Coverage: the balance floor's rejection must actually be exercised —
-		// if this stops firing, the generator has stopped emitting underfunded
-		// non-forced debits and insufficient-funds is no longer tested.
-		if reason == domain.ErrReasonInsufficientFunds {
+		// Coverage: each deliberately-triggered rejection branch must actually be
+		// exercised — if one stops firing, the generator has stopped emitting that
+		// shape and the branch is no longer tested.
+		switch reason {
+		case domain.ErrReasonInsufficientFunds:
 			assert.Reachable("singleton_driver_model: insufficient-funds rejection exercised", internal.Details{})
+		case domain.ErrReasonTransactionReferenceConflict:
+			assert.Reachable("singleton_driver_model: reference-conflict rejection exercised", internal.Details{})
+		case domain.ErrReasonVolumeOverflow:
+			assert.Reachable("singleton_driver_model: volume-overflow rejection exercised", internal.Details{})
+		case domain.ErrReasonValidation:
+			assert.Reachable("singleton_driver_model: validation rejection exercised", internal.Details{})
 		}
 
 		dbg("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)

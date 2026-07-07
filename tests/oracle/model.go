@@ -446,6 +446,19 @@ func LedgerOf(req *servicepb.Request) string {
 // and leaves every ledger unchanged. A bulk may span ledgers; each request is
 // routed to its own ledger's sub-state and the end-of-bulk checks run per ledger.
 func (g GlobalState) Apply(bulk Bulk) ApplyResult {
+	// Admission validates every order's structure and converts the whole batch
+	// before it reaches the FSM, so a single malformed order rejects the entire
+	// bulk ahead of any per-order FSM outcome. The only structural rejection the
+	// workload produces is an empty create (no postings, no script → VALIDATION);
+	// model it here so a bulk mixing an empty create with an FSM-rejecting order
+	// reports VALIDATION, matching validateOrderContent rather than the FSM reason
+	// the sequential pass below would reach first.
+	for _, req := range bulk.Requests {
+		if ct := req.GetApply().GetAction().GetCreateTransaction(); ct != nil && len(ct.GetPostings()) == 0 {
+			return ApplyResult{OK: false, Reason: domain.ErrReasonValidation, State: g}
+		}
+	}
+
 	next := g.clone()
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
@@ -557,20 +570,34 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 	}
 }
 
-// applyTransaction predicts a CreateTransaction. The server produces the
-// postings — applying the per-posting balance floor (a non-forced debit from a
-// non-world account may not exceed its running balance — see applyPostings) —
-// BEFORE it validates account types (processor_transaction.go: produce() then
-// validatePostingsAgainstAccountTypes). So an underfunded transaction reports
-// INSUFFICIENT_FUNDS even when an address also fails the chart; match that order
-// — floor first, then STRICT chart enforcement, then volume accumulation.
+// applyTransaction predicts a CreateTransaction, matching the server's FSM
+// rejection order (empty payloads are rejected earlier, at admission — see
+// Apply): a duplicate reference is rejected first (processor_transaction.go,
+// before produce()); then the server produces the postings — applying the
+// per-posting balance floor (a non-forced debit from a non-world account may not
+// exceed its running balance — see applyPostings) — BEFORE it validates account
+// types (produce() then validatePostingsAgainstAccountTypes). So an underfunded
+// transaction reports INSUFFICIENT_FUNDS even when an address also fails the
+// chart; match that order — floor first, then STRICT chart enforcement.
 func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, touched map[VolumeKey]bool) OrderResult {
-	pcv, reason := s.applyPostings(ct.GetPostings(), ct.GetForce(), touched)
+	postings := ct.GetPostings()
+
+	// A reference must be unique; the FSM checks this first, before producing
+	// postings or enforcing the chart, so a duplicate wins over any floor/chart
+	// issue the same transaction might also have.
+	ref := ct.GetReference()
+	if ref != "" {
+		if _, exists := s.txByRef[ref]; exists {
+			return OrderResult{Reason: domain.ErrReasonTransactionReferenceConflict}
+		}
+	}
+
+	pcv, reason := s.applyPostings(postings, ct.GetForce(), touched)
 	if reason != "" {
 		return OrderResult{Reason: reason}
 	}
 
-	if s.chartRejects(ct.GetPostings()) {
+	if s.chartRejects(postings) {
 		return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
 	}
 
@@ -585,15 +612,6 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		}
 	}
 
-	// A reference must be unique; a duplicate rejects the whole bulk. The workload
-	// uses unique references, so this guard is never exercised.
-	ref := ct.GetReference()
-	if ref != "" {
-		if _, exists := s.txByRef[ref]; exists {
-			return OrderResult{Reason: domain.ErrReasonTransactionReferenceConflict}
-		}
-	}
-
 	// Append to the log; the id is its 1-based position. Metadata is stored
 	// verbatim (the declared type is applied only on read) and echoed on the
 	// CreatedTransaction log.
@@ -601,7 +619,7 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 	s.txs = append(s.txs, &txRecord{
 		id:        id,
 		reference: ref,
-		postings:  ct.GetPostings(),
+		postings:  postings,
 		metadata:  ct.GetMetadata(),
 		timestamp: ct.GetTimestamp(),
 	})
@@ -731,17 +749,28 @@ func (s *LedgerState) applyPostings(postings []*commonpb.Posting, force bool, to
 		p.GetAmount().IntoUint256(&amt)
 		asset := p.GetAsset()
 		srcKey := VolumeKey{Address: p.GetSource(), Asset: asset}
+		src := s.vol(srcKey)
 
+		var sum uint256.Int
 		if !force && p.GetSource() != "world" {
-			cur := s.vol(srcKey)
-			var sum uint256.Int
-			if _, overflow := sum.AddOverflow(&cur.Output, &amt); overflow || cur.Input.Lt(&sum) {
+			if _, overflow := sum.AddOverflow(&src.Output, &amt); overflow || src.Input.Lt(&sum) {
 				return pcv, domain.ErrReasonInsufficientFunds
 			}
+		} else if _, overflow := sum.AddOverflow(&src.Output, &amt); overflow {
+			// world / force skip the floor, but the source Output still cannot
+			// overflow — processor_posting.go rejects the order (#321).
+			return pcv, domain.ErrReasonVolumeOverflow
+		}
+
+		// The destination Input can never overflow either.
+		dstKey := VolumeKey{Address: p.GetDestination(), Asset: asset}
+		dst := s.vol(dstKey)
+		if _, overflow := sum.AddOverflow(&dst.Input, &amt); overflow {
+			return pcv, domain.ErrReasonVolumeOverflow
 		}
 
 		bump(srcKey, &zero, &amt)
-		bump(VolumeKey{Address: p.GetDestination(), Asset: asset}, &amt, &zero)
+		bump(dstKey, &amt, &zero)
 	}
 
 	return pcv, ""

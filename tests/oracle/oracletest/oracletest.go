@@ -73,6 +73,15 @@ func TxReqForce(src, dest, asset string, amount int64, force bool) *servicepb.Re
 	return req
 }
 
+// TxReqRefL is TxReqL carrying a transaction reference, so tests can trigger
+// TRANSACTION_REFERENCE_CONFLICT (a second create reusing the same reference).
+func TxReqRefL(ledger, ref, src, dest, asset string, amount int64) *servicepb.Request {
+	req := TxReqL(ledger, src, dest, asset, amount)
+	req.GetApply().GetAction().GetCreateTransaction().Reference = ref
+
+	return req
+}
+
 // TxReqMulti builds a multi-posting CreateTransaction (ledger "L") with an
 // explicit Force flag. The postings compose in order — an earlier one can fund a
 // later one's source within the same transaction.
