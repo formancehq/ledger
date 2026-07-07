@@ -454,6 +454,21 @@ func (t *DefaultTransport) Send(msgs []raftpb.Message) {
 			"channel": "raft.send.pending_messages",
 		}).Errorf("Channel full")
 		t.pendingSendFullCounter.Add(context.Background(), 1)
+
+		// Signal Unreachable for every peer that had a message in the
+		// dropped batch. pendingSendQueue is shared across peers, so we
+		// can't blame a single one — but transitioning every affected
+		// peer's Progress to StateProbe throttles overall outgoing load,
+		// which is the correct systemic response to a full top-level
+		// queue.
+		reported := make(map[uint64]struct{}, len(msgs))
+		for _, m := range msgs {
+			if _, ok := reported[m.To]; ok {
+				continue
+			}
+			reported[m.To] = struct{}{}
+			t.pushUnreachable(m.To)
+		}
 	}
 }
 
@@ -733,6 +748,13 @@ type peerConnection struct {
 	// a quiescent state at the moment of close.
 	pubMu   sync.RWMutex
 	stopped bool
+
+	// unreachableReported dedups Unreachable notifications during a drop
+	// burst so we don't saturate unreachableCh (capacity 100) when a single
+	// full send channel fires pushMessages hundreds of times per second.
+	// CAS-set on first drop, reset by sendMessages after a successful
+	// stream.Send() (peer confirmed responsive → next drop re-signals Raft).
+	unreachableReported atomic.Bool
 }
 
 // pushMessages pushes a batch of messages to the specified priority queue.
@@ -780,6 +802,15 @@ func (conn *peerConnection) pushMessages(priority int, msgs []raftpb.Message) bo
 			"priority": priority,
 		}).Errorf("Channel full")
 		conn.sendQueueFullCounter[priority].Add(context.Background(), 1)
+
+		// Signal Unreachable to Raft so it throttles this peer's Progress
+		// to StateProbe instead of continuing optimistic replication.
+		// Dedup via CAS: sendMessages resets the flag on the next successful
+		// stream.Send(), letting subsequent drops re-signal if the channel
+		// keeps refilling.
+		if conn.unreachableReported.CompareAndSwap(false, true) {
+			conn.pushUnreachable(conn.peerID)
+		}
 
 		return false
 	}
@@ -1120,6 +1151,12 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			return err
 		}
+
+		// Peer accepted the write — clear the dedup flag so a subsequent
+		// pushMessages drop re-signals Unreachable to Raft (Progress
+		// currently in Replicate can transition back to Probe if we drop
+		// again).
+		conn.unreachableReported.Store(false)
 
 		return nil
 	}
