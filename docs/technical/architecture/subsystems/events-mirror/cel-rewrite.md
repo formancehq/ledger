@@ -44,6 +44,8 @@ Helper member functions (each returns a new copy-on-write `tx`; helpers never mu
 - `tx.setAccountMetadata(account, key, value [, type])` / `tx.deleteAccountMetadata(account, key)` — created/reverted only.
 - `tx.drop()` — mark the entry to be dropped (see below).
 
+**Regex patterns.** The `pattern` argument of `rewriteAddress` and `setAccountMetadataFromAddress` **must be a constant** string. It is compiled at admission, so an invalid or empty pattern is rejected up front rather than failing (and stalling) a mirror batch at run time.
+
 **Metadata types.** The three setters take an optional `type` — one of the schema types `string` (default), `int64`, `bool`, `uint64`, `int8/16/32`, `uint8/16/32`, `datetime` — that coerces the string value into the typed `MetadataValue`. The type token **must be a constant** (not a computed expression), so it is fully validated at admission; an unknown type is rejected there. A value that does not parse as the declared type is stored as a null value preserving the original string (the platform conversion matrix). Mirror source metadata is otherwise always string-typed, so this is the only way to emit typed metadata into a mirror.
 
 ### Mutable scope (v1)
