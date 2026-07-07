@@ -339,6 +339,58 @@ func TestSetAccountMetadataValidatesValue(t *testing.T) {
 	require.Contains(t, err.Error(), "metadata value")
 }
 
+func TestAnnotateAccounts(t *testing.T) {
+	t.Parallel()
+
+	// Capture the last segment of matching acquirer addresses into account
+	// metadata: acquirer:Stripe_NL:worker:001:bank -> acquirer-type=bank.
+	r, err := NewRewriter(rules(
+		rule("true", `tx.annotateAccounts("^acquirer:Stripe_NL:worker:\\d+:([^:]+)$", "acquirer-type", "$1")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{
+		posting("world", "acquirer:Stripe_NL:worker:001:bank", "USD", 100),
+		posting("acquirer:Stripe_NL:worker:002:fees", "users:alice", "USD", 5),
+		posting("world", "users:bob", "USD", 1), // no match — untouched
+	}, nil)
+
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+
+	am := out.GetCreatedTransaction().GetAccountMetadata()
+	require.Equal(t, "bank", am["acquirer:Stripe_NL:worker:001:bank"].GetValues()["acquirer-type"].GetStringValue())
+	require.Equal(t, "fees", am["acquirer:Stripe_NL:worker:002:fees"].GetValues()["acquirer-type"].GetStringValue())
+	// Non-matching accounts are not annotated.
+	require.NotContains(t, am, "users:bob")
+	require.NotContains(t, am, "world")
+}
+
+func TestAnnotateAccounts_InvalidKeyRejectedAtRuntime(t *testing.T) {
+	t.Parallel()
+
+	// A metadata key with a disallowed character ('/') must fail the rule.
+	r, err := NewRewriter(rules(
+		rule("true", `tx.annotateAccounts("^(.+)$", "bad/key", "$1")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	_, err = r.Apply(entry)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "metadata key")
+}
+
+func TestAnnotateAccounts_InvalidLiteralRegexRejectedAtCompile(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRewriter(rules(
+		rule("true", `tx.annotateAccounts("(", "k", "$1")`, false),
+	))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "annotateAccounts pattern")
+}
+
 func TestDeterministicOutput(t *testing.T) {
 	t.Parallel()
 
