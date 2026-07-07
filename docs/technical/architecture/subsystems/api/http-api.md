@@ -308,6 +308,8 @@ Content-Type: application/json
 ]
 ```
 
+**Alternative endpoint**: `POST /v3/{ledgerName}/_bulk` (for backward compatibility)
+
 **Query Parameters**:
 - `continueOnFailure=true`: Continue even if an error occurs
 - `atomic=true`: Execute atomically (all or nothing) - not yet supported
