@@ -248,19 +248,16 @@ func TestViewConstructionRejected(t *testing.T) {
 	}
 }
 
-func TestEmptyRegexPatternRejectedAtRuntime(t *testing.T) {
+func TestNonConstantRegexPatternRejected(t *testing.T) {
 	t.Parallel()
 
-	// A computed (non-literal) empty pattern can't be caught at compile time, so
-	// it must fail loudly when the rule runs.
-	r, err := NewRewriter(rules(
-		rule("true", `tx.rewriteAddress("x".substring(1), "y")`, false), // "" at runtime
+	// A regex pattern must be a compile-time constant, so it is fully validated
+	// at admission and can never fail (and stall the mirror) at run time.
+	_, err := NewRewriter(rules(
+		rule("true", `tx.rewriteAddress("x".substring(1), "y")`, false), // computed pattern
 	))
-	require.NoError(t, err)
-
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
-	_, err = r.Apply(entry)
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "pattern must be a constant")
 }
 
 func savedMetadataEntry(logID uint64, account string, meta map[string]string) *raftcmdpb.MirrorLogEntry {

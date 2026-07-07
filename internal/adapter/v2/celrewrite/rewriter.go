@@ -260,7 +260,7 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 		return nil, err
 	}
 
-	if err := r.validateLiteralRegexes(ast); err != nil {
+	if err := r.validateRegexPatterns(ast); err != nil {
 		return nil, err
 	}
 
@@ -297,17 +297,17 @@ func rejectViewConstruction(ast *cel.Ast) error {
 	return nil
 }
 
-// regexHelpers are the CEL helper functions whose first argument is an RE2
-// pattern (compiled by compileRegex at run time).
+// regexHelpers are the CEL helper functions whose first argument is a constant
+// RE2 pattern (validated and compiled at admission by validateRegexPatterns).
 var regexHelpers = []string{"rewriteAddress", "setAccountMetadataFromAddress"}
 
-// validateLiteralRegexes eagerly compiles every literal regex pattern passed to
-// a regex helper in the expression, so a malformed pattern (bad RE2 or empty) is
-// rejected at compile/admission time instead of stalling a mirror batch at
-// runtime — restoring the fail-fast guarantee that an admitted config is safe on
-// the worker. It also warms the regex cache. Non-literal (computed) patterns
-// cannot be checked statically and are validated when the rule runs.
-func (r *Rewriter) validateLiteralRegexes(ast *cel.Ast) error {
+// validateRegexPatterns enforces that a regex helper's pattern is a constant and
+// eagerly compiles it, so a malformed pattern (bad RE2 or empty) is rejected at
+// compile/admission time instead of stalling a mirror batch at run time —
+// keeping the guarantee that an admitted config is safe on the worker. It also
+// warms the regex cache. Requiring a constant means every pattern is validated
+// up front; a computed pattern is rejected outright.
+func (r *Rewriter) validateRegexPatterns(ast *cel.Ast) error {
 	root := celast.NavigateAST(ast.NativeRep())
 
 	for _, fn := range regexHelpers {
@@ -318,13 +318,14 @@ func (r *Rewriter) validateLiteralRegexes(ast *cel.Ast) error {
 			}
 
 			pattern := args[0]
+
 			if pattern.Kind() != celast.LiteralKind {
-				continue
+				return fmt.Errorf("%s: pattern must be a constant string", fn)
 			}
 
 			lit, ok := pattern.AsLiteral().Value().(string)
 			if !ok {
-				continue
+				return fmt.Errorf("%s: pattern must be a constant string", fn)
 			}
 
 			if _, err := r.compileRegex(lit); err != nil {
