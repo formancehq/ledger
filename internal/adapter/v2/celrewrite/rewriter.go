@@ -492,9 +492,9 @@ func (r *Rewriter) buildEnv() (*cel.Env, error) {
 		ext.Lists(),
 		ext.Math(),
 		cel.Variable("tx", tx),
-		// mapAccountAddresses(a, expr) is sugar for setAddresses(addresses().map(a, expr)):
+		// mapAddress(a, expr) is sugar for setAddresses(addresses().map(a, expr)):
 		// it maps a CEL expression over every account address in the transaction.
-		cel.Macros(cel.ReceiverMacro("mapAccountAddresses", 2, mapAccountAddressesMacro)),
+		cel.Macros(cel.ReceiverMacro("mapAddress", 2, mapAddressMacro)),
 		cel.Function("addresses",
 			cel.MemberOverload("txview_addresses",
 				[]*cel.Type{tx}, cel.ListType(cel.StringType),
@@ -592,23 +592,23 @@ func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
 	return r.adapter.NativeToValue(nv)
 }
 
-// mapAccountAddressesMacro expands `tx.mapAccountAddresses(a, body)` into
+// mapAddressMacro expands `tx.mapAddress(a, body)` into
 // `tx.setAddresses(tx.addresses().map(a, body))`: it maps the CEL expression
 // `body` (with `a` bound to each account address) over every address in the
 // transaction. This is the general, computed-address transform — e.g.
-// `tx.mapAccountAddresses(a, a.split(":").reverse().join(":"))` reverses the
+// `tx.mapAddress(a, a.split(":").reverse().join(":"))` reverses the
 // segments of every address, which a constant regex cannot express. The
 // resulting addresses are validated at commit like any other rewrite.
-func mapAccountAddressesMacro(eh cel.MacroExprFactory, target celast.Expr, args []celast.Expr) (celast.Expr, *common.Error) {
+func mapAddressMacro(eh cel.MacroExprFactory, target celast.Expr, args []celast.Expr) (celast.Expr, *common.Error) {
 	if args[0].Kind() != celast.IdentKind {
-		return nil, eh.NewError(args[0].ID(), "mapAccountAddresses: first argument must be an identifier")
+		return nil, eh.NewError(args[0].ID(), "mapAddress: first argument must be an identifier")
 	}
 
 	iterVar := args[0].AsIdent()
 	accu := eh.AccuIdentName()
 
 	if iterVar == accu {
-		return nil, eh.NewError(args[0].ID(), "mapAccountAddresses: iteration variable overwrites accumulator variable")
+		return nil, eh.NewError(args[0].ID(), "mapAddress: iteration variable overwrites accumulator variable")
 	}
 
 	// Build the same comprehension the built-in `.map` macro produces, over the
