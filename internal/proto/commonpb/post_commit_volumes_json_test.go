@@ -76,8 +76,8 @@ func TestPostCommitVolumes_UnmarshalJSON_FlatRoundTrip(t *testing.T) {
 	var out PostCommitVolumes
 	require.NoError(t, out.UnmarshalJSON(data))
 
-	require.Equal(t, "100", out.VolumesByAccount["users:alice"].Volumes["USD/2"].Input)
-	require.Equal(t, "40", out.VolumesByAccount["users:alice"].Volumes["USD/2"].Output)
+	require.Equal(t, "100", out.GetVolumesByAccount()["users:alice"].GetVolumes()["USD/2"].GetInput())
+	require.Equal(t, "40", out.GetVolumesByAccount()["users:alice"].GetVolumes()["USD/2"].GetOutput())
 }
 
 // TestPostCommitVolumes_UnmarshalJSON_LegacyWrappedRejected asserts we
@@ -126,6 +126,6 @@ func TestPostCommitVolumes_UnmarshalJSON_AccountNamedVolumesByAccount(t *testing
 	var out PostCommitVolumes
 	require.NoError(t, out.UnmarshalJSON(data))
 
-	require.Equal(t, "100", out.VolumesByAccount["volumesByAccount"].Volumes["USD/2"].Input)
-	require.Equal(t, "40", out.VolumesByAccount["volumesByAccount"].Volumes["USD/2"].Output)
+	require.Equal(t, "100", out.GetVolumesByAccount()["volumesByAccount"].GetVolumes()["USD/2"].GetInput())
+	require.Equal(t, "40", out.GetVolumesByAccount()["volumesByAccount"].GetVolumes()["USD/2"].GetOutput())
 }
