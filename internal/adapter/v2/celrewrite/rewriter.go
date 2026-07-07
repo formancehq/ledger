@@ -78,23 +78,23 @@ type TxView struct {
 	Target          string                       `cel:"target"`
 	MetadataKey     string                       `cel:"metadataKey"`
 
-	// hasAccountTarget records whether the source entry targeted an account
+	// targetsAccount records whether the source entry targeted an account
 	// (SET_METADATA/DELETE_METADATA on an account). It is not exposed to CEL and
 	// lets validation reject a target that a rule rewrote to an empty/invalid
 	// address, distinct from a legitimately absent (transaction-level) target.
-	hasAccountTarget bool
+	targetsAccount bool
 
 	dropped bool
 }
 
 func (v *TxView) clone() *TxView {
 	nv := &TxView{
-		Type:             v.Type,
-		Reference:        v.Reference,
-		Target:           v.Target,
-		MetadataKey:      v.MetadataKey,
-		hasAccountTarget: v.hasAccountTarget,
-		dropped:          v.dropped,
+		Type:           v.Type,
+		Reference:      v.Reference,
+		Target:         v.Target,
+		MetadataKey:    v.MetadataKey,
+		targetsAccount: v.targetsAccount,
+		dropped:        v.dropped,
 	}
 
 	if v.Metadata != nil {

@@ -71,11 +71,11 @@ func (r *Rewriter) Apply(entry *raftcmdpb.MirrorLogEntry) (*raftcmdpb.MirrorLogE
 		return fillGapFor(entry), nil
 	}
 
-	// hasAccountTarget is a property of the source entry, not of the rewritten
+	// targetsAccount is a property of the source entry, not of the rewritten
 	// value. Pin it from the original view so target validation cannot be
 	// weakened by the rule chain (construction of TxView is already blocked at
 	// compile time, so this is defense in depth).
-	cur.hasAccountTarget = view.hasAccountTarget
+	cur.targetsAccount = view.targetsAccount
 
 	if err := validateAddresses(cur); err != nil {
 		return nil, err
@@ -116,20 +116,20 @@ func viewFromEntry(entry *raftcmdpb.MirrorLogEntry) (*TxView, bool) {
 		sm := data.SavedMetadata
 
 		return &TxView{
-			Type:             KindSetMetadata,
-			Metadata:         metadataToStrings(sm.GetMetadata()),
-			Target:           targetAddr(sm.GetTarget()),
-			hasAccountTarget: isAccountTarget(sm.GetTarget()),
+			Type:           KindSetMetadata,
+			Metadata:       metadataToStrings(sm.GetMetadata()),
+			Target:         targetAddr(sm.GetTarget()),
+			targetsAccount: isAccountTarget(sm.GetTarget()),
 		}, true
 
 	case *raftcmdpb.MirrorLogEntry_DeletedMetadata:
 		dm := data.DeletedMetadata
 
 		return &TxView{
-			Type:             KindDeleteMetadata,
-			Target:           targetAddr(dm.GetTarget()),
-			MetadataKey:      dm.GetKey(),
-			hasAccountTarget: isAccountTarget(dm.GetTarget()),
+			Type:           KindDeleteMetadata,
+			Target:         targetAddr(dm.GetTarget()),
+			MetadataKey:    dm.GetKey(),
+			targetsAccount: isAccountTarget(dm.GetTarget()),
 		}, true
 
 	default:
@@ -209,10 +209,10 @@ func validateAddresses(v *TxView) error {
 	}
 
 	// An account-targeted metadata op must keep a valid address. Gate on the
-	// original entry (hasAccountTarget), not on whether Target is now non-empty:
+	// original entry (targetsAccount), not on whether Target is now non-empty:
 	// a rule that rewrote the account target to "" must be rejected, not silently
 	// treated as a transaction-level (no-account) target.
-	if v.hasAccountTarget {
+	if v.targetsAccount {
 		if err := invariants.ValidateLedgerAccountAddress(v.Target); err != nil {
 			return fmt.Errorf("rewritten target %q invalid: %w", v.Target, err)
 		}
