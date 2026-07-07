@@ -2,7 +2,7 @@
 
 ## Overview
 
-Ledger v3 POC exposes two types of APIs:
+Ledger v3 exposes two types of APIs:
 
 1. **HTTP REST API**: Public API for clients (documented here)
 2. **gRPC API**: Inter-node communication and programmatic API (see [gRPC API](grpc-api.md))
@@ -15,15 +15,7 @@ By default: `http://localhost:9000`
 
 ### API Versioning
 
-The API supports an optional `/v2` prefix for all endpoints. All routes are available both with and without the prefix:
-
-- **Without prefix**: `GET /` (backward compatible)
-- **With prefix**: `GET /v2/` (optional)
-
-Both paths are equivalent and point to the same handlers. This allows for:
-- **Backward compatibility**: Existing clients continue to work without changes
-- **Future versioning**: Easy migration path when introducing breaking changes
-- **Gradual migration**: Clients can migrate to `/v2` at their own pace
+All business routes are served under the `/v3/` prefix. Ops routes (`/health`, `/livez`, `/readyz`, `/clusterz`, `/_info`, `/debug/pprof/`) are unversioned and served at the root.
 
 ### Authentication
 
@@ -149,7 +141,7 @@ Clients should:
 #### Create a Ledger
 
 ```http
-POST /{ledgerName}
+POST /v3/{ledgerName}
 Content-Type: application/json
 
 {
@@ -176,7 +168,7 @@ Content-Type: application/json
 #### Get a Ledger
 
 ```http
-GET /{ledgerName}
+GET /v3/{ledgerName}
 ```
 
 **Response**:
@@ -194,7 +186,7 @@ GET /{ledgerName}
 #### List All Ledgers
 
 ```http
-GET /
+GET /v3/
 ```
 
 **Response**:
@@ -220,7 +212,7 @@ GET /
 #### Delete a Ledger
 
 ```http
-DELETE /{ledgerName}
+DELETE /v3/{ledgerName}
 ```
 
 **Response**: `204 No Content`
@@ -230,7 +222,7 @@ DELETE /{ledgerName}
 #### Create a Transaction
 
 ```http
-POST /{ledgerName}/transactions
+POST /v3/{ledgerName}/transactions
 Content-Type: application/json
 Idempotency-Key: optional-key
 
@@ -272,7 +264,7 @@ Idempotency-Key: optional-key
 #### Save Transaction Metadata
 
 ```http
-POST /{ledgerName}/transactions/{transactionId}/metadata
+POST /v3/{ledgerName}/transactions/{transactionId}/metadata
 Content-Type: application/json
 
 {
@@ -286,7 +278,7 @@ Content-Type: application/json
 #### Delete Transaction Metadata
 
 ```http
-DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}
+DELETE /v3/{ledgerName}/transactions/{transactionId}/metadata/{key}
 ```
 
 **Response**: `204 No Content`
@@ -294,7 +286,7 @@ DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}
 #### Bulk Operations
 
 ```http
-POST /{ledgerName}/bulk
+POST /v3/{ledgerName}/bulk
 Content-Type: application/json
 
 [
@@ -316,8 +308,6 @@ Content-Type: application/json
 ]
 ```
 
-**Alternative endpoint**: `POST /{ledgerName}/_bulk` (for backward compatibility)
-
 **Query Parameters**:
 - `continueOnFailure=true`: Continue even if an error occurs
 - `atomic=true`: Execute atomically (all or nothing) - not yet supported
@@ -327,7 +317,7 @@ Content-Type: application/json
 #### Save Account Metadata
 
 ```http
-POST /{ledgerName}/accounts/{address}/metadata
+POST /v3/{ledgerName}/accounts/{address}/metadata
 Content-Type: application/json
 
 {
@@ -352,7 +342,7 @@ Content-Type: application/json
 #### Delete Account Metadata
 
 ```http
-DELETE /{ledgerName}/accounts/{address}/metadata/{key}
+DELETE /v3/{ledgerName}/accounts/{address}/metadata/{key}
 ```
 
 **Response**: `204 No Content`
@@ -389,8 +379,6 @@ The API exposes pprof endpoints for debugging and profiling:
 - `GET /debug/pprof/heap` - Heap profile
 - `GET /debug/pprof/goroutine` - Goroutine dump
 - `GET /debug/pprof/trace` - Execution trace
-
-These endpoints are also available under `/v2/debug/pprof/`.
 
 ## gRPC API
 
