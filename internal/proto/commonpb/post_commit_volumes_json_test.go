@@ -80,25 +80,29 @@ func TestPostCommitVolumes_UnmarshalJSON_FlatRoundTrip(t *testing.T) {
 	require.Equal(t, "40", out.VolumesByAccount["users:alice"].Volumes["USD/2"].Output)
 }
 
-// TestPostCommitVolumes_UnmarshalJSON_LegacyWrapped asserts we still accept
-// the pre-EN-1465 wrapped shape (`volumesByAccount.{addr}.volumes.{asset}`)
-// so clients storing raw responses from earlier alphas keep parsing.
-func TestPostCommitVolumes_UnmarshalJSON_LegacyWrapped(t *testing.T) {
+// TestPostCommitVolumes_UnmarshalJSON_AccountNamedVolumesByAccount asserts
+// that an account literally named `volumesByAccount` (a legal account
+// address) round-trips through the flat encoder without being mistaken for
+// the pre-EN-1465 wrapped shape. Structural detection based on the
+// top-level key would corrupt this case, so the shim is strict on the flat
+// shape only.
+func TestPostCommitVolumes_UnmarshalJSON_AccountNamedVolumesByAccount(t *testing.T) {
 	t.Parallel()
 
-	legacy := `{
-		"volumesByAccount": {
-			"users:alice": {
-				"volumes": {
-					"USD/2": {"input": "100", "output": "40"}
-				}
-			}
-		}
-	}`
+	original := &PostCommitVolumes{
+		VolumesByAccount: map[string]*VolumesByAssets{
+			"volumesByAccount": {Volumes: map[string]*Volumes{
+				"USD/2": {Input: "100", Output: "40"},
+			}},
+		},
+	}
+
+	data, err := original.MarshalJSON()
+	require.NoError(t, err)
 
 	var out PostCommitVolumes
-	require.NoError(t, out.UnmarshalJSON([]byte(legacy)))
+	require.NoError(t, out.UnmarshalJSON(data))
 
-	require.Equal(t, "100", out.VolumesByAccount["users:alice"].Volumes["USD/2"].Input)
-	require.Equal(t, "40", out.VolumesByAccount["users:alice"].Volumes["USD/2"].Output)
+	require.Equal(t, "100", out.VolumesByAccount["volumesByAccount"].Volumes["USD/2"].Input)
+	require.Equal(t, "40", out.VolumesByAccount["volumesByAccount"].Volumes["USD/2"].Output)
 }

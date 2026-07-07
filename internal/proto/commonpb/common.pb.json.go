@@ -160,24 +160,12 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements json.Unmarshaler for PostCommitVolumes. It accepts
-// the current flat shape (`{address: {asset: Volumes}}`) and the legacy
-// protojson-wrapped shape (`{volumesByAccount: {address: {volumes: {asset:
-// Volumes}}}}`) so clients that stored responses from earlier alphas keep
-// round-tripping.
+// only the flat shape (`{address: {asset: Volumes}}`). Attempting to also
+// accept the legacy wrapped shape via a `volumesByAccount` top-level key
+// would silently corrupt data for a ledger where an account is literally
+// named `volumesByAccount` (a legal address), so the shim is intentionally
+// strict: pre-EN-1465 wrapped payloads must be converted client-side.
 func (x *PostCommitVolumes) UnmarshalJSON(data []byte) error {
-	// Try the wrapped shape first — its top-level key is fixed
-	// (`volumesByAccount`) so the presence of that key is unambiguous. A
-	// flat map would use account addresses as its own keys, which cannot
-	// collide with the reserved wrapper name in any realistic ledger.
-	var wrapped struct {
-		VolumesByAccount map[string]*VolumesByAssets `json:"volumesByAccount"`
-	}
-	if err := json.Unmarshal(data, &wrapped); err == nil && wrapped.VolumesByAccount != nil {
-		x.VolumesByAccount = wrapped.VolumesByAccount
-
-		return nil
-	}
-
 	var flat map[string]map[string]*Volumes
 
 	err := json.Unmarshal(data, &flat)
