@@ -529,19 +529,39 @@ func TestMapAddress_CoversTargetAndAccountMetadata(t *testing.T) {
 	require.NotContains(t, am, "acct:001")
 }
 
-func TestSetAddresses_WrongLengthRejected(t *testing.T) {
+func TestAddressWriteback_NotDirectlyCallable(t *testing.T) {
 	t.Parallel()
 
-	// Producing a different number of addresses than the entry has is rejected.
+	// The positional address-writeback is not part of the public surface:
+	// mapAddress is the only way to write addresses. The old public name is gone
+	// (undeclared reference), and the private name the macro expands to is
+	// un-typeable — the CEL lexer rejects '~', so a rule author cannot write a
+	// call to it at all.
+	for _, expr := range []string{
+		`tx.setAddresses([])`,
+		`tx.mapAddress~apply(tx.addresses())`,
+	} {
+		_, err := NewRewriter(rules(rule("true", expr, false)))
+		require.Error(t, err, "expr %q must be rejected at compile time", expr)
+	}
+}
+
+func TestMapAddress_IsOnlyAddressWriter(t *testing.T) {
+	t.Parallel()
+
+	// mapAddress preserves the address count by construction, so the private
+	// writeback's length guard is unreachable through the public surface; a
+	// simple identity map is a valid no-op rewrite.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.setAddresses([])`, false),
+		rule("true", `tx.mapAddress(a, a)`, false),
 	))
 	require.NoError(t, err)
 
 	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
-	_, err = r.Apply(entry)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "expected 2 addresses")
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+	require.Equal(t, "world", out.GetCreatedTransaction().GetPostings()[0].GetSource())
+	require.Equal(t, "bank", out.GetCreatedTransaction().GetPostings()[0].GetDestination())
 }
 
 func TestMapAddress_InvalidResultRejected(t *testing.T) {

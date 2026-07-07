@@ -48,6 +48,15 @@ const (
 
 	celTypeName     = "celrewrite.TxView"
 	postingTypeName = "celrewrite.Posting"
+
+	// internalMapAddressApply is the private positional address-writeback the
+	// mapAddress macro expands to. The '~' makes it un-typeable: the macro builds
+	// the call node directly (bypassing the parser), but a rule author cannot
+	// write `tx.mapAddress~apply(...)` because the CEL lexer rejects '~' in a
+	// function name. That structural, lexer-level guarantee replaces any
+	// AST-walk reject-gate — nothing here depends on cel-go macro-call-tracking
+	// internals to keep the raw positional write off the public surface.
+	internalMapAddressApply = "mapAddress~apply"
 )
 
 // Entry-kind discriminants exposed to CEL as tx.type.
@@ -492,17 +501,19 @@ func (r *Rewriter) buildEnv() (*cel.Env, error) {
 		ext.Lists(),
 		ext.Math(),
 		cel.Variable("tx", tx),
-		// mapAddress(a, expr) is sugar for setAddresses(addresses().map(a, expr)):
-		// it maps a CEL expression over every account address in the transaction.
+		// mapAddress(a, expr) maps a CEL expression over every account address in
+		// the transaction. It expands to the private internalMapAddressApply
+		// writeback (fed addresses().map(a, expr)); that positional list-write is
+		// deliberately NOT exposed as a public helper — see mapAddressMacro.
 		cel.Macros(cel.ReceiverMacro("mapAddress", 2, mapAddressMacro)),
 		cel.Function("addresses",
 			cel.MemberOverload("txview_addresses",
 				[]*cel.Type{tx}, cel.ListType(cel.StringType),
 				cel.UnaryBinding(r.bindAddresses))),
-		cel.Function("setAddresses",
-			cel.MemberOverload("txview_setAddresses_list",
+		cel.Function(internalMapAddressApply,
+			cel.MemberOverload("txview_mapAddressApply_list",
 				[]*cel.Type{tx, cel.ListType(cel.StringType)}, tx,
-				cel.BinaryBinding(r.bindSetAddresses))),
+				cel.BinaryBinding(r.bindMapAddressApply))),
 		cel.Function("rewriteAddress",
 			cel.MemberOverload("txview_rewriteAddress_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
@@ -593,12 +604,21 @@ func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
 }
 
 // mapAddressMacro expands `tx.mapAddress(a, body)` into
-// `tx.setAddresses(tx.addresses().map(a, body))`: it maps the CEL expression
-// `body` (with `a` bound to each account address) over every address in the
-// transaction. This is the general, computed-address transform — e.g.
+// `tx.internalMapAddressApply(tx.addresses().map(a, body))`: it maps the CEL
+// expression `body` (with `a` bound to each account address) over every address
+// in the transaction. This is the general, computed-address transform — e.g.
 // `tx.mapAddress(a, a.split(":").reverse().join(":"))` reverses the
 // segments of every address, which a constant regex cannot express. The
 // resulting addresses are validated at commit like any other rewrite.
+//
+// The writeback target (internalMapAddressApply) is a positional list-write:
+// element N overwrites the Nth address in orderedAddresses order. That raw
+// primitive is a footgun in the open (reordering the list silently reassigns
+// addresses across postings/roles, and every output still validates), so it is
+// registered under an un-typeable name — mapAddress, which can only transform
+// each address in place, is the sole authoring surface. A rule author cannot
+// reach the writeback: the CEL lexer rejects its name, so only this factory
+// (which builds the call node directly) can produce a call to it.
 func mapAddressMacro(eh cel.MacroExprFactory, target celast.Expr, args []celast.Expr) (celast.Expr, *common.Error) {
 	if args[0].Kind() != celast.IdentKind {
 		return nil, eh.NewError(args[0].ID(), "mapAddress: first argument must be an identifier")
@@ -612,7 +632,8 @@ func mapAddressMacro(eh cel.MacroExprFactory, target celast.Expr, args []celast.
 	}
 
 	// Build the same comprehension the built-in `.map` macro produces, over the
-	// transaction's ordered address list, then feed the result to setAddresses.
+	// transaction's ordered address list, then feed the result to the private
+	// writeback function.
 	mapped := eh.NewComprehension(
 		eh.NewMemberCall("addresses", target),
 		iterVar,
@@ -623,13 +644,13 @@ func mapAddressMacro(eh cel.MacroExprFactory, target celast.Expr, args []celast.
 		eh.NewAccuIdent(),
 	)
 
-	return eh.NewMemberCall("setAddresses", target, mapped), nil
+	return eh.NewMemberCall(internalMapAddressApply, target, mapped), nil
 }
 
 // bindAddresses returns the transaction's account addresses in a stable order:
 // each posting's source then destination (in posting order), the account target
 // (when the entry targets an account), then the account-metadata keys sorted.
-// setAddresses writes back in exactly this order.
+// The mapAddress writeback consumes the list in exactly this order.
 func (r *Rewriter) bindAddresses(v ref.Val) ref.Val {
 	tv, ok := v.Value().(*TxView)
 	if !ok {
@@ -639,19 +660,20 @@ func (r *Rewriter) bindAddresses(v ref.Val) ref.Val {
 	return r.adapter.NativeToValue(orderedAddresses(tv))
 }
 
-// bindSetAddresses replaces every account address from a list produced in the
-// same order as addresses(). Amounts/assets are untouched; account-metadata
-// keys (and their type sidecar) are re-keyed with a deterministic merge on
-// collision. Each new address is validated at commit.
-func (r *Rewriter) bindSetAddresses(recv, list ref.Val) ref.Val {
+// bindMapAddressApply replaces every account address from a list produced in the
+// same order as addresses(). It is the private writeback the mapAddress macro
+// expands to (never a public helper). Amounts/assets are untouched;
+// account-metadata keys (and their type sidecar) are re-keyed with a
+// deterministic merge on collision. Each new address is validated at commit.
+func (r *Rewriter) bindMapAddressApply(recv, list ref.Val) ref.Val {
 	tv, ok := recv.Value().(*TxView)
 	if !ok {
-		return types.NewErr("setAddresses: receiver is not a transaction")
+		return types.NewErr("mapAddress: receiver is not a transaction")
 	}
 
 	native, err := list.ConvertToNative(reflect.TypeFor[[]string]())
 	if err != nil {
-		return types.NewErr("setAddresses: %v", err)
+		return types.NewErr("mapAddress: %v", err)
 	}
 
 	nv, errv := tv.withAddresses(native.([]string))
@@ -688,7 +710,7 @@ func (v *TxView) withAddresses(addrs []string) (*TxView, ref.Val) {
 	}
 
 	if len(addrs) != want {
-		return nil, types.NewErr("setAddresses: expected %d addresses, got %d (addresses can be transformed but not added or removed)", want, len(addrs))
+		return nil, types.NewErr("mapAddress: expected %d addresses, got %d (addresses can be transformed but not added or removed)", want, len(addrs))
 	}
 
 	nv := v.clone()
