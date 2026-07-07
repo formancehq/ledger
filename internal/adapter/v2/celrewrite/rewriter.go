@@ -303,6 +303,10 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 		return nil, err
 	}
 
+	if err := validateMetadataLiterals(ast); err != nil {
+		return nil, err
+	}
+
 	prog, err := r.env.Program(ast, cel.CostLimit(maxEvalCost))
 	if err != nil {
 		return nil, fmt.Errorf("program error: %w", err)
@@ -408,6 +412,65 @@ func validateTypeTokens(ast *cel.Ast) error {
 
 			if _, err := commonpb.ParseMetadataType(lit); err != nil {
 				return fmt.Errorf("%s type %q: %w", fn, lit, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// metadataKeyArg / metadataValueArg map each setter to the argument index
+// (excluding the receiver) of its metadata key / value, so literal arguments can
+// be validated at admission. Keys and values may be computed, so only literals
+// are checked here; computed ones are validated when the rule runs.
+var (
+	metadataKeyArg = map[string]int{
+		"setMetadata":                   0, // key, value, [type]
+		"setAccountMetadata":            1, // account, key, value, [type]
+		"setAccountMetadataFromAddress": 1, // pattern, key, replacement, [type]
+	}
+	metadataValueArg = map[string]int{
+		"setMetadata":        1, // value
+		"setAccountMetadata": 2, // value
+		// setAccountMetadataFromAddress's value is the (computed) regex
+		// replacement, so there is no literal value to check.
+	}
+)
+
+// validateMetadataLiterals eagerly validates literal metadata keys and values at
+// compile/admission time (same fail-fast treatment as literal regex patterns),
+// so a statically-invalid helper such as tx.setMetadata("bad key", "v") is
+// rejected before the config is persisted instead of stalling a mirror batch.
+func validateMetadataLiterals(ast *cel.Ast) error {
+	root := celast.NavigateAST(ast.NativeRep())
+
+	literal := func(call celast.NavigableExpr, idx int) (string, bool) {
+		args := call.AsCall().Args()
+		if len(args) <= idx || args[idx].Kind() != celast.LiteralKind {
+			return "", false
+		}
+
+		s, ok := args[idx].AsLiteral().Value().(string)
+
+		return s, ok
+	}
+
+	for fn, idx := range metadataKeyArg {
+		for _, call := range celast.MatchDescendants(root, celast.FunctionMatcher(fn)) {
+			if key, ok := literal(call, idx); ok {
+				if err := invariants.ValidateMetadataKey(key); err != nil {
+					return fmt.Errorf("%s: invalid metadata key %q: %w", fn, key, err)
+				}
+			}
+		}
+	}
+
+	for fn, idx := range metadataValueArg {
+		for _, call := range celast.MatchDescendants(root, celast.FunctionMatcher(fn)) {
+			if value, ok := literal(call, idx); ok {
+				if err := invariants.ValidateMetadataString(value); err != nil {
+					return fmt.Errorf("%s: invalid metadata value %q: %w", fn, value, err)
+				}
 			}
 		}
 	}

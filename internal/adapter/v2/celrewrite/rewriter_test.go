@@ -308,30 +308,25 @@ func TestInvalidLiteralRegexRejectedAtCompile(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestSetMetadataValidatesKeyAndValue(t *testing.T) {
+func TestSetMetadataLiteralKeyRejectedAtCompile(t *testing.T) {
 	t.Parallel()
 
-	r, err := NewRewriter(rules(
+	// A statically-invalid literal metadata key is rejected at admission, not
+	// deferred to a run-time batch failure.
+	_, err := NewRewriter(rules(
 		rule("true", `tx.setMetadata("bad key", "v")`, false), // space is not a valid key char
 	))
-	require.NoError(t, err)
-
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
-	_, err = r.Apply(entry)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "metadata key")
 }
 
-func TestSetAccountMetadataValidatesValue(t *testing.T) {
+func TestSetAccountMetadataLiteralValueRejectedAtCompile(t *testing.T) {
 	t.Parallel()
 
-	r, err := NewRewriter(rules(
+	// A literal NUL byte in a metadata value is rejected at admission.
+	_, err := NewRewriter(rules(
 		rule("true", "tx.setAccountMetadata(\"users:001\", \"k\", \"bad\\x00value\")", false),
 	))
-	require.NoError(t, err)
-
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "users:001", "USD", 1)}, nil)
-	_, err = r.Apply(entry)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "metadata value")
 }
@@ -363,17 +358,13 @@ func TestSetAccountMetadataFromAddress(t *testing.T) {
 	require.NotContains(t, am, "world")
 }
 
-func TestSetAccountMetadataFromAddress_InvalidKeyRejectedAtRuntime(t *testing.T) {
+func TestSetAccountMetadataFromAddress_InvalidKeyRejectedAtCompile(t *testing.T) {
 	t.Parallel()
 
-	// A metadata key with a disallowed character ('/') must fail the rule.
-	r, err := NewRewriter(rules(
+	// A metadata key with a disallowed character ('/') is rejected at admission.
+	_, err := NewRewriter(rules(
 		rule("true", `tx.setAccountMetadataFromAddress("^(.+)$", "bad/key", "$1")`, false),
 	))
-	require.NoError(t, err)
-
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
-	_, err = r.Apply(entry)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "metadata key")
 }

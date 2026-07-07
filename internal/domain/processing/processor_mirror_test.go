@@ -70,9 +70,10 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	require.NotNil(t, fillGap)
 	require.Equal(t, uint64(5), fillGap.GetOriginalId())
 
-	// NextTransactionId should have advanced by 2 (two skipped IDs)
+	// NextTransactionId advances past the skipped IDs by value (max id + 1),
+	// not by count — so skipping 10 and 11 moves the boundary to 12.
 	require.NotNil(t, putBoundaries)
-	require.Equal(t, uint64(3), putBoundaries.GetNextTransactionId())
+	require.Equal(t, uint64(12), putBoundaries.GetNextTransactionId())
 }
 
 func TestMirrorIngest_CreatedTransaction(t *testing.T) {
