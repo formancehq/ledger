@@ -24,6 +24,8 @@ github.com/aws/aws-sdk-go-v2/credentials v1.19.14 h1:n+UcGWAIZHkXzYt87uMFBv/l8TH
 github.com/aws/aws-sdk-go-v2/credentials v1.19.14/go.mod h1:cJKuyWB59Mqi0jM3nFYQRmnHVQIcgoxjEMAbLkpr62w=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21 h1:NUS3K4BTDArQqNu2ih7yeDLaS3bmHD0YndtA6UP884g=
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21/go.mod h1:YWNWJQNjKigKY1RHVJCuupeWDrrHjRqHm0N9rdrWzYI=
+github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.16.15 h1:7Zwtt/lP3KNRkeZre7soMELMGNoBrutx8nobg1jKWmo=
+github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.16.15/go.mod h1:436h2adoHb57yd+8W+gYPrrA9U/R/SuAuOO42Ushzhw=
 github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 h1:Rgg6wvjjtX8bNHcvi9OnXWwcE0a2vGpbwmtICOsvcf4=
 github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21/go.mod h1:A/kJFst/nm//cyqonihbdpQZwiUhhzpqTsdbhDdRF9c=
 github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 h1:PEgGVtPoB6NTpPrBgqSE5hE/o47Ij9qk/SEZFbUOe9A=
@@ -97,8 +99,8 @@ github.com/emicklei/go-restful/v3 v3.13.0 h1:C4Bl2xDndpU6nJ4bc1jXd+uTmYPVUwkD6bF
 github.com/emicklei/go-restful/v3 v3.13.0/go.mod h1:6n3XBCmQQb25CM2LCACGz8ukIrRry+4bhvbpWn3mrbc=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
-github.com/formancehq/go-libs/v5 v5.6.2-0.20260629083238-3bb56dedfb1d h1:2Pd5B34u1oNWmRsqKs7C8hOYrnSTF1Snuc91mevbssA=
-github.com/formancehq/go-libs/v5 v5.6.2-0.20260629083238-3bb56dedfb1d/go.mod h1:afkUc5OEF5ymEnlr7fUktdjQSHhBCcL7UXQe52s2dVY=
+github.com/formancehq/go-libs/v5 v5.7.0 h1:2Z2S3vtOJr45tKpofhPqd0qKrPr6KB/LZZ+EfL1PARw=
+github.com/formancehq/go-libs/v5 v5.7.0/go.mod h1:+jfCYWJ4Z10NGbhmbfon0hGoLe5pysbVQgePrg8M8W4=
 github.com/formancehq/invariants v0.10.0 h1:9iHrUBfPA3kV0bMA6LqYL0D2vtuXn4Gx6jeuDCm178Y=
 github.com/formancehq/invariants v0.10.0/go.mod h1:ywzSexCUdhw2dC9Njiv0t4u2KfPVKj6SecFujPgmXno=
 github.com/formancehq/numscript v0.0.24 h1:YBiDZ9zLVxTZVhtQ+taRcb6q2jArAvznWMfoWRVYGT0=
