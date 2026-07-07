@@ -190,12 +190,20 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 	return results
 }
 
-// writeBulkResponse writes the bulk response. When continueOnFailure is true
-// the caller opted into per-element failures being non-fatal, so the top-level
-// status stays 200 regardless of any element errors (per-element errorCode
-// still reports the failure). When false, any element error surfaces as 400.
+// writeBulkResponse writes the bulk response. Two error dimensions decide the
+// top-level status:
+//
+//  1. Kind: per-element domain business errors (`domain.Describable`) vs
+//     infrastructure/transport errors (leader lost, cache-horizon, timeouts).
+//     Infra errors are never opt-in-able — they always surface as top-level
+//     failures (`500`), because they indicate the whole request could not
+//     complete deterministically. `continueOnFailure` does not apply to them.
+//  2. Rollup: for the remaining pure-domain errors, `continueOnFailure=true`
+//     keeps the top-level status `200` (per-element `errorCode` is enough);
+//     `continueOnFailure=false` surfaces the first business failure as `400`.
 func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult, continueOnFailure bool) {
-	hasError := false
+	hasDomainError := false
+	hasInfraError := false
 	apiResults := make([]bulkAPIResult, len(results))
 
 	for i, result := range results {
@@ -204,7 +212,12 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 		var data any
 
 		if result.err != nil {
-			hasError = true
+			if isDomainError(result.err) {
+				hasDomainError = true
+			} else {
+				hasInfraError = true
+			}
+
 			apiResults[i] = bulkAPIResult{
 				ResponseType:     "ERROR",
 				ErrorCode:        bulkErrorCode(result.err),
@@ -232,12 +245,26 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 	}
 
 	statusCode := http.StatusOK
-	if hasError && !continueOnFailure {
+	switch {
+	case hasInfraError:
+		statusCode = http.StatusInternalServerError
+	case hasDomainError && !continueOnFailure:
 		statusCode = http.StatusBadRequest
 	}
 
 	response := bulkResponse{Data: apiResults}
 	writeJSONResponse(w, statusCode, response)
+}
+
+// isDomainError reports whether the given error carries a domain-level
+// Describable outcome (validation, not-found, insufficient-fund, etc.). Any
+// error that does not implement the contract is treated as infrastructural,
+// which turns off the `continueOnFailure` roll-up: the bulk did not fail on
+// business grounds and must not be masked as `200`.
+func isDomainError(err error) bool {
+	var d domain.Describable
+
+	return errors.As(err, &d)
 }
 
 // bulkErrorCode returns a machine-readable code for a per-element bulk failure.

@@ -934,7 +934,7 @@ func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	}
 
 	results := []bulkResult{
-		{err: errors.New("something failed")},
+		{err: domain.ErrEmptyTransaction},
 		{
 			log: &commonpb.LedgerLog{
 				Id: 2,
@@ -972,7 +972,7 @@ func TestWriteBulkResponse_ContinueOnFailure(t *testing.T) {
 	}
 
 	results := []bulkResult{
-		{err: errors.New("something failed")},
+		{err: domain.ErrEmptyTransaction},
 		{
 			log: &commonpb.LedgerLog{
 				Id: 2,
@@ -1106,7 +1106,11 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			callCount++
 			if callCount == 1 {
-				return nil, errors.New("first fails")
+				// Domain-level (Describable) business error — the caller
+				// opted into continuing on this kind of per-element
+				// failure. Non-domain (infra) errors are asserted
+				// separately, see TestHandleBulk_InfraErrorNotSwallowed.
+				return nil, domain.ErrEmptyTransaction
 			}
 
 			return []*commonpb.Log{
@@ -1140,10 +1144,36 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 
 	srv.handleBulk(w, r)
 
-	// continueOnFailure=true → per-element failures don't turn the request
-	// itself into a top-level failure. Response stays 200 and the caller reads
-	// per-element errorCode.
+	// continueOnFailure=true → per-element domain failures don't turn the
+	// request itself into a top-level failure. Response stays 200 and the
+	// caller reads per-element errorCode.
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestHandleBulk_InfraErrorNotSwallowed asserts that continueOnFailure=true
+// does NOT swallow an infrastructure-level Apply error (any non-Describable
+// error, e.g. leader loss, cache-horizon exceeded, transport timeout). Those
+// mean the request could not complete deterministically and the caller must
+// see a 5xx regardless of the continueOnFailure opt-in.
+func TestHandleBulk_InfraErrorNotSwallowed(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			return nil, errors.New("boom: pebble store unavailable")
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	body := strings.NewReader(`[{"action":"CREATE_TRANSACTION","data":{"script":{"plain":"a"}}}]`)
+	r := newRequest(t, http.MethodPost, "/ledger1/bulk?continueOnFailure=true", body, map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleBulk(w, r)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 // --------------------------------------------------------------------------
