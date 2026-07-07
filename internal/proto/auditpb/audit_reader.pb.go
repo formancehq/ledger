@@ -14,7 +14,7 @@ import (
 // Call Mutate() to obtain a mutable clone.
 type AuditEntryReader interface {
 	GetSequence() uint64
-	GetTimestamp() commonpb.TimestampReader
+	GetTimestamp() uint64
 	GetProposalId() uint64
 	GetOrderCount() uint32
 	GetItems() AuditItemListReader
@@ -25,6 +25,7 @@ type AuditEntryReader interface {
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
 	GetOutcome() isAuditEntry_Outcome
+	TimestampTs() commonpb.Timestamp
 	Mutate() *AuditEntry
 }
 
@@ -34,12 +35,8 @@ func (r *auditEntryReadonly) GetSequence() uint64 {
 	return (*AuditEntry)(r).GetSequence()
 }
 
-func (r *auditEntryReadonly) GetTimestamp() commonpb.TimestampReader {
-	v := (*AuditEntry)(r).GetTimestamp()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *auditEntryReadonly) GetTimestamp() uint64 {
+	return (*AuditEntry)(r).GetTimestamp()
 }
 
 func (r *auditEntryReadonly) GetProposalId() uint64 {
@@ -94,6 +91,10 @@ func (r *auditEntryReadonly) GetOutcome() isAuditEntry_Outcome {
 	return (*AuditEntry)(r).GetOutcome()
 }
 
+func (r *auditEntryReadonly) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*AuditEntry)(r).GetTimestamp())
+}
+
 func (r *auditEntryReadonly) Mutate() *AuditEntry {
 	return (*AuditEntry)(r).CloneVT()
 }
@@ -109,6 +110,11 @@ func (m *AuditEntry) AsReader() AuditEntryReader {
 // Mutate returns a mutable deep clone of this AuditEntry.
 func (m *AuditEntry) Mutate() *AuditEntry {
 	return m.CloneVT()
+}
+
+// TimestampTs returns the Timestamp field wrapped in commonpb.Timestamp.
+func (m *AuditEntry) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetTimestamp())
 }
 
 // AuditEntryListReader provides read-only iteration over []*AuditEntry.

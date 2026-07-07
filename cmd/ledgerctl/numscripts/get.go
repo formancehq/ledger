@@ -72,8 +72,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Name:       %s\n", pterm.Cyan(info.GetName()))
 	pterm.Printf("Version:    %s\n", info.GetVersion())
 
-	if info.GetCreatedAt() != nil {
-		pterm.Printf("Created at: %s\n", pterm.Gray(info.GetCreatedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
+	if info.GetCreatedAt() != 0 {
+		pterm.Printf("Created at: %s\n", pterm.Gray(info.CreatedAtTs().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
 	pterm.Println()

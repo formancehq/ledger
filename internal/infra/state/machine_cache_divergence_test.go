@@ -665,7 +665,7 @@ func buildProposalWithLeaderPreloads(
 		Id:             nextIndex,
 		PredictedIndex: nextIndex,
 		Orders:         orders,
-		Date:           &commonpb.Timestamp{Data: 1700000000 + nextIndex},
+		Date:           1700000000 + nextIndex,
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			Attributes:         plans,
 			LastPersistedIndex: boundary,

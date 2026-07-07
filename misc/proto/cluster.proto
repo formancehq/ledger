@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package cluster;
 
+import "ledger_options.proto";
 import "common.proto";
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/clusterpb";
@@ -174,7 +175,7 @@ message GetNodeTimeRequest {}
 
 // NodeTime represents the current physical clock time of a node
 message NodeTime {
-  fixed64 timestamp_us = 1;  // Current time in microseconds since epoch
+  fixed64 timestamp_us = 1 [(ledger.value_type) = "commonpb.Timestamp"];  // Current time in microseconds since epoch
 }
 
 // VolumeUsage represents the disk usage of a single filesystem volume.
@@ -343,5 +344,5 @@ message GetQueryCheckpointScheduleResponse {
 message QueryCheckpointInfo {
   fixed64 checkpoint_id = 1;           // Sequential checkpoint identifier
   fixed64 max_sequence = 2;            // Max global log sequence at checkpoint time
-  common.Timestamp created_at = 3;    // Creation timestamp
+  fixed64 created_at = 3 [(ledger.value_type) = "commonpb.Timestamp"];    // Creation timestamp
 }

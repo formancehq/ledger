@@ -164,12 +164,12 @@ func sinkConvertTransaction(tx *commonpb.Transaction) *sinkTransaction {
 		Reverted:  tx.GetReverted(),
 	}
 
-	if tx.GetTimestamp() != nil {
-		result.Timestamp = sinkTime(tx.GetTimestamp().AsTime().Time)
+	if tx.GetTimestamp() != 0 {
+		result.Timestamp = sinkTime(tx.TimestampTs().AsTime().Time)
 	}
 
-	if tx.GetInsertedAt() != nil {
-		result.InsertedAt = sinkTime(tx.GetInsertedAt().AsTime().Time)
+	if tx.GetInsertedAt() != 0 {
+		result.InsertedAt = sinkTime(tx.InsertedAtTs().AsTime().Time)
 	}
 
 	result.Postings = make([]sinkPosting, len(tx.GetPostings()))

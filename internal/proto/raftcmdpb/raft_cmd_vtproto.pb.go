@@ -707,7 +707,7 @@ func (m *QueryCheckpointState) CloneVT() *QueryCheckpointState {
 	r := new(QueryCheckpointState)
 	r.CheckpointId = m.CheckpointId
 	r.MaxSequence = m.MaxSequence
-	r.CreatedAt = m.CreatedAt.CloneVT()
+	r.CreatedAt = m.CreatedAt
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -894,7 +894,7 @@ func (m *MirrorCreatedTransaction) CloneVT() *MirrorCreatedTransaction {
 	}
 	r := new(MirrorCreatedTransaction)
 	r.TransactionId = m.TransactionId
-	r.Timestamp = m.Timestamp.CloneVT()
+	r.Timestamp = m.Timestamp
 	r.Reference = m.Reference
 	if rhs := m.Postings; rhs != nil {
 		tmpContainer := make([]*commonpb.Posting, len(rhs))
@@ -959,7 +959,7 @@ func (m *MirrorRevertedTransaction) CloneVT() *MirrorRevertedTransaction {
 	r := new(MirrorRevertedTransaction)
 	r.RevertedTransactionId = m.RevertedTransactionId
 	r.NewTransactionId = m.NewTransactionId
-	r.Timestamp = m.Timestamp.CloneVT()
+	r.Timestamp = m.Timestamp
 	if rhs := m.ReversePostings; rhs != nil {
 		tmpContainer := make([]*commonpb.Posting, len(rhs))
 		for k, v := range rhs {
@@ -1283,7 +1283,7 @@ func (m *CreateTransactionOrder) CloneVT() *CreateTransactionOrder {
 	}
 	r := new(CreateTransactionOrder)
 	r.Script = m.Script.CloneVT()
-	r.Timestamp = m.Timestamp.CloneVT()
+	r.Timestamp = m.Timestamp
 	r.Reference = m.Reference
 	r.Force = m.Force
 	r.ExpandVolumes = m.ExpandVolumes
@@ -1467,7 +1467,7 @@ func (m *Proposal) CloneVT() *Proposal {
 	}
 	r := ProposalFromVTPool()
 	r.Id = m.Id
-	r.Date = m.Date.CloneVT()
+	r.Date = m.Date
 	r.ExecutionPlan = m.ExecutionPlan.CloneVT()
 	r.PredictedIndex = m.PredictedIndex
 	r.CallerSnapshot = m.CallerSnapshot.CloneVT()
@@ -3581,7 +3581,7 @@ func (this *QueryCheckpointState) EqualVT(that *QueryCheckpointState) bool {
 	if this.MaxSequence != that.MaxSequence {
 		return false
 	}
-	if !this.CreatedAt.EqualVT(that.CreatedAt) {
+	if this.CreatedAt != that.CreatedAt {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -3937,7 +3937,7 @@ func (this *MirrorCreatedTransaction) EqualVT(that *MirrorCreatedTransaction) bo
 			}
 		}
 	}
-	if !this.Timestamp.EqualVT(that.Timestamp) {
+	if this.Timestamp != that.Timestamp {
 		return false
 	}
 	if this.Reference != that.Reference {
@@ -4061,7 +4061,7 @@ func (this *MirrorRevertedTransaction) EqualVT(that *MirrorRevertedTransaction) 
 			}
 		}
 	}
-	if !this.Timestamp.EqualVT(that.Timestamp) {
+	if this.Timestamp != that.Timestamp {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -4599,7 +4599,7 @@ func (this *CreateTransactionOrder) EqualVT(that *CreateTransactionOrder) bool {
 	if !this.Script.EqualVT(that.Script) {
 		return false
 	}
-	if !this.Timestamp.EqualVT(that.Timestamp) {
+	if this.Timestamp != that.Timestamp {
 		return false
 	}
 	if this.Reference != that.Reference {
@@ -4905,7 +4905,7 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 			}
 		}
 	}
-	if !this.Date.EqualVT(that.Date) {
+	if this.Date != that.Date {
 		return false
 	}
 	if !this.ExecutionPlan.EqualVT(that.ExecutionPlan) {
@@ -7889,15 +7889,11 @@ func (m *QueryCheckpointState) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.CreatedAt != nil {
-		size, err := m.CreatedAt.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.CreatedAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CreatedAt))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if m.MaxSequence != 0 {
 		i -= 8
@@ -8361,15 +8357,11 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i--
 		dAtA[i] = 0x2a
 	}
-	if m.Timestamp != nil {
-		size, err := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x21
 	}
 	if len(m.Metadata) > 0 {
 		for k := range m.Metadata {
@@ -8509,15 +8501,11 @@ func (m *MirrorRevertedTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Timestamp != nil {
-		size, err := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x29
 	}
 	if len(m.Metadata) > 0 {
 		for k := range m.Metadata {
@@ -9348,15 +9336,11 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.Timestamp != nil {
-		size, err := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if m.Script != nil {
 		size, err := m.Script.MarshalToSizedBufferVT(dAtA[:i])
@@ -9854,15 +9838,11 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.Date != nil {
-		size, err := m.Date.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Date != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Date))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if len(m.Orders) > 0 {
 		for iNdEx := len(m.Orders) - 1; iNdEx >= 0; iNdEx-- {
@@ -12912,9 +12892,8 @@ func (m *QueryCheckpointState) SizeVT() (n int) {
 	if m.MaxSequence != 0 {
 		n += 9
 	}
-	if m.CreatedAt != nil {
-		l = m.CreatedAt.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.CreatedAt != 0 {
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -13114,9 +13093,8 @@ func (m *MirrorCreatedTransaction) SizeVT() (n int) {
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
 	}
-	if m.Timestamp != nil {
-		l = m.Timestamp.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.Timestamp != 0 {
+		n += 9
 	}
 	l = len(m.Reference)
 	if l > 0 {
@@ -13197,9 +13175,8 @@ func (m *MirrorRevertedTransaction) SizeVT() (n int) {
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
 	}
-	if m.Timestamp != nil {
-		l = m.Timestamp.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.Timestamp != 0 {
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -13510,9 +13487,8 @@ func (m *CreateTransactionOrder) SizeVT() (n int) {
 		l = m.Script.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Timestamp != nil {
-		l = m.Timestamp.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.Timestamp != 0 {
+		n += 9
 	}
 	l = len(m.Reference)
 	if l > 0 {
@@ -13722,9 +13698,8 @@ func (m *Proposal) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
-	if m.Date != nil {
-		l = m.Date.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.Date != 0 {
+		n += 9
 	}
 	if m.ExecutionPlan != nil {
 		l = m.ExecutionPlan.SizeVT()
@@ -17777,41 +17752,15 @@ func (m *QueryCheckpointState) UnmarshalVT(dAtA []byte) error {
 			m.MaxSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 3:
-			if wireType != 2 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatedAt", wireType)
 			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
+			m.CreatedAt = 0
+			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.CreatedAt == nil {
-				m.CreatedAt = &commonpb.Timestamp{}
-			}
-			if err := m.CreatedAt.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.CreatedAt = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -18915,41 +18864,15 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 			m.Metadata[mapkey] = mapvalue
 			iNdEx = postIndex
 		case 4:
-			if wireType != 2 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
 			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
+			m.Timestamp = 0
+			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Timestamp == nil {
-				m.Timestamp = &commonpb.Timestamp{}
-			}
-			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.Timestamp = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Reference", wireType)
@@ -19562,41 +19485,15 @@ func (m *MirrorRevertedTransaction) UnmarshalVT(dAtA []byte) error {
 			m.Metadata[mapkey] = mapvalue
 			iNdEx = postIndex
 		case 5:
-			if wireType != 2 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
 			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
+			m.Timestamp = 0
+			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Timestamp == nil {
-				m.Timestamp = &commonpb.Timestamp{}
-			}
-			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.Timestamp = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -21079,41 +20976,15 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 3:
-			if wireType != 2 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
 			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
+			m.Timestamp = 0
+			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Timestamp == nil {
-				m.Timestamp = &commonpb.Timestamp{}
-			}
-			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.Timestamp = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Reference", wireType)
@@ -22707,41 +22578,15 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 3:
-			if wireType != 2 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Date", wireType)
 			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
+			m.Date = 0
+			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Date == nil {
-				m.Date = &commonpb.Timestamp{}
-			}
-			if err := m.Date.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.Date = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ExecutionPlan", wireType)

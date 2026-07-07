@@ -21,7 +21,7 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
@@ -32,7 +32,7 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 
 	boundariesStub := setupBoundariesStub(mockStore)
 	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
@@ -85,7 +85,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
@@ -96,7 +96,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now)).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 
@@ -140,7 +140,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 								TransactionId: 42,
 								Postings:      postings,
 								Reference:     "tx-ref-v2",
-								Timestamp:     &commonpb.Timestamp{Data: 1700000000},
+								Timestamp:     1700000000,
 							},
 						},
 					},
@@ -394,7 +394,7 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 
 	// Both source (world) and destination volumes are absent — admission
 	// emitted Declare for both, the cache has nothing, Volumes().Get
@@ -409,7 +409,7 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now)).AnyTimes()
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 
 	postings := []*commonpb.Posting{{
@@ -468,7 +468,7 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 
 	mockStore.EXPECT().PutReverted(domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}, true)
 	expectGetTransactionState(mockStore, domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}, nil, domain.ErrNotFound)
@@ -478,7 +478,7 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now)).AnyTimes()
 
 	reversePostings := []*commonpb.Posting{{
 		Source:      "users:rare-account",

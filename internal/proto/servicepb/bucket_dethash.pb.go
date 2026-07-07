@@ -1297,12 +1297,11 @@ func (m *CreateTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.Timestamp != nil {
-		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if m.Script != nil {
 		size, _ := m.Script.MarshalToSizedBufferDeterministicVT(dAtA[:i])

@@ -103,12 +103,11 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i--
 		dAtA[i] = 0x19
 	}
-	if m.Timestamp != nil {
-		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x11
 	}
 	if m.Sequence != 0 {
 		i -= 8

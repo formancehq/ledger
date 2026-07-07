@@ -18,9 +18,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// timestampToStdTime converts a commonpb.Timestamp to standard time.Time
-func timestampToStdTime(ts *commonpb.Timestamp) time.Time {
-	return time.UnixMicro(int64(ts.GetData()))
+// timestampToStdTime converts a commonpb.Timestamp (uint64 micros) to standard time.Time.
+func timestampToStdTime(ts uint64) time.Time {
+	return time.UnixMicro(int64(ts))
 }
 
 // idsOf extracts transaction IDs in input order. Handy for asserting that two
@@ -72,9 +72,9 @@ var _ = Describe("Transactions", Ordered, func() {
 			applyLog := resp.Logs[0].Payload.GetApply()
 			createdTx := applyLog.Log.Data.GetCreatedTransaction()
 
-			// Timestamp should be set (not nil) and equal to the log date
-			Expect(createdTx.Transaction.Timestamp).NotTo(BeNil())
-			Expect(createdTx.Transaction.Timestamp.GetData()).To(Equal(applyLog.Log.Date.GetData()))
+			// Timestamp should be set (non-zero) and equal to the log date
+			Expect(createdTx.Transaction.Timestamp).NotTo(BeZero())
+			Expect(createdTx.Transaction.Timestamp).To(Equal(applyLog.Log.Date))
 		})
 
 		It("Should use the user-provided timestamp when specified", func() {
@@ -92,9 +92,9 @@ var _ = Describe("Transactions", Ordered, func() {
 			createdTx := applyLog.Log.Data.GetCreatedTransaction()
 
 			// Timestamp should match the custom value, not the log date
-			Expect(createdTx.Transaction.Timestamp).NotTo(BeNil())
+			Expect(createdTx.Transaction.Timestamp).NotTo(BeZero())
 			Expect(timestampToStdTime(createdTx.Transaction.Timestamp)).To(BeTemporally("~", customTime, time.Second))
-			Expect(createdTx.Transaction.Timestamp.GetData()).NotTo(Equal(applyLog.Log.Date.GetData()))
+			Expect(createdTx.Transaction.Timestamp).NotTo(Equal(applyLog.Log.Date))
 		})
 
 		It("Should create a transaction with metadata", func() {

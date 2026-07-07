@@ -1534,7 +1534,8 @@ func NewDeleteQueryCheckpointOrderListReader(s []*DeleteQueryCheckpointOrder) De
 type QueryCheckpointStateReader interface {
 	GetCheckpointId() uint64
 	GetMaxSequence() uint64
-	GetCreatedAt() commonpb.TimestampReader
+	GetCreatedAt() uint64
+	CreatedAtTs() commonpb.Timestamp
 	Mutate() *QueryCheckpointState
 }
 
@@ -1548,12 +1549,12 @@ func (r *queryCheckpointStateReadonly) GetMaxSequence() uint64 {
 	return (*QueryCheckpointState)(r).GetMaxSequence()
 }
 
-func (r *queryCheckpointStateReadonly) GetCreatedAt() commonpb.TimestampReader {
-	v := (*QueryCheckpointState)(r).GetCreatedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *queryCheckpointStateReadonly) GetCreatedAt() uint64 {
+	return (*QueryCheckpointState)(r).GetCreatedAt()
+}
+
+func (r *queryCheckpointStateReadonly) CreatedAtTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*QueryCheckpointState)(r).GetCreatedAt())
 }
 
 func (r *queryCheckpointStateReadonly) Mutate() *QueryCheckpointState {
@@ -1571,6 +1572,11 @@ func (m *QueryCheckpointState) AsReader() QueryCheckpointStateReader {
 // Mutate returns a mutable deep clone of this QueryCheckpointState.
 func (m *QueryCheckpointState) Mutate() *QueryCheckpointState {
 	return m.CloneVT()
+}
+
+// CreatedAtTs returns the CreatedAt field wrapped in commonpb.Timestamp.
+func (m *QueryCheckpointState) CreatedAtTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetCreatedAt())
 }
 
 // QueryCheckpointStateListReader provides read-only iteration over []*QueryCheckpointState.
@@ -2077,9 +2083,10 @@ type MirrorCreatedTransactionReader interface {
 	GetTransactionId() uint64
 	GetPostings() commonpb.PostingListReader
 	GetMetadata() MirrorCreatedTransaction_MetadataMapReader
-	GetTimestamp() commonpb.TimestampReader
+	GetTimestamp() uint64
 	GetReference() string
 	GetAccountMetadata() MirrorCreatedTransaction_AccountMetadataMapReader
+	TimestampTs() commonpb.Timestamp
 	Mutate() *MirrorCreatedTransaction
 }
 
@@ -2097,12 +2104,8 @@ func (r *mirrorCreatedTransactionReadonly) GetMetadata() MirrorCreatedTransactio
 	return mirrorCreatedTransaction_metadataMapReadonly((*MirrorCreatedTransaction)(r).GetMetadata())
 }
 
-func (r *mirrorCreatedTransactionReadonly) GetTimestamp() commonpb.TimestampReader {
-	v := (*MirrorCreatedTransaction)(r).GetTimestamp()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *mirrorCreatedTransactionReadonly) GetTimestamp() uint64 {
+	return (*MirrorCreatedTransaction)(r).GetTimestamp()
 }
 
 func (r *mirrorCreatedTransactionReadonly) GetReference() string {
@@ -2111,6 +2114,10 @@ func (r *mirrorCreatedTransactionReadonly) GetReference() string {
 
 func (r *mirrorCreatedTransactionReadonly) GetAccountMetadata() MirrorCreatedTransaction_AccountMetadataMapReader {
 	return mirrorCreatedTransaction_accountMetadataMapReadonly((*MirrorCreatedTransaction)(r).GetAccountMetadata())
+}
+
+func (r *mirrorCreatedTransactionReadonly) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*MirrorCreatedTransaction)(r).GetTimestamp())
 }
 
 func (r *mirrorCreatedTransactionReadonly) Mutate() *MirrorCreatedTransaction {
@@ -2128,6 +2135,11 @@ func (m *MirrorCreatedTransaction) AsReader() MirrorCreatedTransactionReader {
 // Mutate returns a mutable deep clone of this MirrorCreatedTransaction.
 func (m *MirrorCreatedTransaction) Mutate() *MirrorCreatedTransaction {
 	return m.CloneVT()
+}
+
+// TimestampTs returns the Timestamp field wrapped in commonpb.Timestamp.
+func (m *MirrorCreatedTransaction) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetTimestamp())
 }
 
 // MirrorCreatedTransactionListReader provides read-only iteration over []*MirrorCreatedTransaction.
@@ -2343,7 +2355,8 @@ type MirrorRevertedTransactionReader interface {
 	GetNewTransactionId() uint64
 	GetReversePostings() commonpb.PostingListReader
 	GetMetadata() MirrorRevertedTransaction_MetadataMapReader
-	GetTimestamp() commonpb.TimestampReader
+	GetTimestamp() uint64
+	TimestampTs() commonpb.Timestamp
 	Mutate() *MirrorRevertedTransaction
 }
 
@@ -2365,12 +2378,12 @@ func (r *mirrorRevertedTransactionReadonly) GetMetadata() MirrorRevertedTransact
 	return mirrorRevertedTransaction_metadataMapReadonly((*MirrorRevertedTransaction)(r).GetMetadata())
 }
 
-func (r *mirrorRevertedTransactionReadonly) GetTimestamp() commonpb.TimestampReader {
-	v := (*MirrorRevertedTransaction)(r).GetTimestamp()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *mirrorRevertedTransactionReadonly) GetTimestamp() uint64 {
+	return (*MirrorRevertedTransaction)(r).GetTimestamp()
+}
+
+func (r *mirrorRevertedTransactionReadonly) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*MirrorRevertedTransaction)(r).GetTimestamp())
 }
 
 func (r *mirrorRevertedTransactionReadonly) Mutate() *MirrorRevertedTransaction {
@@ -2388,6 +2401,11 @@ func (m *MirrorRevertedTransaction) AsReader() MirrorRevertedTransactionReader {
 // Mutate returns a mutable deep clone of this MirrorRevertedTransaction.
 func (m *MirrorRevertedTransaction) Mutate() *MirrorRevertedTransaction {
 	return m.CloneVT()
+}
+
+// TimestampTs returns the Timestamp field wrapped in commonpb.Timestamp.
+func (m *MirrorRevertedTransaction) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetTimestamp())
 }
 
 // MirrorRevertedTransactionListReader provides read-only iteration over []*MirrorRevertedTransaction.
@@ -3226,13 +3244,14 @@ func NewRemoveMetadataFieldTypeOrderListReader(s []*RemoveMetadataFieldTypeOrder
 type CreateTransactionOrderReader interface {
 	GetPostings() commonpb.PostingListReader
 	GetScript() commonpb.ScriptReader
-	GetTimestamp() commonpb.TimestampReader
+	GetTimestamp() uint64
 	GetReference() string
 	GetMetadata() CreateTransactionOrder_MetadataMapReader
 	GetAccountMetadata() CreateTransactionOrder_AccountMetadataMapReader
 	GetForce() bool
 	GetExpandVolumes() bool
 	GetNumscriptReference() NumscriptReferenceReader
+	TimestampTs() commonpb.Timestamp
 	Mutate() *CreateTransactionOrder
 }
 
@@ -3250,12 +3269,8 @@ func (r *createTransactionOrderReadonly) GetScript() commonpb.ScriptReader {
 	return v.AsReader()
 }
 
-func (r *createTransactionOrderReadonly) GetTimestamp() commonpb.TimestampReader {
-	v := (*CreateTransactionOrder)(r).GetTimestamp()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *createTransactionOrderReadonly) GetTimestamp() uint64 {
+	return (*CreateTransactionOrder)(r).GetTimestamp()
 }
 
 func (r *createTransactionOrderReadonly) GetReference() string {
@@ -3286,6 +3301,10 @@ func (r *createTransactionOrderReadonly) GetNumscriptReference() NumscriptRefere
 	return v.AsReader()
 }
 
+func (r *createTransactionOrderReadonly) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*CreateTransactionOrder)(r).GetTimestamp())
+}
+
 func (r *createTransactionOrderReadonly) Mutate() *CreateTransactionOrder {
 	return (*CreateTransactionOrder)(r).CloneVT()
 }
@@ -3301,6 +3320,11 @@ func (m *CreateTransactionOrder) AsReader() CreateTransactionOrderReader {
 // Mutate returns a mutable deep clone of this CreateTransactionOrder.
 func (m *CreateTransactionOrder) Mutate() *CreateTransactionOrder {
 	return m.CloneVT()
+}
+
+// TimestampTs returns the Timestamp field wrapped in commonpb.Timestamp.
+func (m *CreateTransactionOrder) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetTimestamp())
 }
 
 // CreateTransactionOrderListReader provides read-only iteration over []*CreateTransactionOrder.
@@ -3979,13 +4003,14 @@ func NewDeleteLedgerMetadataOrderListReader(s []*DeleteLedgerMetadataOrder) Dele
 type ProposalReader interface {
 	GetId() uint64
 	GetOrders() OrderListReader
-	GetDate() commonpb.TimestampReader
+	GetDate() uint64
 	GetExecutionPlan() ExecutionPlanReader
 	GetPredictedIndex() uint64
 	GetCallerSnapshot() commonpb.CallerSnapshotReader
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
 	GetTechnicalUpdates() TechnicalUpdateListReader
+	DateTs() commonpb.Timestamp
 	Mutate() *Proposal
 }
 
@@ -3999,12 +4024,8 @@ func (r *proposalReadonly) GetOrders() OrderListReader {
 	return NewOrderListReader((*Proposal)(r).GetOrders())
 }
 
-func (r *proposalReadonly) GetDate() commonpb.TimestampReader {
-	v := (*Proposal)(r).GetDate()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *proposalReadonly) GetDate() uint64 {
+	return (*Proposal)(r).GetDate()
 }
 
 func (r *proposalReadonly) GetExecutionPlan() ExecutionPlanReader {
@@ -4047,6 +4068,10 @@ func (r *proposalReadonly) GetTechnicalUpdates() TechnicalUpdateListReader {
 	return NewTechnicalUpdateListReader((*Proposal)(r).GetTechnicalUpdates())
 }
 
+func (r *proposalReadonly) DateTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*Proposal)(r).GetDate())
+}
+
 func (r *proposalReadonly) Mutate() *Proposal {
 	return (*Proposal)(r).CloneVT()
 }
@@ -4062,6 +4087,11 @@ func (m *Proposal) AsReader() ProposalReader {
 // Mutate returns a mutable deep clone of this Proposal.
 func (m *Proposal) Mutate() *Proposal {
 	return m.CloneVT()
+}
+
+// DateTs returns the Date field wrapped in commonpb.Timestamp.
+func (m *Proposal) DateTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetDate())
 }
 
 // ProposalListReader provides read-only iteration over []*Proposal.

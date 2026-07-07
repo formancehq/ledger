@@ -72,7 +72,7 @@ func makeProposal(id uint64, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 	return &raftcmdpb.Proposal{
 		Id:     id,
 		Orders: orders,
-		Date:   &commonpb.Timestamp{Data: 1700000000 + id},
+		Date:   1700000000 + id,
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{
 			Attributes: append(buildVolumePreloads(orders), buildOrderDeclarations(orders)...),
 		},

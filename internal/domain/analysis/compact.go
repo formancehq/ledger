@@ -47,8 +47,8 @@ func ExtractCompactTransaction(tx *commonpb.Transaction) CompactTransaction {
 		ts           uint64
 		hasTimestamp bool
 	)
-	if tx.GetTimestamp() != nil {
-		ts = tx.GetTimestamp().GetData()
+	if tx.GetTimestamp() != 0 {
+		ts = tx.GetTimestamp()
 		hasTimestamp = true
 	}
 

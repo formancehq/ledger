@@ -134,12 +134,12 @@ func translateNewTransaction(v2Log V2Log, _ uint64, rewriter *AddressRewriter) (
 
 	metadata := translateMetadataMap(data.Transaction.Metadata)
 
-	var timestamp *commonpb.Timestamp
+	var timestamp uint64
 
 	if data.Transaction.Timestamp != "" {
 		ts, err := time.Parse(time.RFC3339Nano, data.Transaction.Timestamp)
 		if err == nil {
-			timestamp = &commonpb.Timestamp{Data: uint64(ts.UnixMicro())}
+			timestamp = uint64(ts.UnixMicro())
 		}
 	}
 
@@ -220,12 +220,12 @@ func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64, rewriter
 		return nil, 0, err
 	}
 
-	var timestamp *commonpb.Timestamp
+	var timestamp uint64
 
 	if data.RevertTransaction.Timestamp != "" {
 		ts, err := time.Parse(time.RFC3339Nano, data.RevertTransaction.Timestamp)
 		if err == nil {
-			timestamp = &commonpb.Timestamp{Data: uint64(ts.UnixMicro())}
+			timestamp = uint64(ts.UnixMicro())
 		}
 	}
 

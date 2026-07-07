@@ -56,7 +56,7 @@ func (tx *Transaction) WithTimestamp(ts time.Time) *Transaction {
 		tx = NewTransaction()
 	}
 
-	tx.Timestamp = NewTimestamp(ts)
+	tx.Timestamp = uint64(NewTimestamp(ts))
 
 	return tx
 }
@@ -78,7 +78,7 @@ func (tx *Transaction) WithInsertedAt(date time.Time) *Transaction {
 		tx = NewTransaction()
 	}
 
-	tx.InsertedAt = NewTimestamp(date)
+	tx.InsertedAt = uint64(NewTimestamp(date))
 
 	return tx
 }
@@ -89,7 +89,7 @@ func (tx *Transaction) WithUpdatedAt(at time.Time) *Transaction {
 		tx = NewTransaction()
 	}
 
-	tx.UpdatedAt = NewTimestamp(at)
+	tx.UpdatedAt = uint64(NewTimestamp(at))
 
 	return tx
 }
@@ -100,7 +100,7 @@ func (tx *Transaction) WithRevertedAt(timestamp time.Time) *Transaction {
 		tx = NewTransaction()
 	}
 
-	tx.RevertedAt = NewTimestamp(timestamp)
+	tx.RevertedAt = uint64(NewTimestamp(timestamp))
 	tx.Reverted = true
 
 	return tx
@@ -112,7 +112,7 @@ func (tx *Transaction) IsReverted() bool {
 		return false
 	}
 
-	return tx.GetReverted() || tx.GetRevertedAt() != nil
+	return tx.GetReverted() || tx.GetRevertedAt() != 0
 }
 
 // Reverse creates a reversed copy of the transaction with swapped source/destination in postings.
@@ -126,25 +126,13 @@ func (tx *Transaction) Reverse() *Transaction {
 
 	// Copy other fields - copy the metadata map reference
 	ret.Metadata = tx.GetMetadata()
-	if tx.GetTimestamp() != nil {
-		ret.Timestamp = tx.GetTimestamp()
-	}
-
+	ret.Timestamp = tx.GetTimestamp()
 	ret.Reference = tx.GetReference()
 	ret.Id = tx.GetId()
-
 	ret.Reverted = tx.GetReverted()
-	if tx.GetInsertedAt() != nil {
-		ret.InsertedAt = tx.GetInsertedAt()
-	}
-
-	if tx.GetUpdatedAt() != nil {
-		ret.UpdatedAt = tx.GetUpdatedAt()
-	}
-
-	if tx.GetRevertedAt() != nil {
-		ret.RevertedAt = tx.GetRevertedAt()
-	}
+	ret.InsertedAt = tx.GetInsertedAt()
+	ret.UpdatedAt = tx.GetUpdatedAt()
+	ret.RevertedAt = tx.GetRevertedAt()
 
 	return ret
 }
@@ -207,25 +195,93 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 		aux.ID = new(tx.GetId())
 	}
 
-	if tx.GetTimestamp() != nil {
-		t := tx.GetTimestamp().AsTime()
+	if ts := tx.TimestampTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.Timestamp = &t
 	}
 
-	if tx.GetInsertedAt() != nil {
-		t := tx.GetInsertedAt().AsTime()
+	if ts := tx.InsertedAtTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.InsertedAt = &t
 	}
 
-	if tx.GetUpdatedAt() != nil {
-		t := tx.GetUpdatedAt().AsTime()
+	if ts := tx.UpdatedAtTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.UpdatedAt = &t
 	}
 
-	if tx.GetRevertedAt() != nil {
-		t := tx.GetRevertedAt().AsTime()
+	if ts := tx.RevertedAtTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.RevertedAt = &t
 	}
 
 	return json.Marshal(aux)
+}
+
+// UnmarshalJSON implements json.Unmarshaler for Transaction. Mirrors
+// MarshalJSON: RFC3339 timestamp strings ↔ fixed64 micros fields. Necessary
+// because after inlining Timestamp as a scalar, the default decoder would
+// try to parse `"2020-06-15T12:00:00Z"` as a uint64 and fail — breaking every
+// round-trip that passes through Transaction JSON (notably HydrateLog for
+// CreatedTransaction / RevertedTransaction log payloads).
+func (tx *Transaction) UnmarshalJSON(data []byte) error {
+	type Aux struct {
+		Postings   []*Posting     `json:"postings"`
+		Metadata   map[string]any `json:"metadata"`
+		Timestamp  *time.Time     `json:"timestamp,omitempty"`
+		Reference  string         `json:"reference,omitempty"`
+		ID         *uint64        `json:"id,omitempty"`
+		InsertedAt *time.Time     `json:"insertedAt,omitempty"`
+		UpdatedAt  *time.Time     `json:"updatedAt,omitempty"`
+		RevertedAt *time.Time     `json:"revertedAt,omitempty"`
+		Reverted   bool           `json:"reverted"`
+	}
+
+	var aux Aux
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	tx.Postings = aux.Postings
+	tx.Reference = aux.Reference
+	tx.Reverted = aux.Reverted
+
+	if aux.ID != nil {
+		tx.Id = *aux.ID
+	}
+
+	if md, err := MetadataFromAnyMap(aux.Metadata); err != nil {
+		return err
+	} else {
+		tx.Metadata = md
+	}
+
+	setFromTimePtr := func(dst *uint64, src *time.Time) error {
+		if src == nil {
+			*dst = 0
+
+			return nil
+		}
+		if src.UnixMicro() <= 0 {
+			return ErrTimestampBeforeEpoch
+		}
+		*dst = uint64(src.UnixMicro())
+
+		return nil
+	}
+
+	if err := setFromTimePtr(&tx.Timestamp, aux.Timestamp); err != nil {
+		return err
+	}
+	if err := setFromTimePtr(&tx.InsertedAt, aux.InsertedAt); err != nil {
+		return err
+	}
+	if err := setFromTimePtr(&tx.UpdatedAt, aux.UpdatedAt); err != nil {
+		return err
+	}
+	if err := setFromTimePtr(&tx.RevertedAt, aux.RevertedAt); err != nil {
+		return err
+	}
+
+	return nil
 }

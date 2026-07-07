@@ -109,8 +109,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	for _, ledger := range all {
 		createdAt := "-"
-		if ledger.GetCreatedAt() != nil {
-			createdAt = ledger.GetCreatedAt().AsTime().Format(time.RFC3339)
+		if ledger.GetCreatedAt() != 0 {
+			createdAt = ledger.CreatedAtTs().AsTime().Format(time.RFC3339)
 		}
 
 		tableData = append(tableData, []string{

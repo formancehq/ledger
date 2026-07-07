@@ -206,10 +206,10 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 }
 
 // CreateTransaction records a transaction creation op via merge (no read).
-// A 1-byte presence flag distinguishes a nil timestamp from a real
-// Timestamp{Data: 0} (Unix epoch) — the FSM persists the latter unchanged,
-// so collapsing both to 0 would surface as a CheckStore mismatch.
-func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting) error {
+// A 1-byte presence flag distinguishes the unset sentinel (0) from any real
+// value; the ledger's HLC never emits micros=0 so this collapse is safe in
+// practice, but the flag preserves the on-disk framing the merger expects.
+func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timestamp uint64, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	var metaBytes []byte
@@ -245,9 +245,9 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 	buf := make([]byte, 1+8+1+8+4+len(metaBytes)+4+len(postingsBytes))
 	buf[0] = txOpCreate
 	binary.BigEndian.PutUint64(buf[1:], seq)
-	if timestamp != nil {
+	if timestamp != 0 {
 		buf[9] = 1
-		binary.BigEndian.PutUint64(buf[10:], timestamp.GetData())
+		binary.BigEndian.PutUint64(buf[10:], timestamp)
 	}
 
 	off := 18
@@ -437,7 +437,7 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 			state.CreatedByLog = binary.BigEndian.Uint64(op[1:9])
 
 			if op[9] == 1 {
-				state.Timestamp = &commonpb.Timestamp{Data: binary.BigEndian.Uint64(op[10:18])}
+				state.Timestamp = binary.BigEndian.Uint64(op[10:18])
 			}
 
 			metaLen := int(binary.BigEndian.Uint32(op[18:22]))

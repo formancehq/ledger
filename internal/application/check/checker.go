@@ -244,7 +244,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 
 		for _, info := range ledgers {
-			if info.GetDeletedAt() == nil {
+			if info.GetDeletedAt() == 0 {
 				knownLedgers[info.GetName()] = struct{}{}
 
 				if types := info.GetAccountTypes(); len(types) > 0 {
@@ -1517,7 +1517,7 @@ func (c *Checker) verifyAuditHashChain(
 		}
 
 		if verifiedRangeStartTs == 0 {
-			verifiedRangeStartTs = entry.GetTimestamp().GetData()
+			verifiedRangeStartTs = entry.GetTimestamp()
 		}
 
 		// `items` on the stored AuditEntry value is reserved for
@@ -1605,7 +1605,7 @@ func (c *Checker) verifyAuditHashChain(
 			if exp, ok := expectedIdempotencyOutcome(entry, items); ok {
 				expectedIdem[idemExpectedKey{
 					keyHash:   state.HashIdempotencyKey(key),
-					createdAt: entry.GetTimestamp().GetData(),
+					createdAt: entry.GetTimestamp(),
 				}] = exp
 			}
 		}

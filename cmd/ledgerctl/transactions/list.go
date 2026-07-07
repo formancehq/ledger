@@ -274,8 +274,8 @@ func renderTransactionsTable(transactions []*commonpb.Transaction) {
 
 	for _, tx := range transactions {
 		timestamp := "-"
-		if tx.GetTimestamp() != nil {
-			timestamp = tx.GetTimestamp().AsTime().Format(time.RFC3339)
+		if tx.GetTimestamp() != 0 {
+			timestamp = tx.TimestampTs().AsTime().Format(time.RFC3339)
 		}
 
 		reference := "-"

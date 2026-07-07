@@ -184,7 +184,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 			// Index log date for date range filtering (opt-in via log date builtin index).
 			if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
-				if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
+				if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate(), ledgerLog.GetId()); err != nil {
 					_ = batch.Cancel()
 
 					return cursor, err
@@ -421,7 +421,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 
 	// Index log date for date range filtering (opt-in via log date builtin index).
 	if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
-		if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
+		if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate(), ledgerLog.GetId()); err != nil {
 			return err
 		}
 	}
@@ -570,14 +570,14 @@ func (b *Builder) indexCreatedTransaction(
 		}
 	}
 
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && txn.GetTimestamp() != nil {
-		if err := wb.WriteTransactionTimestampIndex(kb, ledger, txn.GetTimestamp().GetData(), txn.GetId()); err != nil {
+	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && txn.GetTimestamp() != 0 {
+		if err := wb.WriteTransactionTimestampIndex(kb, ledger, txn.GetTimestamp(), txn.GetId()); err != nil {
 			return err
 		}
 	}
 
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT) && txn.GetInsertedAt() != nil {
-		if err := wb.WriteTransactionInsertedAtIndex(kb, ledger, txn.GetInsertedAt().GetData(), txn.GetId()); err != nil {
+	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT) && txn.GetInsertedAt() != 0 {
+		if err := wb.WriteTransactionInsertedAtIndex(kb, ledger, txn.GetInsertedAt(), txn.GetId()); err != nil {
 			return err
 		}
 	}
@@ -658,14 +658,14 @@ func (b *Builder) indexRevertedTransaction(
 	}
 
 	// Builtin indexes (no reference on revert transactions)
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && revertTxn.GetTimestamp() != nil {
-		if err := wb.WriteTransactionTimestampIndex(kb, ledger, revertTxn.GetTimestamp().GetData(), revertTxn.GetId()); err != nil {
+	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && revertTxn.GetTimestamp() != 0 {
+		if err := wb.WriteTransactionTimestampIndex(kb, ledger, revertTxn.GetTimestamp(), revertTxn.GetId()); err != nil {
 			return err
 		}
 	}
 
-	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT) && revertTxn.GetInsertedAt() != nil {
-		if err := wb.WriteTransactionInsertedAtIndex(kb, ledger, revertTxn.GetInsertedAt().GetData(), revertTxn.GetId()); err != nil {
+	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT) && revertTxn.GetInsertedAt() != 0 {
+		if err := wb.WriteTransactionInsertedAtIndex(kb, ledger, revertTxn.GetInsertedAt(), revertTxn.GetId()); err != nil {
 			return err
 		}
 	}

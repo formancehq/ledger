@@ -73,7 +73,7 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
+						Name: "orders", CreatedAt: uint64(commonpb.NewTimestamp(now)),
 					},
 				},
 			},

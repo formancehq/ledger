@@ -22,17 +22,6 @@ var (
 	}
 )
 
-func (m *Timestamp) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *NullValue) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -157,26 +146,23 @@ func (m *Transaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.RevertedAt != nil {
-		size, _ := m.RevertedAt.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.RevertedAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertedAt))
 		i--
-		dAtA[i] = 0x4a
+		dAtA[i] = 0x49
 	}
-	if m.UpdatedAt != nil {
-		size, _ := m.UpdatedAt.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.UpdatedAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.UpdatedAt))
 		i--
-		dAtA[i] = 0x42
+		dAtA[i] = 0x41
 	}
-	if m.InsertedAt != nil {
-		size, _ := m.InsertedAt.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.InsertedAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.InsertedAt))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x39
 	}
 	if m.Reverted {
 		i--
@@ -201,12 +187,11 @@ func (m *Transaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.Timestamp != nil {
-		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if len(m.Metadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
@@ -481,26 +466,23 @@ func (m *Account) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 		*keysPtr = keys
 		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
-	if m.UpdatedAt != nil {
-		size, _ := m.UpdatedAt.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.UpdatedAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.UpdatedAt))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x29
 	}
-	if m.InsertionDate != nil {
-		size, _ := m.InsertionDate.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.InsertionDate != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.InsertionDate))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x21
 	}
-	if m.FirstUsage != nil {
-		size, _ := m.FirstUsage.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.FirstUsage != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.FirstUsage))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if len(m.Metadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
@@ -1554,12 +1536,11 @@ func (m *CreatedLedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		i--
 		dAtA[i] = 0x1a
 	}
-	if m.CreatedAt != nil {
-		size, _ := m.CreatedAt.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.CreatedAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CreatedAt))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x11
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
@@ -1652,12 +1633,11 @@ func (m *LedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error
 		i--
 		dAtA[i] = 0x19
 	}
-	if m.Date != nil {
-		size, _ := m.Date.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Date != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Date))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x11
 	}
 	if m.Data != nil {
 		size, _ := m.Data.MarshalToSizedBufferDeterministicVT(dAtA[:i])
@@ -2289,19 +2269,17 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.DeletedAt != nil {
-		size, _ := m.DeletedAt.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.DeletedAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.DeletedAt))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
-	if m.CreatedAt != nil {
-		size, _ := m.CreatedAt.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.CreatedAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CreatedAt))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x11
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
@@ -2409,12 +2387,11 @@ func (m *TransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			dAtA[i] = 0x2a
 		}
 	}
-	if m.Timestamp != nil {
-		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x21
 	}
 	if len(m.Metadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)

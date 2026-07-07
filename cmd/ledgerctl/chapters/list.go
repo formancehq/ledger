@@ -97,12 +97,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 			closeSeqStr = "-"
 		)
 
-		if p.GetStart() != nil {
-			startStr = time.UnixMicro(int64(p.GetStart().GetData())).Format(time.RFC3339)
+		if p.GetStart() != 0 {
+			startStr = time.UnixMicro(int64(p.GetStart())).Format(time.RFC3339)
 		}
 
-		if p.GetEnd() != nil {
-			endStr = time.UnixMicro(int64(p.GetEnd().GetData())).Format(time.RFC3339)
+		if p.GetEnd() != 0 {
+			endStr = time.UnixMicro(int64(p.GetEnd())).Format(time.RFC3339)
 		}
 
 		if p.GetCloseSequence() > 0 {

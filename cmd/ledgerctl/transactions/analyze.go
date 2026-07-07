@@ -213,10 +213,10 @@ func postingStructureName(s servicepb.PostingStructure) string {
 	}
 }
 
-func formatTimestamp(ts *commonpb.Timestamp) string {
-	if ts == nil {
+func formatTimestamp(ts uint64) string {
+	if ts == 0 {
 		return "N/A"
 	}
 
-	return ts.AsTime().Format("2006-01-02 15:04:05 UTC")
+	return commonpb.Timestamp(ts).AsTime().Format("2006-01-02 15:04:05 UTC")
 }

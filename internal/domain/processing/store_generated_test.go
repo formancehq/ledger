@@ -514,10 +514,10 @@ func (c *MockScopeGetCurrentOpenChapterCall) DoAndReturn(f func() (commonpb.Chap
 }
 
 // GetDate mocks base method.
-func (m *MockScope) GetDate() commonpb.TimestampReader {
+func (m *MockScope) GetDate() commonpb.Timestamp {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDate")
-	ret0, _ := ret[0].(commonpb.TimestampReader)
+	ret0, _ := ret[0].(commonpb.Timestamp)
 	return ret0
 }
 
@@ -534,19 +534,19 @@ type MockScopeGetDateCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeGetDateCall) Return(arg0 commonpb.TimestampReader) *MockScopeGetDateCall {
+func (c *MockScopeGetDateCall) Return(arg0 commonpb.Timestamp) *MockScopeGetDateCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeGetDateCall) Do(f func() commonpb.TimestampReader) *MockScopeGetDateCall {
+func (c *MockScopeGetDateCall) Do(f func() commonpb.Timestamp) *MockScopeGetDateCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetDateCall) DoAndReturn(f func() commonpb.TimestampReader) *MockScopeGetDateCall {
+func (c *MockScopeGetDateCall) DoAndReturn(f func() commonpb.Timestamp) *MockScopeGetDateCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

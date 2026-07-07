@@ -84,7 +84,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -107,7 +107,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	// Process the order normally
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
@@ -135,7 +135,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 
 	// Track the ledger info stored by CreateLedger so GetLedger can return it.
 	var storedLedgerInfo *commonpb.LedgerInfo
@@ -156,7 +156,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	})
 
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now)).AnyTimes()
 
 	// Boundaries: CreateLedger Puts initial boundaries, then CreateTransaction
 	// Gets/Puts them. A single shared stub serves both calls; the Get hook
@@ -258,7 +258,7 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1}
+	now := uint64(1)
 
 	// Two CreateLedger orders. Sequences assigned by IncrementNextSequenceID
 	// are 100 and 110 — chosen non-contiguous so the test catches a min/max
@@ -266,7 +266,7 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	// the sequences were consecutive).
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "ledger-a"}, nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
-	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now)).AnyTimes()
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "ledger-a"}, nil)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "ledger-a"}, nil)
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))

@@ -4,6 +4,7 @@ package audit;
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/auditpb";
 
+import "ledger_options.proto";
 import "common.proto";
 import "signature.proto";
 
@@ -17,7 +18,7 @@ import "signature.proto";
 // (zone 0x04, sub 0x03) and populated on GetAuditEntry responses.
 message AuditEntry {
   fixed64 sequence = 1;
-  common.Timestamp timestamp = 2;
+  fixed64 timestamp = 2 [(ledger.value_type) = "commonpb.Timestamp"];
   fixed64 proposal_id = 3;
   oneof outcome {
     AuditSuccess success = 4;

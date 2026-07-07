@@ -209,7 +209,7 @@ func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, 
 		for _, t := range cursor.GetTransactionData() {
 			tableData = append(tableData, []string{
 				strconv.FormatUint(t.GetId(), 10),
-				t.GetTimestamp().AsTime().Format("2006-01-02 15:04:05"),
+				t.TimestampTs().AsTime().Format("2006-01-02 15:04:05"),
 				strconv.Itoa(len(t.GetPostings())),
 				t.GetReference(),
 			})

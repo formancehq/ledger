@@ -24,8 +24,8 @@ func (x *Event) MarshalJSON() ([]byte, error) {
 		Log:         x.GetLog(),
 	}
 
-	if x.GetDate() != nil {
-		t := x.GetDate().AsTime()
+	if ts := x.DateTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.Date = &t
 	}
 

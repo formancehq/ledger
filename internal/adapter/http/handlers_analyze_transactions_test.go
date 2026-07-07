@@ -40,8 +40,8 @@ func TestHandleAnalyzeTransactions_Success(t *testing.T) {
 							{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD"},
 						},
 						Temporal: &servicepb.TemporalStats{
-							FirstSeen:          &commonpb.Timestamp{Data: 1000000},
-							LastSeen:           &commonpb.Timestamp{Data: 2000000},
+							FirstSeen:          1000000,
+							LastSeen:           2000000,
 							TransactionsPerDay: 40.0,
 							PeakHours: []*servicepb.HourBucket{
 								{Hour: 14, Count: 20},

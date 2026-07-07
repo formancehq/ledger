@@ -26,7 +26,7 @@ func TestLogToEvent(t *testing.T) {
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreatedLedgerLog{
 							Name:      "orders",
-							CreatedAt: &commonpb.Timestamp{Data: 1000},
+							CreatedAt: 1000,
 						},
 					},
 				},
@@ -42,7 +42,7 @@ func TestLogToEvent(t *testing.T) {
 					Type: &commonpb.LogPayload_DeleteLedger{
 						DeleteLedger: &commonpb.DeletedLedgerLog{
 							Name:      "orders",
-							DeletedAt: &commonpb.Timestamp{Data: 2000},
+							DeletedAt: 2000,
 						},
 					},
 				},
@@ -59,7 +59,7 @@ func TestLogToEvent(t *testing.T) {
 						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "payments",
 							Log: &commonpb.LedgerLog{
-								Date: &commonpb.Timestamp{Data: 3000},
+								Date: 3000,
 								Id:   1,
 								Data: &commonpb.LedgerLogPayload{
 									Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
@@ -85,7 +85,7 @@ func TestLogToEvent(t *testing.T) {
 						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "payments",
 							Log: &commonpb.LedgerLog{
-								Date: &commonpb.Timestamp{Data: 4000},
+								Date: 4000,
 								Id:   2,
 								Data: &commonpb.LedgerLogPayload{
 									Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
@@ -112,7 +112,7 @@ func TestLogToEvent(t *testing.T) {
 						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "orders",
 							Log: &commonpb.LedgerLog{
-								Date: &commonpb.Timestamp{Data: 5000},
+								Date: 5000,
 								Id:   3,
 								Data: &commonpb.LedgerLogPayload{
 									Payload: &commonpb.LedgerLogPayload_SavedMetadata{
@@ -142,7 +142,7 @@ func TestLogToEvent(t *testing.T) {
 						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "orders",
 							Log: &commonpb.LedgerLog{
-								Date: &commonpb.Timestamp{Data: 6000},
+								Date: 6000,
 								Id:   4,
 								Data: &commonpb.LedgerLogPayload{
 									Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
@@ -187,7 +187,7 @@ func TestSerializeEvent_JSON(t *testing.T) {
 		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "orders",
 		LogSequence: 42,
-		Date:        &commonpb.Timestamp{Data: 1000},
+		Date:        1000,
 	}
 
 	data, err := SerializeEvent(event, FormatJSON)
@@ -204,7 +204,7 @@ func TestSerializeEvent_Proto(t *testing.T) {
 		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "orders",
 		LogSequence: 42,
-		Date:        &commonpb.Timestamp{Data: 1000},
+		Date:        1000,
 	}
 
 	data, err := SerializeEvent(event, FormatProto)

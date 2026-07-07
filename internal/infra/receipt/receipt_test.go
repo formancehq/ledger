@@ -23,7 +23,7 @@ func TestSignAndVerify(t *testing.T) {
 			Asset:       "USD",
 		},
 	}
-	timestamp := &commonpb.Timestamp{Data: 1700000000}
+	timestamp := uint64(1700000000)
 
 	token, err := signer.Sign("my-ledger", 42, postings, timestamp, 1)
 	require.NoError(t, err)
@@ -57,7 +57,7 @@ func TestVerifyWithWrongKey(t *testing.T) {
 		},
 	}
 
-	token, err := signer.Sign("ledger", 1, postings, nil, 0)
+	token, err := signer.Sign("ledger", 1, postings, 0, 0)
 	require.NoError(t, err)
 
 	_, err = wrongSigner.Verify(token)
@@ -99,7 +99,7 @@ func TestSignMultiplePostings(t *testing.T) {
 		},
 	}
 
-	token, err := signer.Sign("payments", 7, postings, nil, 2)
+	token, err := signer.Sign("payments", 7, postings, 0, 2)
 	require.NoError(t, err)
 
 	claims, err := signer.Verify(token)
@@ -203,7 +203,7 @@ func TestSignWithNilTimestamp(t *testing.T) {
 		},
 	}
 
-	token, err := signer.Sign("ledger", 1, postings, nil, 0)
+	token, err := signer.Sign("ledger", 1, postings, 0, 0)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 

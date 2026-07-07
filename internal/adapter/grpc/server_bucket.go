@@ -824,7 +824,7 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 			return nil, fmt.Errorf("iterating ledgers: %w", lErr)
 		}
 
-		if info.GetDeletedAt() != nil {
+		if info.GetDeletedAt() != 0 {
 			continue
 		}
 

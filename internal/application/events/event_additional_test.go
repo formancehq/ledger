@@ -52,7 +52,7 @@ func TestLogToEvent_SchemaOperations(t *testing.T) {
 							LedgerName: "test-ledger",
 							Log: &commonpb.LedgerLog{
 								Id:   10,
-								Date: &commonpb.Timestamp{Data: 1700000000},
+								Date: 1700000000,
 								Data: tc.payload,
 							},
 						},

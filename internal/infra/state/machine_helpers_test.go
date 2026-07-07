@@ -269,9 +269,9 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	// Add entries
 	batch := s.OpenWriteSession()
 	require.NoError(t, appendAuditEntries(batch,
-		&auditpb.AuditEntry{Sequence: 1, ProposalId: 10, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		&auditpb.AuditEntry{Sequence: 2, ProposalId: 20, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		&auditpb.AuditEntry{Sequence: 3, ProposalId: 30, Timestamp: commonpb.NewTimestamp(libtime.Now())},
+		&auditpb.AuditEntry{Sequence: 1, ProposalId: 10, Timestamp: uint64(commonpb.NewTimestamp(libtime.Now()))},
+		&auditpb.AuditEntry{Sequence: 2, ProposalId: 20, Timestamp: uint64(commonpb.NewTimestamp(libtime.Now()))},
+		&auditpb.AuditEntry{Sequence: 3, ProposalId: 30, Timestamp: uint64(commonpb.NewTimestamp(libtime.Now()))},
 	))
 	require.NoError(t, batch.Commit())
 

@@ -103,8 +103,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	for _, info := range scripts {
 		createdAt := ""
-		if info.GetCreatedAt() != nil {
-			createdAt = info.GetCreatedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")
+		if info.GetCreatedAt() != 0 {
+			createdAt = info.CreatedAtTs().AsTime().Format("2006-01-02T15:04:05Z07:00")
 		}
 
 		tableData = append(tableData, []string{

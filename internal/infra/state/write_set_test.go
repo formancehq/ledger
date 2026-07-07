@@ -23,7 +23,7 @@ func newTestBuffer(t *testing.T) (*WriteSet, *Machine, *dal.Store) {
 	t.Helper()
 	machine, dataStore, _ := newTestMachine(t)
 	buf := NewWriteSet(machine)
-	buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+	buf.Reset(1700000000)
 
 	return buf, machine, dataStore
 }
@@ -220,7 +220,7 @@ func TestWriteSetSigningKeyOperations(t *testing.T) {
 
 	// In a fresh buffer, children should come from committed state
 	buf2 := NewWriteSet(machine)
-	buf2.Reset(&commonpb.Timestamp{Data: 1700000000})
+	buf2.Reset(1700000000)
 	children := buf2.GetSigningKeyChildren("parent")
 	require.Contains(t, children, "child")
 
@@ -321,7 +321,7 @@ func TestWriteSetDateAndHash(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
 
-	require.Equal(t, uint64(1700000000), buf.GetDate().GetData())
+	require.Equal(t, commonpb.Timestamp(1700000000), buf.GetDate())
 }
 
 func TestWriteSetChapterOperations(t *testing.T) {
@@ -560,7 +560,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	require.Len(t, buf.pendingMirrorSyncs, 1)
 
 	// --- Reset for proposal N+1 ---
-	buf.Reset(&commonpb.Timestamp{Data: 1700000001})
+	buf.Reset(1700000001)
 
 	// --- Verify complete isolation ---
 
@@ -590,7 +590,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	require.Empty(t, buf.pendingMirrorSyncs, "mirror syncs must be cleared after Reset")
 
 	// Scalar state must be refreshed
-	require.Equal(t, uint64(1700000001), buf.GetDate().GetData(), "date must be updated after Reset")
+	require.Equal(t, commonpb.Timestamp(1700000001), buf.GetDate(), "date must be updated after Reset")
 }
 
 // TestWriteSetMergeDrainsMirrorSyncs pins the gating semantics that motivate
@@ -687,7 +687,7 @@ func TestWriteSetPreparedQueryDeletePersistsThroughMerge(t *testing.T) {
 
 	// Proposal 2: delete it.
 	buf2 := NewWriteSet(machine)
-	buf2.Reset(&commonpb.Timestamp{Data: 1700000001})
+	buf2.Reset(1700000001)
 	require.NoError(t, buf2.PreparedQueries().Delete(domain.PreparedQueryKey{LedgerName: ledger, Name: "pq-del"}))
 	batch2 := dataStore.OpenWriteSession()
 	require.NoError(t, buf2.Merge(batch2, nil))

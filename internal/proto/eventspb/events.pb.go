@@ -8,6 +8,7 @@ package eventspb
 
 import (
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	_ "github.com/formancehq/ledger/v3/internal/proto/ledgeroptionspb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -27,7 +28,7 @@ type Event struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Type          commonpb.EventType     `protobuf:"varint,1,opt,name=type,proto3,enum=common.EventType" json:"type,omitempty"`
 	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Date          *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`
+	Date          uint64                 `protobuf:"fixed64,3,opt,name=date,proto3" json:"date,omitempty"`
 	LogSequence   uint64                 `protobuf:"fixed64,4,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
 	Log           *commonpb.Log          `protobuf:"bytes,5,opt,name=log,proto3" json:"log,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -78,11 +79,11 @@ func (x *Event) GetLedger() string {
 	return ""
 }
 
-func (x *Event) GetDate() *commonpb.Timestamp {
+func (x *Event) GetDate() uint64 {
 	if x != nil {
 		return x.Date
 	}
-	return nil
+	return 0
 }
 
 func (x *Event) GetLogSequence() uint64 {
@@ -103,11 +104,11 @@ var File_events_proto protoreflect.FileDescriptor
 
 const file_events_proto_rawDesc = "" +
 	"\n" +
-	"\fevents.proto\x12\x06events\x1a\fcommon.proto\"\xaf\x01\n" +
+	"\fevents.proto\x12\x06events\x1a\x14ledger_options.proto\x1a\fcommon.proto\"\xb4\x01\n" +
 	"\x05Event\x12%\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x11.common.EventTypeR\x04type\x12\x16\n" +
-	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12%\n" +
-	"\x04date\x18\x03 \x01(\v2\x11.common.TimestampR\x04date\x12!\n" +
+	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12*\n" +
+	"\x04date\x18\x03 \x01(\x06B\x16\x92\xc6,\x12commonpb.TimestampR\x04date\x12!\n" +
 	"\flog_sequence\x18\x04 \x01(\x06R\vlogSequence\x12\x1d\n" +
 	"\x03log\x18\x05 \x01(\v2\v.common.LogR\x03logB9Z7github.com/formancehq/ledger/v3/internal/proto/eventspbb\x06proto3"
 
@@ -125,20 +126,18 @@ func file_events_proto_rawDescGZIP() []byte {
 
 var file_events_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_events_proto_goTypes = []any{
-	(*Event)(nil),              // 0: events.Event
-	(commonpb.EventType)(0),    // 1: common.EventType
-	(*commonpb.Timestamp)(nil), // 2: common.Timestamp
-	(*commonpb.Log)(nil),       // 3: common.Log
+	(*Event)(nil),           // 0: events.Event
+	(commonpb.EventType)(0), // 1: common.EventType
+	(*commonpb.Log)(nil),    // 2: common.Log
 }
 var file_events_proto_depIdxs = []int32{
 	1, // 0: events.Event.type:type_name -> common.EventType
-	2, // 1: events.Event.date:type_name -> common.Timestamp
-	3, // 2: events.Event.log:type_name -> common.Log
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	2, // 1: events.Event.log:type_name -> common.Log
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_events_proto_init() }

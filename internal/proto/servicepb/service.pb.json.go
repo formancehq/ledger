@@ -24,7 +24,7 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
 		Metadata        map[string]any            `json:"metadata,omitempty"`
-		Timestamp       *commonpb.Timestamp       `json:"timestamp,omitempty"`
+		Timestamp       commonpb.Timestamp        `json:"timestamp,omitempty"`
 		Reference       string                    `json:"reference,omitempty"`
 		Postings        []*commonpb.Posting       `json:"postings,omitempty"`
 		Script          *commonpb.Script          `json:"script,omitempty"`
@@ -34,7 +34,7 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 	}{
 		AccountMetadata: commonpb.AccountMetadataToAnyMap(x.GetAccountMetadata()),
 		Metadata:        commonpb.MetadataToAnyMap(x.GetMetadata()),
-		Timestamp:       x.GetTimestamp(),
+		Timestamp:       x.TimestampTs(),
 		Reference:       x.GetReference(),
 		Postings:        x.GetPostings(),
 		Script:          x.GetScript(),
@@ -57,7 +57,7 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 	var aux struct {
 		AccountMetadata map[string]map[string]any `json:"accountMetadata"`
 		Metadata        map[string]any            `json:"metadata"`
-		Timestamp       *commonpb.Timestamp       `json:"timestamp"`
+		Timestamp       commonpb.Timestamp        `json:"timestamp"`
 		Reference       string                    `json:"reference"`
 		Postings        []*commonpb.Posting       `json:"postings"`
 		Script          *commonpb.Script          `json:"script"`
@@ -91,7 +91,7 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 
 	x.Postings = aux.Postings
 	x.Script = aux.Script
-	x.Timestamp = aux.Timestamp
+	x.Timestamp = uint64(aux.Timestamp)
 	x.Reference = aux.Reference
 	x.Metadata = metadata
 	x.AccountMetadata = accountMetadata

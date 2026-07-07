@@ -40,7 +40,7 @@ type Claims struct {
 }
 
 // Sign creates a JWT receipt for a transaction.
-func (s *Signer) Sign(ledger string, txID uint64, postings []*commonpb.Posting, timestamp *commonpb.Timestamp, chapterID uint64) (string, error) {
+func (s *Signer) Sign(ledger string, txID uint64, postings []*commonpb.Posting, timestamp uint64, chapterID uint64) (string, error) {
 	postingClaims := make([]PostingClaim, len(postings))
 	for i, p := range postings {
 		postingClaims[i] = PostingClaim{
@@ -52,8 +52,8 @@ func (s *Signer) Sign(ledger string, txID uint64, postings []*commonpb.Posting, 
 	}
 
 	issuedAt := time.Now()
-	if timestamp != nil {
-		issuedAt = time.UnixMicro(int64(timestamp.GetData()))
+	if timestamp != 0 {
+		issuedAt = time.UnixMicro(int64(timestamp))
 	}
 
 	claims := &Claims{

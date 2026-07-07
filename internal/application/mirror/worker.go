@@ -502,14 +502,14 @@ func (w *Worker) drainPrefetch(ch chan prefetchResult) {
 
 func (w *Worker) reportError(ctx context.Context, message string) {
 	cmd := &raftcmdpb.Proposal{
-		Date: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+		Date: uint64(libtime.Now().UnixMicro()),
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
 			Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
 				MirrorSync: &raftcmdpb.MirrorSyncUpdate{
 					LedgerName: w.ledgerName,
 					Error: &commonpb.MirrorSyncError{
 						Message:    message,
-						OccurredAt: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+						OccurredAt: uint64(libtime.Now().UnixMicro()),
 					},
 				},
 			},

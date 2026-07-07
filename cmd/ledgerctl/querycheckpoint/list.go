@@ -63,7 +63,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	for _, cp := range resp.GetCheckpoints() {
-		created := cp.GetCreatedAt().AsTime().Format(time.RFC3339)
+		created := cp.CreatedAtTs().AsTime().Format(time.RFC3339)
 
 		tableData = append(tableData, []string{
 			strconv.FormatUint(cp.GetCheckpointId(), 10),

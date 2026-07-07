@@ -118,20 +118,20 @@ func runGet(cmd *cobra.Command, args []string) error {
 		pterm.Printf("Reference:   %s\n", tx.GetReference())
 	}
 
-	if tx.GetTimestamp() != nil {
-		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
+	if tx.GetTimestamp() != 0 {
+		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.TimestampTs().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
-	if tx.GetInsertedAt() != nil {
-		pterm.Printf("Inserted At: %s\n", pterm.Gray(tx.GetInsertedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
+	if tx.GetInsertedAt() != 0 {
+		pterm.Printf("Inserted At: %s\n", pterm.Gray(tx.InsertedAtTs().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
 	// Display reverted status
 	if tx.GetReverted() {
 		pterm.Printf("Reverted:    %s\n", pterm.Yellow("Yes"))
 
-		if tx.GetRevertedAt() != nil {
-			pterm.Printf("Reverted At: %s\n", pterm.Gray(tx.GetRevertedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
+		if tx.GetRevertedAt() != 0 {
+			pterm.Printf("Reverted At: %s\n", pterm.Gray(tx.RevertedAtTs().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 		}
 	} else {
 		pterm.Printf("Reverted:    %s\n", pterm.Green("No"))

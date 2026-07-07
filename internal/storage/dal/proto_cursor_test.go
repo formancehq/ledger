@@ -6,7 +6,6 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -16,23 +15,24 @@ func TestProtoCursor_Basic(t *testing.T) {
 
 	s := newTestStore(t)
 
-	// Write proto messages under a prefix
+	// Write proto messages under a prefix. NullValue is the simplest still-a-
+	// message type in commonpb after Timestamp was inlined into a scalar.
 	batch := s.OpenWriteSession()
 
-	ts1 := &commonpb.Timestamp{Data: 1000}
-	ts2 := &commonpb.Timestamp{Data: 2000}
-	ts3 := &commonpb.Timestamp{Data: 3000}
+	nv1 := &commonpb.NullValue{Original: "a"}
+	nv2 := &commonpb.NullValue{Original: "b"}
+	nv3 := &commonpb.NullValue{Original: "c"}
 
 	kb := NewKeyBuilder()
 	key1 := kb.PutByte(0xAA).PutUint64(1).Build()
 	key2 := kb.PutByte(0xAA).PutUint64(2).Build()
 	key3 := kb.PutByte(0xAA).PutUint64(3).Build()
 
-	data1, err := proto.Marshal(ts1)
+	data1, err := nv1.MarshalVT()
 	require.NoError(t, err)
-	data2, err := proto.Marshal(ts2)
+	data2, err := nv2.MarshalVT()
 	require.NoError(t, err)
-	data3, err := proto.Marshal(ts3)
+	data3, err := nv3.MarshalVT()
 	require.NoError(t, err)
 
 	require.NoError(t, batch.SetBytes(key1, data1))
@@ -40,7 +40,6 @@ func TestProtoCursor_Basic(t *testing.T) {
 	require.NoError(t, batch.SetBytes(key3, data3))
 	require.NoError(t, batch.Commit())
 
-	// Create iterator and proto cursor
 	handle, err := s.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
@@ -51,24 +50,22 @@ func TestProtoCursor_Basic(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	cursor := NewProtoCursor[*commonpb.Timestamp](iter)
+	cursor := NewProtoCursor[*commonpb.NullValue](iter)
 
 	defer func() { _ = cursor.Close() }()
 
-	// Read items
 	got1, err := cursor.Next()
 	require.NoError(t, err)
-	require.Equal(t, uint64(1000), got1.GetData())
+	require.Equal(t, "a", got1.GetOriginal())
 
 	got2, err := cursor.Next()
 	require.NoError(t, err)
-	require.Equal(t, uint64(2000), got2.GetData())
+	require.Equal(t, "b", got2.GetOriginal())
 
 	got3, err := cursor.Next()
 	require.NoError(t, err)
-	require.Equal(t, uint64(3000), got3.GetData())
+	require.Equal(t, "c", got3.GetOriginal())
 
-	// EOF
 	_, err = cursor.Next()
 	require.ErrorIs(t, err, io.EOF)
 }
@@ -78,7 +75,6 @@ func TestProtoCursor_Empty(t *testing.T) {
 
 	s := newTestStore(t)
 
-	// Create iterator over empty range
 	handle, err := s.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
@@ -89,7 +85,7 @@ func TestProtoCursor_Empty(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	cursor := NewProtoCursor[*commonpb.Timestamp](iter)
+	cursor := NewProtoCursor[*commonpb.NullValue](iter)
 
 	defer func() { _ = cursor.Close() }()
 
@@ -100,8 +96,7 @@ func TestProtoCursor_Empty(t *testing.T) {
 func TestProtoCursor_CloseNilIter(t *testing.T) {
 	t.Parallel()
 
-	// Test Close with nil iterator
-	cursor := &ProtoCursor[*commonpb.Timestamp]{}
+	cursor := &ProtoCursor[*commonpb.NullValue]{}
 	require.NoError(t, cursor.Close())
 }
 
@@ -110,10 +105,9 @@ func TestProtoCursor_MultipleCallsAfterEOF(t *testing.T) {
 
 	s := newTestStore(t)
 
-	// Write one item
 	batch := s.OpenWriteSession()
-	ts := &commonpb.Timestamp{Data: 42}
-	data, err := proto.Marshal(ts)
+	nv := &commonpb.NullValue{Original: "sole"}
+	data, err := nv.MarshalVT()
 	require.NoError(t, err)
 
 	kb := NewKeyBuilder()
@@ -131,16 +125,14 @@ func TestProtoCursor_MultipleCallsAfterEOF(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	cursor := NewProtoCursor[*commonpb.Timestamp](iter)
+	cursor := NewProtoCursor[*commonpb.NullValue](iter)
 
 	defer func() { _ = cursor.Close() }()
 
-	// Read the one item
 	got, err := cursor.Next()
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), got.GetData())
+	require.Equal(t, "sole", got.GetOriginal())
 
-	// Should get EOF
 	_, err = cursor.Next()
 	require.ErrorIs(t, err, io.EOF)
 }

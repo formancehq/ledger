@@ -45,7 +45,7 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleGetter, name string) 
 		return nil, fmt.Errorf("getting ledger by name: %w", err)
 	}
 
-	if info == nil || info.GetDeletedAt() != nil {
+	if info == nil || info.GetDeletedAt() != 0 {
 		return nil, domain.ErrNotFound
 	}
 

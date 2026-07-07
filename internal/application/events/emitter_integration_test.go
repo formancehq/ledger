@@ -167,7 +167,7 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 	batch := s.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      name,
-		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+		CreatedAt: uint64(commonpb.NewTimestamp(libtime.Now())),
 	}))
 	require.NoError(t, batch.Commit())
 }
@@ -192,7 +192,7 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name:      "orders",
-						CreatedAt: commonpb.NewTimestamp(now),
+						CreatedAt: uint64(commonpb.NewTimestamp(now)),
 					},
 				},
 			},
@@ -335,7 +335,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
+						Name: "orders", CreatedAt: uint64(commonpb.NewTimestamp(now)),
 					},
 				},
 			},
@@ -465,7 +465,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "test", CreatedAt: commonpb.NewTimestamp(now),
+						Name: "test", CreatedAt: uint64(commonpb.NewTimestamp(now)),
 					},
 				},
 			},
@@ -563,7 +563,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_DeleteLedger{
 					DeleteLedger: &commonpb.DeletedLedgerLog{
-						Name: "test", DeletedAt: commonpb.NewTimestamp(now),
+						Name: "test", DeletedAt: uint64(commonpb.NewTimestamp(now)),
 					},
 				},
 			},
@@ -684,7 +684,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "test", CreatedAt: commonpb.NewTimestamp(now),
+						Name: "test", CreatedAt: uint64(commonpb.NewTimestamp(now)),
 					},
 				},
 			},

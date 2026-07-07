@@ -101,7 +101,7 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 	buf := make([]byte, 0, 128)
 
 	buf = appendU64(buf, entry.GetSequence())
-	buf = appendU64(buf, entry.GetTimestamp().GetData())
+	buf = appendU64(buf, entry.GetTimestamp())
 	buf = appendU64(buf, entry.GetProposalId())
 	buf = appendU32(buf, entry.GetOrderCount())
 	buf = appendU32(buf, entry.GetHashVersion())

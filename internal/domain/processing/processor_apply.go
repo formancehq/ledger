@@ -25,7 +25,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 	}
 
 	infoOk := infoErr == nil
-	if infoOk && ledgerInfoReader.GetDeletedAt() != nil {
+	if infoOk && ledgerInfoReader.GetDeletedAt() != 0 {
 		return nil, &domain.ErrLedgerDeleted{Name: ledger}
 	}
 
@@ -100,7 +100,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 				LedgerName: ledger,
 				Log: &commonpb.LedgerLog{
 					Data: logPayload,
-					Date: s.GetDate().Mutate(),
+					Date: s.GetDate().Micros(),
 					Id:   nextLogID,
 				},
 			},

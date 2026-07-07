@@ -29,7 +29,7 @@ func NewCommand(orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 	return &raftcmdpb.Proposal{
 		Id:            GenerateRandomID(),
 		Orders:        orders,
-		Date:          commonpb.NewTimestamp(time.Now()),
+		Date:          uint64(commonpb.NewTimestamp(time.Now())),
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
 	}
 }

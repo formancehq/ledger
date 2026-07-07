@@ -85,7 +85,7 @@ func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) 
 	attrs := attributes.New()
 	tx := &commonpb.Transaction{
 		Postings:  []*commonpb.Posting{{Source: "world", Destination: "bank", Asset: "USD"}},
-		Timestamp: &commonpb.Timestamp{Data: 1700000000},
+		Timestamp: 1700000000,
 	}
 
 	checkpointStore := newReceiptTestStore(t)
@@ -126,7 +126,7 @@ func TestComputeTransactionReceipt_PropagatesReaderError(t *testing.T) {
 		store:         newReceiptTestStore(t),
 	}
 
-	tx := &commonpb.Transaction{Timestamp: &commonpb.Timestamp{Data: 1700000000}}
+	tx := &commonpb.Transaction{Timestamp: 1700000000}
 
 	_, err := impl.computeTransactionReceipt(context.Background(), emptyReader, "missing", 1, tx)
 	require.Error(t, err)
@@ -183,7 +183,7 @@ func TestComputeTransactionReceipt_RevertTransactionHasNoReceipt(t *testing.T) {
 
 	attrs := attributes.New()
 	store := newReceiptTestStore(t)
-	tx := &commonpb.Transaction{Id: txID, Timestamp: &commonpb.Timestamp{Data: 1700000000}}
+	tx := &commonpb.Transaction{Id: txID, Timestamp: 1700000000}
 	seedRevertedTransaction(t, store, attrs, ledger, txID, logSeq, tx)
 
 	impl := &BucketServiceServerImpl{

@@ -110,7 +110,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	proposal := &raftcmdpb.Proposal{
 		Id:     e.raftIndex,
 		Orders: orders,
-		Date:   &commonpb.Timestamp{Data: 1700000000 + e.raftIndex},
+		Date:   1700000000 + e.raftIndex,
 	}
 
 	// Track which keys were modified in this batch
@@ -327,7 +327,7 @@ func testAuditItems(serializedOrders [][]byte, results []*raftcmdpb.CreatedLogOr
 // scopeImpl implements processing.Scope using the testEngine's in-memory state.
 type scopeImpl struct {
 	engine           *testEngine
-	date             *commonpb.Timestamp
+	date             uint64
 	modifiedVolumes  map[string]struct{}
 	modifiedMetadata map[string]struct{}
 	modifiedTxStates map[string]struct{}
@@ -565,12 +565,8 @@ func (s *scopeImpl) IncrementNextLedgerID() uint32 {
 	return id
 }
 
-func (s *scopeImpl) GetDate() commonpb.TimestampReader {
-	if s.date == nil {
-		return nil
-	}
-
-	return s.date.AsReader()
+func (s *scopeImpl) GetDate() commonpb.Timestamp {
+	return commonpb.Timestamp(s.date)
 }
 
 func (s *scopeImpl) GetCurrentOpenChapter() (commonpb.ChapterReader, bool) {
@@ -1069,7 +1065,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 			Type: &commonpb.LogPayload_CreateLedger{
 				CreateLedger: &commonpb.CreatedLedgerLog{
 					Name:      "test",
-					CreatedAt: &commonpb.Timestamp{Data: 1700000000},
+					CreatedAt: 1700000000,
 				},
 			},
 		},
@@ -1083,7 +1079,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 			Type: &commonpb.LogPayload_CreateLedger{
 				CreateLedger: &commonpb.CreatedLedgerLog{
 					Name:      "test2",
-					CreatedAt: &commonpb.Timestamp{Data: 1700000002},
+					CreatedAt: 1700000002,
 				},
 			},
 		},
@@ -1532,7 +1528,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreatedLedgerLog{
-				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
+				Name: "test", CreatedAt: 1700000000,
 			},
 		},
 	})
@@ -1630,7 +1626,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreatedLedgerLog{
-				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
+				Name: "test", CreatedAt: 1700000000,
 			},
 		},
 	})

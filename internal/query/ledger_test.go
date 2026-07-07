@@ -73,7 +73,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 
 	const ledgerName = "test-ledger"
 
-	createdAt := commonpb.NewTimestamp(libtime.Now())
+	createdAt := uint64(commonpb.NewTimestamp(libtime.Now()))
 	batch := s.OpenWriteSession()
 	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      ledgerName,
@@ -112,10 +112,10 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	ledgers, err := collectLedgers(cursor)
 	require.NoError(t, err)
 	require.Len(t, ledgers, 1)
-	require.Nil(t, ledgers[0].GetDeletedAt())
+	require.Equal(t, uint64(0), ledgers[0].GetDeletedAt())
 
 	// Soft delete ledger
-	deletedAt := commonpb.NewTimestamp(libtime.Now())
+	deletedAt := uint64(commonpb.NewTimestamp(libtime.Now()))
 	batch = s.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      ledgerName,
@@ -130,8 +130,8 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
 	require.Len(t, ledgers, 1)
-	require.NotNil(t, ledgers[0].GetDeletedAt())
-	require.Equal(t, deletedAt.GetData(), ledgers[0].GetDeletedAt().GetData())
+	require.NotEqual(t, uint64(0), ledgers[0].GetDeletedAt())
+	require.Equal(t, deletedAt, ledgers[0].GetDeletedAt())
 
 	// Verify data still exists (soft delete doesn't remove data)
 	volumeResult, err := attrs.Volume.Get(s, worldCanonicalKey)

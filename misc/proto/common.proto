@@ -4,15 +4,18 @@ package common;
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
 
+import "ledger_options.proto";
 import "signature.proto";
 
 // ============================================================================
 // Core Data Types
 // ============================================================================
 
-message Timestamp {
-  fixed64 data = 1;
-}
+// Timestamps across the schema are wire-inlined as `fixed64` fields carrying
+// microseconds since the Unix epoch. Zero-value means "unset" for nullable
+// timestamp fields (e.g. reverted_at, deleted_at) — the ledger's HLC never
+// produces 0 in practice. The Go value type `commonpb.Timestamp` wraps this
+// scalar; see internal/proto/commonpb/timestamp.go.
 
 // NullValue represents a metadata value that could not be converted to the
 // declared type. It preserves the original raw value for debugging, but
@@ -67,13 +70,13 @@ message Posting {
 message Transaction {
   repeated Posting postings = 1;
   map<string, MetadataValue> metadata = 2;
-  Timestamp timestamp = 3;
+  fixed64 timestamp = 3 [(ledger.value_type) = "commonpb.Timestamp"];
   string reference = 4;
   fixed64 id = 5;
   bool reverted = 6;
-  Timestamp inserted_at = 7;
-  Timestamp updated_at = 8;
-  Timestamp reverted_at = 9;
+  fixed64 inserted_at = 7 [(ledger.value_type) = "commonpb.Timestamp"];
+  fixed64 updated_at = 8 [(ledger.value_type) = "commonpb.Timestamp"];
+  fixed64 reverted_at = 9 [(ledger.value_type) = "commonpb.Timestamp"];
 }
 
 message Script {
@@ -117,9 +120,9 @@ message PostCommitVolumes {
 message Account {
   string address = 1;
   map<string, MetadataValue> metadata = 2;
-  Timestamp first_usage = 3;
-  Timestamp insertion_date = 4;
-  Timestamp updated_at = 5;
+  fixed64 first_usage = 3 [(ledger.value_type) = "commonpb.Timestamp"];
+  fixed64 insertion_date = 4 [(ledger.value_type) = "commonpb.Timestamp"];
+  fixed64 updated_at = 5 [(ledger.value_type) = "commonpb.Timestamp"];
   map<string, VolumesWithBalance> volumes = 6;  // Volumes per asset
 }
 
@@ -251,8 +254,8 @@ message Index {
   // (e.g. CreateIndex or SetMetadataFieldType). NOT consulted by the
   // query path — see forward_encoding_version below.
   IndexBuildStatus build_status = 2;
-  Timestamp created_at = 3;
-  Timestamp last_built_at = 4;
+  fixed64 created_at = 3 [(ledger.value_type) = "commonpb.Timestamp"];
+  fixed64 last_built_at = 4 [(ledger.value_type) = "commonpb.Timestamp"];
   string last_error = 5;
   string ledger = 6;  // empty for bucket-scoped indexes
   // Cluster-wide forward-encoding version. Bumped at every event that
@@ -483,7 +486,7 @@ message NumscriptInfo {
   string name = 1;
   string content = 2;
   string version = 3;
-  Timestamp created_at = 4;
+  fixed64 created_at = 4 [(ledger.value_type) = "commonpb.Timestamp"];
   string ledger = 5;
 }
 
@@ -543,7 +546,7 @@ message SinkStatus {
 // SinkError records a sink failure.
 message SinkError {
   string message = 1;
-  Timestamp occurred_at = 2;
+  fixed64 occurred_at = 2 [(ledger.value_type) = "commonpb.Timestamp"];
 }
 
 // NatsSinkConfig holds NATS JetStream sink configuration.
@@ -600,7 +603,7 @@ message DatabricksOAuthM2M {
 // a mutable pointer between the FSM store and the immutable log payload.
 message CreatedLedgerLog {
   string name = 1;
-  Timestamp created_at = 2;
+  fixed64 created_at = 2 [(ledger.value_type) = "commonpb.Timestamp"];
   MetadataSchema metadata_schema = 3;
   LedgerMode mode = 4;
   MirrorSourceConfig mirror_source = 5;
@@ -611,7 +614,7 @@ message CreatedLedgerLog {
 
 message DeletedLedgerLog {
   string name = 1;
-  Timestamp deleted_at = 2;
+  fixed64 deleted_at = 2 [(ledger.value_type) = "commonpb.Timestamp"];
 }
 
 message ApplyLedgerLog {
@@ -621,7 +624,7 @@ message ApplyLedgerLog {
 
 message LedgerLog {
   LedgerLogPayload data = 1;
-  Timestamp date = 2;
+  fixed64 date = 2 [(ledger.value_type) = "commonpb.Timestamp"];
   fixed64 id = 3;
   // Volumes (account+asset) whose ephemeral state was purged (zero balance)
   // by THIS log specifically. Subset of the proposal's purged universe —
@@ -732,8 +735,8 @@ enum ChapterStatus {
 
 message Chapter {
   fixed64 id = 1;
-  Timestamp start = 2;
-  Timestamp end = 3;
+  fixed64 start = 2 [(ledger.value_type) = "commonpb.Timestamp"];
+  fixed64 end = 3 [(ledger.value_type) = "commonpb.Timestamp"];
   ChapterStatus status = 4;
   fixed64 close_sequence = 5;
   bytes sealing_hash = 6;
@@ -832,7 +835,7 @@ message PostgresAwsIamAuth {
 
 message MirrorSyncError {
   string message = 1;
-  Timestamp occurred_at = 2;
+  fixed64 occurred_at = 2 [(ledger.value_type) = "commonpb.Timestamp"];
 }
 
 enum MirrorSyncState {
@@ -858,8 +861,8 @@ message MirrorSyncProgress {
 // SubAttrIndex registry and surfaced via BucketService.ListIndexes.
 message LedgerInfo {
   string name = 1;                          // Ledger name
-  Timestamp created_at = 2;                 // Creation timestamp
-  Timestamp deleted_at = 3;                 // Soft delete timestamp (nil if not deleted)
+  fixed64 created_at = 2 [(ledger.value_type) = "commonpb.Timestamp"];                 // Creation timestamp
+  fixed64 deleted_at = 3 [(ledger.value_type) = "commonpb.Timestamp"];                 // Soft delete timestamp (nil if not deleted)
   MetadataSchema metadata_schema = 4;       // Per-key metadata type declarations
   LedgerMode mode = 5;                      // Normal or mirror mode
   MirrorSourceConfig mirror_source = 6;     // Mirror source config (set when mode=MIRROR)
@@ -894,7 +897,7 @@ message TransactionState {
   // Effective timestamp of the transaction (user-provided or command date at
   // creation). Required for at_effective_date reverts to be deterministic
   // without re-reading the original log from Pebble.
-  Timestamp timestamp = 4;
+  fixed64 timestamp = 4 [(ledger.value_type) = "commonpb.Timestamp"];
   // Postings captured at creation. Populated by processCreateTransaction (and
   // the mirror equivalent) so a later revert reads them from the FSM cache
   // without needing to scan the Pebble-backed log — invariant #3 (no Pebble
@@ -913,7 +916,7 @@ message IdempotencyKeyValue {
   fixed64 first_log_sequence = 1;  // sequence of the proposal's first committed log
   bytes hash = 2;
   uint32 hash_version = 3;  // Hash algorithm version (0 = legacy = v1)
-  fixed64 created_at = 4;    // HLC microseconds (from Raft entry timestamp)
+  fixed64 created_at = 4 [(ledger.value_type) = "commonpb.Timestamp"];    // HLC microseconds (from Raft entry timestamp)
   IdempotencyFailure failure = 5;  // set instead of the log refs when the first apply was a definitive business failure
   uint32 log_count = 6;  // number of contiguous logs the proposal committed; 0 with failure set
 }

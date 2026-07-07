@@ -151,9 +151,9 @@ func FuzzTimestampUnmarshalJSON(f *testing.F) {
 		}
 
 		// Microsecond precision: the round-trip must preserve the stored value.
-		if ts.GetData() != ts2.GetData() {
+		if ts != ts2 {
 			t.Fatalf("round-trip mismatch: %d vs %d (input=%q, output=%q)",
-				ts.GetData(), ts2.GetData(), data, out)
+				uint64(ts), uint64(ts2), data, out)
 		}
 	})
 }

@@ -12,9 +12,10 @@ import (
 type EventReader interface {
 	GetType() commonpb.EventType
 	GetLedger() string
-	GetDate() commonpb.TimestampReader
+	GetDate() uint64
 	GetLogSequence() uint64
 	GetLog() commonpb.LogReader
+	DateTs() commonpb.Timestamp
 	Mutate() *Event
 }
 
@@ -28,12 +29,8 @@ func (r *eventReadonly) GetLedger() string {
 	return (*Event)(r).GetLedger()
 }
 
-func (r *eventReadonly) GetDate() commonpb.TimestampReader {
-	v := (*Event)(r).GetDate()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *eventReadonly) GetDate() uint64 {
+	return (*Event)(r).GetDate()
 }
 
 func (r *eventReadonly) GetLogSequence() uint64 {
@@ -46,6 +43,10 @@ func (r *eventReadonly) GetLog() commonpb.LogReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *eventReadonly) DateTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*Event)(r).GetDate())
 }
 
 func (r *eventReadonly) Mutate() *Event {
@@ -63,6 +64,11 @@ func (m *Event) AsReader() EventReader {
 // Mutate returns a mutable deep clone of this Event.
 func (m *Event) Mutate() *Event {
 	return m.CloneVT()
+}
+
+// DateTs returns the Date field wrapped in commonpb.Timestamp.
+func (m *Event) DateTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetDate())
 }
 
 // EventListReader provides read-only iteration over []*Event.

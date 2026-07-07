@@ -224,9 +224,9 @@ func Test_appendAuditEntries(t *testing.T) {
 	s := newTestStore(t)
 
 	entries := []*auditpb.AuditEntry{
-		{Sequence: 1, ProposalId: 10, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		{Sequence: 2, ProposalId: 20, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		{Sequence: 3, ProposalId: 30, Timestamp: commonpb.NewTimestamp(libtime.Now())},
+		{Sequence: 1, ProposalId: 10, Timestamp: uint64(commonpb.NewTimestamp(libtime.Now()))},
+		{Sequence: 2, ProposalId: 20, Timestamp: uint64(commonpb.NewTimestamp(libtime.Now()))},
+		{Sequence: 3, ProposalId: 30, Timestamp: uint64(commonpb.NewTimestamp(libtime.Now()))},
 	}
 
 	batch := s.OpenWriteSession()
@@ -371,9 +371,9 @@ func TestReadLastAuditSequence(t *testing.T) {
 	// Add audit entries
 	batch := s.OpenWriteSession()
 	require.NoError(t, appendAuditEntries(batch,
-		&auditpb.AuditEntry{Sequence: 10, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		&auditpb.AuditEntry{Sequence: 20, Timestamp: commonpb.NewTimestamp(libtime.Now())},
-		&auditpb.AuditEntry{Sequence: 30, Timestamp: commonpb.NewTimestamp(libtime.Now())},
+		&auditpb.AuditEntry{Sequence: 10, Timestamp: uint64(commonpb.NewTimestamp(libtime.Now()))},
+		&auditpb.AuditEntry{Sequence: 20, Timestamp: uint64(commonpb.NewTimestamp(libtime.Now()))},
+		&auditpb.AuditEntry{Sequence: 30, Timestamp: uint64(commonpb.NewTimestamp(libtime.Now()))},
 	))
 	require.NoError(t, batch.Commit())
 
@@ -472,7 +472,7 @@ func TestReadAuditEntry(t *testing.T) {
 		&auditpb.AuditEntry{
 			Sequence:   42,
 			ProposalId: 100,
-			Timestamp:  commonpb.NewTimestamp(libtime.Now()),
+			Timestamp:  uint64(commonpb.NewTimestamp(libtime.Now())),
 		},
 	))
 	require.NoError(t, batch.Commit())

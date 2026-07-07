@@ -101,7 +101,7 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 				LedgerName: ledger,
 				Log: &commonpb.LedgerLog{
 					Data: logPayload,
-					Date: s.GetDate().Mutate(),
+					Date: s.GetDate().Micros(),
 					Id:   nextLogID,
 				},
 			},
@@ -154,8 +154,8 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 	boundaries.PostingCount += uint64(len(ct.GetPostings()))
 
 	timestamp := ct.GetTimestamp()
-	if timestamp == nil {
-		timestamp = s.GetDate().Mutate()
+	if timestamp == 0 {
+		timestamp = s.GetDate().Micros()
 	}
 
 	// Record transaction state (include metadata from the mirrored transaction)
@@ -206,8 +206,8 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 					Timestamp:  timestamp,
 					Reference:  ct.GetReference(),
 					Id:         txID,
-					InsertedAt: s.GetDate().Mutate(),
-					UpdatedAt:  s.GetDate().Mutate(),
+					InsertedAt: s.GetDate().Micros(),
+					UpdatedAt:  s.GetDate().Micros(),
 				},
 				AccountMetadata: accountMetadata,
 				ChapterId:       chapterID,
@@ -351,8 +351,8 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	}
 
 	timestamp := rt.GetTimestamp()
-	if timestamp == nil {
-		timestamp = s.GetDate().Mutate()
+	if timestamp == 0 {
+		timestamp = s.GetDate().Micros()
 	}
 
 	// Store the revert transaction's state (include metadata from the mirror revert)
@@ -372,8 +372,8 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 					Metadata:   rt.GetMetadata(),
 					Timestamp:  timestamp,
 					Id:         revertTxID,
-					InsertedAt: s.GetDate().Mutate(),
-					UpdatedAt:  s.GetDate().Mutate(),
+					InsertedAt: s.GetDate().Micros(),
+					UpdatedAt:  s.GetDate().Micros(),
 				},
 			},
 		},

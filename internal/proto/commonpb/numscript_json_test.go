@@ -18,7 +18,7 @@ func TestNumscriptInfo_MarshalJSON_CamelCase(t *testing.T) {
 		Name:      "my-script",
 		Content:   "send [USD/2 1] (source=@world destination=@a)",
 		Version:   "1.0.0",
-		CreatedAt: &Timestamp{Data: 1_700_000_000_000_000},
+		CreatedAt: 1_700_000_000_000_000,
 		Ledger:    "ledger1",
 	}
 

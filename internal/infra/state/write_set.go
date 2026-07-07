@@ -41,7 +41,7 @@ type maintenanceModeUpdate struct {
 type WriteSet struct {
 	fsm                   *Machine
 	attrs                 *attributes.Attributes
-	Date                  *commonpb.Timestamp
+	Date                  uint64
 	NextSequenceID        uint64
 	NextAuditSequenceID   uint64
 	NextLedgerID          uint32
@@ -825,7 +825,7 @@ func NewWriteSet(fsm *Machine) *WriteSet {
 // state while preserving allocated maps and slice backing arrays. The
 // coverage gate lives one layer up on gatedScope; WriteSet itself is the
 // raw engine (Derived → KeyStore → cache).
-func (b *WriteSet) Reset(at *commonpb.Timestamp) {
+func (b *WriteSet) Reset(at uint64) {
 	b.Date = at
 	b.NextSequenceID = b.fsm.State.NextSequenceID
 	b.NextAuditSequenceID = b.fsm.State.NextAuditSequenceID
@@ -1225,7 +1225,7 @@ func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.Idempo
 		return nil, err
 	}
 
-	if b.fsm.Registry.Idempotency.IsExpired(value, b.Date.GetData()) {
+	if b.fsm.Registry.Idempotency.IsExpired(value, b.Date) {
 		return nil, nil
 	}
 
@@ -1236,7 +1236,7 @@ func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.Idempo
 // idempotency overlay. Not part of the Scope contract; kept on the
 // WriteSet for parity with GetIdempotencyKey and the unit tests.
 func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
-	value.CreatedAt = b.Date.GetData() // HLC timestamp
+	value.CreatedAt = b.Date // HLC timestamp
 	b.Derived.Idempotency.Put(key.Key, value)
 }
 
@@ -1353,12 +1353,8 @@ func (b *WriteSet) IncrementNextLedgerID() uint32 {
 	return id
 }
 
-func (b *WriteSet) GetDate() commonpb.TimestampReader {
-	if b.Date == nil {
-		return nil
-	}
-
-	return b.Date.AsReader()
+func (b *WriteSet) GetDate() commonpb.Timestamp {
+	return commonpb.Timestamp(b.Date)
 }
 
 // SetDate updates the proposal date late in the apply cycle. The technical-
@@ -1366,7 +1362,7 @@ func (b *WriteSet) GetDate() commonpb.TimestampReader {
 // orders follow, applyProposal computes the HLC-advanced effective date and
 // pushes it here so order handlers see the monotonic timestamp. The overlay
 // (Derived) is preserved — only the timestamp field is rewired.
-func (b *WriteSet) SetDate(date *commonpb.Timestamp) {
+func (b *WriteSet) SetDate(date uint64) {
 	b.Date = date
 }
 

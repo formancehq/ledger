@@ -151,8 +151,8 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Name:       %s\n", pterm.Gray(deleteLedgerLog.GetName()))
 
 	deletedAt := "-"
-	if deleteLedgerLog.GetDeletedAt() != nil {
-		deletedAt = deleteLedgerLog.GetDeletedAt().AsTime().Format(time.RFC3339)
+	if deleteLedgerLog.GetDeletedAt() != 0 {
+		deletedAt = deleteLedgerLog.DeletedAtTs().AsTime().Format(time.RFC3339)
 	}
 
 	pterm.Printf("Deleted At: %s\n", deletedAt)

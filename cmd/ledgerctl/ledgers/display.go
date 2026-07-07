@@ -100,8 +100,8 @@ func renderMirrorSyncProgress(progress *commonpb.MirrorSyncProgress) {
 	if progress.GetError() != nil {
 		pterm.Printf("  Error:     %s\n", pterm.Red(progress.GetError().GetMessage()))
 
-		if progress.GetError().GetOccurredAt() != nil {
-			pterm.Printf("  Error At:  %s\n", progress.GetError().GetOccurredAt().AsTime().Format("2006-01-02T15:04:05Z07:00"))
+		if progress.GetError().GetOccurredAt() != 0 {
+			pterm.Printf("  Error At:  %s\n", commonpb.Timestamp(progress.GetError().GetOccurredAt()).AsTime().Format("2006-01-02T15:04:05Z07:00"))
 		}
 	}
 }

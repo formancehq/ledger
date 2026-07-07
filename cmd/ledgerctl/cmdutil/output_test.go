@@ -106,7 +106,7 @@ func TestEncodeStructured(t *testing.T) {
 		msg := &commonpb.NumscriptInfo{
 			Name:      "myscript",
 			Version:   "v1",
-			CreatedAt: &commonpb.Timestamp{Data: 1000},
+			CreatedAt: 1000,
 		}
 
 		cmd := &cobra.Command{}
@@ -129,7 +129,7 @@ func TestEncodeStructured(t *testing.T) {
 		msg := &commonpb.NumscriptInfo{
 			Name:      "myscript",
 			Version:   "v1",
-			CreatedAt: &commonpb.Timestamp{Data: 1000},
+			CreatedAt: 1000,
 		}
 
 		cmd := &cobra.Command{}
@@ -148,7 +148,7 @@ func TestEncodeStructured(t *testing.T) {
 
 	t.Run("proto slice json uses camelCase", func(t *testing.T) {
 		msgs := []*commonpb.NumscriptInfo{
-			{Name: "a", Version: "v1", CreatedAt: &commonpb.Timestamp{Data: 1000}},
+			{Name: "a", Version: "v1", CreatedAt: 1000},
 			{Name: "b", Version: "v2"},
 		}
 
@@ -177,7 +177,7 @@ func TestEncodeStructured(t *testing.T) {
 					Asset:       "USD",
 				},
 			},
-			Timestamp: &commonpb.Timestamp{Data: 1_776_864_120_966_130},
+			Timestamp: 1_776_864_120_966_130,
 		}
 
 		cmd := &cobra.Command{}
@@ -213,7 +213,7 @@ func TestEncodeStructured(t *testing.T) {
 						Asset:       "EUR",
 					},
 				},
-				Timestamp: &commonpb.Timestamp{Data: 1_000_000_000_000},
+				Timestamp: 1_000_000_000_000,
 			},
 		}
 
@@ -235,7 +235,7 @@ func TestEncodeStructured(t *testing.T) {
 		data := map[string]any{
 			"info": &commonpb.NumscriptInfo{
 				Name:      "x",
-				CreatedAt: &commonpb.Timestamp{Data: 1000},
+				CreatedAt: 1000,
 			},
 			"items": []*commonpb.NumscriptInfo{
 				{Name: "y", Version: "v1"},

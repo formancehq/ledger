@@ -3693,13 +3693,14 @@ func NewResponseSigningInfoListReader(s []*ResponseSigningInfo) ResponseSigningI
 type CreateTransactionPayloadReader interface {
 	GetPostings() commonpb.PostingListReader
 	GetScript() commonpb.ScriptReader
-	GetTimestamp() commonpb.TimestampReader
+	GetTimestamp() uint64
 	GetReference() string
 	GetMetadata() CreateTransactionPayload_MetadataMapReader
 	GetAccountMetadata() CreateTransactionPayload_AccountMetadataMapReader
 	GetForce() bool
 	GetExpandVolumes() bool
 	GetScriptReference() ScriptReferenceReader
+	TimestampTs() commonpb.Timestamp
 	Mutate() *CreateTransactionPayload
 }
 
@@ -3717,12 +3718,8 @@ func (r *createTransactionPayloadReadonly) GetScript() commonpb.ScriptReader {
 	return v.AsReader()
 }
 
-func (r *createTransactionPayloadReadonly) GetTimestamp() commonpb.TimestampReader {
-	v := (*CreateTransactionPayload)(r).GetTimestamp()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *createTransactionPayloadReadonly) GetTimestamp() uint64 {
+	return (*CreateTransactionPayload)(r).GetTimestamp()
 }
 
 func (r *createTransactionPayloadReadonly) GetReference() string {
@@ -3753,6 +3750,10 @@ func (r *createTransactionPayloadReadonly) GetScriptReference() ScriptReferenceR
 	return v.AsReader()
 }
 
+func (r *createTransactionPayloadReadonly) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*CreateTransactionPayload)(r).GetTimestamp())
+}
+
 func (r *createTransactionPayloadReadonly) Mutate() *CreateTransactionPayload {
 	return (*CreateTransactionPayload)(r).CloneVT()
 }
@@ -3768,6 +3769,11 @@ func (m *CreateTransactionPayload) AsReader() CreateTransactionPayloadReader {
 // Mutate returns a mutable deep clone of this CreateTransactionPayload.
 func (m *CreateTransactionPayload) Mutate() *CreateTransactionPayload {
 	return m.CloneVT()
+}
+
+// TimestampTs returns the Timestamp field wrapped in commonpb.Timestamp.
+func (m *CreateTransactionPayload) TimestampTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetTimestamp())
 }
 
 // CreateTransactionPayloadListReader provides read-only iteration over []*CreateTransactionPayload.
@@ -7808,29 +7814,23 @@ func NewNormalizedPostingListReader(s []*NormalizedPosting) NormalizedPostingLis
 // TemporalStatsReader provides read-only access to TemporalStats.
 // Call Mutate() to obtain a mutable clone.
 type TemporalStatsReader interface {
-	GetFirstSeen() commonpb.TimestampReader
-	GetLastSeen() commonpb.TimestampReader
+	GetFirstSeen() uint64
+	GetLastSeen() uint64
 	GetTransactionsPerDay() float64
 	GetPeakHours() HourBucketListReader
+	FirstSeenTs() commonpb.Timestamp
+	LastSeenTs() commonpb.Timestamp
 	Mutate() *TemporalStats
 }
 
 type temporalStatsReadonly TemporalStats
 
-func (r *temporalStatsReadonly) GetFirstSeen() commonpb.TimestampReader {
-	v := (*TemporalStats)(r).GetFirstSeen()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *temporalStatsReadonly) GetFirstSeen() uint64 {
+	return (*TemporalStats)(r).GetFirstSeen()
 }
 
-func (r *temporalStatsReadonly) GetLastSeen() commonpb.TimestampReader {
-	v := (*TemporalStats)(r).GetLastSeen()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *temporalStatsReadonly) GetLastSeen() uint64 {
+	return (*TemporalStats)(r).GetLastSeen()
 }
 
 func (r *temporalStatsReadonly) GetTransactionsPerDay() float64 {
@@ -7839,6 +7839,14 @@ func (r *temporalStatsReadonly) GetTransactionsPerDay() float64 {
 
 func (r *temporalStatsReadonly) GetPeakHours() HourBucketListReader {
 	return NewHourBucketListReader((*TemporalStats)(r).GetPeakHours())
+}
+
+func (r *temporalStatsReadonly) FirstSeenTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*TemporalStats)(r).GetFirstSeen())
+}
+
+func (r *temporalStatsReadonly) LastSeenTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*TemporalStats)(r).GetLastSeen())
 }
 
 func (r *temporalStatsReadonly) Mutate() *TemporalStats {
@@ -7856,6 +7864,16 @@ func (m *TemporalStats) AsReader() TemporalStatsReader {
 // Mutate returns a mutable deep clone of this TemporalStats.
 func (m *TemporalStats) Mutate() *TemporalStats {
 	return m.CloneVT()
+}
+
+// FirstSeenTs returns the FirstSeen field wrapped in commonpb.Timestamp.
+func (m *TemporalStats) FirstSeenTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetFirstSeen())
+}
+
+// LastSeenTs returns the LastSeen field wrapped in commonpb.Timestamp.
+func (m *TemporalStats) LastSeenTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetLastSeen())
 }
 
 // TemporalStatsListReader provides read-only iteration over []*TemporalStats.

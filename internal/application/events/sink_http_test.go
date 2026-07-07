@@ -68,7 +68,7 @@ func TestHTTPSink_Publish_Success(t *testing.T) {
 			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 			Ledger:      "orders",
 			LogSequence: 1,
-			Date:        &commonpb.Timestamp{Data: 1000},
+			Date:        1000,
 		},
 	}
 

@@ -19,7 +19,7 @@ func (l *LedgerLog) WithDate(date time.Time) *LedgerLog {
 		l = &LedgerLog{}
 	}
 
-	l.Date = NewTimestamp(date)
+	l.Date = uint64(NewTimestamp(date))
 
 	return l
 }
@@ -52,7 +52,7 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 	}
 
 	if rawLog.Date != nil {
-		l.Date = NewTimestamp(*rawLog.Date)
+		l.Date = uint64(NewTimestamp(*rawLog.Date))
 	}
 
 	if rawLog.ID != nil {
@@ -123,8 +123,8 @@ func (l *LedgerLog) MarshalJSON() ([]byte, error) {
 		Data: l.GetData(),
 	}
 
-	if l.GetDate() != nil {
-		t := l.GetDate().AsTime()
+	if ts := l.DateTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.Date = &t
 	}
 

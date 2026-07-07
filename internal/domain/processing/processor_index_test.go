@@ -27,10 +27,10 @@ func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
 	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	now := &commonpb.Timestamp{Data: 1}
+	now := uint64(1)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 
 	// Shared Indexes stub: Get returns ErrNotFound (entry not present yet);
 	// Put captures the new entry written by processCreateIndex.
@@ -124,7 +124,7 @@ func TestProcessDeleteLedger_DoesNotTouchIndexRegistry(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 4}).AsReader(), nil)
-	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(1))
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	// No DeleteIndex / RangeIndexes — the deferred Pebble range delete is
 	// derived from the DeletedLedgerLog by the WriteSet sink via Absorb at

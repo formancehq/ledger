@@ -40,12 +40,11 @@ func (m *Event) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x21
 	}
-	if m.Date != nil {
-		size, _ := m.Date.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Date != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Date))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)

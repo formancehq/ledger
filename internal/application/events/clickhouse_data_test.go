@@ -121,13 +121,13 @@ func TestEventToClickHouseJSON_CommittedTransaction(t *testing.T) {
 						LedgerName: "payments",
 						Log: &commonpb.LedgerLog{
 							Id:   1,
-							Date: &commonpb.Timestamp{Data: 1700000100},
+							Date: 1700000100,
 							Data: &commonpb.LedgerLogPayload{
 								Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 									CreatedTransaction: &commonpb.CreatedTransaction{
 										Transaction: &commonpb.Transaction{
 											Id:        1,
-											Timestamp: &commonpb.Timestamp{Data: 1700000100},
+											Timestamp: 1700000100,
 											Postings: []*commonpb.Posting{
 												{
 													Source:      "world",
@@ -140,7 +140,7 @@ func TestEventToClickHouseJSON_CommittedTransaction(t *testing.T) {
 												"type": commonpb.NewStringValue("transfer"),
 											},
 											Reference:  "tx-001",
-											InsertedAt: &commonpb.Timestamp{Data: 1700000100},
+											InsertedAt: 1700000100,
 										},
 										AccountMetadata: map[string]*commonpb.MetadataMap{
 											"users:001": {
@@ -199,14 +199,14 @@ func TestEventToClickHouseJSON_RevertedTransaction(t *testing.T) {
 						LedgerName: "payments",
 						Log: &commonpb.LedgerLog{
 							Id:   2,
-							Date: &commonpb.Timestamp{Data: 1700000200},
+							Date: 1700000200,
 							Data: &commonpb.LedgerLogPayload{
 								Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 									RevertedTransaction: &commonpb.RevertedTransaction{
 										RevertedTransactionId: 1,
 										RevertTransaction: &commonpb.Transaction{
 											Id:        2,
-											Timestamp: &commonpb.Timestamp{Data: 1700000200},
+											Timestamp: 1700000200,
 											Postings: []*commonpb.Posting{
 												{
 													Source:      "users:001",
@@ -215,7 +215,7 @@ func TestEventToClickHouseJSON_RevertedTransaction(t *testing.T) {
 													Asset:       "USD/2",
 												},
 											},
-											InsertedAt: &commonpb.Timestamp{Data: 1700000200},
+											InsertedAt: 1700000200,
 										},
 									},
 								},
@@ -253,7 +253,7 @@ func TestEventToClickHouseJSON_SavedMetadata_Account(t *testing.T) {
 						LedgerName: "orders",
 						Log: &commonpb.LedgerLog{
 							Id:   3,
-							Date: &commonpb.Timestamp{Data: 1700000300},
+							Date: 1700000300,
 							Data: &commonpb.LedgerLogPayload{
 								Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 									SavedMetadata: &commonpb.SavedMetadata{
@@ -302,7 +302,7 @@ func TestEventToClickHouseJSON_DeletedMetadata_Transaction(t *testing.T) {
 						LedgerName: "orders",
 						Log: &commonpb.LedgerLog{
 							Id:   4,
-							Date: &commonpb.Timestamp{Data: 1700000400},
+							Date: 1700000400,
 							Data: &commonpb.LedgerLogPayload{
 								Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 									DeletedMetadata: &commonpb.DeletedMetadata{
@@ -652,8 +652,8 @@ func TestSinkTime_MarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	// 2023-11-14 22:13:20 UTC (timestamp 1700000000)
-	ts := &commonpb.Timestamp{Data: 1700000000}
-	goTime := ts.AsTime().Time
+	ts := uint64(1700000000)
+	goTime := commonpb.Timestamp(ts).AsTime().Time
 	ct := sinkTime(goTime)
 
 	data, err := ct.MarshalJSON()

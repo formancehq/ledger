@@ -53,7 +53,7 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 	// from the same code path the historical IndexReady test exercised.
 	proposal := &raftcmdpb.Proposal{
 		Id:            1,
-		Date:          &commonpb.Timestamp{Data: 1700000000},
+		Date:          1700000000,
 		ExecutionPlan: executionPlan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{
 			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "missed", Cursor: 1}}},
@@ -133,7 +133,7 @@ func TestScope_TechnicalUpdate_PerUpdateCoverageIsolation(t *testing.T) {
 	// declared elsewhere in the plan.
 	proposal := &raftcmdpb.Proposal{
 		Id:            1,
-		Date:          &commonpb.Timestamp{Data: 1700000000},
+		Date:          1700000000,
 		ExecutionPlan: executionPlan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
 			CoverageBits: []byte{0b00000001}, // only "A"
@@ -172,7 +172,7 @@ func TestScope_OrderRead_RequiresCoverageEvenForOverlayHit(t *testing.T) {
 	// Empty ExecutionPlan → no plans declared → all reads must miss.
 	plan := &raftcmdpb.ExecutionPlan{}
 
-	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	fsm.writeSet.Reset(1)
 	buffer := fsm.writeSet
 	scope, err := NewScopeFactory(buffer, plan, fsm.logger, fsm.preloadMissCounter, 42).NewScope(nil)
 	require.NoError(t, err)
@@ -202,7 +202,7 @@ func TestScope_OrderDelete_RequiresCoverage(t *testing.T) {
 	// Empty ExecutionPlan → no plans declared → every gated operation must miss.
 	plan := &raftcmdpb.ExecutionPlan{}
 
-	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	fsm.writeSet.Reset(1)
 	buffer := fsm.writeSet
 	scope, err := NewScopeFactory(buffer, plan, fsm.logger, fsm.preloadMissCounter, 42).NewScope(nil)
 	require.NoError(t, err)

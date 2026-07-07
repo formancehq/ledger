@@ -963,6 +963,7 @@ func NewGetNodeTimeRequestListReader(s []*GetNodeTimeRequest) GetNodeTimeRequest
 // Call Mutate() to obtain a mutable clone.
 type NodeTimeReader interface {
 	GetTimestampUs() uint64
+	TimestampUsTs() commonpb.Timestamp
 	Mutate() *NodeTime
 }
 
@@ -970,6 +971,10 @@ type nodeTimeReadonly NodeTime
 
 func (r *nodeTimeReadonly) GetTimestampUs() uint64 {
 	return (*NodeTime)(r).GetTimestampUs()
+}
+
+func (r *nodeTimeReadonly) TimestampUsTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*NodeTime)(r).GetTimestampUs())
 }
 
 func (r *nodeTimeReadonly) Mutate() *NodeTime {
@@ -987,6 +992,11 @@ func (m *NodeTime) AsReader() NodeTimeReader {
 // Mutate returns a mutable deep clone of this NodeTime.
 func (m *NodeTime) Mutate() *NodeTime {
 	return m.CloneVT()
+}
+
+// TimestampUsTs returns the TimestampUs field wrapped in commonpb.Timestamp.
+func (m *NodeTime) TimestampUsTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetTimestampUs())
 }
 
 // NodeTimeListReader provides read-only iteration over []*NodeTime.
@@ -2927,7 +2937,8 @@ func NewGetQueryCheckpointScheduleResponseListReader(s []*GetQueryCheckpointSche
 type QueryCheckpointInfoReader interface {
 	GetCheckpointId() uint64
 	GetMaxSequence() uint64
-	GetCreatedAt() commonpb.TimestampReader
+	GetCreatedAt() uint64
+	CreatedAtTs() commonpb.Timestamp
 	Mutate() *QueryCheckpointInfo
 }
 
@@ -2941,12 +2952,12 @@ func (r *queryCheckpointInfoReadonly) GetMaxSequence() uint64 {
 	return (*QueryCheckpointInfo)(r).GetMaxSequence()
 }
 
-func (r *queryCheckpointInfoReadonly) GetCreatedAt() commonpb.TimestampReader {
-	v := (*QueryCheckpointInfo)(r).GetCreatedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *queryCheckpointInfoReadonly) GetCreatedAt() uint64 {
+	return (*QueryCheckpointInfo)(r).GetCreatedAt()
+}
+
+func (r *queryCheckpointInfoReadonly) CreatedAtTs() commonpb.Timestamp {
+	return commonpb.Timestamp((*QueryCheckpointInfo)(r).GetCreatedAt())
 }
 
 func (r *queryCheckpointInfoReadonly) Mutate() *QueryCheckpointInfo {
@@ -2964,6 +2975,11 @@ func (m *QueryCheckpointInfo) AsReader() QueryCheckpointInfoReader {
 // Mutate returns a mutable deep clone of this QueryCheckpointInfo.
 func (m *QueryCheckpointInfo) Mutate() *QueryCheckpointInfo {
 	return m.CloneVT()
+}
+
+// CreatedAtTs returns the CreatedAt field wrapped in commonpb.Timestamp.
+func (m *QueryCheckpointInfo) CreatedAtTs() commonpb.Timestamp {
+	return commonpb.Timestamp(m.GetCreatedAt())
 }
 
 // QueryCheckpointInfoListReader provides read-only iteration over []*QueryCheckpointInfo.

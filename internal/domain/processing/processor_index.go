@@ -37,7 +37,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	indexes.Put(ctx.Scope.Indexes(), info.GetName(), &commonpb.Index{
 		Id:          id,
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-		CreatedAt:   ctx.Scope.GetDate().Mutate(),
+		CreatedAt:   ctx.Scope.GetDate().Micros(),
 		Ledger:      ledger,
 		// First version each replica will build into when the initial
 		// backfill runs (cf. EN-1323 per-replica versioning).

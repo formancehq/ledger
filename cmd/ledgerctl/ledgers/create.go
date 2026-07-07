@@ -183,8 +183,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	pterm.Printf("Name:       %s\n", ledger.GetName())
 
 	createdAt := "-"
-	if ledger.GetCreatedAt() != nil {
-		createdAt = ledger.GetCreatedAt().AsTime().Format(time.RFC3339)
+	if ledger.GetCreatedAt() != 0 {
+		createdAt = ledger.CreatedAtTs().AsTime().Format(time.RFC3339)
 	}
 
 	pterm.Printf("Created At: %s\n", createdAt)

@@ -59,7 +59,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	ledgerInfo := &commonpb.LedgerInfo{
@@ -78,7 +78,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:001"},
 		Key:        "age",
 	}, nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	request := &servicepb.Request{
@@ -236,7 +236,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
@@ -257,7 +257,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 		require.Len(t, state.GetMetadata(), 1)
 		require.Contains(t, state.GetMetadata(), "status")
 	})
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	request := &servicepb.Request{

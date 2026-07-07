@@ -119,12 +119,12 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction().RevertTransaction
 			Expect(revertedTx).NotTo(BeNil())
-			Expect(revertedTx.Timestamp).NotTo(BeNil())
+			Expect(revertedTx.Timestamp).NotTo(BeZero())
 			// Parity with formancehq/ledger: at_effective_date stamps the
 			// compensating transaction with the original transaction's timestamp.
-			Expect(revertedTx.Timestamp.GetData()).To(Equal(createdTx.Timestamp.GetData()))
+			Expect(revertedTx.Timestamp).To(Equal(createdTx.Timestamp))
 			// And it must NOT match the apply (log) date, which is "now".
-			Expect(revertedTx.Timestamp.GetData()).NotTo(Equal(revertResp.Logs[0].Payload.GetApply().Log.Date.GetData()))
+			Expect(revertedTx.Timestamp).NotTo(Equal(revertResp.Logs[0].Payload.GetApply().Log.Date))
 		})
 
 		It("Should stamp the revert with the FSM date when atEffectiveDate is not set", func() {
@@ -143,10 +143,10 @@ var _ = Describe("Reversions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction().RevertTransaction
-			Expect(revertedTx.Timestamp).NotTo(BeNil())
+			Expect(revertedTx.Timestamp).NotTo(BeZero())
 			// Default behavior: revert is stamped at "now", not at the original effective date.
-			Expect(revertedTx.Timestamp.GetData()).NotTo(Equal(createdTx.Timestamp.GetData()))
-			Expect(revertedTx.Timestamp.GetData()).To(Equal(revertResp.Logs[0].Payload.GetApply().Log.Date.GetData()))
+			Expect(revertedTx.Timestamp).NotTo(Equal(createdTx.Timestamp))
+			Expect(revertedTx.Timestamp).To(Equal(revertResp.Logs[0].Payload.GetApply().Log.Date))
 		})
 
 		It("Should fail to revert a non-existent transaction", func() {

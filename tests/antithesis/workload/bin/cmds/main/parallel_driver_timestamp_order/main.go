@@ -83,7 +83,7 @@ func main() {
 			// Every third write carries a backdated user timestamp — input
 			// variety only: stored verbatim, no effect on HLC log dates.
 			if i%3 == 1 {
-				payload.Timestamp = &commonpb.Timestamp{Data: backdatedEpochMicros}
+				payload.Timestamp = backdatedEpochMicros
 			}
 
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -178,7 +178,7 @@ func main() {
 				}
 
 				seq := entry.GetSequence()
-				ts := applyLog.GetLog().GetDate().GetData()
+				ts := applyLog.GetLog().GetDate()
 
 				if haveLast {
 					if seq <= lastSeq {

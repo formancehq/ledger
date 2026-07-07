@@ -151,7 +151,7 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*
 	}
 	// Filter out soft-deleted ledgers, enrich with metadata, close handle when cursor closes
 	filtered := cursor.NewFilteredCursor(c, func(ledger *commonpb.LedgerInfo) bool {
-		if ledger.GetDeletedAt() != nil {
+		if ledger.GetDeletedAt() != 0 {
 			return false
 		}
 

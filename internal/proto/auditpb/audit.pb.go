@@ -8,6 +8,7 @@ package auditpb
 
 import (
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	_ "github.com/formancehq/ledger/v3/internal/proto/ledgeroptionspb"
 	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -30,7 +31,7 @@ const (
 type AuditEntry struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Sequence   uint64                 `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	Timestamp  *commonpb.Timestamp    `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Timestamp  uint64                 `protobuf:"fixed64,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	ProposalId uint64                 `protobuf:"fixed64,3,opt,name=proposal_id,json=proposalId,proto3" json:"proposal_id,omitempty"`
 	// Types that are valid to be assigned to Outcome:
 	//
@@ -122,11 +123,11 @@ func (x *AuditEntry) GetSequence() uint64 {
 	return 0
 }
 
-func (x *AuditEntry) GetTimestamp() *commonpb.Timestamp {
+func (x *AuditEntry) GetTimestamp() uint64 {
 	if x != nil {
 		return x.Timestamp
 	}
-	return nil
+	return 0
 }
 
 func (x *AuditEntry) GetProposalId() uint64 {
@@ -433,11 +434,11 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xc2\x04\n" +
+	"\vaudit.proto\x12\x05audit\x1a\x14ledger_options.proto\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xc7\x04\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
-	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
-	"\ttimestamp\x18\x02 \x01(\v2\x11.common.TimestampR\ttimestamp\x12\x1f\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence\x124\n" +
+	"\ttimestamp\x18\x02 \x01(\x06B\x16\x92\xc6,\x12commonpb.TimestampR\ttimestamp\x12\x1f\n" +
 	"\vproposal_id\x18\x03 \x01(\x06R\n" +
 	"proposalId\x12/\n" +
 	"\asuccess\x18\x04 \x01(\v2\x13.audit.AuditSuccessH\x00R\asuccess\x12/\n" +
@@ -488,27 +489,25 @@ var file_audit_proto_goTypes = []any{
 	(*AuditSuccess)(nil),                 // 2: audit.AuditSuccess
 	(*AuditFailure)(nil),                 // 3: audit.AuditFailure
 	nil,                                  // 4: audit.AuditFailure.ContextEntry
-	(*commonpb.Timestamp)(nil),           // 5: common.Timestamp
-	(*commonpb.CallerSnapshot)(nil),      // 6: common.CallerSnapshot
-	(*commonpb.Idempotency)(nil),         // 7: common.Idempotency
-	(*signaturepb.SignedApplyBatch)(nil), // 8: signature.SignedApplyBatch
-	(commonpb.ErrorReason)(0),            // 9: common.ErrorReason
+	(*commonpb.CallerSnapshot)(nil),      // 5: common.CallerSnapshot
+	(*commonpb.Idempotency)(nil),         // 6: common.Idempotency
+	(*signaturepb.SignedApplyBatch)(nil), // 7: signature.SignedApplyBatch
+	(commonpb.ErrorReason)(0),            // 8: common.ErrorReason
 }
 var file_audit_proto_depIdxs = []int32{
-	5, // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
-	2, // 1: audit.AuditEntry.success:type_name -> audit.AuditSuccess
-	3, // 2: audit.AuditEntry.failure:type_name -> audit.AuditFailure
-	1, // 3: audit.AuditEntry.items:type_name -> audit.AuditItem
-	6, // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
-	7, // 5: audit.AuditEntry.idempotency:type_name -> common.Idempotency
-	8, // 6: audit.AuditEntry.signature:type_name -> signature.SignedApplyBatch
-	9, // 7: audit.AuditFailure.reason:type_name -> common.ErrorReason
-	4, // 8: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	2, // 0: audit.AuditEntry.success:type_name -> audit.AuditSuccess
+	3, // 1: audit.AuditEntry.failure:type_name -> audit.AuditFailure
+	1, // 2: audit.AuditEntry.items:type_name -> audit.AuditItem
+	5, // 3: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
+	6, // 4: audit.AuditEntry.idempotency:type_name -> common.Idempotency
+	7, // 5: audit.AuditEntry.signature:type_name -> signature.SignedApplyBatch
+	8, // 6: audit.AuditFailure.reason:type_name -> common.ErrorReason
+	4, // 7: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_audit_proto_init() }

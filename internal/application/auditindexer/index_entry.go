@@ -54,9 +54,9 @@ func appendEntryKeys(kb *dal.KeyBuilder, emit emitFn, entry *auditpb.AuditEntry,
 		}
 	}
 
-	// Timestamp as HLC microseconds (the single Data field stores unix micros).
-	if ts := entry.GetTimestamp(); ts != nil {
-		if err := emit(readstore.AuditIndexUint64Key(kb, readstore.AuditFieldTimestamp, ts.GetData(), seq)); err != nil {
+	// Timestamp as HLC microseconds (the scalar carries unix micros; 0 = unset).
+	if ts := entry.GetTimestamp(); ts != 0 {
+		if err := emit(readstore.AuditIndexUint64Key(kb, readstore.AuditFieldTimestamp, ts, seq)); err != nil {
 			return err
 		}
 	}

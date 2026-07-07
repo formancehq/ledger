@@ -29,7 +29,7 @@ func (m *AuditEntry) CloneVT() *AuditEntry {
 	}
 	r := AuditEntryFromVTPool()
 	r.Sequence = m.Sequence
-	r.Timestamp = m.Timestamp.CloneVT()
+	r.Timestamp = m.Timestamp
 	r.ProposalId = m.ProposalId
 	r.OrderCount = m.OrderCount
 	r.HashVersion = m.HashVersion
@@ -172,7 +172,7 @@ func (this *AuditEntry) EqualVT(that *AuditEntry) bool {
 	if this.Sequence != that.Sequence {
 		return false
 	}
-	if !this.Timestamp.EqualVT(that.Timestamp) {
+	if this.Timestamp != that.Timestamp {
 		return false
 	}
 	if this.ProposalId != that.ProposalId {
@@ -476,15 +476,11 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x19
 	}
-	if m.Timestamp != nil {
-		size, err := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x11
 	}
 	if m.Sequence != 0 {
 		i -= 8
@@ -731,9 +727,8 @@ func (m *AuditEntry) SizeVT() (n int) {
 	if m.Sequence != 0 {
 		n += 9
 	}
-	if m.Timestamp != nil {
-		l = m.Timestamp.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.Timestamp != 0 {
+		n += 9
 	}
 	if m.ProposalId != 0 {
 		n += 9
@@ -904,41 +899,15 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 			m.Sequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 2:
-			if wireType != 2 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
 			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
+			m.Timestamp = 0
+			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Timestamp == nil {
-				m.Timestamp = &commonpb.Timestamp{}
-			}
-			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.Timestamp = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 3:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ProposalId", wireType)

@@ -359,8 +359,8 @@ func renderConfigurationNumscripts(numscripts []*commonpb.NumscriptInfo, expand 
 		}
 		for _, ns := range numscripts {
 			createdAt := ""
-			if ns.GetCreatedAt() != nil {
-				createdAt = ns.GetCreatedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")
+			if ns.GetCreatedAt() != 0 {
+				createdAt = ns.CreatedAtTs().AsTime().Format("2006-01-02T15:04:05Z07:00")
 			}
 			table = append(table, []string{
 				ns.GetName(),
@@ -381,8 +381,8 @@ func renderConfigurationNumscripts(numscripts []*commonpb.NumscriptInfo, expand 
 		pterm.Printf("    Name:       %s\n", ns.GetName())
 		pterm.Printf("    Version:    %s\n", ns.GetVersion())
 		pterm.Printf("    Ledger:     %s\n", ns.GetLedger())
-		if ns.GetCreatedAt() != nil {
-			pterm.Printf("    Created At: %s\n", ns.GetCreatedAt().AsTime().Format("2006-01-02T15:04:05Z07:00"))
+		if ns.GetCreatedAt() != 0 {
+			pterm.Printf("    Created At: %s\n", ns.CreatedAtTs().AsTime().Format("2006-01-02T15:04:05Z07:00"))
 		}
 		pterm.Printf("    Content:\n")
 		for line := range strings.SplitSeq(strings.TrimSpace(ns.GetContent()), "\n") {

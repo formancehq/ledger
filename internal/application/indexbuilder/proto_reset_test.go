@@ -38,9 +38,10 @@ func TestResetLogForReuse_PreservesNestedAllocations(t *testing.T) {
 	assert.Same(t, ct, ledgerLogPayload.GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction), "CT wrapper preserved")
 	assert.Same(t, createdTx, ct.CreatedTransaction, "CreatedTransaction preserved")
 	assert.Same(t, txn, createdTx.GetTransaction(), "Transaction preserved")
-	assert.Same(t, timestamp, txn.GetTimestamp(), "Timestamp preserved")
-	assert.Same(t, insertedAt, txn.GetInsertedAt(), "InsertedAt preserved")
-	assert.Same(t, date, ledgerLog.GetDate(), "Date preserved")
+	// Timestamps are now inline fixed64 values (no pointer identity) — compare by value.
+	assert.Equal(t, timestamp, txn.GetTimestamp(), "Timestamp preserved")
+	assert.Equal(t, insertedAt, txn.GetInsertedAt(), "InsertedAt preserved")
+	assert.Equal(t, date, ledgerLog.GetDate(), "Date preserved")
 }
 
 func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
@@ -74,8 +75,8 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 	assert.False(t, txn.GetReverted())
 	assert.Empty(t, txn.GetPostings())
 	assert.Nil(t, txn.GetMetadata())
-	assert.Nil(t, txn.GetUpdatedAt())
-	assert.Nil(t, txn.GetRevertedAt())
+	assert.Equal(t, uint64(0), txn.GetUpdatedAt())
+	assert.Equal(t, uint64(0), txn.GetRevertedAt())
 }
 
 func TestResetLogForReuse_PreservesSliceCapacity(t *testing.T) {
@@ -155,7 +156,7 @@ func TestResetLogForReuse_RoundTrip(t *testing.T) {
 					LedgerName: "other-ledger",
 					Log: &commonpb.LedgerLog{
 						Id:   77,
-						Date: &commonpb.Timestamp{},
+						Date: 0,
 						Data: &commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
@@ -164,8 +165,8 @@ func TestResetLogForReuse_RoundTrip(t *testing.T) {
 										Postings: []*commonpb.Posting{
 											{Source: "bank", Destination: "treasury", Amount: &commonpb.Uint256{V0: 9999}, Asset: "GBP"},
 										},
-										Timestamp:  &commonpb.Timestamp{},
-										InsertedAt: &commonpb.Timestamp{},
+										Timestamp:  0,
+										InsertedAt: 0,
 									},
 								},
 							},
@@ -202,8 +203,8 @@ func TestResetLogForReuse_RoundTrip(t *testing.T) {
 	assert.Empty(t, ct.GetTransaction().GetReference(), "Reference should be empty (not stale)")
 	assert.False(t, ct.GetTransaction().GetReverted(), "Reverted should be false (not stale)")
 	assert.Nil(t, ct.GetTransaction().GetMetadata(), "Metadata should be nil (not stale)")
-	assert.Nil(t, ct.GetTransaction().GetUpdatedAt(), "UpdatedAt should be nil (not stale)")
-	assert.Nil(t, ct.GetTransaction().GetRevertedAt(), "RevertedAt should be nil (not stale)")
+	assert.Equal(t, uint64(0), ct.GetTransaction().GetUpdatedAt(), "UpdatedAt should be zeroed (not stale)")
+	assert.Equal(t, uint64(0), ct.GetTransaction().GetRevertedAt(), "RevertedAt should be zeroed (not stale)")
 	assert.Empty(t, ct.GetAccountMetadata(), "AccountMetadata should be empty (not stale)")
 	assert.Len(t, ct.GetTransaction().GetPostings(), 1)
 	assert.Equal(t, "bank", ct.GetTransaction().GetPostings()[0].GetSource())
@@ -248,7 +249,7 @@ func buildTestLog() *commonpb.Log {
 					LedgerName: "default",
 					Log: &commonpb.LedgerLog{
 						Id:   42,
-						Date: &commonpb.Timestamp{},
+						Date: 0,
 						Data: &commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
@@ -264,10 +265,10 @@ func buildTestLog() *commonpb.Log {
 										Metadata: map[string]*commonpb.MetadataValue{
 											"type": {},
 										},
-										Timestamp:  &commonpb.Timestamp{},
-										InsertedAt: &commonpb.Timestamp{},
-										UpdatedAt:  &commonpb.Timestamp{},
-										RevertedAt: &commonpb.Timestamp{},
+										Timestamp:  0,
+										InsertedAt: 0,
+										UpdatedAt:  0,
+										RevertedAt: 0,
 									},
 									AccountMetadata: map[string]*commonpb.MetadataMap{
 										"users:001": {Values: map[string]*commonpb.MetadataValue{"type": {}}},

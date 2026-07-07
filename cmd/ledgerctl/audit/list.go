@@ -115,8 +115,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 // printAuditEntry prints a single audit entry in a human-readable format.
 func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 	ts := "-"
-	if entry.GetTimestamp() != nil {
-		ts = entry.GetTimestamp().AsTime().Format(time.RFC3339)
+	if entry.GetTimestamp() != 0 {
+		ts = entry.TimestampTs().AsTime().Format(time.RFC3339)
 	}
 
 	// Status indicator

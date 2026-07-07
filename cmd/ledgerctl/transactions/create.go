@@ -450,8 +450,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		pterm.Printf("Reference:   %s\n", tx.GetReference())
 	}
 
-	if tx.GetTimestamp() != nil {
-		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
+	if tx.GetTimestamp() != 0 {
+		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.TimestampTs().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
 	// Display postings

@@ -426,7 +426,7 @@ func (e *Emitter) reportError(ctx context.Context, publishErr error) {
 		SinkName: e.sinkName,
 		Error: &commonpb.SinkError{
 			Message:    publishErr.Error(),
-			OccurredAt: commonpb.NewTimestamp(libtime.New(now)),
+			OccurredAt: uint64(commonpb.NewTimestamp(libtime.New(now))),
 		},
 	}
 

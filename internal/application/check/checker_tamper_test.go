@@ -44,7 +44,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		// AuditEntry header — top-level scalar fields.
 		{"sequence", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.Sequence = 999 }},
 		{"timestamp", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.Timestamp = &commonpb.Timestamp{Data: 1999999999}
+			e.Timestamp = 1999999999
 		}},
 		{"proposal_id", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.ProposalId++ }},
 		{"order_count", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.OrderCount++ }},
@@ -167,7 +167,7 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.AuditItem) {
 	entry := &auditpb.AuditEntry{
 		Sequence:    1,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000000},
+		Timestamp:   1700000000,
 		ProposalId:  77,
 		OrderCount:  2,
 		Ledgers:     []string{"ledger-a", "ledger-b"},
@@ -311,7 +311,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    1,
-		Timestamp:   &commonpb.Timestamp{Data: createdAt},
+		Timestamp:   createdAt,
 		ProposalId:  7,
 		OrderCount:  1,
 		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),

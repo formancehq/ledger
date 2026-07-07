@@ -182,7 +182,7 @@ func TestManager_HTTPSink_LeadershipLossDuringInitialCatchup(t *testing.T) {
 			Type: &commonpb.LogPayload_CreateLedger{
 				CreateLedger: &commonpb.CreatedLedgerLog{
 					Name:      "orders",
-					CreatedAt: commonpb.NewTimestamp(libtime.Now()),
+					CreatedAt: uint64(commonpb.NewTimestamp(libtime.Now())),
 				},
 			},
 		},

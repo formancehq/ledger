@@ -194,8 +194,8 @@ func TestAnalyzeTransactions_TemporalStats(t *testing.T) {
 
 	temporal := resp.GetFlowPatterns()[0].GetTemporal()
 	require.NotNil(t, temporal)
-	assert.Equal(t, dayMicro*0, temporal.GetFirstSeen().GetData())
-	assert.Equal(t, dayMicro*2, temporal.GetLastSeen().GetData())
+	assert.Equal(t, dayMicro*0, temporal.GetFirstSeen())
+	assert.Equal(t, dayMicro*2, temporal.GetLastSeen())
 	assert.InDelta(t, 1.0, temporal.GetTransactionsPerDay(), 0.1)
 }
 

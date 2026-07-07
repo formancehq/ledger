@@ -1,0 +1,30 @@
+// ledger_options.proto declares custom protobuf field options consumed by
+// tools/protoc-gen-reader to emit typed Go accessors alongside the raw
+// scalar getters that protoc-gen-go emits.
+//
+// The primary use case is inlining scalar-backed value objects: Timestamp is
+// stored as `fixed64` on parent messages (zero heap allocation) but callers
+// want a domain-typed API (commonpb.Timestamp value type with AsTime, IsSet,
+// MarshalJSON, ...). Annotating the field with
+//     [(ledger.value_type) = "commonpb.Timestamp"]
+// makes protoc-gen-reader emit an extra `<Field>Ts()` method on the message
+// that wraps the raw uint64 into a typed Timestamp.
+syntax = "proto3";
+
+package ledger;
+
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/ledgeroptionspb";
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.FieldOptions {
+  // value_type names a Go type that wraps the raw scalar value. protoc-gen-
+  // reader emits a `<Field>Ts()` accessor returning this type on the message.
+  // The named type must have a value receiver signature usable with a plain
+  // Go conversion from the raw scalar (e.g., `type Timestamp uint64`).
+  //
+  // Field number is chosen well outside the ranges commonly used by other
+  // schemas (google internals 19000-19999, etcd/kube around 50xxx) to avoid
+  // extension namespace collisions at runtime registration.
+  optional string value_type = 91234;
+}

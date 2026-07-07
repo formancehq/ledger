@@ -302,7 +302,7 @@ func RevertTransactionAction(ledgerName string, transactionID uint64, force, atE
 func WithTimestamp(req *servicepb.Request, t time.Time) *servicepb.Request {
 	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
 		if d, ok := reqType.Apply.GetAction().GetData().(*servicepb.LedgerAction_CreateTransaction); ok {
-			d.CreateTransaction.Timestamp = &commonpb.Timestamp{Data: uint64(t.UnixMicro())}
+			d.CreateTransaction.Timestamp = uint64(t.UnixMicro())
 		}
 	}
 

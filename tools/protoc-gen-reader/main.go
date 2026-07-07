@@ -31,7 +31,11 @@ import (
 	"unicode"
 
 	"google.golang.org/protobuf/compiler/protogen"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
+	"google.golang.org/protobuf/runtime/protoimpl"
+	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
@@ -60,6 +64,78 @@ var (
 	slicesPkg  = protogen.GoImportPath("slices")
 	bytesPkg   = protogen.GoImportPath("bytes")
 )
+
+// valueTypePackages maps a Go package name (as it appears in
+// `[(ledger.value_type) = "<pkg>.<Type>"]` proto annotations) to its full
+// import path. Add new entries here when introducing a new value-typed wrapper.
+var valueTypePackages = map[string]protogen.GoImportPath{
+	"commonpb": "github.com/formancehq/ledger/v3/internal/proto/commonpb",
+}
+
+// valueTypeExt is the descriptor for the `[(ledger.value_type) = "..."]`
+// field option (see misc/proto/ledger_options.proto). We declare it inline
+// here rather than importing internal/proto/ledgeroptionspb, because
+// protoc-gen-reader is a separate Go module and cannot reach `internal/`.
+// The field number MUST match the .proto definition (91234).
+var valueTypeExt = &protoimpl.ExtensionInfo{
+	ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+	ExtensionType: (*string)(nil),
+	Field:         91234,
+	Name:          "ledger.value_type",
+	Tag:           "bytes,91234,opt,name=value_type",
+	Filename:      "ledger_options.proto",
+}
+
+func init() {
+	// Register the extension so proto.HasExtension / GetExtension recognizes
+	// the annotation bytes protoc packs into FieldOptions.
+	if err := protoregistry.GlobalTypes.RegisterExtension(valueTypeExt); err != nil {
+		panic(fmt.Errorf("registering ledger.value_type extension: %w", err))
+	}
+}
+
+// fieldValueType returns the value_type extension string set on a field
+// (e.g., "commonpb.Timestamp"), or "" when the annotation is absent.
+func fieldValueType(field *protogen.Field) string {
+	opts, ok := field.Desc.Options().(*descriptorpb.FieldOptions)
+	if !ok || opts == nil {
+		return ""
+	}
+	if !proto.HasExtension(opts, valueTypeExt) {
+		return ""
+	}
+	v := proto.GetExtension(opts, valueTypeExt)
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// resolveValueType splits a "<pkg>.<Type>" annotation into a protogen.GoIdent
+// backed by the mapped import path, so protogen can elide the qualifier when
+// the current file lives in the same package.
+func resolveValueType(v string) (protogen.GoIdent, bool) {
+	dot := strings.LastIndex(v, ".")
+	if dot <= 0 || dot == len(v)-1 {
+		return protogen.GoIdent{}, false
+	}
+	pkg := v[:dot]
+	name := v[dot+1:]
+	imp, ok := valueTypePackages[pkg]
+	if !ok {
+		return protogen.GoIdent{}, false
+	}
+	return protogen.GoIdent{GoName: name, GoImportPath: imp}, true
+}
+
+// valueTypeMethodName is the Go method name emitted for a field carrying the
+// value_type annotation. Suffix "Ts" avoids collision with the exported struct
+// field of the same base name (Go forbids method+field sharing a name on a
+// struct, and #1511's zero-alloc wrapper is a named type over that struct so
+// inherits the same conflict).
+func valueTypeMethodName(field *protogen.Field) string {
+	return field.GoName + "Ts"
+}
 
 func main() {
 	protogen.Options{}.Run(func(gen *protogen.Plugin) error {
@@ -155,6 +231,21 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 		g.P("\t", em.name, em.signature)
 	}
 
+	// Typed value-type accessors: for each field annotated with the
+	// [(ledger.value_type) = "<pkg>.<Type>"] option, emit a `<Field>Ts()`
+	// method on the Reader that wraps the raw scalar as a typed value.
+	for _, field := range msg.Fields {
+		vt := fieldValueType(field)
+		if vt == "" {
+			continue
+		}
+		ident, ok := resolveValueType(vt)
+		if !ok {
+			continue
+		}
+		g.P("\t", valueTypeMethodName(field), "() ", g.QualifiedGoIdent(ident))
+	}
+
 	g.P("\tMutate() *", typeName)
 	g.P("}")
 
@@ -203,6 +294,24 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 		g.P("}")
 	}
 
+	// Typed value-type accessors on wrapper — mirror the Reader interface.
+	for _, field := range msg.Fields {
+		vt := fieldValueType(field)
+		if vt == "" {
+			continue
+		}
+		ident, ok := resolveValueType(vt)
+		if !ok {
+			continue
+		}
+		methodName := valueTypeMethodName(field)
+		qualifiedType := g.QualifiedGoIdent(ident)
+		g.P()
+		g.P("func (r *", wrapperName, ") ", methodName, "() ", qualifiedType, " {")
+		g.P("\treturn ", qualifiedType, "(", base, ".Get", field.GoName, "())")
+		g.P("}")
+	}
+
 	// Mutate on wrapper
 	g.P()
 	g.P("func (r *", wrapperName, ") Mutate() *", typeName, " {")
@@ -222,6 +331,25 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 	g.P("func (m *", typeName, ") Mutate() *", typeName, " {")
 	g.P("\treturn m.CloneVT()")
 	g.P("}")
+
+	// Typed value-type accessors on the concrete message.
+	for _, field := range msg.Fields {
+		vt := fieldValueType(field)
+		if vt == "" {
+			continue
+		}
+		ident, ok := resolveValueType(vt)
+		if !ok {
+			continue
+		}
+		methodName := valueTypeMethodName(field)
+		qualifiedType := g.QualifiedGoIdent(ident)
+		g.P()
+		g.P("// ", methodName, " returns the ", field.GoName, " field wrapped in ", qualifiedType, ".")
+		g.P("func (m *", typeName, ") ", methodName, "() ", qualifiedType, " {")
+		g.P("\treturn ", qualifiedType, "(m.Get", field.GoName, "())")
+		g.P("}")
+	}
 
 	// --- ListReader for this message ---
 	// Emitted unconditionally so any other package can reference it.

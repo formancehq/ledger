@@ -17,7 +17,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	}
 
 	if err == nil {
-		if existing.GetDeletedAt() != nil {
+		if existing.GetDeletedAt() != 0 {
 			return nil, &domain.ErrLedgerDeleted{Name: ledger}
 		}
 
@@ -32,7 +32,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		at.Name = name
 	}
 
-	createdAt := s.GetDate().Mutate()
+	createdAt := s.GetDate().Micros()
 	ledgerID := s.IncrementNextLedgerID()
 
 	info := &commonpb.LedgerInfo{
@@ -90,7 +90,7 @@ func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, dom
 		return nil, loadErr
 	}
 
-	l.DeletedAt = s.GetDate().Mutate()
+	l.DeletedAt = s.GetDate().Micros()
 
 	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, l)
 	// The LedgerCleanup signal (cleanup queue + boundary overlay drop) is

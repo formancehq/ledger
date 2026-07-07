@@ -80,7 +80,7 @@ type Scope interface {
 	GetNextAuditSequenceID() uint64
 	GetNextLedgerID() uint32
 	IncrementNextLedgerID() uint32
-	GetDate() commonpb.TimestampReader
+	GetDate() commonpb.Timestamp
 
 	// Chapter operations
 	GetCurrentOpenChapter() (commonpb.ChapterReader, bool)

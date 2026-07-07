@@ -45,7 +45,7 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 	// builder and the golden spec is caught regardless of outcome.
 	entry := &auditpb.AuditEntry{
 		Sequence:    42,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000000},
+		Timestamp:   1700000000,
 		ProposalId:  77,
 		OrderCount:  2,
 		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
@@ -137,7 +137,7 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    43,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000001},
+		Timestamp:   1700000001,
 		ProposalId:  78,
 		OrderCount:  3,
 		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
@@ -219,7 +219,7 @@ func TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns(t *testing.T) {
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    99,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000002},
+		Timestamp:   1700000002,
 		ProposalId:  100,
 		OrderCount:  1,
 		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
@@ -257,7 +257,7 @@ func goldenBuildHeader(e *auditpb.AuditEntry) []byte {
 	var buf []byte
 
 	buf = goldenU64(buf, e.GetSequence())
-	buf = goldenU64(buf, e.GetTimestamp().GetData())
+	buf = goldenU64(buf, e.GetTimestamp())
 	buf = goldenU64(buf, e.GetProposalId())
 	buf = goldenU32(buf, e.GetOrderCount())
 	buf = goldenU32(buf, e.GetHashVersion())

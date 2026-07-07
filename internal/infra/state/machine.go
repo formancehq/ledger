@@ -1269,7 +1269,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity
-	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
+	effectiveDate := fsm.State.AdvanceHLC(proposal.GetDate())
 
 	if err := fsm.ensureChapterBootstrapped(effectiveDate, batch); err != nil {
 		return nil, err
@@ -1318,7 +1318,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		proposalHash = fsm.processor.HashProposal(proposal)
 
 		if stored, ok := fsm.Registry.Idempotency.Get(idempotencyKey); ok &&
-			!fsm.Registry.Idempotency.IsExpired(stored, effectiveDate.GetData()) {
+			!fsm.Registry.Idempotency.IsExpired(stored, effectiveDate) {
 			switch {
 			case !bytes.Equal(proposalHash, stored.GetHash()):
 				err = &domain.ErrIdempotencyKeyConflict{Key: idempotencyKey}
@@ -1489,7 +1489,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData()); recErr != nil {
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate); recErr != nil {
 			return nil, recErr
 		}
 
@@ -1543,7 +1543,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData()); recErr != nil {
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate); recErr != nil {
 			return nil, recErr
 		}
 
@@ -1576,7 +1576,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			FirstLogSequence: createdLogs[0].GetSequence(),
 			LogCount:         uint32(len(createdLogs)),
 			Hash:             proposalHash,
-			CreatedAt:        effectiveDate.GetData(),
+			CreatedAt:        effectiveDate,
 		}
 
 		if saveErr := saveIdempotencyKey(batch, idempotencyKey, value); saveErr != nil {
@@ -1850,7 +1850,7 @@ func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
 // ensureChapterBootstrapped creates the first chapter deterministically at the
 // first proposal. The chapter start timestamp is derived from the proposal's
 // effective date so that all nodes produce the same deterministic state.
-func (fsm *Machine) ensureChapterBootstrapped(effectiveDate *commonpb.Timestamp, batch *dal.WriteSession) error {
+func (fsm *Machine) ensureChapterBootstrapped(effectiveDate uint64, batch *dal.WriteSession) error {
 	if fsm.Chapters.CurrentOpenChapter() != nil {
 		return nil
 	}

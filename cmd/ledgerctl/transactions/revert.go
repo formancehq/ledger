@@ -223,8 +223,8 @@ func runRevert(cmd *cobra.Command, args []string) error {
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 	pterm.Printf("Original Transaction: #%d\n", txID)
 
-	if revertedTx.GetRevertTransaction().GetTimestamp() != nil {
-		pterm.Printf("Timestamp:            %s\n", pterm.Gray(revertedTx.GetRevertTransaction().GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
+	if revertedTx.GetRevertTransaction().GetTimestamp() != 0 {
+		pterm.Printf("Timestamp:            %s\n", pterm.Gray(commonpb.Timestamp(revertedTx.GetRevertTransaction().GetTimestamp()).AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
 	// Display postings of the revert transaction

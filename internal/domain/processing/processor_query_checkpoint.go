@@ -13,7 +13,7 @@ func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, c
 	cp := &raftcmdpb.QueryCheckpointState{
 		CheckpointId: checkpointID,
 		MaxSequence:  s.GetNextSequenceID() - 1,
-		CreatedAt:    s.GetDate().Mutate(),
+		CreatedAt:    s.GetDate().Micros(),
 	}
 
 	s.SaveQueryCheckpoint(cp)

@@ -132,8 +132,8 @@ func resetTransaction(txn *commonpb.Transaction) {
 	txn.Postings = txn.GetPostings()[:0]
 	// Nil optional message fields that might be absent in the next log.
 	txn.Metadata = nil
-	txn.UpdatedAt = nil
-	txn.RevertedAt = nil
+	txn.UpdatedAt = 0
+	txn.RevertedAt = 0
 	// Preserve txn.Timestamp and txn.InsertedAt (always present).
 }
 

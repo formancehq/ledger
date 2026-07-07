@@ -54,7 +54,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	created := info.GetCreatedAt().AsTime().Format(time.RFC3339)
+	created := info.CreatedAtTs().AsTime().Format(time.RFC3339)
 
 	tableData := pterm.TableData{
 		{"FIELD", "VALUE"},

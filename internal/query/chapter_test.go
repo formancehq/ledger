@@ -62,7 +62,7 @@ func TestReadChapters(t *testing.T) {
 		batch := s.OpenWriteSession()
 		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
-			Start:  &commonpb.Timestamp{Data: 1000},
+			Start:  1000,
 			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
 		require.NoError(t, state.StoreNextChapterID(batch, 2))
@@ -76,7 +76,7 @@ func TestReadChapters(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, chapters, 1)
 		require.Equal(t, uint64(1), chapters[0].GetId())
-		require.Equal(t, uint64(1000), chapters[0].GetStart().GetData())
+		require.Equal(t, uint64(1000), chapters[0].GetStart())
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_OPEN, chapters[0].GetStatus())
 
 		nextID, err := query.ReadNextChapterID(s)
@@ -95,19 +95,19 @@ func TestReadChapters(t *testing.T) {
 		batch := s.OpenWriteSession()
 		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     3,
-			Start:  &commonpb.Timestamp{Data: 3000},
+			Start:  3000,
 			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
 		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
-			Start:  &commonpb.Timestamp{Data: 1000},
-			End:    &commonpb.Timestamp{Data: 2000},
+			Start:  1000,
+			End:    2000,
 			Status: commonpb.ChapterStatus_CHAPTER_CLOSED,
 		}))
 		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:            2,
-			Start:         &commonpb.Timestamp{Data: 2000},
-			End:           &commonpb.Timestamp{Data: 3000},
+			Start:         2000,
+			End:           3000,
 			Status:        commonpb.ChapterStatus_CHAPTER_CLOSED,
 			CloseSequence: 10,
 			SealingHash:   []byte("hash-2"),
@@ -150,7 +150,7 @@ func TestReadChapters(t *testing.T) {
 		batch := s.OpenWriteSession()
 		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
-			Start:  &commonpb.Timestamp{Data: 1000},
+			Start:  1000,
 			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
 		require.NoError(t, state.StoreNextChapterID(batch, 2))
@@ -160,8 +160,8 @@ func TestReadChapters(t *testing.T) {
 		batch = s.OpenWriteSession()
 		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:            1,
-			Start:         &commonpb.Timestamp{Data: 1000},
-			End:           &commonpb.Timestamp{Data: 2000},
+			Start:         1000,
+			End:           2000,
 			Status:        commonpb.ChapterStatus_CHAPTER_CLOSED,
 			CloseSequence: 5,
 			SealingHash:   []byte("sealed"),
@@ -191,13 +191,13 @@ func TestReadChapters(t *testing.T) {
 		batch := s.OpenWriteSession()
 		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
-			Start:  &commonpb.Timestamp{Data: 1000},
-			End:    &commonpb.Timestamp{Data: 2000},
+			Start:  1000,
+			End:    2000,
 			Status: commonpb.ChapterStatus_CHAPTER_CLOSED,
 		}))
 		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     2,
-			Start:  &commonpb.Timestamp{Data: 2000},
+			Start:  2000,
 			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
 		require.NoError(t, state.StoreNextChapterID(batch, 3))
@@ -267,7 +267,7 @@ func TestReadChapters(t *testing.T) {
 		batch := s.OpenWriteSession()
 		require.NoError(t, state.StoreChapter(batch, &commonpb.Chapter{
 			Id:     1,
-			Start:  &commonpb.Timestamp{Data: 1000},
+			Start:  1000,
 			Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 		}))
 		require.NoError(t, state.StoreNextChapterID(batch, 2))

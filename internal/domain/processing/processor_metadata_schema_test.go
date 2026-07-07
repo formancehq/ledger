@@ -22,7 +22,7 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
@@ -36,7 +36,7 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 		require.NotNil(t, field)
 		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
 	})
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
@@ -80,7 +80,7 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
@@ -94,7 +94,7 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 		require.NotNil(t, field)
 		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
 	})
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
@@ -130,7 +130,7 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
@@ -144,7 +144,7 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 		require.NotNil(t, field)
 		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field.GetType())
 	})
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
@@ -228,7 +228,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
@@ -247,7 +247,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 		_, exists := info.GetMetadataSchema().GetAccountFields()["amount"]
 		require.False(t, exists, "amount field should have been removed")
 	})
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
@@ -289,7 +289,7 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
@@ -305,7 +305,7 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
@@ -340,7 +340,7 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
@@ -359,7 +359,7 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 		_, exists := info.GetMetadataSchema().GetLedgerFields()["env"]
 		require.False(t, exists, "env field should have been removed")
 	})
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
@@ -427,7 +427,7 @@ func TestProcessSetMetadataFieldType_AcceptedDuringRebuild(t *testing.T) {
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetIndex(mockStore, indexes.KeyFor("test-ledger", id), existingIndex.AsReader(), nil)
 	expectPutIndex(t, mockStore, indexes.KeyFor("test-ledger", id), nil)
-	mockStore.EXPECT().GetDate().Return(&commonpb.Timestamp{Data: 1234567890})
+	mockStore.EXPECT().GetDate().Return(1234567890)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{

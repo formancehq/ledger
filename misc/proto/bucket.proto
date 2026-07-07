@@ -5,6 +5,7 @@ package ledger;
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
 
+import "ledger_options.proto";
 import "common.proto";
 import "audit.proto";
 import "signature.proto";
@@ -487,7 +488,7 @@ message ResponseSigningInfo {
 message CreateTransactionPayload {
   repeated common.Posting postings = 1;
   common.Script script = 2;
-  common.Timestamp timestamp = 3;
+  fixed64 timestamp = 3 [(ledger.value_type) = "commonpb.Timestamp"];
   string reference = 4;
   map<string, common.MetadataValue> metadata = 5;
   map<string, common.MetadataMap> account_metadata = 6;
@@ -929,8 +930,8 @@ enum PostingStructure {
 }
 
 message TemporalStats {
-  common.Timestamp first_seen = 1;
-  common.Timestamp last_seen = 2;
+  fixed64 first_seen = 1 [(ledger.value_type) = "commonpb.Timestamp"];
+  fixed64 last_seen = 2 [(ledger.value_type) = "commonpb.Timestamp"];
   double transactions_per_day = 3;
   repeated HourBucket peak_hours = 4;   // 24 entries max
 }

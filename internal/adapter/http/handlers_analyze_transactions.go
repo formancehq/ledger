@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -102,12 +103,12 @@ func toFlowPatternJSON(fp *servicepb.FlowPattern) *flowPatternJSON {
 		result.Temporal = &temporalStatsJSON{
 			TransactionsPerDay: fp.GetTemporal().GetTransactionsPerDay(),
 		}
-		if fp.GetTemporal().GetFirstSeen() != nil {
-			result.Temporal.FirstSeen = fp.GetTemporal().GetFirstSeen().AsTime().Format("2006-01-02T15:04:05Z07:00")
+		if fp.GetTemporal().GetFirstSeen() != 0 {
+			result.Temporal.FirstSeen = commonpb.Timestamp(fp.GetTemporal().GetFirstSeen()).AsTime().Format("2006-01-02T15:04:05Z07:00")
 		}
 
-		if fp.GetTemporal().GetLastSeen() != nil {
-			result.Temporal.LastSeen = fp.GetTemporal().GetLastSeen().AsTime().Format("2006-01-02T15:04:05Z07:00")
+		if fp.GetTemporal().GetLastSeen() != 0 {
+			result.Temporal.LastSeen = commonpb.Timestamp(fp.GetTemporal().GetLastSeen()).AsTime().Format("2006-01-02T15:04:05Z07:00")
 		}
 
 		for _, h := range fp.GetTemporal().GetPeakHours() {

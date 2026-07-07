@@ -689,12 +689,11 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		i--
 		dAtA[i] = 0x2a
 	}
-	if m.Timestamp != nil {
-		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x21
 	}
 	if len(m.Metadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
@@ -818,12 +817,11 @@ func (m *MirrorRevertedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []b
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Timestamp != nil {
-		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x29
 	}
 	if len(m.Metadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
@@ -1226,12 +1224,11 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.Timestamp != nil {
-		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Timestamp != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Timestamp))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if m.Script != nil {
 		size, _ := m.Script.MarshalToSizedBufferDeterministicVT(dAtA[:i])
@@ -1606,12 +1603,11 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.Date != nil {
-		size, _ := m.Date.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Date != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Date))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if len(m.Orders) > 0 {
 		for iNdEx := len(m.Orders) - 1; iNdEx >= 0; iNdEx-- {

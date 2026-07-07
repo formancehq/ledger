@@ -41,7 +41,7 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 	batch := s.OpenWriteSession()
 	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      name,
-		CreatedAt: commonpb.NewTimestamp(time.Now()),
+		CreatedAt: uint64(commonpb.NewTimestamp(time.Now())),
 	})
 	require.NoError(t, err)
 	err = batch.Commit()

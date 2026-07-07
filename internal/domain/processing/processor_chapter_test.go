@@ -19,17 +19,17 @@ func TestProcessCloseChapter_Success(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	now := &commonpb.Timestamp{Data: 1700000000}
+	now := uint64(1700000000)
 	openChapter := &commonpb.Chapter{
 		Id:     1,
-		Start:  &commonpb.Timestamp{Data: 1699000000},
+		Start:  1699000000,
 		Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 	}
 
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(openChapter.AsReader(), true)
 	// GetNextSequenceID is called twice: once for CloseSequence, once for StartSequence
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42)).Times(2)
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(2)
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now)).Times(2)
 	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(10)).Times(2)
 	mockStore.EXPECT().IncrementNextChapterID().Return(uint64(2))
 	mockStore.EXPECT().AddClosingChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
@@ -79,17 +79,17 @@ func TestProcessCloseChapter_SucceedsWhileAnotherChapterIsClosing(t *testing.T) 
 
 	mockStore := NewMockScope(ctrl)
 
-	now := &commonpb.Timestamp{Data: 1700000000}
+	now := uint64(1700000000)
 	openChapter := &commonpb.Chapter{
 		Id:     2,
-		Start:  &commonpb.Timestamp{Data: 1699500000},
+		Start:  1699500000,
 		Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 	}
 
 	// Another chapter is already closing — this should NOT prevent the new close
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(openChapter.AsReader(), true)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100)).Times(2)
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(2)
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now)).Times(2)
 	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(20)).Times(2)
 	mockStore.EXPECT().IncrementNextChapterID().Return(uint64(3))
 	mockStore.EXPECT().AddClosingChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {

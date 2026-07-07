@@ -28,7 +28,7 @@ func (m *Event) CloneVT() *Event {
 	r := new(Event)
 	r.Type = m.Type
 	r.Ledger = m.Ledger
-	r.Date = m.Date.CloneVT()
+	r.Date = m.Date
 	r.LogSequence = m.LogSequence
 	r.Log = m.Log.CloneVT()
 	if len(m.unknownFields) > 0 {
@@ -54,7 +54,7 @@ func (this *Event) EqualVT(that *Event) bool {
 	if this.Ledger != that.Ledger {
 		return false
 	}
-	if !this.Date.EqualVT(that.Date) {
+	if this.Date != that.Date {
 		return false
 	}
 	if this.LogSequence != that.LogSequence {
@@ -119,15 +119,11 @@ func (m *Event) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x21
 	}
-	if m.Date != nil {
-		size, err := m.Date.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if m.Date != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Date))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x19
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -157,9 +153,8 @@ func (m *Event) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Date != nil {
-		l = m.Date.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.Date != 0 {
+		n += 9
 	}
 	if m.LogSequence != 0 {
 		n += 9
@@ -253,41 +248,15 @@ func (m *Event) UnmarshalVT(dAtA []byte) error {
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 3:
-			if wireType != 2 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Date", wireType)
 			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
+			m.Date = 0
+			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Date == nil {
-				m.Date = &commonpb.Timestamp{}
-			}
-			if err := m.Date.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.Date = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 4:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LogSequence", wireType)

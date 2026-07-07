@@ -59,7 +59,7 @@ func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ct
 		Name:      order.GetName(),
 		Content:   order.GetContent(),
 		Version:   resolvedVersion,
-		CreatedAt: s.GetDate().Mutate(),
+		CreatedAt: s.GetDate().Micros(),
 		Ledger:    ledger,
 	}
 

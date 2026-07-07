@@ -22,7 +22,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	metaKey := domain.MetadataKey{
@@ -32,7 +32,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectPutAccountMetadata(t, mockStore, metaKey, commonpb.NewStringValue("active"))
 
@@ -82,7 +82,7 @@ func TestProcessAddMetadata_StoresClientValueVerbatim(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
@@ -105,7 +105,7 @@ func TestProcessAddMetadata_StoresClientValueVerbatim(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectPutAccountMetadata(t, mockStore, metaKey, clientSent)
 
@@ -141,7 +141,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 5}
@@ -151,7 +151,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetTransactionState(mockStore, txKey, existingState.AsReader(), nil)
 	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, state *commonpb.TransactionState) {
@@ -194,7 +194,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	metaKey := domain.MetadataKey{
@@ -205,7 +205,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	expectGetAccountMetadata(mockStore, metaKey, (&commonpb.MetadataValue{}).AsReader(), nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectDeleteAccountMetadata(t, mockStore, metaKey)
 
@@ -299,7 +299,7 @@ func TestProcessDeleteMetadata_Account_NilValueDeletable(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	metaKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:123"},
@@ -309,7 +309,7 @@ func TestProcessDeleteMetadata_Account_NilValueDeletable(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	expectGetAccountMetadata(mockStore, metaKey, nil, nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectDeleteAccountMetadata(t, mockStore, metaKey)
 

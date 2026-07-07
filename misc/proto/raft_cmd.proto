@@ -4,6 +4,7 @@ package raft;
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb";
 
+import "ledger_options.proto";
 import "common.proto";
 import "signature.proto";
 
@@ -180,7 +181,7 @@ message DeleteQueryCheckpointOrder {
 message QueryCheckpointState {
   fixed64 checkpoint_id = 1;
   fixed64 max_sequence = 2;            // next_sequence - 1 at creation
-  common.Timestamp created_at = 3;    // Creation timestamp (from proposal date)
+  fixed64 created_at = 3 [(ledger.value_type) = "commonpb.Timestamp"];    // Creation timestamp (from proposal date)
 }
 
 message SetQueryCheckpointScheduleOrder {
@@ -220,7 +221,7 @@ message MirrorCreatedTransaction {
   fixed64 transaction_id = 1;
   repeated common.Posting postings = 2;
   map<string, common.MetadataValue> metadata = 3;
-  common.Timestamp timestamp = 4;
+  fixed64 timestamp = 4 [(ledger.value_type) = "commonpb.Timestamp"];
   string reference = 5;
   map<string, common.MetadataMap> account_metadata = 6;
 }
@@ -235,7 +236,7 @@ message MirrorRevertedTransaction {
   fixed64 new_transaction_id = 2;
   repeated common.Posting reverse_postings = 3;
   map<string, common.MetadataValue> metadata = 4;
-  common.Timestamp timestamp = 5;
+  fixed64 timestamp = 5 [(ledger.value_type) = "commonpb.Timestamp"];
 }
 
 message MirrorDeletedMetadata {
@@ -312,7 +313,7 @@ message RemoveMetadataFieldTypeOrder {
 message CreateTransactionOrder {
   repeated common.Posting postings = 1;
   common.Script script = 2;
-  common.Timestamp timestamp = 3;
+  fixed64 timestamp = 3 [(ledger.value_type) = "commonpb.Timestamp"];
   string reference = 4;
   map<string, common.MetadataValue> metadata = 5;
   map<string, common.MetadataMap> account_metadata = 6;
@@ -367,7 +368,7 @@ message DeleteLedgerMetadataOrder {
 message Proposal {
   fixed64 id = 1;                    // Random proposal ID
   repeated Order orders = 2;        // List of orders to execute atomically
-  common.Timestamp date = 3;        // Creation date in UTC
+  fixed64 date = 3 [(ledger.value_type) = "commonpb.Timestamp"];        // Creation date in UTC
   ExecutionPlan execution_plan = 4;
   // predicted_index is the Raft log index predicted by the IndexTracker at
   // admission time. The FSM compares it with the actual entry.Index: a mismatch

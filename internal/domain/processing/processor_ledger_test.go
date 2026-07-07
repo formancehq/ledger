@@ -22,12 +22,12 @@ func TestProcessCreateLedger(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 
 	// Setup expectations
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(name string, info *commonpb.LedgerInfo) {
 		require.Equal(t, "test-ledger", info.GetName())
 		require.Equal(t, now, info.GetCreatedAt())
@@ -93,11 +93,11 @@ func TestProcessDeleteLedger(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	now := &commonpb.Timestamp{Data: 1234567890}
+	now := uint64(1234567890)
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, existingLedger.AsReader(), nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetDate().Return(commonpb.Timestamp(now))
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	request := &servicepb.Request{

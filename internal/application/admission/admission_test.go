@@ -48,7 +48,7 @@ func createTestStore(t *testing.T) *dal.Store {
 	info := &commonpb.LedgerInfo{
 		Name:      testLedgerName,
 		Id:        1,
-		CreatedAt: commonpb.NewTimestamp(time.Now()),
+		CreatedAt: uint64(commonpb.NewTimestamp(time.Now())),
 	}
 	batch := s.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, info))

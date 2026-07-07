@@ -76,7 +76,7 @@ func (x *LogPayload) MarshalJSON() ([]byte, error) {
 func (x *CreatedLedgerLog) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Name                   string                  `json:"name,omitempty"`
-		CreatedAt              *Timestamp              `json:"createdAt,omitempty"`
+		CreatedAt              Timestamp               `json:"createdAt,omitempty"`
 		MetadataSchema         *MetadataSchema         `json:"metadataSchema,omitempty"`
 		Mode                   LedgerMode              `json:"mode,omitempty"`
 		MirrorSource           *MirrorSourceConfig     `json:"mirrorSource,omitempty"`
@@ -84,7 +84,7 @@ func (x *CreatedLedgerLog) MarshalJSON() ([]byte, error) {
 		DefaultEnforcementMode ChartEnforcementMode    `json:"defaultEnforcementMode,omitempty"`
 	}{
 		Name:                   x.GetName(),
-		CreatedAt:              x.GetCreatedAt(),
+		CreatedAt:              x.CreatedAtTs(),
 		MetadataSchema:         x.GetMetadataSchema(),
 		Mode:                   x.GetMode(),
 		MirrorSource:           x.GetMirrorSource(),
@@ -96,11 +96,11 @@ func (x *CreatedLedgerLog) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for DeletedLedgerLog.
 func (x *DeletedLedgerLog) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Name      string     `json:"name,omitempty"`
-		DeletedAt *Timestamp `json:"deletedAt,omitempty"`
+		Name      string    `json:"name,omitempty"`
+		DeletedAt Timestamp `json:"deletedAt,omitempty"`
 	}{
 		Name:      x.GetName(),
-		DeletedAt: x.GetDeletedAt(),
+		DeletedAt: x.DeletedAtTs(),
 	})
 }
 
@@ -154,15 +154,15 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Address       string         `json:"address,omitempty"`
 		Metadata      map[string]any `json:"metadata,omitempty"`
-		FirstUsage    *Timestamp     `json:"firstUsage,omitempty"`
-		InsertionDate *Timestamp     `json:"insertionDate,omitempty"`
-		UpdatedAt     *Timestamp     `json:"updatedAt,omitempty"`
+		FirstUsage    Timestamp      `json:"firstUsage,omitempty"`
+		InsertionDate Timestamp      `json:"insertionDate,omitempty"`
+		UpdatedAt     Timestamp      `json:"updatedAt,omitempty"`
 	}{
 		Address:       x.GetAddress(),
 		Metadata:      MetadataToAnyMap(x.GetMetadata()),
-		FirstUsage:    x.GetFirstUsage(),
-		InsertionDate: x.GetInsertionDate(),
-		UpdatedAt:     x.GetUpdatedAt(),
+		FirstUsage:    x.FirstUsageTs(),
+		InsertionDate: x.InsertionDateTs(),
+		UpdatedAt:     x.UpdatedAtTs(),
 	})
 }
 
@@ -405,13 +405,13 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 		aux.Mode = x.GetMode().String()
 	}
 
-	if x.GetCreatedAt() != nil {
-		t := x.GetCreatedAt().AsTime()
+	if ts := x.CreatedAtTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.CreatedAt = &t
 	}
 
-	if x.GetDeletedAt() != nil {
-		t := x.GetDeletedAt().AsTime()
+	if ts := x.DeletedAtTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.DeletedAt = &t
 	}
 
@@ -450,16 +450,16 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 // CreatedTransaction / RevertedTransaction / RevertTransactionPayload.
 func (x *NumscriptInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Name      string     `json:"name,omitempty"`
-		Content   string     `json:"content,omitempty"`
-		Version   string     `json:"version,omitempty"`
-		CreatedAt *Timestamp `json:"createdAt,omitempty"`
-		Ledger    string     `json:"ledger,omitempty"`
+		Name      string    `json:"name,omitempty"`
+		Content   string    `json:"content,omitempty"`
+		Version   string    `json:"version,omitempty"`
+		CreatedAt Timestamp `json:"createdAt,omitempty"`
+		Ledger    string    `json:"ledger,omitempty"`
 	}{
 		Name:      x.GetName(),
 		Content:   x.GetContent(),
 		Version:   x.GetVersion(),
-		CreatedAt: x.GetCreatedAt(),
+		CreatedAt: x.CreatedAtTs(),
 		Ledger:    x.GetLedger(),
 	})
 }
@@ -489,13 +489,13 @@ func (x *Chapter) MarshalJSON() ([]byte, error) {
 		CloseAuditSequence: x.GetCloseAuditSequence(),
 	}
 
-	if x.GetStart() != nil {
-		t := x.GetStart().AsTime()
+	if ts := x.StartTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.Start = &t
 	}
 
-	if x.GetEnd() != nil {
-		t := x.GetEnd().AsTime()
+	if ts := x.EndTs(); ts.IsSet() {
+		t := ts.AsTime()
 		aux.End = &t
 	}
 

@@ -131,7 +131,7 @@ func ReadMirrorLedgers(ctx context.Context, reader dal.PebbleReader) ([]*commonp
 			return nil, fmt.Errorf("iterating ledgers: %w", err)
 		}
 
-		if info.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && info.GetDeletedAt() == nil {
+		if info.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && info.GetDeletedAt() == 0 {
 			result = append(result, info)
 		}
 	}

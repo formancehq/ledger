@@ -10,71 +10,6 @@ import (
 	slices "slices"
 )
 
-// TimestampReader provides read-only access to Timestamp.
-// Call Mutate() to obtain a mutable clone.
-type TimestampReader interface {
-	GetData() uint64
-	Mutate() *Timestamp
-}
-
-type timestampReadonly Timestamp
-
-func (r *timestampReadonly) GetData() uint64 {
-	return (*Timestamp)(r).GetData()
-}
-
-func (r *timestampReadonly) Mutate() *Timestamp {
-	return (*Timestamp)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this Timestamp.
-func (m *Timestamp) AsReader() TimestampReader {
-	if m == nil {
-		return nil
-	}
-	return (*timestampReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this Timestamp.
-func (m *Timestamp) Mutate() *Timestamp {
-	return m.CloneVT()
-}
-
-// TimestampListReader provides read-only iteration over []*Timestamp.
-type TimestampListReader interface {
-	Len() int
-	Get(i int) TimestampReader
-	Range(yield func(int, TimestampReader) bool)
-}
-
-type timestampListReadonly []*Timestamp
-
-func (l timestampListReadonly) Len() int { return len(l) }
-
-func (l timestampListReadonly) Get(i int) TimestampReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l timestampListReadonly) Range(yield func(int, TimestampReader) bool) {
-	for i, v := range l {
-		var r TimestampReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewTimestampListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewTimestampListReader(s []*Timestamp) TimestampListReader { return timestampListReadonly(s) }
-
 // NullValueReader provides read-only access to NullValue.
 // Call Mutate() to obtain a mutable clone.
 type NullValueReader interface {
@@ -551,13 +486,17 @@ func NewPostingListReader(s []*Posting) PostingListReader { return postingListRe
 type TransactionReader interface {
 	GetPostings() PostingListReader
 	GetMetadata() Transaction_MetadataMapReader
-	GetTimestamp() TimestampReader
+	GetTimestamp() uint64
 	GetReference() string
 	GetId() uint64
 	GetReverted() bool
-	GetInsertedAt() TimestampReader
-	GetUpdatedAt() TimestampReader
-	GetRevertedAt() TimestampReader
+	GetInsertedAt() uint64
+	GetUpdatedAt() uint64
+	GetRevertedAt() uint64
+	TimestampTs() Timestamp
+	InsertedAtTs() Timestamp
+	UpdatedAtTs() Timestamp
+	RevertedAtTs() Timestamp
 	Mutate() *Transaction
 }
 
@@ -571,12 +510,8 @@ func (r *transactionReadonly) GetMetadata() Transaction_MetadataMapReader {
 	return transaction_metadataMapReadonly((*Transaction)(r).GetMetadata())
 }
 
-func (r *transactionReadonly) GetTimestamp() TimestampReader {
-	v := (*Transaction)(r).GetTimestamp()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *transactionReadonly) GetTimestamp() uint64 {
+	return (*Transaction)(r).GetTimestamp()
 }
 
 func (r *transactionReadonly) GetReference() string {
@@ -591,28 +526,32 @@ func (r *transactionReadonly) GetReverted() bool {
 	return (*Transaction)(r).GetReverted()
 }
 
-func (r *transactionReadonly) GetInsertedAt() TimestampReader {
-	v := (*Transaction)(r).GetInsertedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *transactionReadonly) GetInsertedAt() uint64 {
+	return (*Transaction)(r).GetInsertedAt()
 }
 
-func (r *transactionReadonly) GetUpdatedAt() TimestampReader {
-	v := (*Transaction)(r).GetUpdatedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *transactionReadonly) GetUpdatedAt() uint64 {
+	return (*Transaction)(r).GetUpdatedAt()
 }
 
-func (r *transactionReadonly) GetRevertedAt() TimestampReader {
-	v := (*Transaction)(r).GetRevertedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *transactionReadonly) GetRevertedAt() uint64 {
+	return (*Transaction)(r).GetRevertedAt()
+}
+
+func (r *transactionReadonly) TimestampTs() Timestamp {
+	return Timestamp((*Transaction)(r).GetTimestamp())
+}
+
+func (r *transactionReadonly) InsertedAtTs() Timestamp {
+	return Timestamp((*Transaction)(r).GetInsertedAt())
+}
+
+func (r *transactionReadonly) UpdatedAtTs() Timestamp {
+	return Timestamp((*Transaction)(r).GetUpdatedAt())
+}
+
+func (r *transactionReadonly) RevertedAtTs() Timestamp {
+	return Timestamp((*Transaction)(r).GetRevertedAt())
 }
 
 func (r *transactionReadonly) Mutate() *Transaction {
@@ -630,6 +569,26 @@ func (m *Transaction) AsReader() TransactionReader {
 // Mutate returns a mutable deep clone of this Transaction.
 func (m *Transaction) Mutate() *Transaction {
 	return m.CloneVT()
+}
+
+// TimestampTs returns the Timestamp field wrapped in Timestamp.
+func (m *Transaction) TimestampTs() Timestamp {
+	return Timestamp(m.GetTimestamp())
+}
+
+// InsertedAtTs returns the InsertedAt field wrapped in Timestamp.
+func (m *Transaction) InsertedAtTs() Timestamp {
+	return Timestamp(m.GetInsertedAt())
+}
+
+// UpdatedAtTs returns the UpdatedAt field wrapped in Timestamp.
+func (m *Transaction) UpdatedAtTs() Timestamp {
+	return Timestamp(m.GetUpdatedAt())
+}
+
+// RevertedAtTs returns the RevertedAt field wrapped in Timestamp.
+func (m *Transaction) RevertedAtTs() Timestamp {
+	return Timestamp(m.GetRevertedAt())
 }
 
 // TransactionListReader provides read-only iteration over []*Transaction.
@@ -1147,10 +1106,13 @@ func (m postCommitVolumes_volumesByAccountMapReadonly) Range(yield func(string, 
 type AccountReader interface {
 	GetAddress() string
 	GetMetadata() Account_MetadataMapReader
-	GetFirstUsage() TimestampReader
-	GetInsertionDate() TimestampReader
-	GetUpdatedAt() TimestampReader
+	GetFirstUsage() uint64
+	GetInsertionDate() uint64
+	GetUpdatedAt() uint64
 	GetVolumes() Account_VolumesMapReader
+	FirstUsageTs() Timestamp
+	InsertionDateTs() Timestamp
+	UpdatedAtTs() Timestamp
 	Mutate() *Account
 }
 
@@ -1164,32 +1126,32 @@ func (r *accountReadonly) GetMetadata() Account_MetadataMapReader {
 	return account_metadataMapReadonly((*Account)(r).GetMetadata())
 }
 
-func (r *accountReadonly) GetFirstUsage() TimestampReader {
-	v := (*Account)(r).GetFirstUsage()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *accountReadonly) GetFirstUsage() uint64 {
+	return (*Account)(r).GetFirstUsage()
 }
 
-func (r *accountReadonly) GetInsertionDate() TimestampReader {
-	v := (*Account)(r).GetInsertionDate()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *accountReadonly) GetInsertionDate() uint64 {
+	return (*Account)(r).GetInsertionDate()
 }
 
-func (r *accountReadonly) GetUpdatedAt() TimestampReader {
-	v := (*Account)(r).GetUpdatedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *accountReadonly) GetUpdatedAt() uint64 {
+	return (*Account)(r).GetUpdatedAt()
 }
 
 func (r *accountReadonly) GetVolumes() Account_VolumesMapReader {
 	return account_volumesMapReadonly((*Account)(r).GetVolumes())
+}
+
+func (r *accountReadonly) FirstUsageTs() Timestamp {
+	return Timestamp((*Account)(r).GetFirstUsage())
+}
+
+func (r *accountReadonly) InsertionDateTs() Timestamp {
+	return Timestamp((*Account)(r).GetInsertionDate())
+}
+
+func (r *accountReadonly) UpdatedAtTs() Timestamp {
+	return Timestamp((*Account)(r).GetUpdatedAt())
 }
 
 func (r *accountReadonly) Mutate() *Account {
@@ -1207,6 +1169,21 @@ func (m *Account) AsReader() AccountReader {
 // Mutate returns a mutable deep clone of this Account.
 func (m *Account) Mutate() *Account {
 	return m.CloneVT()
+}
+
+// FirstUsageTs returns the FirstUsage field wrapped in Timestamp.
+func (m *Account) FirstUsageTs() Timestamp {
+	return Timestamp(m.GetFirstUsage())
+}
+
+// InsertionDateTs returns the InsertionDate field wrapped in Timestamp.
+func (m *Account) InsertionDateTs() Timestamp {
+	return Timestamp(m.GetInsertionDate())
+}
+
+// UpdatedAtTs returns the UpdatedAt field wrapped in Timestamp.
+func (m *Account) UpdatedAtTs() Timestamp {
+	return Timestamp(m.GetUpdatedAt())
 }
 
 // AccountListReader provides read-only iteration over []*Account.
@@ -1894,11 +1871,13 @@ func NewIndexIDListReader(s []*IndexID) IndexIDListReader { return indexIDListRe
 type IndexReader interface {
 	GetId() IndexIDReader
 	GetBuildStatus() IndexBuildStatus
-	GetCreatedAt() TimestampReader
-	GetLastBuiltAt() TimestampReader
+	GetCreatedAt() uint64
+	GetLastBuiltAt() uint64
 	GetLastError() string
 	GetLedger() string
 	GetForwardEncodingVersion() uint32
+	CreatedAtTs() Timestamp
+	LastBuiltAtTs() Timestamp
 	Mutate() *Index
 }
 
@@ -1916,20 +1895,12 @@ func (r *indexReadonly) GetBuildStatus() IndexBuildStatus {
 	return (*Index)(r).GetBuildStatus()
 }
 
-func (r *indexReadonly) GetCreatedAt() TimestampReader {
-	v := (*Index)(r).GetCreatedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *indexReadonly) GetCreatedAt() uint64 {
+	return (*Index)(r).GetCreatedAt()
 }
 
-func (r *indexReadonly) GetLastBuiltAt() TimestampReader {
-	v := (*Index)(r).GetLastBuiltAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *indexReadonly) GetLastBuiltAt() uint64 {
+	return (*Index)(r).GetLastBuiltAt()
 }
 
 func (r *indexReadonly) GetLastError() string {
@@ -1942,6 +1913,14 @@ func (r *indexReadonly) GetLedger() string {
 
 func (r *indexReadonly) GetForwardEncodingVersion() uint32 {
 	return (*Index)(r).GetForwardEncodingVersion()
+}
+
+func (r *indexReadonly) CreatedAtTs() Timestamp {
+	return Timestamp((*Index)(r).GetCreatedAt())
+}
+
+func (r *indexReadonly) LastBuiltAtTs() Timestamp {
+	return Timestamp((*Index)(r).GetLastBuiltAt())
 }
 
 func (r *indexReadonly) Mutate() *Index {
@@ -1959,6 +1938,16 @@ func (m *Index) AsReader() IndexReader {
 // Mutate returns a mutable deep clone of this Index.
 func (m *Index) Mutate() *Index {
 	return m.CloneVT()
+}
+
+// CreatedAtTs returns the CreatedAt field wrapped in Timestamp.
+func (m *Index) CreatedAtTs() Timestamp {
+	return Timestamp(m.GetCreatedAt())
+}
+
+// LastBuiltAtTs returns the LastBuiltAt field wrapped in Timestamp.
+func (m *Index) LastBuiltAtTs() Timestamp {
+	return Timestamp(m.GetLastBuiltAt())
 }
 
 // IndexListReader provides read-only iteration over []*Index.
@@ -3727,8 +3716,9 @@ type NumscriptInfoReader interface {
 	GetName() string
 	GetContent() string
 	GetVersion() string
-	GetCreatedAt() TimestampReader
+	GetCreatedAt() uint64
 	GetLedger() string
+	CreatedAtTs() Timestamp
 	Mutate() *NumscriptInfo
 }
 
@@ -3746,16 +3736,16 @@ func (r *numscriptInfoReadonly) GetVersion() string {
 	return (*NumscriptInfo)(r).GetVersion()
 }
 
-func (r *numscriptInfoReadonly) GetCreatedAt() TimestampReader {
-	v := (*NumscriptInfo)(r).GetCreatedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *numscriptInfoReadonly) GetCreatedAt() uint64 {
+	return (*NumscriptInfo)(r).GetCreatedAt()
 }
 
 func (r *numscriptInfoReadonly) GetLedger() string {
 	return (*NumscriptInfo)(r).GetLedger()
+}
+
+func (r *numscriptInfoReadonly) CreatedAtTs() Timestamp {
+	return Timestamp((*NumscriptInfo)(r).GetCreatedAt())
 }
 
 func (r *numscriptInfoReadonly) Mutate() *NumscriptInfo {
@@ -3773,6 +3763,11 @@ func (m *NumscriptInfo) AsReader() NumscriptInfoReader {
 // Mutate returns a mutable deep clone of this NumscriptInfo.
 func (m *NumscriptInfo) Mutate() *NumscriptInfo {
 	return m.CloneVT()
+}
+
+// CreatedAtTs returns the CreatedAt field wrapped in Timestamp.
+func (m *NumscriptInfo) CreatedAtTs() Timestamp {
+	return Timestamp(m.GetCreatedAt())
 }
 
 // NumscriptInfoListReader provides read-only iteration over []*NumscriptInfo.
@@ -4396,7 +4391,8 @@ func NewSinkStatusListReader(s []*SinkStatus) SinkStatusListReader { return sink
 // Call Mutate() to obtain a mutable clone.
 type SinkErrorReader interface {
 	GetMessage() string
-	GetOccurredAt() TimestampReader
+	GetOccurredAt() uint64
+	OccurredAtTs() Timestamp
 	Mutate() *SinkError
 }
 
@@ -4406,12 +4402,12 @@ func (r *sinkErrorReadonly) GetMessage() string {
 	return (*SinkError)(r).GetMessage()
 }
 
-func (r *sinkErrorReadonly) GetOccurredAt() TimestampReader {
-	v := (*SinkError)(r).GetOccurredAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *sinkErrorReadonly) GetOccurredAt() uint64 {
+	return (*SinkError)(r).GetOccurredAt()
+}
+
+func (r *sinkErrorReadonly) OccurredAtTs() Timestamp {
+	return Timestamp((*SinkError)(r).GetOccurredAt())
 }
 
 func (r *sinkErrorReadonly) Mutate() *SinkError {
@@ -4429,6 +4425,11 @@ func (m *SinkError) AsReader() SinkErrorReader {
 // Mutate returns a mutable deep clone of this SinkError.
 func (m *SinkError) Mutate() *SinkError {
 	return m.CloneVT()
+}
+
+// OccurredAtTs returns the OccurredAt field wrapped in Timestamp.
+func (m *SinkError) OccurredAtTs() Timestamp {
+	return Timestamp(m.GetOccurredAt())
 }
 
 // SinkErrorListReader provides read-only iteration over []*SinkError.
@@ -4947,13 +4948,14 @@ func NewDatabricksOAuthM2MListReader(s []*DatabricksOAuthM2M) DatabricksOAuthM2M
 // Call Mutate() to obtain a mutable clone.
 type CreatedLedgerLogReader interface {
 	GetName() string
-	GetCreatedAt() TimestampReader
+	GetCreatedAt() uint64
 	GetMetadataSchema() MetadataSchemaReader
 	GetMode() LedgerMode
 	GetMirrorSource() MirrorSourceConfigReader
 	GetAccountTypes() CreatedLedgerLog_AccountTypesMapReader
 	GetDefaultEnforcementMode() ChartEnforcementMode
 	GetId() uint32
+	CreatedAtTs() Timestamp
 	Mutate() *CreatedLedgerLog
 }
 
@@ -4963,12 +4965,8 @@ func (r *createdLedgerLogReadonly) GetName() string {
 	return (*CreatedLedgerLog)(r).GetName()
 }
 
-func (r *createdLedgerLogReadonly) GetCreatedAt() TimestampReader {
-	v := (*CreatedLedgerLog)(r).GetCreatedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *createdLedgerLogReadonly) GetCreatedAt() uint64 {
+	return (*CreatedLedgerLog)(r).GetCreatedAt()
 }
 
 func (r *createdLedgerLogReadonly) GetMetadataSchema() MetadataSchemaReader {
@@ -5003,6 +5001,10 @@ func (r *createdLedgerLogReadonly) GetId() uint32 {
 	return (*CreatedLedgerLog)(r).GetId()
 }
 
+func (r *createdLedgerLogReadonly) CreatedAtTs() Timestamp {
+	return Timestamp((*CreatedLedgerLog)(r).GetCreatedAt())
+}
+
 func (r *createdLedgerLogReadonly) Mutate() *CreatedLedgerLog {
 	return (*CreatedLedgerLog)(r).CloneVT()
 }
@@ -5018,6 +5020,11 @@ func (m *CreatedLedgerLog) AsReader() CreatedLedgerLogReader {
 // Mutate returns a mutable deep clone of this CreatedLedgerLog.
 func (m *CreatedLedgerLog) Mutate() *CreatedLedgerLog {
 	return m.CloneVT()
+}
+
+// CreatedAtTs returns the CreatedAt field wrapped in Timestamp.
+func (m *CreatedLedgerLog) CreatedAtTs() Timestamp {
+	return Timestamp(m.GetCreatedAt())
 }
 
 // CreatedLedgerLogListReader provides read-only iteration over []*CreatedLedgerLog.
@@ -5092,7 +5099,8 @@ func (m createdLedgerLog_accountTypesMapReadonly) Range(yield func(string, Accou
 // Call Mutate() to obtain a mutable clone.
 type DeletedLedgerLogReader interface {
 	GetName() string
-	GetDeletedAt() TimestampReader
+	GetDeletedAt() uint64
+	DeletedAtTs() Timestamp
 	Mutate() *DeletedLedgerLog
 }
 
@@ -5102,12 +5110,12 @@ func (r *deletedLedgerLogReadonly) GetName() string {
 	return (*DeletedLedgerLog)(r).GetName()
 }
 
-func (r *deletedLedgerLogReadonly) GetDeletedAt() TimestampReader {
-	v := (*DeletedLedgerLog)(r).GetDeletedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *deletedLedgerLogReadonly) GetDeletedAt() uint64 {
+	return (*DeletedLedgerLog)(r).GetDeletedAt()
+}
+
+func (r *deletedLedgerLogReadonly) DeletedAtTs() Timestamp {
+	return Timestamp((*DeletedLedgerLog)(r).GetDeletedAt())
 }
 
 func (r *deletedLedgerLogReadonly) Mutate() *DeletedLedgerLog {
@@ -5125,6 +5133,11 @@ func (m *DeletedLedgerLog) AsReader() DeletedLedgerLogReader {
 // Mutate returns a mutable deep clone of this DeletedLedgerLog.
 func (m *DeletedLedgerLog) Mutate() *DeletedLedgerLog {
 	return m.CloneVT()
+}
+
+// DeletedAtTs returns the DeletedAt field wrapped in Timestamp.
+func (m *DeletedLedgerLog) DeletedAtTs() Timestamp {
+	return Timestamp(m.GetDeletedAt())
 }
 
 // DeletedLedgerLogListReader provides read-only iteration over []*DeletedLedgerLog.
@@ -5244,9 +5257,10 @@ func NewApplyLedgerLogListReader(s []*ApplyLedgerLog) ApplyLedgerLogListReader {
 // Call Mutate() to obtain a mutable clone.
 type LedgerLogReader interface {
 	GetData() LedgerLogPayloadReader
-	GetDate() TimestampReader
+	GetDate() uint64
 	GetId() uint64
 	GetPurgedVolumes() TouchedVolumeListReader
+	DateTs() Timestamp
 	Mutate() *LedgerLog
 }
 
@@ -5260,12 +5274,8 @@ func (r *ledgerLogReadonly) GetData() LedgerLogPayloadReader {
 	return v.AsReader()
 }
 
-func (r *ledgerLogReadonly) GetDate() TimestampReader {
-	v := (*LedgerLog)(r).GetDate()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *ledgerLogReadonly) GetDate() uint64 {
+	return (*LedgerLog)(r).GetDate()
 }
 
 func (r *ledgerLogReadonly) GetId() uint64 {
@@ -5274,6 +5284,10 @@ func (r *ledgerLogReadonly) GetId() uint64 {
 
 func (r *ledgerLogReadonly) GetPurgedVolumes() TouchedVolumeListReader {
 	return NewTouchedVolumeListReader((*LedgerLog)(r).GetPurgedVolumes())
+}
+
+func (r *ledgerLogReadonly) DateTs() Timestamp {
+	return Timestamp((*LedgerLog)(r).GetDate())
 }
 
 func (r *ledgerLogReadonly) Mutate() *LedgerLog {
@@ -5291,6 +5305,11 @@ func (m *LedgerLog) AsReader() LedgerLogReader {
 // Mutate returns a mutable deep clone of this LedgerLog.
 func (m *LedgerLog) Mutate() *LedgerLog {
 	return m.CloneVT()
+}
+
+// DateTs returns the Date field wrapped in Timestamp.
+func (m *LedgerLog) DateTs() Timestamp {
+	return Timestamp(m.GetDate())
 }
 
 // LedgerLogListReader provides read-only iteration over []*LedgerLog.
@@ -6227,8 +6246,8 @@ func NewRemovedMetadataFieldTypeLogListReader(s []*RemovedMetadataFieldTypeLog) 
 // Call Mutate() to obtain a mutable clone.
 type ChapterReader interface {
 	GetId() uint64
-	GetStart() TimestampReader
-	GetEnd() TimestampReader
+	GetStart() uint64
+	GetEnd() uint64
 	GetStatus() ChapterStatus
 	GetCloseSequence() uint64
 	GetSealingHash() []byte
@@ -6237,6 +6256,8 @@ type ChapterReader interface {
 	GetStateHash() []byte
 	GetStartAuditSequence() uint64
 	GetCloseAuditSequence() uint64
+	StartTs() Timestamp
+	EndTs() Timestamp
 	Mutate() *Chapter
 }
 
@@ -6246,20 +6267,12 @@ func (r *chapterReadonly) GetId() uint64 {
 	return (*Chapter)(r).GetId()
 }
 
-func (r *chapterReadonly) GetStart() TimestampReader {
-	v := (*Chapter)(r).GetStart()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *chapterReadonly) GetStart() uint64 {
+	return (*Chapter)(r).GetStart()
 }
 
-func (r *chapterReadonly) GetEnd() TimestampReader {
-	v := (*Chapter)(r).GetEnd()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *chapterReadonly) GetEnd() uint64 {
+	return (*Chapter)(r).GetEnd()
 }
 
 func (r *chapterReadonly) GetStatus() ChapterStatus {
@@ -6294,6 +6307,14 @@ func (r *chapterReadonly) GetCloseAuditSequence() uint64 {
 	return (*Chapter)(r).GetCloseAuditSequence()
 }
 
+func (r *chapterReadonly) StartTs() Timestamp {
+	return Timestamp((*Chapter)(r).GetStart())
+}
+
+func (r *chapterReadonly) EndTs() Timestamp {
+	return Timestamp((*Chapter)(r).GetEnd())
+}
+
 func (r *chapterReadonly) Mutate() *Chapter {
 	return (*Chapter)(r).CloneVT()
 }
@@ -6309,6 +6330,16 @@ func (m *Chapter) AsReader() ChapterReader {
 // Mutate returns a mutable deep clone of this Chapter.
 func (m *Chapter) Mutate() *Chapter {
 	return m.CloneVT()
+}
+
+// StartTs returns the Start field wrapped in Timestamp.
+func (m *Chapter) StartTs() Timestamp {
+	return Timestamp(m.GetStart())
+}
+
+// EndTs returns the End field wrapped in Timestamp.
+func (m *Chapter) EndTs() Timestamp {
+	return Timestamp(m.GetEnd())
 }
 
 // ChapterListReader provides read-only iteration over []*Chapter.
@@ -7103,7 +7134,8 @@ func NewPostgresAwsIamAuthListReader(s []*PostgresAwsIamAuth) PostgresAwsIamAuth
 // Call Mutate() to obtain a mutable clone.
 type MirrorSyncErrorReader interface {
 	GetMessage() string
-	GetOccurredAt() TimestampReader
+	GetOccurredAt() uint64
+	OccurredAtTs() Timestamp
 	Mutate() *MirrorSyncError
 }
 
@@ -7113,12 +7145,12 @@ func (r *mirrorSyncErrorReadonly) GetMessage() string {
 	return (*MirrorSyncError)(r).GetMessage()
 }
 
-func (r *mirrorSyncErrorReadonly) GetOccurredAt() TimestampReader {
-	v := (*MirrorSyncError)(r).GetOccurredAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *mirrorSyncErrorReadonly) GetOccurredAt() uint64 {
+	return (*MirrorSyncError)(r).GetOccurredAt()
+}
+
+func (r *mirrorSyncErrorReadonly) OccurredAtTs() Timestamp {
+	return Timestamp((*MirrorSyncError)(r).GetOccurredAt())
 }
 
 func (r *mirrorSyncErrorReadonly) Mutate() *MirrorSyncError {
@@ -7136,6 +7168,11 @@ func (m *MirrorSyncError) AsReader() MirrorSyncErrorReader {
 // Mutate returns a mutable deep clone of this MirrorSyncError.
 func (m *MirrorSyncError) Mutate() *MirrorSyncError {
 	return m.CloneVT()
+}
+
+// OccurredAtTs returns the OccurredAt field wrapped in Timestamp.
+func (m *MirrorSyncError) OccurredAtTs() Timestamp {
+	return Timestamp(m.GetOccurredAt())
 }
 
 // MirrorSyncErrorListReader provides read-only iteration over []*MirrorSyncError.
@@ -7270,8 +7307,8 @@ func NewMirrorSyncProgressListReader(s []*MirrorSyncProgress) MirrorSyncProgress
 // Call Mutate() to obtain a mutable clone.
 type LedgerInfoReader interface {
 	GetName() string
-	GetCreatedAt() TimestampReader
-	GetDeletedAt() TimestampReader
+	GetCreatedAt() uint64
+	GetDeletedAt() uint64
 	GetMetadataSchema() MetadataSchemaReader
 	GetMode() LedgerMode
 	GetMirrorSource() MirrorSourceConfigReader
@@ -7280,6 +7317,8 @@ type LedgerInfoReader interface {
 	GetDefaultEnforcementMode() ChartEnforcementMode
 	GetMetadata() LedgerInfo_MetadataMapReader
 	GetId() uint32
+	CreatedAtTs() Timestamp
+	DeletedAtTs() Timestamp
 	Mutate() *LedgerInfo
 }
 
@@ -7289,20 +7328,12 @@ func (r *ledgerInfoReadonly) GetName() string {
 	return (*LedgerInfo)(r).GetName()
 }
 
-func (r *ledgerInfoReadonly) GetCreatedAt() TimestampReader {
-	v := (*LedgerInfo)(r).GetCreatedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *ledgerInfoReadonly) GetCreatedAt() uint64 {
+	return (*LedgerInfo)(r).GetCreatedAt()
 }
 
-func (r *ledgerInfoReadonly) GetDeletedAt() TimestampReader {
-	v := (*LedgerInfo)(r).GetDeletedAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *ledgerInfoReadonly) GetDeletedAt() uint64 {
+	return (*LedgerInfo)(r).GetDeletedAt()
 }
 
 func (r *ledgerInfoReadonly) GetMetadataSchema() MetadataSchemaReader {
@@ -7349,6 +7380,14 @@ func (r *ledgerInfoReadonly) GetId() uint32 {
 	return (*LedgerInfo)(r).GetId()
 }
 
+func (r *ledgerInfoReadonly) CreatedAtTs() Timestamp {
+	return Timestamp((*LedgerInfo)(r).GetCreatedAt())
+}
+
+func (r *ledgerInfoReadonly) DeletedAtTs() Timestamp {
+	return Timestamp((*LedgerInfo)(r).GetDeletedAt())
+}
+
 func (r *ledgerInfoReadonly) Mutate() *LedgerInfo {
 	return (*LedgerInfo)(r).CloneVT()
 }
@@ -7364,6 +7403,16 @@ func (m *LedgerInfo) AsReader() LedgerInfoReader {
 // Mutate returns a mutable deep clone of this LedgerInfo.
 func (m *LedgerInfo) Mutate() *LedgerInfo {
 	return m.CloneVT()
+}
+
+// CreatedAtTs returns the CreatedAt field wrapped in Timestamp.
+func (m *LedgerInfo) CreatedAtTs() Timestamp {
+	return Timestamp(m.GetCreatedAt())
+}
+
+// DeletedAtTs returns the DeletedAt field wrapped in Timestamp.
+func (m *LedgerInfo) DeletedAtTs() Timestamp {
+	return Timestamp(m.GetDeletedAt())
 }
 
 // LedgerInfoListReader provides read-only iteration over []*LedgerInfo.
@@ -7652,8 +7701,9 @@ type TransactionStateReader interface {
 	GetCreatedByLog() uint64
 	GetRevertedByTransaction() uint64
 	GetMetadata() TransactionState_MetadataMapReader
-	GetTimestamp() TimestampReader
+	GetTimestamp() uint64
 	GetPostings() PostingListReader
+	TimestampTs() Timestamp
 	Mutate() *TransactionState
 }
 
@@ -7671,16 +7721,16 @@ func (r *transactionStateReadonly) GetMetadata() TransactionState_MetadataMapRea
 	return transactionState_metadataMapReadonly((*TransactionState)(r).GetMetadata())
 }
 
-func (r *transactionStateReadonly) GetTimestamp() TimestampReader {
-	v := (*TransactionState)(r).GetTimestamp()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *transactionStateReadonly) GetTimestamp() uint64 {
+	return (*TransactionState)(r).GetTimestamp()
 }
 
 func (r *transactionStateReadonly) GetPostings() PostingListReader {
 	return NewPostingListReader((*TransactionState)(r).GetPostings())
+}
+
+func (r *transactionStateReadonly) TimestampTs() Timestamp {
+	return Timestamp((*TransactionState)(r).GetTimestamp())
 }
 
 func (r *transactionStateReadonly) Mutate() *TransactionState {
@@ -7698,6 +7748,11 @@ func (m *TransactionState) AsReader() TransactionStateReader {
 // Mutate returns a mutable deep clone of this TransactionState.
 func (m *TransactionState) Mutate() *TransactionState {
 	return m.CloneVT()
+}
+
+// TimestampTs returns the Timestamp field wrapped in Timestamp.
+func (m *TransactionState) TimestampTs() Timestamp {
+	return Timestamp(m.GetTimestamp())
 }
 
 // TransactionStateListReader provides read-only iteration over []*TransactionState.
@@ -7777,6 +7832,7 @@ type IdempotencyKeyValueReader interface {
 	GetCreatedAt() uint64
 	GetFailure() IdempotencyFailureReader
 	GetLogCount() uint32
+	CreatedAtTs() Timestamp
 	Mutate() *IdempotencyKeyValue
 }
 
@@ -7810,6 +7866,10 @@ func (r *idempotencyKeyValueReadonly) GetLogCount() uint32 {
 	return (*IdempotencyKeyValue)(r).GetLogCount()
 }
 
+func (r *idempotencyKeyValueReadonly) CreatedAtTs() Timestamp {
+	return Timestamp((*IdempotencyKeyValue)(r).GetCreatedAt())
+}
+
 func (r *idempotencyKeyValueReadonly) Mutate() *IdempotencyKeyValue {
 	return (*IdempotencyKeyValue)(r).CloneVT()
 }
@@ -7825,6 +7885,11 @@ func (m *IdempotencyKeyValue) AsReader() IdempotencyKeyValueReader {
 // Mutate returns a mutable deep clone of this IdempotencyKeyValue.
 func (m *IdempotencyKeyValue) Mutate() *IdempotencyKeyValue {
 	return m.CloneVT()
+}
+
+// CreatedAtTs returns the CreatedAt field wrapped in Timestamp.
+func (m *IdempotencyKeyValue) CreatedAtTs() Timestamp {
+	return Timestamp(m.GetCreatedAt())
 }
 
 // IdempotencyKeyValueListReader provides read-only iteration over []*IdempotencyKeyValue.

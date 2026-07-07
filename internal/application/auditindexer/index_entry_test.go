@@ -27,7 +27,7 @@ func TestAppendEntryKeys(t *testing.T) {
 	entry := &auditpb.AuditEntry{
 		Sequence:       9,
 		ProposalId:     3,
-		Timestamp:      &commonpb.Timestamp{Data: 1_000_000}, // 1 second in HLC micros
+		Timestamp:      1_000_000, // 1 second in HLC micros
 		Outcome:        &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers:        []string{"a", "b"},
 		CallerSnapshot: &commonpb.CallerSnapshot{Identity: &commonpb.CallerIdentity{Subject: "alice"}},
@@ -71,7 +71,7 @@ func TestAppendEntryKeysFailureNilCaller(t *testing.T) {
 	entry := &auditpb.AuditEntry{
 		Sequence:   2,
 		ProposalId: 1,
-		Timestamp:  &commonpb.Timestamp{Data: 1_000_000},
+		Timestamp:  1_000_000,
 		Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
 		Ledgers:    []string{"x"},
 	}

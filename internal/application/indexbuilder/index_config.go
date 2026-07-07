@@ -154,7 +154,7 @@ func (b *Builder) seedLedgerIndexConfig(ctx context.Context, handle *dal.ReadHan
 			return fmt.Errorf("iterating ledgers: %w", err)
 		}
 
-		if info.GetDeletedAt() != nil {
+		if info.GetDeletedAt() != 0 {
 			continue
 		}
 

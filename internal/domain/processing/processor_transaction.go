@@ -92,8 +92,8 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// The effective timestamp is recorded on TransactionState so reverts can
 	// honor at_effective_date without re-reading the original log from Pebble.
 	timestamp := order.GetTimestamp()
-	if timestamp == nil {
-		timestamp = s.GetDate().Mutate()
+	if timestamp == 0 {
+		timestamp = s.GetDate().Micros()
 	}
 
 	txKey := domain.TransactionKey{LedgerName: ledger, ID: nextTransactionID}
@@ -213,8 +213,8 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 					Timestamp:  timestamp,
 					Reference:  order.GetReference(),
 					Id:         nextTransactionID,
-					InsertedAt: s.GetDate().Mutate(),
-					UpdatedAt:  s.GetDate().Mutate(),
+					InsertedAt: s.GetDate().Micros(),
+					UpdatedAt:  s.GetDate().Micros(),
 				},
 				AccountMetadata:   accountMetadata,
 				ChapterId:         chapterID,

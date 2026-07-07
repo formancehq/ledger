@@ -133,7 +133,7 @@ func TestSinkStatus(t *testing.T) {
 			Cursor:   42,
 			Error: &commonpb.SinkError{
 				Message:    "connection refused",
-				OccurredAt: commonpb.NewTimestamp(libtime.Now()),
+				OccurredAt: uint64(commonpb.NewTimestamp(libtime.Now())),
 			},
 		}))
 		require.NoError(t, batch.Commit())

@@ -23,7 +23,7 @@ func processCloseChapter(_ *raftcmdpb.CloseChapterOrder, ctx *Context) (*commonp
 	// Transition current chapter to CLOSING
 	currentChapter.Status = commonpb.ChapterStatus_CHAPTER_CLOSING
 	currentChapter.CloseSequence = s.GetNextSequenceID()
-	currentChapter.End = s.GetDate().Mutate()
+	currentChapter.End = s.GetDate().Micros()
 	// LastAuditHash is set later in applyProposal after the audit hash is computed.
 	// Capture the audit sequence at close time. The next audit sequence ID is
 	// one past the last written, so close_audit_sequence = next - 1.
@@ -36,7 +36,7 @@ func processCloseChapter(_ *raftcmdpb.CloseChapterOrder, ctx *Context) (*commonp
 	// StartSequence is the next sequence after the close boundary (close_sequence is the CloseChapter log itself)
 	newChapter := &commonpb.Chapter{
 		Id:                 s.IncrementNextChapterID(),
-		Start:              s.GetDate().Mutate(),
+		Start:              s.GetDate().Micros(),
 		Status:             commonpb.ChapterStatus_CHAPTER_OPEN,
 		StartSequence:      s.GetNextSequenceID() + 1,
 		StartAuditSequence: s.GetNextAuditSequenceID(),
