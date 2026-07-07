@@ -44,6 +44,22 @@ func coverReceiptReverts(bulk oracle.Bulk) {
 	}
 }
 
+// requestExpandsVolumes reports whether a create/revert asked the server to
+// return post-commit volumes. When false the response log omits them, so
+// crossCheckCommit skips the volume comparison for that order.
+func requestExpandsVolumes(req *servicepb.Request) bool {
+	action := req.GetApply().GetAction()
+	if ct := action.GetCreateTransaction(); ct != nil {
+		return ct.GetExpandVolumes()
+	}
+
+	if rt := action.GetRevertTransaction(); rt != nil {
+		return rt.GetExpandVolumes()
+	}
+
+	return false
+}
+
 // captureReceipts records the signed receipt the server returned for each newly
 // created, referenced transaction, keyed by reference, so generateRevert can
 // exercise the receipt-carried revert path. The response log at index i pairs
@@ -93,6 +109,15 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 	logs := resp.GetLogs()
 	for i, order := range res.Orders {
 		if order.PCV == nil || i >= len(logs) {
+			continue
+		}
+
+		// A tx created/reverted with ExpandVolumes:false carries no PCV on its
+		// response log; skip the volume comparison (the commit is unaffected, and
+		// later reads validate the volumes).
+		if !requestExpandsVolumes(bulk.Requests[i]) {
+			assert.Reachable("singleton_driver_model: non-expanded-volumes transaction committed", internal.Details{})
+
 			continue
 		}
 

@@ -197,6 +197,13 @@ func rollRevert() bool {
 	return random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) == 0
 }
 
+// expandVolumes reports whether a transaction requests post-commit volumes on
+// its response (~9/10). When false the server omits them and the checker skips
+// the volume comparison for that order (crossCheckCommit).
+func expandVolumes() bool {
+	return random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) != 0
+}
+
 // Picks Add vs Remove.
 func generateChartOp(ledger string) *servicepb.Request {
 	if random.RandomChoice([]uint8{0, 1}) == 0 {
@@ -276,11 +283,10 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 	// Every transaction gets a unique reference so it is targetable by later
 	// transaction-metadata writes. ~half also carry metadata at creation.
 	payload := &servicepb.CreateTransactionPayload{
-		Postings:  postings,
-		Reference: txRef(),
-		Force:     force,
-		// Need PCV for validation.
-		ExpandVolumes: true,
+		Postings:      postings,
+		Reference:     txRef(),
+		Force:         force,
+		ExpandVolumes: expandVolumes(),
 	}
 
 	if random.RandomChoice([]uint8{0, 1}) == 0 {
@@ -755,7 +761,7 @@ func generateRevert(ledger string, ls oracle.LedgerState, receipts map[string]st
 		// ~half at the original's effective date: the revert inherits the
 		// original's timestamp instead of the server's current date.
 		AtEffectiveDate: random.RandomChoice([]uint8{0, 1}) == 0,
-		ExpandVolumes:   true,
+		ExpandVolumes:   expandVolumes(),
 	}
 
 	// ~half the reverts with a captured receipt carry it, exercising admission's
