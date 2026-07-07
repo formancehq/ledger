@@ -361,9 +361,9 @@ func TestSetAccountMetadataFromAddress(t *testing.T) {
 func TestSetAccountMetadataFromAddress_InvalidKeyRejectedAtCompile(t *testing.T) {
 	t.Parallel()
 
-	// A metadata key with a disallowed character ('/') is rejected at admission.
+	// A metadata key with a disallowed character (space) is rejected at admission.
 	_, err := NewRewriter(rules(
-		rule("true", `tx.setAccountMetadataFromAddress("^(.+)$", "bad/key", "$1")`, false),
+		rule("true", `tx.setAccountMetadataFromAddress("^(.+)$", "bad key", "$1")`, false),
 	))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "metadata key")
