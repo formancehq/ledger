@@ -264,7 +264,7 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 		return nil, err
 	}
 
-	if err := validateLiteralTypes(ast); err != nil {
+	if err := validateTypeTokens(ast); err != nil {
 		return nil, err
 	}
 
@@ -337,35 +337,37 @@ func (r *Rewriter) validateLiteralRegexes(ast *cel.Ast) error {
 }
 
 // typeTokenArg maps each helper that takes an optional metadata type token to
-// the argument index (excluding the receiver) of that token, so literal tokens
-// can be validated at compile time.
+// the argument index (excluding the receiver) of that token, so the token can be
+// validated at compile time.
 var typeTokenArg = map[string]int{
 	"setMetadata":                   2, // key, value, type
 	"setAccountMetadata":            3, // account, key, value, type
 	"setAccountMetadataFromAddress": 3, // pattern, key, replacement, type
 }
 
-// validateLiteralTypes rejects an unknown literal metadata type token at
-// compile/admission time (e.g. "int" instead of "int64"), matching the fail-fast
-// treatment of literal regex patterns. Computed tokens are validated at run time.
-func validateLiteralTypes(ast *cel.Ast) error {
+// validateTypeTokens enforces that the metadata type argument, when supplied, is
+// a constant valid schema type. Requiring a constant means every type is fully
+// checked at admission (fail-fast) rather than deferred to a run-time failure
+// that would stall a mirror batch — and a computed type token has no real use.
+func validateTypeTokens(ast *cel.Ast) error {
 	root := celast.NavigateAST(ast.NativeRep())
 
 	for fn, idx := range typeTokenArg {
 		for _, call := range celast.MatchDescendants(root, celast.FunctionMatcher(fn)) {
 			args := call.AsCall().Args()
 			if len(args) <= idx {
-				continue
+				continue // untyped overload
 			}
 
 			token := args[idx]
+
 			if token.Kind() != celast.LiteralKind {
-				continue
+				return fmt.Errorf("%s: metadata type must be a constant string", fn)
 			}
 
 			lit, ok := token.AsLiteral().Value().(string)
 			if !ok {
-				continue
+				return fmt.Errorf("%s: metadata type must be a constant string", fn)
 			}
 
 			if _, err := commonpb.ParseMetadataType(lit); err != nil {
