@@ -39,10 +39,12 @@ Read-only fields (usable in `match` and `cel`):
 Helper member functions (each returns a new copy-on-write `tx`; helpers never mutate in place, and the result is committed to the proto only after the whole rule chain succeeds):
 
 - `tx.rewriteAddress(pattern, replacement)` — RE2 replace across every address (posting source/destination, target, account-metadata keys). Account-metadata keys are rewritten in sorted order with a deterministic last-writer-wins merge on collision.
-- `tx.setAccountMetadataFromAddress(pattern, key, replacement)` — for every posting account address matching `pattern`, sets `accountMetadata[address][key]` to `ReplaceAllString(address, replacement)`. Used to derive per-account metadata from the address, e.g. capture a segment with a group and store it. Account metadata is only persisted for created transactions.
-- `tx.setMetadata(key, value)` / `tx.deleteMetadata(key)` — edit the entry's metadata map.
-- `tx.setAccountMetadata(account, key, value)` / `tx.deleteAccountMetadata(account, key)` — created/reverted only.
+- `tx.setAccountMetadataFromAddress(pattern, key, replacement [, type])` — for every posting account address matching `pattern`, sets `accountMetadata[address][key]` to `ReplaceAllString(address, replacement)`. Used to derive per-account metadata from the address, e.g. capture a segment with a group and store it. Because it uses `ReplaceAllString`, the pattern must match the **whole** address (anchor with `^…$`), otherwise the unmatched tail is left in the value. Account metadata is only persisted for created transactions.
+- `tx.setMetadata(key, value [, type])` / `tx.deleteMetadata(key)` — edit the entry's metadata map.
+- `tx.setAccountMetadata(account, key, value [, type])` / `tx.deleteAccountMetadata(account, key)` — created/reverted only.
 - `tx.drop()` — mark the entry to be dropped (see below).
+
+**Metadata types.** The three setters take an optional `type` — one of the schema types `string` (default), `int64`, `bool`, `uint64`, `int8/16/32`, `uint8/16/32`, `datetime` — that coerces the string value into the typed `MetadataValue`. A literal type token is validated at admission; a value that does not parse as the declared type is stored as a null value preserving the original string (the platform conversion matrix). Mirror source metadata is otherwise always string-typed, so this is the only way to emit typed metadata into a mirror.
 
 ### Mutable scope (v1)
 
@@ -91,3 +93,11 @@ the charset `[a-zA-Z0-9._:-]`, so `/` is not allowed):
 
 For `acquirer:acme:worker:001:bank` this sets that account's
 `acquirer-type` metadata to `bank`.
+
+Capturing a typed value — store the numeric worker id as an `int64` (the pattern
+matches the whole address so only the captured group remains):
+
+```yaml
+- cel: |
+    tx.setAccountMetadataFromAddress("^acquirer:acme:worker:(\\d+):.*$", "worker-id", "$1", "int64")
+```

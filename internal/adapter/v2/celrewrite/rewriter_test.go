@@ -24,7 +24,7 @@ func createdEntry(logID uint64, txID uint64, postings []*commonpb.Posting, meta 
 			CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
 				TransactionId: txID,
 				Postings:      postings,
-				Metadata:      stringsToMetadata(meta),
+				Metadata:      stringsToMetadata(meta, nil),
 			},
 		},
 	}
@@ -166,8 +166,8 @@ func TestAccountMetadataCollisionMerge(t *testing.T) {
 				TransactionId: 1,
 				Postings:      []*commonpb.Posting{posting("world", "bank", "USD", 1)},
 				AccountMetadata: map[string]*commonpb.MetadataMap{
-					"acct:worker:001": {Values: stringsToMetadata(map[string]string{"k": "v1"})},
-					"acct:worker:002": {Values: stringsToMetadata(map[string]string{"k": "v2", "x": "y"})},
+					"acct:worker:001": {Values: stringsToMetadata(map[string]string{"k": "v1"}, nil)},
+					"acct:worker:002": {Values: stringsToMetadata(map[string]string{"k": "v2", "x": "y"}, nil)},
 				},
 			},
 		},
@@ -271,7 +271,7 @@ func savedMetadataEntry(logID uint64, account string, meta map[string]string) *r
 				Target: &commonpb.Target{
 					Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
 				},
-				Metadata: stringsToMetadata(meta),
+				Metadata: stringsToMetadata(meta, nil),
 			},
 		},
 	}
@@ -389,6 +389,57 @@ func TestSetAccountMetadataFromAddress_InvalidLiteralRegexRejectedAtCompile(t *t
 	))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "setAccountMetadataFromAddress pattern")
+}
+
+func TestTypedMetadata(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule("true", `tx.setMetadata("count", "42", "int64")`, false),
+		rule("true", `tx.setMetadata("flag", "true", "bool")`, false),
+		rule("true", `tx.setMetadata("name", "acme", "string")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+
+	md := out.GetCreatedTransaction().GetMetadata()
+	require.Equal(t, int64(42), md["count"].GetIntValue())
+	require.True(t, md["flag"].GetBoolValue())
+	require.Equal(t, "acme", md["name"].GetStringValue())
+}
+
+func TestSetAccountMetadataFromAddressTyped(t *testing.T) {
+	t.Parallel()
+
+	// Capture the numeric worker id and store it as an int. The pattern must
+	// match the whole address (ReplaceAllString leaves any unmatched tail).
+	r, err := NewRewriter(rules(
+		rule("true", `tx.setAccountMetadataFromAddress("^acquirer:acme:worker:(\\d+):.*$", "worker-id", "$1", "int64")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{
+		posting("world", "acquirer:acme:worker:007:bank", "USD", 100),
+	}, nil)
+
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+
+	v := out.GetCreatedTransaction().GetAccountMetadata()["acquirer:acme:worker:007:bank"].GetValues()["worker-id"]
+	require.Equal(t, int64(7), v.GetIntValue())
+}
+
+func TestInvalidTypeTokenRejectedAtCompile(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRewriter(rules(
+		rule("true", `tx.setMetadata("k", "v", "integer")`, false), // not a valid type token
+	))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "setMetadata type")
 }
 
 func TestDeterministicOutput(t *testing.T) {
