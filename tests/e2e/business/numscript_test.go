@@ -588,4 +588,131 @@ send $amount (
 			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 		})
 	})
+
+	// Regression coverage for ledger#1500: overdraft() folds to zero against
+	// emulation's fake positive balance, so `send overdraft(...)` produced no
+	// posting during dependency discovery, and the unbounded-overdraft source's
+	// volume was never preloaded. At apply the real overdraft was non-zero, the
+	// posting materialised, and the write hit "read of undeclared key"
+	// (STORAGE_OPERATION_FAILED). The fix unions numscript's static
+	// GetInvolvedAccounts analysis into the preload set. These tests exercise
+	// the fix end-to-end through the gRPC apply path.
+	Context("When repaying an unbounded overdraft via overdraft() (regression #1500)", Ordered, func() {
+		var ledgerName = "numscript-overdraft-1500"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should repay via a mid-script overdraft() call from an unbounded-overdraft source", func() {
+			// Step 1: put @credit into overdraft by 100. This mirrors the reproduction
+			// in the issue and matches emulation's expectations (positive fake balance
+			// on @main allows the send, no cross-account read on @credit yet).
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
+send [USD/2 100] (
+  source = @credit allowing unbounded overdraft
+  destination = @main
+)
+`, nil, nil)))
+			Expect(err).To(Succeed())
+
+			// Step 2: repay the overdraft. Before the fix this failed with
+			// STORAGE_OPERATION_FAILED / "source volume repay/USD/2" because @repay
+			// was never preloaded. With the static-involved-accounts union, @repay is
+			// preloaded and the transaction applies cleanly.
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
+#![feature("experimental-overdraft-function", "experimental-mid-script-function-call")]
+send overdraft(@credit, USD/2) (
+  source = @repay allowing unbounded overdraft
+  destination = @credit
+)
+`, nil, nil)))
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			// The repay posting materialises for exactly the overdrawn amount.
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx).NotTo(BeNil())
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].Source).To(Equal("repay"))
+			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("credit"))
+			Expect(createdTx.Transaction.Postings[0].Asset).To(Equal("USD/2"))
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("100"))
+
+			// @credit is now flat (was -100, received +100 from @repay).
+			Eventually(func(g Gomega) {
+				credit, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "credit",
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(credit.Volumes).To(HaveKey("USD/2"))
+				g.Expect(credit.Volumes["USD/2"].Balance).To(Equal("0"))
+			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
+
+			// @repay took the debt via its unbounded overdraft.
+			Eventually(func(g Gomega) {
+				repay, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "repay",
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(repay.Volumes).To(HaveKey("USD/2"))
+				g.Expect(repay.Volumes["USD/2"].Balance).To(Equal("-100"))
+			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should repay when overdraft() is bound through a vars block", func() {
+			// The issue notes: "Binding overdraft() through a vars block instead of a
+			// mid-script call fails identically." Same emulation gap, different call
+			// site — this locks the vars-block variant in as a regression.
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
+send [USD/2 50] (
+  source = @credit_vars allowing unbounded overdraft
+  destination = @main
+)
+`, nil, nil)))
+			Expect(err).To(Succeed())
+
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
+#![feature("experimental-overdraft-function")]
+vars {
+  monetary $due = overdraft(@credit_vars, USD/2)
+}
+send $due (
+  source = @repay_vars allowing unbounded overdraft
+  destination = @credit_vars
+)
+`, nil, nil)))
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].Source).To(Equal("repay_vars"))
+			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("credit_vars"))
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("50"))
+
+			Eventually(func(g Gomega) {
+				credit, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "credit_vars",
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(credit.Volumes["USD/2"].Balance).To(Equal("0"))
+			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				repay, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "repay_vars",
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(repay.Volumes["USD/2"].Balance).To(Equal("-50"))
+			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
+		})
+	})
 })
