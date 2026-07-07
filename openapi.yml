@@ -2591,9 +2591,12 @@ components:
             Per-asset input/output/balance. The field is defined here so
             the schema stays stable across future wire changes, but it is
             not populated on the current v3 wire — `Account.MarshalJSON`
-            drops it. For per-account balances, use
-            `GET /v3/{ledgerName}/volumes` or a prepared query with type
-            `AGGREGATE_VOLUMES`.
+            drops it. For per-account balances, use a prepared query with
+            type `AGGREGATE_VOLUMES` and an exact-address filter
+            (`address.hardcodedExact`); the aggregated volumes returned by
+            `GET /v3/{ledgerName}/volumes?prefix=…` match by raw byte
+            prefix (`acc:1` matches `acc:10`) and will produce incorrect
+            balances for a single-account lookup.
 
     VolumesWithBalance:
       type: object
