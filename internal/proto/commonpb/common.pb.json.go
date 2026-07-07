@@ -140,14 +140,30 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 	}
 }
 
-// MarshalJSON implements json.Marshaler for PostCommitVolumes.
+// MarshalJSON implements json.Marshaler for PostCommitVolumes. The wire shape
+// is a flat `{address: {asset: Volumes}}` map — protojson would emit the raw
+// proto wrappers (`volumesByAccount.{addr}.volumes.{asset}`), leaking two
+// nesting levels that don't belong on the public API and don't match the
+// OpenAPI schema (see PostCommitVolumes in openapi.yml).
 func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		VolumesByAccount map[string]*VolumesByAssets `json:"volumesByAccount,omitempty"`
-	}{
-		VolumesByAccount: x.GetVolumesByAccount(),
-	})
+	byAccount := x.GetVolumesByAccount()
+	if len(byAccount) == 0 {
+		return []byte("{}"), nil
+	}
+
+	flat := make(map[string]map[string]*Volumes, len(byAccount))
+	for addr, va := range byAccount {
+		flat[addr] = va.GetVolumes()
+	}
+
+	return json.Marshal(flat)
 }
+
+// (No custom UnmarshalJSON for PostCommitVolumes.) The type is response-only:
+// the server emits it, no request payload ever carries it, so there is no
+// production caller for reverse conversion. Client-side consumers wanting to
+// parse the flat shape can decode straight into a
+// `map[string]map[string]Volumes` — the same structure MarshalJSON emits.
 
 // MarshalJSON implements json.Marshaler for Account.
 func (x *Account) MarshalJSON() ([]byte, error) {
