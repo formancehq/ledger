@@ -27,7 +27,7 @@ require (
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/formancehq/go-libs/v5 v5.6.2-0.20260629083238-3bb56dedfb1d // indirect
+	github.com/formancehq/go-libs/v5 v5.7.0 // indirect
 	github.com/holiman/uint256 v1.3.2
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
