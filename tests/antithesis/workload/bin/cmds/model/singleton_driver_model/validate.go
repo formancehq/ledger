@@ -26,6 +26,45 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 	dbg("BULK OK: ledgers=%s reqKinds=%s logSeqs=%s typeOps=%s meta=%s", bulkLedgers(bulk), requestKinds(bulk), logSeqs(resp.GetLogs()), typeOps(bulk), bulkMeta(bulk))
 
 	c.crossCheckCommit(bulk, resp)
+	c.captureReceipts(bulk, resp)
+	coverReceiptReverts(bulk)
+}
+
+// coverReceiptReverts fires a coverage signal when the server commits a
+// receipt-carried revert, proving admission's receipt path (verify +
+// claims->postings) is actually exercised — not merely that the driver emitted
+// one. If this stops firing, receipts are no longer being captured or sent.
+func coverReceiptReverts(bulk oracle.Bulk) {
+	for _, req := range bulk.Requests {
+		if rt := req.GetApply().GetAction().GetRevertTransaction(); rt != nil && rt.GetReceipt() != "" {
+			assert.Reachable("singleton_driver_model: receipt-carried revert committed", internal.Details{})
+
+			return
+		}
+	}
+}
+
+// captureReceipts records the signed receipt the server returned for each newly
+// created, referenced transaction, keyed by reference, so generateRevert can
+// exercise the receipt-carried revert path. The response log at index i pairs
+// with bulk.Requests[i]; receipts sign CreatedTransaction logs only. Caller
+// holds c.mu.
+func (c *Checker) captureReceipts(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
+	logs := resp.GetLogs()
+	for i, req := range bulk.Requests {
+		if i >= len(logs) {
+			break
+		}
+
+		ct := req.GetApply().GetAction().GetCreateTransaction()
+		if ct == nil || ct.GetReference() == "" {
+			continue
+		}
+
+		if receipt := logs[i].GetReceipt(); receipt != "" {
+			c.receiptByRef[ct.GetReference()] = receipt
+		}
+	}
 }
 
 // crossCheckCommit validates a committed bulk against the forward model

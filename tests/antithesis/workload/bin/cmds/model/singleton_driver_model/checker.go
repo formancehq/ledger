@@ -50,6 +50,12 @@ type Checker struct {
 	// of the next bulk to validate, and the base candidateBases folds the
 	// in-flight set onto.
 	modelState oracle.GlobalState
+
+	// receiptByRef maps a committed transaction's reference to the signed receipt
+	// the server returned for it, so generateRevert can exercise the
+	// receipt-carried revert path. Populated at commit (captureReceipts) and read
+	// during generation, both under mu.
+	receiptByRef map[string]string
 }
 
 // One worker → processor message. observeTicket is the ticket high-water mark
@@ -101,10 +107,11 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 	}
 
 	return &Checker{
-		ledgerNames: ledgerNames,
-		inflight:    map[uint64]oracle.Bulk{},
-		reads:       map[uint64]struct{}{},
-		incoming:    make(chan observation, incomingBuffer),
-		modelState:  modelState,
+		ledgerNames:  ledgerNames,
+		inflight:     map[uint64]oracle.Bulk{},
+		reads:        map[uint64]struct{}{},
+		incoming:     make(chan observation, incomingBuffer),
+		modelState:   modelState,
+		receiptByRef: map[string]string{},
 	}
 }

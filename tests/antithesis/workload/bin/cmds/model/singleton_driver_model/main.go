@@ -174,7 +174,7 @@ func runWorker(
 		}
 
 		c.mu.Lock()
-		bulk := generateBulk(c.modelState, c.ledgerNames)
+		bulk := generateBulk(c.modelState, c.ledgerNames, c.receiptByRef)
 		if len(bulk.Requests) == 0 {
 			c.mu.Unlock()
 			continue

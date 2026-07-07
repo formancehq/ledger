@@ -76,6 +76,10 @@ DEAD_TIME="${DEAD_TIME:-30}"
 COMPACTION_MARGIN="${COMPACTION_MARGIN:-200}"
 MAINTENANCE_INTERVAL="${MAINTENANCE_INTERVAL:-10s}"
 CLUSTER_ID="model-test-cluster"
+# HMAC key for signed transaction receipts, so the driver can exercise the
+# receipt-carried revert path (admission verifies the receipt and reverses its
+# claimed postings, bypassing the store fetch).
+RECEIPT_SIGNING_KEY="model-test-receipt-hmac-signing-key"
 
 # Fail-fast (on by default): stop the run the moment a finding appears instead
 # of running out the clock. Set to 0/off to run the full duration, or to a
@@ -154,6 +158,7 @@ start_node() {
 		--advertise-addr "127.0.0.1:${RAFT_PORTS[$i]}" \
 		--grpc-port "${GRPC_PORTS[$i]}" \
 		--http-port "${HTTP_PORTS[$i]}" \
+		--receipt-signing-key "$RECEIPT_SIGNING_KEY" \
 		--wal-dir "${NODE_DIRS[$i]}/wal" \
 		--data-dir "${NODE_DIRS[$i]}/data" \
 		--raft-compaction-margin "$COMPACTION_MARGIN" \

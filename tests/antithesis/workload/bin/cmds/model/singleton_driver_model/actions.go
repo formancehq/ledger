@@ -57,7 +57,7 @@ func sourceAddress() string {
 // occasionally a bulk spreads its requests across a few, exercising the
 // server's atomic-across-ledgers semantics. Reads the committed state but
 // never mutates it.
-func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
+func generateBulk(g oracle.GlobalState, ledgers []string, receipts map[string]string) oracle.Bulk {
 	picks := pickLedgers(ledgers)
 
 	// Whole-bulk transient shapes fund and drain the same cell, so they only
@@ -106,7 +106,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 		}
 
 		if rollRevert() {
-			if req := generateRevert(ledger, ls); req != nil {
+			if req := generateRevert(ledger, ls, receipts); req != nil {
 				requests = append(requests, req)
 				continue
 			}
@@ -676,7 +676,7 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 // committed reference exercises both the success path and the
 // TRANSACTION_ALREADY_REVERTED rejection (a reference picked after a prior
 // revert committed).
-func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
+func generateRevert(ledger string, ls oracle.LedgerState, receipts map[string]string) *servicepb.Request {
 	ref := pickTxRef(ls)
 	if ref == "" {
 		return nil
@@ -689,6 +689,14 @@ func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
 		// original's timestamp instead of the server's current date.
 		AtEffectiveDate: random.RandomChoice([]uint8{0, 1}) == 0,
 		ExpandVolumes:   true,
+	}
+
+	// ~half the reverts with a captured receipt carry it, exercising admission's
+	// receipt path: it verifies the JWT and reverses the receipt's claimed
+	// postings, bypassing the transaction-state store fetch. Outcome matches the
+	// store path for a valid receipt, so the model needs no change.
+	if receipt := receipts[ref]; receipt != "" && random.RandomChoice([]uint8{0, 1}) == 0 {
+		payload.Receipt = receipt
 	}
 
 	// ~half the reverts carry metadata on the revert transaction, echoed
