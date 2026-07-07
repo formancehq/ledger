@@ -1150,6 +1150,38 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+// TestWriteBulkResponse_AbortedElementsDontEscalate asserts that
+// runBulkSequential's context.Canceled sentinel (marking elements skipped
+// after a prior failed with continueOnFailure=false) never turns the
+// top-level status into 500. The originating domain error alone drives the
+// 400 rollup; the skipped tail contributes nothing.
+func TestWriteBulkResponse_AbortedElementsDontEscalate(t *testing.T) {
+	t.Parallel()
+
+	elements := []*servicepb.BulkElement{
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
+			},
+		}},
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
+			},
+		}},
+	}
+
+	results := []bulkResult{
+		{err: domain.ErrEmptyTransaction},
+		{err: context.Canceled}, // skipped by runBulkSequential
+	}
+
+	w := httptest.NewRecorder()
+	writeBulkResponse(w, elements, results, false)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 // TestHandleBulk_InfraErrorNotSwallowed asserts that continueOnFailure=true
 // does NOT swallow an infrastructure-level Apply error (any non-Describable
 // error, e.g. leader loss, cache-horizon exceeded, transport timeout). Those

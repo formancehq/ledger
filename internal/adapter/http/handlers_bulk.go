@@ -9,6 +9,7 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -190,17 +191,24 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 	return results
 }
 
-// writeBulkResponse writes the bulk response. Two error dimensions decide the
+// writeBulkResponse writes the bulk response. Three error classes decide the
 // top-level status:
 //
-//  1. Kind: per-element domain business errors (`domain.Describable`) vs
-//     infrastructure/transport errors (leader lost, cache-horizon, timeouts).
-//     Infra errors are never opt-in-able — they always surface as top-level
-//     failures (`500`), because they indicate the whole request could not
-//     complete deterministically. `continueOnFailure` does not apply to them.
-//  2. Rollup: for the remaining pure-domain errors, `continueOnFailure=true`
-//     keeps the top-level status `200` (per-element `errorCode` is enough);
-//     `continueOnFailure=false` surfaces the first business failure as `400`.
+//  1. **Aborted** (sentinel `context.Canceled` from runBulkSequential when
+//     `continueOnFailure=false` and a prior element failed). Not a real
+//     failure — these elements were not attempted. They contribute no
+//     top-level status of their own; the top-level status is driven by the
+//     original failing element instead.
+//  2. **Per-element business failures** — a `domain.Describable` whose Kind
+//     maps to a 4xx status (validation, not-found, conflict, precondition,
+//     permission). Rolled up according to `continueOnFailure`: `200` when
+//     opt-in, `400` (default) otherwise.
+//  3. **Infrastructure / retryable failures** — anything else, including
+//     `commonpb.ErrNoLeader`, `plan.ErrCacheHorizonExceeded`, and any
+//     Describable whose Kind maps to 5xx (Unavailable, Internal,
+//     ResourceExhausted). These always surface as top-level `500`
+//     regardless of `continueOnFailure`; the bulk did not complete
+//     deterministically and the caller must retry.
 func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult, continueOnFailure bool) {
 	hasDomainError := false
 	hasInfraError := false
@@ -212,9 +220,12 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 		var data any
 
 		if result.err != nil {
-			if isDomainError(result.err) {
+			switch classifyBulkError(result.err) {
+			case bulkErrClassAborted:
+				// Skipped element — no top-level status contribution.
+			case bulkErrClassDomain:
 				hasDomainError = true
-			} else {
+			case bulkErrClassInfra:
 				hasInfraError = true
 			}
 
@@ -256,15 +267,44 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 	writeJSONResponse(w, statusCode, response)
 }
 
-// isDomainError reports whether the given error carries a domain-level
-// Describable outcome (validation, not-found, insufficient-fund, etc.). Any
-// error that does not implement the contract is treated as infrastructural,
-// which turns off the `continueOnFailure` roll-up: the bulk did not fail on
-// business grounds and must not be masked as `200`.
-func isDomainError(err error) bool {
-	var d domain.Describable
+// bulkErrClass tags where a per-element error should count in the top-level
+// status roll-up: aborted (no contribution), per-element business, or
+// infrastructure/retryable.
+type bulkErrClass int
 
-	return errors.As(err, &d)
+const (
+	bulkErrClassAborted bulkErrClass = iota
+	bulkErrClassDomain
+	bulkErrClassInfra
+)
+
+// classifyBulkError decides which bucket a per-element error falls into. The
+// checks mirror the ones in handleError so bulk stays consistent with single
+// requests: the same error would produce the same HTTP status outside a bulk.
+func classifyBulkError(err error) bulkErrClass {
+	if errors.Is(err, context.Canceled) {
+		return bulkErrClassAborted
+	}
+
+	// Retryable infra sentinels handled before Describable dispatch, mirroring
+	// handleError.
+	if errors.Is(err, commonpb.ErrNoLeader) || errors.Is(err, plan.ErrCacheHorizonExceeded) {
+		return bulkErrClassInfra
+	}
+
+	var d domain.Describable
+	if errors.As(err, &d) {
+		// A Describable's Kind decides whether the outcome is a business
+		// failure (4xx → per-element) or an infra condition (5xx → top-level).
+		if kindToHTTPStatus(domain.Kind(d)) >= 500 {
+			return bulkErrClassInfra
+		}
+
+		return bulkErrClassDomain
+	}
+
+	// Unknown error: assume infra so it can't be masked as a 200.
+	return bulkErrClassInfra
 }
 
 // bulkErrorCode returns a machine-readable code for a per-element bulk failure.
