@@ -2588,10 +2588,11 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/VolumesWithBalance'
           description: |
-            Deprecated: never populated on account read responses. To retrieve
-            per-account volumes/balances, use a prepared query with type
-            `AGGREGATE_VOLUMES` scoped to the account address.
-          deprecated: true
+            Per-asset input/output/balance for this account. Populated only
+            when the caller opts in via `expandVolumes=true` on
+            `GET /v3/{ledgerName}/accounts/{address}`; omitted otherwise.
+            For per-account balances at scale, use `GET /v3/{ledgerName}/volumes`
+            or a prepared query with type `AGGREGATE_VOLUMES`.
 
     VolumesWithBalance:
       type: object
