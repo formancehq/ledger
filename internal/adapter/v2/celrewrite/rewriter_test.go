@@ -442,6 +442,18 @@ func TestInvalidTypeTokenRejectedAtCompile(t *testing.T) {
 	require.Contains(t, err.Error(), "setMetadata type")
 }
 
+func TestNonConstantTypeTokenRejected(t *testing.T) {
+	t.Parallel()
+
+	// The metadata type must be a compile-time constant, so it is fully checked
+	// at admission and can never fail (and stall the mirror) at run time.
+	_, err := NewRewriter(rules(
+		rule("true", `tx.setMetadata("k", "v", tx.metadata["t"])`, false),
+	))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must be a constant")
+}
+
 func TestDeterministicOutput(t *testing.T) {
 	t.Parallel()
 
