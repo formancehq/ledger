@@ -86,8 +86,8 @@ the charset `[a-zA-Z0-9._:-]`, so `/` is not allowed):
 
 ```yaml
 - cel: |
-    tx.annotateAccounts("^acquirer:Stripe_NL:worker:\\d+:([^:]+)$", "acquirer-type", "$1")
+    tx.annotateAccounts("^acquirer:acme:worker:\\d+:([^:]+)$", "acquirer-type", "$1")
 ```
 
-For `acquirer:Stripe_NL:worker:001:bank` this sets that account's
+For `acquirer:acme:worker:001:bank` this sets that account's
 `acquirer-type` metadata to `bank`.
