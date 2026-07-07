@@ -149,20 +149,24 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for Account.
+// MarshalJSON implements json.Marshaler for Account. Volumes are emitted only
+// when populated (opt-in via `expandVolumes=true` on the GET-account handler);
+// the default read path leaves them off to preserve the lightweight response.
 func (x *Account) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Address       string         `json:"address,omitempty"`
-		Metadata      map[string]any `json:"metadata,omitempty"`
-		FirstUsage    *Timestamp     `json:"firstUsage,omitempty"`
-		InsertionDate *Timestamp     `json:"insertionDate,omitempty"`
-		UpdatedAt     *Timestamp     `json:"updatedAt,omitempty"`
+		Address       string                         `json:"address,omitempty"`
+		Metadata      map[string]any                 `json:"metadata,omitempty"`
+		FirstUsage    *Timestamp                     `json:"firstUsage,omitempty"`
+		InsertionDate *Timestamp                     `json:"insertionDate,omitempty"`
+		UpdatedAt     *Timestamp                     `json:"updatedAt,omitempty"`
+		Volumes       map[string]*VolumesWithBalance `json:"volumes,omitempty"`
 	}{
 		Address:       x.GetAddress(),
 		Metadata:      MetadataToAnyMap(x.GetMetadata()),
 		FirstUsage:    x.GetFirstUsage(),
 		InsertionDate: x.GetInsertionDate(),
 		UpdatedAt:     x.GetUpdatedAt(),
+		Volumes:       x.GetVolumes(),
 	})
 }
 

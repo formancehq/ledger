@@ -51,7 +51,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Get account type | ✅ | ❌ | Get details of a specific type |
 | Remove account type | ✅ | ❌ | Remove a type from a ledger |
 | **Accounts (Read)** |
-| Get account | ✅ | ✅ | Includes volumes per asset |
+| Get account | ✅ | ✅ | Opt-in per-asset volumes via `expandVolumes=true` (v2 populated them unconditionally; v3 gates the extra aggregation scan behind the flag) |
 | List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) with schema validation and cursor pagination |
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
