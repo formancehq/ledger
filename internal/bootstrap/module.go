@@ -354,7 +354,7 @@ func Module() fx.Option {
 				cfg node.NodeConfig,
 				logger logging.Logger,
 			) (*raftmembership.Membership, error) {
-				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, logger)
+				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
@@ -487,12 +487,23 @@ func Module() fx.Option {
 				return receipt.NewSigner([]byte(cfg.ReceiptSigningKey))
 			},
 			buildResponseSigner,
-			func(cfg Config) node.NodeConfig {
+			func(cfg Config) (node.NodeConfig, error) {
 				cfg.RaftConfig.DataDir = cfg.DataDir
 				cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
 				cfg.RaftConfig.SetDefaults()
 
-				return cfg.RaftConfig
+				// EN-1045: establish this peer's identity UUID before any
+				// membership plumbing runs. First boot generates and
+				// persists it in INSTANCE_ID under WalDir; later boots
+				// return the same value.
+				instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+				if err != nil {
+					return node.NodeConfig{}, fmt.Errorf("ensuring instance id: %w", err)
+				}
+
+				cfg.RaftConfig.InstanceID = instanceID
+
+				return cfg.RaftConfig, nil
 			},
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
@@ -566,13 +577,13 @@ func Module() fx.Option {
 					meterProvider.Meter("storage"),
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *membership.Service {
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, infraMembership *raftmembership.Membership, cfg Config, logger logging.Logger) *membership.Service {
 				return membership.NewService(
-					n, raftTransport, servicePool, logger,
+					n, raftTransport, servicePool, infraMembership, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
 			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
 				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
 			},
@@ -1363,10 +1374,20 @@ func Module() fx.Option {
 // otherwise leave us spinning on every retry.
 func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
 	peers := cfg.RaftConfig.Peers
+
+	// EN-1045: attach this peer's identity UUID to the join RPC so the
+	// leader can persist it in the peer row and refuse a rejoin from a
+	// blacklisted (nodeID, instanceID) tuple later on.
+	instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+	if err != nil {
+		return fmt.Errorf("ensuring instance id for JoinAsLearner: %w", err)
+	}
+
 	req := &clusterbootstrappb.JoinAsLearnerRequest{
 		NodeId:         cfg.RaftConfig.NodeID,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+		InstanceId:     instanceID,
 	}
 
 	creds, _, err := ClientTransportCredentials(tlsCfg)

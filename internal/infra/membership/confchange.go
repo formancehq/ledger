@@ -1,6 +1,7 @@
 package membership
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -10,9 +11,25 @@ import (
 // ConfChangeContext carries peer addresses alongside a Raft ConfChange so that
 // all nodes (not just the leader) can learn the new peer's addresses when the
 // ConfChange is committed.
+//
+// InstanceID (EN-1045) is a 16-byte UUID identifying the specific (pod, PVC)
+// incarnation of this peer. Populated on Add/AddLearner from the JoinAsLearner
+// RPC; empty for bootstrap-initial-peer entries whose instance IDs are not
+// known at cluster-formation time (they get filled in when the peer later
+// joins). See docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
 type ConfChangeContext struct {
 	RaftAddress    string `json:"raftAddress"`
 	ServiceAddress string `json:"serviceAddress"`
+	InstanceID     []byte `json:"instanceId,omitempty"`
+}
+
+// Equal reports whether two ConfChangeContext values carry identical
+// addresses and instance ID. The []byte InstanceID field prevents the use
+// of Go's == operator on the struct directly.
+func (c ConfChangeContext) Equal(other ConfChangeContext) bool {
+	return c.RaftAddress == other.RaftAddress &&
+		c.ServiceAddress == other.ServiceAddress &&
+		bytes.Equal(c.InstanceID, other.InstanceID)
 }
 
 // MarshalConfChangeContext serialises a ConfChangeContext to JSON bytes
@@ -69,41 +86,50 @@ func UnmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error
 }
 
 // WalkConfChangeContexts iterates the Changes in cc and invokes fn once
-// per change with (type, nodeID, ctx). ctx is non-nil for Add /
-// AddLearnerNode when cc.Context carries a payload (PromoteLearner sends
-// AddNode with empty Context — ctx is nil there); ctx is always nil for
-// RemoveNode. Other ConfChange types (UpdateNode, etc.) are silently
-// skipped — callers only react to add/remove today.
+// per change with (type, nodeID, ctx).
 //
-// A single cc.Context carries exactly one peer address. A ConfChangeV2
-// that bundles multiple Add / AddLearnerNode changes with a non-empty
-// Context is therefore an invariant violation (all local propose paths
-// emit single-Add batches; joint consensus isn't used) — we surface it
-// as a loud error per invariant #7 rather than silently degrading, so
-// the FSM apply path aborts and a divergent state (voters recorded in
-// ConfState with no dialable Pebble row) is caught immediately instead
-// of leaking downstream.
+// ctx is non-nil for Add / AddLearnerNode / UpdateNode / RemoveNode when
+// cc.Context carries a payload:
+//   - Add / AddLearnerNode carry the joining peer's addresses and
+//     instanceID (see JoinAsLearner path).
+//   - UpdateNode carries the same payload as Add/AddLearner and is used
+//     to refresh an existing peer row — currently the admin
+//     cluster.AddLearner + boot flow (EN-1045) where the row was
+//     initially written with a nil instance_id.
+//   - RemoveNode carries the removed peer's instanceID so the FSM apply
+//     path lands the corresponding RemovedMemberEntry atomically with the
+//     peer row delete (EN-1045). The RaftAddress / ServiceAddress fields
+//     on the RemoveNode ctx are empty by convention.
+//   - PromoteLearner sends AddNode with empty Context — ctx is nil there.
 //
-// Used by both Membership.WriteConfChange (FSM Pebble write) and
-// Node.finishReady (post-commit cache + transport wiring) so the decode +
-// dispatch shape stays in one place.
+// A single cc.Context carries exactly one peer identity. A ConfChangeV2
+// that bundles multiple Add/AddLearner/UpdateNode/RemoveNode changes with
+// a non-empty Context is an invariant violation — all local propose paths
+// emit single-op batches, joint consensus isn't used — surfaced as a loud
+// error per invariant #7 so the FSM apply aborts before a divergent state
+// leaks downstream.
+//
+// Used by both Membership.WriteConfChange (FSM Pebble write, incl. the
+// RemovedMemberEntry write) and Node.finishReady (post-commit cache +
+// transport wiring) so the decode + dispatch shape stays in one place.
 func WalkConfChangeContexts(cc raftpb.ConfChangeV2, fn func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error) error {
-	addNodeIDs := make([]uint64, 0, len(cc.Changes))
+	contextConsumingNodeIDs := make([]uint64, 0, len(cc.Changes))
 	for _, change := range cc.Changes {
-		if change.Type == raftpb.ConfChangeAddNode || change.Type == raftpb.ConfChangeAddLearnerNode {
-			addNodeIDs = append(addNodeIDs, change.NodeID)
+		switch change.Type {
+		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode, raftpb.ConfChangeRemoveNode:
+			contextConsumingNodeIDs = append(contextConsumingNodeIDs, change.NodeID)
 		}
 	}
 
-	if len(addNodeIDs) > 1 && len(cc.Context) > 0 {
-		return fmt.Errorf("invariant: ConfChangeV2 carries %d Add/AddLearner changes with a non-empty Context (nodes=%v); one Context can only address a single peer, all local propose paths emit single-Add batches", len(addNodeIDs), addNodeIDs)
+	if len(contextConsumingNodeIDs) > 1 && len(cc.Context) > 0 {
+		return fmt.Errorf("invariant: ConfChangeV2 carries %d Add/AddLearner/Update/Remove changes with a non-empty Context (nodes=%v); one Context can only address a single peer, all local propose paths emit single-op batches", len(contextConsumingNodeIDs), contextConsumingNodeIDs)
 	}
 
 	var cached *ConfChangeContext
 
 	for _, change := range cc.Changes {
 		switch change.Type {
-		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode, raftpb.ConfChangeRemoveNode:
 			var ctx *ConfChangeContext
 			if len(cc.Context) > 0 {
 				if cached == nil {
@@ -119,10 +145,6 @@ func WalkConfChangeContexts(cc raftpb.ConfChangeV2, fn func(raftpb.ConfChangeTyp
 			}
 
 			if err := fn(change.Type, change.NodeID, ctx); err != nil {
-				return err
-			}
-		case raftpb.ConfChangeRemoveNode:
-			if err := fn(change.Type, change.NodeID, nil); err != nil {
 				return err
 			}
 		}

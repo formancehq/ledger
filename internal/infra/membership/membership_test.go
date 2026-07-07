@@ -89,7 +89,7 @@ const (
 func newTestMembership(t *testing.T) *Membership {
 	t.Helper()
 
-	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, logging.Testing())
+	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
 	require.NoError(t, err)
 
 	m.Start()
@@ -102,9 +102,9 @@ func TestPeerStore_PutLoadAll(t *testing.T) {
 
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888"))
-	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:8888"))
-	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888"))
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888", nil))
+	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:8888", nil))
+	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", nil))
 
 	peers, err := ps.LoadAll()
 	require.NoError(t, err)
@@ -122,8 +122,8 @@ func TestPeerStore_PutOverwrites(t *testing.T) {
 
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(7, "old:7777", "old:8888"))
-	require.NoError(t, ps.Put(7, "new:7777", "new:8888"))
+	require.NoError(t, ps.Put(7, "old:7777", "old:8888", nil))
+	require.NoError(t, ps.Put(7, "new:7777", "new:8888", nil))
 
 	peers, err := ps.LoadAll()
 	require.NoError(t, err)
@@ -137,8 +137,8 @@ func TestPeerStore_Delete(t *testing.T) {
 
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(1, "a:1", "a:2"))
-	require.NoError(t, ps.Put(2, "b:1", "b:2"))
+	require.NoError(t, ps.Put(1, "a:1", "a:2", nil))
+	require.NoError(t, ps.Put(2, "b:1", "b:2", nil))
 	require.NoError(t, ps.Delete(1))
 
 	peers, err := ps.LoadAll()
@@ -281,9 +281,14 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "pod-2:7777", got[2].RaftAddress, "promote must not overwrite the address")
 
-	// RemoveNode → Pebble delete + cache delete.
+	// RemoveNode → peer delete + blacklist write (EN-1045). Every
+	// RemoveNode proposal must carry the target's instance_id in
+	// Context — WriteConfChange fails loudly otherwise.
+	removeCtx, err := MarshalConfChangeContext(ConfChangeContext{InstanceID: make([]byte, 16)})
+	require.NoError(t, err)
 	apply(t, raftpb.ConfChangeV2{
 		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeRemoveNode, NodeID: 1}},
+		Context: removeCtx,
 	}, true)
 
 	got, err = m.store.LoadAll()
@@ -307,9 +312,9 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	ps := newTestPeerStore(t)
 
 	// Pre-swap state: cluster A had peer 7.
-	require.NoError(t, ps.Put(7, "old:1", "old:2"))
+	require.NoError(t, ps.Put(7, "old:1", "old:2", nil))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
 	require.NoError(t, err)
 	m.Start()
 	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
@@ -317,8 +322,8 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	// Simulate a leader checkpoint restore: Pebble now has peers 1 + 3,
 	// and no peer 7 (the source cluster A has been replaced by cluster B).
 	require.NoError(t, ps.Delete(7))
-	require.NoError(t, ps.Put(1, "new:1", "new:2"))
-	require.NoError(t, ps.Put(3, "new:3", "new:4"))
+	require.NoError(t, ps.Put(1, "new:1", "new:2", nil))
+	require.NoError(t, ps.Put(3, "new:3", "new:4", nil))
 
 	// Hook fires: cache must catch up to the new Pebble state.
 	m.OnSnapshotInstalled()
@@ -349,9 +354,9 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(7, "before:1", "before:2"))
+	require.NoError(t, ps.Put(7, "before:1", "before:2", nil))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
 	require.NoError(t, err)
 	m.Start()
 	require.Equal(t, "before:1", m.PeerAddresses()[7].RaftAddress)
@@ -359,8 +364,8 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 	// Simulate WAL replay: WriteConfChange wrote these rows directly to
 	// Pebble without touching the cache.
 	require.NoError(t, ps.Delete(7))
-	require.NoError(t, ps.Put(1, "after:1", "after:2"))
-	require.NoError(t, ps.Put(3, "after:3", "after:4"))
+	require.NoError(t, ps.Put(1, "after:1", "after:2", nil))
+	require.NoError(t, ps.Put(3, "after:3", "after:4", nil))
 
 	require.NoError(t, m.Rehydrate())
 
@@ -387,15 +392,15 @@ func TestMembership_StartGate(t *testing.T) {
 	pool := &countingPool{}
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888"))
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888", nil))
 
-	m, err := NewMembership(ps, transport, pool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, logging.Testing())
+	m, err := NewMembership(ps, transport, pool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
 	require.NoError(t, err)
 
 	require.Equal(t, 0, transport.adds, "no wire before Start (cache-only construction)")
 	require.Equal(t, 0, pool.adds, "no wire before Start (cache-only construction)")
 
-	m.Set(2, "pod-1:7777", "pod-1:8888")
+	m.Set(2, "pod-1:7777", "pod-1:8888", nil)
 	require.Equal(t, 0, transport.adds, "Set pre-Start must be cache-only")
 	require.Equal(t, 0, pool.adds, "Set pre-Start must be cache-only")
 	require.Len(t, m.PeerAddresses(), 2, "cache must still reflect the Set")
@@ -404,7 +409,7 @@ func TestMembership_StartGate(t *testing.T) {
 	require.Equal(t, 2, transport.adds, "Start flushes the cache to the transport")
 	require.Equal(t, 2, pool.adds, "Start flushes the cache to the service pool")
 
-	m.Set(3, "pod-2:7777", "pod-2:8888")
+	m.Set(3, "pod-2:7777", "pod-2:8888", nil)
 	require.Equal(t, 3, transport.adds, "Set post-Start wires inline")
 	require.Equal(t, 3, pool.adds, "Set post-Start wires inline")
 
@@ -425,13 +430,13 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 
 	newSeeded := func(t *testing.T) *Membership {
 		ps := newTestPeerStore(t)
-		require.NoError(t, ps.Put(7, "self:1", "self:2"))
-		require.NoError(t, ps.Put(1, "voter1:1", "voter1:2"))
-		require.NoError(t, ps.Put(2, "voter2:1", "voter2:2"))
-		require.NoError(t, ps.Put(3, "learner:1", "learner:2"))
-		require.NoError(t, ps.Put(99, "stale:1", "stale:2"))
+		require.NoError(t, ps.Put(7, "self:1", "self:2", nil))
+		require.NoError(t, ps.Put(1, "voter1:1", "voter1:2", nil))
+		require.NoError(t, ps.Put(2, "voter2:1", "voter2:2", nil))
+		require.NoError(t, ps.Put(3, "learner:1", "learner:2", nil))
+		require.NoError(t, ps.Put(99, "stale:1", "stale:2", nil))
 
-		m, err := NewMembership(ps, noopTransport{}, noopPool{}, 7, "self:1", "self:2", logging.Testing())
+		m, err := NewMembership(ps, noopTransport{}, noopPool{}, 7, "self:1", "self:2", nil, logging.Testing())
 		require.NoError(t, err)
 		m.Start()
 

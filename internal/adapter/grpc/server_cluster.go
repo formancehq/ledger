@@ -327,7 +327,12 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		return client.AddLearner(ctx, req)
 	}
 
-	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress()); err != nil {
+	// The admin cluster.AddLearner RPC (fctl / ledgerctl "cluster add-learner")
+	// doesn't carry the joining peer's instance_id — the peer isn't booted
+	// yet at this point. The row is refreshed with the correct instance_id
+	// when the peer later goes through JoinAsLearner. See EN-1045 and
+	// docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
+	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), nil); err != nil {
 		return nil, err
 	}
 

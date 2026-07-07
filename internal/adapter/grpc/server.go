@@ -530,6 +530,11 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 		return status.Error(codes.AlreadyExists, err.Error())
 	}
 
+	// Convert ErrNodeRemoved to FailedPrecondition (EN-1045 blacklist).
+	if errors.Is(err, node.ErrNodeRemoved) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
 	// Convert NotFoundError to NotFound
 	var notFoundErr *commonpb.NotFoundError
 	if errors.As(err, &notFoundErr) {

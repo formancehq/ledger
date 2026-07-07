@@ -5884,6 +5884,7 @@ type PeerAddressReader interface {
 	GetNodeId() uint64
 	GetRaftAddress() string
 	GetServiceAddress() string
+	GetInstanceId() []byte
 	Mutate() *PeerAddress
 }
 
@@ -5899,6 +5900,10 @@ func (r *peerAddressReadonly) GetRaftAddress() string {
 
 func (r *peerAddressReadonly) GetServiceAddress() string {
 	return (*PeerAddress)(r).GetServiceAddress()
+}
+
+func (r *peerAddressReadonly) GetInstanceId() []byte {
+	return bytes.Clone((*PeerAddress)(r).GetInstanceId())
 }
 
 func (r *peerAddressReadonly) Mutate() *PeerAddress {
@@ -5953,6 +5958,88 @@ func (l peerAddressListReadonly) Range(yield func(int, PeerAddressReader) bool) 
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewPeerAddressListReader(s []*PeerAddress) PeerAddressListReader {
 	return peerAddressListReadonly(s)
+}
+
+// RemovedMemberEntryReader provides read-only access to RemovedMemberEntry.
+// Call Mutate() to obtain a mutable clone.
+type RemovedMemberEntryReader interface {
+	GetNodeId() uint64
+	GetInstanceId() []byte
+	GetRemovedAt() uint64
+	GetReason() string
+	Mutate() *RemovedMemberEntry
+}
+
+type removedMemberEntryReadonly RemovedMemberEntry
+
+func (r *removedMemberEntryReadonly) GetNodeId() uint64 {
+	return (*RemovedMemberEntry)(r).GetNodeId()
+}
+
+func (r *removedMemberEntryReadonly) GetInstanceId() []byte {
+	return bytes.Clone((*RemovedMemberEntry)(r).GetInstanceId())
+}
+
+func (r *removedMemberEntryReadonly) GetRemovedAt() uint64 {
+	return (*RemovedMemberEntry)(r).GetRemovedAt()
+}
+
+func (r *removedMemberEntryReadonly) GetReason() string {
+	return (*RemovedMemberEntry)(r).GetReason()
+}
+
+func (r *removedMemberEntryReadonly) Mutate() *RemovedMemberEntry {
+	return (*RemovedMemberEntry)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this RemovedMemberEntry.
+func (m *RemovedMemberEntry) AsReader() RemovedMemberEntryReader {
+	if m == nil {
+		return nil
+	}
+	return (*removedMemberEntryReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this RemovedMemberEntry.
+func (m *RemovedMemberEntry) Mutate() *RemovedMemberEntry {
+	return m.CloneVT()
+}
+
+// RemovedMemberEntryListReader provides read-only iteration over []*RemovedMemberEntry.
+type RemovedMemberEntryListReader interface {
+	Len() int
+	Get(i int) RemovedMemberEntryReader
+	Range(yield func(int, RemovedMemberEntryReader) bool)
+}
+
+type removedMemberEntryListReadonly []*RemovedMemberEntry
+
+func (l removedMemberEntryListReadonly) Len() int { return len(l) }
+
+func (l removedMemberEntryListReadonly) Get(i int) RemovedMemberEntryReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l removedMemberEntryListReadonly) Range(yield func(int, RemovedMemberEntryReader) bool) {
+	for i, v := range l {
+		var r RemovedMemberEntryReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRemovedMemberEntryListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRemovedMemberEntryListReader(s []*RemovedMemberEntry) RemovedMemberEntryListReader {
+	return removedMemberEntryListReadonly(s)
 }
 
 // GenerationSnapshotReader provides read-only access to GenerationSnapshot.

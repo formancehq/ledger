@@ -45,6 +45,7 @@ func newTestMembership(t *testing.T) *membership.Membership {
 		membership.NewPeerStore(store),
 		noopMemTransport{}, noopMemPool{},
 		42, "self:7777", "self:8888",
+		nil,
 		logging.Testing(),
 	)
 	require.NoError(t, err)
