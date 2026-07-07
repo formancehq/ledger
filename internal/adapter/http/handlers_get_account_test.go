@@ -11,7 +11,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 func TestHandleGetAccount_Success(t *testing.T) {
@@ -55,10 +54,11 @@ func TestHandleGetAccount_MissingAddress(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// TestHandleGetAccount_ExpandVolumes covers the EN-1470 opt-in: when the
-// caller sets `expandVolumes=true`, an AggregateVolumes scan runs on the
-// account and its result is folded into `volumes` on the response.
-func TestHandleGetAccount_ExpandVolumes(t *testing.T) {
+// TestHandleGetAccount_VolumesEmitted asserts that per-asset volumes populated
+// upstream (by scanAccount in the controller) survive JSON serialization.
+// Regression against the pre-EN-1470 wire, where Account.MarshalJSON explicitly
+// dropped the field.
+func TestHandleGetAccount_VolumesEmitted(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
@@ -68,27 +68,17 @@ func TestHandleGetAccount_ExpandVolumes(t *testing.T) {
 		}).AnyTimes()
 	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, addr string) (*commonpb.Account, error) {
-			return &commonpb.Account{Address: addr}, nil
-		}).AnyTimes()
-	backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, filter *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
-			// Sanity-check the filter: exact-match on the requested address.
-			require.Equal(t, "users:001", filter.GetAddress().GetHardcodedExact())
-
-			return &commonpb.AggregateResult{
-				Volumes: []*commonpb.AggregatedVolume{
-					{
-						Asset:  "USD/2",
-						Input:  commonpb.NewUint256FromUint64(1000),
-						Output: commonpb.NewUint256FromUint64(400),
-					},
+			return &commonpb.Account{
+				Address: addr,
+				Volumes: map[string]*commonpb.VolumesWithBalance{
+					"USD/2": {Input: "1000", Output: "400", Balance: "600"},
 				},
 			}, nil
-		}).Times(1)
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/ledger1/accounts/users:001?expandVolumes=true", nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/ledger1/accounts/users:001", nil, map[string]string{
 		"ledgerName": "ledger1",
 		"address":    "users:001",
 	})
@@ -116,9 +106,10 @@ func TestHandleGetAccount_ExpandVolumes(t *testing.T) {
 	require.Equal(t, "600", body.Data.Volumes["USD/2"].Balance)
 }
 
-// TestHandleGetAccount_NoExpandVolumesLeavesFieldOff asserts that the default
-// read path never populates `volumes` and never calls AggregateVolumes.
-func TestHandleGetAccount_NoExpandVolumesLeavesFieldOff(t *testing.T) {
+// TestHandleGetAccount_NoVolumesOmitsField asserts that a controller returning
+// an account with no `volumes` produces a JSON body without the field
+// (`omitempty` on the marshaller).
+func TestHandleGetAccount_NoVolumesOmitsField(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
@@ -130,7 +121,6 @@ func TestHandleGetAccount_NoExpandVolumesLeavesFieldOff(t *testing.T) {
 		func(_ context.Context, _ string, addr string) (*commonpb.Account, error) {
 			return &commonpb.Account{Address: addr}, nil
 		}).AnyTimes()
-	// AggregateVolumes must NOT be called — no EXPECT() means gomock fails if it is.
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

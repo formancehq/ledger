@@ -577,13 +577,10 @@ paths:
     get:
       summary: Get an account
       description: |
-        Retrieves account information including metadata for a specific
-        account address. Requires `ledger:read` scope.
-
-        Pass `expandVolumes=true` to also populate per-asset
-        input/output/balance in the response — an extra aggregation scan
-        runs on the account (matches the shape v2 populated inline). Off
-        by default to keep the read lightweight.
+        Retrieves account information including metadata and per-asset
+        volumes (input/output/balance) for a specific account address.
+        Volumes are populated inline, matching v2. Requires `ledger:read`
+        scope.
       operationId: getAccount
       tags:
         - Accounts
@@ -593,12 +590,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/AccountAddress'
-        - name: expandVolumes
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: When true, populate `volumes` on the returned account with per-asset input/output/balance.
       responses:
         '200':
           description: Account retrieved successfully
