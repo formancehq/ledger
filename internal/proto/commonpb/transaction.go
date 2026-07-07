@@ -185,22 +185,26 @@ func (tx *Transaction) InvolvedAccounts() []string {
 // MarshalJSON implements json.Marshaler for Transaction.
 func (tx *Transaction) MarshalJSON() ([]byte, error) {
 	type Aux struct {
-		Postings   []*Posting     `json:"postings"`
-		Metadata   map[string]any `json:"metadata"`
-		Timestamp  *time.Time     `json:"timestamp,omitempty"`
-		Reference  string         `json:"reference,omitempty"`
-		ID         *uint64        `json:"id,omitempty"`
-		InsertedAt *time.Time     `json:"insertedAt,omitempty"`
-		UpdatedAt  *time.Time     `json:"updatedAt,omitempty"`
-		RevertedAt *time.Time     `json:"revertedAt,omitempty"`
-		Reverted   bool           `json:"reverted"`
+		Postings                []*Posting     `json:"postings"`
+		Metadata                map[string]any `json:"metadata"`
+		Timestamp               *time.Time     `json:"timestamp,omitempty"`
+		Reference               string         `json:"reference,omitempty"`
+		ID                      *uint64        `json:"id,omitempty"`
+		InsertedAt              *time.Time     `json:"insertedAt,omitempty"`
+		UpdatedAt               *time.Time     `json:"updatedAt,omitempty"`
+		RevertedAt              *time.Time     `json:"revertedAt,omitempty"`
+		RevertedByTransactionID uint64         `json:"revertedByTransactionId,omitempty"`
+		RevertsTransactionID    uint64         `json:"revertsTransactionId,omitempty"`
+		Reverted                bool           `json:"reverted"`
 	}
 
 	aux := Aux{
-		Postings:  tx.GetPostings(),
-		Metadata:  MetadataToAnyMap(tx.GetMetadata()),
-		Reference: tx.GetReference(),
-		Reverted:  tx.IsReverted(),
+		Postings:                tx.GetPostings(),
+		Metadata:                MetadataToAnyMap(tx.GetMetadata()),
+		Reference:               tx.GetReference(),
+		Reverted:                tx.IsReverted(),
+		RevertedByTransactionID: tx.GetRevertedByTransaction(),
+		RevertsTransactionID:    tx.GetRevertsTransaction(),
 	}
 
 	if tx.GetId() != 0 {

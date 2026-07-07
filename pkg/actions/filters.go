@@ -310,6 +310,20 @@ func InsertedAtRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
 	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, minVal, maxVal)
 }
 
+// RevertedAtRangeFilter creates a filter matching transactions by reverted-at range.
+func RevertedAtRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
+	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT, minVal, maxVal)
+}
+
+// RevertedFilter creates a filter matching transactions by revert status.
+func RevertedFilter(reverted bool) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Reverted{
+			Reverted: &commonpb.RevertedCondition{Value: reverted},
+		},
+	}
+}
+
 // TxIDRangeFilter creates a filter matching transactions by ID range.
 func TxIDRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
 	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, minVal, maxVal)

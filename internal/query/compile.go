@@ -152,6 +152,8 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 		return compileNot(ctx, f.Not)
 	case *commonpb.QueryFilter_Reference:
 		return compileReferenceCondition(ctx, f.Reference)
+	case *commonpb.QueryFilter_Reverted:
+		return compileRevertedCondition(ctx, f.Reverted)
 	case *commonpb.QueryFilter_AccountHasAsset:
 		return compileAccountHasAssetCondition(ctx, f.AccountHasAsset)
 	case *commonpb.QueryFilter_BuiltinUint:
@@ -326,6 +328,57 @@ func compileNot(ctx *compileCtx, not *commonpb.NotFilter) (readstore.EntityItera
 	}
 
 	notIter := readstore.NewNotIterator(universe, child)
+
+	return trackIterator(notIter, ctx.profile, &IteratorStats{
+		Label:    "NotIterator",
+		Kind:     "Not",
+		Children: []*IteratorStats{universeStats, childStats},
+	}), nil
+}
+
+// compileRevertedCondition filters transactions by revert status using the
+// per-ledger reversion bitset. No index is required — the bitset is always
+// maintained by the FSM and covers all history. value=true yields reverted
+// originals; value=false yields the universe minus the reverted set.
+func compileRevertedCondition(ctx *compileCtx, cond *commonpb.RevertedCondition) (readstore.EntityIterator, error) {
+	if ctx.target != commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		return nil, domain.NewFilterCompilationError("reverted filter is only valid on transactions")
+	}
+
+	bs, err := ReadReversionBitset(ctx.pebbleReader, ctx.ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("reading reversion bitset: %w", err)
+	}
+
+	revertedStats := &IteratorStats{
+		Label:  fmt.Sprintf("BitsetIterator(reversions:%s)", ctx.ledgerName),
+		Kind:   "Bitset",
+		Prefix: "pebble:reversions",
+	}
+
+	if cond.GetValue() {
+		return trackIterator(readstore.NewBitsetIterator(bs), ctx.profile, revertedStats), nil
+	}
+
+	// value == false → universe \ reverted, mirroring compileNot.
+	universe, err := compileUniverse(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var universeStats *IteratorStats
+	if ctx.profile != nil {
+		universeStats = ctx.profile.Root
+	}
+
+	reverted := trackIterator(readstore.NewBitsetIterator(bs), ctx.profile, revertedStats)
+
+	var childStats *IteratorStats
+	if ctx.profile != nil {
+		childStats = ctx.profile.Root
+	}
+
+	notIter := readstore.NewNotIterator(universe, reverted)
 
 	return trackIterator(notIter, ctx.profile, &IteratorStats{
 		Label:    "NotIterator",
@@ -1065,6 +1118,8 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 		return compileTimestampCondition(ctx, cond.GetCond())
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 		return compileInsertedAtCondition(ctx, cond.GetCond())
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		return compileRevertedAtCondition(ctx, cond.GetCond())
 	default:
 		return nil, domain.NewFilterCompilationError("unsupported builtin uint field: %v", cond.GetField())
 	}
@@ -1150,6 +1205,19 @@ func compileInsertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (
 
 	return compileTimestampRangeCondition(ctx, cond,
 		readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName), "txiat")
+}
+
+// compileRevertedAtCondition filters transactions by reverted_at using the transaction reverted_at index.
+// Requires the reverted_at builtin index to be READY.
+func compileRevertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+	if _, err := requireIndexReady(ctx,
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT),
+		"reverted_at"); err != nil {
+		return nil, err
+	}
+
+	return compileTimestampRangeCondition(ctx, cond,
+		readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName), "rvat")
 }
 
 // compileTimestampRangeCondition is the shared logic for timestamp-based range scans.

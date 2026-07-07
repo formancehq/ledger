@@ -552,12 +552,13 @@ func (w *attributeReplayWriter) MoveMetadata(oldKey, newKey []byte) error {
 	return w.metadata.Delete(w.batch, oldKey)
 }
 
-func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting) error {
+func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error {
 	txState := &commonpb.TransactionState{
-		CreatedByLog: seq,
-		Metadata:     metadata,
-		Timestamp:    timestamp,
-		Postings:     postings,
+		CreatedByLog:       seq,
+		Metadata:           metadata,
+		Timestamp:          timestamp,
+		Postings:           postings,
+		RevertsTransaction: revertsTransaction,
 	}
 
 	_, err := w.tx.Set(w.batch, canonicalKey, txState)
@@ -565,7 +566,7 @@ func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint6
 	return err
 }
 
-func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID uint64) error {
+func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *commonpb.Timestamp) error {
 	existing, err := w.tx.Get(w.store, canonicalKey)
 	if err != nil {
 		return err
@@ -576,6 +577,7 @@ func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID ui
 	}
 
 	existing.RevertedByTransaction = revertTxID
+	existing.RevertedAt = revertedAt
 
 	_, err = w.tx.Set(w.batch, canonicalKey, existing)
 

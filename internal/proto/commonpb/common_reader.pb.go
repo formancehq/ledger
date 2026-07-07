@@ -558,6 +558,8 @@ type TransactionReader interface {
 	GetInsertedAt() TimestampReader
 	GetUpdatedAt() TimestampReader
 	GetRevertedAt() TimestampReader
+	GetRevertedByTransaction() uint64
+	GetRevertsTransaction() uint64
 	Mutate() *Transaction
 }
 
@@ -613,6 +615,14 @@ func (r *transactionReadonly) GetRevertedAt() TimestampReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *transactionReadonly) GetRevertedByTransaction() uint64 {
+	return r.v.GetRevertedByTransaction()
+}
+
+func (r *transactionReadonly) GetRevertsTransaction() uint64 {
+	return r.v.GetRevertsTransaction()
 }
 
 func (r *transactionReadonly) Mutate() *Transaction {
@@ -7654,6 +7664,8 @@ type TransactionStateReader interface {
 	GetMetadata() TransactionState_MetadataMapReader
 	GetTimestamp() TimestampReader
 	GetPostings() PostingListReader
+	GetRevertedAt() TimestampReader
+	GetRevertsTransaction() uint64
 	Mutate() *TransactionState
 }
 
@@ -7681,6 +7693,18 @@ func (r *transactionStateReadonly) GetTimestamp() TimestampReader {
 
 func (r *transactionStateReadonly) GetPostings() PostingListReader {
 	return NewPostingListReader((*TransactionState)(r).GetPostings())
+}
+
+func (r *transactionStateReadonly) GetRevertedAt() TimestampReader {
+	v := r.v.GetRevertedAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *transactionStateReadonly) GetRevertsTransaction() uint64 {
+	return r.v.GetRevertsTransaction()
 }
 
 func (r *transactionStateReadonly) Mutate() *TransactionState {
@@ -8806,6 +8830,73 @@ func (l referenceConditionListReadonly) Range(yield func(int, ReferenceCondition
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewReferenceConditionListReader(s []*ReferenceCondition) ReferenceConditionListReader {
 	return referenceConditionListReadonly(s)
+}
+
+// RevertedConditionReader provides read-only access to RevertedCondition.
+// Call Mutate() to obtain a mutable clone.
+type RevertedConditionReader interface {
+	GetValue() bool
+	Mutate() *RevertedCondition
+}
+
+type revertedConditionReadonly struct{ v *RevertedCondition }
+
+func (r *revertedConditionReadonly) GetValue() bool {
+	return r.v.GetValue()
+}
+
+func (r *revertedConditionReadonly) Mutate() *RevertedCondition {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this RevertedCondition.
+func (m *RevertedCondition) AsReader() RevertedConditionReader {
+	if m == nil {
+		return nil
+	}
+	return &revertedConditionReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this RevertedCondition.
+func (m *RevertedCondition) Mutate() *RevertedCondition {
+	return m.CloneVT()
+}
+
+// RevertedConditionListReader provides read-only iteration over []*RevertedCondition.
+type RevertedConditionListReader interface {
+	Len() int
+	Get(i int) RevertedConditionReader
+	Range(yield func(int, RevertedConditionReader) bool)
+}
+
+type revertedConditionListReadonly []*RevertedCondition
+
+func (l revertedConditionListReadonly) Len() int { return len(l) }
+
+func (l revertedConditionListReadonly) Get(i int) RevertedConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l revertedConditionListReadonly) Range(yield func(int, RevertedConditionReader) bool) {
+	for i, v := range l {
+		var r RevertedConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRevertedConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRevertedConditionListReader(s []*RevertedCondition) RevertedConditionListReader {
+	return revertedConditionListReadonly(s)
 }
 
 // LedgerConditionReader provides read-only access to LedgerCondition.

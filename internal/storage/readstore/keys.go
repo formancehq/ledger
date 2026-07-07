@@ -21,6 +21,7 @@ const (
 	PrefixLedgerLogDate         byte = 0x0A // lldt — ledger log date
 	PrefixTransactionInsertedAt byte = 0x0B // txiat — transaction inserted_at
 	PrefixAccountByAsset        byte = 0x0C // abya — account-by-asset inverted index (asset→account)
+	PrefixTransactionRevertedAt byte = 0x0D // rvat — transaction reverted_at
 
 	// PrefixInternal groups all non-ledger-scoped keys under a single prefix
 	// so that Comparer.Split can treat them uniformly (full key = prefix).
@@ -430,6 +431,28 @@ func TransactionInsertedAtKey(kb *dal.KeyBuilder, ledgerName string, timestamp, 
 func TransactionInsertedAtRangePrefix(kb *dal.KeyBuilder, ledgerName string) []byte {
 	return kb.Reset().
 		PutByte(PrefixTransactionInsertedAt).
+		PutLedgerNameFixed(ledgerName).
+		Snapshot()
+}
+
+// TransactionRevertedAtKey builds a full key in the transaction reverted_at index.
+//
+//	[0x0D][ledgerName padded 64B][timestamp_BE(8B)][txID_BE(8B)]
+func TransactionRevertedAtKey(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixTransactionRevertedAt).
+		PutLedgerNameFixed(ledgerName).
+		PutUint64(timestamp).
+		PutUint64(txID).
+		Consume()
+}
+
+// TransactionRevertedAtRangePrefix returns the ledger prefix for range scans in the reverted_at index.
+//
+//	[0x0D][ledgerName padded 64B]
+func TransactionRevertedAtRangePrefix(kb *dal.KeyBuilder, ledgerName string) []byte {
+	return kb.Reset().
+		PutByte(PrefixTransactionRevertedAt).
 		PutLedgerNameFixed(ledgerName).
 		Snapshot()
 }

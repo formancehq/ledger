@@ -259,6 +259,8 @@ func (m *Transaction) CloneVT() *Transaction {
 	r.InsertedAt = m.InsertedAt.CloneVT()
 	r.UpdatedAt = m.UpdatedAt.CloneVT()
 	r.RevertedAt = m.RevertedAt.CloneVT()
+	r.RevertedByTransaction = m.RevertedByTransaction
+	r.RevertsTransaction = m.RevertsTransaction
 	if rhs := m.Postings; rhs != nil {
 		tmpContainer := make([]*Posting, len(rhs))
 		for k, v := range rhs {
@@ -2496,6 +2498,8 @@ func (m *TransactionState) CloneVT() *TransactionState {
 	r.CreatedByLog = m.CreatedByLog
 	r.RevertedByTransaction = m.RevertedByTransaction
 	r.Timestamp = m.Timestamp.CloneVT()
+	r.RevertedAt = m.RevertedAt.CloneVT()
+	r.RevertsTransaction = m.RevertsTransaction
 	if rhs := m.Metadata; rhs != nil {
 		tmpContainer := make(map[string]*MetadataValue, len(rhs))
 		for k, v := range rhs {
@@ -2906,6 +2910,15 @@ func (m *QueryFilter_AccountHasAsset) CloneVT() isQueryFilter_Filter {
 	return r
 }
 
+func (m *QueryFilter_Reverted) CloneVT() isQueryFilter_Filter {
+	if m == nil {
+		return (*QueryFilter_Reverted)(nil)
+	}
+	r := new(QueryFilter_Reverted)
+	r.Reverted = m.Reverted.CloneVT()
+	return r
+}
+
 func (m *ReferenceCondition) CloneVT() *ReferenceCondition {
 	if m == nil {
 		return (*ReferenceCondition)(nil)
@@ -2920,6 +2933,23 @@ func (m *ReferenceCondition) CloneVT() *ReferenceCondition {
 }
 
 func (m *ReferenceCondition) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *RevertedCondition) CloneVT() *RevertedCondition {
+	if m == nil {
+		return (*RevertedCondition)(nil)
+	}
+	r := new(RevertedCondition)
+	r.Value = m.Value
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *RevertedCondition) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -4143,6 +4173,12 @@ func (this *Transaction) EqualVT(that *Transaction) bool {
 		return false
 	}
 	if !this.RevertedAt.EqualVT(that.RevertedAt) {
+		return false
+	}
+	if this.RevertedByTransaction != that.RevertedByTransaction {
+		return false
+	}
+	if this.RevertsTransaction != that.RevertsTransaction {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7871,6 +7907,12 @@ func (this *TransactionState) EqualVT(that *TransactionState) bool {
 			}
 		}
 	}
+	if !this.RevertedAt.EqualVT(that.RevertedAt) {
+		return false
+	}
+	if this.RevertsTransaction != that.RevertsTransaction {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -8560,6 +8602,31 @@ func (this *QueryFilter_AccountHasAsset) EqualVT(thatIface isQueryFilter_Filter)
 	return true
 }
 
+func (this *QueryFilter_Reverted) EqualVT(thatIface isQueryFilter_Filter) bool {
+	that, ok := thatIface.(*QueryFilter_Reverted)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Reverted, that.Reverted; p != q {
+		if p == nil {
+			p = &RevertedCondition{}
+		}
+		if q == nil {
+			q = &RevertedCondition{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *ReferenceCondition) EqualVT(that *ReferenceCondition) bool {
 	if this == that {
 		return true
@@ -8574,6 +8641,25 @@ func (this *ReferenceCondition) EqualVT(that *ReferenceCondition) bool {
 
 func (this *ReferenceCondition) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*ReferenceCondition)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *RevertedCondition) EqualVT(that *RevertedCondition) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Value != that.Value {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *RevertedCondition) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*RevertedCondition)
 	if !ok {
 		return false
 	}
@@ -10320,6 +10406,18 @@ func (m *Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.RevertsTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertsTransaction))
+		i--
+		dAtA[i] = 0x59
+	}
+	if m.RevertedByTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertedByTransaction))
+		i--
+		dAtA[i] = 0x51
 	}
 	if m.RevertedAt != nil {
 		size, err := m.RevertedAt.MarshalToSizedBufferVT(dAtA[:i])
@@ -16172,6 +16270,22 @@ func (m *TransactionState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RevertsTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertsTransaction))
+		i--
+		dAtA[i] = 0x39
+	}
+	if m.RevertedAt != nil {
+		size, err := m.RevertedAt.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
 	if len(m.Postings) > 0 {
 		for iNdEx := len(m.Postings) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.Postings[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -17104,6 +17218,25 @@ func (m *QueryFilter_AccountHasAsset) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	}
 	return len(dAtA) - i, nil
 }
+func (m *QueryFilter_Reverted) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *QueryFilter_Reverted) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Reverted != nil {
+		size, err := m.Reverted.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x62
+	}
+	return len(dAtA) - i, nil
+}
 func (m *ReferenceCondition) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -17143,6 +17276,49 @@ func (m *ReferenceCondition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *RevertedCondition) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RevertedCondition) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *RevertedCondition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Value {
+		i--
+		if m.Value {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -19334,6 +19510,12 @@ func (m *Transaction) SizeVT() (n int) {
 	if m.RevertedAt != nil {
 		l = m.RevertedAt.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.RevertedByTransaction != 0 {
+		n += 9
+	}
+	if m.RevertsTransaction != 0 {
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -21823,6 +22005,13 @@ func (m *TransactionState) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
+	if m.RevertedAt != nil {
+		l = m.RevertedAt.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.RevertsTransaction != 0 {
+		n += 9
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -22218,6 +22407,18 @@ func (m *QueryFilter_AccountHasAsset) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *QueryFilter_Reverted) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Reverted != nil {
+		l = m.Reverted.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *ReferenceCondition) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -22227,6 +22428,19 @@ func (m *ReferenceCondition) SizeVT() (n int) {
 	if m.Cond != nil {
 		l = m.Cond.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *RevertedCondition) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Value {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -24368,6 +24582,26 @@ func (m *Transaction) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertedByTransaction", wireType)
+			}
+			m.RevertedByTransaction = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RevertedByTransaction = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 11:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertsTransaction", wireType)
+			}
+			m.RevertsTransaction = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RevertsTransaction = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -38900,6 +39134,52 @@ func (m *TransactionState) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertedAt", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.RevertedAt == nil {
+				m.RevertedAt = &Timestamp{}
+			}
+			if err := m.RevertedAt.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertsTransaction", wireType)
+			}
+			m.RevertsTransaction = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RevertsTransaction = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -40816,6 +41096,47 @@ func (m *QueryFilter) UnmarshalVT(dAtA []byte) error {
 				m.Filter = &QueryFilter_AccountHasAsset{AccountHasAsset: v}
 			}
 			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reverted", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Filter.(*QueryFilter_Reverted); ok {
+				if err := oneof.Reverted.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &RevertedCondition{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Filter = &QueryFilter_Reverted{Reverted: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -40903,6 +41224,77 @@ func (m *ReferenceCondition) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RevertedCondition) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RevertedCondition: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RevertedCondition: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Value = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

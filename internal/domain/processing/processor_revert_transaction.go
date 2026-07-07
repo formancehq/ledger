@@ -96,10 +96,6 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	boundaries.PostingCount += uint64(len(revertPostings))
 	boundaries.RevertCount++
 
-	// Record the reversion on the original transaction's state.
-	origState.RevertedByTransaction = revertTxID
-	s.TransactionStates().Put(txKey, origState)
-
 	// Resolve the revert timestamp. When at_effective_date is set, the compensating
 	// transaction inherits the original's effective timestamp (parity with
 	// formancehq/ledger). Otherwise it stamps with the current FSM date.
@@ -114,12 +110,20 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		revertTimestamp = origState.GetTimestamp()
 	}
 
-	// Store the revert transaction's state (include metadata from the revert order)
+	// Record the reversion on the original transaction's state: the id of the
+	// compensating transaction and the effective time it was reverted.
+	origState.RevertedByTransaction = revertTxID
+	origState.RevertedAt = revertTimestamp
+	s.TransactionStates().Put(txKey, origState)
+
+	// Store the revert transaction's state (include metadata from the revert
+	// order); RevertsTransaction back-links it to the transaction it compensates.
 	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
-		CreatedByLog: s.GetNextSequenceID(),
-		Metadata:     order.GetMetadata(),
-		Timestamp:    revertTimestamp,
-		Postings:     revertPostings,
+		CreatedByLog:       s.GetNextSequenceID(),
+		Metadata:           order.GetMetadata(),
+		Timestamp:          revertTimestamp,
+		Postings:           revertPostings,
+		RevertsTransaction: order.GetTransactionId(),
 	})
 
 	// Compute post-commit volumes if requested
@@ -137,12 +141,13 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: order.GetTransactionId(),
 				RevertTransaction: &commonpb.Transaction{
-					Postings:   revertPostings,
-					Metadata:   order.GetMetadata(),
-					Timestamp:  revertTimestamp,
-					Id:         revertTxID,
-					InsertedAt: s.GetDate().Mutate(),
-					UpdatedAt:  s.GetDate().Mutate(),
+					Postings:           revertPostings,
+					Metadata:           order.GetMetadata(),
+					Timestamp:          revertTimestamp,
+					Id:                 revertTxID,
+					InsertedAt:         s.GetDate().Mutate(),
+					UpdatedAt:          s.GetDate().Mutate(),
+					RevertsTransaction: order.GetTransactionId(),
 				},
 				PostCommitVolumes: postCommitVolumes,
 			},

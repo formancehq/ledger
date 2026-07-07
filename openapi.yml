@@ -2719,6 +2719,14 @@ components:
           format: date-time
           description: When the transaction was reverted (null if not reverted)
           nullable: true
+        revertedByTransactionId:
+          type: integer
+          format: int64
+          description: ID of the transaction that reverted this one (absent when not reverted)
+        revertsTransactionId:
+          type: integer
+          format: int64
+          description: ID of the original transaction this transaction reverts (absent when this is not a revert)
 
     RevertedTransaction:
       type: object

@@ -50,6 +50,7 @@ type EditableIndexes struct {
 	SourceAddress      bool `json:"sourceAddress"      yaml:"sourceAddress"`
 	DestinationAddress bool `json:"destinationAddress" yaml:"destinationAddress"`
 	InsertedAt         bool `json:"insertedAt"         yaml:"insertedAt"`
+	RevertedAt         bool `json:"revertedAt"         yaml:"revertedAt"`
 }
 
 // EditablePreparedQuery is the editable subset of a prepared query.
@@ -162,6 +163,8 @@ func ConfigFromProto(
 			cfg.Indexes.DestinationAddress = true
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 			cfg.Indexes.InsertedAt = true
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+			cfg.Indexes.RevertedAt = true
 		}
 	}
 
@@ -566,6 +569,7 @@ func diffIndexes(ledgerName string, current, desired *EditableConfig) []DiffActi
 		{"source-address", current.Indexes.SourceAddress, desired.Indexes.SourceAddress, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS},
 		{"destination-address", current.Indexes.DestinationAddress, desired.Indexes.DestinationAddress, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS},
 		{"inserted-at", current.Indexes.InsertedAt, desired.Indexes.InsertedAt, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT},
+		{"reverted-at", current.Indexes.RevertedAt, desired.Indexes.RevertedAt, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT},
 	}
 
 	for _, b := range builtins {

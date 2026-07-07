@@ -157,6 +157,18 @@ func (m *Transaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RevertsTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertsTransaction))
+		i--
+		dAtA[i] = 0x59
+	}
+	if m.RevertedByTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertedByTransaction))
+		i--
+		dAtA[i] = 0x51
+	}
 	if m.RevertedAt != nil {
 		size, _ := m.RevertedAt.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
@@ -2400,6 +2412,19 @@ func (m *TransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RevertsTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertsTransaction))
+		i--
+		dAtA[i] = 0x39
+	}
+	if m.RevertedAt != nil {
+		size, _ := m.RevertedAt.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
 	if len(m.Postings) > 0 {
 		for iNdEx := len(m.Postings) - 1; iNdEx >= 0; iNdEx-- {
 			size, _ := m.Postings[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -2777,6 +2802,17 @@ func (m *QueryFilter) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *ReferenceCondition) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *RevertedCondition) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

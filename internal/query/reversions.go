@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // ReadReversions loads all per-ledger reversion bitsets from Pebble.
@@ -67,4 +68,49 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, error) 
 	}
 
 	return result, nil
+}
+
+// ReadReversionBitset loads a single ledger's reversion bitset from Pebble.
+// It scans only that ledger's words rather than every ledger's (unlike
+// ReadReversions) and returns a never-nil bitset — empty when the ledger has no
+// reversions.
+func ReadReversionBitset(reader dal.PebbleReader, ledgerName string) (*bitset.Bitset, error) {
+	prefix := make([]byte, 2+dal.LedgerNameFixedSize)
+	prefix[0] = dal.ZonePerLedger
+	prefix[1] = dal.SubPLReversions
+	copy(prefix[2:], ledgerName)
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: readstore.IncrementBytes(prefix),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating reversion iterator for ledger %q: %w", ledgerName, err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	bs := &bitset.Bitset{}
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < 2+dal.LedgerNameFixedSize+8 {
+			continue
+		}
+
+		wordIndex := binary.BigEndian.Uint64(key[2+dal.LedgerNameFixedSize:])
+
+		val, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, fmt.Errorf("reading reversion word for ledger %q: %w", ledgerName, err)
+		}
+
+		if len(val) < 8 {
+			continue
+		}
+
+		bs.SetWord(wordIndex, binary.LittleEndian.Uint64(val))
+	}
+
+	return bs, nil
 }

@@ -336,7 +336,13 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	boundaries.PostingCount += uint64(len(rt.GetReversePostings()))
 	boundaries.RevertCount++
 
-	// Update the original transaction's state to record the reversion
+	timestamp := rt.GetTimestamp()
+	if timestamp == nil {
+		timestamp = s.GetDate().Mutate()
+	}
+
+	// Update the original transaction's state to record the reversion: the id of
+	// the compensating transaction and the effective time it was reverted.
 	origKey := domain.TransactionKey{LedgerName: ledger, ID: rt.GetRevertedTransactionId()}
 
 	origReader, err := s.TransactionStates().Get(origKey)
@@ -347,20 +353,18 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	if origReader != nil {
 		origState := origReader.Mutate()
 		origState.RevertedByTransaction = revertTxID
+		origState.RevertedAt = timestamp
 		s.TransactionStates().Put(origKey, origState)
 	}
 
-	timestamp := rt.GetTimestamp()
-	if timestamp == nil {
-		timestamp = s.GetDate().Mutate()
-	}
-
-	// Store the revert transaction's state (include metadata from the mirror revert)
+	// Store the revert transaction's state (include metadata from the mirror
+	// revert); RevertsTransaction back-links it to the transaction it compensates.
 	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
-		CreatedByLog: s.GetNextSequenceID(),
-		Metadata:     rt.GetMetadata(),
-		Timestamp:    timestamp,
-		Postings:     rt.GetReversePostings(),
+		CreatedByLog:       s.GetNextSequenceID(),
+		Metadata:           rt.GetMetadata(),
+		Timestamp:          timestamp,
+		Postings:           rt.GetReversePostings(),
+		RevertsTransaction: rt.GetRevertedTransactionId(),
 	})
 
 	return &commonpb.LedgerLogPayload{
@@ -368,12 +372,13 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: rt.GetRevertedTransactionId(),
 				RevertTransaction: &commonpb.Transaction{
-					Postings:   rt.GetReversePostings(),
-					Metadata:   rt.GetMetadata(),
-					Timestamp:  timestamp,
-					Id:         revertTxID,
-					InsertedAt: s.GetDate().Mutate(),
-					UpdatedAt:  s.GetDate().Mutate(),
+					Postings:           rt.GetReversePostings(),
+					Metadata:           rt.GetMetadata(),
+					Timestamp:          timestamp,
+					Id:                 revertTxID,
+					InsertedAt:         s.GetDate().Mutate(),
+					UpdatedAt:          s.GetDate().Mutate(),
+					RevertsTransaction: rt.GetRevertedTransactionId(),
 				},
 			},
 		},

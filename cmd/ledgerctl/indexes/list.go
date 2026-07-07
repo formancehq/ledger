@@ -188,6 +188,8 @@ func describeIndex(id *commonpb.IndexID) (typeName, target, key string) {
 			return "destination-address", "-", "-"
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 			return "inserted-at", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+			return "reverted-at", "-", "-"
 		}
 
 		return "tx-builtin", "-", k.TxBuiltin.String()

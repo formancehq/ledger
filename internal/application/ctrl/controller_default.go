@@ -269,6 +269,13 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 
 	tx.Reverted = state.GetRevertedByTransaction() > 0
 
+	// The revert relationship is tracked structurally on the state, not in the
+	// create log: reverted_by_transaction + reverted_at on the reverted original,
+	// reverts_transaction on the compensating transaction.
+	tx.RevertedByTransaction = state.GetRevertedByTransaction()
+	tx.RevertedAt = state.GetRevertedAt()
+	tx.RevertsTransaction = state.GetRevertsTransaction()
+
 	// The state carries the current metadata (the create-time snapshot plus
 	// every applied add/delete) and is authoritative even when empty; the
 	// create log only holds the create-time snapshot.
