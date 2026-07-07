@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
-  title: Ledger V3 POC API
-  description: API for the Ledger V3 Proof of Concept with Raft consensus
+  title: Ledger v3 API
+  description: API for the Ledger v3, a distributed accounting ledger with Raft consensus
   version: 1.0.0
   contact:
     name: Formance
@@ -543,7 +543,11 @@ paths:
             type: string
         - name: prefix
           in: query
-          description: Filter accounts by address prefix (e.g. "users:")
+          description: |
+            Filter accounts whose address starts with this raw byte-level
+            prefix (e.g. `users:` matches `users:alice`, `users:bob`, ...).
+            Matching is not path-segment aware: `acc:1` also matches
+            `acc:10`, `acc:11`, etc. Do not use for exact-address lookups.
           schema:
             type: string
       responses:
@@ -625,7 +629,10 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - name: prefix
           in: query
-          description: Filter accounts by address prefix
+          description: |
+            Filter accounts whose address starts with this raw byte-level
+            prefix. Matching is not path-segment aware (see the note on the
+            `prefix` query parameter of `GET /v3/{ledgerName}/accounts`).
           schema:
             type: string
         - name: useMaxPrecision
@@ -2482,9 +2489,12 @@ components:
           type: string
           description: Error description (present only on error)
         data:
-          description: Operation result data (transaction object for CREATE_TRANSACTION, null for others)
+          description: |
+            Operation result data. For `CREATE_TRANSACTION` this is the full
+            created transaction object. Omitted for other actions and on error.
           nullable: true
-          description: Log ID of the operation
+          allOf:
+            - $ref: '#/components/schemas/TransactionResponse'
 
     CreateTransactionResponse:
       type: object
@@ -2577,7 +2587,16 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/VolumesWithBalance'
-          description: Account volumes per asset (input, output, balance)
+          description: |
+            Per-asset input/output/balance. The field is defined here so
+            the schema stays stable across future wire changes, but it is
+            not populated on the current v3 wire — `Account.MarshalJSON`
+            drops it. For per-account balances, use a prepared query with
+            type `AGGREGATE_VOLUMES` and an exact-address filter
+            (`address.hardcodedExact`); the aggregated volumes returned by
+            `GET /v3/{ledgerName}/volumes?prefix=…` match by raw byte
+            prefix (`acc:1` matches `acc:10`) and will produce incorrect
+            balances for a single-account lookup.
 
     VolumesWithBalance:
       type: object
@@ -2622,6 +2641,11 @@ components:
 
     AggregatedVolume:
       type: object
+      description: |
+        Per-asset aggregated volume as emitted by `GET /v3/{ledgerName}/volumes`.
+        Prepared-query `AGGREGATE_VOLUMES` responses use the same shape
+        conceptually but currently leak the raw protojson encoding (numeric
+        Uint256, no `balance`) — reconciliation tracked in EN-1465 / EN-1469.
       required:
         - asset
         - input
@@ -2682,15 +2706,15 @@ components:
         reverted:
           type: boolean
           description: Whether this transaction has been reverted
-        inserted_at:
+        insertedAt:
           type: string
           format: date-time
           description: When the transaction was inserted into the ledger
-        updated_at:
+        updatedAt:
           type: string
           format: date-time
           description: Last update timestamp
-        reverted_at:
+        revertedAt:
           type: string
           format: date-time
           description: When the transaction was reverted (null if not reverted)
@@ -3578,36 +3602,15 @@ components:
 
     ExecutePreparedQueryResponse:
       type: object
-      properties:
-        cursor:
-          type: object
-          properties:
-            hasMore:
-              type: boolean
-            next:
-              type: string
-              description: Cursor to pass for the next page
-            data:
-              type: array
-              items:
-                type: string
-              description: Entity IDs (account addresses or transaction IDs)
-        aggregateResult:
-          type: object
-          properties:
-            volumes:
-              type: array
-              items:
-                type: object
-                properties:
-                  asset:
-                    type: string
-                  input:
-                    type: string
-                    description: Total input as big integer string
-                  output:
-                    type: string
-                    description: Total output as big integer string
+      description: |
+        Response wraps either a paged cursor (list-style targets like
+        `LIST_ACCOUNTS`, `LIST_TRANSACTIONS`) or an aggregate result
+        (`AGGREGATE_VOLUMES`). The current wire encoding leaks the raw
+        protobuf oneof shape (Go-cased `Result.Cursor` / `Result.Aggregate`
+        with nested proto field names). Reconciling the wire with a clean
+        top-level `cursor` / `aggregateResult` envelope is tracked in
+        EN-1465; this schema will be finalised together with that fix.
+      additionalProperties: true
 
     HealthResponse:
       type: object
