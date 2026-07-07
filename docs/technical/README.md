@@ -7,6 +7,7 @@ Technical reference for the Ledger v3 distributed ledger system.
 1. **[Architecture Overview](architecture/overview.md)** -- system components, Raft consensus, and how they fit together
 2. **[Architecture Deep Dives](architecture/)** -- 24 documents grouped by topic (core, storage, data model, API)
 3. **[Contributing](contributing/getting-started.md)** -- set up your dev environment, conventions, and testing
+4. **[Architecture Decision Records](adr/)** -- significant technical decisions (including "we chose not to do X")
 
 ## I want to...
 
