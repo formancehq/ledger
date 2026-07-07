@@ -140,13 +140,63 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 	}
 }
 
-// MarshalJSON implements json.Marshaler for PostCommitVolumes.
+// MarshalJSON implements json.Marshaler for PostCommitVolumes. The wire shape
+// is a flat `{address: {asset: Volumes}}` map — protojson would emit the raw
+// proto wrappers (`volumesByAccount.{addr}.volumes.{asset}`), leaking two
+// nesting levels that don't belong on the public API and don't match the
+// OpenAPI schema (see PostCommitVolumes in openapi.yml).
 func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		VolumesByAccount map[string]*VolumesByAssets `json:"volumesByAccount,omitempty"`
-	}{
-		VolumesByAccount: x.GetVolumesByAccount(),
-	})
+	byAccount := x.GetVolumesByAccount()
+	if len(byAccount) == 0 {
+		return []byte("{}"), nil
+	}
+
+	flat := make(map[string]map[string]*Volumes, len(byAccount))
+	for addr, va := range byAccount {
+		flat[addr] = va.GetVolumes()
+	}
+
+	return json.Marshal(flat)
+}
+
+// UnmarshalJSON implements json.Unmarshaler for PostCommitVolumes. It accepts
+// the current flat shape (`{address: {asset: Volumes}}`) and the legacy
+// protojson-wrapped shape (`{volumesByAccount: {address: {volumes: {asset:
+// Volumes}}}}`) so clients that stored responses from earlier alphas keep
+// round-tripping.
+func (x *PostCommitVolumes) UnmarshalJSON(data []byte) error {
+	// Try the wrapped shape first — its top-level key is fixed
+	// (`volumesByAccount`) so the presence of that key is unambiguous. A
+	// flat map would use account addresses as its own keys, which cannot
+	// collide with the reserved wrapper name in any realistic ledger.
+	var wrapped struct {
+		VolumesByAccount map[string]*VolumesByAssets `json:"volumesByAccount"`
+	}
+	if err := json.Unmarshal(data, &wrapped); err == nil && wrapped.VolumesByAccount != nil {
+		x.VolumesByAccount = wrapped.VolumesByAccount
+
+		return nil
+	}
+
+	var flat map[string]map[string]*Volumes
+
+	err := json.Unmarshal(data, &flat)
+	if err != nil {
+		return err
+	}
+
+	if len(flat) == 0 {
+		x.VolumesByAccount = nil
+
+		return nil
+	}
+
+	x.VolumesByAccount = make(map[string]*VolumesByAssets, len(flat))
+	for addr, assets := range flat {
+		x.VolumesByAccount[addr] = &VolumesByAssets{Volumes: assets}
+	}
+
+	return nil
 }
 
 // MarshalJSON implements json.Marshaler for Account.
