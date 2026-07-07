@@ -251,7 +251,9 @@ func resolveInvolvedAccount(expr accounts.InvolvedAccountExpr) (string, bool) {
 // asset string. GetAsset is transparent, and the asset of a monetary produced by
 // balance()/overdraft()/a monetary literal is its asset argument, so the whole
 // chain (e.g. GetAsset{GetOverdraft{@credit, USD/2}}) collapses to the literal
-// "USD/2". Returns false for shapes it cannot statically resolve.
+// "USD/2". Monetary arithmetic (Add/Sub/Div/SubPrefix) is asset-preserving —
+// numscript requires operands to share an asset — so we recurse into either
+// operand. Returns false for shapes it cannot statically resolve.
 func resolveInvolvedAsset(expr accounts.InvolvedAccountExpr) (string, bool) {
 	switch e := expr.(type) {
 	case accounts.AssetLiteral:
@@ -264,6 +266,23 @@ func resolveInvolvedAsset(expr accounts.InvolvedAccountExpr) (string, bool) {
 		return resolveInvolvedAsset(e.Asset)
 	case accounts.GetAsset:
 		return resolveInvolvedAsset(e.Monetary)
+	case accounts.Add:
+		if asset, ok := resolveInvolvedAsset(e.Left); ok {
+			return asset, true
+		}
+		return resolveInvolvedAsset(e.Right)
+	case accounts.Sub:
+		if asset, ok := resolveInvolvedAsset(e.Left); ok {
+			return asset, true
+		}
+		return resolveInvolvedAsset(e.Right)
+	case accounts.Div:
+		if asset, ok := resolveInvolvedAsset(e.Left); ok {
+			return asset, true
+		}
+		return resolveInvolvedAsset(e.Right)
+	case accounts.SubPrefix:
+		return resolveInvolvedAsset(e.Expr)
 	}
 	return "", false
 }

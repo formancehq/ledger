@@ -196,6 +196,38 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.True(t, hasCredit, "should discover @credit")
 	})
 
+	t.Run("overdraft send inside arithmetic still discovers the unbounded-overdraft source", func(t *testing.T) {
+		t.Parallel()
+
+		// Same class of bug as ledger#1500, but the amount wraps overdraft() in
+		// monetary arithmetic. Emulation folds overdraft() to zero against a fake
+		// positive balance and [USD/2 0] is trivially zero, so the whole `+` folds
+		// to zero and no posting is emitted — @repay is missed by emulation. The
+		// static-involved-accounts union catches this iff resolveInvolvedAsset can
+		// see through Add/Sub/Div/SubPrefix nodes to the embedded asset. Two
+		// overdrafts in one script would trip the determinism guard, so we combine
+		// overdraft() with a literal zero instead.
+		script := `
+#![feature("experimental-overdraft-function")]
+			vars {
+			  monetary $due = overdraft(@credit, USD/2)
+			}
+			send [USD/2 0] + $due (
+				source = @repay allowing unbounded overdraft
+				destination = @credit
+			)
+		`
+
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerName)
+		require.NoError(t, err)
+
+		_, hasRepay := result.SourceVolumes[domain.VolumeKey{
+			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "repay"},
+			Asset:      "USD/2",
+		}]
+		require.True(t, hasRepay, "should discover @repay even when the amount wraps overdraft() in an Add node")
+	})
+
 	t.Run("parse error returns error", func(t *testing.T) {
 		t.Parallel()
 
