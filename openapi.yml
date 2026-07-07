@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
-  title: Ledger V3 POC API
-  description: API for the Ledger V3 Proof of Concept with Raft consensus
+  title: Ledger v3 API
+  description: API for the Ledger v3, a distributed accounting ledger with Raft consensus
   version: 1.0.0
   contact:
     name: Formance
@@ -543,7 +543,11 @@ paths:
             type: string
         - name: prefix
           in: query
-          description: Filter accounts by address prefix (e.g. "users:")
+          description: |
+            Filter accounts whose address starts with this raw byte-level
+            prefix (e.g. `users:` matches `users:alice`, `users:bob`, ...).
+            Matching is not path-segment aware: `acc:1` also matches
+            `acc:10`, `acc:11`, etc. Do not use for exact-address lookups.
           schema:
             type: string
       responses:
@@ -625,7 +629,10 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - name: prefix
           in: query
-          description: Filter accounts by address prefix
+          description: |
+            Filter accounts whose address starts with this raw byte-level
+            prefix. Matching is not path-segment aware (see the note on the
+            `prefix` query parameter of `GET /v3/{ledgerName}/accounts`).
           schema:
             type: string
         - name: useMaxPrecision
@@ -1924,6 +1931,16 @@ components:
         JWT token issued by a trusted OIDC provider. Required when the server
         is started with `--auth-enabled`. Scopes: `ledger:read` (read operations),
         `ledger:write` (write operations), `ledger:admin` (cluster operations).
+    Ed25519Signature:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: >
+        Optional Ed25519 request signature for authenticity and integrity.
+        When request signing is enabled on the server, callers sign the request
+        payload with a registered key and pass the base64-encoded signature in
+        `X-Signature` together with the key id in `X-Signing-Key-Id`. See
+        `docs/ops/signing.md` for the exact signing algorithm and header set.
 
   parameters:
     LedgerName:
@@ -2482,9 +2499,12 @@ components:
           type: string
           description: Error description (present only on error)
         data:
-          description: Operation result data (transaction object for CREATE_TRANSACTION, null for others)
+          description: |
+            Operation result data. For `CREATE_TRANSACTION` this is the full
+            created transaction object. Omitted for other actions and on error.
           nullable: true
-          description: Log ID of the operation
+          allOf:
+            - $ref: '#/components/schemas/TransactionResponse'
 
     CreateTransactionResponse:
       type: object
@@ -2577,7 +2597,11 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/VolumesWithBalance'
-          description: Account volumes per asset (input, output, balance)
+          description: |
+            Deprecated: never populated on account read responses. To retrieve
+            per-account volumes/balances, use a prepared query with type
+            `AGGREGATE_VOLUMES` scoped to the account address.
+          deprecated: true
 
     VolumesWithBalance:
       type: object
@@ -2626,20 +2650,19 @@ components:
         - asset
         - input
         - output
-        - balance
       properties:
         asset:
           type: string
           description: Asset identifier (e.g. "USD/2")
         input:
-          type: string
-          description: Total amount received (as big integer string)
+          description: |
+            Total amount received. Emitted as a JSON number decimal
+            (Uint256), which may exceed 2^53. JavaScript clients must parse
+            this as a BigInt/BigNumber to avoid precision loss.
         output:
-          type: string
-          description: Total amount sent (as big integer string)
-        balance:
-          type: string
-          description: Net balance (input - output, as big integer string)
+          description: |
+            Total amount sent. Emitted as a JSON number decimal (Uint256);
+            see the note on `input` for JS precision handling.
 
     GroupedAggregateResult:
       type: object
@@ -2682,15 +2705,15 @@ components:
         reverted:
           type: boolean
           description: Whether this transaction has been reverted
-        inserted_at:
+        insertedAt:
           type: string
           format: date-time
           description: When the transaction was inserted into the ledger
-        updated_at:
+        updatedAt:
           type: string
           format: date-time
           description: Last update timestamp
-        reverted_at:
+        revertedAt:
           type: string
           format: date-time
           description: When the transaction was reverted (null if not reverted)
@@ -3578,36 +3601,49 @@ components:
 
     ExecutePreparedQueryResponse:
       type: object
+      description: |
+        Wraps either a cursor (for list-style targets like `LIST_ACCOUNTS`,
+        `LIST_TRANSACTIONS`) or an aggregate result (for `AGGREGATE_VOLUMES`).
+        Exactly one of `cursor` or `aggregateResult` is populated per response.
       properties:
         cursor:
           type: object
           properties:
+            pageSize:
+              type: integer
+              format: uint32
+              description: Number of entities in this page
             hasMore:
               type: boolean
+            previous:
+              type: string
+              description: Cursor to pass for the previous page
             next:
               type: string
               description: Cursor to pass for the next page
-            data:
+            accountData:
               type: array
               items:
-                type: string
-              description: Entity IDs (account addresses or transaction IDs)
+                $ref: '#/components/schemas/Account'
+              description: Full account entities (populated for account-target queries)
+            transactionData:
+              type: array
+              items:
+                $ref: '#/components/schemas/TransactionResponse'
+              description: Full transaction entities (populated for transaction-target queries)
         aggregateResult:
           type: object
           properties:
             volumes:
               type: array
               items:
-                type: object
-                properties:
-                  asset:
-                    type: string
-                  input:
-                    type: string
-                    description: Total input as big integer string
-                  output:
-                    type: string
-                    description: Total output as big integer string
+                $ref: '#/components/schemas/AggregatedVolume'
+              description: Per-asset aggregated volumes
+            groups:
+              type: array
+              items:
+                $ref: '#/components/schemas/GroupedAggregateResult'
+              description: Per-prefix aggregated volumes (present when `groupByPrefixes` is set)
 
     HealthResponse:
       type: object
