@@ -658,9 +658,12 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 	}
 }
 
-// generateRevert reverts a committed transaction by reference. force skips the
-// balance check (the reversed posting debits the original destination, which may
-// lack the funds), so the model needs no insufficient-funds modeling;
+// generateRevert reverts a committed transaction by reference, ~half of them
+// with force. A non-forced revert applies the balance floor to the reversed
+// postings — the reversed source is the original destination, which may since
+// have spent (or been purged of) the funds — so it also exercises the revert
+// path's INSUFFICIENT_FUNDS rejection. The server validates account types before
+// the floor on reverts, so the oracle does the same (see applyRevert).
 // expand_volumes returns post-commit volumes for validation. Targeting any
 // committed reference exercises both the success path and the
 // TRANSACTION_ALREADY_REVERTED rejection (a reference picked after a prior
@@ -673,7 +676,7 @@ func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
 
 	payload := &servicepb.RevertTransactionPayload{
 		TransactionId: uint64(ls.TxByRef()[ref]),
-		Force:         true,
+		Force:         random.RandomChoice([]uint8{0, 1}) == 0,
 		ExpandVolumes: true,
 	}
 
