@@ -476,13 +476,13 @@ func TestRewriteAddressPreservesAccountMetadataType(t *testing.T) {
 	require.Equal(t, int64(7), v.GetIntValue())
 }
 
-func TestMapAccountAddresses_ReverseSegments(t *testing.T) {
+func TestMapAddress_ReverseSegments(t *testing.T) {
 	t.Parallel()
 
 	// The open-ended transform a constant regex cannot express: reverse the
 	// ':'-separated segments of every account address, for arbitrary arity.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.mapAccountAddresses(a, a.split(":").reverse().join(":"))`, false),
+		rule("true", `tx.mapAddress(a, a.split(":").reverse().join(":"))`, false),
 	))
 	require.NoError(t, err)
 
@@ -503,13 +503,13 @@ func TestMapAccountAddresses_ReverseSegments(t *testing.T) {
 	require.Equal(t, uint64(100), ps[0].GetAmount().GetV0())
 }
 
-func TestMapAccountAddresses_CoversTargetAndAccountMetadata(t *testing.T) {
+func TestMapAddress_CoversTargetAndAccountMetadata(t *testing.T) {
 	t.Parallel()
 
 	// The map applies to metadata-op account targets and to account-metadata
 	// keys too — everything account-addressed in the entry.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.mapAccountAddresses(a, "x:" + a)`, false),
+		rule("true", `tx.mapAddress(a, "x:" + a)`, false),
 	))
 	require.NoError(t, err)
 
@@ -544,12 +544,12 @@ func TestSetAddresses_WrongLengthRejected(t *testing.T) {
 	require.Contains(t, err.Error(), "expected 2 addresses")
 }
 
-func TestMapAccountAddresses_InvalidResultRejected(t *testing.T) {
+func TestMapAddress_InvalidResultRejected(t *testing.T) {
 	t.Parallel()
 
 	// A computed address that isn't a valid ledger address fails the batch.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.mapAccountAddresses(a, a + " bad")`, false),
+		rule("true", `tx.mapAddress(a, a + " bad")`, false),
 	))
 	require.NoError(t, err)
 
