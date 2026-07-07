@@ -2588,11 +2588,11 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/VolumesWithBalance'
           description: |
-            Per-asset input/output/balance for this account. Populated only
-            when the caller opts in via `expandVolumes=true` on
-            `GET /v3/{ledgerName}/accounts/{address}`; omitted otherwise.
-            For per-account balances at scale, use `GET /v3/{ledgerName}/volumes`
-            or a prepared query with type `AGGREGATE_VOLUMES`.
+            Per-asset input/output/balance for this account. Populated
+            inline on `GET /v3/{ledgerName}/accounts/{address}` (EN-1470).
+            List responses currently omit this field; for per-account
+            balances at scale, use `GET /v3/{ledgerName}/volumes` or a
+            prepared query with type `AGGREGATE_VOLUMES`.
 
     VolumesWithBalance:
       type: object
