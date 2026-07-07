@@ -160,12 +160,16 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements json.Unmarshaler for PostCommitVolumes. It accepts
-// only the flat shape (`{address: {asset: Volumes}}`). Attempting to also
-// accept the legacy wrapped shape via a `volumesByAccount` top-level key
-// would silently corrupt data for a ledger where an account is literally
-// named `volumesByAccount` (a legal address), so the shim is intentionally
-// strict: pre-EN-1465 wrapped payloads must be converted client-side.
+// only the flat shape (`{address: {asset: Volumes}}`). The pre-EN-1465
+// wrapped shape (`{volumesByAccount: {address: {volumes: {asset: Volumes}}}}`)
+// is rejected with a typed error instead of being silently mis-parsed into
+// zero-value Volumes — see the second-level `volumes` probe below. Callers
+// storing legacy alpha responses must convert them client-side.
 func (x *PostCommitVolumes) UnmarshalJSON(data []byte) error {
+	if isLegacyWrappedPostCommitVolumes(data) {
+		return errors.New("pre-EN-1465 wrapped postCommitVolumes shape is not accepted; convert to the flat {account: {asset: Volumes}} shape client-side")
+	}
+
 	var flat map[string]map[string]*Volumes
 
 	err := json.Unmarshal(data, &flat)
@@ -185,6 +189,49 @@ func (x *PostCommitVolumes) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+// isLegacyWrappedPostCommitVolumes reports whether the payload matches the
+// pre-EN-1465 wrapped shape. Detection has to look two levels deep, because
+// an account literally named `volumesByAccount` (a legal address) would
+// otherwise be mistaken for the wrapper. The wrapped shape is characterised
+// by every second-level entry being an object with a `volumes` key.
+func isLegacyWrappedPostCommitVolumes(data []byte) bool {
+	var top map[string]json.RawValue
+	if err := json.Unmarshal(data, &top); err != nil {
+		return false
+	}
+
+	// The legacy shape only ever has one top-level key: `volumesByAccount`.
+	// A flat payload with just one account also has one key, so keep going.
+	if len(top) != 1 {
+		return false
+	}
+
+	raw, ok := top["volumesByAccount"]
+	if !ok {
+		return false
+	}
+
+	// Inspect the value: legacy = {addr: {volumes: {...}}}; flat = {asset: Volumes}.
+	var inner map[string]json.RawValue
+	if err := json.Unmarshal(raw, &inner); err != nil {
+		return false
+	}
+
+	// Pick any second-level entry — the shape is uniform across all of them.
+	for _, secondLevel := range inner {
+		var probe map[string]json.RawValue
+		if err := json.Unmarshal(secondLevel, &probe); err != nil {
+			return false
+		}
+
+		_, hasVolumes := probe["volumes"]
+
+		return hasVolumes && len(probe) == 1
+	}
+
+	return false
 }
 
 // MarshalJSON implements json.Marshaler for Account.

@@ -80,12 +80,35 @@ func TestPostCommitVolumes_UnmarshalJSON_FlatRoundTrip(t *testing.T) {
 	require.Equal(t, "40", out.VolumesByAccount["users:alice"].Volumes["USD/2"].Output)
 }
 
+// TestPostCommitVolumes_UnmarshalJSON_LegacyWrappedRejected asserts we
+// reject the pre-EN-1465 wrapped shape with an explicit error instead of
+// silently mis-parsing it. Callers migrating stored alpha responses will
+// therefore see a clear failure rather than zero-valued Volumes maps.
+func TestPostCommitVolumes_UnmarshalJSON_LegacyWrappedRejected(t *testing.T) {
+	t.Parallel()
+
+	legacy := `{
+		"volumesByAccount": {
+			"users:alice": {
+				"volumes": {
+					"USD/2": {"input": "100", "output": "40"}
+				}
+			}
+		}
+	}`
+
+	var out PostCommitVolumes
+
+	err := out.UnmarshalJSON([]byte(legacy))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "pre-EN-1465 wrapped postCommitVolumes")
+}
+
 // TestPostCommitVolumes_UnmarshalJSON_AccountNamedVolumesByAccount asserts
 // that an account literally named `volumesByAccount` (a legal account
 // address) round-trips through the flat encoder without being mistaken for
-// the pre-EN-1465 wrapped shape. Structural detection based on the
-// top-level key would corrupt this case, so the shim is strict on the flat
-// shape only.
+// the pre-EN-1465 wrapped shape. Legacy-shape detection has to be
+// structural, not based on the top-level key alone.
 func TestPostCommitVolumes_UnmarshalJSON_AccountNamedVolumesByAccount(t *testing.T) {
 	t.Parallel()
 
