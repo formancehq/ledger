@@ -339,13 +339,13 @@ func TestSetAccountMetadataValidatesValue(t *testing.T) {
 	require.Contains(t, err.Error(), "metadata value")
 }
 
-func TestAnnotateAccounts(t *testing.T) {
+func TestSetAccountMetadataFromAddress(t *testing.T) {
 	t.Parallel()
 
 	// Capture the last segment of matching acquirer addresses into account
 	// metadata: acquirer:acme:worker:001:bank -> acquirer-type=bank.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.annotateAccounts("^acquirer:acme:worker:\\d+:([^:]+)$", "acquirer-type", "$1")`, false),
+		rule("true", `tx.setAccountMetadataFromAddress("^acquirer:acme:worker:\\d+:([^:]+)$", "acquirer-type", "$1")`, false),
 	))
 	require.NoError(t, err)
 
@@ -366,12 +366,12 @@ func TestAnnotateAccounts(t *testing.T) {
 	require.NotContains(t, am, "world")
 }
 
-func TestAnnotateAccounts_InvalidKeyRejectedAtRuntime(t *testing.T) {
+func TestSetAccountMetadataFromAddress_InvalidKeyRejectedAtRuntime(t *testing.T) {
 	t.Parallel()
 
 	// A metadata key with a disallowed character ('/') must fail the rule.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.annotateAccounts("^(.+)$", "bad/key", "$1")`, false),
+		rule("true", `tx.setAccountMetadataFromAddress("^(.+)$", "bad/key", "$1")`, false),
 	))
 	require.NoError(t, err)
 
@@ -381,14 +381,14 @@ func TestAnnotateAccounts_InvalidKeyRejectedAtRuntime(t *testing.T) {
 	require.Contains(t, err.Error(), "metadata key")
 }
 
-func TestAnnotateAccounts_InvalidLiteralRegexRejectedAtCompile(t *testing.T) {
+func TestSetAccountMetadataFromAddress_InvalidLiteralRegexRejectedAtCompile(t *testing.T) {
 	t.Parallel()
 
 	_, err := NewRewriter(rules(
-		rule("true", `tx.annotateAccounts("(", "k", "$1")`, false),
+		rule("true", `tx.setAccountMetadataFromAddress("(", "k", "$1")`, false),
 	))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "annotateAccounts pattern")
+	require.Contains(t, err.Error(), "setAccountMetadataFromAddress pattern")
 }
 
 func TestDeterministicOutput(t *testing.T) {

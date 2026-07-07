@@ -254,7 +254,7 @@ func rejectViewConstruction(ast *cel.Ast) error {
 
 // regexHelpers are the CEL helper functions whose first argument is an RE2
 // pattern (compiled by compileRegex at run time).
-var regexHelpers = []string{"rewriteAddress", "annotateAccounts"}
+var regexHelpers = []string{"rewriteAddress", "setAccountMetadataFromAddress"}
 
 // validateLiteralRegexes eagerly compiles every literal regex pattern passed to
 // a regex helper in the expression, so a malformed pattern (bad RE2 or empty) is
@@ -305,10 +305,10 @@ func (r *Rewriter) buildEnv() (*cel.Env, error) {
 			cel.MemberOverload("txview_rewriteAddress_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
 				cel.FunctionBinding(r.bindRewriteAddress))),
-		cel.Function("annotateAccounts",
-			cel.MemberOverload("txview_annotateAccounts_string_string_string",
+		cel.Function("setAccountMetadataFromAddress",
+			cel.MemberOverload("txview_setAccountMetadataFromAddress_string_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType}, tx,
-				cel.FunctionBinding(r.bindAnnotateAccounts))),
+				cel.FunctionBinding(r.bindSetAccountMetadataFromAddress))),
 		cel.Function("setMetadata",
 			cel.MemberOverload("txview_setMetadata_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
@@ -378,13 +378,13 @@ func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
 	return r.adapter.NativeToValue(nv)
 }
 
-// bindAnnotateAccounts implements tx.annotateAccounts(pattern, key, replacement):
+// bindSetAccountMetadataFromAddress implements tx.setAccountMetadataFromAddress(pattern, key, replacement):
 // for every posting account address matching pattern, it sets
 // accountMetadata[address][key] = re.ReplaceAllString(address, replacement) —
 // the mirror of rewriteAddress, used to derive per-account metadata from the
 // address (e.g. capture a segment via a group and store it). Account metadata is
 // only persisted for created transactions.
-func (r *Rewriter) bindAnnotateAccounts(args ...ref.Val) ref.Val {
+func (r *Rewriter) bindSetAccountMetadataFromAddress(args ...ref.Val) ref.Val {
 	tv, errv := receiver(args[0])
 	if tv == nil {
 		return errv
@@ -392,26 +392,26 @@ func (r *Rewriter) bindAnnotateAccounts(args ...ref.Val) ref.Val {
 
 	pattern, ok := args[1].Value().(string)
 	if !ok {
-		return types.NewErr("annotateAccounts: pattern must be a string")
+		return types.NewErr("setAccountMetadataFromAddress: pattern must be a string")
 	}
 
 	key, ok := args[2].Value().(string)
 	if !ok {
-		return types.NewErr("annotateAccounts: key must be a string")
+		return types.NewErr("setAccountMetadataFromAddress: key must be a string")
 	}
 
 	replacement, ok := args[3].Value().(string)
 	if !ok {
-		return types.NewErr("annotateAccounts: replacement must be a string")
+		return types.NewErr("setAccountMetadataFromAddress: replacement must be a string")
 	}
 
 	if err := invariants.ValidateMetadataKey(key); err != nil {
-		return types.NewErr("annotateAccounts: invalid metadata key %q: %v", key, err)
+		return types.NewErr("setAccountMetadataFromAddress: invalid metadata key %q: %v", key, err)
 	}
 
 	re, err := r.compileRegex(pattern)
 	if err != nil {
-		return types.NewErr("annotateAccounts: %v", err)
+		return types.NewErr("setAccountMetadataFromAddress: %v", err)
 	}
 
 	nv := tv.clone()
@@ -440,7 +440,7 @@ func (r *Rewriter) bindAnnotateAccounts(args ...ref.Val) ref.Val {
 	for _, addr := range matched {
 		value := re.ReplaceAllString(addr, replacement)
 		if err := invariants.ValidateMetadataString(value); err != nil {
-			return types.NewErr("annotateAccounts: invalid metadata value %q for %q: %v", value, addr, err)
+			return types.NewErr("setAccountMetadataFromAddress: invalid metadata value %q for %q: %v", value, addr, err)
 		}
 
 		if nv.AccountMetadata == nil {
