@@ -1427,17 +1427,19 @@ paths:
         revert transactions, delete metadata) in a single request. Requires
         `ledger:write` scope.
 
-        Request-level failures (malformed body, size limit, missing scope)
-        return the usual `400` / `401` / `403` / `413` before any element
-        is processed.
+        The response status distinguishes two failure classes:
 
-        Once the request is accepted, `continueOnFailure` controls how
-        per-element failures roll up to the response status:
-        - `continueOnFailure=true` → status stays `200`, and per-element
-          success or failure is reported via the `errorCode` on each
-          element in `data`.
-        - `continueOnFailure=false` (default) → the bulk aborts on the
-          first per-element failure and the response is `400`.
+        1. **Request-level failures** (before per-element processing):
+           malformed body → `400`, missing/insufficient scope → `401` or
+           `403`, oversized body → `413`, leader unavailable → `503`. These
+           are returned unconditionally, regardless of `continueOnFailure`.
+        2. **Per-element failures** (during processing, after the request
+           was accepted): rolled up according to `continueOnFailure`:
+           - `continueOnFailure=true` → the overall status is `200`; each
+             element in `data` carries its own `errorCode` on failure.
+           - `continueOnFailure=false` (default) → the bulk aborts on the
+             first per-element failure and the overall status is `400`,
+             with the same per-element `errorCode` on the failing element.
       operationId: bulkOperations
       tags:
         - Transactions

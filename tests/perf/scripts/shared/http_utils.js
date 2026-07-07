@@ -7,7 +7,7 @@ import { check } from 'k6';
  * Build the bulk URL for a ledger.
  */
 export function bulkUrl(httpAddr, ledgerName, atomic) {
-  return `${httpAddr}/v3/${ledgerName}/_bulk?atomic=${atomic}`;
+  return `${httpAddr}/v3/${ledgerName}/bulk?atomic=${atomic}`;
 }
 
 /**
