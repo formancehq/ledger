@@ -1931,16 +1931,6 @@ components:
         JWT token issued by a trusted OIDC provider. Required when the server
         is started with `--auth-enabled`. Scopes: `ledger:read` (read operations),
         `ledger:write` (write operations), `ledger:admin` (cluster operations).
-    Ed25519Signature:
-      type: apiKey
-      in: header
-      name: X-Signature
-      description: >
-        Optional Ed25519 request signature for authenticity and integrity.
-        When request signing is enabled on the server, callers sign the request
-        payload with a registered key and pass the base64-encoded signature in
-        `X-Signature` together with the key id in `X-Signing-Key-Id`. See
-        `docs/ops/signing.md` for the exact signing algorithm and header set.
 
   parameters:
     LedgerName:
@@ -2646,23 +2636,29 @@ components:
 
     AggregatedVolume:
       type: object
+      description: |
+        Per-asset aggregated volume as emitted by `GET /v3/{ledgerName}/volumes`.
+        Prepared-query `AGGREGATE_VOLUMES` responses use the same shape
+        conceptually but currently leak the raw protojson encoding (numeric
+        Uint256, no `balance`) — reconciliation tracked in EN-1465 / EN-1469.
       required:
         - asset
         - input
         - output
+        - balance
       properties:
         asset:
           type: string
           description: Asset identifier (e.g. "USD/2")
         input:
-          description: |
-            Total amount received. Emitted as a JSON number decimal
-            (Uint256), which may exceed 2^53. JavaScript clients must parse
-            this as a BigInt/BigNumber to avoid precision loss.
+          type: string
+          description: Total amount received (as big integer string)
         output:
-          description: |
-            Total amount sent. Emitted as a JSON number decimal (Uint256);
-            see the note on `input` for JS precision handling.
+          type: string
+          description: Total amount sent (as big integer string)
+        balance:
+          type: string
+          description: Net balance (input - output, as big integer string)
 
     GroupedAggregateResult:
       type: object
@@ -3602,48 +3598,14 @@ components:
     ExecutePreparedQueryResponse:
       type: object
       description: |
-        Wraps either a cursor (for list-style targets like `LIST_ACCOUNTS`,
-        `LIST_TRANSACTIONS`) or an aggregate result (for `AGGREGATE_VOLUMES`).
-        Exactly one of `cursor` or `aggregateResult` is populated per response.
-      properties:
-        cursor:
-          type: object
-          properties:
-            pageSize:
-              type: integer
-              format: uint32
-              description: Number of entities in this page
-            hasMore:
-              type: boolean
-            previous:
-              type: string
-              description: Cursor to pass for the previous page
-            next:
-              type: string
-              description: Cursor to pass for the next page
-            accountData:
-              type: array
-              items:
-                $ref: '#/components/schemas/Account'
-              description: Full account entities (populated for account-target queries)
-            transactionData:
-              type: array
-              items:
-                $ref: '#/components/schemas/TransactionResponse'
-              description: Full transaction entities (populated for transaction-target queries)
-        aggregateResult:
-          type: object
-          properties:
-            volumes:
-              type: array
-              items:
-                $ref: '#/components/schemas/AggregatedVolume'
-              description: Per-asset aggregated volumes
-            groups:
-              type: array
-              items:
-                $ref: '#/components/schemas/GroupedAggregateResult'
-              description: Per-prefix aggregated volumes (present when `groupByPrefixes` is set)
+        Response wraps either a paged cursor (list-style targets like
+        `LIST_ACCOUNTS`, `LIST_TRANSACTIONS`) or an aggregate result
+        (`AGGREGATE_VOLUMES`). The current wire encoding leaks the raw
+        protobuf oneof shape (Go-cased `Result.Cursor` / `Result.Aggregate`
+        with nested proto field names). Reconciling the wire with a clean
+        top-level `cursor` / `aggregateResult` envelope is tracked in
+        EN-1465; this schema will be finalised together with that fix.
+      additionalProperties: true
 
     HealthResponse:
       type: object
