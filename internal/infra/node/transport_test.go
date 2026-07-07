@@ -98,6 +98,48 @@ func TestPeerConnection_PushMessages_DedupsUnreachableWithinBurst(t *testing.T) 
 	require.Equal(t, []uint64{7}, got(), "burst of 100 drops must emit Unreachable exactly once")
 }
 
+// TestPeerConnection_PushMessages_RollsBackFlagOnEmitFailure pins
+// the NumaryBot finding on PR #1519: when unreachableCh itself is
+// full and pushUnreachable returns false, the dedup flag MUST be
+// rolled back so a subsequent drop can retry the emit. Otherwise a
+// transient unreachableCh overflow silences the peer's Unreachable
+// signal until sendMessages succeeds — which for a stuck peer never
+// happens, defeating the whole fix.
+func TestPeerConnection_PushMessages_RollsBackFlagOnEmitFailure(t *testing.T) {
+	t.Parallel()
+
+	// Toggleable emit: first call fails (unreachableCh "full"), second succeeds.
+	var (
+		mu    sync.Mutex
+		calls []uint64
+		fail  = true
+	)
+	conn := newTestPeerConn(t, 9, func(peerID uint64) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		calls = append(calls, peerID)
+
+		return !fail
+	})
+
+	// First drop: emit fails, flag must roll back to false.
+	require.False(t, conn.pushMessages(0, []raftpb.Message{{}}))
+	require.False(t, conn.unreachableReported.Load(),
+		"failed emit must not leave the dedup flag set — otherwise subsequent drops are silently suppressed")
+
+	// Flip the emit sink to succeed. Second drop must retry and set the flag.
+	mu.Lock()
+	fail = false
+	mu.Unlock()
+	require.False(t, conn.pushMessages(0, []raftpb.Message{{}}))
+	require.True(t, conn.unreachableReported.Load(),
+		"successful emit after retry must set the dedup flag")
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []uint64{9, 9}, calls, "both drops must have attempted an emit")
+}
+
 // TestPeerConnection_PushMessages_ReEmitsAfterSuccessfulSend covers
 // the recovery half of the dedup contract. Once the peer has accepted
 // a write (simulated by clearing the flag as sendMessages does), the

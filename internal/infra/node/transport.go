@@ -807,9 +807,15 @@ func (conn *peerConnection) pushMessages(priority int, msgs []raftpb.Message) bo
 		// to StateProbe instead of continuing optimistic replication.
 		// Dedup via CAS: sendMessages resets the flag on the next successful
 		// stream.Send(), letting subsequent drops re-signal if the channel
-		// keeps refilling.
+		// keeps refilling. If pushUnreachable itself fails because
+		// unreachableCh is full, roll the flag back so a subsequent drop
+		// can retry the emit — otherwise a transient unreachableCh overflow
+		// permanently silences this peer's signal until sendMessages
+		// succeeds, which is the exact stuck-peer case we want to avoid.
 		if conn.unreachableReported.CompareAndSwap(false, true) {
-			conn.pushUnreachable(conn.peerID)
+			if !conn.pushUnreachable(conn.peerID) {
+				conn.unreachableReported.Store(false)
+			}
 		}
 
 		return false
