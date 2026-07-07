@@ -24,7 +24,9 @@ import (
 	"sync"
 
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common"
 	celast "github.com/google/cel-go/common/ast"
+	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/ext"
@@ -487,7 +489,20 @@ func (r *Rewriter) buildEnv() (*cel.Env, error) {
 	return cel.NewEnv(
 		ext.NativeTypes(reflect.TypeFor[TxView](), reflect.TypeFor[Posting](), ext.ParseStructTag("cel")),
 		ext.Strings(),
+		ext.Lists(),
+		ext.Math(),
 		cel.Variable("tx", tx),
+		// mapAccountAddresses(a, expr) is sugar for setAddresses(addresses().map(a, expr)):
+		// it maps a CEL expression over every account address in the transaction.
+		cel.Macros(cel.ReceiverMacro("mapAccountAddresses", 2, mapAccountAddressesMacro)),
+		cel.Function("addresses",
+			cel.MemberOverload("txview_addresses",
+				[]*cel.Type{tx}, cel.ListType(cel.StringType),
+				cel.UnaryBinding(r.bindAddresses))),
+		cel.Function("setAddresses",
+			cel.MemberOverload("txview_setAddresses_list",
+				[]*cel.Type{tx, cel.ListType(cel.StringType)}, tx,
+				cel.BinaryBinding(r.bindSetAddresses))),
 		cel.Function("rewriteAddress",
 			cel.MemberOverload("txview_rewriteAddress_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
@@ -575,6 +590,167 @@ func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
 	nv.accountMetadataTypes = rewriteAddrKeyedMap(nv.accountMetadataTypes, re, replacement)
 
 	return r.adapter.NativeToValue(nv)
+}
+
+// mapAccountAddressesMacro expands `tx.mapAccountAddresses(a, body)` into
+// `tx.setAddresses(tx.addresses().map(a, body))`: it maps the CEL expression
+// `body` (with `a` bound to each account address) over every address in the
+// transaction. This is the general, computed-address transform — e.g.
+// `tx.mapAccountAddresses(a, a.split(":").reverse().join(":"))` reverses the
+// segments of every address, which a constant regex cannot express. The
+// resulting addresses are validated at commit like any other rewrite.
+func mapAccountAddressesMacro(eh cel.MacroExprFactory, target celast.Expr, args []celast.Expr) (celast.Expr, *common.Error) {
+	if args[0].Kind() != celast.IdentKind {
+		return nil, eh.NewError(args[0].ID(), "mapAccountAddresses: first argument must be an identifier")
+	}
+
+	iterVar := args[0].AsIdent()
+	accu := eh.AccuIdentName()
+
+	if iterVar == accu {
+		return nil, eh.NewError(args[0].ID(), "mapAccountAddresses: iteration variable overwrites accumulator variable")
+	}
+
+	// Build the same comprehension the built-in `.map` macro produces, over the
+	// transaction's ordered address list, then feed the result to setAddresses.
+	mapped := eh.NewComprehension(
+		eh.NewMemberCall("addresses", target),
+		iterVar,
+		accu,
+		eh.NewList(),
+		eh.NewLiteral(types.True),
+		eh.NewCall(operators.Add, eh.NewAccuIdent(), eh.NewList(args[1])),
+		eh.NewAccuIdent(),
+	)
+
+	return eh.NewMemberCall("setAddresses", target, mapped), nil
+}
+
+// bindAddresses returns the transaction's account addresses in a stable order:
+// each posting's source then destination (in posting order), the account target
+// (when the entry targets an account), then the account-metadata keys sorted.
+// setAddresses writes back in exactly this order.
+func (r *Rewriter) bindAddresses(v ref.Val) ref.Val {
+	tv, ok := v.Value().(*TxView)
+	if !ok {
+		return types.NewErr("addresses: receiver is not a transaction")
+	}
+
+	return r.adapter.NativeToValue(orderedAddresses(tv))
+}
+
+// bindSetAddresses replaces every account address from a list produced in the
+// same order as addresses(). Amounts/assets are untouched; account-metadata
+// keys (and their type sidecar) are re-keyed with a deterministic merge on
+// collision. Each new address is validated at commit.
+func (r *Rewriter) bindSetAddresses(recv, list ref.Val) ref.Val {
+	tv, ok := recv.Value().(*TxView)
+	if !ok {
+		return types.NewErr("setAddresses: receiver is not a transaction")
+	}
+
+	native, err := list.ConvertToNative(reflect.TypeFor[[]string]())
+	if err != nil {
+		return types.NewErr("setAddresses: %v", err)
+	}
+
+	nv, errv := tv.withAddresses(native.([]string))
+	if errv != nil {
+		return errv
+	}
+
+	return r.adapter.NativeToValue(nv)
+}
+
+func orderedAddresses(v *TxView) []string {
+	acctKeys := sortedStringKeys(v.AccountMetadata)
+
+	out := make([]string, 0, 2*len(v.Postings)+1+len(acctKeys))
+	for _, p := range v.Postings {
+		out = append(out, p.Source, p.Destination)
+	}
+
+	if v.targetsAccount {
+		out = append(out, v.Target)
+	}
+
+	return append(out, acctKeys...)
+}
+
+// withAddresses rebuilds the view with the given addresses, consumed in the
+// exact order orderedAddresses produced them.
+func (v *TxView) withAddresses(addrs []string) (*TxView, ref.Val) {
+	acctKeys := sortedStringKeys(v.AccountMetadata)
+
+	want := 2*len(v.Postings) + len(acctKeys)
+	if v.targetsAccount {
+		want++
+	}
+
+	if len(addrs) != want {
+		return nil, types.NewErr("setAddresses: expected %d addresses, got %d (addresses can be transformed but not added or removed)", want, len(addrs))
+	}
+
+	nv := v.clone()
+
+	i := 0
+	for p := range nv.Postings {
+		nv.Postings[p].Source = addrs[i]
+		nv.Postings[p].Destination = addrs[i+1]
+		i += 2
+	}
+
+	if nv.targetsAccount {
+		nv.Target = addrs[i]
+		i++
+	}
+
+	if len(acctKeys) > 0 {
+		newAM := make(map[string]map[string]string, len(acctKeys))
+		newAT := make(map[string]map[string]commonpb.MetadataType)
+
+		for j, oldKey := range acctKeys {
+			newKey := addrs[i+j]
+
+			inner, ok := newAM[newKey]
+			if !ok {
+				inner = make(map[string]string, len(v.AccountMetadata[oldKey]))
+				newAM[newKey] = inner
+			}
+
+			maps.Copy(inner, v.AccountMetadata[oldKey])
+
+			if srcTypes := v.accountMetadataTypes[oldKey]; len(srcTypes) > 0 {
+				tInner, ok := newAT[newKey]
+				if !ok {
+					tInner = make(map[string]commonpb.MetadataType, len(srcTypes))
+					newAT[newKey] = tInner
+				}
+
+				maps.Copy(tInner, srcTypes)
+			}
+		}
+
+		nv.AccountMetadata = newAM
+		if len(newAT) > 0 {
+			nv.accountMetadataTypes = newAT
+		} else {
+			nv.accountMetadataTypes = nil
+		}
+	}
+
+	return nv, nil
+}
+
+func sortedStringKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	return keys
 }
 
 // bindSetAccountMetadataFromAddress implements

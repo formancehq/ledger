@@ -476,6 +476,88 @@ func TestRewriteAddressPreservesAccountMetadataType(t *testing.T) {
 	require.Equal(t, int64(7), v.GetIntValue())
 }
 
+func TestMapAccountAddresses_ReverseSegments(t *testing.T) {
+	t.Parallel()
+
+	// The open-ended transform a constant regex cannot express: reverse the
+	// ':'-separated segments of every account address, for arbitrary arity.
+	r, err := NewRewriter(rules(
+		rule("true", `tx.mapAccountAddresses(a, a.split(":").reverse().join(":"))`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{
+		posting("world", "acme:payments:worker:bank", "USD", 100),
+		posting("a:b", "c:d:e", "USD", 5),
+	}, nil)
+
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+
+	ps := out.GetCreatedTransaction().GetPostings()
+	require.Equal(t, "world", ps[0].GetSource())
+	require.Equal(t, "bank:worker:payments:acme", ps[0].GetDestination())
+	require.Equal(t, "b:a", ps[1].GetSource())
+	require.Equal(t, "e:d:c", ps[1].GetDestination())
+	// amounts/assets untouched
+	require.Equal(t, uint64(100), ps[0].GetAmount().GetV0())
+}
+
+func TestMapAccountAddresses_CoversTargetAndAccountMetadata(t *testing.T) {
+	t.Parallel()
+
+	// The map applies to metadata-op account targets and to account-metadata
+	// keys too — everything account-addressed in the entry.
+	r, err := NewRewriter(rules(
+		rule("true", `tx.mapAccountAddresses(a, "x:" + a)`, false),
+	))
+	require.NoError(t, err)
+
+	entry := savedMetadataEntry(1, "users:alice", map[string]string{"k": "v"})
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+	require.Equal(t, "x:users:alice", out.GetSavedMetadata().GetTarget().GetAccount().GetAddr())
+
+	created := createdEntry(2, 2, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	created.GetCreatedTransaction().AccountMetadata = map[string]*commonpb.MetadataMap{
+		"acct:001": {Values: stringsToMetadata(map[string]string{"role": "main"}, nil)},
+	}
+	out2, err := r.Apply(created)
+	require.NoError(t, err)
+	am := out2.GetCreatedTransaction().GetAccountMetadata()
+	require.Equal(t, "main", am["x:acct:001"].GetValues()["role"].GetStringValue())
+	require.NotContains(t, am, "acct:001")
+}
+
+func TestSetAddresses_WrongLengthRejected(t *testing.T) {
+	t.Parallel()
+
+	// Producing a different number of addresses than the entry has is rejected.
+	r, err := NewRewriter(rules(
+		rule("true", `tx.setAddresses([])`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	_, err = r.Apply(entry)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "expected 2 addresses")
+}
+
+func TestMapAccountAddresses_InvalidResultRejected(t *testing.T) {
+	t.Parallel()
+
+	// A computed address that isn't a valid ledger address fails the batch.
+	r, err := NewRewriter(rules(
+		rule("true", `tx.mapAccountAddresses(a, a + " bad")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	_, err = r.Apply(entry)
+	require.Error(t, err)
+}
+
 func TestDeterministicOutput(t *testing.T) {
 	t.Parallel()
 
