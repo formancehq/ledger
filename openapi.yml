@@ -1499,6 +1499,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
+        '429':
+          description: |
+            A per-element error mapped to `KindResourceExhausted` (quota
+            or rate-limit hit during processing). Surfaces unconditionally,
+            regardless of `continueOnFailure`. Body carries the per-element
+            details in `data`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
