@@ -151,8 +151,8 @@ func commitToEntry(entry *raftcmdpb.MirrorLogEntry, v *TxView) error {
 			return err
 		}
 
-		ct.Metadata = stringsToMetadata(v.Metadata)
-		ct.AccountMetadata = stringsToAccountMetadata(v.AccountMetadata)
+		ct.Metadata = stringsToMetadata(v.Metadata, v.metadataTypes)
+		ct.AccountMetadata = stringsToAccountMetadata(v.AccountMetadata, v.accountMetadataTypes)
 
 	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
 		rt := data.RevertedTransaction
@@ -160,12 +160,12 @@ func commitToEntry(entry *raftcmdpb.MirrorLogEntry, v *TxView) error {
 			return err
 		}
 
-		rt.Metadata = stringsToMetadata(v.Metadata)
+		rt.Metadata = stringsToMetadata(v.Metadata, v.metadataTypes)
 
 	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
 		sm := data.SavedMetadata
 		setTargetAddr(sm.GetTarget(), v.Target)
-		sm.Metadata = stringsToMetadata(v.Metadata)
+		sm.Metadata = stringsToMetadata(v.Metadata, v.metadataTypes)
 
 	case *raftcmdpb.MirrorLogEntry_DeletedMetadata:
 		dm := data.DeletedMetadata
@@ -283,16 +283,23 @@ func metadataToStrings(in map[string]*commonpb.MetadataValue) map[string]string 
 	return out
 }
 
-func stringsToMetadata(in map[string]string) map[string]*commonpb.MetadataValue {
+// stringsToMetadata builds the proto metadata map, coercing each value to the
+// type declared for its key (default string). Coercion follows the platform
+// conversion matrix (commonpb.ConvertMetadataValue): a value that does not parse
+// as the declared type becomes a null value preserving the original string.
+func stringsToMetadata(in map[string]string, mdTypes map[string]commonpb.MetadataType) map[string]*commonpb.MetadataValue {
 	if len(in) == 0 {
 		return nil
 	}
 
 	out := make(map[string]*commonpb.MetadataValue, len(in))
 	for k, v := range in {
-		out[k] = &commonpb.MetadataValue{
-			Type: &commonpb.MetadataValue_StringValue{StringValue: v},
+		value := commonpb.NewStringValue(v)
+		if t, ok := mdTypes[k]; ok {
+			value = commonpb.ConvertMetadataValue(value, t)
 		}
+
+		out[k] = value
 	}
 
 	return out
@@ -311,14 +318,14 @@ func accountMetadataToStrings(in map[string]*commonpb.MetadataMap) map[string]ma
 	return out
 }
 
-func stringsToAccountMetadata(in map[string]map[string]string) map[string]*commonpb.MetadataMap {
+func stringsToAccountMetadata(in map[string]map[string]string, mdTypes map[string]map[string]commonpb.MetadataType) map[string]*commonpb.MetadataMap {
 	if len(in) == 0 {
 		return nil
 	}
 
 	out := make(map[string]*commonpb.MetadataMap, len(in))
 	for account, m := range in {
-		out[account] = &commonpb.MetadataMap{Values: stringsToMetadata(m)}
+		out[account] = &commonpb.MetadataMap{Values: stringsToMetadata(m, mdTypes[account])}
 	}
 
 	return out

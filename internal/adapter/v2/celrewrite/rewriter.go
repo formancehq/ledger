@@ -84,7 +84,34 @@ type TxView struct {
 	// address, distinct from a legitimately absent (transaction-level) target.
 	targetsAccount bool
 
+	// metadataTypes / accountMetadataTypes carry the declared metadata type for
+	// keys a rule set with an explicit type argument (absent = string). They are
+	// not exposed to CEL; the string values in Metadata/AccountMetadata are
+	// coerced to these types when committed back to the proto.
+	metadataTypes        map[string]commonpb.MetadataType
+	accountMetadataTypes map[string]map[string]commonpb.MetadataType
+
 	dropped bool
+}
+
+func (v *TxView) setMetadataType(key string, t commonpb.MetadataType) {
+	if v.metadataTypes == nil {
+		v.metadataTypes = map[string]commonpb.MetadataType{}
+	}
+
+	v.metadataTypes[key] = t
+}
+
+func (v *TxView) setAccountMetadataType(account, key string, t commonpb.MetadataType) {
+	if v.accountMetadataTypes == nil {
+		v.accountMetadataTypes = map[string]map[string]commonpb.MetadataType{}
+	}
+
+	if v.accountMetadataTypes[account] == nil {
+		v.accountMetadataTypes[account] = map[string]commonpb.MetadataType{}
+	}
+
+	v.accountMetadataTypes[account][key] = t
 }
 
 func (v *TxView) clone() *TxView {
@@ -113,6 +140,20 @@ func (v *TxView) clone() *TxView {
 			inner := make(map[string]string, len(m))
 			maps.Copy(inner, m)
 			nv.AccountMetadata[acc] = inner
+		}
+	}
+
+	if v.metadataTypes != nil {
+		nv.metadataTypes = make(map[string]commonpb.MetadataType, len(v.metadataTypes))
+		maps.Copy(nv.metadataTypes, v.metadataTypes)
+	}
+
+	if v.accountMetadataTypes != nil {
+		nv.accountMetadataTypes = make(map[string]map[string]commonpb.MetadataType, len(v.accountMetadataTypes))
+		for acc, m := range v.accountMetadataTypes {
+			inner := make(map[string]commonpb.MetadataType, len(m))
+			maps.Copy(inner, m)
+			nv.accountMetadataTypes[acc] = inner
 		}
 	}
 
@@ -223,6 +264,10 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 		return nil, err
 	}
 
+	if err := validateLiteralTypes(ast); err != nil {
+		return nil, err
+	}
+
 	prog, err := r.env.Program(ast, cel.CostLimit(maxEvalCost))
 	if err != nil {
 		return nil, fmt.Errorf("program error: %w", err)
@@ -291,6 +336,47 @@ func (r *Rewriter) validateLiteralRegexes(ast *cel.Ast) error {
 	return nil
 }
 
+// typeTokenArg maps each helper that takes an optional metadata type token to
+// the argument index (excluding the receiver) of that token, so literal tokens
+// can be validated at compile time.
+var typeTokenArg = map[string]int{
+	"setMetadata":                   2, // key, value, type
+	"setAccountMetadata":            3, // account, key, value, type
+	"setAccountMetadataFromAddress": 3, // pattern, key, replacement, type
+}
+
+// validateLiteralTypes rejects an unknown literal metadata type token at
+// compile/admission time (e.g. "int" instead of "int64"), matching the fail-fast
+// treatment of literal regex patterns. Computed tokens are validated at run time.
+func validateLiteralTypes(ast *cel.Ast) error {
+	root := celast.NavigateAST(ast.NativeRep())
+
+	for fn, idx := range typeTokenArg {
+		for _, call := range celast.MatchDescendants(root, celast.FunctionMatcher(fn)) {
+			args := call.AsCall().Args()
+			if len(args) <= idx {
+				continue
+			}
+
+			token := args[idx]
+			if token.Kind() != celast.LiteralKind {
+				continue
+			}
+
+			lit, ok := token.AsLiteral().Value().(string)
+			if !ok {
+				continue
+			}
+
+			if _, err := commonpb.ParseMetadataType(lit); err != nil {
+				return fmt.Errorf("%s type %q: %w", fn, lit, err)
+			}
+		}
+	}
+
+	return nil
+}
+
 // buildEnv constructs the deterministic CEL environment: the TxView/Posting
 // native types, the tx variable, ext.Strings (all deterministic), and the
 // rewrite helper member functions. No non-deterministic function is registered.
@@ -308,10 +394,16 @@ func (r *Rewriter) buildEnv() (*cel.Env, error) {
 		cel.Function("setAccountMetadataFromAddress",
 			cel.MemberOverload("txview_setAccountMetadataFromAddress_string_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType}, tx,
+				cel.FunctionBinding(r.bindSetAccountMetadataFromAddress)),
+			cel.MemberOverload("txview_setAccountMetadataFromAddress_string_string_string_string",
+				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType, cel.StringType}, tx,
 				cel.FunctionBinding(r.bindSetAccountMetadataFromAddress))),
 		cel.Function("setMetadata",
 			cel.MemberOverload("txview_setMetadata_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
+				cel.FunctionBinding(r.bindSetMetadata)),
+			cel.MemberOverload("txview_setMetadata_string_string_string",
+				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType}, tx,
 				cel.FunctionBinding(r.bindSetMetadata))),
 		cel.Function("deleteMetadata",
 			cel.MemberOverload("txview_deleteMetadata_string",
@@ -320,6 +412,9 @@ func (r *Rewriter) buildEnv() (*cel.Env, error) {
 		cel.Function("setAccountMetadata",
 			cel.MemberOverload("txview_setAccountMetadata_string_string_string",
 				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType}, tx,
+				cel.FunctionBinding(r.bindSetAccountMetadata)),
+			cel.MemberOverload("txview_setAccountMetadata_string_string_string_string",
+				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType, cel.StringType}, tx,
 				cel.FunctionBinding(r.bindSetAccountMetadata))),
 		cel.Function("deleteAccountMetadata",
 			cel.MemberOverload("txview_deleteAccountMetadata_string_string",
@@ -378,12 +473,14 @@ func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
 	return r.adapter.NativeToValue(nv)
 }
 
-// bindSetAccountMetadataFromAddress implements tx.setAccountMetadataFromAddress(pattern, key, replacement):
-// for every posting account address matching pattern, it sets
+// bindSetAccountMetadataFromAddress implements
+// tx.setAccountMetadataFromAddress(pattern, key, replacement[, type]): for every
+// posting account address matching pattern, it sets
 // accountMetadata[address][key] = re.ReplaceAllString(address, replacement) —
 // the mirror of rewriteAddress, used to derive per-account metadata from the
-// address (e.g. capture a segment via a group and store it). Account metadata is
-// only persisted for created transactions.
+// address (e.g. capture a segment via a group and store it). The optional type
+// coerces the value (default string). Account metadata is only persisted for
+// created transactions.
 func (r *Rewriter) bindSetAccountMetadataFromAddress(args ...ref.Val) ref.Val {
 	tv, errv := receiver(args[0])
 	if tv == nil {
@@ -407,6 +504,11 @@ func (r *Rewriter) bindSetAccountMetadataFromAddress(args ...ref.Val) ref.Val {
 
 	if err := invariants.ValidateMetadataKey(key); err != nil {
 		return types.NewErr("setAccountMetadataFromAddress: invalid metadata key %q: %v", key, err)
+	}
+
+	mdType, typed, errv := optionalMetadataType("setAccountMetadataFromAddress", args, 4)
+	if errv != nil {
+		return errv
 	}
 
 	re, err := r.compileRegex(pattern)
@@ -452,9 +554,34 @@ func (r *Rewriter) bindSetAccountMetadataFromAddress(args ...ref.Val) ref.Val {
 		}
 
 		nv.AccountMetadata[addr][key] = value
+
+		if typed {
+			nv.setAccountMetadataType(addr, key, mdType)
+		}
 	}
 
 	return r.adapter.NativeToValue(nv)
+}
+
+// optionalMetadataType resolves a metadata type token at position idx of args
+// when present. It returns (type, true, nil) when a type argument is supplied,
+// (0, false, nil) for the untyped overload, and an error value on a bad token.
+func optionalMetadataType(fn string, args []ref.Val, idx int) (commonpb.MetadataType, bool, ref.Val) {
+	if len(args) <= idx {
+		return 0, false, nil
+	}
+
+	token, ok := args[idx].Value().(string)
+	if !ok {
+		return 0, false, types.NewErr("%s: type must be a string", fn)
+	}
+
+	t, err := commonpb.ParseMetadataType(token)
+	if err != nil {
+		return 0, false, types.NewErr("%s: invalid metadata type %q: %v", fn, token, err)
+	}
+
+	return t, true, nil
 }
 
 func (r *Rewriter) bindSetMetadata(args ...ref.Val) ref.Val {
@@ -477,12 +604,21 @@ func (r *Rewriter) bindSetMetadata(args ...ref.Val) ref.Val {
 		return errv
 	}
 
+	mdType, typed, errv := optionalMetadataType("setMetadata", args, 3)
+	if errv != nil {
+		return errv
+	}
+
 	nv := tv.clone()
 	if nv.Metadata == nil {
 		nv.Metadata = map[string]string{}
 	}
 
 	nv.Metadata[key] = value
+
+	if typed {
+		nv.setMetadataType(key, mdType)
+	}
 
 	return r.adapter.NativeToValue(nv)
 }
@@ -545,6 +681,11 @@ func (r *Rewriter) bindSetAccountMetadata(args ...ref.Val) ref.Val {
 		return errv
 	}
 
+	mdType, typed, errv := optionalMetadataType("setAccountMetadata", args, 4)
+	if errv != nil {
+		return errv
+	}
+
 	nv := tv.clone()
 	if nv.AccountMetadata == nil {
 		nv.AccountMetadata = map[string]map[string]string{}
@@ -555,6 +696,10 @@ func (r *Rewriter) bindSetAccountMetadata(args ...ref.Val) ref.Val {
 	}
 
 	nv.AccountMetadata[account][key] = value
+
+	if typed {
+		nv.setAccountMetadataType(account, key, mdType)
+	}
 
 	return r.adapter.NativeToValue(nv)
 }
