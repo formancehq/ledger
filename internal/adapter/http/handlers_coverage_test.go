@@ -1184,9 +1184,9 @@ func TestWriteBulkResponse_AbortedElementsDontEscalate(t *testing.T) {
 
 // TestHandleBulk_InfraErrorNotSwallowed asserts that continueOnFailure=true
 // does NOT swallow an infrastructure-level Apply error (any non-Describable
-// error, e.g. leader loss, cache-horizon exceeded, transport timeout). Those
-// mean the request could not complete deterministically and the caller must
-// see a 5xx regardless of the continueOnFailure opt-in.
+// error, e.g. transport timeout, pebble error). Those mean the request could
+// not complete deterministically and the caller must see a 5xx regardless of
+// the continueOnFailure opt-in.
 func TestHandleBulk_InfraErrorNotSwallowed(t *testing.T) {
 	t.Parallel()
 
@@ -1206,6 +1206,33 @@ func TestHandleBulk_InfraErrorNotSwallowed(t *testing.T) {
 	srv.handleBulk(w, r)
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// TestHandleBulk_LeaderLossReturns503WithRetryAfter asserts that
+// commonpb.ErrNoLeader — a retryable infra sentinel — surfaces as 503 with a
+// Retry-After header, matching the shape handleError uses on single requests
+// (see internal/adapter/http/error_handler.go). Any other status would leave
+// callers without the backoff hint the sentinel is meant to carry.
+func TestHandleBulk_LeaderLossReturns503WithRetryAfter(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			return nil, commonpb.ErrNoLeader
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	body := strings.NewReader(`[{"action":"CREATE_TRANSACTION","data":{"script":{"plain":"a"}}}]`)
+	r := newRequest(t, http.MethodPost, "/ledger1/bulk?continueOnFailure=true", body, map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleBulk(w, r)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, "1", w.Header().Get("Retry-After"))
 }
 
 // --------------------------------------------------------------------------

@@ -1438,9 +1438,17 @@ paths:
            status is `500`, regardless of `continueOnFailure`. Callers
            must retry the bulk — the top-level failure means the request
            did not complete deterministically.
-        3. **Per-element business failures** (validation, insufficient
-           fund, not-found, etc.): rolled up according to
-           `continueOnFailure`:
+        3. **Retryable infrastructure failures** (leader loss,
+           cache-horizon exceeded, or any Describable with a `KindUnavailable`
+           outcome): the overall status is `503` with a `Retry-After` header,
+           regardless of `continueOnFailure`. The caller must retry.
+        4. **Non-retryable infrastructure failures** (transport / storage
+           errors, unclassified errors, Describable with `KindInternal` or
+           `KindResourceExhausted`): the overall status is `500`, regardless
+           of `continueOnFailure`.
+        5. **Per-element business failures** (validation, insufficient
+           fund, not-found, precondition, permission, etc.): rolled up
+           according to `continueOnFailure`:
            - `continueOnFailure=true` → the overall status is `200`; each
              element in `data` carries its own `errorCode` on failure.
            - `continueOnFailure=false` (default) → the bulk aborts on the
