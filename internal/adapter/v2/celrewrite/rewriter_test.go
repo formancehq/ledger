@@ -442,6 +442,74 @@ func TestNonConstantTypeTokenRejected(t *testing.T) {
 	require.Contains(t, err.Error(), "must be a constant")
 }
 
+// TestCompileRejectionsPerHelper closes the per-helper gaps left by the
+// single-helper rejection tests above: every helper a compile gate iterates
+// (regexHelpers, typeTokenArg, metadataKeyArg, metadataValueArg) must actually
+// be wired into that gate. A helper registered in buildEnv but omitted from a
+// gate's helper list would silently admit an invalid rule — this locks the
+// wiring so that omission (or a cel-go matching drift affecting one helper) fails
+// the build.
+func TestCompileRejectionsPerHelper(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		expr string
+		want string
+	}{
+		// validateRegexPatterns — non-constant pattern (rewriteAddress covered above).
+		{
+			"regex non-constant: setAccountMetadataFromAddress",
+			`tx.setAccountMetadataFromAddress("x".substring(1), "k", "$1")`,
+			"pattern must be a constant",
+		},
+		// validateTypeTokens — non-constant type (setMetadata covered above).
+		{
+			"type non-constant: setAccountMetadata",
+			`tx.setAccountMetadata("users:001", "k", "v", tx.metadata["t"])`,
+			"must be a constant",
+		},
+		{
+			"type non-constant: setAccountMetadataFromAddress",
+			`tx.setAccountMetadataFromAddress("^(.+)$", "k", "$1", tx.metadata["t"])`,
+			"must be a constant",
+		},
+		// validateTypeTokens — unknown type (setMetadata covered above).
+		{
+			"type unknown: setAccountMetadata",
+			`tx.setAccountMetadata("users:001", "k", "v", "integer")`,
+			"setAccountMetadata type",
+		},
+		{
+			"type unknown: setAccountMetadataFromAddress",
+			`tx.setAccountMetadataFromAddress("^(.+)$", "k", "$1", "integer")`,
+			"setAccountMetadataFromAddress type",
+		},
+		// validateMetadataLiterals — bad key (setMetadata + fromAddress covered above).
+		{
+			"bad key: setAccountMetadata",
+			`tx.setAccountMetadata("users:001", "bad key", "v")`,
+			"metadata key",
+		},
+		// validateMetadataLiterals — bad value (setAccountMetadata covered above).
+		{
+			"bad value: setMetadata",
+			"tx.setMetadata(\"k\", \"bad\\x00value\")",
+			"metadata value",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := NewRewriter(rules(rule("true", tc.expr, false)))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
 func TestUntypedOverwriteResetsType(t *testing.T) {
 	t.Parallel()
 
