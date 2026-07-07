@@ -26,12 +26,14 @@ func (s LedgerState) TxByRef() map[string]int { return s.txByRef }
 
 // txRecord accessors expose one committed transaction from the log: its
 // server-assigned id, its reference ("" for drains/transients/reverts), its
-// postings, its metadata, and whether it has been reverted.
+// postings, its metadata, whether it has been reverted, and its user-supplied
+// timestamp (nil when the client sent none — see txRecord.timestamp).
 func (t *txRecord) Id() uint64                                   { return t.id }
 func (t *txRecord) Reference() string                            { return t.reference }
 func (t *txRecord) Postings() []*commonpb.Posting                { return t.postings }
 func (t *txRecord) Metadata() map[string]*commonpb.MetadataValue { return t.metadata }
 func (t *txRecord) Reverted() bool                               { return t.reverted }
+func (t *txRecord) Timestamp() *commonpb.Timestamp               { return t.timestamp }
 
 func (m *metaEffect) Saved() map[string]*commonpb.MetadataValue { return m.saved }
 

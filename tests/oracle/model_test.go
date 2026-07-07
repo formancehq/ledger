@@ -311,3 +311,27 @@ func TestApplyTransaction_MultiPosting(t *testing.T) {
 	require.Equal(t, domain.ErrReasonInsufficientFunds, over.Reason)
 	require.NotContains(t, over.State.Ledger("L").volumes, VolumeKey{"a:1", "USD"})
 }
+
+func TestApplyTransaction_Timestamp(t *testing.T) {
+	t.Parallel()
+
+	// A user-supplied timestamp is stored verbatim on the transaction record.
+	req := oracletest.TxReq("world", "x:1", "USD", 5)
+	req.GetApply().GetAction().GetCreateTransaction().Timestamp = &commonpb.Timestamp{Data: 12345}
+	res := NewGlobalState().Apply(bulkOf(req))
+	require.True(t, res.OK)
+	require.Equal(t, uint64(12345), res.State.Ledger("L").Txs()[0].Timestamp().GetData())
+
+	// It survives a later metadata write — the reconstruction preserves it. (A
+	// lost timestamp would read back as nil, which reads skip, so only a unit
+	// test catches it.)
+	withMeta := res.State.Apply(bulkOf(oracletest.AddTxMetaReq(1, map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")})))
+	require.True(t, withMeta.OK)
+	require.Equal(t, uint64(12345), withMeta.State.Ledger("L").Txs()[0].Timestamp().GetData())
+
+	// A transaction with no user timestamp records nil (server stamps its own
+	// unpredictable date), so the read-back check is skipped for it.
+	noTs := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "y:1", "USD", 5)))
+	require.True(t, noTs.OK)
+	require.Nil(t, noTs.State.Ledger("L").Txs()[0].Timestamp())
+}

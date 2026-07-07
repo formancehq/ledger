@@ -107,3 +107,22 @@ func RevertReqL(ledger string, txID uint64, force bool) *servicepb.Request {
 		},
 	}
 }
+
+// AddTxMetaReq builds an AddMetadata targeting transaction txID (ledger "L").
+func AddTxMetaReq(txID uint64, md map[string]*commonpb.MetadataValue) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "L",
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_AddMetadata{
+						AddMetadata: &commonpb.SaveMetadataCommand{
+							Target:   &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: txID}},
+							Metadata: md,
+						},
+					},
+				},
+			},
+		},
+	}
+}

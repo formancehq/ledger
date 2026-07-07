@@ -278,6 +278,12 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 		payload.Metadata = randomMetaMap()
 	}
 
+	// ~half also carry a user-supplied timestamp — stored verbatim and echoed on
+	// reads (it does not feed the HLC / log order). Backdated to stay non-future.
+	if random.RandomChoice([]uint8{0, 1}) == 0 {
+		payload.Timestamp = &commonpb.Timestamp{Data: 1 + internal.Rand().Uint64()%1_500_000_000_000_000}
+	}
+
 	// ~1/3 also set account metadata via the transaction payload, applied
 	// atomically with the tx. Target a posting's own destination: it already
 	// passes the posting chart check when the tx commits, so the account-metadata

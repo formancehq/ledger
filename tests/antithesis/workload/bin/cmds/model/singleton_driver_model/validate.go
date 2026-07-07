@@ -529,9 +529,15 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 		}
 
 		rec := txs[id-1]
+		// A user-supplied timestamp is echoed verbatim; when the model has none
+		// (nil) the server stamped its own command date, which is unpredictable,
+		// so the timestamp is not checked for that record.
+		tsOK := rec.Timestamp() == nil || rec.Timestamp().GetData() == serverTx.GetTimestamp().GetData()
+
 		return rec.Id() == serverTx.GetId() &&
 			rec.Reference() == serverTx.GetReference() &&
 			rec.Reverted() == serverTx.GetReverted() &&
+			tsOK &&
 			postingsEqual(rec.Postings(), serverTx.GetPostings()) &&
 			metaMapEqual(rec.Metadata(), serverTx.GetMetadata())
 	}) {

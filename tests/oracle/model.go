@@ -387,6 +387,11 @@ type txRecord struct {
 	postings  []*commonpb.Posting
 	metadata  map[string]*commonpb.MetadataValue
 	reverted  bool
+	// timestamp is the user-supplied CreateTransaction timestamp, stored verbatim
+	// and echoed on reads. nil when the client sent none — the server then stamps
+	// its own command date, which the model cannot predict, so reads skip the
+	// timestamp check for such records.
+	timestamp *commonpb.Timestamp
 }
 
 // revertEffect is a committed revert's predicted effect: the original
@@ -598,6 +603,7 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		reference: ref,
 		postings:  ct.GetPostings(),
 		metadata:  ct.GetMetadata(),
+		timestamp: ct.GetTimestamp(),
 	})
 	if ref != "" {
 		s.txByRef[ref] = int(id)
@@ -653,8 +659,11 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 	// Mark the original reverted (replace, don't mutate), then append the revert
 	// itself as a new unreferenced transaction carrying the reversed postings and
 	// any metadata the revert set.
-	s.txs[id-1] = &txRecord{id: orig.id, reference: orig.reference, postings: orig.postings, metadata: orig.metadata, reverted: true}
+	s.txs[id-1] = &txRecord{id: orig.id, reference: orig.reference, postings: orig.postings, metadata: orig.metadata, reverted: true, timestamp: orig.timestamp}
 
+	// The revert transaction's timestamp is the server's date (or, with
+	// at_effective_date, the original's) — the model leaves it nil so reads skip
+	// the check, since the server date is unpredictable.
 	revertID := uint64(len(s.txs)) + 1
 	s.txs = append(s.txs, &txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata()})
 
@@ -777,7 +786,7 @@ func (s *LedgerState) applyAddTxMetadata(id uint64, md map[string]*commonpb.Meta
 	maps.Copy(meta, old.metadata)
 	maps.Copy(meta, md) // last-writer-wins
 	// Replace (don't mutate) so clones sharing the pointer are unaffected.
-	s.txs[id-1] = &txRecord{id: old.id, reference: old.reference, postings: old.postings, metadata: meta, reverted: old.reverted}
+	s.txs[id-1] = &txRecord{id: old.id, reference: old.reference, postings: old.postings, metadata: meta, reverted: old.reverted, timestamp: old.timestamp}
 
 	return OrderResult{OK: true, Meta: &metaEffect{saved: md}}
 }
@@ -811,7 +820,7 @@ func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) O
 		maps.Copy(meta, old.metadata)
 		delete(meta, cmd.GetKey())
 		// Replace (don't mutate) so clones sharing the pointer are unaffected.
-		s.txs[id-1] = &txRecord{id: old.id, reference: old.reference, postings: old.postings, metadata: meta, reverted: old.reverted}
+		s.txs[id-1] = &txRecord{id: old.id, reference: old.reference, postings: old.postings, metadata: meta, reverted: old.reverted, timestamp: old.timestamp}
 
 		return OrderResult{OK: true}
 	default:
