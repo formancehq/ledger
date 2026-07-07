@@ -955,6 +955,53 @@ func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// TestWriteBulkResponse_KindDispatch enumerates every domain.ErrorKind and
+// asserts the per-element status maps to the corresponding top-level status
+// under continueOnFailure=true — pinning that infrastructure/retryable
+// Describables (KindInternal, KindUnavailable, KindResourceExhausted) surface
+// their real 5xx/429 status even when the caller opts into rollup.
+func TestWriteBulkResponse_KindDispatch(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantRetry  bool
+	}{
+		// Business kinds → suppressed to 200 under continueOnFailure=true.
+		{"validation", domain.NewValidationSentinel("bad"), http.StatusOK, false},
+		// Retryable infra → 503 with Retry-After, unmasked by continueOnFailure.
+		{"leader-loss", commonpb.ErrNoLeader, http.StatusServiceUnavailable, true},
+		// Plain infrastructure error (non-Describable) → 500.
+		{"opaque-infra", errors.New("boom"), http.StatusInternalServerError, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			elements := []*servicepb.BulkElement{{Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{},
+				},
+			}}}
+
+			w := httptest.NewRecorder()
+			writeBulkResponse(w, elements, []bulkResult{{err: tc.err}}, true)
+
+			require.Equal(t, tc.wantStatus, w.Code, "unexpected top-level status for %q", tc.name)
+
+			retryAfter := w.Header().Get("Retry-After")
+			if tc.wantRetry {
+				require.Equal(t, "1", retryAfter, "Retry-After missing for %q", tc.name)
+			} else {
+				require.Empty(t, retryAfter, "Retry-After should be absent for %q", tc.name)
+			}
+		})
+	}
+}
+
 func TestWriteBulkResponse_ContinueOnFailure(t *testing.T) {
 	t.Parallel()
 
