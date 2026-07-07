@@ -335,3 +335,36 @@ func TestApplyTransaction_Timestamp(t *testing.T) {
 	require.True(t, noTs.OK)
 	require.Nil(t, noTs.State.Ledger("L").Txs()[0].Timestamp())
 }
+
+func TestApplyRevert_AtEffectiveDate(t *testing.T) {
+	t.Parallel()
+
+	// Original transaction with a user timestamp.
+	create := oracletest.TxReq("world", "x:1", "USD", 10)
+	create.GetApply().GetAction().GetCreateTransaction().Timestamp = &commonpb.Timestamp{Data: 777}
+	base := NewGlobalState().Apply(bulkOf(create))
+	require.True(t, base.OK)
+
+	// at_effective_date: the revert transaction (id 2) inherits the original's
+	// timestamp, so the model records it and reads verify it.
+	atEff := oracletest.RevertReqL("L", 1, true)
+	atEff.GetApply().GetAction().GetRevertTransaction().AtEffectiveDate = true
+	r1 := base.State.Apply(bulkOf(atEff))
+	require.True(t, r1.OK)
+	require.Equal(t, uint64(777), r1.State.Ledger("L").Txs()[1].Timestamp().GetData())
+
+	// Plain revert: the revert transaction is server-dated → nil in the model.
+	r2 := base.State.Apply(bulkOf(oracletest.RevertReqL("L", 1, true)))
+	require.True(t, r2.OK)
+	require.Nil(t, r2.State.Ledger("L").Txs()[1].Timestamp())
+
+	// at_effective_date on an original that had no user timestamp: the server
+	// inherits its (unpredictable) command date, so the model still records nil.
+	base2 := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "z:1", "USD", 10)))
+	require.True(t, base2.OK)
+	atEff2 := oracletest.RevertReqL("L", 1, true)
+	atEff2.GetApply().GetAction().GetRevertTransaction().AtEffectiveDate = true
+	r3 := base2.State.Apply(bulkOf(atEff2))
+	require.True(t, r3.OK)
+	require.Nil(t, r3.State.Ledger("L").Txs()[1].Timestamp())
+}

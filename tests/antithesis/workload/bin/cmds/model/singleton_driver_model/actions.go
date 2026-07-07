@@ -664,11 +664,13 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 	}
 }
 
-// generateRevert reverts a committed transaction by reference, ~half of them
-// with force. A non-forced revert applies the balance floor to the reversed
-// postings — the reversed source is the original destination, which may since
-// have spent (or been purged of) the funds — so it also exercises the revert
-// path's INSUFFICIENT_FUNDS rejection. The server validates account types before
+// generateRevert reverts a committed transaction by reference, ~half with force
+// and ~half at the original's effective date (the revert then inherits the
+// original's timestamp — verifiable when the original carried a user-supplied
+// one). A non-forced revert applies the balance floor to the reversed postings —
+// the reversed source is the original destination, which may since have spent
+// (or been purged of) the funds — so it also exercises the revert path's
+// INSUFFICIENT_FUNDS rejection. The server validates account types before
 // the floor on reverts, so the oracle does the same (see applyRevert).
 // expand_volumes returns post-commit volumes for validation. Targeting any
 // committed reference exercises both the success path and the
@@ -683,7 +685,10 @@ func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	payload := &servicepb.RevertTransactionPayload{
 		TransactionId: uint64(ls.TxByRef()[ref]),
 		Force:         random.RandomChoice([]uint8{0, 1}) == 0,
-		ExpandVolumes: true,
+		// ~half at the original's effective date: the revert inherits the
+		// original's timestamp instead of the server's current date.
+		AtEffectiveDate: random.RandomChoice([]uint8{0, 1}) == 0,
+		ExpandVolumes:   true,
 	}
 
 	// ~half the reverts carry metadata on the revert transaction, echoed

@@ -661,11 +661,17 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 	// any metadata the revert set.
 	s.txs[id-1] = &txRecord{id: orig.id, reference: orig.reference, postings: orig.postings, metadata: orig.metadata, reverted: true, timestamp: orig.timestamp}
 
-	// The revert transaction's timestamp is the server's date (or, with
-	// at_effective_date, the original's) — the model leaves it nil so reads skip
-	// the check, since the server date is unpredictable.
+	// A plain revert stamps the server's current date (nil here — unpredictable,
+	// so reads skip it). With at_effective_date the revert inherits the original's
+	// timestamp (processor_revert_transaction.go), which the model knows iff the
+	// original carried a user-supplied one; otherwise it too is a server date (nil).
+	var revertTS *commonpb.Timestamp
+	if rt.GetAtEffectiveDate() {
+		revertTS = orig.timestamp
+	}
+
 	revertID := uint64(len(s.txs)) + 1
-	s.txs = append(s.txs, &txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata()})
+	s.txs = append(s.txs, &txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata(), timestamp: revertTS})
 
 	return OrderResult{
 		OK:     true,
