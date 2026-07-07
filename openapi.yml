@@ -2588,11 +2588,12 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/VolumesWithBalance'
           description: |
-            Per-asset input/output/balance for this account. Populated
-            inline on `GET /v3/{ledgerName}/accounts/{address}` (EN-1470).
-            List responses currently omit this field; for per-account
-            balances at scale, use `GET /v3/{ledgerName}/volumes` or a
-            prepared query with type `AGGREGATE_VOLUMES`.
+            Per-asset input/output/balance. On the current v3.0.0 wire this
+            field is not populated on `GET /v3/{ledgerName}/accounts/{address}`
+            responses — use `GET /v3/{ledgerName}/volumes` or a prepared
+            query with type `AGGREGATE_VOLUMES` for per-account balances.
+            Restoring v2's inline population is tracked separately in
+            EN-1470; this description will be updated once that fix lands.
 
     VolumesWithBalance:
       type: object
