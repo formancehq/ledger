@@ -924,6 +924,42 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
 		},
+		{
+			name: "invalid literal regex pattern rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Cel: `tx.rewriteAddress("(", "")`},
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "invalid literal metadata key rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Cel: `tx.setMetadata("bad key", "v")`},
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "unknown metadata type token rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Cel: `tx.setMetadata("k", "v", "integer")`},
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
 	}
 
 	for _, tt := range tests {
