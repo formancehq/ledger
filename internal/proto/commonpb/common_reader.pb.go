@@ -618,11 +618,11 @@ func (r *transactionReadonly) GetRevertedAt() TimestampReader {
 }
 
 func (r *transactionReadonly) GetRevertedByTransaction() uint64 {
-	return r.v.GetRevertedByTransaction()
+	return (*Transaction)(r).GetRevertedByTransaction()
 }
 
 func (r *transactionReadonly) GetRevertsTransaction() uint64 {
-	return r.v.GetRevertsTransaction()
+	return (*Transaction)(r).GetRevertsTransaction()
 }
 
 func (r *transactionReadonly) Mutate() *Transaction {
@@ -7696,7 +7696,7 @@ func (r *transactionStateReadonly) GetPostings() PostingListReader {
 }
 
 func (r *transactionStateReadonly) GetRevertedAt() TimestampReader {
-	v := r.v.GetRevertedAt()
+	v := (*TransactionState)(r).GetRevertedAt()
 	if v == nil {
 		return nil
 	}
@@ -7704,7 +7704,7 @@ func (r *transactionStateReadonly) GetRevertedAt() TimestampReader {
 }
 
 func (r *transactionStateReadonly) GetRevertsTransaction() uint64 {
-	return r.v.GetRevertsTransaction()
+	return (*TransactionState)(r).GetRevertsTransaction()
 }
 
 func (r *transactionStateReadonly) Mutate() *TransactionState {
@@ -8839,14 +8839,14 @@ type RevertedConditionReader interface {
 	Mutate() *RevertedCondition
 }
 
-type revertedConditionReadonly struct{ v *RevertedCondition }
+type revertedConditionReadonly RevertedCondition
 
 func (r *revertedConditionReadonly) GetValue() bool {
-	return r.v.GetValue()
+	return (*RevertedCondition)(r).GetValue()
 }
 
 func (r *revertedConditionReadonly) Mutate() *RevertedCondition {
-	return r.v.CloneVT()
+	return (*RevertedCondition)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this RevertedCondition.
@@ -8854,7 +8854,7 @@ func (m *RevertedCondition) AsReader() RevertedConditionReader {
 	if m == nil {
 		return nil
 	}
-	return &revertedConditionReadonly{v: m}
+	return (*revertedConditionReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this RevertedCondition.
