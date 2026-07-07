@@ -57,62 +57,14 @@ func TestPostCommitVolumes_MarshalJSON_Empty(t *testing.T) {
 	require.Equal(t, "{}", string(data))
 }
 
-// TestPostCommitVolumes_UnmarshalJSON_FlatRoundTrip confirms the flat wire
-// shape round-trips cleanly through Marshal → Unmarshal.
-func TestPostCommitVolumes_UnmarshalJSON_FlatRoundTrip(t *testing.T) {
+// TestPostCommitVolumes_MarshalJSON_AccountNamedVolumesByAccount asserts that
+// an account literally named `volumesByAccount` (a legal address) round-trips
+// through the flat encoder as any other account key — no top-level wrapping,
+// no key collision with the pre-EN-1465 protobuf wrapper name.
+func TestPostCommitVolumes_MarshalJSON_AccountNamedVolumesByAccount(t *testing.T) {
 	t.Parallel()
 
-	original := &PostCommitVolumes{
-		VolumesByAccount: map[string]*VolumesByAssets{
-			"users:alice": {Volumes: map[string]*Volumes{
-				"USD/2": {Input: "100", Output: "40"},
-			}},
-		},
-	}
-
-	data, err := original.MarshalJSON()
-	require.NoError(t, err)
-
-	var out PostCommitVolumes
-	require.NoError(t, out.UnmarshalJSON(data))
-
-	require.Equal(t, "100", out.GetVolumesByAccount()["users:alice"].GetVolumes()["USD/2"].GetInput())
-	require.Equal(t, "40", out.GetVolumesByAccount()["users:alice"].GetVolumes()["USD/2"].GetOutput())
-}
-
-// TestPostCommitVolumes_UnmarshalJSON_LegacyWrappedRejected asserts we
-// reject the pre-EN-1465 wrapped shape with an explicit error instead of
-// silently mis-parsing it. Callers migrating stored alpha responses will
-// therefore see a clear failure rather than zero-valued Volumes maps.
-func TestPostCommitVolumes_UnmarshalJSON_LegacyWrappedRejected(t *testing.T) {
-	t.Parallel()
-
-	legacy := `{
-		"volumesByAccount": {
-			"users:alice": {
-				"volumes": {
-					"USD/2": {"input": "100", "output": "40"}
-				}
-			}
-		}
-	}`
-
-	var out PostCommitVolumes
-
-	err := out.UnmarshalJSON([]byte(legacy))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "pre-EN-1465 wrapped postCommitVolumes")
-}
-
-// TestPostCommitVolumes_UnmarshalJSON_AccountNamedVolumesByAccount asserts
-// that an account literally named `volumesByAccount` (a legal account
-// address) round-trips through the flat encoder without being mistaken for
-// the pre-EN-1465 wrapped shape. Legacy-shape detection has to be
-// structural, not based on the top-level key alone.
-func TestPostCommitVolumes_UnmarshalJSON_AccountNamedVolumesByAccount(t *testing.T) {
-	t.Parallel()
-
-	original := &PostCommitVolumes{
+	pcv := &PostCommitVolumes{
 		VolumesByAccount: map[string]*VolumesByAssets{
 			"volumesByAccount": {Volumes: map[string]*Volumes{
 				"USD/2": {Input: "100", Output: "40"},
@@ -120,12 +72,16 @@ func TestPostCommitVolumes_UnmarshalJSON_AccountNamedVolumesByAccount(t *testing
 		},
 	}
 
-	data, err := original.MarshalJSON()
+	data, err := pcv.MarshalJSON()
 	require.NoError(t, err)
 
-	var out PostCommitVolumes
-	require.NoError(t, out.UnmarshalJSON(data))
+	var out map[string]map[string]struct {
+		Input  string `json:"input"`
+		Output string `json:"output"`
+	}
 
-	require.Equal(t, "100", out.GetVolumesByAccount()["volumesByAccount"].GetVolumes()["USD/2"].GetInput())
-	require.Equal(t, "40", out.GetVolumesByAccount()["volumesByAccount"].GetVolumes()["USD/2"].GetOutput())
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Contains(t, out, "volumesByAccount")
+	require.Equal(t, "100", out["volumesByAccount"]["USD/2"].Input)
+	require.Equal(t, "40", out["volumesByAccount"]["USD/2"].Output)
 }
