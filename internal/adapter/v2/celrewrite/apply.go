@@ -110,18 +110,20 @@ func viewFromEntry(entry *raftcmdpb.MirrorLogEntry) (*TxView, bool) {
 		sm := data.SavedMetadata
 
 		return &TxView{
-			Type:     KindSetMetadata,
-			Metadata: metadataToStrings(sm.GetMetadata()),
-			Target:   targetAddr(sm.GetTarget()),
+			Type:             KindSetMetadata,
+			Metadata:         metadataToStrings(sm.GetMetadata()),
+			Target:           targetAddr(sm.GetTarget()),
+			hasAccountTarget: isAccountTarget(sm.GetTarget()),
 		}, true
 
 	case *raftcmdpb.MirrorLogEntry_DeletedMetadata:
 		dm := data.DeletedMetadata
 
 		return &TxView{
-			Type:        KindDeleteMetadata,
-			Target:      targetAddr(dm.GetTarget()),
-			MetadataKey: dm.GetKey(),
+			Type:             KindDeleteMetadata,
+			Target:           targetAddr(dm.GetTarget()),
+			MetadataKey:      dm.GetKey(),
+			hasAccountTarget: isAccountTarget(dm.GetTarget()),
 		}, true
 
 	default:
@@ -200,7 +202,11 @@ func validateAddresses(v *TxView) error {
 		}
 	}
 
-	if v.Target != "" {
+	// An account-targeted metadata op must keep a valid address. Gate on the
+	// original entry (hasAccountTarget), not on whether Target is now non-empty:
+	// a rule that rewrote the account target to "" must be rejected, not silently
+	// treated as a transaction-level (no-account) target.
+	if v.hasAccountTarget {
 		if err := invariants.ValidateLedgerAccountAddress(v.Target); err != nil {
 			return fmt.Errorf("rewritten target %q invalid: %w", v.Target, err)
 		}
@@ -310,6 +316,12 @@ func stringsToAccountMetadata(in map[string]map[string]string) map[string]*commo
 	}
 
 	return out
+}
+
+// isAccountTarget reports whether the target addresses an account (as opposed to
+// a transaction id or being absent).
+func isAccountTarget(t *commonpb.Target) bool {
+	return t.GetAccount() != nil
 }
 
 func targetAddr(t *commonpb.Target) string {
