@@ -44,7 +44,8 @@ const (
 	maxEvalCost    = 1_000_000
 	maxRegexCached = 256
 
-	celTypeName = "celrewrite.TxView"
+	celTypeName     = "celrewrite.TxView"
+	postingTypeName = "celrewrite.Posting"
 )
 
 // Entry-kind discriminants exposed to CEL as tx.type.
@@ -214,6 +215,10 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 		return nil, fmt.Errorf("expression must evaluate to %s, got %s", want.String(), out.String())
 	}
 
+	if err := rejectViewConstruction(ast); err != nil {
+		return nil, err
+	}
+
 	if err := r.validateLiteralRegexes(ast); err != nil {
 		return nil, err
 	}
@@ -224,6 +229,27 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 	}
 
 	return prog, nil
+}
+
+// rejectViewConstruction forbids constructing the internal TxView/Posting types
+// in CEL (e.g. `celrewrite.TxView{...}`). A rule must derive its result from the
+// input `tx` threaded through the helper functions; a hand-built literal would
+// bypass every helper guarantee — metadata validation, and the posting-count and
+// account-target invariants — so it is rejected at compile/admission time. With
+// construction blocked, the only TxView values in play trace back to `tx`.
+func rejectViewConstruction(ast *cel.Ast) error {
+	root := celast.NavigateAST(ast.NativeRep())
+	structs := celast.MatchDescendants(root, func(e celast.NavigableExpr) bool {
+		return e.Kind() == celast.StructKind
+	})
+
+	for _, s := range structs {
+		if name := s.AsStruct().TypeName(); name == celTypeName || name == postingTypeName {
+			return fmt.Errorf("constructing %s is not allowed; derive the result from tx and its helper functions", name)
+		}
+	}
+
+	return nil
 }
 
 // validateLiteralRegexes eagerly compiles every literal regex pattern passed to
