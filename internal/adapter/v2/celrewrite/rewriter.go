@@ -24,9 +24,12 @@ import (
 	"sync"
 
 	"github.com/google/cel-go/cel"
+	celast "github.com/google/cel-go/common/ast"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/ext"
+
+	"github.com/formancehq/invariants"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -74,16 +77,23 @@ type TxView struct {
 	Target          string                       `cel:"target"`
 	MetadataKey     string                       `cel:"metadataKey"`
 
+	// hasAccountTarget records whether the source entry targeted an account
+	// (SET_METADATA/DELETE_METADATA on an account). It is not exposed to CEL and
+	// lets validation reject a target that a rule rewrote to an empty/invalid
+	// address, distinct from a legitimately absent (transaction-level) target.
+	hasAccountTarget bool
+
 	dropped bool
 }
 
 func (v *TxView) clone() *TxView {
 	nv := &TxView{
-		Type:        v.Type,
-		Reference:   v.Reference,
-		Target:      v.Target,
-		MetadataKey: v.MetadataKey,
-		dropped:     v.dropped,
+		Type:             v.Type,
+		Reference:        v.Reference,
+		Target:           v.Target,
+		MetadataKey:      v.MetadataKey,
+		hasAccountTarget: v.hasAccountTarget,
+		dropped:          v.dropped,
 	}
 
 	if v.Metadata != nil {
@@ -204,12 +214,48 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 		return nil, fmt.Errorf("expression must evaluate to %s, got %s", want.String(), out.String())
 	}
 
+	if err := r.validateLiteralRegexes(ast); err != nil {
+		return nil, err
+	}
+
 	prog, err := r.env.Program(ast, cel.CostLimit(maxEvalCost))
 	if err != nil {
 		return nil, fmt.Errorf("program error: %w", err)
 	}
 
 	return prog, nil
+}
+
+// validateLiteralRegexes eagerly compiles every literal regex pattern passed to
+// rewriteAddress in the expression, so a malformed pattern (bad RE2 or empty) is
+// rejected at compile/admission time instead of stalling a mirror batch at
+// runtime — restoring the fail-fast guarantee that an admitted config is safe on
+// the worker. It also warms the regex cache. Non-literal (computed) patterns
+// cannot be checked statically and are validated when the rule runs.
+func (r *Rewriter) validateLiteralRegexes(ast *cel.Ast) error {
+	root := celast.NavigateAST(ast.NativeRep())
+	for _, call := range celast.MatchDescendants(root, celast.FunctionMatcher("rewriteAddress")) {
+		args := call.AsCall().Args()
+		if len(args) == 0 {
+			continue
+		}
+
+		pattern := args[0]
+		if pattern.Kind() != celast.LiteralKind {
+			continue
+		}
+
+		lit, ok := pattern.AsLiteral().Value().(string)
+		if !ok {
+			continue
+		}
+
+		if _, err := r.compileRegex(lit); err != nil {
+			return fmt.Errorf("rewriteAddress pattern %q: %w", lit, err)
+		}
+	}
+
+	return nil
 }
 
 // buildEnv constructs the deterministic CEL environment: the TxView/Posting
@@ -311,6 +357,10 @@ func (r *Rewriter) bindSetMetadata(args ...ref.Val) ref.Val {
 		return types.NewErr("setMetadata: value must be a string")
 	}
 
+	if errv := validateMetadataKV("setMetadata", key, value); errv != nil {
+		return errv
+	}
+
 	nv := tv.clone()
 	if nv.Metadata == nil {
 		nv.Metadata = map[string]string{}
@@ -319,6 +369,22 @@ func (r *Rewriter) bindSetMetadata(args ...ref.Val) ref.Val {
 	nv.Metadata[key] = value
 
 	return r.adapter.NativeToValue(nv)
+}
+
+// validateMetadataKV validates a CEL-produced metadata key/value to the same
+// standard as admission. Mirror-ingest orders bypass the admission metadata
+// gate, so metadata a rule introduces must be checked here or an invalid key or
+// value would be persisted straight into state and the audit log.
+func validateMetadataKV(fn, key, value string) ref.Val {
+	if err := invariants.ValidateMetadataKey(key); err != nil {
+		return types.NewErr("%s: invalid metadata key %q: %v", fn, key, err)
+	}
+
+	if err := invariants.ValidateMetadataString(value); err != nil {
+		return types.NewErr("%s: invalid metadata value for key %q: %v", fn, key, err)
+	}
+
+	return nil
 }
 
 func (r *Rewriter) bindDeleteMetadata(args ...ref.Val) ref.Val {
@@ -357,6 +423,10 @@ func (r *Rewriter) bindSetAccountMetadata(args ...ref.Val) ref.Val {
 	value, ok := args[3].Value().(string)
 	if !ok {
 		return types.NewErr("setAccountMetadata: value must be a string")
+	}
+
+	if errv := validateMetadataKV("setAccountMetadata", key, value); errv != nil {
+		return errv
 	}
 
 	nv := tv.clone()

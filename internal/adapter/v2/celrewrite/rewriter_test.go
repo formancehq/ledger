@@ -245,17 +245,95 @@ func TestPostingCountChangeRejected(t *testing.T) {
 	require.Contains(t, err.Error(), "posting count")
 }
 
-func TestEmptyRegexPatternRejected(t *testing.T) {
+func TestEmptyRegexPatternRejectedAtRuntime(t *testing.T) {
 	t.Parallel()
 
+	// A computed (non-literal) empty pattern can't be caught at compile time, so
+	// it must fail loudly when the rule runs.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.rewriteAddress("", "x")`, false),
+		rule("true", `tx.rewriteAddress("x".substring(1), "y")`, false), // "" at runtime
 	))
 	require.NoError(t, err)
 
 	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
 	_, err = r.Apply(entry)
 	require.Error(t, err)
+}
+
+func savedMetadataEntry(logID uint64, account string, meta map[string]string) *raftcmdpb.MirrorLogEntry {
+	return &raftcmdpb.MirrorLogEntry{
+		V2LogId: logID,
+		Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
+			SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
+				Target: &commonpb.Target{
+					Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
+				},
+				Metadata: stringsToMetadata(meta),
+			},
+		},
+	}
+}
+
+func TestEmptyRewrittenAccountTargetRejected(t *testing.T) {
+	t.Parallel()
+
+	// Rewriting an account target down to "" must fail the batch, not be
+	// silently treated as an absent (transaction-level) target.
+	r, err := NewRewriter(rules(
+		rule("true", `tx.rewriteAddress(".+", "")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := savedMetadataEntry(1, "users:acme", map[string]string{"k": "v"})
+	_, err = r.Apply(entry)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "target")
+}
+
+func TestInvalidLiteralRegexRejectedAtCompile(t *testing.T) {
+	t.Parallel()
+
+	// A malformed literal regex must be rejected when the rule is compiled
+	// (admission), not deferred to a runtime batch failure.
+	_, err := NewRewriter(rules(
+		rule("true", `tx.rewriteAddress("(", "")`, false),
+	))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "rewriteAddress pattern")
+
+	// Empty literal pattern is likewise rejected up-front.
+	_, err = NewRewriter(rules(
+		rule("true", `tx.rewriteAddress("", "x")`, false),
+	))
+	require.Error(t, err)
+}
+
+func TestSetMetadataValidatesKeyAndValue(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule("true", `tx.setMetadata("bad key", "v")`, false), // space is not a valid key char
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	_, err = r.Apply(entry)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "metadata key")
+}
+
+func TestSetAccountMetadataValidatesValue(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule("true", "tx.setAccountMetadata(\"users:001\", \"k\", \"bad\\x00value\")", false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "users:001", "USD", 1)}, nil)
+	_, err = r.Apply(entry)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "metadata value")
 }
 
 func TestDeterministicOutput(t *testing.T) {
