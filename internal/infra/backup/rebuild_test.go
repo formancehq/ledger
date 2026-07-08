@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -219,4 +220,155 @@ func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	require.NotNil(t, pair)
 	require.Equal(t, "8", pair.GetInput().ToBigInt().String())
 	require.Equal(t, "5", pair.GetOutput().ToBigInt().String())
+}
+
+// newAttributeReplayWriter builds an isolated writer for regression tests of
+// EN-1425: an in-batch create followed by a mutate must produce the merged
+// state, not overwrite it with a fresh zero-value TransactionState.
+func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes.Attributes, *dal.Store) {
+	t.Helper()
+
+	store := newRebuildTestStore(t)
+	attrs := attributes.New()
+	writer := &attributeReplayWriter{
+		store:          store,
+		batch:          store.OpenWriteSession(),
+		volume:         attrs.Volume,
+		metadata:       attrs.Metadata,
+		tx:             attrs.Transaction,
+		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
+		pendingTx:      make(map[string]*commonpb.TransactionState),
+	}
+	t.Cleanup(func() { _ = writer.batch.Cancel() })
+
+	return writer, attrs, store
+}
+
+func rebuildTestMetaMap(entries ...string) map[string]*commonpb.MetadataValue {
+	m := make(map[string]*commonpb.MetadataValue, len(entries)/2)
+	for i := 0; i < len(entries); i += 2 {
+		m[entries[i]] = &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: entries[i+1]}}
+	}
+
+	return m
+}
+
+// TestAttributeReplayWriter_SetRevertedByPreservesCreatedByLog is the EN-1425
+// revert scenario: CreateTransaction then SetRevertedBy in the same batch must
+// not drop CreatedByLog/Timestamp/Metadata by re-reading committed state.
+func TestAttributeReplayWriter_SetRevertedByPreservesCreatedByLog(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	key := []byte("ledger\x00tx\x0042")
+
+	require.NoError(t, writer.CreateTransaction(key, 42,
+		&commonpb.Timestamp{Data: 100},
+		rebuildTestMetaMap("env", "prod"),
+		[]*commonpb.Posting{rebuildTestPosting("world", "orders:1", "USD", 5)},
+		0,
+	))
+	require.NoError(t, writer.SetRevertedBy(key, 99, &commonpb.Timestamp{Data: 150}))
+	require.NoError(t, writer.batch.Commit())
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	got, err := attrs.Transaction.Get(handle, key)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, uint64(42), got.GetCreatedByLog(), "CreatedByLog must survive same-batch revert")
+	require.Equal(t, uint64(99), got.GetRevertedByTransaction())
+	require.Equal(t, uint64(150), got.GetRevertedAt().GetData(), "RevertedAt must survive same-batch revert")
+	require.Equal(t, uint64(100), got.GetTimestamp().GetData(), "Timestamp must survive same-batch revert")
+	require.Equal(t, "prod", got.GetMetadata()["env"].GetStringValue(), "Metadata must survive same-batch revert")
+	require.Len(t, got.GetPostings(), 1, "Postings must survive same-batch revert")
+}
+
+// TestAttributeReplayWriter_SaveTxMetadataPreservesCreatedByLog is the EN-1425
+// metadata-upsert scenario: CreateTransaction then SaveTxMetadata in the same
+// batch must merge into the existing state, not clobber it.
+func TestAttributeReplayWriter_SaveTxMetadataPreservesCreatedByLog(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	key := []byte("ledger\x00tx\x00043")
+
+	require.NoError(t, writer.CreateTransaction(key, 43,
+		&commonpb.Timestamp{Data: 200},
+		rebuildTestMetaMap("env", "prod"),
+		nil,
+		0,
+	))
+	require.NoError(t, writer.SaveTxMetadata(key, rebuildTestMetaMap("region", "eu-west")))
+	require.NoError(t, writer.batch.Commit())
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	got, err := attrs.Transaction.Get(handle, key)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, uint64(43), got.GetCreatedByLog())
+	require.Equal(t, uint64(200), got.GetTimestamp().GetData())
+	require.Equal(t, "prod", got.GetMetadata()["env"].GetStringValue(), "pre-existing metadata must survive upsert")
+	require.Equal(t, "eu-west", got.GetMetadata()["region"].GetStringValue(), "new metadata must be merged in")
+}
+
+// TestAttributeReplayWriter_TwoMetadataUpsertsInSameBatchMerge exercises the
+// second EN-1425 sub-scenario: two SaveTxMetadata calls within the same batch
+// window must both persist, not clobber each other.
+func TestAttributeReplayWriter_TwoMetadataUpsertsInSameBatchMerge(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	key := []byte("ledger\x00tx\x00044")
+
+	require.NoError(t, writer.CreateTransaction(key, 44,
+		&commonpb.Timestamp{Data: 300}, nil, nil, 0,
+	))
+	require.NoError(t, writer.SaveTxMetadata(key, rebuildTestMetaMap("status", "pending")))
+	require.NoError(t, writer.SaveTxMetadata(key, rebuildTestMetaMap("owner", "alice")))
+	require.NoError(t, writer.batch.Commit())
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	got, err := attrs.Transaction.Get(handle, key)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "pending", got.GetMetadata()["status"].GetStringValue())
+	require.Equal(t, "alice", got.GetMetadata()["owner"].GetStringValue())
+}
+
+// TestAttributeReplayWriter_DeleteTxMetadataSeesPendingCreate is the EN-1425
+// delete scenario: without the overlay the read returns nil and the delete is
+// a silent no-op, leaving stale metadata after commit.
+func TestAttributeReplayWriter_DeleteTxMetadataSeesPendingCreate(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	key := []byte("ledger\x00tx\x00045")
+
+	require.NoError(t, writer.CreateTransaction(key, 45,
+		&commonpb.Timestamp{Data: 400},
+		rebuildTestMetaMap("env", "prod", "region", "eu-west"),
+		nil,
+		0,
+	))
+	require.NoError(t, writer.DeleteTxMetadata(key, "env"))
+	require.NoError(t, writer.batch.Commit())
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	got, err := attrs.Transaction.Get(handle, key)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.NotContains(t, got.GetMetadata(), "env", "same-batch delete must actually remove the key")
+	require.Equal(t, "eu-west", got.GetMetadata()["region"].GetStringValue())
 }
