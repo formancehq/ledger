@@ -110,11 +110,11 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
+  - clusters
+  - credentials
   - ledgerbackupruns
   - ledgerbackups
-  - credentials
   - ledgers
-  - clusters
   verbs:
   - create
   - delete
@@ -126,21 +126,21 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
+  - clusters/finalizers
+  - credentials/finalizers
   - ledgerbackupruns/finalizers
   - ledgerbackups/finalizers
-  - credentials/finalizers
   - ledgers/finalizers
-  - clusters/finalizers
   verbs:
   - update
 - apiGroups:
   - ledger.formance.com
   resources:
+  - clusters/status
+  - credentials/status
   - ledgerbackupruns/status
   - ledgerbackups/status
-  - credentials/status
   - ledgers/status
-  - clusters/status
   verbs:
   - get
   - patch

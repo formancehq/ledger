@@ -30,8 +30,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Ledger manages the lifecycle of a ledger on a Cluster via
-          gRPC.
+        description: Ledger manages the lifecycle of a ledger on a Cluster via gRPC.
         properties:
           apiVersion:
             description: |-
