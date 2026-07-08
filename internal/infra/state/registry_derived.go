@@ -52,7 +52,11 @@ func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 		Ledgers:           attributes.NewDerivedKeyStore(reg.Ledgers.KeyStore()),
 		SinkConfigs:       attributes.NewDerivedKeyStore(reg.SinkConfigs.KeyStore()),
 		NumscriptVersions: attributes.NewDerivedKeyStore(reg.NumscriptVersions.KeyStore()),
-		Transactions:      attributes.NewDerivedKeyStore(reg.Transactions.KeyStore()),
+		// Transactions is the only overlay large enough per batch that a
+		// single-goroutine drain becomes the tail of WriteSet.Merge's
+		// errgroup (~97% of aggregate merge CPU on perf-world-to-bank).
+		// 8-way fan-out hits the ShardedMap's 256 shards without contention.
+		Transactions:      attributes.NewDerivedKeyStore(reg.Transactions.KeyStore(), attributes.WithParallelism(8)),
 		NumscriptContents: attributes.NewDerivedKeyStore(reg.NumscriptContents.KeyStore()),
 		PreparedQueries:   attributes.NewDerivedKeyStore(reg.PreparedQueries.KeyStore()),
 		LedgerMetadata:    attributes.NewDerivedKeyStore(reg.LedgerMetadata.KeyStore()),

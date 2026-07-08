@@ -214,6 +214,15 @@ type DerivedKeyStore[K Key, T any] struct {
 	values    map[K]T
 	deletions map[K]struct{}
 	scratch   []byte // reusable buffer for Get — single-goroutine use only
+
+	// parallelism controls how the overlay drain is dispatched at Merge time.
+	// 1 (or 0) runs a single-goroutine drain — the right default for stores
+	// whose overlay stays small per batch. Values >1 fan out the drain across
+	// that many workers, each owning a disjoint slice of the overlay maps and
+	// hitting the underlying ShardedMap (256 shards, per-shard RWMutex)
+	// concurrently. Set at construction (see WithParallelism); the FSM never
+	// mutates it after that point.
+	parallelism int
 }
 
 func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
@@ -254,7 +263,22 @@ func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
 	s.deletions[canonical] = struct{}{}
 }
 
+// Merge drains the overlay into the underlying KeyStore, returning the list
+// of Updates and Deletions produced. The dispatch is driven by the store's
+// construction-time parallelism setting: parallelism=1 runs a single-goroutine
+// drain, parallelism=N spawns N workers that own disjoint slices of the
+// overlay and write to the ShardedMap concurrently (safe because the
+// ShardedMap has 256 shards with per-shard RWMutex, and each worker keeps
+// its own scratch buffer for canonical-key serialization).
+//
+// No downstream consumer depends on the order of the returned slices:
+// bloom updates are set-based, and flushAttributeAndCache's per-key writes
+// commute in a single Pebble batch.
 func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
+	if s.parallelism > 1 {
+		return s.mergeConcurrent(s.parallelism)
+	}
+
 	// Reuse scratch for serializing canonical keys during Put/Delete,
 	// but allocate independent copies for each Update.CanonicalKey.
 	// The scratch buffer is shared with Get(), which may overwrite it
@@ -314,26 +338,10 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	return touched, deletions, nil
 }
 
-// MergeParallel drains the overlay across k worker goroutines. Each worker
-// owns a disjoint slice of the values / deletions maps and hits the underlying
-// KeyStore (ShardedMap with 256 shards) concurrently. Since KeyStore.Put and
-// KeyStore.Delete only touch the ShardedMap (per-shard RWMutex) and the
-// stateless XXH3 hasher — never DerivedKeyStore.scratch — parallel writers
-// are safe as long as each worker owns its own scratch buffer.
-//
-// For k <= 1 or overlays below parallelDrainThreshold, delegates to the
-// serial Merge — the goroutine spawn overhead outweighs any parallel win
-// on small batches.
-//
-// The returned slices concatenate per-worker outputs in worker order; no
-// downstream consumer depends on Update ordering (bloom updates are set-based,
-// flushAttributeAndCache's per-key writes commute in a Pebble batch).
-func (s *DerivedKeyStore[K, T]) MergeParallel(k int) ([]Update[K, T], []Deletion[K], error) {
-	total := len(s.values) + len(s.deletions)
-	if k <= 1 || total < parallelDrainThreshold {
-		return s.Merge()
-	}
-
+// mergeConcurrent fans the overlay drain out across k workers. Selected by
+// Merge when parallelism > 1; unconditional once dispatched (the caller has
+// already committed to the fan-out at construction).
+func (s *DerivedKeyStore[K, T]) mergeConcurrent(k int) ([]Update[K, T], []Deletion[K], error) {
 	valueKeys := make([]K, 0, len(s.values))
 	for kk := range s.values {
 		valueKeys = append(valueKeys, kk)
@@ -440,11 +448,6 @@ func (s *DerivedKeyStore[K, T]) MergeParallel(k int) ([]Update[K, T], []Deletion
 	return touched, deletions, nil
 }
 
-// parallelDrainThreshold is the minimum overlay size (values + deletions)
-// at which MergeParallel spawns goroutines. Below this, the serial Merge
-// path wins on the goroutine-spawn overhead.
-const parallelDrainThreshold = 512
-
 // DirtyValues returns the uncommitted local values written during the current batch.
 func (s *DerivedKeyStore[K, T]) DirtyValues() map[K]T {
 	return s.values
@@ -456,17 +459,39 @@ func (s *DerivedKeyStore[K, T]) Parent() ParentReader[K, T] {
 	return s.parent
 }
 
+// DerivedKeyStoreOption customizes a DerivedKeyStore at construction time.
+type DerivedKeyStoreOption func(*derivedKeyStoreOpts)
+
+type derivedKeyStoreOpts struct {
+	parallelism int
+}
+
+// WithParallelism enables fan-out draining for stores whose overlay is large
+// enough per batch that a single-goroutine drain becomes the tail of the
+// enclosing errgroup. Used only for the Transactions store today.
+func WithParallelism(k int) DerivedKeyStoreOption {
+	return func(o *derivedKeyStoreOpts) {
+		o.parallelism = k
+	}
+}
+
 // NewDerivedKeyStore builds a DerivedKeyStore whose read-side parent is the
 // underlying KeyStore directly. The coverage gate is enforced one layer up
 // (state.gatedScope) rather than threaded through the parent, so the
 // DerivedKeyStore stays a pure in-batch overlay that falls through to the
 // underlying store on miss.
-func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T]) *DerivedKeyStore[K, T] {
+func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], opts ...DerivedKeyStoreOption) *DerivedKeyStore[K, T] {
+	o := derivedKeyStoreOpts{parallelism: 1}
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	return &DerivedKeyStore[K, T]{
-		parent:    store,
-		writer:    store,
-		values:    make(map[K]T),
-		deletions: make(map[K]struct{}),
+		parent:      store,
+		writer:      store,
+		values:      make(map[K]T),
+		deletions:   make(map[K]struct{}),
+		parallelism: o.parallelism,
 	}
 }
 

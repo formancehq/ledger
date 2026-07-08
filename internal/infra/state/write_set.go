@@ -23,13 +23,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// transactionMergeWorkers is the fan-out used by Transactions.MergeParallel.
-// Transactions is the only store whose overlay is large enough for internal
-// sharding to pay off (~97% of aggregate merge CPU on perf-world-to-bank).
-// 8 workers land comfortably below the 256-shard ShardedMap capacity while
-// still saturating a typical FSM-node core count.
-const transactionMergeWorkers = 8
-
 // labeledMerge wraps a merge worker in a pprof-labeled scope so Pyroscope
 // can attribute the goroutine's CPU to the specific store. The label pair
 // `component=applier.merge, store=<name>` composes with the labels set
@@ -338,15 +331,11 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		return nil
 	}))
 	g.Go(labeledMerge("transactions", func() error {
-		// Profiling on perf-world-to-bank showed the Transactions overlay
-		// dominates the parallel Merge phase (~97% of aggregate CPU), all
-		// spent in KeyStore.Put → ShardedMap.GetAndPut → runtime.mapaccess2.
-		// The ShardedMap has 256 shards with per-shard RWMutex, so a handful
-		// of goroutines can drain the overlay concurrently without lock
-		// contention. Small batches fall back to the serial path via the
-		// parallelDrainThreshold gate.
+		// Transactions is constructed with parallelism=8 (see NewDerivedRegistry);
+		// Merge fans out internally so this worker completes ~K× faster and no
+		// longer defines the tail wall-clock of the errgroup.
 		var err error
-		transactionUpdates, transactionDeletions, err = b.Derived.Transactions.MergeParallel(transactionMergeWorkers)
+		transactionUpdates, transactionDeletions, err = b.Derived.Transactions.Merge()
 		if err != nil {
 			return fmt.Errorf("failed to merge transactions: %w", err)
 		}
