@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"runtime/pprof"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -738,10 +739,19 @@ func (a *Applier) Status() int32 {
 // UnmarshalVT of the next batch runs on a spare core while the applier
 // holds fsm.mu for the current batch.
 func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
+	// Tag this goroutine (the applier main loop / Prepare stage) so pprof /
+	// pyroscope profiles can be filtered by `component` label — necessary to
+	// tell "prepare saturates one core" apart from "aggregate CPU is spread"
+	// in the process-wide profile.
+	mainCtx := pprof.WithLabels(ctx, pprof.Labels("component", "applier.main"))
+	pprof.SetGoroutineLabels(mainCtx)
+
 	// Start the dedicated committer goroutine. It exits when commitCh is closed.
 	committerDone := make(chan struct{})
 
 	go func() {
+		commitCtx := pprof.WithLabels(ctx, pprof.Labels("component", "applier.committer"))
+		pprof.SetGoroutineLabels(commitCtx)
 		a.runCommitter(ctx, stop)
 		close(committerDone)
 	}()
@@ -755,6 +765,8 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	decoderDone := make(chan struct{})
 
 	go func() {
+		labeledCtx := pprof.WithLabels(decoderCtx, pprof.Labels("component", "applier.decoder"))
+		pprof.SetGoroutineLabels(labeledCtx)
 		defer close(decoderDone)
 		a.runDecoder(decoderCtx)
 	}()
