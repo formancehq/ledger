@@ -67,6 +67,27 @@ Posting `amount`/`asset` are read-only; only `source`/`destination` are written 
 
 **Metadata types.** The setters take an optional `type` — one of the schema types `string` (default), `int64`, `bool`, `uint64`, `int8/16/32`, `uint8/16/32`, `datetime` — that coerces the string value into the typed `MetadataValue`. The type token **must be a constant** (not a computed expression), so it is fully validated at admission; an unknown type is rejected there. A value that does not parse as the declared type is stored as a null value preserving the original string (the platform conversion matrix). Mirror source metadata is otherwise always string-typed, so this is the only way to emit typed metadata into a mirror.
 
+### Helper reference
+
+All helpers are pure and copy-on-write. Cross-cutting helpers receive `log` and return `log`; metadata helpers receive a variant view and return that same view (lift it back into the entry with a `with…` wrapper). `[, type]` is the optional constant metadata type token.
+
+| Helper | Receiver → returns | Description | Example |
+|---|---|---|---|
+| `rewriteAddress(pattern, replacement)` | `log` → `log` | RE2 replace across every address of the active variant (postings, target, created account-metadata keys). `pattern` constant. Account keys re-key with a sorted, last-writer-wins merge on collision. | `log.rewriteAddress(":worker:\\d+", "")` |
+| `mapAddress(a, expr)` | `log` → `log` | Map a CEL `expr` over every address (`a` bound to each). Computed transform a regex can't express; address count can't change. | `log.mapAddress(a, a.split(":").reverse().join(":"))` |
+| `addresses()` | `log` → `list(string)` | Ordered list of the active variant's addresses (read-only; usable in `match`). | `log.addresses().exists(a, a.startsWith("acquirer:"))` |
+| `drop()` | `log` → `log` | Mark the entry to become a `MirrorFillGap` (see below). | `log.drop()` |
+| `withCreated(created)` | `log` → `log` | Lift a transformed `created` view back into the entry. Accepts only `CreatedView`. | `log.withCreated(log.created.setMetadata("k", "v"))` |
+| `withReverted(reverted)` | `log` → `log` | Lift a transformed `reverted` view. Accepts only `RevertedView`. | `log.withReverted(log.reverted.setMetadata("k", "v"))` |
+| `withSavedMetadata(saved)` | `log` → `log` | Lift a transformed `savedMetadata` view. Accepts only `SavedMetadataView`. | `log.withSavedMetadata(log.savedMetadata.setMetadata("k", "v"))` |
+| `setMetadata(key, value [, type])` | `created` / `reverted` / `savedMetadata` → same | Set an entry-metadata key. | `log.created.setMetadata("count", "42", "int64")` |
+| `deleteMetadata(key)` | `created` / `reverted` / `savedMetadata` → same | Remove an entry-metadata key. | `log.reverted.deleteMetadata("internal")` |
+| `setAccountMetadata(account, key, value [, type])` | `created` → `created` | Set per-account metadata (created only). | `log.created.setAccountMetadata("orders:pending", "region", "eu")` |
+| `deleteAccountMetadata(account, key)` | `created` → `created` | Remove per-account metadata (created only). | `log.created.deleteAccountMetadata("orders:pending", "region")` |
+| `setAccountMetadataFromAddress(pattern, key, replacement [, type])` | `created` → `created` | For each posting account matching `pattern`, set `accountMetadata[address][key]` to `ReplaceAllString(address, replacement)`. `pattern` constant, must match the whole address (`^…$`). | `log.created.setAccountMetadataFromAddress("^acquirer:acme:worker:(\\d+):.*$", "worker-id", "$1", "int64")` |
+
+`log.deletedMetadata` has no metadata helpers — a deleteMetadata op carries no metadata map; only its target address is mutable (via `rewriteAddress`/`mapAddress`), and its `key` is read-only.
+
 ### Mutable scope (v1)
 
 Metadata (transaction-level and per-account), posting addresses, and metadata-op target addresses. Amounts, assets, IDs, and `reference` are immutable — amounts/assets to preserve balance integrity, `reference` because mirror creation writes the reference projection without a uniqueness check (reference rewriting is deferred until proper preload/coverage/FSM conflict handling exists).
