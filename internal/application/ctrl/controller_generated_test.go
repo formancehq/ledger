@@ -193,6 +193,36 @@ func (mr *MockControllerMockRecorder) GetEventsSinks(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventsSinks", reflect.TypeOf((*MockController)(nil).GetEventsSinks), ctx)
 }
 
+// GetIndex mocks base method.
+func (m *MockController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIndex", ctx, req)
+	ret0, _ := ret[0].(*commonpb.Index)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndex indicates an expected call of GetIndex.
+func (mr *MockControllerMockRecorder) GetIndex(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndex", reflect.TypeOf((*MockController)(nil).GetIndex), ctx, req)
+}
+
+// GetIndexEntryStatus mocks base method.
+func (m *MockController) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIndexEntryStatus", ctx, req)
+	ret0, _ := ret[0].(*servicepb.IndexEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndexEntryStatus indicates an expected call of GetIndexEntryStatus.
+func (mr *MockControllerMockRecorder) GetIndexEntryStatus(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexEntryStatus", reflect.TypeOf((*MockController)(nil).GetIndexEntryStatus), ctx, req)
+}
+
 // GetIndexStatus mocks base method.
 func (m *MockController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
 	m.ctrl.T.Helper()

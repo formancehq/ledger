@@ -995,13 +995,14 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v3/{ledgerName}/indexes/{metadataKey}:
+  /v3/{ledgerName}/indexes/{canonicalId}/inspect:
     get:
       summary: Inspect a metadata index
       description: |
         Scans a metadata index and returns distinct values, facets (value + count),
         or a summary (cardinality, min/max, existence counts). The index must be
-        in READY state. Requires `ledger:read` scope.
+        in READY state. Only metadata indexes are inspectable (builtin indexes
+        return 400). Requires `ledger:read` scope.
       operationId: inspectIndex
       tags:
         - Indexes
@@ -1010,19 +1011,15 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
-        - name: metadataKey
+        - name: canonicalId
           in: path
           required: true
-          description: Metadata key to inspect
+          description: |
+            Canonical form of the target IndexID, e.g.
+            `metadata:TARGET_TYPE_ACCOUNT:color`. Must resolve to a metadata
+            index; builtin indexes (`tx_builtin:...`, etc.) are rejected.
           schema:
             type: string
-        - name: target
-          in: query
-          description: Target type
-          schema:
-            type: string
-            enum: [account, transaction]
-            default: account
         - name: mode
           in: query
           description: Inspection mode
@@ -2304,6 +2301,44 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /v3/{ledgerName}/indexes/{canonicalId}:
+    get:
+      summary: Get a single index registry entry
+      description: |
+        Returns the `Index` registry entry (id, build_status, ledger,
+        created_at, last_built_at, forward_encoding_version) for a single
+        index. Requires `ledger:LedgerRead` scope.
+      operationId: getIndex
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+      responses:
+        '200':
+          description: Index retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Index (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Drop an index from a ledger
       description: |
@@ -2331,6 +2366,48 @@ paths:
       responses:
         '204':
           description: Index removed.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/{ledgerName}/indexes/{canonicalId}/status:
+    get:
+      summary: Get the per-replica status of a single index
+      description: |
+        Returns the `IndexEntry` for a single index — the registry entry
+        joined with the backfill cursor and the per-replica
+        IndexVersionState (current + pending version). Use this to poll
+        for backfill completion after a `POST /v3/{ledgerName}/indexes`.
+        Requires `ledger:LedgerRead` scope.
+      operationId: getIndexEntryStatus
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+      responses:
+        '200':
+          description: Index entry retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: IndexEntry (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

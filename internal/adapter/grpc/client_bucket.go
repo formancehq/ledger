@@ -483,6 +483,14 @@ func (g *BucketGrpcClient) GetIndexStatus(ctx context.Context, req *servicepb.Ge
 	return g.client.GetIndexStatus(ctx, req)
 }
 
+func (g *BucketGrpcClient) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+	return g.client.GetIndex(ctx, req)
+}
+
+func (g *BucketGrpcClient) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+	return g.client.GetIndexEntryStatus(ctx, req)
+}
+
 func (g *BucketGrpcClient) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
 	stream, err := g.client.ListIndexes(ctx, req)
 	if err != nil {

@@ -108,7 +108,9 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/{ledgerName}/numscripts", server.handleListNumscripts)
 				r.Get("/{ledgerName}/numscripts/{name}", server.handleGetNumscript)
 				r.Get("/{ledgerName}/indexes", server.handleListLedgerIndexes)
-				r.Get("/{ledgerName}/indexes/{metadataKey}", server.handleInspectIndex)
+				r.Get("/{ledgerName}/indexes/{canonicalId}", server.handleGetIndex)
+				r.Get("/{ledgerName}/indexes/{canonicalId}/status", server.handleGetIndexEntryStatus)
+				r.Get("/{ledgerName}/indexes/{canonicalId}/inspect", server.handleInspectIndex)
 			})
 
 			// Transactions read scope

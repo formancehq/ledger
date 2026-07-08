@@ -909,6 +909,36 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 	return impl.ctrl.GetIndexStatus(ctx, req)
 }
 
+// GetIndex returns a single Index registry entry. Scope aligns with
+// ListIndexes SCOPE_LEDGER (a per-ledger read tokens must be accepted).
+func (impl *BucketServiceServerImpl) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+	requiredScope := internalauth.ScopeOpsRead
+	if req.GetLedger() != "" {
+		requiredScope = internalauth.ScopeLedgersRead
+	}
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, requiredScope); err != nil {
+		return nil, err
+	}
+
+	return impl.ctrl.GetIndex(ctx, req)
+}
+
+// GetIndexEntryStatus returns the per-replica status view for a single
+// index. Same auth model as GetIndex.
+func (impl *BucketServiceServerImpl) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+	requiredScope := internalauth.ScopeOpsRead
+	if req.GetLedger() != "" {
+		requiredScope = internalauth.ScopeLedgersRead
+	}
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, requiredScope); err != nil {
+		return nil, err
+	}
+
+	return impl.ctrl.GetIndexEntryStatus(ctx, req)
+}
+
 // ListIndexes streams the bucket-scoped index registry, optionally filtered
 // to a ledger (or bucket-scoped entries only) via the request Scope field.
 // The filtering and orphan-entry skipping are implemented by

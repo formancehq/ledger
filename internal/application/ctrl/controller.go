@@ -74,11 +74,14 @@ type Controller interface {
 	InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error)
 
 	// Index registry — ListIndexes streams the bucket-scoped index registry
-	// (optionally filtered by ledger via req.Scope/req.Ledger), and
+	// (optionally filtered by ledger via req.Scope/req.Ledger),
 	// GetIndexStatus returns the aggregated (per-index cursor + per-replica
-	// version) snapshot exposed on the registry.
+	// version) snapshot exposed on the registry, and the single-entry
+	// getters return the Index / IndexEntry for a given (ledger, id) tuple.
 	ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error)
 	GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error)
+	GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error)
+	GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error)
 
 	// Write operations - single entry point for all requests. The ApplyRequest
 	// is one atomic batch, signed or unsigned at the batch level.

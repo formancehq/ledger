@@ -1184,6 +1184,127 @@ func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicep
 	}, nil
 }
 
+// GetIndex returns the Index registry entry for the (ledger, id) tuple.
+// Ledger existence is checked upfront for ledger-scoped queries so
+// callers can distinguish "no such ledger" from "index not registered
+// on this ledger". Bucket-scoped queries (empty ledger) skip that check.
+func (ctrl *DefaultController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+	if req.GetId() == nil {
+		return nil, domain.NewValidationSentinel("id is required")
+	}
+
+	handle, err := ctrl.store.NewDirectReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	if ledger := req.GetLedger(); ledger != "" {
+		if _, err := query.GetLedgerByName(ctx, handle, ledger); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+			}
+
+			return nil, fmt.Errorf("checking ledger %q: %w", ledger, err)
+		}
+	}
+
+	reader := query.NewPebbleIndexReader(ctrl.attrs.Index, handle)
+
+	idx, err := indexes.Find(reader, req.GetLedger(), req.GetId())
+	if err != nil {
+		return nil, fmt.Errorf("looking up index: %w", err)
+	}
+
+	if idx == nil {
+		return nil, commonpb.NewNotFoundError("index %s not found on ledger %q", indexes.Canonical(req.GetId()), req.GetLedger())
+	}
+
+	return idx.Mutate(), nil
+}
+
+// GetIndexEntryStatus returns the per-replica status view (registry
+// entry + backfill cursor + IndexVersionState) for a single index. Both
+// the primary handle and the read-store snapshot pin a coherent view so
+// the returned IndexEntry does not drift under the reader's feet.
+func (ctrl *DefaultController) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+	if req.GetId() == nil {
+		return nil, domain.NewValidationSentinel("id is required")
+	}
+
+	handle, err := ctrl.store.NewDirectReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	if ledger := req.GetLedger(); ledger != "" {
+		if _, err := query.GetLedgerByName(ctx, handle, ledger); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+			}
+
+			return nil, fmt.Errorf("checking ledger %q: %w", ledger, err)
+		}
+	}
+
+	reader := query.NewPebbleIndexReader(ctrl.attrs.Index, handle)
+
+	idx, err := indexes.Find(reader, req.GetLedger(), req.GetId())
+	if err != nil {
+		return nil, fmt.Errorf("looking up index: %w", err)
+	}
+
+	if idx == nil {
+		return nil, commonpb.NewNotFoundError("index %s not found on ledger %q", indexes.Canonical(req.GetId()), req.GetLedger())
+	}
+
+	canonical := indexes.Canonical(req.GetId())
+	entry := &servicepb.IndexEntry{
+		Ledger: req.GetLedger(),
+		Index:  idx.Mutate(),
+	}
+
+	readSnap := ctrl.readStore.NewSnapshot()
+	defer func() { _ = readSnap.Close() }()
+
+	backfillEntries, err := ctrl.readStore.ListBackfillProgressFrom(readSnap)
+	if err != nil {
+		return nil, fmt.Errorf("reading backfill progress: %w", err)
+	}
+
+	for _, e := range backfillEntries {
+		if e.LedgerName != req.GetLedger() {
+			continue
+		}
+
+		id := indexIDFromBackfillEntry(e)
+		if id == nil {
+			continue
+		}
+
+		if indexes.Canonical(id) == canonical {
+			entry.Cursor = e.Cursor
+
+			break
+		}
+	}
+
+	state, ok, stateErr := readstore.ReadIndexVersionStateFrom(readSnap, req.GetLedger(), canonical)
+	if stateErr != nil {
+		ctrl.logger.WithFields(map[string]any{
+			"ledger":    req.GetLedger(),
+			"canonical": canonical,
+			"error":     stateErr,
+		}).Errorf("Reading IndexVersionState for GetIndexEntryStatus")
+	} else if ok {
+		entry.CurrentVersion = state.CurrentVersion
+		entry.PendingVersion = state.PendingVersion
+	}
+
+	return entry, nil
+}
+
 // ListIndexes returns a cursor over the bucket-scoped index registry,
 // filtered by req.Scope: SCOPE_ALL streams every entry (dropping orphans
 // whose owning ledger no longer exists), SCOPE_BUCKET keeps only entries
