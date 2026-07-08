@@ -56,6 +56,8 @@ Posting `amount`/`asset` are read-only; only `source`/`destination` are written 
 
 **The variant types do the safety work.** Because `setAccountMetadata` exists only on `CreatedView` and `deletedMetadata` has no `setMetadata`, a helper the variant cannot persist is a **compile-time type error** — not the silent commit-time drop the earlier flat view allowed. Guard variant access with `has(...)`: accessing a foreign variant unguarded reads a zero view that `withX` would merge in, producing a two-variant entry that is **rejected loudly at commit** (a rule may only transform the source variant):
 
+> **Guard reads too, not just writes.** Reading a foreign variant in a `match` or a predicate — e.g. `log.created.metadata.size() == 0` on a reverted entry — also sees the zero view, so the predicate silently holds and the rule fires on kinds you did not intend (the output stays a valid single-variant entry, so this is a footgun, not corruption). Always scope a variant-specific rule with `has(log.created)` (or an equivalent `match`).
+
 ```yaml
 - cel: |
     has(log.created) ? log.withCreated(log.created.setAccountMetadata("orders:pending", "region", "eu")) : log

@@ -329,7 +329,13 @@ func (l *Log) withAddresses(addrs []string) (*Log, string) {
 			i += 2
 		}
 
-		c.AccountMetadata, c.accountMetadataTypes = reKeyAccountMetadata(c.AccountMetadata, c.accountMetadataTypes, addrs[i:])
+		oldKeys := sortedStringKeys(c.AccountMetadata)
+		newByOld := make(map[string]string, len(oldKeys))
+		for j, old := range oldKeys {
+			newByOld[old] = addrs[i+j]
+		}
+
+		c.AccountMetadata, c.accountMetadataTypes = remapAccountKeys(c.AccountMetadata, c.accountMetadataTypes, func(a string) string { return newByOld[a] })
 		nl.Created = c
 
 	case nl.Reverted != nil:
@@ -370,8 +376,9 @@ func (l *Log) rewriteAddresses(re *regexp.Regexp, replacement string) *Log {
 			c.Postings[i].Destination = re.ReplaceAllString(c.Postings[i].Destination, replacement)
 		}
 
-		c.AccountMetadata = rewriteAddrKeyedMap(c.AccountMetadata, re, replacement)
-		c.accountMetadataTypes = rewriteAddrKeyedMap(c.accountMetadataTypes, re, replacement)
+		c.AccountMetadata, c.accountMetadataTypes = remapAccountKeys(c.AccountMetadata, c.accountMetadataTypes, func(a string) string {
+			return re.ReplaceAllString(a, replacement)
+		})
 		nl.Created = c
 
 	case nl.Reverted != nil:
@@ -400,34 +407,47 @@ func (l *Log) rewriteAddresses(re *regexp.Regexp, replacement string) *Log {
 	return nl
 }
 
-// reKeyAccountMetadata rebuilds the account-metadata maps from newKeys, which
-// correspond positionally to the sorted old keys (the tail orderedAddresses
-// produced), merging with last-writer-wins on collision.
-func reKeyAccountMetadata(am map[string]map[string]string, at map[string]map[string]commonpb.MetadataType, newKeys []string) (map[string]map[string]string, map[string]map[string]commonpb.MetadataType) {
+// remapAccountKeys rebuilds the account value + type maps under new keys given by
+// keyFn, iterating source accounts in sorted order so a collision's last writer
+// wins deterministically. Crucially, value and type move in lockstep per
+// (account, metadata-key): the winning value's source decides the type, and an
+// untyped winner clears any type an earlier colliding source set for that key.
+// Re-keying the two maps independently would let the type sidecar drift from the
+// value (an untyped winner inheriting a losing source's declared type), which
+// commit would then coerce to a wrong (null) MetadataValue.
+func remapAccountKeys(am map[string]map[string]string, at map[string]map[string]commonpb.MetadataType, keyFn func(string) string) (map[string]map[string]string, map[string]map[string]commonpb.MetadataType) {
 	if len(am) == 0 {
 		return am, at
 	}
 
-	oldKeys := sortedStringKeys(am)
-
 	nam := make(map[string]map[string]string, len(am))
 	nat := map[string]map[string]commonpb.MetadataType{}
 
-	for i, oldKey := range oldKeys {
-		newKey := newKeys[i]
-
-		if nam[newKey] == nil {
-			nam[newKey] = map[string]string{}
+	for _, old := range sortedStringKeys(am) {
+		neu := keyFn(old)
+		if nam[neu] == nil {
+			nam[neu] = map[string]string{}
 		}
 
-		maps.Copy(nam[newKey], am[oldKey])
+		srcTypes := at[old]
+		for mk, mv := range am[old] {
+			nam[neu][mk] = mv
 
-		if t := at[oldKey]; len(t) > 0 {
-			if nat[newKey] == nil {
-				nat[newKey] = map[string]commonpb.MetadataType{}
+			if t, typed := srcTypes[mk]; typed {
+				if nat[neu] == nil {
+					nat[neu] = map[string]commonpb.MetadataType{}
+				}
+
+				nat[neu][mk] = t
+			} else if nat[neu] != nil {
+				delete(nat[neu], mk)
 			}
+		}
+	}
 
-			maps.Copy(nat[newKey], t)
+	for k, m := range nat {
+		if len(m) == 0 {
+			delete(nat, k)
 		}
 	}
 
@@ -436,29 +456,6 @@ func reKeyAccountMetadata(am map[string]map[string]string, at map[string]map[str
 	}
 
 	return nam, nat
-}
-
-// rewriteAddrKeyedMap rewrites the account-address keys of an account-keyed map
-// (account metadata values or their declared types). It is generic so the value
-// map and the parallel type map are remapped identically — same sorted iteration
-// and same last-writer-wins merge on collision — keeping them in sync.
-func rewriteAddrKeyedMap[V any](in map[string]map[string]V, re *regexp.Regexp, replacement string) map[string]map[string]V {
-	if len(in) == 0 {
-		return in
-	}
-
-	out := make(map[string]map[string]V, len(in))
-	for _, account := range sortedStringKeys(in) {
-		rewritten := re.ReplaceAllString(account, replacement)
-
-		if out[rewritten] == nil {
-			out[rewritten] = make(map[string]V, len(in[account]))
-		}
-
-		maps.Copy(out[rewritten], in[account])
-	}
-
-	return out
 }
 
 func sortedStringKeys[V any](m map[string]V) []string {

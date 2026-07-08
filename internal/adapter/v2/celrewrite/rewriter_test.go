@@ -592,6 +592,54 @@ func TestDeleteMetadataEntryPassThrough(t *testing.T) {
 	require.Equal(t, "users:alice", out.GetDeletedMetadata().GetTarget().GetAccount().GetAddr())
 }
 
+// TestAccountMetadataCollisionTypeFollowsValue guards the value/type re-key
+// lockstep: when two accounts collapse onto one and the winning value is untyped,
+// the committed value must be a plain string, not a null coercion inheriting the
+// loser's declared type.
+func TestAccountMetadataCollisionTypeFollowsValue(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule("true", `log.withCreated(log.created.setAccountMetadata("acct:1", "n", "5", "int64"))`, false),
+		rule("true", `log.withCreated(log.created.setAccountMetadata("acct:2", "n", "hello"))`, false),
+		rule("true", `log.rewriteAddress(":\\d$", "")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+
+	// Sorted order acct:1, acct:2 → acct:2 ("hello", untyped) wins the "n"
+	// collision, so the type must revert to string, not stay int64.
+	v := out.GetCreatedTransaction().GetAccountMetadata()["acct"].GetValues()["n"]
+	require.Equal(t, "hello", v.GetStringValue())
+}
+
+// TestUnguardedVariantReadInPredicate documents (and pins) the has()-guard
+// contract: reading a foreign variant without a has() guard yields a zero view
+// (CEL oneof semantics), so a predicate over it silently holds. The result is
+// still a valid single-variant entry — no corruption — but the rule fires on
+// kinds the author may not have intended. Authors must guard variant access.
+func TestUnguardedVariantReadInPredicate(t *testing.T) {
+	t.Parallel()
+
+	// On a reverted entry, log.created is a zero view, so metadata.size()==0 is
+	// true and the reverted branch runs. checkSingleVariant accepts it (only the
+	// reverted variant is set); this is a footgun, not corruption.
+	r, err := NewRewriter(rules(
+		rule("true", `log.created.metadata.size() == 0 ? log.withReverted(log.reverted.setMetadata("flag", "x")) : log`, false),
+	))
+	require.NoError(t, err)
+
+	reverted := revertedEntry(1, 1, 2, []*commonpb.Posting{posting("bank", "world", "USD", 1)}, nil)
+	out, err := r.Apply(reverted)
+	require.NoError(t, err)
+	require.NotNil(t, out.GetRevertedTransaction())
+	require.Nil(t, out.GetCreatedTransaction())
+	require.Equal(t, "x", out.GetRevertedTransaction().GetMetadata()["flag"].GetStringValue())
+}
+
 // --- determinism guard ------------------------------------------------------
 
 func TestMapIterationDeterminismGuard(t *testing.T) {
