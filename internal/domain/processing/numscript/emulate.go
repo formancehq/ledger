@@ -172,10 +172,12 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 	// source/destination partition is preserved for scripts emulation handles.
 	//
 	// Best-effort: GetInvolvedAccounts can legitimately error on experimental
-	// constructs it does not model yet (e.g. asset scaling / colored sources).
-	// The script already emulated successfully, so on error we keep the
-	// emulation-only result rather than rejecting a transaction that works today.
-	if involved, _, involvedErr := parsed.GetInvolvedAccounts(variablesMap); involvedErr == nil {
+	// constructs it does not model yet (e.g. asset scaling / colored sources)
+	// AND the interpreter can still panic on open issues (see e.g.
+	// formancehq/numscript#153). safeGetInvolvedAccounts degrades a panic to
+	// the same nil result as an error, so admission never rejects a script that
+	// emulation already accepted.
+	if involved, involvedErr := safeGetInvolvedAccounts(parsed, variablesMap); involvedErr == nil {
 		for _, ia := range involved {
 			account, okAccount := resolveInvolvedAccount(ia.AccountExpr)
 			asset, okAsset := resolveInvolvedAsset(ia.AssetExpr)

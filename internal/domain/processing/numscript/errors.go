@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	numscriptlib "github.com/formancehq/numscript"
+	"github.com/formancehq/numscript/accounts"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -81,4 +82,26 @@ func SafeRun(parsed numscriptlib.ParseResult, ctx context.Context, vars numscrip
 	err = convertNumscriptError(runErr)
 
 	return
+}
+
+// safeGetInvolvedAccounts wraps ParseResult.GetInvolvedAccounts with a deferred
+// recover. The numscript interpreter can still panic on open issues (see e.g.
+// formancehq/numscript#153); admission callers treat both an error and a nil
+// slice as "keep the emulation-only result", so we surface a panic through the
+// same path rather than crashing the request. InvolvedMeta is intentionally
+// dropped — the ledger admission layer only consumes InvolvedAccount.
+func safeGetInvolvedAccounts(parsed numscriptlib.ParseResult, vars numscriptlib.VariablesMap) (involved []accounts.InvolvedAccount, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			involved = nil
+			err = fmt.Errorf("numscript panic: %v", r)
+		}
+	}()
+
+	involved, _, ierr := parsed.GetInvolvedAccounts(vars)
+	if ierr != nil {
+		return nil, ierr
+	}
+
+	return involved, nil
 }

@@ -607,8 +607,10 @@ send $amount (
 
 		It("Should repay via a mid-script overdraft() call from an unbounded-overdraft source", func() {
 			// Step 1: put @credit into overdraft by 100. This mirrors the reproduction
-			// in the issue and matches emulation's expectations (positive fake balance
-			// on @main allows the send, no cross-account read on @credit yet).
+			// in the issue. Emulation lets this through unmodified: @credit is an
+			// `allowing unbounded overdraft` source (interpreter never queries its
+			// balance), and @main only receives — so nothing here trips the discovery
+			// gap yet.
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 100] (
   source = @credit allowing unbounded overdraft
