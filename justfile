@@ -284,6 +284,7 @@ generate-proto:
     mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb
     @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
+    @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger/v3 \
@@ -306,6 +307,9 @@ generate-proto:
         --plugin=protoc-gen-reader=build/protoc-gen-reader \
         --reader_out=. \
         --reader_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-skippable=build/protoc-gen-skippable \
+        --skippable_out=. \
+        --skippable_opt=module=github.com/formancehq/ledger/v3 \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \

@@ -8,6 +8,27 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
 import "common.proto";
 import "audit.proto";
 import "signature.proto";
+import "google/protobuf/descriptor.proto";
+
+// allowed_skippable_reasons annotates a oneof case inside LedgerAction.data
+// with the business ErrorReasons a caller may list in
+// LedgerApplyRequest.skippable_reasons for that action. protoc-gen-skippable
+// (misc/proto → tools/protoc-gen-skippable) reads these annotations and
+// generates internal/proto/servicepb/bucket_skippable.pb.go — admission's
+// extractSkippableReasonsFromApply consumes that generated table so the
+// whitelist stays co-located with the wire declaration.
+//
+// A oneof case without the annotation has NO whitelist: any non-empty
+// LedgerApplyRequest.skippable_reasons on that action is rejected at
+// admission.
+//
+// Field number 71001 sits in a range outside the taken slots of
+// transitive dependencies (etcd uses 50000-50003, gogoproto uses
+// 62000-65012, google.api uses 72295728+) — collisions in the
+// same-message×same-number key would panic at runtime during package init.
+extend google.protobuf.FieldOptions {
+  repeated common.ErrorReason allowed_skippable_reasons = 71001;
+}
 
 // ============================================================================
 // gRPC Service
@@ -509,9 +530,17 @@ message RevertTransactionPayload {
 }
 
 // LedgerAction represents a single ledger action.
+//
+// Each oneof case MAY carry an `(allowed_skippable_reasons)` annotation
+// (see the extension declaration at the top of this file). Admission
+// consumes the generated whitelist to validate LedgerApplyRequest
+// .skippable_reasons; cases without the annotation reject any non-empty
+// list from the caller.
 message LedgerAction {
   oneof data {
-    CreateTransactionPayload create_transaction = 1;
+    CreateTransactionPayload create_transaction = 1 [
+      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+    ];
     common.SaveMetadataCommand add_metadata = 2;
     RevertTransactionPayload revert_transaction = 3;
     common.DeleteMetadataCommand delete_metadata = 4;
