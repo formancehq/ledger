@@ -35,17 +35,24 @@ func (s *Server) handleListLedgerIndexes(w http.ResponseWriter, r *http.Request)
 
 // handleListBucketIndexes handles GET /indexes to list bucket-wide or
 // cluster-wide indexes. The scope query parameter selects the flavor:
-// "bucket" (default) surfaces only bucket-scoped entries, "all" streams
-// every entry across ledgers.
+// "all" (default, matches the ListIndexesRequest proto default) streams
+// every entry across ledgers; "bucket" surfaces only bucket-scoped
+// entries (empty ledger, e.g. audit indexes). Callers looking for a
+// specific ledger must use the per-ledger route
+// GET /v3/{ledgerName}/indexes.
 func (s *Server) handleListBucketIndexes(w http.ResponseWriter, r *http.Request) {
 	var scope servicepb.ListIndexesRequest_Scope
 	switch r.URL.Query().Get("scope") {
-	case "", "bucket":
-		scope = servicepb.ListIndexesRequest_SCOPE_BUCKET
-	case "all":
+	case "", "all":
 		scope = servicepb.ListIndexesRequest_SCOPE_ALL
+	case "bucket":
+		scope = servicepb.ListIndexesRequest_SCOPE_BUCKET
+	case "ledger":
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("scope=ledger is not supported here — use GET /v3/{ledgerName}/indexes"))
+
+		return
 	default:
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid scope parameter, expected bucket or all"))
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid scope parameter, expected all or bucket"))
 
 		return
 	}

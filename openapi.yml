@@ -2140,13 +2140,15 @@ paths:
 
   /v3/indexes:
     get:
-      summary: List bucket-scoped indexes
+      summary: List bucket-wide indexes
       description: |
         Streams the bucket-scoped index registry. The `scope` query parameter
-        selects the flavor: `bucket` (default) surfaces only bucket-scoped
-        entries (empty ledger); `all` streams every entry across ledgers,
-        skipping orphan entries whose owning ledger no longer exists.
-        Requires `ledger:OpsRead` scope.
+        selects the flavor: `all` (default, matches the ListIndexesRequest
+        proto default) streams every entry across ledgers, skipping orphan
+        entries whose owning ledger no longer exists; `bucket` surfaces only
+        bucket-scoped entries (empty ledger, e.g. audit indexes). Use
+        `GET /v3/{ledgerName}/indexes` for the per-ledger view. Requires
+        `ledger:OpsRead` scope.
       operationId: listBucketIndexes
       tags:
         - Indexes
@@ -2158,8 +2160,8 @@ paths:
           in: query
           schema:
             type: string
-            enum: [bucket, all]
-            default: bucket
+            enum: [all, bucket]
+            default: all
       responses:
         '200':
           description: Indexes retrieved successfully.
@@ -2220,7 +2222,7 @@ paths:
       summary: List indexes for a ledger
       description: |
         Streams the indexes registered on a specific ledger. Requires
-        `ledger:read` scope.
+        `ledger:LedgerRead` scope.
       operationId: listLedgerIndexes
       tags:
         - Indexes
@@ -2255,7 +2257,7 @@ paths:
         Registers a new index on the ledger. The FSM begins the backfill on
         the next apply. The request body carries the target `IndexID` in
         canonical form (see `DELETE /v3/{ledgerName}/indexes/{canonicalId}`
-        for the format). Requires `ledger:write` scope.
+        for the format). Requires `ledger:LedgerWrite` scope.
       operationId: createIndex
       tags:
         - Indexes
@@ -2307,7 +2309,7 @@ paths:
       description: |
         Removes an index from a ledger. The path parameter carries the target
         `IndexID` in canonical form (e.g. `metadata:TARGET_TYPE_ACCOUNT:color`,
-        `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:write` scope.
+        `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:LedgerWrite` scope.
       operationId: dropIndex
       tags:
         - Indexes
