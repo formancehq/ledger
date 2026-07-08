@@ -89,7 +89,7 @@ type Applier struct {
 	gatingTerminated chan gatingResult
 	ch               chan applyWork        // buffered(1); producer-facing input
 	decodedCh        chan decodedApplyWork // buffered(1); read by Run, populated by the decoder goroutine
-	commitCh         chan commitWork       // buffered(1), read by the committer goroutine
+	commitCh         chan commitWork       // buffered(commitChBuffer), read by the committer goroutine
 
 	// pending holds the in-flight commit result channel, if any.
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
@@ -145,6 +145,23 @@ type pendingApplyFuture struct {
 	term   uint64
 	future *futures.Future[state.ApplyResult]
 }
+
+// commitChBuffer is the depth of the applier.main → runCommitter pipeline.
+//
+// Sizing rationale: block/delay profiling on perf-world-to-bank showed
+// ~13% of applier.main's wall-clock spent in runtime.chansend1 on this
+// channel — even though both applier.main and runCommitter had idle CPU.
+// The blocking wasn't a sustained rate imbalance (committer had headroom),
+// but per-batch variance: prepare and commit times fluctuate independently,
+// and buffer=1 makes any variance cause a stall. A depth of 4 absorbs
+// typical variance without letting the queue grow unboundedly if committer
+// falls behind (unbounded growth would just push latency onto FSM wait).
+//
+// Ordering / durability are unaffected: commitCh is FIFO, entries are only
+// marked applied after Pebble commit, and PreparedBatch is self-contained
+// (proven by the fact that buffer=1 has always worked despite applier.main
+// reusing its WriteSet between batches).
+const commitChBuffer = 4
 
 type commitWork struct {
 	prepared *state.PreparedBatch
@@ -208,7 +225,7 @@ func NewApplier(
 		status:                  &initialStatus,
 		ch:                      make(chan applyWork, 1),
 		decodedCh:               make(chan decodedApplyWork, 1),
-		commitCh:                make(chan commitWork, 1),
+		commitCh:                make(chan commitWork, commitChBuffer),
 	}
 
 	var err error
