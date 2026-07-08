@@ -128,6 +128,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/signing-keys", server.handleListSigningKeys)
 				r.Get("/indexes", server.handleListBucketIndexes)
 				r.Get("/indexes/status", server.handleGetIndexStatus)
+				r.Get("/indexes/{canonicalId}", server.handleGetBucketIndex)
+				r.Get("/indexes/{canonicalId}/status", server.handleGetBucketIndexEntryStatus)
 			})
 
 			// Accounts read scope

@@ -2178,6 +2178,87 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /v3/indexes/{canonicalId}:
+    get:
+      summary: Get a single bucket-scoped index registry entry
+      description: |
+        Returns the `Index` registry entry for a bucket-scoped index
+        (`Ledger == ""`, e.g. audit indexes). Ledger-scoped lookups go
+        through `GET /v3/{ledgerName}/indexes/{canonicalId}` — the two
+        keyspaces are distinct so a bucket-scoped lookup with the same
+        canonical will NotFound if only the ledger-scoped entry exists.
+        Requires `ledger:OpsRead` scope.
+      operationId: getBucketIndex
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+      responses:
+        '200':
+          description: Index retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Index (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/indexes/{canonicalId}/status:
+    get:
+      summary: Get the per-replica status of a single bucket-scoped index
+      description: |
+        Returns the `IndexEntry` (registry entry + backfill cursor +
+        per-replica IndexVersionState) for a bucket-scoped index.
+        Requires `ledger:OpsRead` scope.
+      operationId: getBucketIndexEntryStatus
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+      responses:
+        '200':
+          description: Index entry retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: IndexEntry (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /v3/indexes/status:
     get:
       summary: Get aggregated index registry status
