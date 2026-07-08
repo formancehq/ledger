@@ -1035,13 +1035,23 @@ func encodeCursor(b []byte) string {
 }
 
 // GetIndexStatus returns the aggregated index registry status (per-index
-// backfill cursor + per-replica IndexVersionState) exposed on the wire. The
-// snapshot is coherent within a single ReadHandle so the cursor map and the
-// registry iteration observe the same committed state.
+// backfill cursor + per-replica IndexVersionState) exposed on the wire.
+//
+// The response is pinned to two point-in-time views: `handle` is a direct
+// read handle on the primary store used for the registry iteration and the
+// live-ledger set; `readSnap` is a Pebble snapshot on the read index used
+// for LastIndexedSequence, backfill cursors, and per-replica version
+// state. Without the read-index snapshot the backfill map, LastIndexed,
+// and IndexVersionState could each read a different revision as the
+// indexer commits underneath — the response would look coherent on the
+// wire but the numbers would drift within a single call.
 func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
 	ledgerFilter := req.GetLedger()
 
-	lastIndexed, err := ctrl.readStore.LastIndexedSequence()
+	readSnap := ctrl.readStore.NewSnapshot()
+	defer func() { _ = readSnap.Close() }()
+
+	lastIndexed, err := ctrl.readStore.LastIndexedSequenceFrom(readSnap)
 	if err != nil {
 		return nil, fmt.Errorf("reading last indexed sequence: %w", err)
 	}
@@ -1067,7 +1077,7 @@ func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicep
 		fileSize = uint64(info.Size())
 	}
 
-	backfillEntries, err := ctrl.readStore.ListBackfillProgress()
+	backfillEntries, err := ctrl.readStore.ListBackfillProgressFrom(readSnap)
 	if err != nil {
 		return nil, fmt.Errorf("reading backfill progress: %w", err)
 	}
@@ -1146,7 +1156,7 @@ func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicep
 			Cursor: cursors[cursorKey{ledger: name, canonical: canonical}],
 		}
 
-		state, ok, stateErr := ctrl.readStore.ReadIndexVersionState(name, canonical)
+		state, ok, stateErr := readstore.ReadIndexVersionStateFrom(readSnap, name, canonical)
 		if stateErr != nil {
 			ctrl.logger.WithFields(map[string]any{
 				"ledger":    name,
