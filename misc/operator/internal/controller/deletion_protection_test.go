@@ -28,7 +28,7 @@ func TestDeletionProtectionPolicyInstalled(t *testing.T) {
 		binding := &admissionregistrationv1.ValidatingAdmissionPolicyBinding{
 			ObjectMeta: metav1.ObjectMeta{Name: volumeProtectionPVCBindingName},
 		}
-		r := &LedgerServiceReconciler{Clientset: fake.NewClientset(binding)}
+		r := &ClusterReconciler{Clientset: fake.NewClientset(binding)}
 
 		installed, err := r.deletionProtectionPolicyInstalled(context.Background())
 		require.NoError(t, err)
@@ -38,7 +38,7 @@ func TestDeletionProtectionPolicyInstalled(t *testing.T) {
 	t.Run("binding absent", func(t *testing.T) {
 		t.Parallel()
 
-		r := &LedgerServiceReconciler{Clientset: fake.NewClientset()}
+		r := &ClusterReconciler{Clientset: fake.NewClientset()}
 
 		installed, err := r.deletionProtectionPolicyInstalled(context.Background())
 		require.NoError(t, err)
@@ -63,7 +63,7 @@ func TestDeletionProtectionPolicyInstalled(t *testing.T) {
 					Message: "the server could not find the requested resource",
 				}}
 			})
-		r := &LedgerServiceReconciler{Clientset: cs}
+		r := &ClusterReconciler{Clientset: cs}
 
 		installed, err := r.deletionProtectionPolicyInstalled(context.Background())
 		require.NoError(t, err, "a 404 for the unregistered API must not error the reconcile")
@@ -80,7 +80,7 @@ func TestDeletionProtectionPolicyInstalled(t *testing.T) {
 			func(k8stesting.Action) (bool, runtime.Object, error) {
 				return true, nil, apierrors.NewInternalError(assert.AnError)
 			})
-		r := &LedgerServiceReconciler{Clientset: cs}
+		r := &ClusterReconciler{Clientset: cs}
 
 		installed, err := r.deletionProtectionPolicyInstalled(context.Background())
 		require.Error(t, err, "a non-NotFound error must surface, not be treated as not-installed")

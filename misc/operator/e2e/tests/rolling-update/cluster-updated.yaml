@@ -1,0 +1,13 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: roll-svc
+spec:
+  replicas: 1
+  image:
+    repository: ledger
+    tag: e2e
+    pullPolicy: Never
+  extraEnv:
+    - name: E2E_ROLLING_UPDATE_MARKER
+      value: "triggered"

@@ -10,10 +10,10 @@ import (
 	"github.com/pterm/pterm"
 )
 
-// ResolveLedgerServiceName returns the ledger name from args or by interactive selection.
+// ResolveClusterName returns the ledger name from args or by interactive selection.
 // If args contains a name, it is returned directly. Otherwise, lists ledgers in
 // the resolved namespace and prompts the user to select one.
-func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string) (name, namespace string, err error) {
+func ResolveClusterName(ctx context.Context, opts *Options, args []string) (name, namespace string, err error) {
 	ns, err := opts.ResolvedNamespace()
 	if err != nil {
 		return "", "", fmt.Errorf("resolving namespace: %w", err)
@@ -28,11 +28,11 @@ func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string)
 		return "", "", fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerService resources...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Cluster resources...")
 
-	ledgers, err := ListLedgerServices(ctx, crdClient, ns)
+	ledgers, err := ListClusters(ctx, crdClient, ns)
 	if err != nil {
-		spinner.Fail("Failed to list LedgerService resources")
+		spinner.Fail("Failed to list Cluster resources")
 
 		return "", "", fmt.Errorf("listing ledgers: %w", err)
 	}
@@ -40,7 +40,7 @@ func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string)
 	_ = spinner.Stop()
 
 	if len(ledgers.Items) == 0 {
-		return "", "", fmt.Errorf("no LedgerService resources found in namespace %q", ns)
+		return "", "", fmt.Errorf("no Cluster resources found in namespace %q", ns)
 	}
 
 	names := make([]string, len(ledgers.Items))
@@ -56,7 +56,7 @@ func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string)
 
 	selected, err := pterm.DefaultInteractiveSelect.
 		WithOptions(names).
-		WithDefaultText("Select a LedgerService").
+		WithDefaultText("Select a Cluster").
 		Show()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to select ledger: %w", err)
@@ -118,9 +118,9 @@ func ResolveLedgerBackupName(ctx context.Context, opts *Options, args []string) 
 	return selected, ns, nil
 }
 
-// ResolveLedgerClusterAgentName returns the LedgerClusterAgent name from args
-// or by interactive selection. LedgerClusterAgent is cluster-scoped so no namespace needed.
-func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []string) (string, error) {
+// ResolveCredentialsName returns the Credentials name from args
+// or by interactive selection. Credentials is cluster-scoped so no namespace needed.
+func ResolveCredentialsName(ctx context.Context, opts *Options, args []string) (string, error) {
 	if len(args) > 0 {
 		return args[0], nil
 	}
@@ -130,38 +130,38 @@ func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []st
 		return "", fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerClusterAgent resources...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Credentials resources...")
 
-	agents, err := ListLedgerClusterAgents(ctx, crdClient)
+	credentials, err := ListCredentials(ctx, crdClient)
 	if err != nil {
-		spinner.Fail("Failed to list LedgerClusterAgent resources")
+		spinner.Fail("Failed to list Credentials resources")
 
-		return "", fmt.Errorf("listing agents: %w", err)
+		return "", fmt.Errorf("listing credentials: %w", err)
 	}
 
 	_ = spinner.Stop()
 
-	if len(agents.Items) == 0 {
-		return "", errors.New("no LedgerClusterAgent resources found")
+	if len(credentials.Items) == 0 {
+		return "", errors.New("no Credentials resources found")
 	}
 
-	names := make([]string, len(agents.Items))
-	for i := range agents.Items {
-		names[i] = agents.Items[i].Name
+	names := make([]string, len(credentials.Items))
+	for i := range credentials.Items {
+		names[i] = credentials.Items[i].Name
 	}
 
 	if len(names) == 1 {
-		pterm.Info.Printfln("Using agent: %s", pterm.Cyan(names[0]))
+		pterm.Info.Printfln("Using credentials: %s", pterm.Cyan(names[0]))
 
 		return names[0], nil
 	}
 
 	selected, err := pterm.DefaultInteractiveSelect.
 		WithOptions(names).
-		WithDefaultText("Select a LedgerClusterAgent").
+		WithDefaultText("Select a Credentials").
 		Show()
 	if err != nil {
-		return "", fmt.Errorf("failed to select agent: %w", err)
+		return "", fmt.Errorf("failed to select credentials: %w", err)
 	}
 
 	return selected, nil

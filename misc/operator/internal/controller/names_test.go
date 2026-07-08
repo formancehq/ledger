@@ -43,13 +43,13 @@ func TestScaleDownPodNameMatchesStatefulSet(t *testing.T) {
 }
 
 func TestServiceAccountName(t *testing.T) {
-	defaulted := &ledgerv1alpha1.LedgerService{}
+	defaulted := &ledgerv1alpha1.Cluster{}
 	defaulted.Name = "foo"
 	if got := serviceAccountName(defaulted); got != "ledger-foo" {
 		t.Errorf("default serviceAccountName = %q, want %q", got, "ledger-foo")
 	}
 
-	overridden := &ledgerv1alpha1.LedgerService{}
+	overridden := &ledgerv1alpha1.Cluster{}
 	overridden.Name = "foo"
 	overridden.Spec.ServiceAccount.Name = "custom-sa"
 	if got := serviceAccountName(overridden); got != "custom-sa" {
@@ -78,20 +78,20 @@ func TestBootstrapDNSConsistency(t *testing.T) {
 }
 
 // TestCrossCRDPodNameConsistency guards that the Ledger CRD controller and the
-// LedgerService reconciler agree on pod names: the Ledger controller dials
-// podName(ServiceRef, 0) while the LedgerService reconciler creates pods via
+// Cluster reconciler agree on pod names: the Ledger controller dials
+// podName(ServiceRef, 0) while the Cluster reconciler creates pods via
 // the same helper. A divergence would cause the dial to target a non-existent
 // pod.
 func TestCrossCRDPodNameConsistency(t *testing.T) {
 	serviceRef := "foo"
-	// LedgerService reconciler names StatefulSet pods via podName.
-	ledgerServicePod0 := podName(serviceRef, 0)
+	// Cluster reconciler names StatefulSet pods via podName.
+	clusterPod0 := podName(serviceRef, 0)
 	// Ledger CRD controller dials the same pod via podName(ServiceRef, 0).
 	ledgerCRDDialTarget := podName(serviceRef, 0)
-	if ledgerServicePod0 != ledgerCRDDialTarget {
-		t.Fatalf("cross-CRD pod-0 mismatch: %q vs %q", ledgerServicePod0, ledgerCRDDialTarget)
+	if clusterPod0 != ledgerCRDDialTarget {
+		t.Fatalf("cross-CRD pod-0 mismatch: %q vs %q", clusterPod0, ledgerCRDDialTarget)
 	}
-	if ledgerServicePod0 != "ledger-foo-0" {
-		t.Fatalf("pod-0 = %q, want ledger-foo-0", ledgerServicePod0)
+	if clusterPod0 != "ledger-foo-0" {
+		t.Fatalf("pod-0 = %q, want ledger-foo-0", clusterPod0)
 	}
 }

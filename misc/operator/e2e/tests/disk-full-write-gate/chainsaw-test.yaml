@@ -19,11 +19,11 @@ spec:
               '
             timeout: 30s
 
-    # 2. Deploy the 1-replica LedgerService and wait for it to be Ready.
-    - name: Deploy LedgerService
+    # 2. Deploy the 1-replica Cluster and wait for it to be Ready.
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -156,6 +156,6 @@ spec:
   cleanup:
     - script:
         content: |
-          kubectl delete ledgerservice disk-gate -n $NAMESPACE --ignore-not-found=true
+          kubectl delete cluster disk-gate -n $NAMESPACE --ignore-not-found=true
           docker exec ledger-e2e-control-plane sh -c 'umount /mnt/tiny-data 2>/dev/null || true'
         timeout: 60s

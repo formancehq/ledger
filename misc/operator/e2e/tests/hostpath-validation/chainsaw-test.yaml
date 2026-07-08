@@ -9,18 +9,18 @@ spec:
     - name: HostPath with storageClass should fail validation
       try:
         - apply:
-            file: ledgerservice-invalid.yaml
+            file: cluster-invalid.yaml
         - assert:
             file: assert-degraded.yaml
 
     - name: Fix config by removing storageClass conflict
       try:
         - apply:
-            file: ledgerservice-fixed.yaml
+            file: cluster-fixed.yaml
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: hp-val
               status:

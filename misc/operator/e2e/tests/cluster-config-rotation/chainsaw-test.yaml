@@ -6,11 +6,11 @@ spec:
   timeouts:
     assert: 5m
   steps:
-    # 1. Deploy LedgerService with initial cache + bloom configuration.
-    - name: Deploy LedgerService
+    # 1. Deploy Cluster with initial cache + bloom configuration.
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -52,7 +52,7 @@ spec:
     - name: Apply updated config
       try:
         - apply:
-            file: ledgerservice-updated.yaml
+            file: cluster-updated.yaml
         - assert:
             resource:
               apiVersion: apps/v1

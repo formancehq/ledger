@@ -23,11 +23,11 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// LedgerServiceGVR is the GroupVersionResource for the LedgerService CRD.
-var LedgerServiceGVR = schema.GroupVersionResource{
+// ClusterGVR is the GroupVersionResource for the Cluster CRD.
+var ClusterGVR = schema.GroupVersionResource{
 	Group:    "ledger.formance.com",
 	Version:  "v1alpha1",
-	Resource: "ledgerservices",
+	Resource: "clusters",
 }
 
 // OddReplicas are the valid replica counts (always odd, min 3, max 7).
@@ -63,15 +63,15 @@ func NewKubeClientset() (kubernetes.Interface, error) {
 	return clientset, nil
 }
 
-// LedgerServiceName is the LedgerService CR name used in the Antithesis k8s
-// manifests (tests/antithesis/k8s/ledgerservice.yaml). It is also the value of
+// ClusterName is the Cluster CR name used in the Antithesis k8s
+// manifests (tests/antithesis/k8s/cluster.yaml). It is also the value of
 // the app.kubernetes.io/instance label the operator stamps on owned resources.
 //
 // The operator-created StatefulSet, pods, and other resources are NOT named
 // after the CR directly — the operator prefixes them with "ledger-" (see
 // misc/operator/internal/controller/names.go). Use LedgerStatefulSetName /
 // LedgerPodName when addressing those resources by name.
-const LedgerServiceName = "ledger"
+const ClusterName = "ledger"
 
 // resourcePrefix mirrors misc/operator/internal/controller/names.go: the
 // operator prepends this string to every Kubernetes resource it creates so
@@ -81,13 +81,13 @@ const LedgerServiceName = "ledger"
 const resourcePrefix = "ledger-"
 
 // LedgerStatefulSetName returns the StatefulSet name the operator creates for
-// the LedgerService CR. It is also the prefix every pod and PVC name shares.
+// the Cluster CR. It is also the prefix every pod and PVC name shares.
 func LedgerStatefulSetName() string {
-	return resourcePrefix + LedgerServiceName
+	return resourcePrefix + ClusterName
 }
 
-// LedgerServiceNamespace returns the namespace to use, from POD_NAMESPACE env or "default".
-func LedgerServiceNamespace() string {
+// ClusterNamespace returns the namespace to use, from POD_NAMESPACE env or "default".
+func ClusterNamespace() string {
 	if ns := os.Getenv("POD_NAMESPACE"); ns != "" {
 		return ns
 	}
@@ -95,7 +95,7 @@ func LedgerServiceNamespace() string {
 	return "default"
 }
 
-// GetCurrentReplicas reads the current replica count from the LedgerService CR.
+// GetCurrentReplicas reads the current replica count from the Cluster CR.
 func GetCurrentReplicas(ctx context.Context, lsClient dynamic.ResourceInterface, name string) (int64, error) {
 	obj, err := lsClient.Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -110,7 +110,7 @@ func GetCurrentReplicas(ctx context.Context, lsClient dynamic.ResourceInterface,
 	return replicas, nil
 }
 
-// PatchReplicas patches the LedgerService replica count.
+// PatchReplicas patches the Cluster replica count.
 func PatchReplicas(ctx context.Context, lsClient dynamic.ResourceInterface, name string, replicas int64) error {
 	patch := []byte(fmt.Sprintf(`{"spec":{"replicas":%d}}`, replicas))
 	_, err := lsClient.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
@@ -236,8 +236,8 @@ func PodOrdinal(podName string) int {
 
 // ListLedgerPods returns the names of ledger pods sorted by ordinal.
 func ListLedgerPods(ctx context.Context, clientset kubernetes.Interface) ([]string, error) {
-	pods, err := clientset.CoreV1().Pods(LedgerServiceNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: "app.kubernetes.io/instance=" + LedgerServiceName,
+	pods, err := clientset.CoreV1().Pods(ClusterNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: "app.kubernetes.io/instance=" + ClusterName,
 	})
 	if err != nil {
 		return nil, err
@@ -258,7 +258,7 @@ func ListLedgerPods(ctx context.Context, clientset kubernetes.Interface) ([]stri
 // quickly. Suitable for fault-injection scenarios; not for graceful shutdowns.
 func DeletePod(ctx context.Context, clientset kubernetes.Interface, name string) error {
 	zero := int64(0)
-	return clientset.CoreV1().Pods(LedgerServiceNamespace()).Delete(ctx, name, metav1.DeleteOptions{
+	return clientset.CoreV1().Pods(ClusterNamespace()).Delete(ctx, name, metav1.DeleteOptions{
 		GracePeriodSeconds: &zero,
 	})
 }
@@ -275,7 +275,7 @@ func WaitForPodGone(ctx context.Context, clientset kubernetes.Interface, name st
 			return false
 		case <-time.After(2 * time.Second):
 		}
-		pod, err := clientset.CoreV1().Pods(LedgerServiceNamespace()).Get(ctx, name, metav1.GetOptions{})
+		pod, err := clientset.CoreV1().Pods(ClusterNamespace()).Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return true
 		}
@@ -296,7 +296,7 @@ func WaitForPodReady(ctx context.Context, clientset kubernetes.Interface, name s
 			return false
 		case <-time.After(2 * time.Second):
 		}
-		pod, err := clientset.CoreV1().Pods(LedgerServiceNamespace()).Get(ctx, name, metav1.GetOptions{})
+		pod, err := clientset.CoreV1().Pods(ClusterNamespace()).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			continue
 		}
@@ -328,11 +328,11 @@ func WaitForStatefulSetReady(ctx context.Context, clientset kubernetes.Interface
 			return false
 		case <-time.After(2 * time.Second):
 		}
-		sts, err := clientset.AppsV1().StatefulSets(LedgerServiceNamespace()).Get(ctx, name, metav1.GetOptions{})
+		sts, err := clientset.AppsV1().StatefulSets(ClusterNamespace()).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) && !seen {
 				log.Printf("WaitForStatefulSetReady: StatefulSet %q not found in namespace %q — wrong name?",
-					name, LedgerServiceNamespace())
+					name, ClusterNamespace())
 
 				return false
 			}
@@ -348,7 +348,7 @@ func WaitForStatefulSetReady(ctx context.Context, clientset kubernetes.Interface
 
 // GetPodUID returns the UID of the named pod, or "" if not found.
 func GetPodUID(ctx context.Context, clientset kubernetes.Interface, name string) (types.UID, error) {
-	pod, err := clientset.CoreV1().Pods(LedgerServiceNamespace()).Get(ctx, name, metav1.GetOptions{})
+	pod, err := clientset.CoreV1().Pods(ClusterNamespace()).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}

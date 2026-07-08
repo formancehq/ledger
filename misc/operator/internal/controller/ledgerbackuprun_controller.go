@@ -80,12 +80,12 @@ func (r *LedgerBackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("LedgerBackup %q not found: %v", run.Spec.BackupRef, err))
 	}
 
-	var ledgerService ledgerv1alpha1.LedgerService
+	var cluster ledgerv1alpha1.Cluster
 	if err := r.Get(ctx, types.NamespacedName{
 		Name:      backup.Spec.ServiceRef,
 		Namespace: backup.Namespace,
-	}, &ledgerService); err != nil {
-		return r.setRunFailed(ctx, &run, fmt.Sprintf("LedgerService %q not found: %v", backup.Spec.ServiceRef, err))
+	}, &cluster); err != nil {
+		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ServiceRef, err))
 	}
 
 	// Forbid concurrency: any sibling already Running blocks this one.
@@ -104,7 +104,7 @@ func (r *LedgerBackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Ensure the backing Job exists.
-	job, err := r.ensureBackupJob(ctx, &run, &backup, &ledgerService)
+	job, err := r.ensureBackupJob(ctx, &run, &backup, &cluster)
 	if err != nil {
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("provisioning backup Job: %v", err))
 	}
@@ -141,7 +141,7 @@ func (r *LedgerBackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Success: parse the JSON summary from the pod logs and lift it onto status.
-	if err := r.applyJobResult(ctx, &run, &ledgerService, job); err != nil {
+	if err := r.applyJobResult(ctx, &run, &cluster, job); err != nil {
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("reading backup result: %v", err))
 	}
 
@@ -168,7 +168,7 @@ func (r *LedgerBackupRunReconciler) ensureBackupJob(
 	ctx context.Context,
 	run *ledgerv1alpha1.LedgerBackupRun,
 	backup *ledgerv1alpha1.LedgerBackup,
-	ls *ledgerv1alpha1.LedgerService,
+	ls *ledgerv1alpha1.Cluster,
 ) (*batchv1.Job, error) {
 	existing := &batchv1.Job{}
 	err := r.Get(ctx, types.NamespacedName{Name: backupJobName(run), Namespace: run.Namespace}, existing)
@@ -182,7 +182,7 @@ func (r *LedgerBackupRunReconciler) ensureBackupJob(
 
 	tlsMode, err := fetchTLSMode(ctx, r.Client, ls.Namespace, resourceName(ls.Name))
 	if err != nil {
-		return nil, fmt.Errorf("resolving TLS mode for LedgerService %q: %w", ls.Name, err)
+		return nil, fmt.Errorf("resolving TLS mode for Cluster %q: %w", ls.Name, err)
 	}
 
 	desired, err := buildBackupJob(run, backup, ls, tlsMode)
@@ -211,7 +211,7 @@ func (r *LedgerBackupRunReconciler) ensureBackupJob(
 func (r *LedgerBackupRunReconciler) applyJobResult(
 	ctx context.Context,
 	run *ledgerv1alpha1.LedgerBackupRun,
-	_ *ledgerv1alpha1.LedgerService,
+	_ *ledgerv1alpha1.Cluster,
 	job *batchv1.Job,
 ) error {
 	payload, err := fetchJobResultPayload(ctx, r.Clientset, job.Namespace, job.Name)

@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLedgerServicePodName verifies pod names route through the resource prefix,
+// TestClusterPodName verifies pod names route through the resource prefix,
 // matching the operator's "ledger-<cr>-<ordinal>" StatefulSet pod naming (EN-1319).
-func TestLedgerServicePodName(t *testing.T) {
+func TestClusterPodName(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -26,7 +26,7 @@ func TestLedgerServicePodName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tt.expected, LedgerServicePodName(tt.crName, tt.ordinal))
+			require.Equal(t, tt.expected, ClusterPodName(tt.crName, tt.ordinal))
 		})
 	}
 }

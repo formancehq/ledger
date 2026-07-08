@@ -75,7 +75,7 @@ func podExec(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interfa
 // configured accordingly so its connection matches what the pod's gRPC server
 // expects.
 func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
-	ledger *ledgerv1alpha1.LedgerService, currentReplicas, desiredReplicas int32, tlsMode string,
+	ledger *ledgerv1alpha1.Cluster, currentReplicas, desiredReplicas int32, tlsMode string,
 ) error {
 	logger := log.FromContext(ctx)
 	grpcPort := ledger.Spec.GrpcPort

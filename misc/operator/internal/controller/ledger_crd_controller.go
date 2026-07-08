@@ -26,27 +26,27 @@ import (
 )
 
 const (
-	ledgerFinalizer       = "ledger.formance.com/finalizer"
-	ledgerServiceGRPCPort = 8888
-	ledgerContainer       = "ledger"
-	ledgerExecTimeout     = 5 * time.Second
-	ledgerRequeueDelay    = 15 * time.Second
+	ledgerFinalizer    = "ledger.formance.com/finalizer"
+	clusterGRPCPort    = 8888
+	ledgerContainer    = "ledger"
+	ledgerExecTimeout  = 5 * time.Second
+	ledgerRequeueDelay = 15 * time.Second
 
 	conditionEndpointResolved = "EndpointResolved"
 	conditionLedgerSynced     = "LedgerSynced"
 	conditionSpecDrifted      = "SpecDrifted"
 )
 
-var ledgerServiceGVR = schema.GroupVersionResource{
+var clusterGVR = schema.GroupVersionResource{
 	Group:    "ledger.formance.com",
 	Version:  "v1alpha1",
-	Resource: "ledgerservices",
+	Resource: "clusters",
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers/finalizers,verbs=update
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 
@@ -100,11 +100,11 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return r.reconcileReady(ctx, &ledger)
 	}
 
-	// Resolve LedgerService endpoint.
+	// Resolve Cluster endpoint.
 	grpcPort, err := r.resolveEndpoint(ctx, &ledger)
 	if err != nil {
 		ledger.Status.Phase = ledgerv1alpha1.LedgerPhasePending
-		ledger.Status.Message = fmt.Sprintf("waiting for LedgerService: %v", err)
+		ledger.Status.Message = fmt.Sprintf("waiting for Cluster: %v", err)
 
 		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
 	}
@@ -202,7 +202,7 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 
 	grpcPort, err := r.resolveEndpoint(ctx, ledger)
 	if err != nil {
-		ledger.Status.Message = fmt.Sprintf("waiting for LedgerService for promotion: %v", err)
+		ledger.Status.Message = fmt.Sprintf("waiting for Cluster for promotion: %v", err)
 
 		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
 	}
@@ -276,21 +276,21 @@ func (r *LedgerReconciler) reconcileDelete(ctx context.Context, ledger *ledgerv1
 	return ctrl.Result{}, nil
 }
 
-// resolveEndpoint resolves the gRPC port and verifies the LedgerService is Running.
+// resolveEndpoint resolves the gRPC port and verifies the Cluster is Running.
 // Sets the EndpointResolved condition accordingly.
 func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1alpha1.Ledger) (int32, error) {
-	ls, err := r.Dynamic.Resource(ledgerServiceGVR).Namespace(ledger.Namespace).Get(
+	ls, err := r.Dynamic.Resource(clusterGVR).Namespace(ledger.Namespace).Get(
 		ctx, ledger.Spec.ServiceRef, metav1.GetOptions{})
 	if err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionEndpointResolved,
 			Status:             metav1.ConditionFalse,
-			Reason:             "LedgerServiceNotFound",
-			Message:            fmt.Sprintf("LedgerService %q not found: %v", ledger.Spec.ServiceRef, err),
+			Reason:             "ClusterNotFound",
+			Message:            fmt.Sprintf("Cluster %q not found: %v", ledger.Spec.ServiceRef, err),
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return 0, fmt.Errorf("get LedgerService %q: %w", ledger.Spec.ServiceRef, err)
+		return 0, fmt.Errorf("get Cluster %q: %w", ledger.Spec.ServiceRef, err)
 	}
 
 	phase, _, _ := nestedFieldNoCopy(ls.Object, "status", "phase")
@@ -298,17 +298,17 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionEndpointResolved,
 			Status:             metav1.ConditionFalse,
-			Reason:             "LedgerServiceNotReady",
-			Message:            fmt.Sprintf("LedgerService %q is not Running (phase: %v)", ledger.Spec.ServiceRef, phase),
+			Reason:             "ClusterNotReady",
+			Message:            fmt.Sprintf("Cluster %q is not Running (phase: %v)", ledger.Spec.ServiceRef, phase),
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return 0, fmt.Errorf("LedgerService %q is not Running", ledger.Spec.ServiceRef)
+		return 0, fmt.Errorf("cluster %q is not Running", ledger.Spec.ServiceRef)
 	}
 
 	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")
 	if err != nil || !found || port == 0 {
-		port = ledgerServiceGRPCPort
+		port = clusterGRPCPort
 	}
 
 	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -468,7 +468,7 @@ func (r *LedgerReconciler) readSecretKey(ctx context.Context, namespace, name, k
 	return string(data), nil
 }
 
-// ledgerctlExec runs a ledgerctl command inside pod-0 of the LedgerService
+// ledgerctlExec runs a ledgerctl command inside pod-0 of the Cluster
 // StatefulSet. It resolves the TLS_MODE from the StatefulSet env so that
 // ledgerctl negotiates the same transport (plaintext or TLS) as the running
 // gRPC server expects — a mismatch surfaces as "error reading server preface".
@@ -477,7 +477,7 @@ func (r *LedgerReconciler) readSecretKey(ctx context.Context, namespace, name, k
 func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, namespace, serviceName, pod string, grpcPort int32, args ...string) error {
 	tlsMode, err := fetchTLSMode(ctx, r.Client, namespace, resourceName(serviceName))
 	if err != nil {
-		return fmt.Errorf("resolving TLS mode for LedgerService %q: %w", serviceName, err)
+		return fmt.Errorf("resolving TLS mode for Cluster %q: %w", serviceName, err)
 	}
 
 	serverAddr := podSelfServerAddr(headlessServiceName(serviceName), grpcPort)
@@ -490,16 +490,16 @@ func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, namespace, service
 	return nil
 }
 
-// resolveGRPCPort reads the gRPC port from the LedgerService spec (defaults to 8888).
+// resolveGRPCPort reads the gRPC port from the Cluster spec (defaults to 8888).
 func (r *LedgerReconciler) resolveGRPCPort(ctx context.Context, namespace, serviceRef string) (int32, error) {
-	ls, err := r.Dynamic.Resource(ledgerServiceGVR).Namespace(namespace).Get(ctx, serviceRef, metav1.GetOptions{})
+	ls, err := r.Dynamic.Resource(clusterGVR).Namespace(namespace).Get(ctx, serviceRef, metav1.GetOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("get LedgerService %q: %w", serviceRef, err)
+		return 0, fmt.Errorf("get Cluster %q: %w", serviceRef, err)
 	}
 
 	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")
 	if err != nil || !found || port == 0 {
-		return ledgerServiceGRPCPort, nil
+		return clusterGRPCPort, nil
 	}
 
 	return int32(port), nil

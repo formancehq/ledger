@@ -4,7 +4,7 @@
 // immediately scale-down (or vice-versa) before the Raft cluster has converged.
 //
 // The driver works in two alternating phases:
-//  1. Chaos phase: rapidly patch the LedgerService replica count 2-4 times
+//  1. Chaos phase: rapidly patch the Cluster replica count 2-4 times
 //     with random odd values [3,5,7], sleeping only a few seconds between
 //     patches — not enough time for the operator to finish reconciliation.
 //  2. Recovery phase: stop patching and wait for the cluster to converge to
@@ -49,7 +49,7 @@ func main() {
 	defer conn.Close()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
-	lsClient := dynClient.Resource(internal.LedgerServiceGVR).Namespace(internal.LedgerServiceNamespace())
+	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	for {
 		select {

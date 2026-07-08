@@ -7,7 +7,7 @@
 //
 // For each cycle, the driver:
 //  1. Pre-commits a sentinel transaction.
-//  2. Patches one config field on the LedgerService CR (the operator rolls the
+//  2. Patches one config field on the Cluster CR (the operator rolls the
 //     StatefulSet pod template, which carries the new env vars).
 //  3. Waits for the StatefulSet to become Ready again.
 //  4. Polls the leader's ClusterConfig until the new value is observed —
@@ -82,7 +82,7 @@ func main() {
 	defer conn.Close()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
-	lsClient := dynClient.Resource(internal.LedgerServiceGVR).Namespace(internal.LedgerServiceNamespace())
+	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	if err := internal.CreateLedger(ctx, client, ccSentinelLedger); err != nil && !internal.IsTransient(err) {
 		log.Printf("cannot create sentinel ledger: %s", err)
@@ -131,7 +131,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	case <-time.After(ccPatchSleep):
 	}
 
-	currentReplicas, err := internal.GetCurrentReplicas(ctx, lsClient, internal.LedgerServiceName)
+	currentReplicas, err := internal.GetCurrentReplicas(ctx, lsClient, internal.ClusterName)
 	if err != nil {
 		log.Printf("config-change: cannot read current replicas: %s", err)
 		return
@@ -175,7 +175,7 @@ func pickChange(r *rand.Rand) configChange {
 			category: "cache",
 			value:    v,
 			apply: func(ctx context.Context, lsClient dynamic.ResourceInterface) error {
-				return internal.PatchCacheRotationThreshold(ctx, lsClient, internal.LedgerServiceName, v)
+				return internal.PatchCacheRotationThreshold(ctx, lsClient, internal.ClusterName, v)
 			},
 			predicate: func(cfg *commonpb.ClusterConfig) bool {
 				return cfg.GetRotationThreshold() == uint64(v)
@@ -189,7 +189,7 @@ func pickChange(r *rand.Rand) configChange {
 			category: cat,
 			value:    v,
 			apply: func(ctx context.Context, lsClient dynamic.ResourceInterface) error {
-				return internal.PatchBloomExpectedKeys(ctx, lsClient, internal.LedgerServiceName, cat, v)
+				return internal.PatchBloomExpectedKeys(ctx, lsClient, internal.ClusterName, cat, v)
 			},
 			predicate: bloomKeysPredicate(cat, uint64(v)),
 		}
@@ -201,7 +201,7 @@ func pickChange(r *rand.Rand) configChange {
 			category: cat,
 			value:    v,
 			apply: func(ctx context.Context, lsClient dynamic.ResourceInterface) error {
-				return internal.PatchBloomFPRate(ctx, lsClient, internal.LedgerServiceName, cat, v)
+				return internal.PatchBloomFPRate(ctx, lsClient, internal.ClusterName, cat, v)
 			},
 			predicate: bloomFPRatePredicate(cat, v),
 		}

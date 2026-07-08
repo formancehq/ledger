@@ -12,7 +12,7 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-// PhaseColor returns a colored string for the given LedgerService phase.
+// PhaseColor returns a colored string for the given Cluster phase.
 func PhaseColor(phase string) string {
 	switch phase {
 	case "Running":

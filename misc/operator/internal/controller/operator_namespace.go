@@ -14,8 +14,8 @@ const serviceAccountNamespacePath = "/var/run/secrets/kubernetes.io/serviceaccou
 
 // DiscoverOperatorNamespace resolves the namespace the operator is running in,
 // used to place cluster-scoped resources whose canonical location must be
-// stable across the lifecycle of any LedgerService or LedgerClusterAgent (e.g.
-// per-agent canonical seed Secrets). Resolution order:
+// stable across the lifecycle of any Cluster or Credentials (e.g.
+// per-credentials canonical seed Secrets). Resolution order:
 //
 //  1. POD_NAMESPACE env var (downward API — preferred, easy to inject and mock).
 //  2. In-cluster ServiceAccount namespace file (default in every pod).

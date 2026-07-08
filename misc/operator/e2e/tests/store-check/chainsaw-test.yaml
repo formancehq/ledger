@@ -6,10 +6,10 @@ spec:
   timeouts:
     assert: 5m
   steps:
-    - name: Deploy LedgerService
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1

@@ -65,9 +65,9 @@ func TestLookupNestedPath(t *testing.T) {
 func TestAgentSpecFields(t *testing.T) {
 	t.Parallel()
 
-	fields := LedgerClusterAgentSpecFields()
+	fields := CredentialsSpecFields()
 	if len(fields) == 0 {
-		t.Fatal("LedgerClusterAgentSpecFields() returned no fields")
+		t.Fatal("CredentialsSpecFields() returned no fields")
 	}
 
 	found := false
@@ -79,6 +79,6 @@ func TestAgentSpecFields(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("scopes field not found in LedgerClusterAgentSpecFields()")
+		t.Error("scopes field not found in CredentialsSpecFields()")
 	}
 }

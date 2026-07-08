@@ -14,7 +14,7 @@ func TestSelectorLabels(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		spec     ledgerv1alpha1.LedgerServiceSpec
+		spec     ledgerv1alpha1.ClusterSpec
 		instance string
 		want     map[string]string
 	}{
@@ -29,7 +29,7 @@ func TestSelectorLabels(t *testing.T) {
 		{
 			name:     "additive labels merged in",
 			instance: "my-ledger",
-			spec: ledgerv1alpha1.LedgerServiceSpec{
+			spec: ledgerv1alpha1.ClusterSpec{
 				AdditionalLabels: map[string]string{
 					"app.formance.com/service": "ledger-v3",
 					"team":                     "platform",
@@ -45,7 +45,7 @@ func TestSelectorLabels(t *testing.T) {
 		{
 			name:     "additional labels override the default name",
 			instance: "my-ledger",
-			spec: ledgerv1alpha1.LedgerServiceSpec{
+			spec: ledgerv1alpha1.ClusterSpec{
 				AdditionalLabels: map[string]string{
 					"app.kubernetes.io/name": "ledger-v3",
 				},
@@ -62,7 +62,7 @@ func TestSelectorLabels(t *testing.T) {
 			// #578).
 			name:     "managed-by in additionalLabels is dropped from selector",
 			instance: "my-ledger",
-			spec: ledgerv1alpha1.LedgerServiceSpec{
+			spec: ledgerv1alpha1.ClusterSpec{
 				AdditionalLabels: map[string]string{
 					"app.kubernetes.io/managed-by": "evil",
 					"app.formance.com/service":     "ledger-v3",
@@ -80,7 +80,7 @@ func TestSelectorLabels(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ls := &ledgerv1alpha1.LedgerService{
+			ls := &ledgerv1alpha1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: tt.instance},
 				Spec:       tt.spec,
 			}
@@ -92,9 +92,9 @@ func TestSelectorLabels(t *testing.T) {
 func TestCommonLabels_ManagedByIsNotOverridable(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-ledger"},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			AdditionalLabels: map[string]string{
 				// User tries to hijack ownership tracking; we ignore it.
 				"app.kubernetes.io/managed-by": "evil",

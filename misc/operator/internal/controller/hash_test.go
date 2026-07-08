@@ -11,7 +11,7 @@ import (
 func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	t.Parallel()
 
-	base := &ledgerv1alpha1.LedgerServiceSpec{
+	base := &ledgerv1alpha1.ClusterSpec{
 		DataDir: "/data",
 	}
 	baseHash := computeSpecHash(base)
@@ -53,7 +53,7 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 func TestComputeSpecHash_IncludesPodFields(t *testing.T) {
 	t.Parallel()
 
-	base := &ledgerv1alpha1.LedgerServiceSpec{
+	base := &ledgerv1alpha1.ClusterSpec{
 		DataDir: "/data",
 	}
 	baseHash := computeSpecHash(base)

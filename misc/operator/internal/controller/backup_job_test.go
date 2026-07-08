@@ -18,21 +18,21 @@ func TestBackupServerAddr(t *testing.T) {
 
 	tests := []struct {
 		name string
-		ls   *ledgerv1alpha1.LedgerService
+		ls   *ledgerv1alpha1.Cluster
 		want string
 	}{
 		{
 			name: "default port",
-			ls: &ledgerv1alpha1.LedgerService{
+			ls: &ledgerv1alpha1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-v3"},
 			},
 			want: "ledger-ledger.ledger-v3.svc.cluster.local:8888",
 		},
 		{
 			name: "custom port",
-			ls: &ledgerv1alpha1.LedgerService{
+			ls: &ledgerv1alpha1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "lgr", Namespace: "ns"},
-				Spec:       ledgerv1alpha1.LedgerServiceSpec{GrpcPort: 9999},
+				Spec:       ledgerv1alpha1.ClusterSpec{GrpcPort: 9999},
 			},
 			want: "ledger-lgr.ns.svc.cluster.local:9999",
 		},
@@ -48,9 +48,9 @@ func TestBackupServerAddr(t *testing.T) {
 func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-v3"},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "v0.0.8"},
 			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
 		},
@@ -141,9 +141,9 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerServiceSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
+		Spec:       ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
 	}
 	backup := &ledgerv1alpha1.LedgerBackup{
 		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
@@ -165,9 +165,9 @@ func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
 func TestBuildBackupJob_Incremental(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerServiceSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "repo", Tag: "tag"}},
+		Spec:       ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "repo", Tag: "tag"}},
 	}
 	backup := &ledgerv1alpha1.LedgerBackup{
 		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
@@ -191,7 +191,7 @@ func TestBuildBackupJob_Incremental(t *testing.T) {
 func TestBuildBackupJob_UnknownType(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"}}
+	ls := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"}}
 	backup := &ledgerv1alpha1.LedgerBackup{ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"}}
 	run := &ledgerv1alpha1.LedgerBackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
@@ -205,9 +205,9 @@ func TestBuildBackupJob_UnknownType(t *testing.T) {
 func TestBuildBackupJob_Timeout(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerServiceSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
+		Spec:       ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
 	}
 	run := &ledgerv1alpha1.LedgerBackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
@@ -448,9 +448,9 @@ func TestTerminatedMessage(t *testing.T) {
 func TestBuildBackupJob_DeclaresTerminationMessagePath(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerServiceSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
+		Spec:       ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
 	}
 	backup := &ledgerv1alpha1.LedgerBackup{
 		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},

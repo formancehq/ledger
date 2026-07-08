@@ -15,7 +15,7 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-func TestBackupReconcile_MissingLedgerService(t *testing.T) {
+func TestBackupReconcile_MissingCluster(t *testing.T) {
 	ns := createTestNamespace(t)
 
 	backup := newLedgerBackup("bk-missing", ns, "nonexistent-service")
@@ -27,7 +27,7 @@ func TestBackupReconcile_MissingLedgerService(t *testing.T) {
 			return false
 		}
 		return got.Status.Phase == ledgerv1alpha1.BackupPhaseFailed
-	}, "backup should fail when LedgerService does not exist")
+	}, "backup should fail when Cluster does not exist")
 
 	var got ledgerv1alpha1.LedgerBackup
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "bk-missing", Namespace: ns}, &got))
@@ -37,7 +37,7 @@ func TestBackupReconcile_MissingLedgerService(t *testing.T) {
 func TestBackupReconcile_InvalidSchedule(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newLedgerService("bk-svc", ns)
+	ls := newCluster("bk-svc", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	backup := newLedgerBackup("bk-invalid-sched", ns, "bk-svc")
@@ -64,7 +64,7 @@ func TestBackupReconcile_InvalidSchedule(t *testing.T) {
 func TestBackupReconcile_NoScheduleAllowed(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newLedgerService("bk-svc2", ns)
+	ls := newCluster("bk-svc2", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	backup := newLedgerBackup("bk-no-sched", ns, "bk-svc2")
@@ -87,7 +87,7 @@ func TestBackupReconcile_NoScheduleAllowed(t *testing.T) {
 func TestBackupReconcile_ScheduleCreatesFullRun(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newLedgerService("bk-svc-sched", ns)
+	ls := newCluster("bk-svc-sched", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	backup := newLedgerBackup("bk-sched", ns, "bk-svc-sched")
@@ -133,7 +133,7 @@ func TestBackupReconcile_ScheduleCreatesFullRun(t *testing.T) {
 func TestBackupReconcile_RetentionPolicy(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newLedgerService("bk-svc-retention", ns)
+	ls := newCluster("bk-svc-retention", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	limit := int32(2)

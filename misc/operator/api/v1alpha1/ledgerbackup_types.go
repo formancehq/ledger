@@ -55,7 +55,7 @@ type BackupSchedule struct {
 
 // LedgerBackupSpec defines the desired state of a LedgerBackup.
 type LedgerBackupSpec struct {
-	// ServiceRef is the name of the LedgerService in the same namespace.
+	// ServiceRef is the name of the Cluster in the same namespace.
 	// +kubebuilder:validation:Required
 	ServiceRef string `json:"serviceRef"`
 
@@ -212,7 +212,7 @@ type LedgerBackupStatus struct {
 // +kubebuilder:printcolumn:name="Last Incremental",type=date,JSONPath=`.status.lastIncrementalBackup.time`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// LedgerBackup manages scheduled backups of a LedgerService to S3 via ledgerctl.
+// LedgerBackup manages scheduled backups of a Cluster to S3 via ledgerctl.
 type LedgerBackup struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

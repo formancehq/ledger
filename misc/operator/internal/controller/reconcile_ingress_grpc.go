@@ -12,7 +12,7 @@ import (
 )
 
 // reconcileIngressGrpc manages the gRPC Ingress resource.
-func (r *LedgerServiceReconciler) reconcileIngressGrpc(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) reconcileIngressGrpc(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	name := grpcIngressName(ledger.Name)
 
 	enabled := ledger.Spec.IngressGrpc != nil && ledger.Spec.IngressGrpc.Enabled && len(ledger.Spec.IngressGrpc.Hosts) > 0
@@ -58,7 +58,7 @@ func (r *LedgerServiceReconciler) reconcileIngressGrpc(ctx context.Context, ledg
 	return err
 }
 
-func buildGrpcIngressRules(ledger *ledgerv1alpha1.LedgerService, hosts []ledgerv1alpha1.IngressHost) []networkingv1.IngressRule {
+func buildGrpcIngressRules(ledger *ledgerv1alpha1.Cluster, hosts []ledgerv1alpha1.IngressHost) []networkingv1.IngressRule {
 	rules := make([]networkingv1.IngressRule, 0, len(hosts))
 	grpcPort := serviceGrpcPort(ledger)
 	grpcSvcName := grpcServiceName(ledger.Name)

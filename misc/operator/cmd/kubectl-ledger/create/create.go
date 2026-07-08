@@ -26,8 +26,8 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "create [name]",
-		Short: "Create a new LedgerService deployment",
-		Long:  "Create a new LedgerService deployment.\nUse --set to configure spec fields (see 'explain' for available fields).\nExample: kubectl-ledger create my-ledger --set replicas=3 --set image.tag=v2.0",
+		Short: "Create a new Cluster deployment",
+		Long:  "Create a new Cluster deployment.\nUse --set to configure spec fields (see 'explain' for available fields).\nExample: kubectl-ledger create my-ledger --set replicas=3 --set image.tag=v2.0",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, opts, setValues, dryRun, args)
@@ -70,10 +70,10 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		flagbind.SetNested(overrides, []string{"image", "tag"}, "latest")
 	}
 
-	ledger := &ledgerv1alpha1.LedgerService{
+	ledger := &ledgerv1alpha1.Cluster{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "ledger.formance.com/v1alpha1",
-			Kind:       "LedgerService",
+			Kind:       "Cluster",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -108,7 +108,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		return nil
 	}
 
-	confirm, err := cmdutil.PromptConfirm("Create this LedgerService?", true)
+	confirm, err := cmdutil.PromptConfirm("Create this Cluster?", true)
 	if err != nil {
 		return err
 	}
@@ -123,15 +123,15 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Creating LedgerService...")
+	spinner, _ := pterm.DefaultSpinner.Start("Creating Cluster...")
 
 	if err := crdClient.Create(cmd.Context(), ledger); err != nil {
-		spinner.Fail("Failed to create LedgerService")
+		spinner.Fail("Failed to create Cluster")
 
 		return fmt.Errorf("creating ledger %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("LedgerService %s created in namespace %s", pterm.Cyan(name), pterm.Cyan(ns)))
+	spinner.Success(fmt.Sprintf("Cluster %s created in namespace %s", pterm.Cyan(name), pterm.Cyan(ns)))
 
 	return nil
 }
@@ -141,7 +141,7 @@ func resolveName(args []string) (string, error) {
 		return args[0], nil
 	}
 
-	name, err := cmdutil.PromptText("LedgerService name", "")
+	name, err := cmdutil.PromptText("Cluster name", "")
 	if err != nil {
 		return "", err
 	}
