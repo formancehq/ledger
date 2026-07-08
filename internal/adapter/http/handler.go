@@ -107,12 +107,25 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/{ledgerName}/logs", server.handleListLedgerLogs)
 				r.Get("/{ledgerName}/numscripts", server.handleListNumscripts)
 				r.Get("/{ledgerName}/numscripts/{name}", server.handleGetNumscript)
+				r.Get("/{ledgerName}/indexes", server.handleListLedgerIndexes)
 				r.Get("/{ledgerName}/indexes/{metadataKey}", server.handleInspectIndex)
 			})
 
 			// Transactions read scope
 			r.With(requireTransactionsRead).Group(func(r chi.Router) {
+				r.Get("/{ledgerName}/transactions", server.handleListTransactions)
 				r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)
+			})
+
+			// Ops read scope — bucket-wide reads not tied to a single ledger.
+			r.With(requireOpsRead).Group(func(r chi.Router) {
+				r.Get("/logs/{sequence}", server.handleGetLog)
+				r.Get("/chapters", server.handleListChapters)
+				r.Get("/chapter-schedule", server.handleGetChapterSchedule)
+				r.Get("/events-sinks", server.handleGetEventsSinks)
+				r.Get("/signing-keys", server.handleListSigningKeys)
+				r.Get("/indexes", server.handleListBucketIndexes)
+				r.Get("/indexes/status", server.handleGetIndexStatus)
 			})
 
 			// Accounts read scope
@@ -134,6 +147,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Post("/{ledgerName}/promote", server.handlePromoteLedger)
 				r.Put("/{ledgerName}/numscripts/{name}", server.handleSaveNumscript)
 				r.Delete("/{ledgerName}/numscripts/{name}", server.handleDeleteNumscript)
+				r.Post("/{ledgerName}/indexes", server.handleCreateIndex)
+				r.Delete("/{ledgerName}/indexes/{canonicalId}", server.handleDropIndex)
 			})
 
 			// Transactions write scope

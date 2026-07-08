@@ -479,4 +479,32 @@ func (g *BucketGrpcClient) InspectIndex(ctx context.Context, req *servicepb.Insp
 	return g.client.InspectIndex(ctx, req)
 }
 
+func (g *BucketGrpcClient) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+	return g.client.GetIndexStatus(ctx, req)
+}
+
+func (g *BucketGrpcClient) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+	stream, err := g.client.ListIndexes(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("gRPC ListIndexes call failed: %w", err)
+	}
+
+	var entries []*commonpb.Index
+
+	for {
+		idx, recvErr := stream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+
+		if recvErr != nil {
+			return nil, fmt.Errorf("receiving index: %w", recvErr)
+		}
+
+		entries = append(entries, idx)
+	}
+
+	return cursor.NewSliceCursor(entries), nil
+}
+
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

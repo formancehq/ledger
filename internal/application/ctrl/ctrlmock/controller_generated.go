@@ -193,6 +193,21 @@ func (mr *MockControllerMockRecorder) GetEventsSinks(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventsSinks", reflect.TypeOf((*MockController)(nil).GetEventsSinks), ctx)
 }
 
+// GetIndexStatus mocks base method.
+func (m *MockController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIndexStatus", ctx, req)
+	ret0, _ := ret[0].(*servicepb.GetIndexStatusResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndexStatus indicates an expected call of GetIndexStatus.
+func (mr *MockControllerMockRecorder) GetIndexStatus(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexStatus", reflect.TypeOf((*MockController)(nil).GetIndexStatus), ctx, req)
+}
+
 // GetLedgerByName mocks base method.
 func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
@@ -342,6 +357,21 @@ func (m *MockController) ListChapters(ctx context.Context) (cursor.Cursor[*commo
 func (mr *MockControllerMockRecorder) ListChapters(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChapters", reflect.TypeOf((*MockController)(nil).ListChapters), ctx)
+}
+
+// ListIndexes mocks base method.
+func (m *MockController) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListIndexes", ctx, req)
+	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Index])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIndexes indicates an expected call of ListIndexes.
+func (mr *MockControllerMockRecorder) ListIndexes(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIndexes", reflect.TypeOf((*MockController)(nil).ListIndexes), ctx, req)
 }
 
 // ListLedgers mocks base method.

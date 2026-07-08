@@ -388,6 +388,24 @@ func (b *RoutedController) InspectIndex(ctx context.Context, req *servicepb.Insp
 	return c.InspectIndex(ctx, req)
 }
 
+func (b *RoutedController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetIndexStatus(ctx, req)
+}
+
+func (b *RoutedController) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ListIndexes(ctx, req)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {

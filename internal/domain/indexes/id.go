@@ -8,10 +8,16 @@
 package indexes
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+// ErrInvalidCanonical is returned by ParseCanonical when the input string
+// does not decode into a valid IndexID.
+var ErrInvalidCanonical = errors.New("invalid canonical IndexID")
 
 // TxBuiltinID builds an IndexID for a transaction builtin field.
 func TxBuiltinID(kind commonpb.TransactionBuiltinIndex) *commonpb.IndexID {
@@ -87,4 +93,57 @@ func Canonical(id *commonpb.IndexID) string {
 	}
 
 	return "unknown"
+}
+
+// ParseCanonical is the inverse of Canonical: it decodes a string like
+// "tx_builtin:TX_BUILTIN_INDEX_REFERENCE" or
+// "metadata:TARGET_TYPE_ACCOUNT:color" back into an IndexID. Returns
+// ErrInvalidCanonical when the prefix, enum value, or metadata target is
+// unknown, or when the metadata key is empty.
+func ParseCanonical(s string) (*commonpb.IndexID, error) {
+	prefix, rest, ok := strings.Cut(s, ":")
+	if !ok {
+		return nil, fmt.Errorf("%w: missing prefix in %q", ErrInvalidCanonical, s)
+	}
+
+	switch prefix {
+	case "tx_builtin":
+		v, ok := commonpb.TransactionBuiltinIndex_value[rest]
+		if !ok {
+			return nil, fmt.Errorf("%w: unknown tx builtin %q", ErrInvalidCanonical, rest)
+		}
+
+		return TxBuiltinID(commonpb.TransactionBuiltinIndex(v)), nil
+
+	case "log_builtin":
+		v, ok := commonpb.LogBuiltinIndex_value[rest]
+		if !ok {
+			return nil, fmt.Errorf("%w: unknown log builtin %q", ErrInvalidCanonical, rest)
+		}
+
+		return LogBuiltinID(commonpb.LogBuiltinIndex(v)), nil
+
+	case "account_builtin":
+		v, ok := commonpb.AccountBuiltinIndex_value[rest]
+		if !ok {
+			return nil, fmt.Errorf("%w: unknown account builtin %q", ErrInvalidCanonical, rest)
+		}
+
+		return AccountBuiltinID(commonpb.AccountBuiltinIndex(v)), nil
+
+	case "metadata":
+		targetStr, key, ok := strings.Cut(rest, ":")
+		if !ok || key == "" {
+			return nil, fmt.Errorf("%w: metadata canonical must be metadata:<target>:<key>", ErrInvalidCanonical)
+		}
+
+		v, ok := commonpb.TargetType_value[targetStr]
+		if !ok {
+			return nil, fmt.Errorf("%w: unknown metadata target %q", ErrInvalidCanonical, targetStr)
+		}
+
+		return MetadataID(commonpb.TargetType(v), key), nil
+	}
+
+	return nil, fmt.Errorf("%w: unknown prefix %q", ErrInvalidCanonical, prefix)
 }

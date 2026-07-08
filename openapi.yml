@@ -1899,6 +1899,447 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/{ledgerName}/transactions:
+    get:
+      summary: List transactions for a ledger
+      description: |
+        Lists transactions for a specific ledger, ordered by transaction id
+        ascending (or descending with `reverse=true`). Supports cursor pagination
+        via the `after` query parameter and optional date-range and reference
+        filters. Requires `ledger:TransactionRead` scope.
+      operationId: listLedgerTransactions
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 0
+            default: 0
+        - name: after
+          in: query
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Transaction id to start after (exclusive, for cursor pagination).
+        - name: reverse
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Return newest-first when true.
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filter transactions with timestamp >= startDate (inclusive, RFC3339 format).
+            Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
+            Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
+        - name: reference
+          in: query
+          schema:
+            type: string
+          description: Filter by exact-match transaction reference.
+      responses:
+        '200':
+          description: Transactions retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Transaction (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /v3/logs/{sequence}:
+    get:
+      summary: Get a single system log by bucket-wide sequence
+      description: |
+        Returns the system log entry with the given bucket-wide sequence number.
+        Falls back to cold storage when the log has been archived. Requires
+        `ledger:OpsRead` scope.
+      operationId: getLog
+      tags:
+        - Logs
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: sequence
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: uint64
+      responses:
+        '200':
+          description: Log retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: System log entry (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/chapters:
+    get:
+      summary: List bucket chapters
+      description: |
+        Streams every chapter registered on the bucket, ordered by chapter id
+        ascending. Requires `ledger:OpsRead` scope.
+      operationId: listChapters
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Chapters retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Chapter (protobuf JSON representation)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/chapter-schedule:
+    get:
+      summary: Get the chapter auto-rotation cron schedule
+      description: |
+        Returns the cluster-wide cron expression driving automatic chapter
+        rotation. An empty string means auto-rotation is disabled. Requires
+        `ledger:OpsRead` scope.
+      operationId: getChapterSchedule
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Chapter schedule retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schedule:
+                    type: string
+                    description: Cron expression, or empty when disabled.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/events-sinks:
+    get:
+      summary: List configured event sinks
+      description: |
+        Returns every event sink configured on the cluster. Requires
+        `ledger:OpsRead` scope.
+      operationId: getEventsSinks
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Event sinks retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: SinkConfig (protobuf JSON representation)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/signing-keys:
+    get:
+      summary: List registered Ed25519 signing keys
+      description: |
+        Streams every Ed25519 signing key registered on the cluster. Requires
+        `ledger:OpsRead` scope.
+      operationId: listSigningKeys
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Signing keys retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: SigningKey (protobuf JSON representation)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/indexes:
+    get:
+      summary: List bucket-scoped indexes
+      description: |
+        Streams the bucket-scoped index registry. The `scope` query parameter
+        selects the flavor: `bucket` (default) surfaces only bucket-scoped
+        entries (empty ledger); `all` streams every entry across ledgers,
+        skipping orphan entries whose owning ledger no longer exists.
+        Requires `ledger:OpsRead` scope.
+      operationId: listBucketIndexes
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [bucket, all]
+            default: bucket
+      responses:
+        '200':
+          description: Indexes retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Index (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/indexes/status:
+    get:
+      summary: Get aggregated index registry status
+      description: |
+        Returns the aggregated index registry status: per-index backfill cursor,
+        per-replica IndexVersionState (current/pending), and cluster-wide
+        counters (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize).
+        The optional `ledger` query parameter narrows the per-index entries to
+        a single ledger; the aggregated counters always cover the bucket.
+        Requires `ledger:OpsRead` scope.
+      operationId: getIndexStatus
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: ledger
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Index status retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: GetIndexStatusResponse (protobuf JSON representation)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/{ledgerName}/indexes:
+    get:
+      summary: List indexes for a ledger
+      description: |
+        Streams the indexes registered on a specific ledger. Requires
+        `ledger:read` scope.
+      operationId: listLedgerIndexes
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      responses:
+        '200':
+          description: Indexes retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Index (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Create an index on a ledger
+      description: |
+        Registers a new index on the ledger. The FSM begins the backfill on
+        the next apply. The request body carries the target `IndexID` in
+        canonical form (see `DELETE /v3/{ledgerName}/indexes/{canonicalId}`
+        for the format). Requires `ledger:write` scope.
+      operationId: createIndex
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: Idempotency-Key
+          in: header
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+                  description: |
+                    Canonical form of the target IndexID. One of:
+                      `tx_builtin:<TX_BUILTIN_INDEX_*>`
+                      `log_builtin:<LOG_BUILTIN_INDEX_*>`
+                      `account_builtin:<ACCT_BUILTIN_INDEX_*>`
+                      `metadata:<TARGET_TYPE_*>:<key>`
+                  example: metadata:TARGET_TYPE_ACCOUNT:color
+      responses:
+        '204':
+          description: Index creation queued.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/{ledgerName}/indexes/{canonicalId}:
+    delete:
+      summary: Drop an index from a ledger
+      description: |
+        Removes an index from a ledger. The path parameter carries the target
+        `IndexID` in canonical form (e.g. `metadata:TARGET_TYPE_ACCOUNT:color`,
+        `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:write` scope.
+      operationId: dropIndex
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+        - name: Idempotency-Key
+          in: header
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Index removed.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
