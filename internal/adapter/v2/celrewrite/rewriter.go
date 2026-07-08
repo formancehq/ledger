@@ -175,6 +175,10 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 		return nil, err
 	}
 
+	if err := validateMatchesPatterns(ast); err != nil {
+		return nil, err
+	}
+
 	if err := validateTypeTokens(ast); err != nil {
 		return nil, err
 	}
@@ -270,6 +274,46 @@ func (r *Rewriter) validateRegexPatterns(ast *cel.Ast) error {
 	return nil
 }
 
+// validateMatchesPatterns eagerly compiles a **literal** pattern passed to the
+// CEL built-in `matches` (both `m.matches(p)` and `matches(s, p)` forms; the
+// pattern is the last argument), so a malformed literal regex is rejected at
+// admission instead of stalling a mirror batch when a `cel` expression evaluates
+// it. It also bounds the literal length by MaxRegexLen. A data-derived pattern
+// cannot be validated up front and is left alone — a `matches` error inside a
+// `match` predicate is treated as "does not apply", and the deterministic-purity
+// caps still bound evaluation. `matches` is unlike the custom regex helpers in
+// that an empty pattern is a legal (if pointless) RE2, so it is not rejected.
+func validateMatchesPatterns(ast *cel.Ast) error {
+	root := celast.NavigateAST(ast.NativeRep())
+
+	for _, call := range celast.MatchDescendants(root, celast.FunctionMatcher("matches")) {
+		args := call.AsCall().Args()
+		if len(args) == 0 {
+			continue
+		}
+
+		pattern := args[len(args)-1]
+		if pattern.Kind() != celast.LiteralKind {
+			continue
+		}
+
+		lit, ok := pattern.AsLiteral().Value().(string)
+		if !ok {
+			continue
+		}
+
+		if len(lit) > MaxRegexLen {
+			return fmt.Errorf("matches pattern too long (%d > %d)", len(lit), MaxRegexLen)
+		}
+
+		if _, err := regexp.Compile(lit); err != nil {
+			return fmt.Errorf("matches pattern %q: %w", lit, err)
+		}
+	}
+
+	return nil
+}
+
 // typeTokenArg maps each helper that takes an optional metadata type token to
 // the argument index (excluding the receiver) of that token, so the token can be
 // validated at compile time.
@@ -326,8 +370,12 @@ var (
 	metadataValueArg = map[string]int{
 		"setMetadata":        1, // value
 		"setAccountMetadata": 2, // value
-		// setAccountMetadataFromAddress's value is the (computed) regex
-		// replacement, so there is no literal value to check.
+		// setAccountMetadataFromAddress's value is a regex replacement; a literal
+		// replacement's non-group characters pass through to the output verbatim,
+		// so validating it up front catches unconditionally-invalid bytes (NUL)
+		// without waiting for a matching posting at run time. Group refs ($1) are
+		// valid metadata-string characters, so this never over-rejects.
+		"setAccountMetadataFromAddress": 2, // replacement
 	}
 )
 

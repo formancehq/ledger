@@ -640,6 +640,42 @@ func TestUnguardedVariantReadInPredicate(t *testing.T) {
 	require.Equal(t, "x", out.GetRevertedTransaction().GetMetadata()["flag"].GetStringValue())
 }
 
+func TestMatchesLiteralRegexRejectedAtCompile(t *testing.T) {
+	t.Parallel()
+
+	// The CEL built-in matches() with a malformed literal pattern is rejected at
+	// admission (in both match and cel positions) rather than stalling at run time.
+	_, err := NewRewriter(rules(rule(`"x".matches("(")`, `log`, false)))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "matches pattern")
+
+	_, err = NewRewriter(rules(rule("true", `("x".matches("(")) ? log : log`, false)))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "matches pattern")
+
+	// A valid literal matches() still compiles; a data-derived pattern is left
+	// alone (validated best-effort at run time).
+	_, err = NewRewriter(rules(rule(`has(log.created) && log.created.postings.exists(p, p.source.matches("^world"))`, `log`, false)))
+	require.NoError(t, err)
+}
+
+func TestSetAccountMetadataFromAddressLiteralReplacementRejected(t *testing.T) {
+	t.Parallel()
+
+	// A NUL byte in the literal replacement is rejected at admission.
+	_, err := NewRewriter(rules(
+		rule("true", "log.withCreated(log.created.setAccountMetadataFromAddress(\"^(.+)$\", \"k\", \"bad\\x00\"))", false),
+	))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "metadata value")
+
+	// A group-ref replacement stays valid (never over-rejected).
+	_, err = NewRewriter(rules(
+		rule("true", `log.withCreated(log.created.setAccountMetadataFromAddress("^(.+)$", "k", "$1"))`, false),
+	))
+	require.NoError(t, err)
+}
+
 // --- determinism guard ------------------------------------------------------
 
 func TestMapIterationDeterminismGuard(t *testing.T) {
