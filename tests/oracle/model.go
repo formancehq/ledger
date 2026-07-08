@@ -1,6 +1,7 @@
 package oracle
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"maps"
@@ -217,17 +218,25 @@ func (s LedgerState) Hash(h io.Writer) {
 	hashFieldTypes(h, "TF", s.transactionFieldTypes)
 
 	// The log is already in id order; hash each tx's identity (id, reference,
-	// reverted), postings, and metadata. Postings belong in the fingerprint
-	// because two commuting unreferenced transactions can reach identical volumes
-	// and metadata under opposite serializations while differing only in which id
-	// holds which postings — a distinction validateTransactionRead checks by id.
+	// reverted, timestamp), postings, and metadata. Postings and timestamp belong
+	// in the fingerprint because two commuting unreferenced transactions can reach
+	// identical volumes and metadata under opposite serializations while differing
+	// only in which id holds which postings, or (for at-effective-date reverts) in
+	// the inherited timestamp — distinctions validateTransactionRead checks by id.
 	var amt uint256.Int
 	for _, tx := range s.txs {
 		rev := ""
 		if tx.reverted {
 			rev = "R"
 		}
-		_, _ = fmt.Fprintf(h, "TX|%d|%s|%s\n", tx.id, tx.reference, rev)
+
+		// A nil timestamp (server-dated, unpredictable) must not collide with any
+		// concrete value: validateTransactionRead skips the check only when nil.
+		ts := "-"
+		if tx.timestamp != nil {
+			ts = strconv.FormatUint(tx.timestamp.GetData(), 10)
+		}
+		_, _ = fmt.Fprintf(h, "TX|%d|%s|%s|%s\n", tx.id, tx.reference, rev, ts)
 
 		for _, p := range tx.postings {
 			p.GetAmount().IntoUint256(&amt)
@@ -349,13 +358,19 @@ func (g GlobalState) Hash(h io.Writer) {
 	sort.Strings(names)
 
 	for _, n := range names {
-		ls := g.ledgers[n]
-		if len(ls.types) == 0 && len(ls.volumes) == 0 && len(ls.metadata) == 0 && len(ls.ledgerMeta) == 0 &&
-			len(ls.accountFieldTypes) == 0 && len(ls.ledgerFieldTypes) == 0 && len(ls.transactionFieldTypes) == 0 {
+		// Apply materializes a ledger entry for any ledger a bulk touches, even
+		// when the operation stores nothing (e.g. removing an undeclared field), so
+		// a present-but-stateless entry must not change the fingerprint — otherwise
+		// candidateBases treats semantically-equal bases as distinct. Derive
+		// emptiness from LedgerState.Hash's own output rather than a field list, so
+		// the guard can never fall behind the fields Hash actually renders.
+		var buf bytes.Buffer
+		g.ledgers[n].Hash(&buf)
+		if buf.Len() == 0 {
 			continue
 		}
 		_, _ = fmt.Fprintf(h, "L|%s\n", n)
-		ls.Hash(h)
+		_, _ = h.Write(buf.Bytes())
 	}
 }
 

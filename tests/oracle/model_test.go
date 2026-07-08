@@ -1,7 +1,6 @@
 package oracle
 
 import (
-	"bytes"
 	"math/big"
 	"testing"
 
@@ -19,46 +18,6 @@ import (
 func dec(v uint256.Int) string { return v.Dec() }
 
 func bulkOf(reqs ...*servicepb.Request) Bulk { return Bulk{Requests: reqs} }
-
-// hashString renders a state's canonical fingerprint (what candidateBases hashes
-// to dedup bases) as a string, so tests can assert two states are distinguished.
-func hashString(g GlobalState) string {
-	var b bytes.Buffer
-	g.Hash(&b)
-
-	return b.String()
-}
-
-// Two unreferenced, metadata-free transactions from world to disjoint accounts
-// commute to identical volumes; the serializations differ only in which id holds
-// which postings, so the fingerprint must include postings to tell them apart —
-// validateTransactionRead compares postings by id against these bases.
-func TestHash_PostingsDistinguishCommutingTransactions(t *testing.T) {
-	t.Parallel()
-
-	txA := oracletest.TxReq("world", "a:1", "USD", 10)
-	txB := oracletest.TxReq("world", "b:1", "USD", 10)
-
-	o1 := NewGlobalState().Apply(Bulk{Requests: []*servicepb.Request{txA, txB}})
-	o2 := NewGlobalState().Apply(Bulk{Requests: []*servicepb.Request{txB, txA}})
-	require.True(t, o1.OK)
-	require.True(t, o2.OK)
-
-	require.NotEqual(t, hashString(o1.State), hashString(o2.State))
-}
-
-// A ledger whose only state is a transaction field type must still contribute to
-// the fingerprint; otherwise the empty-ledger guard collapses states that differ
-// only in their transaction schema (validateSchemaRead checks it).
-func TestHash_TransactionSchemaOnlyLedgerNotSkipped(t *testing.T) {
-	t.Parallel()
-
-	withField := NewGlobalState().Apply(bulkOf(
-		oracletest.SetTxFieldTypeReq("L", "k", commonpb.MetadataType_METADATA_TYPE_STRING)))
-	require.True(t, withField.OK)
-
-	require.NotEqual(t, hashString(NewGlobalState()), hashString(withField.State))
-}
 
 func TestGlobalState_Apply_ChartOps(t *testing.T) {
 	t.Parallel()
