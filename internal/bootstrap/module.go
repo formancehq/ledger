@@ -161,7 +161,7 @@ func ColdStorageModule(coldStorageDriver string) fx.Option {
 					cold,
 					machine.ArchiveRequestCh(),
 					func(chapterID uint64) error {
-						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentChapterArchiver), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 							Type: &servicepb.Request_ConfirmArchiveChapter{
 								ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{
 									ChapterId: chapterID,
@@ -670,6 +670,7 @@ func Module() fx.Option {
 				ss *state.SharedState,
 				receiptSigner *receipt.Signer,
 				attrs *attributes.Attributes,
+				authCfg internalauth.AuthConfig,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
@@ -682,6 +683,10 @@ func Module() fx.Option {
 
 				if cfg.ColdStorageConfig.Driver != "none" {
 					opts = append(opts, admission.WithColdStorageEnabled())
+				}
+
+				if authCfg.Enabled {
+					opts = append(opts, admission.WithAuthEnabled())
 				}
 
 				return admission.NewAdmission(
@@ -708,7 +713,7 @@ func Module() fx.Option {
 				raftNode *node.Node,
 			) *state.Sealer {
 				return state.NewSealer(logger, store, attrs, machine.SealRequestCh(), func(chapterID uint64, sealingHash, stateHash []byte) error {
-					_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+					_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentChapterSealer), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 						Type: &servicepb.Request_SealChapter{
 							SealChapter: &servicepb.SealChapterRequest{
 								ChapterId:   chapterID,
@@ -732,7 +737,7 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					machine.ChapterSchedule,
 					func() error {
-						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentChapterScheduler), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 							Type: &servicepb.Request_CloseChapter{
 								CloseChapter: &servicepb.CloseChapterRequest{},
 							},
@@ -754,7 +759,7 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					machine.QueryCheckpointSchedule,
 					func() error {
-						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentQueryCheckpoint), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 							Type: &servicepb.Request_CreateQueryCheckpoint{
 								CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
 							},
@@ -1261,6 +1266,7 @@ func Module() fx.Option {
 						raftNode.IsLeader,
 						func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) {
 							proposal := commands.NewCommand()
+							proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentIdempotencyEvict)
 							proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 								Kind: &raftcmdpb.TechnicalUpdate_IdempotencyEviction{
 									IdempotencyEviction: &raftcmdpb.IdempotencyEviction{
@@ -1485,6 +1491,7 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 	logger.Infof("Proposing cluster config update on leadership acquisition")
 
 	proposal := commands.NewCommand()
+	proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
 	proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: desiredCfg},
 	}}

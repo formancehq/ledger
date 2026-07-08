@@ -3605,6 +3605,15 @@ func (m *CallerIdentity_KeyId) CloneVT() isCallerIdentity_Source {
 	return r
 }
 
+func (m *CallerIdentity_SystemComponent) CloneVT() isCallerIdentity_Source {
+	if m == nil {
+		return (*CallerIdentity_SystemComponent)(nil)
+	}
+	r := new(CallerIdentity_SystemComponent)
+	r.SystemComponent = m.SystemComponent
+	return r
+}
+
 func (m *CallerSnapshot) CloneVT() *CallerSnapshot {
 	if m == nil {
 		return (*CallerSnapshot)(nil)
@@ -9671,6 +9680,23 @@ func (this *CallerIdentity_KeyId) EqualVT(thatIface isCallerIdentity_Source) boo
 		return false
 	}
 	if this.KeyId != that.KeyId {
+		return false
+	}
+	return true
+}
+
+func (this *CallerIdentity_SystemComponent) EqualVT(thatIface isCallerIdentity_Source) bool {
+	that, ok := thatIface.(*CallerIdentity_SystemComponent)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.SystemComponent != that.SystemComponent {
 		return false
 	}
 	return true
@@ -18850,6 +18876,20 @@ func (m *CallerIdentity_KeyId) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	dAtA[i] = 0x2a
 	return len(dAtA) - i, nil
 }
+func (m *CallerIdentity_SystemComponent) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CallerIdentity_SystemComponent) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.SystemComponent)
+	copy(dAtA[i:], m.SystemComponent)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SystemComponent)))
+	i--
+	dAtA[i] = 0x32
+	return len(dAtA) - i, nil
+}
 func (m *CallerSnapshot) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -23074,6 +23114,16 @@ func (m *CallerIdentity_KeyId) SizeVT() (n int) {
 	var l int
 	_ = l
 	l = len(m.KeyId)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	return n
+}
+func (m *CallerIdentity_SystemComponent) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.SystemComponent)
 	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	return n
 }
@@ -44463,6 +44513,38 @@ func (m *CallerIdentity) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Source = &CallerIdentity_KeyId{KeyId: string(dAtA[iNdEx:postIndex])}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SystemComponent", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Source = &CallerIdentity_SystemComponent{SystemComponent: string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

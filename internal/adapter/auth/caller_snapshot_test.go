@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -103,6 +104,63 @@ func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
 		"forwarded snapshot must win over local peer claims")
 	require.Equal(t, "https://idp.example.com", got.GetIdentity().GetIssuer())
 	require.Equal(t, []string{"ledger:TransactionWrite"}, got.GetScopes())
+}
+
+func TestResolveCallerSnapshot_SystemActor(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithSystemActor(context.Background(), commands.ComponentChapterArchiver)
+
+	got := ResolveCallerSnapshot(ctx)
+	require.NotNil(t, got)
+	require.Equal(t, commands.ComponentChapterArchiver, got.GetIdentity().GetSystemComponent())
+	require.Empty(t, got.GetIdentity().GetSubject())
+	require.Empty(t, got.GetScopes())
+	require.False(t, got.GetGod())
+}
+
+func TestResolveCallerSnapshot_SystemActorWinsOverForwardedAndClaims(t *testing.T) {
+	t.Parallel()
+
+	// A system action must be attributed to the system component even if a
+	// forwarded snapshot or local claims happen to be present.
+	ctx := WithClaims(context.Background(), &oidc.AccessTokenClaims{
+		TokenClaims: oidc.TokenClaims{Subject: "user-1"},
+	})
+	ctx = WithForwardedSnapshot(ctx, &commonpb.CallerSnapshot{
+		Identity: &commonpb.CallerIdentity{Subject: "forwarded-user"},
+	})
+	ctx = WithSystemActor(ctx, commands.ComponentMirror)
+
+	got := ResolveCallerSnapshot(ctx)
+	require.NotNil(t, got)
+	require.Equal(t, commands.ComponentMirror, got.GetIdentity().GetSystemComponent())
+	require.Empty(t, got.GetIdentity().GetSubject())
+}
+
+func TestResolveCallerSnapshot_EmptySystemComponentFallsThrough(t *testing.T) {
+	t.Parallel()
+
+	// An empty component must not synthesize a bogus system snapshot; with no
+	// claims it resolves to nil like any unauthenticated request.
+	ctx := WithSystemActor(context.Background(), "")
+
+	require.Nil(t, ResolveCallerSnapshot(ctx))
+}
+
+func TestResolveCallerSnapshot_Ed25519WithoutSubject(t *testing.T) {
+	t.Parallel()
+
+	// An Ed25519 token minted without a `sub` claim still authenticates and
+	// must remain attributable: the snapshot is non-nil and the key id
+	// identifies the caller even though the subject is empty.
+	ctx := WithClaims(context.Background(), &oidc.AccessTokenClaims{})
+	ctx = WithKeyID(ctx, "ed25519-key-9")
+
+	got := ResolveCallerSnapshot(ctx)
+	require.NotNil(t, got)
+	require.Empty(t, got.GetIdentity().GetSubject())
+	require.Equal(t, "ed25519-key-9", got.GetIdentity().GetKeyId())
 }
 
 func TestIsClusterInternal_DefaultsFalse(t *testing.T) {

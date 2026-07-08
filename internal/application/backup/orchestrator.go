@@ -380,6 +380,7 @@ func (o *Orchestrator) proposeTerminal(populate func(*raftcmdpb.Proposal), jobID
 // works at every layer.
 func (o *Orchestrator) proposeAndWait(ctx context.Context, populate func(*raftcmdpb.Proposal)) error {
 	cmd := commands.NewCommand()
+	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentBackup)
 	populate(cmd)
 
 	return o.proposer.Propose(ctx, cmd)

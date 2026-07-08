@@ -4,12 +4,14 @@ import (
 	"context"
 	"sort"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 type (
 	clusterInternalKey   struct{}
 	forwardedSnapshotKey struct{}
+	systemActorKey       struct{}
 )
 
 // WithClusterInternal marks the context as belonging to a request that
@@ -44,16 +46,40 @@ func ForwardedSnapshotFromContext(ctx context.Context) *commonpb.CallerSnapshot 
 	return c
 }
 
-// ResolveCallerSnapshot returns the authenticated caller snapshot for the
-// current context. It honors an explicitly forwarded snapshot (set by a
-// follower that already validated the user JWT/Ed25519 token) before falling
-// back to building one from the claims attached locally by Authenticate.
-// Returns nil when the request is unauthenticated.
+// WithSystemActor marks the context as a system/internal action attributed to
+// the named component (see commands.Component*). ResolveCallerSnapshot turns
+// it into a system CallerSnapshot, so system proposals routed through
+// admission (chapter archiver, sealer, schedulers) are attributed to that
+// component.
+func WithSystemActor(ctx context.Context, component string) context.Context {
+	return context.WithValue(ctx, systemActorKey{}, component)
+}
+
+// systemActorFromContext returns the system component set by WithSystemActor,
+// and whether one was set.
+func systemActorFromContext(ctx context.Context) (string, bool) {
+	c, ok := ctx.Value(systemActorKey{}).(string)
+
+	return c, ok && c != ""
+}
+
+// ResolveCallerSnapshot returns the caller snapshot for the current context,
+// in precedence order:
+//  1. an explicit system actor (WithSystemActor) — a background action;
+//  2. an explicitly forwarded snapshot (set by a follower that already
+//     validated the user JWT/Ed25519 token);
+//  3. one built from the claims attached locally by Authenticate.
+//
+// Returns nil only when the request is an unauthenticated user request.
 //
 // Use this from both the follower (when forwarding to the leader, to keep the
 // original snapshot intact across hops) and the leader (when building the
 // proposal carried through Raft).
 func ResolveCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
+	if component, ok := systemActorFromContext(ctx); ok {
+		return commands.SystemCallerSnapshot(component)
+	}
+
 	if forwarded := ForwardedSnapshotFromContext(ctx); forwarded != nil {
 		return forwarded
 	}

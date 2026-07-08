@@ -108,7 +108,10 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
-	ctx = adoptForwardedSnapshotIfTrusted(ctx, req)
+	ctx, err = impl.adoptForwardedSnapshotIfTrusted(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 
 	// Peek the batch (non-authoritative) for the empty check and the per-request
 	// scope checks. Admission re-verifies the signature and unmarshals the same
@@ -206,17 +209,26 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 // boundary that lets a follower forward a user's admission-time snapshot
 // (identity + scopes + god) to the leader for audit purposes without
 // letting regular clients spoof it.
-func adoptForwardedSnapshotIfTrusted(ctx context.Context, req *servicepb.ApplyRequest) context.Context {
-	if !internalauth.IsClusterInternal(ctx) {
-		return ctx
-	}
-
+//
+// A forwarded snapshot arriving on a non-cluster-internal connection means the
+// cluster secret is unset or mismatched between peers. It is rejected: the
+// write would otherwise commit an unattributed audit entry for an
+// authenticated user, so failing loud forces the misconfiguration to surface.
+func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context.Context, req *servicepb.ApplyRequest) (context.Context, error) {
 	fc := req.GetForwardedCallerSnapshot()
 	if fc == nil {
-		return ctx
+		return ctx, nil
 	}
 
-	return internalauth.WithForwardedSnapshot(ctx, fc)
+	if !internalauth.IsClusterInternal(ctx) {
+		impl.logger.Errorf("rejecting forwarded caller snapshot on a non-cluster-internal connection; " +
+			"cluster secret is likely unset or mismatched between peers")
+
+		return ctx, status.Error(codes.PermissionDenied,
+			"forwarded caller snapshot on a non-cluster-internal connection")
+	}
+
+	return internalauth.WithForwardedSnapshot(ctx, fc), nil
 }
 
 // signReceiptIfNeeded signs a JWT receipt for logs containing created transactions.

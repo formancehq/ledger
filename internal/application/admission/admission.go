@@ -62,6 +62,7 @@ type Admission struct {
 	attrs              *attributes.Attributes
 	numscriptCache     *numscript.NumscriptCache
 	coldStorageEnabled bool
+	authEnabled        bool
 	waitLeaderReady    func(context.Context) error
 
 	// Metrics (noop when metricsEnabled is false)
@@ -79,6 +80,8 @@ type Admission struct {
 	preloadCounter                 metric.Int64Counter
 	preloadKeysNeededCounter       metric.Int64Counter
 	preloadCacheHitsCounter        metric.Int64Counter
+	missingCallerCounter           metric.Int64Counter
+	callerSubjectEmptyCounter      metric.Int64Counter
 }
 
 // NewAdmission creates a new Admission handler.
@@ -101,6 +104,15 @@ func WithReceiptSigner(signer *receipt.Signer) func(*Admission) {
 func WithColdStorageEnabled() func(*Admission) {
 	return func(a *Admission) {
 		a.coldStorageEnabled = true
+	}
+}
+
+// WithAuthEnabled marks authentication as enabled, so the admission path can
+// flag user writes committed without an attributable caller (see
+// observeCallerSnapshot).
+func WithAuthEnabled() func(*Admission) {
+	return func(a *Admission) {
+		a.authEnabled = true
 	}
 }
 
@@ -269,6 +281,24 @@ func NewAdmission(
 		panic(err)
 	}
 
+	missingCallerCounter, err := meter.Int64Counter(
+		"admission.audit.missing_caller",
+		metric.WithDescription("Committed user writes with no caller snapshot while auth is enabled"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	callerSubjectEmptyCounter, err := meter.Int64Counter(
+		"admission.audit.caller_subject_empty",
+		metric.WithDescription("Committed user writes whose caller has a source but an empty subject (e.g. Ed25519 token without sub)"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	a.commandDurationHistogram = commandDurationHistogram
 	a.commandSizeHistogram = commandSizeHistogram
 	a.proposeQueueLoadHistogram = proposeQueueLoadHistogram
@@ -281,8 +311,38 @@ func NewAdmission(
 	a.preloadCounter = preloadCounter
 	a.preloadKeysNeededCounter = preloadKeysNeededCounter
 	a.preloadCacheHitsCounter = preloadCacheHitsCounter
+	a.missingCallerCounter = missingCallerCounter
+	a.callerSubjectEmptyCounter = callerSubjectEmptyCounter
 
 	return a
+}
+
+// observeCallerSnapshot flags audit-attribution gaps on the write path. With
+// auth enabled, a committed user write should always carry a caller: a nil
+// snapshot means an authenticated identity was lost or an anonymous write
+// slipped through, and a user source (issuer/key_id) with an empty subject is
+// the Ed25519-token-without-`sub` case where only the key id identifies the
+// caller. System actions carry a system_component source and are exempt.
+func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.CallerSnapshot) {
+	if !a.authEnabled {
+		return
+	}
+
+	if snap == nil {
+		a.logger.Errorf("committed write has no caller snapshot while auth is enabled: audit entry will be unattributed")
+		a.missingCallerCounter.Add(ctx, 1)
+
+		return
+	}
+
+	id := snap.GetIdentity()
+	switch id.GetSource().(type) {
+	case *commonpb.CallerIdentity_KeyId, *commonpb.CallerIdentity_Issuer:
+		if id.GetSubject() == "" {
+			a.logger.Infof("committed write caller has a source but an empty subject: audit entry identifies the caller only by source")
+			a.callerSubjectEmptyCounter.Add(ctx, 1)
+		}
+	}
 }
 
 // Admit implements the ctrl.Admission interface.
@@ -405,6 +465,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 
 	cmd.ExecutionPlan = build.ExecutionPlan
 	cmd.CallerSnapshot = auth.ResolveCallerSnapshot(ctx)
+	a.observeCallerSnapshot(ctx, cmd.GetCallerSnapshot())
 
 	preloadSpan.End()
 

@@ -101,26 +101,47 @@ Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
 - If `--cluster-secret` is empty, the legacy "no auth" mode is used (not recommended).
 
-There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:91-100`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller.
+There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:91-100`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller. If a request carries a forwarded snapshot but the connection is **not** cluster-internal (cluster secret unset or mismatched), the leader **rejects** it with `PermissionDenied` rather than silently dropping the identity (`server_bucket.go:adoptForwardedSnapshotIfTrusted`) — a misconfiguration surfaces as a failed write instead of an unattributed audit entry.
 
 ## Caller identity in the audit chain
 
-Every successful proposal carries a `CallerSnapshot` (proto `common.proto:1264-1277`):
+Every proposal carries a `CallerSnapshot` (proto `common.proto`):
 
 ```proto
 message CallerSnapshot {
-  CallerIdentity identity = 1;        // subject + source (issuer or keyId)
+  CallerIdentity identity = 1;        // subject + source
   repeated string scopes = 2;         // granular scopes at admission time
   bool god = 3;                       // god-mode flag
 }
+
+message CallerIdentity {
+  string subject = 1;
+  oneof source {
+    string issuer = 4;                // OIDC token issuer URL
+    string key_id = 5;                // Ed25519 signing key ID
+    string system_component = 6;      // system/internal actor; subject empty
+  }
+}
 ```
 
-It is built by `ResolveCallerSnapshot()` (`internal/adapter/auth/caller_snapshot.go:56-62`):
+It is built by `ResolveCallerSnapshot()` (`internal/adapter/auth/caller_snapshot.go`), in precedence order:
 
-- For a request that arrived locally: `buildCallerSnapshot()` reads the context (subject, source, scopes, god flag).
-- For a request forwarded by a follower: the snapshot the follower captured is used verbatim.
+1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a snapshot whose source is `system_component` (e.g. `chapter-archiver`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`). This is what keeps system-generated entries attributable instead of blank.
+2. **Forwarded snapshot** — a request forwarded by a follower uses the snapshot the follower captured, verbatim.
+3. **Local claims** — otherwise `buildCallerSnapshot()` reads the context (subject, source, scopes, god). Returns `nil` only for an unauthenticated user request.
+
+So an audit entry attributes a write by, in order: the user subject when present, otherwise the source (Ed25519 key id / OIDC issuer) — an Ed25519 token minted without a `sub` claim is still attributable by its key id — otherwise the system component. `nil` means an unauthenticated user write.
 
 The snapshot enters the audit-chain hash via `BuildHashedHeaderPayload` (see [audit-chain.md](../checker/audit-chain.md)). **It is not re-evaluated downstream** — the FSM, the checker, and any later observer see exactly what admission resolved. A token expiring between admission and FSM apply does not retroactively invalidate the proposal.
+
+### Attribution observability
+
+Admission emits signals when a user write is committed with weak attribution while auth is enabled (`admission.observeCallerSnapshot`):
+
+- `admission.audit.missing_caller` (+ error log) — a user write resolved to a `nil` caller. Since writes without a valid token are already rejected at the scope check, this is anomalous (e.g. anonymous scopes misconfigured to allow writes).
+- `admission.audit.caller_subject_empty` (+ info log) — the caller has a user source (key id / issuer) but an empty subject; the entry is still attributable by source.
+
+System actions carry a `system_component` source and are exempt from both.
 
 ## OIDC discovery
 
@@ -148,5 +169,7 @@ This bound is what prevents a slow IdP from stalling node startup indefinitely.
 | Scope definitions and mapping | `internal/adapter/auth/scopes.go` |
 | Ed25519 static keyset | `internal/adapter/auth/ed25519_keys.go` |
 | Caller-snapshot resolution | `internal/adapter/auth/caller_snapshot.go` |
+| System-actor snapshot + component names | `internal/pkg/commands/system_caller.go` |
+| Attribution observability | `internal/application/admission/admission.go` (`observeCallerSnapshot`) |
 | Raft cluster-secret interceptor | `internal/adapter/grpc/raft_auth.go` |
 | OIDC discovery + composite keyset wiring | `internal/bootstrap/module.go` (around lines 1587-1652) |
