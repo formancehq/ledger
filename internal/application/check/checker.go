@@ -2095,7 +2095,16 @@ func verifySkippedOrder(
 
 	// Reason-specific replay: confirm the underlying condition was
 	// plausible at this sequence given the chain-bound order.
-	if reason == commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT {
+	//
+	// Fail-closed: every whitelisted reason MUST have an explicit case
+	// here. Adding a reason to admission's allowedSkippableReasons (see
+	// internal/application/admission/skippable.go) without also adding a
+	// case below would let a projection sail through with only the
+	// whitelist-membership check — the underlying condition would never
+	// be replayed against the audit chain. The `default` branch is the
+	// tripwire.
+	switch reason {
+	case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT:
 		// Empty reference means the original order had no reference set —
 		// TRANSACTION_REFERENCE_CONFLICT is structurally impossible.
 		if expected.reference == "" {
@@ -2188,6 +2197,17 @@ func verifySkippedOrder(
 
 			return
 		}
+
+	default:
+		// Fail-loud fallback: the whitelist admitted this reason but no
+		// verification branch replayed it against the audit chain. Any new
+		// entry in admission's allowedSkippableReasons must land a matching
+		// case above; until then, treat the projection as unverifiable.
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records an OrderSkipped projection with reason %s on ledger %q, but the checker has no reason-specific replay branch — the reason was added to the whitelist without extending verifySkippedOrder", seq, reason, ledger),
+			seq, ledger, "", "",
+		))
 	}
 }
 

@@ -119,6 +119,30 @@ func TestVerifySkippedOrder_RejectsReasonOutsideWhitelist(t *testing.T) {
 	requireInvalidSkipEvent(t, events, 7)
 }
 
+// TestVerifySkippedOrder_RejectsWhitelistedReasonWithoutReplayBranch pins
+// the fail-closed default: if admission adds a new reason to
+// allowedSkippableReasons without extending verifySkippedOrder's
+// reason-specific switch, the checker must flag the projection rather
+// than silently accepting it after the whitelist-membership check.
+//
+// TRANSACTION_ALREADY_REVERTED is KindConflict (not KindInternal), so it
+// passes the earlier defense-in-depth gates and reaches the switch.
+// Today verifySkippedOrder has no case for it — the `default` branch
+// fires INVALID_SKIP.
+func TestVerifySkippedOrder_RejectsWhitelistedReasonWithoutReplayBranch(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
+	}
+
+	payload := skippedPayload(reason)
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
 // TestVerifySkippedOrder_RejectsMissingExpectedEntry covers fabrication.
 func TestVerifySkippedOrder_RejectsMissingExpectedEntry(t *testing.T) {
 	t.Parallel()
