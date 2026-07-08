@@ -17,9 +17,25 @@ import (
 // corresponding oneof case in the .proto and regenerate.
 func SkippableReasonsForLedgerAction(x *LedgerAction) []commonpb.ErrorReason {
 	switch x.GetData().(type) {
+	case *LedgerAction_AddAccountType:
+		return []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
+		}
 	case *LedgerAction_CreateTransaction:
 		return []commonpb.ErrorReason{
 			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		}
+	case *LedgerAction_DeleteMetadata:
+		return []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
+		}
+	case *LedgerAction_RemoveAccountType:
+		return []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
+		}
+	case *LedgerAction_RevertTransaction:
+		return []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
 		}
 	default:
 		return nil

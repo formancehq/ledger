@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/big"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -1791,14 +1792,31 @@ func (c *Checker) verifyAuditHashChain(
 
 // expectedSkippableOrder captures the chain-verified fields the checker
 // needs to confirm a LedgerLogPayload.OrderSkipped projection is legitimate:
-// the audit-bound reasons whitelist (any skip must use one of these) and
-// the reason-specific correlator the verifier replays against the projection
-// stream. Today only TRANSACTION_REFERENCE_CONFLICT carries a correlator
-// (Reference + LedgerName); other reasons leave both empty.
+// the audit-bound reasons whitelist (any skip must use one of these) plus
+// the per-reason correlator the verifier compares against the projection's
+// context map. Every field is derived from the chain-bound Order — a
+// tampered LedgerLog projection cannot influence any of them.
+//
+// Each correlator is only populated when the containing LedgerAction is the
+// natural producer of the corresponding reason (e.g. transactionID is set
+// for a chain-bound RevertTransactionOrder, empty otherwise). The
+// per-reason branches in verifySkippedOrder pick the field they need and
+// ignore the others.
 type expectedSkippableOrder struct {
-	reasons   []commonpb.ErrorReason
-	ledger    string
+	reasons []commonpb.ErrorReason
+	ledger  string
+	// TRANSACTION_REFERENCE_CONFLICT correlator: reference the order declared.
 	reference string
+	// TRANSACTION_ALREADY_REVERTED correlator: transaction id the revert
+	// targeted (chain-bound Order.RevertTransaction.TransactionId).
+	transactionID uint64
+	// METADATA_NOT_FOUND correlator: same (target, key) tuple the sub-
+	// processor stamps on ErrMetadataNotFound.
+	metadataTarget string
+	metadataKey    string
+	// ACCOUNT_TYPE_ALREADY_EXISTS / ACCOUNT_TYPE_NOT_FOUND correlator:
+	// account type name from the AddAccountType / RemoveAccountType order.
+	accountTypeName string
 }
 
 // collectExpectedSkippable populates two outputs from the chain-verified
@@ -1886,7 +1904,45 @@ func collectExpectedSkippable(
 			exp.reference = ct.GetReference()
 		}
 
+		// Per-order correlators for the non-CreateTransaction skip
+		// branches. Each is populated only when the chain-bound apply
+		// payload matches the natural producer of that reason — the
+		// verifier's switch picks the field it needs and ignores the
+		// others.
+		if rt := apply.GetRevertTransaction(); rt != nil {
+			exp.transactionID = rt.GetTransactionId()
+		}
+
+		if dm := apply.GetDeleteMetadata(); dm != nil {
+			exp.metadataKey = dm.GetKey()
+			exp.metadataTarget = formatTargetForSkipContext(dm.GetTarget())
+		}
+
+		if aa := apply.GetAddAccountType(); aa != nil {
+			exp.accountTypeName = aa.GetAccountType().GetName()
+		}
+
+		if ra := apply.GetRemoveAccountType(); ra != nil {
+			exp.accountTypeName = ra.GetName()
+		}
+
 		expectedSkippable[logSeq] = exp
+	}
+}
+
+// formatTargetForSkipContext mirrors the string ErrMetadataNotFound stamps
+// into its Metadata()["target"] — account targets carry the raw address,
+// transaction targets carry the id as a decimal string. Kept in lockstep
+// with the sub-processor's formatting so the checker's context-tampering
+// check compares apples-to-apples.
+func formatTargetForSkipContext(target *commonpb.Target) string {
+	switch t := target.GetTarget().(type) {
+	case *commonpb.Target_Account:
+		return t.Account.GetAddr()
+	case *commonpb.Target_TransactionId:
+		return strconv.FormatUint(t.TransactionId, 10)
+	default:
+		return ""
 	}
 }
 
@@ -2192,6 +2248,106 @@ func verifySkippedOrder(
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but reference %q was not claimed on ledger %q before this sequence", seq, expected.reference, ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+	case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED:
+		// Chain-bound Order was a RevertTransactionOrder targeting
+		// transactionID. ErrTransactionAlreadyReverted.Metadata() stamps
+		// that id as context["transactionId"] — a tampered projection
+		// that flipped the id (to hide who was actually double-reverted)
+		// still survives the whitelist check and would surface a wrong
+		// existing tx to the caller. Pin it against the chain-bound
+		// value. Deeper verification ("was tx actually reverted at
+		// seq?") is left to the checker's dedicated reversion pass
+		// (checkReversionInvariants) so this branch stays O(1).
+		if expected.transactionID == 0 {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_ALREADY_REVERTED skip but the audited order on ledger %q is not a RevertTransactionOrder", seq, ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		ctx := skipped.OrderSkipped.GetContext()
+		want := strconv.FormatUint(expected.transactionID, 10)
+		if got := ctx["transactionId"]; got != want {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records TRANSACTION_ALREADY_REVERTED skip with context.transactionId=%q but the chain-bound order targets %s", seq, got, want),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+	case commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND:
+		// Chain-bound Order was a DeleteMetadataOrder with (target, key).
+		// ErrMetadataNotFound.Metadata() stamps both under
+		// context["target"] and context["key"] via the same formatting
+		// helper the checker mirrors (formatTargetForSkipContext).
+		if expected.metadataKey == "" {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip but the audited order on ledger %q is not a DeleteMetadataOrder", seq, ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		ctx := skipped.OrderSkipped.GetContext()
+		if got := ctx["key"]; got != expected.metadataKey {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip with context.key=%q but the chain-bound order targets key %q", seq, got, expected.metadataKey),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		if got := ctx["target"]; got != expected.metadataTarget {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip with context.target=%q but the chain-bound order targets %q", seq, got, expected.metadataTarget),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+	case commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
+		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND:
+		// Both reasons carry the same context (`name`) via
+		// ErrAccountTypeAlreadyExists.Metadata() /
+		// ErrAccountTypeNotFound.Metadata(). Merging the branches keeps
+		// the switch symmetric — a tampered log that flips the reason
+		// (ALREADY_EXISTS ↔ NOT_FOUND) would still surface the same
+		// context and pass this check; the tampering is caught upstream
+		// by the whitelist-membership check on the wrong action type
+		// (RemoveAccountType's whitelist excludes ALREADY_EXISTS and
+		// vice versa).
+		if expected.accountTypeName == "" {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records %s skip but the audited order on ledger %q is not an AccountType order", seq, reason, ledger),
+				seq, ledger, "", "",
+			))
+
+			return
+		}
+
+		ctx := skipped.OrderSkipped.GetContext()
+		if got := ctx["name"]; got != expected.accountTypeName {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				fmt.Sprintf("log %d records %s skip with context.name=%q but the chain-bound order targets %q", seq, reason, got, expected.accountTypeName),
 				seq, ledger, "", "",
 			))
 

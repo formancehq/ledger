@@ -542,10 +542,18 @@ message LedgerAction {
       (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
     ];
     common.SaveMetadataCommand add_metadata = 2;
-    RevertTransactionPayload revert_transaction = 3;
-    common.DeleteMetadataCommand delete_metadata = 4;
-    AddAccountTypeRequest add_account_type = 5;
-    RemoveAccountTypeRequest remove_account_type = 6;
+    RevertTransactionPayload revert_transaction = 3 [
+      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+    ];
+    common.DeleteMetadataCommand delete_metadata = 4 [
+      (allowed_skippable_reasons) = ERROR_REASON_METADATA_NOT_FOUND
+    ];
+    AddAccountTypeRequest add_account_type = 5 [
+      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+    ];
+    RemoveAccountTypeRequest remove_account_type = 6 [
+      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+    ];
     SetDefaultEnforcementModeRequest set_default_enforcement_mode = 7;
   }
 }

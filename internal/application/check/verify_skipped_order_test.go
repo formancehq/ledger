@@ -125,14 +125,18 @@ func TestVerifySkippedOrder_RejectsReasonOutsideWhitelist(t *testing.T) {
 // reason-specific switch, the checker must flag the projection rather
 // than silently accepting it after the whitelist-membership check.
 //
-// TRANSACTION_ALREADY_REVERTED is KindConflict (not KindInternal), so it
-// passes the earlier defense-in-depth gates and reaches the switch.
-// Today verifySkippedOrder has no case for it — the `default` branch
-// fires INVALID_SKIP.
+// LEDGER_ALREADY_EXISTS is KindAlreadyExists (not KindInternal), so it
+// passes the earlier defense-in-depth gates and reaches the switch. No
+// LedgerAction annotates it as skippable today — the .proto plugin
+// would never emit it into a real Order.SkippableReasons — but the
+// checker MUST still reject a tampered projection that presents it
+// under a chain-bound Order that somehow lists it. If a future PR
+// legitimately whitelists LEDGER_ALREADY_EXISTS, swap the reason for
+// another non-KindInternal reason that still has no case.
 func TestVerifySkippedOrder_RejectsWhitelistedReasonWithoutReplayBranch(t *testing.T) {
 	t.Parallel()
 
-	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	reason := commonpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS
 
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
@@ -985,4 +989,235 @@ func requireInvalidSkipEvent(t *testing.T, events []*servicepb.CheckStoreEvent, 
 	require.NotNil(t, got, "expected a CheckStoreError event")
 	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP, got.GetErrorType())
 	require.Equal(t, seq, got.GetLogSequence())
+}
+
+// skippedPayloadWithContext builds an OrderSkipped payload with the given
+// reason and a fully-populated context map — used by the new-reason
+// verifier tests to exercise both the accept and tamper paths without
+// duplicating the payload constructor per case.
+func skippedPayloadWithContext(reason commonpb.ErrorReason, ctx map[string]string) *commonpb.LedgerLogPayload {
+	return &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason:  reason,
+				Context: ctx,
+			},
+		},
+	}
+}
+
+// TestVerifySkippedOrder_RevertAlreadyRevertedAcceptsMatchingContext pins
+// the happy path for TRANSACTION_ALREADY_REVERTED: the projection carries
+// the same transaction id the chain-bound RevertTransactionOrder targeted.
+func TestVerifySkippedOrder_RevertAlreadyRevertedAcceptsMatchingContext(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:       []commonpb.ErrorReason{reason},
+			ledger:        "L",
+			transactionID: 42,
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "42"})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	require.Empty(t, events, "matching correlator must not emit any INVALID_SKIP")
+}
+
+// TestVerifySkippedOrder_RevertAlreadyRevertedRejectsMissingCorrelator
+// catches a projection that records the reason on an order the chain
+// says is NOT a RevertTransactionOrder — expected.transactionID stays 0
+// and the verifier surfaces the mismatch.
+func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsMissingCorrelator(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "42"})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_RevertAlreadyRevertedRejectsTamperedTxID catches
+// a projection whose context.transactionId was flipped to hide the
+// actual target of the double-revert.
+func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsTamperedTxID(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:       []commonpb.ErrorReason{reason},
+			ledger:        "L",
+			transactionID: 42,
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "13"})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_MetadataNotFoundAcceptsMatchingContext pins the
+// happy path for METADATA_NOT_FOUND on DeleteMetadata.
+func TestVerifySkippedOrder_MetadataNotFoundAcceptsMatchingContext(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice",
+			metadataKey:    "role",
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{
+		"target": "alice",
+		"key":    "role",
+	})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	require.Empty(t, events)
+}
+
+// TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedKey catches a
+// projection whose context.key was flipped — the tampering vector where
+// the caller thinks they deleted "role" but the chain-bound order was
+// actually deleting "team".
+func TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedKey(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice",
+			metadataKey:    "role",
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{
+		"target": "alice",
+		"key":    "team",
+	})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedTarget catches a
+// projection whose context.target was flipped (e.g. account address
+// swapped for a different account).
+func TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedTarget(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice",
+			metadataKey:    "role",
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{
+		"target": "bob",
+		"key":    "role",
+	})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_MetadataNotFoundRejectsMissingCorrelator pins
+// the "wrong order kind" case: a METADATA_NOT_FOUND skip on an order the
+// chain says isn't a DeleteMetadataOrder.
+func TestVerifySkippedOrder_MetadataNotFoundRejectsMissingCorrelator(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_AccountTypeAlreadyExistsAcceptsMatchingContext.
+func TestVerifySkippedOrder_AccountTypeAlreadyExistsAcceptsMatchingContext(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:         []commonpb.ErrorReason{reason},
+			ledger:          "L",
+			accountTypeName: "customer",
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	require.Empty(t, events)
+}
+
+// TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsTamperedName
+// catches a projection whose context.name was flipped.
+func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsTamperedName(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:         []commonpb.ErrorReason{reason},
+			ledger:          "L",
+			accountTypeName: "customer",
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": "vendor"})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext exercises
+// the symmetric case for the RemoveAccountType path.
+func TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:         []commonpb.ErrorReason{reason},
+			ledger:          "L",
+			accountTypeName: "customer",
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	require.Empty(t, events)
+}
+
+// TestVerifySkippedOrder_AccountTypeNotFoundRejectsMissingCorrelator pins
+// the "wrong order kind" case for AccountType reasons.
+func TestVerifySkippedOrder_AccountTypeNotFoundRejectsMissingCorrelator(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {reasons: []commonpb.ErrorReason{reason}, ledger: "L"},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
+	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	requireInvalidSkipEvent(t, events, 7)
 }
