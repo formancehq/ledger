@@ -515,7 +515,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
 
-						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, chainBound, hasArchivedChapters && !baselineReferencesAvailable, callback)
+						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, chainBound, hasArchivedChapters, baselineReferencesAvailable, callback)
 
 						// Accumulate the LedgerLog.PurgedVolumes side of the
 						// stored projection while we have the log in hand;
@@ -533,7 +533,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// it also fires for tampered projections that never reach the
 		// well-formed Apply branch above — non-Apply payloads, nil
 		// Apply.Log, or nil Data — where verifySkippedOrder is unreachable.
-		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, hasArchivedChapters && !baselineReferencesAvailable, callback)
+		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, hasArchivedChapters, callback)
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
@@ -1982,11 +1982,7 @@ func collectExpectedSkippable(
 		}
 
 		if mi := ls.GetMirrorIngest(); mi != nil {
-			if mct := mi.GetEntry().GetCreatedTransaction(); mct != nil {
-				if ref := mct.GetReference(); ref != "" {
-					rememberReferenceClaim(chainBound.references, ledger, ref, logSeq)
-				}
-			}
+			recordMirrorIngestMutations(mi.GetEntry(), ledger, logSeq, chainBound)
 		}
 
 		// Audit-derived state timelines for the non-CreateTransaction
@@ -2139,6 +2135,66 @@ func recordChainBoundMutations(
 	if ra := apply.GetRemoveAccountType(); ra != nil {
 		if name := ra.GetName(); name != "" {
 			appendAccountTypeMutation(chainBound.accountTypes, ledger, name, logSeq, false)
+		}
+	}
+}
+
+// recordMirrorIngestMutations mirrors recordChainBoundMutations for the
+// MirrorLogEntry variants that surface AFTER a mirror-mode promotion.
+// Mirror-ingested entries replay the source ledger's state changes on
+// this ledger, so a later skippable order on the same target/tx must
+// see them in the chain-bound state:
+//
+//   - MirrorRevertedTransaction → chainBound.reverted (first-seen wins).
+//     Fixes the false-positive where a promoted ledger's later
+//     RevertTransaction with ALREADY_REVERTED opt-in couldn't find its
+//     prior mirror-ingested revert.
+//
+//   - MirrorSavedMetadata → chainBound.metadata (exists=true).
+//     Multi-key save expands into one mutation per key. Mirror-ingested
+//     metadata is a real presence; a later skippable DeleteMetadata
+//     must see it to answer "was absent" correctly.
+//
+//   - MirrorDeletedMetadata → chainBound.metadata (exists=false).
+//
+//   - MirrorCreatedTransaction: reference already handled by the caller
+//     via rememberReferenceClaim; no metadata correlator to track here
+//     (transaction-scoped metadata is the same tx-id gap documented in
+//     recordChainBoundMutations).
+func recordMirrorIngestMutations(
+	entry *raftcmdpb.MirrorLogEntry,
+	ledger string,
+	logSeq uint64,
+	chainBound *chainBoundState,
+) {
+	if entry == nil {
+		return
+	}
+
+	if mct := entry.GetCreatedTransaction(); mct != nil {
+		if ref := mct.GetReference(); ref != "" {
+			rememberReferenceClaim(chainBound.references, ledger, ref, logSeq)
+		}
+	}
+
+	if mrt := entry.GetRevertedTransaction(); mrt != nil {
+		rememberFirstRevert(chainBound.reverted, ledger, mrt.GetRevertedTransactionId(), logSeq)
+	}
+
+	if msm := entry.GetSavedMetadata(); msm != nil {
+		target := formatTargetForSkipContext(msm.GetTarget())
+		if target != "" {
+			for key := range msm.GetMetadata() {
+				appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
+			}
+		}
+	}
+
+	if mdm := entry.GetDeletedMetadata(); mdm != nil {
+		target := formatTargetForSkipContext(mdm.GetTarget())
+		key := mdm.GetKey()
+		if target != "" && key != "" {
+			appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, false)
 		}
 	}
 }
@@ -2368,6 +2424,7 @@ func verifySkippedOrder(
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
 	hasArchivedChapters bool,
+	baselineReferencesAvailable bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	skipped, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped)
@@ -2526,13 +2583,15 @@ func verifySkippedOrder(
 		// not move it).
 		firstSeenSeq, claimed := chainBound.references[ledger][expected.reference]
 		if !claimed || firstSeenSeq >= seq {
-			// No earlier claim visible in the live audit range. If
-			// archived chapters exist, the claim may live in a purged
-			// range we cannot re-verify here; stay permissive to avoid
-			// flagging legitimate skips on archived references. If no
-			// archive boundary applies, the missing claim IS the
-			// fabrication we want to catch — fail loudly.
-			if hasArchivedChapters {
+			// No earlier claim visible in the live audit range. If the
+			// baseline TransactionReference attribute did NOT cover the
+			// archived range (baselineReferencesAvailable=false), the
+			// claim may live in a purged chapter we cannot re-verify.
+			// Stay permissive under that specific condition; when the
+			// baseline IS available (foldBaselineReferences folded
+			// archived refs into chainBound.references with sentinel
+			// seq=0), the missing claim proves fabrication.
+			if hasArchivedChapters && !baselineReferencesAvailable {
 				return
 			}
 

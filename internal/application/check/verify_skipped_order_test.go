@@ -954,7 +954,10 @@ func captureEventsState(
 
 	events := []*servicepb.CheckStoreEvent{}
 
-	verifySkippedOrder(ledger, seq, payload, expected, chainBound, hasArchivedChapters, func(e *servicepb.CheckStoreEvent) {
+	// Baseline default: assume the baseline reference set is NOT
+	// available. Tests that assert the CONFLICT branch's baseline-covered
+	// path build the state directly and call verifySkippedOrder inline.
+	verifySkippedOrder(ledger, seq, payload, expected, chainBound, hasArchivedChapters, false, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
