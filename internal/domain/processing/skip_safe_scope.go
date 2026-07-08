@@ -247,8 +247,8 @@ func (s *skipSafeScope) DeleteQueryCheckpoint(checkpointID uint64) {
 // still fires under a skip-tolerant order.
 // ──────────────────────────────────────────────────────────────────────────
 
-func (s *skipSafeScope) CheckCoverage(kind byte, canonical []byte) error {
-	return s.inner.CheckCoverage(kind, canonical)
+func (s *skipSafeScope) CheckCoverage(kind byte, key CoverageKey) error {
+	return s.inner.CheckCoverage(kind, key)
 }
 
 // Compile-time assertion: skipSafeScope satisfies Scope. If Scope gains a

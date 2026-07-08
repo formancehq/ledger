@@ -3755,7 +3755,7 @@ func (r *createTransactionPayloadReadonly) GetScriptReference() ScriptReferenceR
 }
 
 func (r *createTransactionPayloadReadonly) GetSkippableReasons() []commonpb.ErrorReason {
-	return slices.Clone(r.v.GetSkippableReasons())
+	return slices.Clone((*CreateTransactionPayload)(r).GetSkippableReasons())
 }
 
 func (r *createTransactionPayloadReadonly) Mutate() *CreateTransactionPayload {

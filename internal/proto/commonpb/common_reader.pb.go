@@ -5485,18 +5485,18 @@ type OrderSkippedLogReader interface {
 	Mutate() *OrderSkippedLog
 }
 
-type orderSkippedLogReadonly struct{ v *OrderSkippedLog }
+type orderSkippedLogReadonly OrderSkippedLog
 
 func (r *orderSkippedLogReadonly) GetReason() ErrorReason {
-	return r.v.GetReason()
+	return (*OrderSkippedLog)(r).GetReason()
 }
 
 func (r *orderSkippedLogReadonly) GetContext() OrderSkippedLog_ContextMapReader {
-	return orderSkippedLog_contextMapReadonly(r.v.GetContext())
+	return orderSkippedLog_contextMapReadonly((*OrderSkippedLog)(r).GetContext())
 }
 
 func (r *orderSkippedLogReadonly) Mutate() *OrderSkippedLog {
-	return r.v.CloneVT()
+	return (*OrderSkippedLog)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this OrderSkippedLog.
@@ -5504,7 +5504,7 @@ func (m *OrderSkippedLog) AsReader() OrderSkippedLogReader {
 	if m == nil {
 		return nil
 	}
-	return &orderSkippedLogReadonly{v: m}
+	return (*orderSkippedLogReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this OrderSkippedLog.

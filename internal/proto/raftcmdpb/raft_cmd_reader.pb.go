@@ -26,7 +26,7 @@ func (r *orderReadonly) GetCoverageBits() []byte {
 }
 
 func (r *orderReadonly) GetSkippableReasons() []commonpb.ErrorReason {
-	return slices.Clone(r.v.GetSkippableReasons())
+	return slices.Clone((*Order)(r).GetSkippableReasons())
 }
 
 func (r *orderReadonly) GetType() isOrder_Type {
