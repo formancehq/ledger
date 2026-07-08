@@ -447,16 +447,6 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateTransactionRequest'
       responses:
-        '200':
-          description: |
-            The order was matched by a `skippableReasons` opt-in: no state
-            mutation happened. The body carries the matched `reason` and
-            its `context` (for `TRANSACTION_REFERENCE_CONFLICT`, the
-            context contains `reference` and `existingTransactionId`).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrderSkippedResponse'
         '201':
           description: Transaction created successfully
           content:
@@ -483,7 +473,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict (e.g. concurrent modification, or reference already exists when `skippableReasons` does NOT include `TRANSACTION_REFERENCE_CONFLICT`)
+          description: Conflict (concurrent modification, or reference already claimed by another transaction). Callers that need continue-on-failure semantics should use the bulk endpoint with a per-entry `skippableReasons` list.
           content:
             application/json:
               schema:
@@ -2272,20 +2262,6 @@ components:
           type: boolean
           default: false
           description: When true, include post-commit volumes (per account/asset) in the response
-        skippableReasons:
-          type: array
-          items:
-            type: string
-          description: |
-            Opt-in continue-on-failure list. When the FSM would otherwise
-            reject the order with a business error whose typed reason
-            matches one of these entries, the order is recorded as an
-            `OrderSkippedLog` (no state mutation, HTTP 200) instead of
-            failing the proposal. Reasons outside the per-operation
-            business whitelist (structural / internal reasons) are
-            rejected at admission. Currently accepted on CreateTransaction:
-            `TRANSACTION_REFERENCE_CONFLICT`. Empty (default) preserves
-            the historical fail-on-error behaviour.
 
     PostingRequest:
       type: object
@@ -2365,6 +2341,23 @@ components:
             - $ref: '#/components/schemas/RevertTransactionRequest'
             - $ref: '#/components/schemas/DeleteMetadataRequest'
           description: Operation-specific data
+        skippableReasons:
+          type: array
+          items:
+            type: string
+            enum:
+              - TRANSACTION_REFERENCE_CONFLICT
+          description: |
+            Opt-in continue-on-failure list for this entry. When the FSM
+            would otherwise reject the underlying order with a business
+            error whose typed reason matches one of these entries, the
+            order is recorded as an `OrderSkippedLog` (no state mutation)
+            and the bulk result's `data` surfaces the skip context.
+            Reasons outside the per-action business whitelist (structural /
+            internal reasons) are rejected at admission. Currently accepted
+            on `CREATE_TRANSACTION`: `TRANSACTION_REFERENCE_CONFLICT`.
+            Empty (default) preserves the historical fail-on-error
+            behaviour.
 
     AddMetadataRequest:
       type: object
@@ -2537,33 +2530,29 @@ components:
     OrderSkippedResponse:
       type: object
       description: |
-        Returned with HTTP 200 when a request opted into `skippableReasons`
-        and the FSM matched one of the listed reasons. No state mutation
-        occurred. `data.skipped` is always `true` on this response shape —
-        branch on it to distinguish from the 201 / 200 create paths.
+        Shape returned in the bulk result's `data` field when a bulk entry
+        opted into `skippableReasons` and the FSM matched one of the
+        listed reasons (no state mutation occurred). `skipped` is always
+        `true` on this shape — branch on it to distinguish from the
+        normal Transaction data.
       required:
-        - data
+        - skipped
+        - reason
       properties:
-        data:
+        skipped:
+          type: boolean
+          description: Always true on this shape.
+        reason:
+          type: string
+          description: Typed reason that matched the skip (e.g. `TRANSACTION_REFERENCE_CONFLICT`). Same identifier the gRPC ErrorInfo.reason and the REST error responses use.
+        context:
           type: object
-          required:
-            - skipped
-            - reason
-          properties:
-            skipped:
-              type: boolean
-              description: Always true on this shape.
-            reason:
-              type: string
-              description: Typed reason that matched the skip (e.g. `TRANSACTION_REFERENCE_CONFLICT`). Same identifier the gRPC ErrorInfo.reason and the REST error responses use.
-            context:
-              type: object
-              additionalProperties:
-                type: string
-              description: |
-                Reason-specific correlator. For
-                `ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT`, contains
-                `reference` and `existingTransactionId`.
+          additionalProperties:
+            type: string
+          description: |
+            Reason-specific correlator. For
+            `ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT`, contains
+            `reference` and `existingTransactionId`.
 
     GetTransactionResponse:
       type: object

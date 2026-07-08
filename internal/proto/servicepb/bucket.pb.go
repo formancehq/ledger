@@ -3477,16 +3477,8 @@ type CreateTransactionPayload struct {
 	Force           bool                               `protobuf:"varint,7,opt,name=force,proto3" json:"force,omitempty"`
 	ExpandVolumes   bool                               `protobuf:"varint,8,opt,name=expand_volumes,json=expandVolumes,proto3" json:"expand_volumes,omitempty"`
 	ScriptReference *ScriptReference                   `protobuf:"bytes,9,opt,name=script_reference,json=scriptReference,proto3" json:"script_reference,omitempty"`
-	// Business error reasons the caller accepts to skip silently rather than
-	// fail the proposal. The FSM records a common.OrderSkippedLog for each
-	// matching skip; the proposal continues with Outcome=Success.
-	//
-	// Only reasons in the business whitelist are accepted at admission
-	// (TRANSACTION_REFERENCE_CONFLICT being the first supported one). Empty
-	// (default) preserves the historical 4xx-on-error behaviour.
-	SkippableReasons []commonpb.ErrorReason `protobuf:"varint,10,rep,packed,name=skippable_reasons,json=skippableReasons,proto3,enum=common.ErrorReason" json:"skippable_reasons,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CreateTransactionPayload) Reset() {
@@ -3578,13 +3570,6 @@ func (x *CreateTransactionPayload) GetExpandVolumes() bool {
 func (x *CreateTransactionPayload) GetScriptReference() *ScriptReference {
 	if x != nil {
 		return x.ScriptReference
-	}
-	return nil
-}
-
-func (x *CreateTransactionPayload) GetSkippableReasons() []commonpb.ErrorReason {
-	if x != nil {
-		return x.SkippableReasons
 	}
 	return nil
 }
@@ -3838,11 +3823,21 @@ func (*LedgerAction_RemoveAccountType) isLedgerAction_Data() {}
 func (*LedgerAction_SetDefaultEnforcementMode) isLedgerAction_Data() {}
 
 type LedgerApplyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Action        *LedgerAction          `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Action *LedgerAction          `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
+	// Business error reasons the caller accepts to skip silently rather than
+	// fail the proposal. The FSM records a common.OrderSkippedLog for each
+	// matching skip; the proposal continues with Outcome=Success.
+	//
+	// Validated at admission against a per-action business whitelist (see
+	// internal/application/admission/skippable.go) — today only
+	// TRANSACTION_REFERENCE_CONFLICT on CreateTransaction is accepted. An
+	// opt-in on an action that does not support skip is rejected up front.
+	// Empty (default) preserves the historical fail-fast behaviour.
+	SkippableReasons []commonpb.ErrorReason `protobuf:"varint,3,rep,packed,name=skippable_reasons,json=skippableReasons,proto3,enum=common.ErrorReason" json:"skippable_reasons,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *LedgerApplyRequest) Reset() {
@@ -3885,6 +3880,13 @@ func (x *LedgerApplyRequest) GetLedger() string {
 func (x *LedgerApplyRequest) GetAction() *LedgerAction {
 	if x != nil {
 		return x.Action
+	}
+	return nil
+}
+
+func (x *LedgerApplyRequest) GetSkippableReasons() []commonpb.ErrorReason {
+	if x != nil {
+		return x.SkippableReasons
 	}
 	return nil
 }
@@ -8899,7 +8901,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x13ResponseSigningInfo\x12\x1d\n" +
 	"\n" +
 	"public_key\x18\x01 \x01(\fR\tpublicKey\x12\x15\n" +
-	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\xdc\x05\n" +
+	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\x9a\x05\n" +
 	"\x18CreateTransactionPayload\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
@@ -8909,9 +8911,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10account_metadata\x18\x06 \x03(\v25.ledger.CreateTransactionPayload.AccountMetadataEntryR\x0faccountMetadata\x12\x14\n" +
 	"\x05force\x18\a \x01(\bR\x05force\x12%\n" +
 	"\x0eexpand_volumes\x18\b \x01(\bR\rexpandVolumes\x12B\n" +
-	"\x10script_reference\x18\t \x01(\v2\x17.ledger.ScriptReferenceR\x0fscriptReference\x12@\n" +
-	"\x11skippable_reasons\x18\n" +
-	" \x03(\x0e2\x13.common.ErrorReasonR\x10skippableReasons\x1aR\n" +
+	"\x10script_reference\x18\t \x01(\v2\x17.ledger.ScriptReferenceR\x0fscriptReference\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
@@ -8936,10 +8936,11 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10add_account_type\x18\x05 \x01(\v2\x1d.ledger.AddAccountTypeRequestH\x00R\x0eaddAccountType\x12R\n" +
 	"\x13remove_account_type\x18\x06 \x01(\v2 .ledger.RemoveAccountTypeRequestH\x00R\x11removeAccountType\x12k\n" +
 	"\x1cset_default_enforcement_mode\x18\a \x01(\v2(.ledger.SetDefaultEnforcementModeRequestH\x00R\x19setDefaultEnforcementModeB\x06\n" +
-	"\x04data\"Z\n" +
+	"\x04data\"\x9c\x01\n" +
 	"\x12LedgerApplyRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12,\n" +
-	"\x06action\x18\x02 \x01(\v2\x14.ledger.LedgerActionR\x06action\"O\n" +
+	"\x06action\x18\x02 \x01(\v2\x14.ledger.LedgerActionR\x06action\x12@\n" +
+	"\x11skippable_reasons\x18\x03 \x03(\x0e2\x13.common.ErrorReasonR\x10skippableReasons\"O\n" +
 	"\x15AddAccountTypeRequest\x126\n" +
 	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\".\n" +
 	"\x18RemoveAccountTypeRequest\x12\x12\n" +
@@ -9548,9 +9549,9 @@ var file_bucket_proto_goTypes = []any{
 	(*commonpb.Posting)(nil),                       // 157: common.Posting
 	(*commonpb.Script)(nil),                        // 158: common.Script
 	(*commonpb.Timestamp)(nil),                     // 159: common.Timestamp
-	(commonpb.ErrorReason)(0),                      // 160: common.ErrorReason
-	(*commonpb.SaveMetadataCommand)(nil),           // 161: common.SaveMetadataCommand
-	(*commonpb.DeleteMetadataCommand)(nil),         // 162: common.DeleteMetadataCommand
+	(*commonpb.SaveMetadataCommand)(nil),           // 160: common.SaveMetadataCommand
+	(*commonpb.DeleteMetadataCommand)(nil),         // 161: common.DeleteMetadataCommand
+	(commonpb.ErrorReason)(0),                      // 162: common.ErrorReason
 	(*commonpb.AccountType)(nil),                   // 163: common.AccountType
 	(*commonpb.SinkStatus)(nil),                    // 164: common.SinkStatus
 	(*commonpb.PreparedQuery)(nil),                 // 165: common.PreparedQuery
@@ -9640,16 +9641,16 @@ var file_bucket_proto_depIdxs = []int32{
 	136, // 66: ledger.CreateTransactionPayload.metadata:type_name -> ledger.CreateTransactionPayload.MetadataEntry
 	137, // 67: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
 	46,  // 68: ledger.CreateTransactionPayload.script_reference:type_name -> ledger.ScriptReference
-	160, // 69: ledger.CreateTransactionPayload.skippable_reasons:type_name -> common.ErrorReason
-	138, // 70: ledger.RevertTransactionPayload.metadata:type_name -> ledger.RevertTransactionPayload.MetadataEntry
-	55,  // 71: ledger.LedgerAction.create_transaction:type_name -> ledger.CreateTransactionPayload
-	161, // 72: ledger.LedgerAction.add_metadata:type_name -> common.SaveMetadataCommand
-	56,  // 73: ledger.LedgerAction.revert_transaction:type_name -> ledger.RevertTransactionPayload
-	162, // 74: ledger.LedgerAction.delete_metadata:type_name -> common.DeleteMetadataCommand
-	59,  // 75: ledger.LedgerAction.add_account_type:type_name -> ledger.AddAccountTypeRequest
-	60,  // 76: ledger.LedgerAction.remove_account_type:type_name -> ledger.RemoveAccountTypeRequest
-	61,  // 77: ledger.LedgerAction.set_default_enforcement_mode:type_name -> ledger.SetDefaultEnforcementModeRequest
-	57,  // 78: ledger.LedgerApplyRequest.action:type_name -> ledger.LedgerAction
+	138, // 69: ledger.RevertTransactionPayload.metadata:type_name -> ledger.RevertTransactionPayload.MetadataEntry
+	55,  // 70: ledger.LedgerAction.create_transaction:type_name -> ledger.CreateTransactionPayload
+	160, // 71: ledger.LedgerAction.add_metadata:type_name -> common.SaveMetadataCommand
+	56,  // 72: ledger.LedgerAction.revert_transaction:type_name -> ledger.RevertTransactionPayload
+	161, // 73: ledger.LedgerAction.delete_metadata:type_name -> common.DeleteMetadataCommand
+	59,  // 74: ledger.LedgerAction.add_account_type:type_name -> ledger.AddAccountTypeRequest
+	60,  // 75: ledger.LedgerAction.remove_account_type:type_name -> ledger.RemoveAccountTypeRequest
+	61,  // 76: ledger.LedgerAction.set_default_enforcement_mode:type_name -> ledger.SetDefaultEnforcementModeRequest
+	57,  // 77: ledger.LedgerApplyRequest.action:type_name -> ledger.LedgerAction
+	162, // 78: ledger.LedgerApplyRequest.skippable_reasons:type_name -> common.ErrorReason
 	163, // 79: ledger.AddAccountTypeRequest.account_type:type_name -> common.AccountType
 	148, // 80: ledger.SetDefaultEnforcementModeRequest.enforcement_mode:type_name -> common.ChartEnforcementMode
 	148, // 81: ledger.SetDefaultEnforcementModeLedgerRequest.enforcement_mode:type_name -> common.ChartEnforcementMode

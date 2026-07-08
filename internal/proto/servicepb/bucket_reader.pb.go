@@ -3700,7 +3700,6 @@ type CreateTransactionPayloadReader interface {
 	GetForce() bool
 	GetExpandVolumes() bool
 	GetScriptReference() ScriptReferenceReader
-	GetSkippableReasons() []commonpb.ErrorReason
 	Mutate() *CreateTransactionPayload
 }
 
@@ -3752,10 +3751,6 @@ func (r *createTransactionPayloadReadonly) GetScriptReference() ScriptReferenceR
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *createTransactionPayloadReadonly) GetSkippableReasons() []commonpb.ErrorReason {
-	return slices.Clone((*CreateTransactionPayload)(r).GetSkippableReasons())
 }
 
 func (r *createTransactionPayloadReadonly) Mutate() *CreateTransactionPayload {
@@ -4069,6 +4064,7 @@ func NewLedgerActionListReader(s []*LedgerAction) LedgerActionListReader {
 type LedgerApplyRequestReader interface {
 	GetLedger() string
 	GetAction() LedgerActionReader
+	GetSkippableReasons() []commonpb.ErrorReason
 	Mutate() *LedgerApplyRequest
 }
 
@@ -4084,6 +4080,10 @@ func (r *ledgerApplyRequestReadonly) GetAction() LedgerActionReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *ledgerApplyRequestReadonly) GetSkippableReasons() []commonpb.ErrorReason {
+	return slices.Clone((*LedgerApplyRequest)(r).GetSkippableReasons())
 }
 
 func (r *ledgerApplyRequestReadonly) Mutate() *LedgerApplyRequest {

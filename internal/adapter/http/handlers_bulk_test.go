@@ -115,7 +115,7 @@ func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	body := strings.NewReader(`[
-		{"action":"CREATE_TRANSACTION","data":{"reference":"dup","skippableReasons":["TRANSACTION_REFERENCE_CONFLICT"]}}
+		{"action":"CREATE_TRANSACTION","data":{"reference":"dup"},"skippableReasons":["TRANSACTION_REFERENCE_CONFLICT"]}
 	]`)
 	r := newRequest(t, http.MethodPost, "/ledger1/bulk", body, map[string]string{
 		"ledgerName": "ledger1",

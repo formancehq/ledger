@@ -494,14 +494,6 @@ message CreateTransactionPayload {
   bool force = 7;
   bool expand_volumes = 8;
   ScriptReference script_reference = 9;
-  // Business error reasons the caller accepts to skip silently rather than
-  // fail the proposal. The FSM records a common.OrderSkippedLog for each
-  // matching skip; the proposal continues with Outcome=Success.
-  //
-  // Only reasons in the business whitelist are accepted at admission
-  // (TRANSACTION_REFERENCE_CONFLICT being the first supported one). Empty
-  // (default) preserves the historical 4xx-on-error behaviour.
-  repeated common.ErrorReason skippable_reasons = 10;
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction.
@@ -532,6 +524,16 @@ message LedgerAction {
 message LedgerApplyRequest {
   string ledger = 1;
   LedgerAction action = 2;
+  // Business error reasons the caller accepts to skip silently rather than
+  // fail the proposal. The FSM records a common.OrderSkippedLog for each
+  // matching skip; the proposal continues with Outcome=Success.
+  //
+  // Validated at admission against a per-action business whitelist (see
+  // internal/application/admission/skippable.go) — today only
+  // TRANSACTION_REFERENCE_CONFLICT on CreateTransaction is accepted. An
+  // opt-in on an action that does not support skip is rejected up front.
+  // Empty (default) preserves the historical fail-fast behaviour.
+  repeated common.ErrorReason skippable_reasons = 3;
 }
 
 // AddAccountTypeRequest adds an account type within a LedgerApplyRequest.

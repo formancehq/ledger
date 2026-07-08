@@ -6,8 +6,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// Per-operation business whitelists. Each set lists the ErrorReason values
-// the operation accepts in `skippable_reasons`. Adding a value requires
+// Per-action business whitelists. Each set lists the ErrorReason values
+// the action accepts in `skippable_reasons`. Adding a value requires
 // auditing the sub-processor for the "dry before mutate" invariant
 // documented in internal/domain/processing/processor_skippable.go.
 //
@@ -19,41 +19,37 @@ var (
 	}
 )
 
-// extractSkippableReasonsFromApply pulls and validates the `skippable_reasons`
-// list off the public payload of an Apply request. Returns the typed enum
+// extractSkippableReasonsFromApply pulls and validates the top-level
+// `skippable_reasons` list off a LedgerApplyRequest. Returns the typed enum
 // slice ready to assign onto raftcmdpb.Order.SkippableReasons, or an error
 // wrapped in BusinessError when any entry is rejected.
 //
 // Validation rules:
+//   - Empty lists pass through as no-op (skip disabled).
 //   - UNSPECIFIED is always rejected (caller forgot to set the enum value).
-//   - Each entry must be in the per-operation business whitelist.
-//   - Operations without a whitelist treat any non-empty list as invalid.
-//
-// Empty lists (the default) pass through and disable the skip mechanism.
+//   - Each entry must be in the action-specific business whitelist.
+//   - A non-empty list on an action that does not support skip is rejected
+//     — silently dropping the intent would surprise the caller.
 func extractSkippableReasonsFromApply(apply *servicepb.LedgerApplyRequest) ([]commonpb.ErrorReason, error) {
-	action := apply.GetAction()
-	if action == nil {
-		return nil, nil
-	}
-
-	var (
-		reasons []commonpb.ErrorReason
-		allowed map[commonpb.ErrorReason]struct{}
-	)
-
-	switch data := action.GetData().(type) {
-	case *servicepb.LedgerAction_CreateTransaction:
-		reasons = data.CreateTransaction.GetSkippableReasons()
-		allowed = createTransactionSkippable
-	default:
-		// Operations without skip support today: any non-empty list is
-		// rejected so a typo on the wrong payload doesn't silently lose
-		// the opt-in intent.
-		return nil, nil
-	}
-
+	reasons := apply.GetSkippableReasons()
 	if len(reasons) == 0 {
 		return nil, nil
+	}
+
+	action := apply.GetAction()
+	if action == nil {
+		return nil, &domain.BusinessError{Err: &domain.ErrInvalidSkippableReason{Provided: reasons[0]}}
+	}
+
+	var allowed map[commonpb.ErrorReason]struct{}
+
+	switch action.GetData().(type) {
+	case *servicepb.LedgerAction_CreateTransaction:
+		allowed = createTransactionSkippable
+	default:
+		// The caller opted into skip on an action that has no whitelist —
+		// reject rather than silently drop the intent.
+		return nil, &domain.BusinessError{Err: &domain.ErrInvalidSkippableReason{Provided: reasons[0]}}
 	}
 
 	for _, r := range reasons {

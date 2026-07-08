@@ -12,10 +12,10 @@ import (
 )
 
 // TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason validates the
-// success path: a CreateTransaction request listing only whitelisted reasons
-// passes through as the typed enum slice. Pins the supported business
-// whitelist for CreateTransaction (extend the assertion if a new reason is
-// added to createTransactionSkippable).
+// success path: an Apply request listing only whitelisted reasons passes
+// through as the typed enum slice. Pins the supported business whitelist for
+// CreateTransaction (extend the assertion if a new reason is added to
+// createTransactionSkippable).
 func TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason(t *testing.T) {
 	t.Parallel()
 
@@ -23,12 +23,11 @@ func TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason(t *testing.T)
 		Ledger: "L",
 		Action: &servicepb.LedgerAction{
 			Data: &servicepb.LedgerAction_CreateTransaction{
-				CreateTransaction: &servicepb.CreateTransactionPayload{
-					SkippableReasons: []commonpb.ErrorReason{
-						commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-					},
-				},
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
 			},
+		},
+		SkippableReasons: []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		},
 	}
 
@@ -39,8 +38,8 @@ func TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason(t *testing.T)
 
 // TestExtractSkippableReasonsFromApply_EmptyListReturnsNil verifies the
 // historical no-opt-in default: an empty/missing skippable_reasons disables
-// the skip mechanism and returns (nil, nil) so the order's
-// SkippableReasons field stays unset.
+// the skip mechanism and returns (nil, nil) so the order's SkippableReasons
+// field stays unset.
 func TestExtractSkippableReasonsFromApply_EmptyListReturnsNil(t *testing.T) {
 	t.Parallel()
 
@@ -60,8 +59,8 @@ func TestExtractSkippableReasonsFromApply_EmptyListReturnsNil(t *testing.T) {
 
 // TestExtractSkippableReasonsFromApply_RejectsUnspecified pins the
 // "explicit-only" rule: an UNSPECIFIED entry is treated as a caller bug
-// (forgot to set the enum value) and rejected up front rather than
-// silently dropped.
+// (forgot to set the enum value) and rejected up front rather than silently
+// dropped.
 func TestExtractSkippableReasonsFromApply_RejectsUnspecified(t *testing.T) {
 	t.Parallel()
 
@@ -69,12 +68,11 @@ func TestExtractSkippableReasonsFromApply_RejectsUnspecified(t *testing.T) {
 		Ledger: "L",
 		Action: &servicepb.LedgerAction{
 			Data: &servicepb.LedgerAction_CreateTransaction{
-				CreateTransaction: &servicepb.CreateTransactionPayload{
-					SkippableReasons: []commonpb.ErrorReason{
-						commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
-					},
-				},
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
 			},
+		},
+		SkippableReasons: []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		},
 	}
 
@@ -84,9 +82,9 @@ func TestExtractSkippableReasonsFromApply_RejectsUnspecified(t *testing.T) {
 }
 
 // TestExtractSkippableReasonsFromApply_RejectsOutOfWhitelist exercises the
-// per-operation business whitelist: a reason that is real but not allowed
-// for this operation must fail admission with a typed business error so
-// the gRPC adapter can render a clean validation error.
+// per-action business whitelist: a reason that is real but not allowed for
+// this action must fail admission with a typed business error so the gRPC
+// adapter can render a clean validation error.
 func TestExtractSkippableReasonsFromApply_RejectsOutOfWhitelist(t *testing.T) {
 	t.Parallel()
 
@@ -94,12 +92,11 @@ func TestExtractSkippableReasonsFromApply_RejectsOutOfWhitelist(t *testing.T) {
 		Ledger: "L",
 		Action: &servicepb.LedgerAction{
 			Data: &servicepb.LedgerAction_CreateTransaction{
-				CreateTransaction: &servicepb.CreateTransactionPayload{
-					SkippableReasons: []commonpb.ErrorReason{
-						commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
-					},
-				},
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
 			},
+		},
+		SkippableReasons: []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 		},
 	}
 
@@ -108,13 +105,12 @@ func TestExtractSkippableReasonsFromApply_RejectsOutOfWhitelist(t *testing.T) {
 	requireInvalidSkippableReason(t, err, commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
 }
 
-// TestExtractSkippableReasonsFromApply_UnsupportedOperationReturnsNil covers
-// the safety net for action types without skip support: even though the
-// caller wrote skippable_reasons on a payload that does not expose them,
-// the helper returns nil rather than silently smuggling them onto the
-// Order (the wire schema does not even expose the field for those
-// payloads). Extend this once a new operation joins the whitelist set.
-func TestExtractSkippableReasonsFromApply_UnsupportedOperationReturnsNil(t *testing.T) {
+// TestExtractSkippableReasonsFromApply_RejectsOnUnsupportedAction covers
+// the "wrong action" case: the caller opted into skip on an action that has
+// no whitelist (e.g. AddMetadata) — the helper rejects rather than silently
+// dropping the intent so a copy-paste from a CreateTransaction entry does
+// not silently disarm the skip on the wrong action.
+func TestExtractSkippableReasonsFromApply_RejectsOnUnsupportedAction(t *testing.T) {
 	t.Parallel()
 
 	apply := &servicepb.LedgerApplyRequest{
@@ -124,11 +120,14 @@ func TestExtractSkippableReasonsFromApply_UnsupportedOperationReturnsNil(t *test
 				AddMetadata: &commonpb.SaveMetadataCommand{},
 			},
 		},
+		SkippableReasons: []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		},
 	}
 
 	got, err := extractSkippableReasonsFromApply(apply)
-	require.NoError(t, err)
 	require.Nil(t, got)
+	requireInvalidSkippableReason(t, err, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 }
 
 func requireInvalidSkippableReason(t *testing.T, err error, expected commonpb.ErrorReason) {
