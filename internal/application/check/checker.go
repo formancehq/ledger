@@ -1800,30 +1800,30 @@ func (c *Checker) verifyAuditHashChain(
 // (LedgerLog) never influence any of these maps, so a tampered log cannot
 // forge a false "underlying condition was true" answer.
 //
-// - references: per-ledger first-seen sequence of every audit-bound
-//   CreateTransactionOrder reference (regardless of outcome). Verifies the
-//   "prior claim" replay for TRANSACTION_REFERENCE_CONFLICT.
+//   - references: per-ledger first-seen sequence of every audit-bound
+//     CreateTransactionOrder reference (regardless of outcome). Verifies the
+//     "prior claim" replay for TRANSACTION_REFERENCE_CONFLICT.
 //
-// - reverted: per-ledger first-seen sequence of every audit-bound
-//   RevertTransactionOrder that produced a Success outcome (a successful
-//   revert; skipped ALREADY_REVERTED reverts are also recorded because
-//   they imply a prior success — see collectExpectedSkippable). Verifies
-//   "was tx already reverted at seq X?" for TRANSACTION_ALREADY_REVERTED.
+//   - reverted: per-ledger first-seen sequence of every audit-bound
+//     RevertTransactionOrder that produced a Success outcome (a successful
+//     revert; skipped ALREADY_REVERTED reverts are also recorded because
+//     they imply a prior success — see collectExpectedSkippable). Verifies
+//     "was tx already reverted at seq X?" for TRANSACTION_ALREADY_REVERTED.
 //
-// - metadata: per-(ledger, target, key) chronological list of state
-//   transitions (SaveMetadata → exists=true, DeleteMetadata → exists=false).
-//   The verifier queries "was the key absent just before seq X?" for
-//   METADATA_NOT_FOUND via the last transition strictly before X.
+//   - metadata: per-(ledger, target, key) chronological list of state
+//     transitions (SaveMetadata → exists=true, DeleteMetadata → exists=false).
+//     The verifier queries "was the key absent just before seq X?" for
+//     METADATA_NOT_FOUND via the last transition strictly before X.
 //
-// - accountTypes: per-(ledger, name) chronological list of state
-//   transitions (AddAccountType → exists=true, RemoveAccountType →
-//   exists=false). Verifies presence/absence at seq for
-//   ACCOUNT_TYPE_ALREADY_EXISTS / ACCOUNT_TYPE_NOT_FOUND.
+//   - accountTypes: per-(ledger, name) chronological list of state
+//     transitions (AddAccountType → exists=true, RemoveAccountType →
+//     exists=false). Verifies presence/absence at seq for
+//     ACCOUNT_TYPE_ALREADY_EXISTS / ACCOUNT_TYPE_NOT_FOUND.
 type chainBoundState struct {
-	references    map[string]map[string]uint64
-	reverted      map[string]map[uint64]uint64
-	metadata      map[string]map[string]map[string][]chainBoundMutation
-	accountTypes  map[string]map[string][]chainBoundMutation
+	references   map[string]map[string]uint64
+	reverted     map[string]map[uint64]uint64
+	metadata     map[string]map[string]map[string][]chainBoundMutation
+	accountTypes map[string]map[string][]chainBoundMutation
 }
 
 // chainBoundMutation records one presence-flip observed on the audit
@@ -1854,9 +1854,9 @@ func newChainBoundState() *chainBoundState {
 // because per-key mutation lists are bounded by the number of user
 // operations on that key.
 func mutationStateAtSeq(muts []chainBoundMutation, seq uint64) bool {
-	for i := len(muts) - 1; i >= 0; i-- {
-		if muts[i].seq < seq {
-			return muts[i].exists
+	for _, v := range slices.Backward(muts) {
+		if v.seq < seq {
+			return v.exists
 		}
 	}
 
