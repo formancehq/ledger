@@ -1,6 +1,7 @@
 package celrewrite
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/holiman/uint256"
@@ -160,15 +161,36 @@ func commitToEntry(entry *raftcmdpb.MirrorLogEntry, v *TxView) error {
 			return err
 		}
 
+		// MirrorRevertedTransaction has no account_metadata field. requireKind
+		// rejects setAccountMetadata* on reverted entries, so a non-empty map here
+		// is impossible by design — fail loudly rather than drop it silently.
+		if len(v.AccountMetadata) > 0 {
+			return errors.New("invariant: account metadata present on a reverted entry (no wire field); should have been rejected by requireKind")
+		}
+
 		rt.Metadata = stringsToMetadata(v.Metadata, v.metadataTypes)
 
 	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
 		sm := data.SavedMetadata
+
+		// MirrorSavedMetadata has no account_metadata field (see reverted case).
+		if len(v.AccountMetadata) > 0 {
+			return errors.New("invariant: account metadata present on a setMetadata entry (no wire field); should have been rejected by requireKind")
+		}
+
 		setTargetAddr(sm.GetTarget(), v.Target)
 		sm.Metadata = stringsToMetadata(v.Metadata, v.metadataTypes)
 
 	case *raftcmdpb.MirrorLogEntry_DeletedMetadata:
 		dm := data.DeletedMetadata
+
+		// MirrorDeletedMetadata has neither a metadata nor an account_metadata
+		// field. requireKind rejects setMetadata/deleteMetadata/setAccountMetadata*
+		// on delete entries, so either map being non-empty is impossible by design.
+		if len(v.Metadata) > 0 || len(v.AccountMetadata) > 0 {
+			return errors.New("invariant: metadata present on a deleteMetadata entry (no wire field); should have been rejected by requireKind")
+		}
+
 		setTargetAddr(dm.GetTarget(), v.Target)
 	}
 

@@ -12,6 +12,8 @@ Rewriting happens during v2→v3 translation, on the mirror **leader**, before c
 
 Determinism is a hard invariant (see the top-level `CLAUDE.md`): the leader computes the rewrite once and the result is replicated, so all nodes must produce identical bytes. The CEL environment is built without any non-deterministic function (no wall-clock, no randomness); every helper is pure. Evaluation is additionally bounded by a CEL cost limit and by static caps (rule count, expression length, regex pattern/replacement length) enforced at compile time in `NewRewriter` — the same compilation admission runs, so a config that admits is guaranteed to build on the worker.
 
+Because the rewrite runs only on the leader and is replicated verbatim, a non-deterministic expression cannot desync nodes — but it would still make mirror output non-reproducible across runs, breaking the purity contract. The one non-obvious source is **map iteration**: a CEL comprehension that maps or filters a map (`tx.metadata`, `tx.accountMetadata`) into a list visits keys in Go's randomized order, so its result — and anything derived from it, e.g. `join` — varies run to run. Such expressions are **rejected at admission**. Order-insensitive predicates over a map (`exists`/`all`/`exists_one`, which return a bool) stay allowed, as do comprehensions over an ordered list (`tx.postings`, `tx.addresses()` — the latter is what `mapAddress` expands to). Where an operator needs an ordered projection of addresses, `tx.addresses()` already yields them in a fixed order.
+
 ## Rules
 
 A rule is `{match, cel, stop}`:
@@ -42,8 +44,23 @@ Helper member functions (each returns a new copy-on-write `tx`; helpers never mu
 - `tx.mapAddress(a, expr)` — maps a CEL expression over **every** account address (`a` bound to each; postings, target, account-metadata keys), replacing it with `expr`. This is the open-ended, computed transform a constant regex can't express — e.g. `tx.mapAddress(a, a.split(":").reverse().join(":"))` reverses the segments of every address for arbitrary arity. The address count can't change (transform, don't add/remove); each result is validated at commit. `mapAddress` is the **only** way to write addresses — it transforms each address in place, so it cannot reorder or drop addresses. The read-only companion `tx.addresses()` returns the ordered address list (usable in `match`, e.g. `tx.addresses().exists(a, a.startsWith("acquirer:"))`); there is deliberately no raw list-write helper, since a positional write could silently reassign addresses across postings/roles while every output still validated.
 - `tx.setAccountMetadataFromAddress(pattern, key, replacement [, type])` — for every posting account address matching `pattern`, sets `accountMetadata[address][key]` to `ReplaceAllString(address, replacement)`. Used to derive per-account metadata from the address, e.g. capture a segment with a group and store it. Because it uses `ReplaceAllString`, the pattern must match the **whole** address (anchor with `^…$`), otherwise the unmatched tail is left in the value. Account metadata is only persisted for created transactions.
 - `tx.setMetadata(key, value [, type])` / `tx.deleteMetadata(key)` — edit the entry's metadata map.
-- `tx.setAccountMetadata(account, key, value [, type])` / `tx.deleteAccountMetadata(account, key)` — created/reverted only.
+- `tx.setAccountMetadata(account, key, value [, type])` / `tx.deleteAccountMetadata(account, key)` — edit per-account metadata.
 - `tx.drop()` — mark the entry to be dropped (see below).
+
+**Per-entry-kind applicability.** A helper only works on the entry kinds whose wire form (`raft_cmd.proto`) can store its result — the four `MirrorLogEntry.data` variants do not all carry the same fields:
+
+| helper | created | reverted | setMetadata | deleteMetadata |
+|---|---|---|---|---|
+| `rewriteAddress`, `mapAddress`, `addresses`, `drop` | ✅ | ✅ | ✅ | ✅ |
+| `setMetadata`, `deleteMetadata` | ✅ | ✅ | ✅ | ❌ (no metadata field) |
+| `setAccountMetadata`, `deleteAccountMetadata`, `setAccountMetadataFromAddress` | ✅ | ❌ | ❌ | ❌ (no account_metadata field) |
+
+Calling a helper on an unsupported kind is a **loud batch error**, not a silent no-op — the mutation would otherwise be dropped at commit and hide the mistake. This is enforced at evaluation, not admission: a rule's `match`/`cel` pair is not statically bound to one kind, so a rule that legitimately targets one variant must scope itself with `tx.type` — CEL's lazy ternary means the guarded helper is never evaluated on the other kinds:
+
+```yaml
+- cel: |
+    tx.type == "created" ? tx.setAccountMetadata("orders:pending", "region", "eu") : tx
+```
 
 **Regex patterns.** The `pattern` argument of `rewriteAddress` and `setAccountMetadataFromAddress` **must be a constant** string. It is compiled at admission, so an invalid or empty pattern is rejected up front rather than failing (and stalling) a mirror batch at run time.
 

@@ -20,7 +20,9 @@ import (
 	"maps"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/google/cel-go/cel"
@@ -318,6 +320,10 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 		return nil, err
 	}
 
+	if err := rejectNonDeterministicMapIteration(ast); err != nil {
+		return nil, err
+	}
+
 	prog, err := r.env.Program(ast, cel.CostLimit(maxEvalCost))
 	if err != nil {
 		return nil, fmt.Errorf("program error: %w", err)
@@ -341,6 +347,41 @@ func rejectViewConstruction(ast *cel.Ast) error {
 	for _, s := range structs {
 		if name := s.AsStruct().TypeName(); name == celTypeName || name == postingTypeName {
 			return fmt.Errorf("constructing %s is not allowed; derive the result from tx and its helper functions", name)
+		}
+	}
+
+	return nil
+}
+
+// rejectNonDeterministicMapIteration forbids order-sensitive iteration over a
+// map. A CEL comprehension whose range is a map (tx.metadata,
+// tx.accountMetadata) visits keys in Go's randomized order, so a .map/.filter
+// that projects those keys into a list produces a non-deterministic result. The
+// rewrite must be pure — identical input yields identical bytes, computed once on
+// the leader and replicated verbatim — so such an expression is rejected at
+// admission. Scalar aggregations over a map (.all/.exists/.exists_one, which
+// return a bool) are order-insensitive and stay allowed; comprehensions over an
+// ordered list range (tx.postings, tx.addresses()) are deterministic and allowed
+// (this is what tx.mapAddress expands to).
+func rejectNonDeterministicMapIteration(ast *cel.Ast) error {
+	root := celast.NavigateAST(ast.NativeRep())
+
+	for _, comp := range celast.MatchDescendants(root, func(e celast.NavigableExpr) bool {
+		return e.Kind() == celast.ComprehensionKind
+	}) {
+		iterRange, ok := comp.AsComprehension().IterRange().(celast.NavigableExpr)
+		if !ok {
+			continue
+		}
+
+		if iterRange.Type().Kind() != types.MapKind {
+			continue
+		}
+
+		// A map range feeding a list result is a .map/.filter — order-sensitive.
+		// A bool/int result (.all/.exists/.exists_one) does not depend on order.
+		if comp.Type().Kind() == types.ListKind {
+			return errors.New("order-sensitive iteration over a map is not allowed: mapping or filtering a map (tx.metadata, tx.accountMetadata) into a list is non-deterministic because map keys iterate in random order; use a scalar predicate (exists/all) or iterate an ordered list (tx.postings)")
 		}
 	}
 
@@ -561,6 +602,28 @@ func receiver(v ref.Val) (*TxView, ref.Val) {
 	}
 
 	return tv, nil
+}
+
+// requireKind fails a mutation helper loudly when the entry variant has no wire
+// field to persist the mutation, instead of dropping it silently at commit. The
+// wire variants (raft_cmd.proto) MirrorRevertedTransaction / MirrorSavedMetadata
+// / MirrorDeletedMetadata carry no account_metadata field, and
+// MirrorDeletedMetadata also carries no metadata field — so the corresponding
+// helpers have nothing to write there and a silent no-op would hide the mistake.
+//
+// This is enforced at evaluation, not admission: a rule's match/cel pair is not
+// statically bound to one variant (a `true` match runs on every kind), so the
+// incompatible combination is only knowable once an entry is in hand. A rule that
+// legitimately targets one kind must scope itself with tx.type, e.g.
+// `tx.type == "created" ? tx.setAccountMetadata(...) : tx` — CEL's lazy ternary
+// means the guarded helper is never evaluated on the other kinds.
+func requireKind(tv *TxView, fn string, allowed ...string) ref.Val {
+	if slices.Contains(allowed, tv.Type) {
+		return nil
+	}
+
+	return types.NewErr("%s is not supported on %s entries (only %s); guard the rule with tx.type",
+		fn, tv.Type, strings.Join(allowed, ", "))
 }
 
 func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
@@ -789,6 +852,10 @@ func (r *Rewriter) bindSetAccountMetadataFromAddress(args ...ref.Val) ref.Val {
 		return errv
 	}
 
+	if errv := requireKind(tv, "setAccountMetadataFromAddress", KindCreated); errv != nil {
+		return errv
+	}
+
 	pattern, ok := args[1].Value().(string)
 	if !ok {
 		return types.NewErr("setAccountMetadataFromAddress: pattern must be a string")
@@ -889,6 +956,10 @@ func (r *Rewriter) bindSetMetadata(args ...ref.Val) ref.Val {
 		return errv
 	}
 
+	if errv := requireKind(tv, "setMetadata", KindCreated, KindReverted, KindSetMetadata); errv != nil {
+		return errv
+	}
+
 	key, ok := args[1].Value().(string)
 	if !ok {
 		return types.NewErr("setMetadata: key must be a string")
@@ -941,6 +1012,10 @@ func (r *Rewriter) bindDeleteMetadata(args ...ref.Val) ref.Val {
 		return errv
 	}
 
+	if errv := requireKind(tv, "deleteMetadata", KindCreated, KindReverted, KindSetMetadata); errv != nil {
+		return errv
+	}
+
 	key, ok := args[1].Value().(string)
 	if !ok {
 		return types.NewErr("deleteMetadata: key must be a string")
@@ -956,6 +1031,10 @@ func (r *Rewriter) bindDeleteMetadata(args ...ref.Val) ref.Val {
 func (r *Rewriter) bindSetAccountMetadata(args ...ref.Val) ref.Val {
 	tv, errv := receiver(args[0])
 	if tv == nil {
+		return errv
+	}
+
+	if errv := requireKind(tv, "setAccountMetadata", KindCreated); errv != nil {
 		return errv
 	}
 
@@ -1001,6 +1080,10 @@ func (r *Rewriter) bindSetAccountMetadata(args ...ref.Val) ref.Val {
 func (r *Rewriter) bindDeleteAccountMetadata(args ...ref.Val) ref.Val {
 	tv, errv := receiver(args[0])
 	if tv == nil {
+		return errv
+	}
+
+	if errv := requireKind(tv, "deleteAccountMetadata", KindCreated); errv != nil {
 		return errv
 	}
 

@@ -274,6 +274,160 @@ func savedMetadataEntry(logID uint64, account string, meta map[string]string) *r
 	}
 }
 
+func revertedEntry(logID, revertedID, newID uint64, postings []*commonpb.Posting, meta map[string]string) *raftcmdpb.MirrorLogEntry {
+	return &raftcmdpb.MirrorLogEntry{
+		V2LogId: logID,
+		Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
+			RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
+				RevertedTransactionId: revertedID,
+				NewTransactionId:      newID,
+				ReversePostings:       postings,
+				Metadata:              stringsToMetadata(meta, nil),
+			},
+		},
+	}
+}
+
+func deletedMetadataEntry(logID uint64, account, key string) *raftcmdpb.MirrorLogEntry {
+	return &raftcmdpb.MirrorLogEntry{
+		V2LogId: logID,
+		Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{
+			DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{
+				Target: &commonpb.Target{
+					Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
+				},
+				Key: key,
+			},
+		},
+	}
+}
+
+// TestCrossVariantMutationRejected covers the silent-drop fix: a helper whose
+// target field does not exist on the entry variant (the wire has no
+// account_metadata on reverted/saved/deleted, and no metadata on deleted) fails
+// the batch loudly instead of being dropped at commit.
+func TestCrossVariantMutationRejected(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		cel   string
+		entry *raftcmdpb.MirrorLogEntry
+		want  string
+	}{
+		{
+			"setAccountMetadata on reverted",
+			`tx.setAccountMetadata("users:alice", "k", "v")`,
+			revertedEntry(1, 1, 2, []*commonpb.Posting{posting("bank", "world", "USD", 1)}, nil),
+			"setAccountMetadata is not supported on reverted entries",
+		},
+		{
+			"setAccountMetadataFromAddress on setMetadata",
+			`tx.setAccountMetadataFromAddress("^(.+)$", "k", "$1")`,
+			savedMetadataEntry(1, "users:alice", map[string]string{"a": "b"}),
+			"setAccountMetadataFromAddress is not supported on setMetadata entries",
+		},
+		{
+			"setMetadata on deleteMetadata",
+			`tx.setMetadata("k", "v")`,
+			deletedMetadataEntry(1, "users:alice", "old"),
+			"setMetadata is not supported on deleteMetadata entries",
+		},
+		{
+			"deleteMetadata on deleteMetadata",
+			`tx.deleteMetadata("k")`,
+			deletedMetadataEntry(1, "users:alice", "old"),
+			"deleteMetadata is not supported on deleteMetadata entries",
+		},
+		{
+			"setAccountMetadata on deleteMetadata",
+			`tx.setAccountMetadata("users:alice", "k", "v")`,
+			deletedMetadataEntry(1, "users:alice", "old"),
+			"setAccountMetadata is not supported on deleteMetadata entries",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r, err := NewRewriter(rules(rule("true", tc.cel, false)))
+			require.NoError(t, err)
+
+			_, err = r.Apply(tc.entry)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+// TestGuardedCrossVariantRuleApplies shows the escape hatch: a rule scoped with
+// tx.type runs on the matching kind and is a no-op elsewhere, because CEL's lazy
+// ternary never evaluates the guarded helper on the other kinds.
+func TestGuardedCrossVariantRuleApplies(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule("true", `tx.type == "created" ? tx.setAccountMetadata("users:alice", "seen", "1") : tx`, false),
+	))
+	require.NoError(t, err)
+
+	created := createdEntry(1, 1, []*commonpb.Posting{posting("world", "users:alice", "USD", 1)}, nil)
+	out, err := r.Apply(created)
+	require.NoError(t, err)
+	require.Equal(t, "1", out.GetCreatedTransaction().GetAccountMetadata()["users:alice"].GetValues()["seen"].GetStringValue())
+
+	reverted := revertedEntry(2, 1, 2, []*commonpb.Posting{posting("users:alice", "world", "USD", 1)}, nil)
+	out2, err := r.Apply(reverted)
+	require.NoError(t, err)
+	require.Empty(t, out2.GetRevertedTransaction().GetMetadata())
+}
+
+// TestSetMetadataOnSavedEntry confirms setMetadata remains valid on the variants
+// that do carry a metadata field (here: a setMetadata/SavedMetadata entry).
+func TestSetMetadataOnSavedEntry(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule("true", `tx.setMetadata("classified", "yes")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := savedMetadataEntry(1, "users:alice", map[string]string{"a": "b"})
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+	require.Equal(t, "yes", out.GetSavedMetadata().GetMetadata()["classified"].GetStringValue())
+}
+
+// TestMapIterationDeterminismGuard covers the determinism fix: mapping/filtering
+// a map into a list is rejected at admission (map keys iterate in random order),
+// while scalar predicates over a map and comprehensions over an ordered list are
+// allowed.
+func TestMapIterationDeterminismGuard(t *testing.T) {
+	t.Parallel()
+
+	rejected := []string{
+		`tx.setMetadata("keys", tx.metadata.map(k, k).join(","))`,
+		`tx.setMetadata("keys", tx.metadata.filter(k, k != "x").join(","))`,
+		`tx.setMetadata("first", tx.accountMetadata.map(a, a)[0])`,
+	}
+	for _, expr := range rejected {
+		_, err := NewRewriter(rules(rule("true", expr, false)))
+		require.Error(t, err, expr)
+		require.Contains(t, err.Error(), "order-sensitive iteration over a map", expr)
+	}
+
+	allowed := []string{
+		`tx.metadata.exists(k, k == "type")`,
+		`tx.accountMetadata.all(a, a != "")`,
+		`tx.postings.map(p, p.source).size() > 0`,
+	}
+	for _, match := range allowed {
+		_, err := NewRewriter(rules(rule(match, `tx`, false)))
+		require.NoError(t, err, match)
+	}
+}
+
 func TestEmptyRewrittenAccountTargetRejected(t *testing.T) {
 	t.Parallel()
 
