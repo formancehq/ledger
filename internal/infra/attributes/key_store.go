@@ -3,6 +3,7 @@ package attributes
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/zeebo/xxh3"
 
@@ -312,6 +313,137 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 
 	return touched, deletions, nil
 }
+
+// MergeParallel drains the overlay across k worker goroutines. Each worker
+// owns a disjoint slice of the values / deletions maps and hits the underlying
+// KeyStore (ShardedMap with 256 shards) concurrently. Since KeyStore.Put and
+// KeyStore.Delete only touch the ShardedMap (per-shard RWMutex) and the
+// stateless XXH3 hasher — never DerivedKeyStore.scratch — parallel writers
+// are safe as long as each worker owns its own scratch buffer.
+//
+// For k <= 1 or overlays below parallelDrainThreshold, delegates to the
+// serial Merge — the goroutine spawn overhead outweighs any parallel win
+// on small batches.
+//
+// The returned slices concatenate per-worker outputs in worker order; no
+// downstream consumer depends on Update ordering (bloom updates are set-based,
+// flushAttributeAndCache's per-key writes commute in a Pebble batch).
+func (s *DerivedKeyStore[K, T]) MergeParallel(k int) ([]Update[K, T], []Deletion[K], error) {
+	total := len(s.values) + len(s.deletions)
+	if k <= 1 || total < parallelDrainThreshold {
+		return s.Merge()
+	}
+
+	valueKeys := make([]K, 0, len(s.values))
+	for kk := range s.values {
+		valueKeys = append(valueKeys, kk)
+	}
+
+	deletionKeys := make([]K, 0, len(s.deletions))
+	for kk := range s.deletions {
+		deletionKeys = append(deletionKeys, kk)
+	}
+
+	type workerResult struct {
+		touched   []Update[K, T]
+		deletions []Deletion[K]
+		err       error
+	}
+
+	results := make([]workerResult, k)
+
+	var wg sync.WaitGroup
+	for w := 0; w < k; w++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+
+			vStart := (len(valueKeys) * idx) / k
+			vEnd := (len(valueKeys) * (idx + 1)) / k
+			dStart := (len(deletionKeys) * idx) / k
+			dEnd := (len(deletionKeys) * (idx + 1)) / k
+
+			var scratch []byte
+
+			touched := make([]Update[K, T], 0, vEnd-vStart)
+			for _, kk := range valueKeys[vStart:vEnd] {
+				scratch = kk.AppendBytes(scratch[:0])
+				canonical := append([]byte(nil), scratch...)
+
+				v := s.values[kk]
+
+				overwrite, idWithTag, err := s.writer.Put(canonical, v)
+				if err != nil {
+					results[idx].err = err
+
+					return
+				}
+
+				touched = append(touched, Update[K, T]{
+					Key:          kk,
+					ID:           idWithTag.ID,
+					Tag:          idWithTag.Tag,
+					CanonicalKey: canonical,
+					Old:          overwrite,
+					New:          v,
+				})
+			}
+
+			deletions := make([]Deletion[K], 0, dEnd-dStart)
+			for _, kk := range deletionKeys[dStart:dEnd] {
+				scratch = kk.AppendBytes(scratch[:0])
+				canonical := append([]byte(nil), scratch...)
+
+				id, tag, err := s.writer.Delete(canonical)
+				if err != nil {
+					if errors.Is(err, domain.ErrNotFound) {
+						continue
+					}
+
+					results[idx].err = err
+
+					return
+				}
+
+				deletions = append(deletions, Deletion[K]{
+					Key:          kk,
+					ID:           id,
+					Tag:          tag,
+					CanonicalKey: canonical,
+				})
+			}
+
+			results[idx].touched = touched
+			results[idx].deletions = deletions
+		}(w)
+	}
+	wg.Wait()
+
+	touchedTotal := 0
+	deletionsTotal := 0
+	for _, r := range results {
+		if r.err != nil {
+			return nil, nil, r.err
+		}
+
+		touchedTotal += len(r.touched)
+		deletionsTotal += len(r.deletions)
+	}
+
+	touched := make([]Update[K, T], 0, touchedTotal)
+	deletions := make([]Deletion[K], 0, deletionsTotal)
+	for _, r := range results {
+		touched = append(touched, r.touched...)
+		deletions = append(deletions, r.deletions...)
+	}
+
+	return touched, deletions, nil
+}
+
+// parallelDrainThreshold is the minimum overlay size (values + deletions)
+// at which MergeParallel spawns goroutines. Below this, the serial Merge
+// path wins on the goroutine-spawn overhead.
+const parallelDrainThreshold = 512
 
 // DirtyValues returns the uncommitted local values written during the current batch.
 func (s *DerivedKeyStore[K, T]) DirtyValues() map[K]T {
