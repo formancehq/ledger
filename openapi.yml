@@ -2288,7 +2288,7 @@ paths:
                       `metadata:<TARGET_TYPE_*>:<key>`
                   example: metadata:TARGET_TYPE_ACCOUNT:color
       responses:
-        '204':
+        '201':
           description: Index creation queued.
         '400':
           $ref: '#/components/responses/BadRequest'

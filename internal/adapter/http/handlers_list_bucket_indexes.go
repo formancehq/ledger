@@ -7,32 +7,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// handleListLedgerIndexes handles GET /{ledgerName}/indexes to list the
-// indexes registered for a specific ledger.
-func (s *Server) handleListLedgerIndexes(w http.ResponseWriter, r *http.Request) {
-	ledgerName, ok := requireLedgerName(w, r)
-	if !ok {
-		return
-	}
-
-	cursor, err := s.backend.ListIndexes(r.Context(), &servicepb.ListIndexesRequest{
-		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
-		Ledger: ledgerName,
-	})
-	if err != nil {
-		handleError(w, r, err)
-
-		return
-	}
-
-	entries, ok := drainCursor(w, r, cursor)
-	if !ok {
-		return
-	}
-
-	writeOK(w, entries)
-}
-
 // handleListBucketIndexes handles GET /indexes to list bucket-wide or
 // cluster-wide indexes. The scope query parameter selects the flavor:
 // "all" (default, matches the ListIndexesRequest proto default) streams

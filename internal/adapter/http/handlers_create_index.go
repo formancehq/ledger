@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -27,7 +28,7 @@ func (s *Server) handleCreateIndex(w http.ResponseWriter, r *http.Request) {
 
 	var body createIndexBody
 	if err := json.UnmarshalRead(r.Body, &body); err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", err)
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 
 		return
 	}
@@ -58,5 +59,5 @@ func (s *Server) handleCreateIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusCreated)
 }

@@ -16,7 +16,9 @@ import (
 //   - pageSize
 //   - after=<txID>       cursor (exclusive)
 //   - reverse=true       return newest-first
-//   - startDate/endDate  RFC3339, filter on transaction timestamp (TX_BUILTIN_INDEX_TIMESTAMP)
+//   - startDate/endDate  RFC3339, filter on transaction timestamp.
+//     Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be
+//     enabled on the ledger via `CreateIndex`.
 //   - reference          exact-match reference filter
 func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
