@@ -125,6 +125,34 @@ func NewLocalResponses() LocalResponses {
 	return make(LocalResponses, 64)
 }
 
+// walAppendWork is the queue item runWalAppender consumes. It bundles the
+// persistence step (hardState + entries) with the two follow-up sends that
+// MUST only fire after durability:
+//
+//   - outbound : peer-directed messages (MsgApp etc.). etcd/raft's leader
+//     rule is "persist locally before broadcasting", otherwise a crash after
+//     transport.Send could leave followers with entries the leader never
+//     committed.
+//   - appendResponses : self-directed MsgStorageAppendResp that Step back
+//     into rawNode to advance the storage cursor. rawNode assumes the
+//     entries are on stable storage when this arrives.
+//
+// Both must therefore ride WITH the entries through this queue, not in
+// parallel from processReady — the whole point is to move the wal.Save fsync
+// off the Ready-generation hot path while keeping ordering intact.
+type walAppendWork struct {
+	hardState       raftpb.HardState
+	entries         []raftpb.Entry
+	outbound        []raftpb.Message
+	appendResponses []raftpb.Message
+}
+
+// walAppendChBuffer is the pipeline depth for runWalAppender. Sized to absorb
+// a few Ready cycles' worth of appends without stalling processReady, while
+// keeping the queue bounded (unbounded growth would just push latency onto
+// the WAL side without recovering throughput).
+const walAppendChBuffer = 4
+
 // readyResult is sent from processReadies to orchestrate after a Ready has been
 // persisted. It carries deferred rawNode operations that must execute in the
 // orchestrate goroutine (rawNode is not thread-safe).
@@ -177,6 +205,13 @@ type Node struct {
 	// message into rawNode (rawNode is not thread-safe; only orchestrate may
 	// touch it). Used only when raft.Config.AsyncStorageWrites is true.
 	localResponseCh LocalResponses
+	// walAppendCh feeds runWalAppender: each item carries the entries a Ready
+	// wants persisted plus the outbound / appendResponse messages that must
+	// only ship AFTER durability. processReady enqueues; runWalAppender does
+	// the wal.Append (which fsync's) and posts the follow-up messages in
+	// order. Buffered so a slow fsync doesn't stall processReady immediately —
+	// deeper queues just push the backpressure into ready cycles.
+	walAppendCh chan walAppendWork
 	tasks           *taskSet
 	stopChannel     chan chan struct{}
 	runDone         chan struct{} // closed when Run() exits
@@ -444,6 +479,7 @@ func NewNode(
 		readies:          make(chan raft.Ready, 1),
 		readyTerminated:  make(chan readyResult, 1),
 		localResponseCh:  localResponses,
+		walAppendCh:      make(chan walAppendWork, walAppendChBuffer),
 		tasks:            newTaskSet(),
 		stopChannel:      make(chan chan struct{}),
 		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
@@ -897,6 +933,7 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	node.tasks.add(newTask(node.orchestrate))
 	node.tasks.add(newTask(node.applier.Run))
 	node.tasks.add(newTask(node.processReadies))
+	node.tasks.add(newTask(node.runWalAppender))
 	node.tasks.add(newTask(node.runBackgroundMaintenance))
 	node.tasks.run(ctx)
 
@@ -1133,18 +1170,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		req.future.Resolve(rs.Index, nil)
 	}
 
-	now := time.Now()
-
-	err := node.wal.Append(rd.HardState, rd.Entries)
-	if err != nil {
-		return readyResult{}, fmt.Errorf("appending entries to storage: %w", err)
-	}
-
-	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
-
 	// Track the highest term observed via HardState so Propose can tag each
 	// future with the proposer's view of the current term (issue #172). Use a
-	// monotonic CAS — terms only grow.
+	// monotonic CAS — terms only grow. Safe to do before the append lands:
+	// lastObservedTerm is a lower bound on the durable term, and Propose
+	// tolerates that (see the field's docstring).
 	if !raft.IsEmptyHardState(rd.HardState) {
 		for {
 			cur := node.lastObservedTerm.Load()
@@ -1158,78 +1188,14 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 	}
 
-	result := readyResult{rd: rd}
-
-	if !raft.IsEmptySnap(rd.Snapshot) {
-		snapshotStart := time.Now()
-
-		snapshotDetails := map[string]any{
-			"nodeID":       node.config.NodeID,
-			"index":        rd.Snapshot.Metadata.Index,
-			"snapshotSize": len(rd.Snapshot.Data),
-		}
-		node.logger.WithFields(snapshotDetails).Infof("Applying snapshot sent by leader")
-		lifecycle.SendEvent("snapshot_received", snapshotDetails)
-
-		// Ask the Run goroutine to drain all pending work, interrupt any
-		// running maintenance task, and set statusInstallingSnapshot. This
-		// is the single-writer protocol: only Run writes status, so there
-		// is no race between status writes from processReadies and entry
-		// processing in Run (which could trigger handleCheckpointRequired).
-		//
-		// After PrepareForSnapshotInstall returns, Run is idle and the
-		// status is statusInstallingSnapshot — safe to write FSM fields.
-		node.applier.PrepareForSnapshotInstall(stop)
-
-		if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
-			return readyResult{}, fmt.Errorf("applying snapshot to storage: %w", err)
-		}
-
-		if err := node.synchronizer.InstallSnapshot(ctx, rd.Snapshot); err != nil {
-			return readyResult{}, fmt.Errorf("installing snapshot: %w", err)
-		}
-
-		// Defer ReportSnapshot to orchestrate goroutine (rawNode is not thread-safe).
-		result.snapshotApplied = true
-
-		node.logger.WithFields(map[string]any{
-			"duration": time.Since(snapshotStart).String(),
-			"index":    rd.Snapshot.Metadata.Index,
-		}).Infof("Snapshot from leader applied, starting checkpoint sync")
-
-		// The snapshot is already persisted in WAL at this point. If syncSnapshot
-		// fails (network issue, leader unavailable, etc.), the node transitions to
-		// statusOutOfSync and will retry automatically when a leader is detected
-		// via SoftState or on restart (isStoreUpToDate check).
-		// Skip sync if the node is shutting down — RestoreCheckpoint reopens the
-		// Pebble DB, and background tasks (bloom restore) would create iterators
-		// that outlive the DB.Close() in the fx shutdown hook.
-		//
-		// EN-1413: SyncSnapshot only enqueues the restore on the applier
-		// and returns immediately; the actual RestoreCheckpoint runs in
-		// the applier's Run goroutine. The OnSnapshotInstalled hook wired
-		// in NewNode (node.reloadPeersFromStore) is what refreshes the
-		// peer-address cache once Pebble has been swapped — do NOT call
-		// peerStore.LoadAll here, it would read the pre-restore DB.
-		if !isStopping(stop) {
-			node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
-		}
-	}
-
 	appendResponses, applyResponses, outbound := splitReadyMessages(node.config.NodeID, rd.Messages)
-	result.applyResponses = applyResponses
 
-	node.transport.Send(outbound)
-
-	if len(appendResponses) > 0 {
-		select {
-		case node.localResponseCh <- appendResponses:
-		case <-stop:
-		}
-	}
+	result := readyResult{rd: rd, applyResponses: applyResponses}
 
 	// Extract conf changes from committed entries. The actual rawNode.ApplyConfChange
 	// calls are deferred to the orchestrate goroutine (rawNode is not thread-safe).
+	// CommittedEntries were persisted in a PRIOR Ready cycle, so this walk is not
+	// gated on the current Ready's wal.Append.
 	for _, entry := range rd.CommittedEntries {
 		cc, ok, err := membership.UnmarshalConfChangeV2(entry)
 		if err != nil {
@@ -1241,7 +1207,165 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 	}
 
+	if !raft.IsEmptySnap(rd.Snapshot) {
+		// Snapshot Readies keep the legacy synchronous path. Snapshots are
+		// rare (bootstrap, catch-up, leader change) and require strict
+		// ordering: wal.Append → wal.ApplySnapshot → synchronizer.InstallSnapshot
+		// → transport.Send → appendResponses. Fanning this out is more
+		// complexity than the per-second cost warrants.
+		return node.processSnapshotReady(ctx, stop, rd, result, appendResponses, outbound)
+	}
+
+	// Hot path — hand the append + follow-up sends to runWalAppender.
+	// processReady returns immediately; wal.Save + transport.Send +
+	// appendResponses all happen in the appender goroutine, in order,
+	// AFTER the fsync completes. This is what unlocks pipelining: the
+	// next Ready can enter processReady while the previous append is
+	// still in flight.
+	select {
+	case node.walAppendCh <- walAppendWork{
+		hardState:       rd.HardState,
+		entries:         rd.Entries,
+		outbound:        outbound,
+		appendResponses: appendResponses,
+	}:
+	case <-stop:
+		return readyResult{}, nil
+	}
+
 	return result, nil
+}
+
+// processSnapshotReady handles the legacy synchronous path for Readies that
+// carry a snapshot. Split out from processReady to keep the hot path (which
+// dispatches to runWalAppender) as a straight line and to isolate the strict
+// snapshot-ordering requirements.
+func (node *Node) processSnapshotReady(
+	ctx context.Context,
+	stop chan struct{},
+	rd raft.Ready,
+	result readyResult,
+	appendResponses []raftpb.Message,
+	outbound []raftpb.Message,
+) (readyResult, error) {
+	now := time.Now()
+
+	if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
+		return readyResult{}, fmt.Errorf("appending entries to storage: %w", err)
+	}
+
+	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
+
+	snapshotStart := time.Now()
+
+	snapshotDetails := map[string]any{
+		"nodeID":       node.config.NodeID,
+		"index":        rd.Snapshot.Metadata.Index,
+		"snapshotSize": len(rd.Snapshot.Data),
+	}
+	node.logger.WithFields(snapshotDetails).Infof("Applying snapshot sent by leader")
+	lifecycle.SendEvent("snapshot_received", snapshotDetails)
+
+	// Ask the Run goroutine to drain all pending work, interrupt any
+	// running maintenance task, and set statusInstallingSnapshot. This
+	// is the single-writer protocol: only Run writes status, so there
+	// is no race between status writes from processReadies and entry
+	// processing in Run (which could trigger handleCheckpointRequired).
+	//
+	// After PrepareForSnapshotInstall returns, Run is idle and the
+	// status is statusInstallingSnapshot — safe to write FSM fields.
+	node.applier.PrepareForSnapshotInstall(stop)
+
+	if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
+		return readyResult{}, fmt.Errorf("applying snapshot to storage: %w", err)
+	}
+
+	if err := node.synchronizer.InstallSnapshot(ctx, rd.Snapshot); err != nil {
+		return readyResult{}, fmt.Errorf("installing snapshot: %w", err)
+	}
+
+	// Defer ReportSnapshot to orchestrate goroutine (rawNode is not thread-safe).
+	result.snapshotApplied = true
+
+	node.logger.WithFields(map[string]any{
+		"duration": time.Since(snapshotStart).String(),
+		"index":    rd.Snapshot.Metadata.Index,
+	}).Infof("Snapshot from leader applied, starting checkpoint sync")
+
+	// The snapshot is already persisted in WAL at this point. If syncSnapshot
+	// fails (network issue, leader unavailable, etc.), the node transitions to
+	// statusOutOfSync and will retry automatically when a leader is detected
+	// via SoftState or on restart (isStoreUpToDate check).
+	// Skip sync if the node is shutting down — RestoreCheckpoint reopens the
+	// Pebble DB, and background tasks (bloom restore) would create iterators
+	// that outlive the DB.Close() in the fx shutdown hook.
+	//
+	// EN-1413: SyncSnapshot only enqueues the restore on the applier
+	// and returns immediately; the actual RestoreCheckpoint runs in
+	// the applier's Run goroutine. The OnSnapshotInstalled hook wired
+	// in NewNode (node.reloadPeersFromStore) is what refreshes the
+	// peer-address cache once Pebble has been swapped — do NOT call
+	// peerStore.LoadAll here, it would read the pre-restore DB.
+	if !isStopping(stop) {
+		node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
+	}
+
+	node.transport.Send(outbound)
+
+	if len(appendResponses) > 0 {
+		select {
+		case node.localResponseCh <- appendResponses:
+		case <-stop:
+		}
+	}
+
+	return result, nil
+}
+
+// runWalAppender is the LocalAppendThread — it drains walAppendCh and does
+// wal.Append (fsync) on the resulting HardState/Entries in FIFO order. Only
+// after Save returns does it dispatch the outbound peer messages and Step
+// the appendResponses back into rawNode via localResponseCh.
+//
+// Correctness invariants:
+//
+//   - Single consumer of walAppendCh: entries persist in the exact order
+//     processReady dispatched them.
+//   - Outbound peer messages (MsgApp) never ship before durability: the
+//     leader would otherwise let followers accept entries the leader could
+//     lose on crash.
+//   - appendResponses (MsgStorageAppendResp) advance rawNode's storage
+//     cursor; sending them before Save returns would violate the
+//     AsyncStorageWrites contract.
+//
+// A wal.Append error is fatal — same behavior as when it was inline in
+// processReady. runWalAppender returns, taskSet propagates the error, the
+// node shuts down.
+func (node *Node) runWalAppender(_ context.Context, stop chan struct{}) error {
+	for {
+		select {
+		case work := <-node.walAppendCh:
+			start := time.Now()
+
+			if err := node.wal.Append(work.hardState, work.entries); err != nil {
+				return fmt.Errorf("appending entries to storage: %w", err)
+			}
+
+			node.appendEntriesHistogram.Record(context.Background(), time.Since(start).Microseconds())
+
+			node.transport.Send(work.outbound)
+
+			if len(work.appendResponses) > 0 {
+				select {
+				case node.localResponseCh <- work.appendResponses:
+				case <-stop:
+					return nil
+				}
+			}
+		case <-stop:
+			return nil
+		}
+	}
 }
 
 // finishReady completes processing of a Ready by applying deferred rawNode operations
