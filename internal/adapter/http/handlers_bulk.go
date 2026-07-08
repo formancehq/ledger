@@ -249,13 +249,14 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 			continue
 		}
 
-		// Extract data from log. CreateTransaction items that opted into
-		// `skippableReasons` may surface as an OrderSkipped payload here
-		// when the FSM matched a whitelisted business failure; that case
-		// fills Data with the same OrderSkippedResponse shape the single
-		// endpoint returns so clients can branch on `data.skipped`
-		// without an extra log fetch (and without misreading the null
-		// Data that this writer used to emit on skip).
+		// Extract data from log. Bulk entries that opted into
+		// `skippableReasons` (per-entry, not on the payload) may surface as
+		// an OrderSkipped payload here when the FSM matched a whitelisted
+		// business failure; that case fills Data with an
+		// OrderSkippedResponse — clients branch on `data.skipped` to
+		// distinguish the skip path from the normal Transaction data
+		// without an extra log fetch. The unitary POST endpoint does not
+		// expose skippableReasons, so this branch is bulk-only.
 		if log := result.log; log != nil {
 			apiResults[i].LogID = log.GetId()
 			if payload := log.GetData(); payload != nil {
