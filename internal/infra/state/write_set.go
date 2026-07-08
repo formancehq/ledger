@@ -9,6 +9,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -230,74 +231,160 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// === Phase 1: overlay drain (no Pebble writes) ============================
 	//
 	// derived.Merge() pulls each DerivedKeyStore's dirty values into a
-	// (updates, deletions) pair and resets the overlay. Order is dictated by
-	// downstream consumers: counter aggregation reads Volume / Metadata /
-	// Reference deltas, so those overlays must drain before Boundaries.Merge.
+	// (updates, deletions) pair and resets the overlay. The Merges below
+	// hit the KeyStore's ShardedMap under a per-shard RWMutex; profiling on
+	// the perf-world-to-bank workload showed this phase costs ~30% of the
+	// applier main goroutine's CPU (dominated by runtime.mapaccess2 inside
+	// KeyStore.Put), all spent on the single Prepare thread.
+	//
+	// Each Derived.<Store> owns an independent KeyStore, so their Merges
+	// mutate disjoint memory. We run the independent ones concurrently via
+	// errgroup; only Boundaries stays serial because its overlay is mutated
+	// by updateBoundaryCounters, which reads the outputs of Volumes /
+	// AccountMetadata / References.
 
-	ledgerUpdates, ledgerDeletions, err := b.Derived.Ledgers.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge ledgers: %w", err)
-	}
+	var (
+		ledgerUpdates             []attributes.Update[domain.LedgerKey, *commonpb.LedgerInfo]
+		ledgerDeletions           []attributes.Deletion[domain.LedgerKey]
+		volumeUpdates             []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+		metadataUpdates           []attributes.Update[domain.MetadataKey, *commonpb.MetadataValue]
+		metadataDeletions         []attributes.Deletion[domain.MetadataKey]
+		referenceUpdates          []attributes.Update[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+		referenceDeletions        []attributes.Deletion[domain.TransactionReferenceKey]
+		transactionUpdates        []attributes.Update[domain.TransactionKey, *commonpb.TransactionState]
+		transactionDeletions      []attributes.Deletion[domain.TransactionKey]
+		ledgerMetadataUpdates     []attributes.Update[domain.LedgerMetadataKey, *commonpb.MetadataValue]
+		ledgerMetadataDeletions   []attributes.Deletion[domain.LedgerMetadataKey]
+		sinkConfigUpdates         []attributes.Update[domain.SinkConfigKey, *commonpb.SinkConfig]
+		sinkConfigDeletions       []attributes.Deletion[domain.SinkConfigKey]
+		numscriptVersionUpdates   []attributes.Update[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
+		numscriptVersionDeletions []attributes.Deletion[domain.NumscriptVersionKey]
+		numscriptContentUpdates   []attributes.Update[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
+		numscriptContentDeletions []attributes.Deletion[domain.NumscriptEntryKey]
+		preparedQueryUpdates      []attributes.Update[domain.PreparedQueryKey, *commonpb.PreparedQuery]
+		preparedQueryDeletions    []attributes.Deletion[domain.PreparedQueryKey]
+		indexUpdates              []attributes.Update[domain.IndexKey, *commonpb.Index]
+		indexDeletions            []attributes.Deletion[domain.IndexKey]
+	)
 
-	volumeUpdates, _, err := b.Derived.Volumes.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge volumes: %w", err)
+	var g errgroup.Group
+
+	g.Go(func() error {
+		var err error
+		ledgerUpdates, ledgerDeletions, err = b.Derived.Ledgers.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge ledgers: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		volumeUpdates, _, err = b.Derived.Volumes.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge volumes: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		metadataUpdates, metadataDeletions, err = b.Derived.AccountMetadata.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge account metadata: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		referenceUpdates, referenceDeletions, err = b.Derived.References.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge references: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		transactionUpdates, transactionDeletions, err = b.Derived.Transactions.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge transactions: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		ledgerMetadataUpdates, ledgerMetadataDeletions, err = b.Derived.LedgerMetadata.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge ledger metadata: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		sinkConfigUpdates, sinkConfigDeletions, err = b.Derived.SinkConfigs.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge sink configs: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		numscriptVersionUpdates, numscriptVersionDeletions, err = b.Derived.NumscriptVersions.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge numscript versions: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		numscriptContentUpdates, numscriptContentDeletions, err = b.Derived.NumscriptContents.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge numscript contents: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		preparedQueryUpdates, preparedQueryDeletions, err = b.Derived.PreparedQueries.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge prepared queries: %w", err)
+		}
+
+		return nil
+	})
+	g.Go(func() error {
+		var err error
+		indexUpdates, indexDeletions, err = b.Derived.Indexes.Merge()
+		if err != nil {
+			return fmt.Errorf("failed to merge indexes: %w", err)
+		}
+
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	// Partition volumes by persistence mode: normal (kept), ephemeral (purged), transient (skipped).
 	partResult := b.partitionVolumes(volumeUpdates)
 
-	metadataUpdates, metadataDeletions, err := b.Derived.AccountMetadata.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge account metadata: %w", err)
-	}
-
-	referenceUpdates, referenceDeletions, err := b.Derived.References.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge references: %w", err)
-	}
-
 	// Update per-ledger attribute counters in boundaries before merging them.
+	// This mutates the Boundaries overlay based on Volume / Metadata / Reference
+	// deltas, so it must run AFTER those three Merges have produced their
+	// updates. Boundaries.Merge then drains the mutated overlay serially.
 	b.updateBoundaryCounters(volumeUpdates, partResult.purged, partResult.transient, metadataUpdates, metadataDeletions, referenceUpdates)
 
 	boundaryUpdates, boundaryDeletions, err := b.Derived.Boundaries.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)
-	}
-
-	transactionUpdates, transactionDeletions, err := b.Derived.Transactions.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge transactions: %w", err)
-	}
-
-	ledgerMetadataUpdates, ledgerMetadataDeletions, err := b.Derived.LedgerMetadata.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge ledger metadata: %w", err)
-	}
-
-	sinkConfigUpdates, sinkConfigDeletions, err := b.Derived.SinkConfigs.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge sink configs: %w", err)
-	}
-
-	numscriptVersionUpdates, numscriptVersionDeletions, err := b.Derived.NumscriptVersions.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge numscript versions: %w", err)
-	}
-
-	numscriptContentUpdates, numscriptContentDeletions, err := b.Derived.NumscriptContents.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge numscript contents: %w", err)
-	}
-
-	preparedQueryUpdates, preparedQueryDeletions, err := b.Derived.PreparedQueries.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge prepared queries: %w", err)
-	}
-
-	indexUpdates, indexDeletions, err := b.Derived.Indexes.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge indexes: %w", err)
 	}
 
 	// === Phase 2: cross-zone in-memory side effects (no Pebble writes) ========
