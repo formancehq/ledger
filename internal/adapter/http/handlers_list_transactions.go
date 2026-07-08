@@ -11,15 +11,19 @@ import (
 )
 
 // handleListTransactions handles GET /{ledgerName}/transactions to list a
-// ledger's transactions, ordered by transaction id. Query params:
+// ledger's transactions. Query params:
 //
 //   - pageSize
 //   - after=<txID>       cursor (exclusive)
-//   - reverse=true       return newest-first
+//   - reverse=true       reverse the default order — see convention below
 //   - startDate/endDate  RFC3339, filter on transaction timestamp.
 //     Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be
 //     enabled on the ledger via `CreateIndex`.
 //   - reference          exact-match reference filter
+//
+// Ordering convention (mirrors `ctrl.Controller.ListTransactions`): the
+// default (reverse=false) returns newest-first (descending transaction id);
+// reverse=true returns oldest-first (ascending).
 func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {

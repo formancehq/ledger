@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -18,10 +17,9 @@ func TestHandleGetLog_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLog(gomock.Any(), uint64(7)).DoAndReturn(
-		func(_ context.Context, seq uint64) (*commonpb.Log, error) {
+		func(_ context.Context, _ uint64) (*commonpb.Log, error) {
 			return &commonpb.Log{}, nil
 		}).AnyTimes()
-	_ = uint64(7)
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -67,6 +65,4 @@ func TestHandleGetLog_NotFound(t *testing.T) {
 	srv.handleGetLog(w, r)
 
 	require.Equal(t, http.StatusNotFound, w.Code)
-	// Make sure domain errors are still wired through the same mapping.
-	_ = domain.ErrNotFound
 }

@@ -1900,9 +1900,10 @@ paths:
     get:
       summary: List transactions for a ledger
       description: |
-        Lists transactions for a specific ledger, ordered by transaction id
-        ascending (or descending with `reverse=true`). Supports cursor pagination
-        via the `after` query parameter and optional date-range and reference
+        Lists transactions for a specific ledger. The default order is
+        newest-first (descending transaction id); pass `reverse=true` to
+        get oldest-first (ascending). Supports cursor pagination via the
+        `after` query parameter and optional date-range and reference
         filters. Requires `ledger:TransactionRead` scope.
       operationId: listLedgerTransactions
       tags:
@@ -1931,7 +1932,11 @@ paths:
           schema:
             type: boolean
             default: false
-          description: Return newest-first when true.
+          description: |
+            Reverse the default order. Default (`false`) returns
+            newest-first (descending); `true` returns oldest-first
+            (ascending). Mirrors the gRPC `ListTransactions` reverse
+            flag semantic.
         - name: startDate
           in: query
           schema:
