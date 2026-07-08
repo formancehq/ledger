@@ -50,7 +50,14 @@ type NodeConfig struct {
 	// client requests after a restart, even when this node is the only
 	// voter (the bootstrap voter) and no Raft ConfChange ever publishes
 	// its address. EN-1413.
-	ServiceAdvertiseAddr   string
+	ServiceAdvertiseAddr string
+	// InstanceID is this node's 16-byte peer-identity UUID (EN-1045).
+	// Generated once per (pod, PVC) incarnation at first boot, persisted
+	// alongside the WAL as INSTANCE_ID and read at every subsequent boot
+	// so the leader can discriminate a still-alive removed pod from a
+	// fresh pod at the same NodeID. Populated by wal.EnsureInstanceID
+	// before this config reaches the fx graph.
+	InstanceID             []byte
 	TransportBufferSize    int           // Per-peer send buffer capacity in bytes (default: 10MB)
 	ProcessingTickInterval time.Duration // Interval for processing committed entries (default: TickInterval/10)
 	ReplayBatchSize        int           // Number of entries per batch during spool replay (default: 1000)

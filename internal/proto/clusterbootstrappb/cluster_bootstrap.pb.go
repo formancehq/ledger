@@ -168,6 +168,7 @@ type JoinAsLearnerRequest struct {
 	NodeId         uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                        // Numeric ID for the new learner node
 	RaftAddress    string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`          // Raft transport address of the learner
 	ServiceAddress string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"` // Service API address of the learner
+	InstanceId     []byte                 `protobuf:"bytes,4,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`             // 16-byte UUID identifying this peer's WAL/PVC incarnation (EN-1045); required
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -223,6 +224,13 @@ func (x *JoinAsLearnerRequest) GetServiceAddress() string {
 	return ""
 }
 
+func (x *JoinAsLearnerRequest) GetInstanceId() []byte {
+	if x != nil {
+		return x.InstanceId
+	}
+	return nil
+}
+
 type JoinAsLearnerResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -270,11 +278,13 @@ const file_cluster_bootstrap_proto_rawDesc = "" +
 	"\bPeerInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
-	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\"{\n" +
+	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\"\x9c\x01\n" +
 	"\x14JoinAsLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
-	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\"\x17\n" +
+	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\x12\x1f\n" +
+	"\vinstance_id\x18\x04 \x01(\fR\n" +
+	"instanceId\"\x17\n" +
 	"\x15JoinAsLearnerResponse2\xd2\x01\n" +
 	"\x17ClusterBootstrapService\x12S\n" +
 	"\bGetPeers\x12\".cluster_bootstrap.GetPeersRequest\x1a#.cluster_bootstrap.GetPeersResponse\x12b\n" +

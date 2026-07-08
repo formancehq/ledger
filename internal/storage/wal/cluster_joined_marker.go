@@ -7,15 +7,6 @@ import (
 	"path/filepath"
 )
 
-// ClusterJoinedMarkerFile is the filename, relative to the WAL data
-// directory, of the marker proving that this node has been accepted by the
-// cluster as a member. For pod-0 it is written by the bootstrap path
-// immediately after the initial ConfState snapshot is persisted; for the
-// other pods it is written by tryAddLearner after the leader accepts the
-// JoinAsLearner RPC. The operator's StatefulSet entrypoint checks this
-// filename in shell before launching the server.
-const ClusterJoinedMarkerFile = "CLUSTER_JOINED"
-
 // MarkClusterJoined satisfies the WAL interface by delegating to the
 // package-level helper with the WAL's data directory. The bootstrap path
 // holds the WAL instance so it can call this method; tryAddLearner (which

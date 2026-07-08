@@ -35,6 +35,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
@@ -54,6 +55,7 @@ type Service struct {
 	node             *node.Node
 	raftTransport    *node.DefaultTransport
 	servicePool      *transport.ConnectionPool
+	infraMembership  *membership.Membership
 	logger           logging.Logger
 	localRaftAddr    string
 	localServiceAddr string
@@ -63,6 +65,7 @@ func NewService(
 	n *node.Node,
 	raftTransport *node.DefaultTransport,
 	servicePool *transport.ConnectionPool,
+	infraMembership *membership.Membership,
 	logger logging.Logger,
 	localRaftAddr, localServiceAddr string,
 ) *Service {
@@ -70,19 +73,29 @@ func NewService(
 		node:             n,
 		raftTransport:    raftTransport,
 		servicePool:      servicePool,
+		infraMembership:  infraMembership,
 		logger:           logger.WithField("component", "cluster-membership"),
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
 	}
 }
 
+// IsRemoved reports whether the (nodeID, instanceID) tuple is blacklisted
+// (EN-1045). Passthrough to the infra Membership; kept on the Service so
+// gRPC adapters depend only on this application-layer surface.
+func (s *Service) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
+	return s.infraMembership.IsRemoved(nodeID, instanceID)
+}
+
 // AddLearner wires the new peer into the local transport pools and
 // proposes the AddLearner ConfChange on the leader. The caller must
-// have already routed the request to the leader.
+// have already routed the request to the leader. instanceID is the
+// joining peer's 16-byte identity UUID (EN-1045); may be empty for
+// legacy clients that predate the field.
 //
 // Returns node.ErrNodeAlreadyInCluster on idempotent retries; adapters
 // map that to their transport-specific "already-exists" status.
-func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
+func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
 	if err := validatePeer(nodeID, raftAddr, serviceAddr); err != nil {
 		return err
 	}
@@ -102,7 +115,7 @@ func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		s.logger.WithFields(map[string]any{"error": err}).Errorf("AddLearner: failed to add learner to service pool")
 	}
 
-	if err := s.node.AddLearner(ctx, nodeID, raftAddr, serviceAddr); err != nil {
+	if err := s.node.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID); err != nil {
 		return fmt.Errorf("adding learner: %w", err)
 	}
 

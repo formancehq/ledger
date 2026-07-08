@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"encoding/hex"
 
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -118,9 +119,11 @@ func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req
 
 // JoinAsLearner registers the calling node as a learner on the Raft
 // cluster. On a follower, the call is forwarded to the leader's
-// RaftServer. On the leader, it delegates to the application membership
-// service which wires the peer into the transport/pool and proposes the
-// ConfChange.
+// RaftServer. On the leader, it consults the removed-member registry
+// (EN-1045) first — a rejoin with a blacklisted (nodeID, instance_id)
+// tuple is refused with FailedPrecondition — then delegates to the
+// application membership service which wires the peer into the
+// transport/pool and proposes the ConfChange.
 func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context, req *clusterbootstrappb.JoinAsLearnerRequest) (*clusterbootstrappb.JoinAsLearnerResponse, error) {
 	if err := impl.checkClusterID(ctx); err != nil {
 		return nil, err
@@ -130,6 +133,7 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 		"requestedNodeID":      req.GetNodeId(),
 		"requestedRaftAddress": req.GetRaftAddress(),
 		"requestedServiceAddr": req.GetServiceAddress(),
+		"hasInstanceID":        len(req.GetInstanceId()) > 0,
 		"isLeader":             impl.node.IsLeader(),
 		"localNodeID":          impl.node.GetNodeID(),
 	}).Infof("JoinAsLearner: received request")
@@ -159,7 +163,39 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 		return clusterbootstrappb.NewClusterBootstrapServiceClient(conn).JoinAsLearner(outCtx, req)
 	}
 
-	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress()); err != nil {
+	// EN-1045: every peer must present its 16-byte instance_id — clients
+	// acquire one at first boot via wal.EnsureInstanceID.
+	if len(req.GetInstanceId()) != 16 {
+		return nil, status.Errorf(codes.InvalidArgument, "instance_id must be 16 bytes, got %d", len(req.GetInstanceId()))
+	}
+
+	// Refuse a peer whose (nodeID, instance_id) has been blacklisted.
+	// Errors reading the store surface as Internal so an operator sees
+	// the anomaly and can investigate.
+	removed, err := impl.membership.IsRemoved(req.GetNodeId(), req.GetInstanceId())
+	if err != nil {
+		impl.logger.WithFields(map[string]any{
+			"error":  err,
+			"nodeID": req.GetNodeId(),
+		}).Errorf("JoinAsLearner: reading removed-member registry failed")
+
+		return nil, status.Error(codes.Internal, "reading removed-member registry")
+	}
+
+	if removed {
+		impl.logger.WithFields(map[string]any{
+			"nodeID":     req.GetNodeId(),
+			"instanceID": hex.EncodeToString(req.GetInstanceId()),
+		}).Infof("JoinAsLearner: refusing blacklisted peer (EN-1045)")
+
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"node %d (instance %x) was previously removed from this cluster; "+
+				"if this is intentional, run: ledgerctl cluster forget-removed %d %x",
+			req.GetNodeId(), req.GetInstanceId(),
+			req.GetNodeId(), req.GetInstanceId())
+	}
+
+	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId()); err != nil {
 		// Notably:
 		//   - ErrNodeAlreadyInCluster → AlreadyExists (idempotent join,
 		//     handled as success in tryAddLearner)
