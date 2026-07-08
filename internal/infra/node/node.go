@@ -147,11 +147,14 @@ type walAppendWork struct {
 	appendResponses []raftpb.Message
 }
 
-// walAppendChBuffer is the pipeline depth for runWalAppender. Sized to absorb
-// a few Ready cycles' worth of appends without stalling processReady, while
-// keeping the queue bounded (unbounded growth would just push latency onto
-// the WAL side without recovering throughput).
-const walAppendChBuffer = 4
+// walAppendChBuffer is the pipeline depth for runWalAppender. Sized to give
+// group-commit room: while a fsync is in flight, up to this many additional
+// Ready dispatches can queue up. When the current fsync returns, the
+// appender non-blockingly drains everything pending in the queue and merges
+// them into a SINGLE follow-up fsync. Bigger queue → more merging under
+// load, but same fsync latency per merged batch = higher throughput at the
+// cost of a bit of per-proposal latency under contention.
+const walAppendChBuffer = 16
 
 // readyResult is sent from processReadies to orchestrate after a Ready has been
 // persisted. It carries deferred rawNode operations that must execute in the
@@ -1327,43 +1330,76 @@ func (node *Node) processSnapshotReady(
 // after Save returns does it dispatch the outbound peer messages and Step
 // the appendResponses back into rawNode via localResponseCh.
 //
+// Group-commit: after receiving the first item, the appender does a
+// non-blocking drain of anything else already pending in walAppendCh and
+// merges everything into a single wal.Append call. Under high load this
+// coalesces multiple Ready dispatches into one fsync (same fsync latency,
+// more entries per fsync = higher throughput). Under low load the drain
+// finds nothing and the single item ships immediately, preserving latency.
+//
 // Correctness invariants:
 //
 //   - Single consumer of walAppendCh: entries persist in the exact order
-//     processReady dispatched them.
+//     processReady dispatched them. The drain preserves order by concat.
 //   - Outbound peer messages (MsgApp) never ship before durability: the
 //     leader would otherwise let followers accept entries the leader could
 //     lose on crash.
 //   - appendResponses (MsgStorageAppendResp) advance rawNode's storage
 //     cursor; sending them before Save returns would violate the
-//     AsyncStorageWrites contract.
+//     AsyncStorageWrites contract. On merge, all merged responses are
+//     sent as one localResponseCh batch — orchestrate Steps them in order.
+//   - HardState is monotonic across a merge: we take the LAST non-empty
+//     one, which subsumes any earlier states (Term/Vote/Commit only grow).
+//     etcd's WAL writes a single HardState record per Save; skipping
+//     intermediate stales is safe because recovery reads the latest.
 //
 // A wal.Append error is fatal — same behavior as when it was inline in
 // processReady. runWalAppender returns, taskSet propagates the error, the
 // node shuts down.
 func (node *Node) runWalAppender(_ context.Context, stop chan struct{}) error {
 	for {
+		// Block for the first item.
+		var merged walAppendWork
 		select {
-		case work := <-node.walAppendCh:
-			start := time.Now()
-
-			if err := node.wal.Append(work.hardState, work.entries); err != nil {
-				return fmt.Errorf("appending entries to storage: %w", err)
-			}
-
-			node.appendEntriesHistogram.Record(context.Background(), time.Since(start).Microseconds())
-
-			node.transport.Send(work.outbound)
-
-			if len(work.appendResponses) > 0 {
-				select {
-				case node.localResponseCh <- work.appendResponses:
-				case <-stop:
-					return nil
-				}
-			}
+		case merged = <-node.walAppendCh:
 		case <-stop:
 			return nil
+		}
+
+		// Non-blocking drain: absorb everything already queued into the
+		// same fsync. Bounded by walAppendChBuffer.
+	drain:
+		for {
+			select {
+			case next := <-node.walAppendCh:
+				if !raft.IsEmptyHardState(next.hardState) {
+					merged.hardState = next.hardState
+				}
+
+				merged.entries = append(merged.entries, next.entries...)
+				merged.outbound = append(merged.outbound, next.outbound...)
+				merged.appendResponses = append(merged.appendResponses, next.appendResponses...)
+			default:
+				break drain
+			}
+		}
+
+		start := time.Now()
+
+		if err := node.wal.Append(merged.hardState, merged.entries); err != nil {
+			return fmt.Errorf("appending entries to storage: %w", err)
+		}
+
+		node.appendEntriesHistogram.Record(context.Background(), time.Since(start).Microseconds())
+
+		node.transport.Send(merged.outbound)
+
+		if len(merged.appendResponses) > 0 {
+			select {
+			case node.localResponseCh <- merged.appendResponses:
+			case <-stop:
+				return nil
+			}
 		}
 	}
 }
