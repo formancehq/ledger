@@ -533,7 +533,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// it also fires for tampered projections that never reach the
 		// well-formed Apply branch above — non-Apply payloads, nil
 		// Apply.Log, or nil Data — where verifySkippedOrder is unreachable.
-		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, callback)
+		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, hasArchivedChapters && !baselineReferencesAvailable, callback)
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
@@ -1854,13 +1854,27 @@ func newChainBoundState() *chainBoundState {
 // because per-key mutation lists are bounded by the number of user
 // operations on that key.
 func mutationStateAtSeq(muts []chainBoundMutation, seq uint64) bool {
+	state, _ := mutationStateWithWitness(muts, seq)
+
+	return state
+}
+
+// mutationStateWithWitness returns both the state at seq AND whether
+// the live audit range witnessed any mutation before seq. The witness
+// flag lets callers distinguish "positive evidence of absence" (a
+// live Delete before seq) from "no live evidence at all" (empty
+// timeline may still be a Set-in-archive). The forward verifier
+// treats a positive presence witness as authoritative (archives
+// cannot undo a live Set). The inverse verifier is more
+// conservative: empty-live + archives = ambiguous → permissive.
+func mutationStateWithWitness(muts []chainBoundMutation, seq uint64) (state, witnessed bool) {
 	for _, v := range slices.Backward(muts) {
 		if v.seq < seq {
-			return v.exists
+			return v.exists, true
 		}
 	}
 
-	return false
+	return false, false
 }
 
 // expectedSkippableOrder captures the chain-verified fields the checker
@@ -1980,7 +1994,7 @@ func collectExpectedSkippable(
 		// the emitting order opted into skip — a later skip on the same
 		// key/id needs the full prior history to answer "was the
 		// underlying condition true?".
-		recordChainBoundMutations(apply, ledger, logSeq, chainBound)
+		recordChainBoundMutations(ls, ledger, logSeq, chainBound)
 
 		reasons := order.GetSkippableReasons()
 		if len(reasons) == 0 {
@@ -2023,20 +2037,29 @@ func collectExpectedSkippable(
 }
 
 // recordChainBoundMutations extracts every state transition from the
-// chain-bound Apply order and appends it to the matching chainBoundState
-// timeline. Only orders that mutate presence/absence surface here:
+// chain-bound LedgerScoped order and appends it to the matching
+// chainBoundState timeline. Only orders that mutate presence/absence
+// for currently-annotated skip reasons surface here:
+//
+//   - CreateLedgerOrder.account_types → chainBound.accountTypes
+//     (exists=true) seeded at ledger creation. Without this seed a
+//     later skippable AddAccountType of an initial type would falsely
+//     surface INVALID_SKIP (the timeline would look empty).
 //
 //   - RevertTransactionOrder → chainBound.reverted (first-seen wins).
 //     Recorded for every occurrence — a skipped ALREADY_REVERTED revert
 //     implies a prior successful revert, so its recorded seq is either
-//     the first (which is correct: no earlier successful revert exists
-//     for a genuinely-new tx target, so it wouldn't be skippable, so
-//     this case is impossible by construction) or a later occurrence
-//     that first-seen-wins correctly ignores.
+//     the first (which is correct) or a later occurrence that
+//     first-seen-wins correctly ignores.
 //
 //   - SetMetadata / SaveMetadata → chainBound.metadata (exists=true).
-//     Multi-key SetMetadata expands into one mutation per key so the
-//     timeline reflects every affected slot.
+//     Multi-key SetMetadata expands into one mutation per key.
+//
+//   - CreateTransactionOrder.account_metadata → chainBound.metadata
+//     (exists=true) per (account, key). Client-provided values set
+//     account metadata just like an explicit SetMetadata; NOT tracking
+//     them lets a later skippable DeleteMetadata on that key falsely
+//     pass the "absent" check.
 //
 //   - DeleteMetadata → chainBound.metadata (exists=false).
 //
@@ -2044,15 +2067,33 @@ func collectExpectedSkippable(
 //
 //   - RemoveAccountType → chainBound.accountTypes (exists=false).
 //
-// All other order shapes are inert — they carry no state relevant to
-// the currently-annotated skip reasons.
+// Documented gap: transaction-scoped metadata (CreateTransaction.metadata,
+// RevertTransaction.metadata) is NOT tracked because it targets a tx id
+// the FSM allocates from per-ledger NextTransactionId — the id is not
+// visible on the chain-bound order and would require replaying
+// per-ledger counters. Follow-up ticket.
+//
+// All other order shapes are inert.
 func recordChainBoundMutations(
-	apply *raftcmdpb.LedgerApplyOrder,
+	ls *raftcmdpb.LedgerScopedOrder,
 	ledger string,
 	logSeq uint64,
 	chainBound *chainBoundState,
 ) {
-	if apply == nil || ledger == "" {
+	if ls == nil || ledger == "" {
+		return
+	}
+
+	if cl := ls.GetCreateLedger(); cl != nil {
+		for name := range cl.GetAccountTypes() {
+			if name != "" {
+				appendAccountTypeMutation(chainBound.accountTypes, ledger, name, logSeq, true)
+			}
+		}
+	}
+
+	apply := ls.GetApply()
+	if apply == nil {
 		return
 	}
 
@@ -2074,6 +2115,18 @@ func recordChainBoundMutations(
 		key := dm.GetKey()
 		if target != "" && key != "" {
 			appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, false)
+		}
+	}
+
+	if ct := apply.GetCreateTransaction(); ct != nil {
+		for account, mm := range ct.GetAccountMetadata() {
+			if account == "" {
+				continue
+			}
+
+			for key := range mm.GetValues() {
+				appendMetadataMutation(chainBound.metadata, ledger, account, key, logSeq, true)
+			}
 		}
 	}
 
@@ -2598,12 +2651,12 @@ func verifySkippedOrder(
 		if mutationStateAtSeq(chainBound.metadata[ledger][expected.metadataTarget][expected.metadataKey], seq) {
 			// Chain-bound state says the key was PRESENT just before
 			// seq — a DeleteMetadata that ran on that state would have
-			// succeeded (producing a DeletedMetadataLog), not skipped.
-			// Same archive escape as the reference-conflict branch.
-			if hasArchivedChapters {
-				return
-			}
-
+			// succeeded, not skipped. Live-audit evidence of presence
+			// is authoritative: archived chapters live BEFORE the
+			// current audit range, so they cannot undo a live Set.
+			// Unlike CONFLICT (where "no live claim" leaves the archive
+			// as a plausible source), a live Set at some earlier seq
+			// is a positive fact — no archive escape applies.
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip on (target=%q, key=%q) but the audit chain shows the key was present at this sequence on ledger %q", seq, expected.metadataTarget, expected.metadataKey, ledger),
@@ -2654,7 +2707,17 @@ func verifySkippedOrder(
 
 		mustBePresent := reason == commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 		if present != mustBePresent {
-			if hasArchivedChapters {
+			// Archive escape is direction-aware:
+			//
+			//   - ALREADY_EXISTS + live shows ABSENT: archives may
+			//     contain an AddAccountType that hasn't been Removed
+			//     in the live range — permissive.
+			//
+			//   - NOT_FOUND + live shows PRESENT: archives lie BEFORE
+			//     the current live range and cannot undo a live
+			//     AddAccountType. Live-presence is authoritative — no
+			//     archive escape.
+			if mustBePresent && hasArchivedChapters {
 				return
 			}
 
@@ -2738,6 +2801,7 @@ func dispatchElisionCheck(
 	log *commonpb.Log,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
+	hasArchivedChapters bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	expected, isExpected := expectedSkippable[seq]
@@ -2757,7 +2821,7 @@ func dispatchElisionCheck(
 		}
 	}
 
-	verifyExpectedSkipNotElided(expected.ledger, seq, expectedSkippable, chainBound, callback)
+	verifyExpectedSkipNotElided(expected.ledger, seq, expectedSkippable, chainBound, hasArchivedChapters, callback)
 }
 
 // verifyExpectedSkipNotElided is the inverse-direction sibling of
@@ -2782,6 +2846,7 @@ func verifyExpectedSkipNotElided(
 	seq uint64,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
+	hasArchivedChapters bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	expected, ok := expectedSkippable[seq]
@@ -2833,13 +2898,17 @@ func verifyExpectedSkipNotElided(
 		))
 
 	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) && expected.metadataKey != "":
-		if mutationStateAtSeq(chainBound.metadata[ledger][expected.metadataTarget][expected.metadataKey], seq) {
-			// Key present just before seq → a Delete would have
-			// succeeded, not skipped. The projection isn't a skip
-			// (checked at dispatch) and this shouldn't have been one
-			// either — the forward direction would catch a wrong
-			// non-skip payload here (CreatedTransaction etc.), so let
-			// this branch stay silent.
+		present, witnessed := mutationStateWithWitness(chainBound.metadata[ledger][expected.metadataTarget][expected.metadataKey], seq)
+		if present {
+			// Live shows PRESENT → a Delete would have succeeded, not
+			// skipped. Any non-skip projection is a legitimate landing.
+			return
+		}
+
+		if !witnessed && hasArchivedChapters {
+			// Empty live timeline under archives is ambiguous — an
+			// archived Set could make the delete succeed, so the
+			// projection may legitimately be a non-skip. Be permissive.
 			return
 		}
 
@@ -2851,12 +2920,18 @@ func verifyExpectedSkipNotElided(
 
 	case (slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS) ||
 		slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND)) && expected.accountTypeName != "":
-		present := mutationStateAtSeq(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
+		present, witnessed := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
 		mustBePresent := slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS)
 		if present != mustBePresent {
 			// Chain-bound state contradicts the reason that would
 			// have been skipped: no elision to prove.
+			return
+		}
+
+		if !witnessed && hasArchivedChapters {
+			// Empty live timeline under archives is ambiguous. The
+			// archived history could make either outcome legitimate.
 			return
 		}
 

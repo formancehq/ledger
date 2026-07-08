@@ -359,7 +359,7 @@ func TestDispatchElisionCheck_FiresOnMalformedPayloadShapes(t *testing.T) {
 
 	dispatchWithLog := func(log *commonpb.Log) []*servicepb.CheckStoreEvent {
 		events := []*servicepb.CheckStoreEvent{}
-		dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
+		dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), false, func(e *servicepb.CheckStoreEvent) {
 			events = append(events, e)
 		})
 
@@ -421,7 +421,7 @@ func TestDispatchElisionCheck_SilentOnValidSkip(t *testing.T) {
 	}
 
 	events := []*servicepb.CheckStoreEvent{}
-	dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
+	dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), false, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -1005,7 +1005,7 @@ func captureDispatchEvents(
 
 	events := []*servicepb.CheckStoreEvent{}
 
-	dispatchElisionCheck(seq, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
+	dispatchElisionCheck(seq, log, expected, chainBoundStateFromRefs(refs), false, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
