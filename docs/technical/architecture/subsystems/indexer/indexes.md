@@ -128,8 +128,8 @@ The scan is unbuffered — each call rereads the full prefix. This is fine becau
 
 | Layer | Entry point |
 |-------|-------------|
-| gRPC | `BucketService.InspectIndex` (and `GetIndexStatus` for the version-state view). |
-| HTTP | `GET /{ledger}/indexes/{metadataKey}` with `?mode=distinct-values|facets|summary`. |
+| gRPC | `BucketService.InspectIndex` (and `GetIndexStatus` / `GetIndexEntryStatus` / `GetIndex` / `ListIndexes` for the registry + version-state view). |
+| HTTP | `GET /v3/{ledger}/indexes/{canonicalId}/inspect` with `?mode=distinct-values|facets|summary`. Sibling routes: `GET /v3/{ledger}/indexes` (list), `GET /v3/{ledger}/indexes/{canonicalId}` (single entry), `.../status` (IndexEntry), `POST /v3/{ledger}/indexes` (create), `DELETE .../indexes/{canonicalId}` (drop). Cluster-wide reads live under `/v3/indexes/…`. |
 | CLI | `ledgerctl indexes inspect --ledger … --key … --mode summary` — see [ops/cli.md §indexes inspect](../../../../ops/cli.md). |
 
 The controller (`internal/application/ctrl/controller_default.go`) gates the inspect call on `state.CurrentVersion != 0` — a replica that has never built the index locally returns "not built locally" rather than scanning an empty keyspace.
