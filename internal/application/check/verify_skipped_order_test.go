@@ -359,7 +359,7 @@ func TestDispatchElisionCheck_FiresOnMalformedPayloadShapes(t *testing.T) {
 
 	dispatchWithLog := func(log *commonpb.Log) []*servicepb.CheckStoreEvent {
 		events := []*servicepb.CheckStoreEvent{}
-		dispatchElisionCheck(7, log, expected, refs, func(e *servicepb.CheckStoreEvent) {
+		dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
 			events = append(events, e)
 		})
 
@@ -421,7 +421,7 @@ func TestDispatchElisionCheck_SilentOnValidSkip(t *testing.T) {
 	}
 
 	events := []*servicepb.CheckStoreEvent{}
-	dispatchElisionCheck(7, log, expected, refs, func(e *servicepb.CheckStoreEvent) {
+	dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -809,7 +809,7 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(items, expectedSkip, refs)
+	collectExpectedSkippable(items, expectedSkip, &chainBoundState{references: refs, reverted: make(map[string]map[uint64]uint64), metadata: make(map[string]map[string]map[string][]chainBoundMutation), accountTypes: make(map[string]map[string][]chainBoundMutation)})
 
 	require.Equal(t, uint64(100), refs["L"]["ref-A"], "first claim must win for re-claimed reference")
 	require.Equal(t, uint64(101), refs["L"]["ref-B"])
@@ -863,7 +863,7 @@ func TestCollectExpectedSkippable_TracksMirrorIngestedReferences(t *testing.T) {
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(items, expectedSkip, refs)
+	collectExpectedSkippable(items, expectedSkip, &chainBoundState{references: refs, reverted: make(map[string]map[uint64]uint64), metadata: make(map[string]map[string]map[string][]chainBoundMutation), accountTypes: make(map[string]map[string][]chainBoundMutation)})
 
 	require.Equal(t, uint64(50), refs["L"]["mirror-ref"],
 		"mirror-ingested reference must be recorded at its log sequence so later skip verifiers see the prior claim")
@@ -909,7 +909,7 @@ func TestCollectExpectedSkippable_HonoursItemLogSequence(t *testing.T) {
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(items, expectedSkip, refs)
+	collectExpectedSkippable(items, expectedSkip, &chainBoundState{references: refs, reverted: make(map[string]map[uint64]uint64), metadata: make(map[string]map[string]map[string][]chainBoundMutation), accountTypes: make(map[string]map[string][]chainBoundMutation)})
 
 	require.Contains(t, expectedSkip, uint64(80))
 	require.Contains(t, expectedSkip, uint64(200))
@@ -934,13 +934,44 @@ func captureEvents(
 ) []*servicepb.CheckStoreEvent {
 	t.Helper()
 
+	return captureEventsState(t, ledger, seq, payload, expected, chainBoundStateFromRefs(refs), hasArchivedChapters)
+}
+
+// captureEventsState is captureEvents' extended variant: tests that need
+// to configure the reverted / metadata / accountTypes maps build a
+// *chainBoundState directly (via chainBoundStateWith) instead of the
+// refs-only shortcut. The reference-conflict tests keep the shorter API.
+func captureEventsState(
+	t *testing.T,
+	ledger string,
+	seq uint64,
+	payload *commonpb.LedgerLogPayload,
+	expected map[uint64]*expectedSkippableOrder,
+	chainBound *chainBoundState,
+	hasArchivedChapters bool,
+) []*servicepb.CheckStoreEvent {
+	t.Helper()
+
 	events := []*servicepb.CheckStoreEvent{}
 
-	verifySkippedOrder(ledger, seq, payload, expected, refs, hasArchivedChapters, func(e *servicepb.CheckStoreEvent) {
+	verifySkippedOrder(ledger, seq, payload, expected, chainBound, hasArchivedChapters, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
 	return events
+}
+
+// chainBoundStateFromRefs builds a *chainBoundState with only the
+// references map populated — every other timeline is empty. Kept for
+// the existing reference-conflict test set; new tests that need to
+// exercise the other reasons build their own state directly.
+func chainBoundStateFromRefs(refs map[string]map[string]uint64) *chainBoundState {
+	cb := newChainBoundState()
+	if refs != nil {
+		cb.references = refs
+	}
+
+	return cb
 }
 
 // captureDispatchEvents wraps dispatchElisionCheck with a canonical Apply-
@@ -974,7 +1005,7 @@ func captureDispatchEvents(
 
 	events := []*servicepb.CheckStoreEvent{}
 
-	dispatchElisionCheck(seq, log, expected, refs, func(e *servicepb.CheckStoreEvent) {
+	dispatchElisionCheck(seq, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -1008,8 +1039,34 @@ func skippedPayloadWithContext(reason commonpb.ErrorReason, ctx map[string]strin
 
 // TestVerifySkippedOrder_RevertAlreadyRevertedAcceptsMatchingContext pins
 // the happy path for TRANSACTION_ALREADY_REVERTED: the projection carries
-// the same transaction id the chain-bound RevertTransactionOrder targeted.
+// the same transaction id the chain-bound RevertTransactionOrder
+// targeted AND chainBound.reverted shows an earlier successful revert of
+// that same tx (the audit-derived proof that a skip was legitimate).
 func TestVerifySkippedOrder_RevertAlreadyRevertedAcceptsMatchingContext(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:       []commonpb.ErrorReason{reason},
+			ledger:        "L",
+			transactionID: 42,
+		},
+	}
+
+	chainBound := newChainBoundState()
+	chainBound.reverted["L"] = map[uint64]uint64{42: 3} // reverted at seq 3, well before 7
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "42"})
+	events := captureEventsState(t, "L", 7, payload, expected, chainBound, false)
+	require.Empty(t, events, "matching correlator + earlier revert must not emit any INVALID_SKIP")
+}
+
+// TestVerifySkippedOrder_RevertAlreadyRevertedRejectsWithoutEarlierRevert
+// closes the log-only tampering vector: even with a matching correlator,
+// a skip is illegitimate unless the audit chain shows a prior successful
+// revert of the same tx. Empty chainBound.reverted → INVALID_SKIP.
+func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsWithoutEarlierRevert(t *testing.T) {
 	t.Parallel()
 
 	reason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
@@ -1023,7 +1080,7 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedAcceptsMatchingContext(t *testi
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "42"})
 	events := captureEvents(t, "L", 7, payload, expected, nil, false)
-	require.Empty(t, events, "matching correlator must not emit any INVALID_SKIP")
+	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifySkippedOrder_RevertAlreadyRevertedRejectsMissingCorrelator
@@ -1064,7 +1121,10 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsTamperedTxID(t *testing.
 }
 
 // TestVerifySkippedOrder_MetadataNotFoundAcceptsMatchingContext pins the
-// happy path for METADATA_NOT_FOUND on DeleteMetadata.
+// happy path for METADATA_NOT_FOUND on DeleteMetadata: matching context
+// + chain-bound state shows the key was ABSENT just before seq. The
+// default absent state (empty metadata timeline) is what a legitimate
+// "delete key that never existed" skip looks like.
 func TestVerifySkippedOrder_MetadataNotFoundAcceptsMatchingContext(t *testing.T) {
 	t.Parallel()
 
@@ -1078,12 +1138,44 @@ func TestVerifySkippedOrder_MetadataNotFoundAcceptsMatchingContext(t *testing.T)
 		},
 	}
 
+	// Empty metadata timeline → key absent by default at seq 7.
 	payload := skippedPayloadWithContext(reason, map[string]string{
 		"target": "alice",
 		"key":    "role",
 	})
 	events := captureEvents(t, "L", 7, payload, expected, nil, false)
 	require.Empty(t, events)
+}
+
+// TestVerifySkippedOrder_MetadataNotFoundRejectsWhenKeyWasPresent closes
+// the log-only tampering vector: if the chain shows a Set for the key
+// at an earlier seq (with no subsequent Delete), the key WAS present
+// just before seq — a legitimate Delete would have succeeded, not
+// skipped. Marks the projection as INVALID_SKIP.
+func TestVerifySkippedOrder_MetadataNotFoundRejectsWhenKeyWasPresent(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice",
+			metadataKey:    "role",
+		},
+	}
+
+	chainBound := newChainBoundState()
+	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
+		"alice": {"role": {{seq: 3, exists: true}}}, // Set at 3, still present at 7
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{
+		"target": "alice",
+		"key":    "role",
+	})
+	events := captureEventsState(t, "L", 7, payload, expected, chainBound, false)
+	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedKey catches a
@@ -1152,7 +1244,34 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsMissingCorrelator(t *testing.
 }
 
 // TestVerifySkippedOrder_AccountTypeAlreadyExistsAcceptsMatchingContext.
+// Happy path: matching context + chain shows the account type was
+// PRESENT just before seq (added earlier, not since removed).
 func TestVerifySkippedOrder_AccountTypeAlreadyExistsAcceptsMatchingContext(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:         []commonpb.ErrorReason{reason},
+			ledger:          "L",
+			accountTypeName: "customer",
+		},
+	}
+
+	chainBound := newChainBoundState()
+	chainBound.accountTypes["L"] = map[string][]chainBoundMutation{
+		"customer": {{seq: 3, exists: true}},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
+	events := captureEventsState(t, "L", 7, payload, expected, chainBound, false)
+	require.Empty(t, events)
+}
+
+// TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenAbsent closes
+// the log-only tampering vector: without a prior Add, the "ALREADY_EXISTS"
+// skip claim is inconsistent with the audit chain.
+func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenAbsent(t *testing.T) {
 	t.Parallel()
 
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
@@ -1166,7 +1285,7 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsAcceptsMatchingContext(t *te
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
 	events := captureEvents(t, "L", 7, payload, expected, nil, false)
-	require.Empty(t, events)
+	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsTamperedName
@@ -1188,8 +1307,10 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsTamperedName(t *testi
 	requireInvalidSkipEvent(t, events, 7)
 }
 
-// TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext exercises
-// the symmetric case for the RemoveAccountType path.
+// TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext
+// exercises the symmetric case for the RemoveAccountType path: matching
+// context + chain shows the account type was ABSENT just before seq
+// (empty timeline, or last mutation was a Remove).
 func TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext(t *testing.T) {
 	t.Parallel()
 
@@ -1202,9 +1323,36 @@ func TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext(t *testing
 		},
 	}
 
+	// Empty accountTypes timeline → absent by default.
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
 	events := captureEvents(t, "L", 7, payload, expected, nil, false)
 	require.Empty(t, events)
+}
+
+// TestVerifySkippedOrder_AccountTypeNotFoundRejectsWhenPresent closes the
+// log-only tampering vector for the NOT_FOUND direction: chain shows a
+// prior Add without a subsequent Remove → the name WAS present, so a
+// legitimate Remove would have succeeded, not skipped.
+func TestVerifySkippedOrder_AccountTypeNotFoundRejectsWhenPresent(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:         []commonpb.ErrorReason{reason},
+			ledger:          "L",
+			accountTypeName: "customer",
+		},
+	}
+
+	chainBound := newChainBoundState()
+	chainBound.accountTypes["L"] = map[string][]chainBoundMutation{
+		"customer": {{seq: 3, exists: true}},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
+	events := captureEventsState(t, "L", 7, payload, expected, chainBound, false)
+	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifySkippedOrder_AccountTypeNotFoundRejectsMissingCorrelator pins
