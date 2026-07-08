@@ -346,7 +346,7 @@ func generateRejectedTransaction(ledger string, ls oracle.LedgerState) *servicep
 // emptyTransaction carries no postings and no script, so admission rejects it as
 // having no content source (VALIDATION).
 func emptyTransaction(ledger string) *servicepb.Request {
-	return applyCreate(ledger, &servicepb.CreateTransactionPayload{ExpandVolumes: true})
+	return applyCreate(ledger, &servicepb.CreateTransactionPayload{ExpandVolumes: expandVolumes()})
 }
 
 // duplicateReferenceTransaction reuses a committed reference; the FSM rejects it
@@ -361,7 +361,7 @@ func duplicateReferenceTransaction(ledger string, ls oracle.LedgerState) *servic
 	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
 		Postings:      []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(), assets[0], big.NewInt(1))},
 		Reference:     ref,
-		ExpandVolumes: true,
+		ExpandVolumes: expandVolumes(),
 	})
 }
 
@@ -377,7 +377,7 @@ func overflowTransaction(ledger string) *servicepb.Request {
 			commonpb.NewPosting("world", dst, assets[0], half),
 			commonpb.NewPosting("world", dst, assets[0], half),
 		},
-		ExpandVolumes: true,
+		ExpandVolumes: expandVolumes(),
 	})
 }
 
@@ -431,7 +431,7 @@ func txRequest(ledger, src, dest, asset string, amount *big.Int, force bool) *se
 								commonpb.NewPosting(src, dest, asset, amount),
 							},
 							Force:         force,
-							ExpandVolumes: true,
+							ExpandVolumes: expandVolumes(),
 						},
 					},
 				},
@@ -494,7 +494,7 @@ func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.R
 								commonpb.NewPosting(srcKey.Address, "world", srcKey.Asset, balance.ToBig()),
 							},
 							Force:         true,
-							ExpandVolumes: true,
+							ExpandVolumes: expandVolumes(),
 						},
 					},
 				},
