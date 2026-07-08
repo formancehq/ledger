@@ -33,16 +33,16 @@ func TestParseMirrorFlags_RewriteRulesInline(t *testing.T) {
 	require.NoError(t, cmd.ParseFlags([]string{
 		"--mode=mirror",
 		"--mirror-base-url=http://v2:3068",
-		"--mirror-rewrite-rule", `{"cel":"tx.rewriteAddress(\":worker:\\\\d+\", \"\")"}`,
-		"--mirror-rewrite-rule", `{"match":"tx.metadata[\"type\"] == \"payout\"","cel":"tx.setMetadata(\"category\", \"external\")","stop":true}`,
+		"--mirror-rewrite-rule", `{"cel":"log.rewriteAddress(\":worker:\\\\d+\", \"\")"}`,
+		"--mirror-rewrite-rule", `{"match":"has(log.created) && log.created.metadata[\"type\"] == \"payout\"","cel":"log.withCreated(log.created.setMetadata(\"category\", \"external\"))","stop":true}`,
 	}))
 
 	_, cfg, err := parseMirrorFlags(cmd, "ledger-x")
 	require.NoError(t, err)
 	require.Len(t, cfg.GetRewriteRules(), 2)
-	require.Equal(t, `tx.rewriteAddress(":worker:\\d+", "")`, cfg.GetRewriteRules()[0].GetCel())
+	require.Equal(t, `log.rewriteAddress(":worker:\\d+", "")`, cfg.GetRewriteRules()[0].GetCel())
 	require.Equal(t, "", cfg.GetRewriteRules()[0].GetMatch())
-	require.Equal(t, `tx.metadata["type"] == "payout"`, cfg.GetRewriteRules()[1].GetMatch())
+	require.Equal(t, `has(log.created) && log.created.metadata["type"] == "payout"`, cfg.GetRewriteRules()[1].GetMatch())
 	require.True(t, cfg.GetRewriteRules()[1].GetStop())
 }
 
@@ -51,9 +51,9 @@ func TestParseMirrorFlags_RewriteFile(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "rules.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(`
-- cel: 'tx.rewriteAddress(":worker:\\d+", "")'
-- match: 'tx.metadata["type"] == "payout"'
-  cel: 'tx.setMetadata("category", "external")'
+- cel: 'log.rewriteAddress(":worker:\\d+", "")'
+- match: 'has(log.created) && log.created.metadata["type"] == "payout"'
+  cel: 'log.withCreated(log.created.setMetadata("category", "external"))'
   stop: true
 `), 0o600))
 
@@ -69,7 +69,7 @@ func TestParseMirrorFlags_RewriteFile(t *testing.T) {
 	require.Len(t, cfg.GetRewriteRules(), 2)
 	// YAML single-quoted scalars keep backslashes literal, so the stored CEL
 	// source retains "\\d" (CEL unescapes it to "\d" at compile time).
-	require.Equal(t, `tx.rewriteAddress(":worker:\\d+", "")`, cfg.GetRewriteRules()[0].GetCel())
+	require.Equal(t, `log.rewriteAddress(":worker:\\d+", "")`, cfg.GetRewriteRules()[0].GetCel())
 	require.True(t, cfg.GetRewriteRules()[1].GetStop())
 }
 

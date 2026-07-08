@@ -883,8 +883,8 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
-					{Match: `tx.metadata["type"] == "payout"`, Cel: `tx.setMetadata("category", "external")`, Stop: true},
+					{Cel: `log.rewriteAddress(":worker:\\d+", "")`},
+					{Match: `has(log.created) && log.created.metadata["type"] == "payout"`, Cel: `log.withCreated(log.created.setMetadata("category", "external"))`, Stop: true},
 				},
 			},
 		},
@@ -907,19 +907,19 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Match: `"a string"`, Cel: `tx`},
+					{Match: `"a string"`, Cel: `log`},
 				},
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
 		},
 		{
-			name: "cel not returning a transaction rejected at admission",
+			name: "cel not returning a log entry rejected at admission",
 			src: &commonpb.MirrorSourceConfig{
 				Type: &commonpb.MirrorSourceConfig_Http{
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `"not a tx"`},
+					{Cel: `"not a log"`},
 				},
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
@@ -931,7 +931,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `tx.rewriteAddress("(", "")`},
+					{Cel: `log.rewriteAddress("(", "")`},
 				},
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
@@ -943,7 +943,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `tx.setMetadata("bad key", "v")`},
+					{Cel: `log.withCreated(log.created.setMetadata("bad key", "v"))`},
 				},
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
@@ -955,7 +955,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `tx.setMetadata("k", "v", "integer")`},
+					{Cel: `log.withCreated(log.created.setMetadata("k", "v", "integer"))`},
 				},
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,

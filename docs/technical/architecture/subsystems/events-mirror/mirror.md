@@ -66,12 +66,12 @@ oneof payload {
 
 Optional `rewrite_rules` on `MirrorSourceConfig` are CEL rewrite rules applied, in order, to every mirror log entry as v2 logs are translated. They can rename address segments, transform metadata, or drop transactions. See [Mirror CEL rewrite engine](cel-rewrite.md) for the full CEL surface, determinism model, and drop→fill-gap behaviour.
 
-Each rule is `{match, cel, stop}`: `match` is a CEL boolean selecting which transactions the rule fires on, `cel` rewrites the transaction via helper functions (`tx.rewriteAddress`, `tx.setMetadata`, `tx.deleteMetadata`, `tx.setAccountMetadata`, `tx.deleteAccountMetadata`, `tx.drop`), and `stop` halts the chain once the rule matches. The engine runs once per assembled `MirrorLogEntry` in `TranslateBatch` (`internal/adapter/v2/celrewrite`).
+Each rule is `{match, cel, stop}`: `match` is a CEL boolean selecting which entries the rule fires on, `cel` rewrites the log entry (`log`) — a sum type over its variants (`log.created`, `log.reverted`, `log.savedMetadata`, `log.deletedMetadata`) — via cross-cutting helpers on `log` (`log.rewriteAddress`, `log.mapAddress`, `log.drop`) and variant-scoped metadata helpers lifted back with `log.withCreated`/`withReverted`/`withSavedMetadata`, and `stop` halts the chain once the rule matches. The engine runs once per assembled `MirrorLogEntry` in `TranslateBatch` (`internal/adapter/v2/celrewrite`).
 
 Properties:
 - **Pure, deterministic projection** — the source v2 ledger is untouched; rewriting only shapes the v3 orders the leader proposes, so followers apply identical bytes. The CEL environment exposes no non-deterministic function.
 - **Validated** — rules are compile-checked at admission (`ErrMirrorRewriteRuleInvalid`) before the config is persisted; at translation time a rewrite that produces an invalid address fails the batch, so the cursor does not advance and the worker retries (the standard translation-error path).
-- **Drop preserves IDs** — `tx.drop()` emits a `FillGap` carrying the dropped transaction ID in `skipped_transaction_ids`, so log-ID contiguity and transaction-ID advancement are both preserved.
+- **Drop preserves IDs** — `log.drop()` emits a `FillGap` carrying the dropped transaction ID in `skipped_transaction_ids`, so log-ID contiguity and transaction-ID advancement are both preserved.
 
 ## The Raft command
 

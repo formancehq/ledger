@@ -230,18 +230,18 @@ func TestMirrorSourceToProto_RewriteRules(t *testing.T) {
 		Type:       "http",
 		BaseURL:    "http://localhost:3068",
 		RewriteRules: []rewriteRuleBody{
-			{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
-			{Match: `tx.metadata["type"] == "payout"`, Cel: `tx.setMetadata("category", "external")`, Stop: true},
+			{Cel: `log.rewriteAddress(":worker:\\d+", "")`},
+			{Match: `has(log.created) && log.created.metadata["type"] == "payout"`, Cel: `log.withCreated(log.created.setMetadata("category", "external"))`, Stop: true},
 		},
 	}
 
 	cfg, err := mirrorSourceToProto(body)
 	require.NoError(t, err)
 	require.Len(t, cfg.GetRewriteRules(), 2)
-	require.Equal(t, `tx.rewriteAddress(":worker:\\d+", "")`, cfg.GetRewriteRules()[0].GetCel())
+	require.Equal(t, `log.rewriteAddress(":worker:\\d+", "")`, cfg.GetRewriteRules()[0].GetCel())
 	require.Equal(t, "", cfg.GetRewriteRules()[0].GetMatch())
 	require.False(t, cfg.GetRewriteRules()[0].GetStop())
-	require.Equal(t, `tx.metadata["type"] == "payout"`, cfg.GetRewriteRules()[1].GetMatch())
+	require.Equal(t, `has(log.created) && log.created.metadata["type"] == "payout"`, cfg.GetRewriteRules()[1].GetMatch())
 	require.True(t, cfg.GetRewriteRules()[1].GetStop())
 }
 
@@ -268,7 +268,7 @@ func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","rewriteRules":[{"cel":"tx.rewriteAddress(\":worker:\\\\d+\", \"\")"}]}}`
+	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","rewriteRules":[{"cel":"log.rewriteAddress(\":worker:\\\\d+\", \"\")"}]}}`
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/mirror-rw", strings.NewReader(body), map[string]string{
 		"ledgerName": "mirror-rw",
@@ -280,7 +280,7 @@ func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 	rules := capturedReq.GetCreateLedger().GetMirrorSource().GetRewriteRules()
 	require.Len(t, rules, 1)
-	require.Equal(t, `tx.rewriteAddress(":worker:\\d+", "")`, rules[0].GetCel())
+	require.Equal(t, `log.rewriteAddress(":worker:\\d+", "")`, rules[0].GetCel())
 }
 
 func TestMirrorSourceToProto_Unsupported(t *testing.T) {

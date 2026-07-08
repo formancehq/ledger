@@ -66,13 +66,16 @@ type MirrorSourceSpec struct {
 }
 
 // MirrorRewriteRule transforms a mirror log entry during v2→v3 translation.
-// Match is a CEL boolean expression over the transaction (`tx`) selecting which
+// Match is a CEL boolean expression over the log entry (`log`) selecting which
 // entries the rule fires on (empty = always). Cel is a CEL expression evaluating
-// to the rewritten `tx`, built with helper functions (tx.rewriteAddress,
-// tx.setMetadata, tx.deleteMetadata, tx.setAccountMetadata,
-// tx.deleteAccountMetadata, tx.drop). When Stop is true and the rule matches, no
-// further rules are evaluated. Rewriting is a deterministic translation-time
-// projection only: the source v2 ledger is never modified.
+// to the rewritten `log`. `log` is a sum type over its variants — log.created,
+// log.reverted, log.savedMetadata, log.deletedMetadata — guarded with
+// has(log.created) etc. Cross-cutting helpers hang off log (log.rewriteAddress,
+// log.mapAddress, log.drop); metadata helpers hang off the variant that carries
+// them (e.g. log.created.setMetadata / setAccountMetadata), lifted back with
+// log.withCreated / withReverted / withSavedMetadata. When Stop is true and the
+// rule matches, no further rules are evaluated. Rewriting is a deterministic
+// translation-time projection only: the source v2 ledger is never modified.
 type MirrorRewriteRule struct {
 	// Match is a CEL boolean expression selecting which transactions the rule
 	// fires on. Empty means the rule always applies.

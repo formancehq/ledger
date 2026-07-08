@@ -12,59 +12,58 @@ Rewriting happens during v2→v3 translation, on the mirror **leader**, before c
 
 Determinism is a hard invariant (see the top-level `CLAUDE.md`): the leader computes the rewrite once and the result is replicated, so all nodes must produce identical bytes. The CEL environment is built without any non-deterministic function (no wall-clock, no randomness); every helper is pure. Evaluation is additionally bounded by a CEL cost limit and by static caps (rule count, expression length, regex pattern/replacement length) enforced at compile time in `NewRewriter` — the same compilation admission runs, so a config that admits is guaranteed to build on the worker.
 
-Because the rewrite runs only on the leader and is replicated verbatim, a non-deterministic expression cannot desync nodes — but it would still make mirror output non-reproducible across runs, breaking the purity contract. The one non-obvious source is **map iteration**: a CEL comprehension that maps or filters a map (`tx.metadata`, `tx.accountMetadata`) into a list visits keys in Go's randomized order, so its result — and anything derived from it, e.g. `join` — varies run to run. Such expressions are **rejected at admission**. Order-insensitive predicates over a map (`exists`/`all`/`exists_one`, which return a bool) stay allowed, as do comprehensions over an ordered list (`tx.postings`, `tx.addresses()` — the latter is what `mapAddress` expands to). Where an operator needs an ordered projection of addresses, `tx.addresses()` already yields them in a fixed order.
+Because the rewrite runs only on the leader and is replicated verbatim, a non-deterministic expression cannot desync nodes — but it would still make mirror output non-reproducible across runs, breaking the purity contract. The one non-obvious source is **map iteration**: a CEL comprehension that maps or filters a map (`log.created.metadata`, `log.created.accountMetadata`) into a list visits keys in Go's randomized order, so its result — and anything derived from it, e.g. `join` — varies run to run. Such expressions are **rejected at admission**. Order-insensitive predicates over a map (`exists`/`all`/`exists_one`, which return a bool) stay allowed, as do comprehensions over an ordered list (`log.created.postings`, `log.addresses()` — the latter is what `mapAddress` expands to). Where an operator needs an ordered projection of addresses, `log.addresses()` already yields them in a fixed order.
 
 ## Rules
 
 A rule is `{match, cel, stop}`:
 
-- `match` — a CEL **boolean** expression over the transaction (`tx`) selecting which entries the rule fires on. Empty means "always".
-- `cel` — a CEL expression evaluating to the rewritten `tx`, built with the helper functions below.
+- `match` — a CEL **boolean** expression over the log entry (`log`) selecting which entries the rule fires on. Empty means "always".
+- `cel` — a CEL expression evaluating to the rewritten `log`, built with the helper functions below.
 - `stop` — when true and the rule matches, no further rules are evaluated.
 
 Rules are evaluated top-to-bottom; every rule whose `match` holds applies its `cel`, feeding its output into the next rule (sequential chaining).
 
-## The `tx` surface
+## The `log` surface
 
-Read-only fields (usable in `match` and `cel`):
+The CEL variable is `log`: the mirror log entry, a **sum type** over its four rewritable variants. Exactly one variant is present per entry; access it as `log.created`, `log.reverted`, `log.savedMetadata` or `log.deletedMetadata`, guarded with `has(log.created)` etc. This mirrors `MirrorLogEntry.data` on the wire (`raft_cmd.proto`) and replaces the earlier flat view's invented `tx.type` tag.
 
-| field | type | notes |
-|---|---|---|
-| `tx.type` | `string` | `created` \| `reverted` \| `setMetadata` \| `deleteMetadata` |
-| `tx.reference` | `string` | created transactions (read-only in v1) |
-| `tx.metadata` | `map(string, string)` | transaction metadata (created/reverted) or the saved metadata (setMetadata) |
-| `tx.postings` | `list({source, destination, amount, asset})` | all strings; amount is decimal, read-only |
-| `tx.accountMetadata` | `map(string, map(string, string))` | per-account metadata (created/reverted) |
-| `tx.target` | `string` | target account address for account-targeted metadata ops (empty for tx-targeted) |
-| `tx.metadataKey` | `string` | key for deleteMetadata |
+Read-only variant fields (usable in `match` and `cel`):
 
-Helper member functions (each returns a new copy-on-write `tx`; helpers never mutate in place, and the result is committed to the proto only after the whole rule chain succeeds):
+| variant | fields |
+|---|---|
+| `log.created` | `reference`, `postings` (`{source, destination, amount, asset}`), `metadata` (`map(string,string)`), `accountMetadata` (`map(string, map(string,string))`) |
+| `log.reverted` | `postings` (the reverse postings), `metadata` |
+| `log.savedMetadata` | `target` (account address), `metadata` |
+| `log.deletedMetadata` | `target`, `key` |
 
-- `tx.rewriteAddress(pattern, replacement)` — RE2 replace across every address (posting source/destination, target, account-metadata keys). Account-metadata keys are rewritten in sorted order with a deterministic last-writer-wins merge on collision.
-- `tx.mapAddress(a, expr)` — maps a CEL expression over **every** account address (`a` bound to each; postings, target, account-metadata keys), replacing it with `expr`. This is the open-ended, computed transform a constant regex can't express — e.g. `tx.mapAddress(a, a.split(":").reverse().join(":"))` reverses the segments of every address for arbitrary arity. The address count can't change (transform, don't add/remove); each result is validated at commit. `mapAddress` is the **only** way to write addresses — it transforms each address in place, so it cannot reorder or drop addresses. The read-only companion `tx.addresses()` returns the ordered address list (usable in `match`, e.g. `tx.addresses().exists(a, a.startsWith("acquirer:"))`); there is deliberately no raw list-write helper, since a positional write could silently reassign addresses across postings/roles while every output still validated.
-- `tx.setAccountMetadataFromAddress(pattern, key, replacement [, type])` — for every posting account address matching `pattern`, sets `accountMetadata[address][key]` to `ReplaceAllString(address, replacement)`. Used to derive per-account metadata from the address, e.g. capture a segment with a group and store it. Because it uses `ReplaceAllString`, the pattern must match the **whole** address (anchor with `^…$`), otherwise the unmatched tail is left in the value. Account metadata is only persisted for created transactions.
-- `tx.setMetadata(key, value [, type])` / `tx.deleteMetadata(key)` — edit the entry's metadata map.
-- `tx.setAccountMetadata(account, key, value [, type])` / `tx.deleteAccountMetadata(account, key)` — edit per-account metadata.
-- `tx.drop()` — mark the entry to be dropped (see below).
+Posting `amount`/`asset` are read-only; only `source`/`destination` are written back.
 
-**Per-entry-kind applicability.** A helper only works on the entry kinds whose wire form (`raft_cmd.proto`) can store its result — the four `MirrorLogEntry.data` variants do not all carry the same fields:
+**Cross-cutting helpers on `log`** (work on whichever variant is present; each returns a new copy-on-write `log`):
 
-| helper | created | reverted | setMetadata | deleteMetadata |
-|---|---|---|---|---|
-| `rewriteAddress`, `mapAddress`, `addresses`, `drop` | ✅ | ✅ | ✅ | ✅ |
-| `setMetadata`, `deleteMetadata` | ✅ | ✅ | ✅ | ❌ (no metadata field) |
-| `setAccountMetadata`, `deleteAccountMetadata`, `setAccountMetadataFromAddress` | ✅ | ❌ | ❌ | ❌ (no account_metadata field) |
+- `log.rewriteAddress(pattern, replacement)` — RE2 replace across every address of the active variant (posting source/destination, target, created account-metadata keys). Account-metadata keys are rewritten in sorted order with a deterministic last-writer-wins merge on collision.
+- `log.mapAddress(a, expr)` — maps a CEL expression over **every** address (`a` bound to each), replacing it with `expr`. The open-ended, computed transform a constant regex can't express — e.g. `log.mapAddress(a, a.split(":").reverse().join(":"))` reverses the segments of every address for arbitrary arity. The address count can't change; each result is validated at commit. `mapAddress` is the **only** way to write addresses (it transforms each in place, so it cannot reorder or drop). The read-only companion `log.addresses()` returns the ordered address list (usable in `match`); there is deliberately no raw list-write helper, since a positional write could silently reassign addresses across postings/roles while every output still validated.
+- `log.drop()` — mark the entry to be dropped (see below).
 
-Calling a helper on an unsupported kind is a **loud batch error**, not a silent no-op — the mutation would otherwise be dropped at commit and hide the mistake. This is enforced at evaluation, not admission: a rule's `match`/`cel` pair is not statically bound to one kind, so a rule that legitimately targets one variant must scope itself with `tx.type` — CEL's lazy ternary means the guarded helper is never evaluated on the other kinds:
+**Variant-scoped metadata helpers.** These hang off the variant that carries the field and return the variant view; lift the result back into the entry with a `log.withX(...)` wrapper (a variant view alone cannot rebuild its parent log). All are copy-on-write, committed only after the whole rule chain succeeds.
+
+- `log.created.setMetadata(key, value [, type])` / `deleteMetadata(key)` — created transaction metadata. Same on `log.reverted` and `log.savedMetadata`.
+- `log.created.setAccountMetadata(account, key, value [, type])` / `deleteAccountMetadata(account, key)` — **created only** (only created transactions carry account metadata on the wire).
+- `log.created.setAccountMetadataFromAddress(pattern, key, replacement [, type])` — **created only**; for every posting account matching `pattern`, sets `accountMetadata[address][key]` to `ReplaceAllString(address, replacement)`. Because it uses `ReplaceAllString`, the pattern must match the **whole** address (anchor with `^…$`).
+- `log.withCreated(created)` / `log.withReverted(reverted)` / `log.withSavedMetadata(saved)` — lift a transformed variant back into the log. Each accepts **only** its variant, so wrapping the wrong variant is a compile error.
+
+`log.deletedMetadata` exposes no metadata helpers — a deleteMetadata op has no metadata map, only its target (rewritten via `log.rewriteAddress`/`mapAddress`) and its read-only `key`.
+
+**The variant types do the safety work.** Because `setAccountMetadata` exists only on `CreatedView` and `deletedMetadata` has no `setMetadata`, a helper the variant cannot persist is a **compile-time type error** — not the silent commit-time drop the earlier flat view allowed. Guard variant access with `has(...)`: accessing a foreign variant unguarded reads a zero view that `withX` would merge in, producing a two-variant entry that is **rejected loudly at commit** (a rule may only transform the source variant):
 
 ```yaml
 - cel: |
-    tx.type == "created" ? tx.setAccountMetadata("orders:pending", "region", "eu") : tx
+    has(log.created) ? log.withCreated(log.created.setAccountMetadata("orders:pending", "region", "eu")) : log
 ```
 
 **Regex patterns.** The `pattern` argument of `rewriteAddress` and `setAccountMetadataFromAddress` **must be a constant** string. It is compiled at admission, so an invalid or empty pattern is rejected up front rather than failing (and stalling) a mirror batch at run time.
 
-**Metadata types.** The three setters take an optional `type` — one of the schema types `string` (default), `int64`, `bool`, `uint64`, `int8/16/32`, `uint8/16/32`, `datetime` — that coerces the string value into the typed `MetadataValue`. The type token **must be a constant** (not a computed expression), so it is fully validated at admission; an unknown type is rejected there. A value that does not parse as the declared type is stored as a null value preserving the original string (the platform conversion matrix). Mirror source metadata is otherwise always string-typed, so this is the only way to emit typed metadata into a mirror.
+**Metadata types.** The setters take an optional `type` — one of the schema types `string` (default), `int64`, `bool`, `uint64`, `int8/16/32`, `uint8/16/32`, `datetime` — that coerces the string value into the typed `MetadataValue`. The type token **must be a constant** (not a computed expression), so it is fully validated at admission; an unknown type is rejected there. A value that does not parse as the declared type is stored as a null value preserving the original string (the platform conversion matrix). Mirror source metadata is otherwise always string-typed, so this is the only way to emit typed metadata into a mirror.
 
 ### Mutable scope (v1)
 
@@ -72,7 +71,7 @@ Metadata (transaction-level and per-account), posting addresses, and metadata-op
 
 ## Dropping transactions
 
-`tx.drop()` turns the entry into a `MirrorFillGap` that preserves both **log-ID contiguity** (same `v2_log_id`) and **transaction-ID advancement**: the dropped `transaction_id` (created) / `new_transaction_id` (reverted) is recorded in `skipped_transaction_ids`, so the FSM still advances `NextTransactionId` and a dropped v2 transaction ID can never be reused.
+`log.drop()` turns the entry into a `MirrorFillGap` that preserves both **log-ID contiguity** (same `v2_log_id`) and **transaction-ID advancement**: the dropped `transaction_id` (created) / `new_transaction_id` (reverted) is recorded in `skipped_transaction_ids`, so the FSM still advances `NextTransactionId` and a dropped v2 transaction ID can never be reused.
 
 ## Validation
 
@@ -89,17 +88,17 @@ Metadata (transaction-level and per-account), posting addresses, and metadata-op
 
 ```yaml
 - match: null # always
-  cel: | # strip lock-avoidance shards
-    tx.rewriteAddress(":worker:\\d+", "")
+  cel: | # strip lock-avoidance shards from every address
+    log.rewriteAddress(":worker:\\d+", "")
 - match: |
-    "type" in tx.metadata && tx.metadata["type"] == "payout"
+    has(log.created) && "type" in log.created.metadata && log.created.metadata["type"] == "payout"
   cel: |
-    tx.setMetadata("category", "external")
+    log.withCreated(log.created.setMetadata("category", "external"))
   stop: true
 - match: |
-    "internal" in tx.metadata && tx.metadata["internal"] == "true"
+    has(log.created) && "internal" in log.created.metadata && log.created.metadata["internal"] == "true"
   cel: | # never mirror internal txs
-    tx.drop()
+    log.drop()
 ```
 
 Deriving account metadata from an address — capture the last segment of every
@@ -108,8 +107,9 @@ charset `[a-zA-Z0-9._:/-]`, so a namespaced key like `formance.com/acquirer-type
 is also valid):
 
 ```yaml
-- cel: |
-    tx.setAccountMetadataFromAddress("^acquirer:acme:worker:\\d+:([^:]+)$", "acquirer-type", "$1")
+- match: has(log.created)
+  cel: |
+    log.withCreated(log.created.setAccountMetadataFromAddress("^acquirer:acme:worker:\\d+:([^:]+)$", "acquirer-type", "$1"))
 ```
 
 For `acquirer:acme:worker:001:bank` this sets that account's
@@ -119,6 +119,7 @@ Capturing a typed value — store the numeric worker id as an `int64` (the patte
 matches the whole address so only the captured group remains):
 
 ```yaml
-- cel: |
-    tx.setAccountMetadataFromAddress("^acquirer:acme:worker:(\\d+):.*$", "worker-id", "$1", "int64")
+- match: has(log.created)
+  cel: |
+    log.withCreated(log.created.setAccountMetadataFromAddress("^acquirer:acme:worker:(\\d+):.*$", "worker-id", "$1", "int64"))
 ```

@@ -381,10 +381,12 @@ var _ = Describe("Mirror", Ordered, func() {
 								},
 							},
 							RewriteRules: []*commonpb.MirrorRewriteRule{
-								// Strip ":worker:<n>" from every address and tag the tx.
-								{Cel: `tx.rewriteAddress(":worker:\\d+", "").setMetadata("mirrored", "true")`},
+								// Strip ":worker:<n>" from every address (all variants).
+								{Cel: `log.rewriteAddress(":worker:\\d+", "")`},
+								// Tag created transactions with a mirror marker.
+								{Match: `has(log.created)`, Cel: `log.withCreated(log.created.setMetadata("mirrored", "true"))`},
 								// Never mirror transactions flagged skip=yes.
-								{Match: `has(tx.metadata.skip) && tx.metadata["skip"] == "yes"`, Cel: `tx.drop()`},
+								{Match: `has(log.created) && "skip" in log.created.metadata && log.created.metadata["skip"] == "yes"`, Cel: `log.drop()`},
 							},
 						},
 					},

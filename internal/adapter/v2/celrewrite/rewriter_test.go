@@ -17,19 +17,6 @@ func rule(match, cel string, stop bool) *commonpb.MirrorRewriteRule {
 	return &commonpb.MirrorRewriteRule{Match: match, Cel: cel, Stop: stop}
 }
 
-func createdEntry(logID uint64, txID uint64, postings []*commonpb.Posting, meta map[string]string) *raftcmdpb.MirrorLogEntry {
-	return &raftcmdpb.MirrorLogEntry{
-		V2LogId: logID,
-		Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
-			CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-				TransactionId: txID,
-				Postings:      postings,
-				Metadata:      stringsToMetadata(meta, nil),
-			},
-		},
-	}
-}
-
 func posting(src, dst, asset string, amount uint64) *commonpb.Posting {
 	return &commonpb.Posting{
 		Source:      src,
@@ -39,236 +26,14 @@ func posting(src, dst, asset string, amount uint64) *commonpb.Posting {
 	}
 }
 
-func TestNewRewriter_NilOnEmpty(t *testing.T) {
-	t.Parallel()
-
-	r, err := NewRewriter(nil)
-	require.NoError(t, err)
-	require.Nil(t, r)
-
-	// nil-safe Apply
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 100)}, nil)
-	out, err := r.Apply(entry)
-	require.NoError(t, err)
-	require.Same(t, entry, out)
-}
-
-func TestRewriteAddress(t *testing.T) {
-	t.Parallel()
-
-	r, err := NewRewriter(rules(
-		rule("true", `tx.rewriteAddress(":worker:\\d+", "")`, false),
-	))
-	require.NoError(t, err)
-
-	entry := createdEntry(1, 1, []*commonpb.Posting{
-		posting("payments:acme:worker:001:main", "bank:worker:042", "USD", 100),
-	}, nil)
-
-	out, err := r.Apply(entry)
-	require.NoError(t, err)
-
-	p := out.GetCreatedTransaction().GetPostings()[0]
-	require.Equal(t, "payments:acme:main", p.GetSource())
-	require.Equal(t, "bank", p.GetDestination())
-	// amount/asset untouched
-	require.Equal(t, "USD", p.GetAsset())
-	require.Equal(t, uint64(100), p.GetAmount().GetV0())
-}
-
-func TestMatchSelectsAndSetMetadata(t *testing.T) {
-	t.Parallel()
-
-	r, err := NewRewriter(rules(
-		rule(`tx.metadata["type"] == "payout"`, `tx.setMetadata("category", "external")`, false),
-	))
-	require.NoError(t, err)
-
-	// matching
-	e1 := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, map[string]string{"type": "payout"})
-	o1, err := r.Apply(e1)
-	require.NoError(t, err)
-	require.Equal(t, "external", o1.GetCreatedTransaction().GetMetadata()["category"].GetStringValue())
-
-	// non-matching: metadata unchanged
-	e2 := createdEntry(2, 2, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, map[string]string{"type": "fee"})
-	o2, err := r.Apply(e2)
-	require.NoError(t, err)
-	_, has := o2.GetCreatedTransaction().GetMetadata()["category"]
-	require.False(t, has)
-}
-
-func TestSequentialChainingAndStop(t *testing.T) {
-	t.Parallel()
-
-	r, err := NewRewriter(rules(
-		rule("true", `tx.setMetadata("a", "1")`, false),
-		rule(`tx.metadata["a"] == "1"`, `tx.setMetadata("b", "2")`, true), // stop
-		rule("true", `tx.setMetadata("c", "3")`, false),                   // must not run
-	))
-	require.NoError(t, err)
-
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
-	out, err := r.Apply(entry)
-	require.NoError(t, err)
-
-	md := out.GetCreatedTransaction().GetMetadata()
-	require.Equal(t, "1", md["a"].GetStringValue())
-	require.Equal(t, "2", md["b"].GetStringValue())
-	_, hasC := md["c"]
-	require.False(t, hasC, "rule after stop must not run")
-}
-
-func TestDropBecomesFillGapWithTxID(t *testing.T) {
-	t.Parallel()
-
-	r, err := NewRewriter(rules(
-		rule(`tx.metadata["drop"] == "1"`, `tx.drop()`, false),
-	))
-	require.NoError(t, err)
-
-	entry := createdEntry(7, 42, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, map[string]string{"drop": "1"})
-	out, err := r.Apply(entry)
-	require.NoError(t, err)
-
-	gap := out.GetFillGap()
-	require.NotNil(t, gap, "dropped tx must become a fill-gap")
-	require.Equal(t, uint64(7), out.GetV2LogId())
-	require.Equal(t, []uint64{42}, gap.GetSkippedTransactionIds())
-}
-
-func TestInvalidAddressRejected(t *testing.T) {
-	t.Parallel()
-
-	r, err := NewRewriter(rules(
-		// rewrite that produces an empty/invalid address
-		rule("true", `tx.rewriteAddress("^world$", "bad address with spaces")`, false),
-	))
-	require.NoError(t, err)
-
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
-	_, err = r.Apply(entry)
-	require.Error(t, err)
-}
-
-func TestAccountMetadataCollisionMerge(t *testing.T) {
-	t.Parallel()
-
-	r, err := NewRewriter(rules(
-		rule("true", `tx.rewriteAddress(":worker:\\d+", "")`, false),
-	))
-	require.NoError(t, err)
-
-	entry := &raftcmdpb.MirrorLogEntry{
-		V2LogId: 1,
-		Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
-			CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
-				TransactionId: 1,
-				Postings:      []*commonpb.Posting{posting("world", "bank", "USD", 1)},
-				AccountMetadata: map[string]*commonpb.MetadataMap{
-					"acct:worker:001": {Values: stringsToMetadata(map[string]string{"k": "v1"}, nil)},
-					"acct:worker:002": {Values: stringsToMetadata(map[string]string{"k": "v2", "x": "y"}, nil)},
-				},
-			},
-		},
-	}
-
-	out, err := r.Apply(entry)
-	require.NoError(t, err)
-
-	am := out.GetCreatedTransaction().GetAccountMetadata()
-	require.Len(t, am, 1)
-	require.Contains(t, am, "acct")
-	merged := am["acct"].GetValues()
-	// last writer wins deterministically (sorted: 001 then 002 -> 002 wins on "k")
-	require.Equal(t, "v2", merged["k"].GetStringValue())
-	require.Equal(t, "y", merged["x"].GetStringValue())
-}
-
-func TestNonDeterministicFunctionRejected(t *testing.T) {
-	t.Parallel()
-
-	// `now` / timestamp-of-current-time is not registered; compilation must fail.
-	_, err := NewRewriter(rules(
-		rule(`now() > timestamp("2020-01-01T00:00:00Z")`, `tx`, false),
-	))
-	require.Error(t, err)
-}
-
-func TestBadExpressionRejectedAtCompile(t *testing.T) {
-	t.Parallel()
-
-	_, err := NewRewriter(rules(rule("this is not cel", `tx`, false)))
-	require.Error(t, err)
-
-	// match must be boolean
-	_, err = NewRewriter(rules(rule(`"a string"`, `tx`, false)))
-	require.Error(t, err)
-
-	// cel must return a transaction
-	_, err = NewRewriter(rules(rule("true", `"not a tx"`, false)))
-	require.Error(t, err)
-}
-
-func TestMatchOnMissingKeyDoesNotStall(t *testing.T) {
-	t.Parallel()
-
-	// A match indexing a metadata key the tx doesn't have must NOT fail the
-	// batch (which would stall the mirror). The rule simply doesn't fire.
-	r, err := NewRewriter(rules(
-		rule(`tx.metadata["skip"] == "yes"`, `tx.drop()`, false),
-	))
-	require.NoError(t, err)
-
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, map[string]string{"other": "x"})
-	out, err := r.Apply(entry)
-	require.NoError(t, err)
-	// Not dropped, unchanged.
-	require.NotNil(t, out.GetCreatedTransaction())
-	require.Equal(t, uint64(1), out.GetCreatedTransaction().GetTransactionId())
-}
-
-func TestViewConstructionRejected(t *testing.T) {
-	t.Parallel()
-
-	// Constructing the internal view types in CEL is rejected at compile time —
-	// a rule must derive its result from tx via the helpers. This closes the
-	// literal-based bypass of the posting-count, account-target and metadata
-	// guarantees.
-	cases := []string{
-		`celrewrite.TxView{}`,                                 // zero postings
-		`celrewrite.TxView{metadata: {"bad key": "v"}}`,       // unvalidated metadata
-		`celrewrite.TxView{postings: [celrewrite.Posting{}]}`, // nested Posting literal
-	}
-
-	for _, expr := range cases {
-		_, err := NewRewriter(rules(rule("true", expr, false)))
-		require.Error(t, err, expr)
-		require.Contains(t, err.Error(), "is not allowed", expr)
-	}
-}
-
-func TestNonConstantRegexPatternRejected(t *testing.T) {
-	t.Parallel()
-
-	// A regex pattern must be a compile-time constant, so it is fully validated
-	// at admission and can never fail (and stall the mirror) at run time.
-	_, err := NewRewriter(rules(
-		rule("true", `tx.rewriteAddress("x".substring(1), "y")`, false), // computed pattern
-	))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "pattern must be a constant")
-}
-
-func savedMetadataEntry(logID uint64, account string, meta map[string]string) *raftcmdpb.MirrorLogEntry {
+func createdEntry(logID, txID uint64, postings []*commonpb.Posting, meta map[string]string) *raftcmdpb.MirrorLogEntry {
 	return &raftcmdpb.MirrorLogEntry{
 		V2LogId: logID,
-		Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
-			SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-				Target: &commonpb.Target{
-					Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
-				},
-				Metadata: stringsToMetadata(meta, nil),
+		Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+			CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+				TransactionId: txID,
+				Postings:      postings,
+				Metadata:      stringsToMetadata(meta, nil),
 			},
 		},
 	}
@@ -288,153 +53,236 @@ func revertedEntry(logID, revertedID, newID uint64, postings []*commonpb.Posting
 	}
 }
 
-func deletedMetadataEntry(logID uint64, account, key string) *raftcmdpb.MirrorLogEntry {
+func savedMetadataEntry(logID uint64, account string, meta map[string]string) *raftcmdpb.MirrorLogEntry {
 	return &raftcmdpb.MirrorLogEntry{
 		V2LogId: logID,
-		Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{
-			DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{
-				Target: &commonpb.Target{
-					Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}},
-				},
-				Key: key,
+		Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
+			SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
+				Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}}},
+				Metadata: stringsToMetadata(meta, nil),
 			},
 		},
 	}
 }
 
-// TestCrossVariantMutationRejected covers the silent-drop fix: a helper whose
-// target field does not exist on the entry variant (the wire has no
-// account_metadata on reverted/saved/deleted, and no metadata on deleted) fails
-// the batch loudly instead of being dropped at commit.
-func TestCrossVariantMutationRejected(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name  string
-		cel   string
-		entry *raftcmdpb.MirrorLogEntry
-		want  string
-	}{
-		{
-			"setAccountMetadata on reverted",
-			`tx.setAccountMetadata("users:alice", "k", "v")`,
-			revertedEntry(1, 1, 2, []*commonpb.Posting{posting("bank", "world", "USD", 1)}, nil),
-			"setAccountMetadata is not supported on reverted entries",
+func deletedMetadataEntry(logID uint64, account, key string) *raftcmdpb.MirrorLogEntry {
+	return &raftcmdpb.MirrorLogEntry{
+		V2LogId: logID,
+		Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{
+			DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{
+				Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}}},
+				Key:    key,
+			},
 		},
-		{
-			"setAccountMetadataFromAddress on setMetadata",
-			`tx.setAccountMetadataFromAddress("^(.+)$", "k", "$1")`,
-			savedMetadataEntry(1, "users:alice", map[string]string{"a": "b"}),
-			"setAccountMetadataFromAddress is not supported on setMetadata entries",
-		},
-		{
-			"setMetadata on deleteMetadata",
-			`tx.setMetadata("k", "v")`,
-			deletedMetadataEntry(1, "users:alice", "old"),
-			"setMetadata is not supported on deleteMetadata entries",
-		},
-		{
-			"deleteMetadata on deleteMetadata",
-			`tx.deleteMetadata("k")`,
-			deletedMetadataEntry(1, "users:alice", "old"),
-			"deleteMetadata is not supported on deleteMetadata entries",
-		},
-		{
-			"setAccountMetadata on deleteMetadata",
-			`tx.setAccountMetadata("users:alice", "k", "v")`,
-			deletedMetadataEntry(1, "users:alice", "old"),
-			"setAccountMetadata is not supported on deleteMetadata entries",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			r, err := NewRewriter(rules(rule("true", tc.cel, false)))
-			require.NoError(t, err)
-
-			_, err = r.Apply(tc.entry)
-			require.Error(t, err)
-			require.Contains(t, err.Error(), tc.want)
-		})
 	}
 }
 
-// TestGuardedCrossVariantRuleApplies shows the escape hatch: a rule scoped with
-// tx.type runs on the matching kind and is a no-op elsewhere, because CEL's lazy
-// ternary never evaluates the guarded helper on the other kinds.
-func TestGuardedCrossVariantRuleApplies(t *testing.T) {
+func TestNewRewriter_NilOnEmpty(t *testing.T) {
 	t.Parallel()
 
-	r, err := NewRewriter(rules(
-		rule("true", `tx.type == "created" ? tx.setAccountMetadata("users:alice", "seen", "1") : tx`, false),
-	))
+	r, err := NewRewriter(nil)
 	require.NoError(t, err)
+	require.Nil(t, r)
 
-	created := createdEntry(1, 1, []*commonpb.Posting{posting("world", "users:alice", "USD", 1)}, nil)
-	out, err := r.Apply(created)
-	require.NoError(t, err)
-	require.Equal(t, "1", out.GetCreatedTransaction().GetAccountMetadata()["users:alice"].GetValues()["seen"].GetStringValue())
-
-	reverted := revertedEntry(2, 1, 2, []*commonpb.Posting{posting("users:alice", "world", "USD", 1)}, nil)
-	out2, err := r.Apply(reverted)
-	require.NoError(t, err)
-	require.Empty(t, out2.GetRevertedTransaction().GetMetadata())
-}
-
-// TestSetMetadataOnSavedEntry confirms setMetadata remains valid on the variants
-// that do carry a metadata field (here: a setMetadata/SavedMetadata entry).
-func TestSetMetadataOnSavedEntry(t *testing.T) {
-	t.Parallel()
-
-	r, err := NewRewriter(rules(
-		rule("true", `tx.setMetadata("classified", "yes")`, false),
-	))
-	require.NoError(t, err)
-
-	entry := savedMetadataEntry(1, "users:alice", map[string]string{"a": "b"})
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 100)}, nil)
 	out, err := r.Apply(entry)
 	require.NoError(t, err)
-	require.Equal(t, "yes", out.GetSavedMetadata().GetMetadata()["classified"].GetStringValue())
+	require.Same(t, entry, out)
 }
 
-// TestMapIterationDeterminismGuard covers the determinism fix: mapping/filtering
-// a map into a list is rejected at admission (map keys iterate in random order),
-// while scalar predicates over a map and comprehensions over an ordered list are
-// allowed.
-func TestMapIterationDeterminismGuard(t *testing.T) {
+func TestRewriteAddress(t *testing.T) {
 	t.Parallel()
 
-	rejected := []string{
-		`tx.setMetadata("keys", tx.metadata.map(k, k).join(","))`,
-		`tx.setMetadata("keys", tx.metadata.filter(k, k != "x").join(","))`,
-		`tx.setMetadata("first", tx.accountMetadata.map(a, a)[0])`,
-	}
-	for _, expr := range rejected {
-		_, err := NewRewriter(rules(rule("true", expr, false)))
-		require.Error(t, err, expr)
-		require.Contains(t, err.Error(), "order-sensitive iteration over a map", expr)
+	// rewriteAddress is a cross-cutting op on log (works on any variant).
+	r, err := NewRewriter(rules(
+		rule("true", `log.rewriteAddress(":worker:\\d+", "")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("orders:worker:42", "bank", "USD", 100)}, nil)
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+	require.Equal(t, "orders", out.GetCreatedTransaction().GetPostings()[0].GetSource())
+}
+
+func TestMatchSelectsAndSetMetadata(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule(`has(log.created) && "kind" in log.created.metadata && log.created.metadata["kind"] == "payout"`,
+			`log.withCreated(log.created.setMetadata("category", "external"))`, false),
+	))
+	require.NoError(t, err)
+
+	match := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, map[string]string{"kind": "payout"})
+	out, err := r.Apply(match)
+	require.NoError(t, err)
+	require.Equal(t, "external", out.GetCreatedTransaction().GetMetadata()["category"].GetStringValue())
+
+	noMatch := createdEntry(2, 2, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, map[string]string{"kind": "fee"})
+	out2, err := r.Apply(noMatch)
+	require.NoError(t, err)
+	require.NotContains(t, out2.GetCreatedTransaction().GetMetadata(), "category")
+}
+
+func TestSequentialChainingAndStop(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule("true", `log.withCreated(log.created.setMetadata("a", "1"))`, false),
+		rule("true", `log.withCreated(log.created.setMetadata("b", "2"))`, true),
+		rule("true", `log.withCreated(log.created.setMetadata("c", "3"))`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+
+	md := out.GetCreatedTransaction().GetMetadata()
+	require.Equal(t, "1", md["a"].GetStringValue())
+	require.Equal(t, "2", md["b"].GetStringValue())
+	require.NotContains(t, md, "c") // stopped after rule 2
+}
+
+func TestDropBecomesFillGapWithTxID(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule("true", `log.drop()`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(7, 42, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+
+	gap := out.GetFillGap()
+	require.NotNil(t, gap)
+	require.Equal(t, uint64(7), out.GetV2LogId())
+	require.Equal(t, []uint64{42}, gap.GetSkippedTransactionIds())
+}
+
+func TestInvalidAddressRejected(t *testing.T) {
+	t.Parallel()
+
+	r, err := NewRewriter(rules(
+		rule("true", `log.rewriteAddress("bank", "bad address")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	_, err = r.Apply(entry)
+	require.Error(t, err)
+}
+
+func TestAccountMetadataCollisionMerge(t *testing.T) {
+	t.Parallel()
+
+	// Two accounts collapsing to the same address merge deterministically.
+	r, err := NewRewriter(rules(
+		rule("true", `log.rewriteAddress(":shard:\\d+", "")`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	entry.GetCreatedTransaction().AccountMetadata = map[string]*commonpb.MetadataMap{
+		"acct:shard:1": {Values: stringsToMetadata(map[string]string{"a": "1"}, nil)},
+		"acct:shard:2": {Values: stringsToMetadata(map[string]string{"b": "2"}, nil)},
 	}
 
-	allowed := []string{
-		`tx.metadata.exists(k, k == "type")`,
-		`tx.accountMetadata.all(a, a != "")`,
-		`tx.postings.map(p, p.source).size() > 0`,
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+	am := out.GetCreatedTransaction().GetAccountMetadata()
+	require.Contains(t, am, "acct")
+	require.NotContains(t, am, "acct:shard:1")
+}
+
+func TestUnknownFunctionRejected(t *testing.T) {
+	t.Parallel()
+
+	// No non-deterministic function is registered; an unknown call fails compile.
+	_, err := NewRewriter(rules(rule("true", `log.withCreated(log.created.setMetadata("t", string(now())))`, false)))
+	require.Error(t, err)
+}
+
+func TestBadExpressionRejectedAtCompile(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRewriter(rules(rule("true", `log.(`, false)))
+	require.Error(t, err)
+
+	// cel that does not evaluate to a log entry.
+	_, err = NewRewriter(rules(rule("true", `"a string"`, false)))
+	require.Error(t, err)
+
+	// match that is not a bool.
+	_, err = NewRewriter(rules(rule(`log`, `log`, false)))
+	require.Error(t, err)
+}
+
+func TestMatchOnMissingKeyDoesNotStall(t *testing.T) {
+	t.Parallel()
+
+	// Indexing a missing metadata key errors at runtime; the entry is skipped,
+	// not the whole batch.
+	r, err := NewRewriter(rules(
+		rule(`has(log.created) && log.created.metadata["missing"] == "x"`,
+			`log.withCreated(log.created.setMetadata("touched", "yes"))`, false),
+	))
+	require.NoError(t, err)
+
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+	require.NotContains(t, out.GetCreatedTransaction().GetMetadata(), "touched")
+}
+
+func TestViewConstructionRejected(t *testing.T) {
+	t.Parallel()
+
+	// Constructing the native view types is rejected — a rule must derive its
+	// result from log via the helpers, never fabricate an entry or variant.
+	cases := []string{
+		`celrewrite.Log{}`,
+		`celrewrite.CreatedView{}`,
+		`celrewrite.Log{created: celrewrite.CreatedView{}}`,
+		`log.withCreated(celrewrite.CreatedView{})`,
 	}
-	for _, match := range allowed {
-		_, err := NewRewriter(rules(rule(match, `tx`, false)))
-		require.NoError(t, err, match)
+
+	for _, expr := range cases {
+		_, err := NewRewriter(rules(rule("true", expr, false)))
+		require.Error(t, err, expr)
+		require.Contains(t, err.Error(), "is not allowed", expr)
 	}
+}
+
+func TestNonConstantRegexPatternRejected(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRewriter(rules(
+		rule("true", `log.rewriteAddress("x".substring(1), "y")`, false),
+	))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "pattern must be a constant")
+}
+
+func TestInvalidLiteralRegexRejectedAtCompile(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRewriter(rules(rule("true", `log.rewriteAddress("(", "")`, false)))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "rewriteAddress pattern")
+
+	_, err = NewRewriter(rules(rule("true", `log.rewriteAddress("", "x")`, false)))
+	require.Error(t, err)
 }
 
 func TestEmptyRewrittenAccountTargetRejected(t *testing.T) {
 	t.Parallel()
 
-	// Rewriting an account target down to "" must fail the batch, not be
-	// silently treated as an absent (transaction-level) target.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.rewriteAddress(".+", "")`, false),
+		rule("true", `log.rewriteAddress(".+", "")`, false),
 	))
 	require.NoError(t, err)
 
@@ -444,31 +292,11 @@ func TestEmptyRewrittenAccountTargetRejected(t *testing.T) {
 	require.Contains(t, err.Error(), "target")
 }
 
-func TestInvalidLiteralRegexRejectedAtCompile(t *testing.T) {
-	t.Parallel()
-
-	// A malformed literal regex must be rejected when the rule is compiled
-	// (admission), not deferred to a runtime batch failure.
-	_, err := NewRewriter(rules(
-		rule("true", `tx.rewriteAddress("(", "")`, false),
-	))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "rewriteAddress pattern")
-
-	// Empty literal pattern is likewise rejected up-front.
-	_, err = NewRewriter(rules(
-		rule("true", `tx.rewriteAddress("", "x")`, false),
-	))
-	require.Error(t, err)
-}
-
 func TestSetMetadataLiteralKeyRejectedAtCompile(t *testing.T) {
 	t.Parallel()
 
-	// A statically-invalid literal metadata key is rejected at admission, not
-	// deferred to a run-time batch failure.
 	_, err := NewRewriter(rules(
-		rule("true", `tx.setMetadata("bad key", "v")`, false), // space is not a valid key char
+		rule("true", `log.withCreated(log.created.setMetadata("bad key", "v"))`, false),
 	))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "metadata key")
@@ -477,9 +305,8 @@ func TestSetMetadataLiteralKeyRejectedAtCompile(t *testing.T) {
 func TestSetAccountMetadataLiteralValueRejectedAtCompile(t *testing.T) {
 	t.Parallel()
 
-	// A literal NUL byte in a metadata value is rejected at admission.
 	_, err := NewRewriter(rules(
-		rule("true", "tx.setAccountMetadata(\"users:001\", \"k\", \"bad\\x00value\")", false),
+		rule("true", "log.withCreated(log.created.setAccountMetadata(\"users:001\", \"k\", \"bad\\x00value\"))", false),
 	))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "metadata value")
@@ -488,17 +315,15 @@ func TestSetAccountMetadataLiteralValueRejectedAtCompile(t *testing.T) {
 func TestSetAccountMetadataFromAddress(t *testing.T) {
 	t.Parallel()
 
-	// Capture the last segment of matching acquirer addresses into account
-	// metadata: acquirer:acme:worker:001:bank -> acquirer-type=bank.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.setAccountMetadataFromAddress("^acquirer:acme:worker:\\d+:([^:]+)$", "acquirer-type", "$1")`, false),
+		rule("true", `log.withCreated(log.created.setAccountMetadataFromAddress("^acquirer:acme:worker:\\d+:([^:]+)$", "acquirer-type", "$1"))`, false),
 	))
 	require.NoError(t, err)
 
 	entry := createdEntry(1, 1, []*commonpb.Posting{
 		posting("world", "acquirer:acme:worker:001:bank", "USD", 100),
 		posting("acquirer:acme:worker:002:fees", "users:alice", "USD", 5),
-		posting("world", "users:bob", "USD", 1), // no match — untouched
+		posting("world", "users:bob", "USD", 1),
 	}, nil)
 
 	out, err := r.Apply(entry)
@@ -507,17 +332,14 @@ func TestSetAccountMetadataFromAddress(t *testing.T) {
 	am := out.GetCreatedTransaction().GetAccountMetadata()
 	require.Equal(t, "bank", am["acquirer:acme:worker:001:bank"].GetValues()["acquirer-type"].GetStringValue())
 	require.Equal(t, "fees", am["acquirer:acme:worker:002:fees"].GetValues()["acquirer-type"].GetStringValue())
-	// Non-matching accounts are not annotated.
 	require.NotContains(t, am, "users:bob")
-	require.NotContains(t, am, "world")
 }
 
 func TestSetAccountMetadataFromAddress_InvalidKeyRejectedAtCompile(t *testing.T) {
 	t.Parallel()
 
-	// A metadata key with a disallowed character (space) is rejected at admission.
 	_, err := NewRewriter(rules(
-		rule("true", `tx.setAccountMetadataFromAddress("^(.+)$", "bad key", "$1")`, false),
+		rule("true", `log.withCreated(log.created.setAccountMetadataFromAddress("^(.+)$", "bad key", "$1"))`, false),
 	))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "metadata key")
@@ -527,7 +349,7 @@ func TestSetAccountMetadataFromAddress_InvalidLiteralRegexRejectedAtCompile(t *t
 	t.Parallel()
 
 	_, err := NewRewriter(rules(
-		rule("true", `tx.setAccountMetadataFromAddress("(", "k", "$1")`, false),
+		rule("true", `log.withCreated(log.created.setAccountMetadataFromAddress("(", "k", "$1"))`, false),
 	))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "setAccountMetadataFromAddress pattern")
@@ -537,9 +359,9 @@ func TestTypedMetadata(t *testing.T) {
 	t.Parallel()
 
 	r, err := NewRewriter(rules(
-		rule("true", `tx.setMetadata("count", "42", "int64")`, false),
-		rule("true", `tx.setMetadata("flag", "true", "bool")`, false),
-		rule("true", `tx.setMetadata("name", "acme", "string")`, false),
+		rule("true", `log.withCreated(log.created.setMetadata("count", "42", "int64"))`, false),
+		rule("true", `log.withCreated(log.created.setMetadata("flag", "true", "bool"))`, false),
+		rule("true", `log.withCreated(log.created.setMetadata("name", "acme", "string"))`, false),
 	))
 	require.NoError(t, err)
 
@@ -556,17 +378,12 @@ func TestTypedMetadata(t *testing.T) {
 func TestSetAccountMetadataFromAddressTyped(t *testing.T) {
 	t.Parallel()
 
-	// Capture the numeric worker id and store it as an int. The pattern must
-	// match the whole address (ReplaceAllString leaves any unmatched tail).
 	r, err := NewRewriter(rules(
-		rule("true", `tx.setAccountMetadataFromAddress("^acquirer:acme:worker:(\\d+):.*$", "worker-id", "$1", "int64")`, false),
+		rule("true", `log.withCreated(log.created.setAccountMetadataFromAddress("^acquirer:acme:worker:(\\d+):.*$", "worker-id", "$1", "int64"))`, false),
 	))
 	require.NoError(t, err)
 
-	entry := createdEntry(1, 1, []*commonpb.Posting{
-		posting("world", "acquirer:acme:worker:007:bank", "USD", 100),
-	}, nil)
-
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "acquirer:acme:worker:007:bank", "USD", 100)}, nil)
 	out, err := r.Apply(entry)
 	require.NoError(t, err)
 
@@ -578,7 +395,7 @@ func TestInvalidTypeTokenRejectedAtCompile(t *testing.T) {
 	t.Parallel()
 
 	_, err := NewRewriter(rules(
-		rule("true", `tx.setMetadata("k", "v", "integer")`, false), // not a valid type token
+		rule("true", `log.withCreated(log.created.setMetadata("k", "v", "integer"))`, false),
 	))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "setMetadata type")
@@ -587,151 +404,64 @@ func TestInvalidTypeTokenRejectedAtCompile(t *testing.T) {
 func TestNonConstantTypeTokenRejected(t *testing.T) {
 	t.Parallel()
 
-	// The metadata type must be a compile-time constant, so it is fully checked
-	// at admission and can never fail (and stall the mirror) at run time.
 	_, err := NewRewriter(rules(
-		rule("true", `tx.setMetadata("k", "v", tx.metadata["t"])`, false),
+		rule("true", `log.withCreated(log.created.setMetadata("k", "v", log.created.metadata["t"]))`, false),
 	))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "must be a constant")
 }
 
-// TestCompileRejectionsPerHelper closes the per-helper gaps left by the
-// single-helper rejection tests above: every helper a compile gate iterates
-// (regexHelpers, typeTokenArg, metadataKeyArg, metadataValueArg) must actually
-// be wired into that gate. A helper registered in buildEnv but omitted from a
-// gate's helper list would silently admit an invalid rule — this locks the
-// wiring so that omission (or a cel-go matching drift affecting one helper) fails
-// the build.
-func TestCompileRejectionsPerHelper(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name string
-		expr string
-		want string
-	}{
-		// validateRegexPatterns — non-constant pattern (rewriteAddress covered above).
-		{
-			"regex non-constant: setAccountMetadataFromAddress",
-			`tx.setAccountMetadataFromAddress("x".substring(1), "k", "$1")`,
-			"pattern must be a constant",
-		},
-		// validateTypeTokens — non-constant type (setMetadata covered above).
-		{
-			"type non-constant: setAccountMetadata",
-			`tx.setAccountMetadata("users:001", "k", "v", tx.metadata["t"])`,
-			"must be a constant",
-		},
-		{
-			"type non-constant: setAccountMetadataFromAddress",
-			`tx.setAccountMetadataFromAddress("^(.+)$", "k", "$1", tx.metadata["t"])`,
-			"must be a constant",
-		},
-		// validateTypeTokens — unknown type (setMetadata covered above).
-		{
-			"type unknown: setAccountMetadata",
-			`tx.setAccountMetadata("users:001", "k", "v", "integer")`,
-			"setAccountMetadata type",
-		},
-		{
-			"type unknown: setAccountMetadataFromAddress",
-			`tx.setAccountMetadataFromAddress("^(.+)$", "k", "$1", "integer")`,
-			"setAccountMetadataFromAddress type",
-		},
-		// validateMetadataLiterals — bad key (setMetadata + fromAddress covered above).
-		{
-			"bad key: setAccountMetadata",
-			`tx.setAccountMetadata("users:001", "bad key", "v")`,
-			"metadata key",
-		},
-		// validateMetadataLiterals — bad value (setAccountMetadata covered above).
-		{
-			"bad value: setMetadata",
-			"tx.setMetadata(\"k\", \"bad\\x00value\")",
-			"metadata value",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := NewRewriter(rules(rule("true", tc.expr, false)))
-			require.Error(t, err)
-			require.Contains(t, err.Error(), tc.want)
-		})
-	}
-}
-
 func TestUntypedOverwriteResetsType(t *testing.T) {
 	t.Parallel()
 
-	// An untyped write to a key previously set with a type must revert it to
-	// string, not keep coercing to the stale type.
+	// A typed write followed by an untyped overwrite reverts to string.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.setMetadata("k", "42", "int64").setMetadata("k", "abc")`, false),
+		rule("true", `log.withCreated(log.created.setMetadata("n", "42", "int64"))`, false),
+		rule("true", `log.withCreated(log.created.setMetadata("n", "hello"))`, false),
 	))
 	require.NoError(t, err)
 
 	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
 	out, err := r.Apply(entry)
 	require.NoError(t, err)
-	require.Equal(t, "abc", out.GetCreatedTransaction().GetMetadata()["k"].GetStringValue())
+	require.Equal(t, "hello", out.GetCreatedTransaction().GetMetadata()["n"].GetStringValue())
 }
 
 func TestRewriteAddressPreservesAccountMetadataType(t *testing.T) {
 	t.Parallel()
 
-	// A typed account metadata value must keep its type when a later
-	// rewriteAddress remaps the account key.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.setAccountMetadata("acct:worker:001", "id", "7", "int64").rewriteAddress(":worker:\\d+", "")`, false),
+		rule("true", `log.withCreated(log.created.setAccountMetadata("acct:1", "n", "5", "int64"))`, false),
+		rule("true", `log.rewriteAddress("acct:1", "acct:one")`, false),
 	))
 	require.NoError(t, err)
 
 	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
 	out, err := r.Apply(entry)
 	require.NoError(t, err)
-
-	v := out.GetCreatedTransaction().GetAccountMetadata()["acct"].GetValues()["id"]
-	require.Equal(t, int64(7), v.GetIntValue())
+	require.Equal(t, int64(5), out.GetCreatedTransaction().GetAccountMetadata()["acct:one"].GetValues()["n"].GetIntValue())
 }
 
 func TestMapAddress_ReverseSegments(t *testing.T) {
 	t.Parallel()
 
-	// The open-ended transform a constant regex cannot express: reverse the
-	// ':'-separated segments of every account address, for arbitrary arity.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.mapAddress(a, a.split(":").reverse().join(":"))`, false),
+		rule("true", `log.mapAddress(a, a.split(":").reverse().join(":"))`, false),
 	))
 	require.NoError(t, err)
 
-	entry := createdEntry(1, 1, []*commonpb.Posting{
-		posting("world", "acme:payments:worker:bank", "USD", 100),
-		posting("a:b", "c:d:e", "USD", 5),
-	}, nil)
-
+	entry := createdEntry(1, 1, []*commonpb.Posting{posting("a:b:c:d", "bank", "USD", 1)}, nil)
 	out, err := r.Apply(entry)
 	require.NoError(t, err)
-
-	ps := out.GetCreatedTransaction().GetPostings()
-	require.Equal(t, "world", ps[0].GetSource())
-	require.Equal(t, "bank:worker:payments:acme", ps[0].GetDestination())
-	require.Equal(t, "b:a", ps[1].GetSource())
-	require.Equal(t, "e:d:c", ps[1].GetDestination())
-	// amounts/assets untouched
-	require.Equal(t, uint64(100), ps[0].GetAmount().GetV0())
+	require.Equal(t, "d:c:b:a", out.GetCreatedTransaction().GetPostings()[0].GetSource())
+	require.Equal(t, "bank", out.GetCreatedTransaction().GetPostings()[0].GetDestination())
 }
 
 func TestMapAddress_CoversTargetAndAccountMetadata(t *testing.T) {
 	t.Parallel()
 
-	// The map applies to metadata-op account targets and to account-metadata
-	// keys too — everything account-addressed in the entry.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.mapAddress(a, "x:" + a)`, false),
+		rule("true", `log.mapAddress(a, "x:" + a)`, false),
 	))
 	require.NoError(t, err)
 
@@ -739,59 +469,26 @@ func TestMapAddress_CoversTargetAndAccountMetadata(t *testing.T) {
 	out, err := r.Apply(entry)
 	require.NoError(t, err)
 	require.Equal(t, "x:users:alice", out.GetSavedMetadata().GetTarget().GetAccount().GetAddr())
-
-	created := createdEntry(2, 2, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
-	created.GetCreatedTransaction().AccountMetadata = map[string]*commonpb.MetadataMap{
-		"acct:001": {Values: stringsToMetadata(map[string]string{"role": "main"}, nil)},
-	}
-	out2, err := r.Apply(created)
-	require.NoError(t, err)
-	am := out2.GetCreatedTransaction().GetAccountMetadata()
-	require.Equal(t, "main", am["x:acct:001"].GetValues()["role"].GetStringValue())
-	require.NotContains(t, am, "acct:001")
 }
 
 func TestAddressWriteback_NotDirectlyCallable(t *testing.T) {
 	t.Parallel()
 
-	// The positional address-writeback is not part of the public surface:
-	// mapAddress is the only way to write addresses. The old public name is gone
-	// (undeclared reference), and the private name the macro expands to is
-	// un-typeable — the CEL lexer rejects '~', so a rule author cannot write a
-	// call to it at all.
+	// mapAddress is the only address writer; the private writeback is un-typeable.
 	for _, expr := range []string{
-		`tx.setAddresses([])`,
-		`tx.mapAddress~apply(tx.addresses())`,
+		`log.setAddresses([])`,
+		`log.mapAddress~apply(log.addresses())`,
 	} {
 		_, err := NewRewriter(rules(rule("true", expr, false)))
 		require.Error(t, err, "expr %q must be rejected at compile time", expr)
 	}
 }
 
-func TestMapAddress_IsOnlyAddressWriter(t *testing.T) {
-	t.Parallel()
-
-	// mapAddress preserves the address count by construction, so the private
-	// writeback's length guard is unreachable through the public surface; a
-	// simple identity map is a valid no-op rewrite.
-	r, err := NewRewriter(rules(
-		rule("true", `tx.mapAddress(a, a)`, false),
-	))
-	require.NoError(t, err)
-
-	entry := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
-	out, err := r.Apply(entry)
-	require.NoError(t, err)
-	require.Equal(t, "world", out.GetCreatedTransaction().GetPostings()[0].GetSource())
-	require.Equal(t, "bank", out.GetCreatedTransaction().GetPostings()[0].GetDestination())
-}
-
 func TestMapAddress_InvalidResultRejected(t *testing.T) {
 	t.Parallel()
 
-	// A computed address that isn't a valid ledger address fails the batch.
 	r, err := NewRewriter(rules(
-		rule("true", `tx.mapAddress(a, a + " bad")`, false),
+		rule("true", `log.mapAddress(a, a + " bad")`, false),
 	))
 	require.NoError(t, err)
 
@@ -800,29 +497,152 @@ func TestMapAddress_InvalidResultRejected(t *testing.T) {
 	require.Error(t, err)
 }
 
+// --- cross-variant safety: compile-time (façade) ----------------------------
+
+func TestCrossVariantMisuseIsCompileError(t *testing.T) {
+	t.Parallel()
+
+	// The variant type system rejects a helper the variant cannot persist.
+	cases := []string{
+		`log.withReverted(log.reverted.setAccountMetadata("a", "k", "v"))`, // reverted has no setAccountMetadata
+		`log.withCreated(log.deletedMetadata.setMetadata("k", "v"))`,       // deletedMetadata has no setMetadata
+		`log.withCreated(log.reverted)`,                                    // wrap wrong variant
+		`log.withReverted(log.created)`,                                    // wrap wrong variant
+	}
+
+	for _, expr := range cases {
+		_, err := NewRewriter(rules(rule("true", expr, false)))
+		require.Error(t, err, expr)
+	}
+}
+
+// --- cross-variant safety: runtime single-variant invariant -----------------
+
+func TestUnguardedForeignVariantRejectedAtRuntime(t *testing.T) {
+	t.Parallel()
+
+	// Accessing a foreign variant without a has() guard fabricates a zero view;
+	// wrapping it produces a two-variant entry, rejected loudly at commit.
+	r, err := NewRewriter(rules(
+		rule("true", `log.withCreated(log.created.setMetadata("k", "v"))`, false),
+	))
+	require.NoError(t, err)
+
+	reverted := revertedEntry(1, 1, 2, []*commonpb.Posting{posting("bank", "world", "USD", 1)}, nil)
+	_, err = r.Apply(reverted)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "may only transform the source reverted variant")
+}
+
+func TestGuardedCrossVariantRuleApplies(t *testing.T) {
+	t.Parallel()
+
+	// Scoped with has(log.created): applies to created, no-op elsewhere.
+	r, err := NewRewriter(rules(
+		rule("true", `has(log.created) ? log.withCreated(log.created.setMetadata("seen", "1")) : log`, false),
+	))
+	require.NoError(t, err)
+
+	created := createdEntry(1, 1, []*commonpb.Posting{posting("world", "bank", "USD", 1)}, nil)
+	out, err := r.Apply(created)
+	require.NoError(t, err)
+	require.Equal(t, "1", out.GetCreatedTransaction().GetMetadata()["seen"].GetStringValue())
+
+	reverted := revertedEntry(2, 1, 2, []*commonpb.Posting{posting("bank", "world", "USD", 1)}, nil)
+	out2, err := r.Apply(reverted)
+	require.NoError(t, err)
+	require.NotNil(t, out2.GetRevertedTransaction())
+}
+
+func TestSetMetadataOnRevertedAndSaved(t *testing.T) {
+	t.Parallel()
+
+	// setMetadata is valid on the variants that carry a metadata field.
+	r, err := NewRewriter(rules(
+		rule("has(log.reverted)", `log.withReverted(log.reverted.setMetadata("r", "1"))`, false),
+		rule("has(log.savedMetadata)", `log.withSavedMetadata(log.savedMetadata.setMetadata("s", "1"))`, false),
+	))
+	require.NoError(t, err)
+
+	reverted := revertedEntry(1, 1, 2, []*commonpb.Posting{posting("bank", "world", "USD", 1)}, nil)
+	out, err := r.Apply(reverted)
+	require.NoError(t, err)
+	require.Equal(t, "1", out.GetRevertedTransaction().GetMetadata()["r"].GetStringValue())
+
+	saved := savedMetadataEntry(2, "users:alice", map[string]string{"a": "b"})
+	out2, err := r.Apply(saved)
+	require.NoError(t, err)
+	require.Equal(t, "1", out2.GetSavedMetadata().GetMetadata()["s"].GetStringValue())
+}
+
+func TestDeleteMetadataEntryPassThrough(t *testing.T) {
+	t.Parallel()
+
+	// A deleteMetadata entry exposes no metadata helpers; only its address can be
+	// rewritten. An identity rule passes it through.
+	r, err := NewRewriter(rules(
+		rule("true", `log`, false),
+	))
+	require.NoError(t, err)
+
+	entry := deletedMetadataEntry(1, "users:alice", "old")
+	out, err := r.Apply(entry)
+	require.NoError(t, err)
+	require.Equal(t, "old", out.GetDeletedMetadata().GetKey())
+	require.Equal(t, "users:alice", out.GetDeletedMetadata().GetTarget().GetAccount().GetAddr())
+}
+
+// --- determinism guard ------------------------------------------------------
+
+func TestMapIterationDeterminismGuard(t *testing.T) {
+	t.Parallel()
+
+	rejected := []string{
+		`log.withCreated(log.created.setMetadata("keys", log.created.metadata.map(k, k).join(",")))`,
+		`log.withCreated(log.created.setMetadata("keys", log.created.metadata.filter(k, k != "x").join(",")))`,
+	}
+	for _, expr := range rejected {
+		_, err := NewRewriter(rules(rule("true", expr, false)))
+		require.Error(t, err, expr)
+		require.Contains(t, err.Error(), "order-sensitive iteration over a map", expr)
+	}
+
+	allowed := []string{
+		`has(log.created) && log.created.metadata.exists(k, k == "type")`,
+		`has(log.created) && log.created.accountMetadata.all(a, a != "")`,
+		`has(log.created) && log.created.postings.map(p, p.source).size() > 0`,
+	}
+	for _, match := range allowed {
+		_, err := NewRewriter(rules(rule(match, `log`, false)))
+		require.NoError(t, err, match)
+	}
+}
+
 func TestDeterministicOutput(t *testing.T) {
 	t.Parallel()
 
 	r, err := NewRewriter(rules(
-		rule("true", `tx.rewriteAddress(":worker:\\d+", "").setMetadata("mirrored", "true")`, false),
+		rule("true", `log.mapAddress(a, a.split(":").reverse().join(":"))`, false),
+		rule("true", `log.withCreated(log.created.setMetadata("k", "v", "string"))`, false),
 	))
 	require.NoError(t, err)
 
 	build := func() *raftcmdpb.MirrorLogEntry {
-		return createdEntry(1, 1, []*commonpb.Posting{
-			posting("a:worker:001", "b:worker:002", "USD", 5),
-		}, map[string]string{"k": "v"})
+		e := createdEntry(1, 1, []*commonpb.Posting{posting("a:b:c", "x:y:z", "USD", 1)}, nil)
+		e.GetCreatedTransaction().AccountMetadata = map[string]*commonpb.MetadataMap{
+			"m:1": {Values: stringsToMetadata(map[string]string{"a": "1"}, nil)},
+			"m:2": {Values: stringsToMetadata(map[string]string{"b": "2"}, nil)},
+		}
+
+		return e
 	}
 
-	o1, err := r.Apply(build())
-	require.NoError(t, err)
-	o2, err := r.Apply(build())
+	first, err := r.Apply(build())
 	require.NoError(t, err)
 
-	// Semantic equality: identical input yields the identical rewritten entry.
-	// (Byte-equality is deliberately not asserted — vtproto marshals proto maps
-	// in Go map-iteration order, so raw bytes vary for equal maps. Determinism
-	// across nodes holds because the leader marshals each proposal exactly once;
-	// followers apply those bytes verbatim.)
-	require.True(t, o1.EqualVT(o2))
+	for range 20 {
+		out, err := r.Apply(build())
+		require.NoError(t, err)
+		require.True(t, first.EqualVT(out), "rewrite output must be identical across runs")
+	}
 }

@@ -2,27 +2,29 @@
 // during v2->v3 mirror translation. Operators configure an ordered list of
 // rules (match + cel + stop); as each v2 log is translated into a v3 mirror
 // order on the (single) leader, every rule whose `match` predicate holds runs
-// its `cel` rewrite against the transaction, feeding the result into the next
+// its `cel` rewrite against the log entry, feeding the result into the next
 // rule. A rule may rename address segments, transform metadata, or drop the
-// transaction entirely.
+// entry entirely.
+//
+// The CEL variable is `log`: the mirror log entry as a sum type over its four
+// rewritable variants (created / reverted / savedMetadata / deletedMetadata),
+// each a distinct receiver type (see views.go). A helper a variant cannot
+// persist is a compile-time type error, not a silent drop.
 //
 // Determinism is a hard invariant: rewriting runs only on the leader and the
 // rewritten bytes are baked into the proposed Raft order, so every follower
-// applies identical bytes (see docs/technical/architecture/mirror-cel-rewrite.md).
+// applies identical bytes (see docs/technical/architecture/subsystems/events-mirror/cel-rewrite.md).
 // The CEL environment therefore exposes no non-deterministic function (no
-// wall-clock, no randomness); all helpers are pure and evaluation is bounded by
-// a cost limit and by static caps enforced at compile time.
+// wall-clock, no randomness); all helpers are pure, order-sensitive map
+// iteration is rejected at compile time, and evaluation is bounded by a cost
+// limit and static caps.
 package celrewrite
 
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"reflect"
 	"regexp"
-	"slices"
-	"sort"
-	"strings"
 	"sync"
 
 	"github.com/google/cel-go/cel"
@@ -48,165 +50,27 @@ const (
 	maxEvalCost    = 1_000_000
 	maxRegexCached = 256
 
-	celTypeName     = "celrewrite.TxView"
-	postingTypeName = "celrewrite.Posting"
+	logTypeName      = "celrewrite.Log"
+	createdTypeName  = "celrewrite.CreatedView"
+	revertedTypeName = "celrewrite.RevertedView"
+	savedTypeName    = "celrewrite.SavedMetadataView"
+	deletedTypeName  = "celrewrite.DeletedMetadataView"
+	postingTypeName  = "celrewrite.Posting"
 
 	// internalMapAddressApply is the private positional address-writeback the
 	// mapAddress macro expands to. The '~' makes it un-typeable: the macro builds
 	// the call node directly (bypassing the parser), but a rule author cannot
-	// write `tx.mapAddress~apply(...)` because the CEL lexer rejects '~' in a
-	// function name. That structural, lexer-level guarantee replaces any
-	// AST-walk reject-gate — nothing here depends on cel-go macro-call-tracking
-	// internals to keep the raw positional write off the public surface.
+	// write `log.mapAddress~apply(...)` because the CEL lexer rejects '~' in a
+	// function name. That structural, lexer-level guarantee keeps the raw
+	// positional write off the public surface without depending on cel-go
+	// AST/macro-tracking internals.
 	internalMapAddressApply = "mapAddress~apply"
 )
 
-// Entry-kind discriminants exposed to CEL as tx.type.
-const (
-	KindCreated        = "created"
-	KindReverted       = "reverted"
-	KindSetMetadata    = "setMetadata"
-	KindDeleteMetadata = "deleteMetadata"
-)
-
-// Posting is the CEL-visible view of a single posting. Amount and asset are
-// read-only (helpers never mutate them); only source/destination are written
-// back to the proto.
-type Posting struct {
-	Source      string `cel:"source"`
-	Destination string `cel:"destination"`
-	Amount      string `cel:"amount"`
-	Asset       string `cel:"asset"`
-}
-
-// TxView is the CEL-visible view of a mirror log entry. Exported fields are
-// exposed to CEL (via their `cel` tag); the unexported dropped flag is set by
-// tx.drop() and consumed by Apply to emit a fill-gap.
-type TxView struct {
-	Type            string                       `cel:"type"`
-	Reference       string                       `cel:"reference"`
-	Metadata        map[string]string            `cel:"metadata"`
-	Postings        []Posting                    `cel:"postings"`
-	AccountMetadata map[string]map[string]string `cel:"accountMetadata"`
-	Target          string                       `cel:"target"`
-	MetadataKey     string                       `cel:"metadataKey"`
-
-	// targetsAccount records whether the source entry targeted an account
-	// (SET_METADATA/DELETE_METADATA on an account). It is not exposed to CEL and
-	// lets validation reject a target that a rule rewrote to an empty/invalid
-	// address, distinct from a legitimately absent (transaction-level) target.
-	targetsAccount bool
-
-	// metadataTypes / accountMetadataTypes carry the declared metadata type for
-	// keys a rule set with an explicit type argument (absent = string). They are
-	// not exposed to CEL; the string values in Metadata/AccountMetadata are
-	// coerced to these types when committed back to the proto.
-	metadataTypes        map[string]commonpb.MetadataType
-	accountMetadataTypes map[string]map[string]commonpb.MetadataType
-
-	dropped bool
-}
-
-// applyMetadataType records the declared type for key, or clears any previous
-// declaration when the write is untyped, so metadataTypes never drifts from
-// Metadata (an untyped overwrite must revert the key to the default string).
-func (v *TxView) applyMetadataType(key string, t commonpb.MetadataType, typed bool) {
-	if !typed {
-		delete(v.metadataTypes, key)
-
-		return
-	}
-
-	if v.metadataTypes == nil {
-		v.metadataTypes = map[string]commonpb.MetadataType{}
-	}
-
-	v.metadataTypes[key] = t
-}
-
-// clearMetadataType drops the declared type for key (used when the value is
-// deleted).
-func (v *TxView) clearMetadataType(key string) {
-	delete(v.metadataTypes, key)
-}
-
-// applyAccountMetadataType is the per-account analogue of applyMetadataType.
-func (v *TxView) applyAccountMetadataType(account, key string, t commonpb.MetadataType, typed bool) {
-	if !typed {
-		v.clearAccountMetadataType(account, key)
-
-		return
-	}
-
-	if v.accountMetadataTypes == nil {
-		v.accountMetadataTypes = map[string]map[string]commonpb.MetadataType{}
-	}
-
-	if v.accountMetadataTypes[account] == nil {
-		v.accountMetadataTypes[account] = map[string]commonpb.MetadataType{}
-	}
-
-	v.accountMetadataTypes[account][key] = t
-}
-
-func (v *TxView) clearAccountMetadataType(account, key string) {
-	inner := v.accountMetadataTypes[account]
-	if inner == nil {
-		return
-	}
-
-	delete(inner, key)
-
-	if len(inner) == 0 {
-		delete(v.accountMetadataTypes, account)
-	}
-}
-
-func (v *TxView) clone() *TxView {
-	nv := &TxView{
-		Type:           v.Type,
-		Reference:      v.Reference,
-		Target:         v.Target,
-		MetadataKey:    v.MetadataKey,
-		targetsAccount: v.targetsAccount,
-		dropped:        v.dropped,
-	}
-
-	if v.Metadata != nil {
-		nv.Metadata = make(map[string]string, len(v.Metadata))
-		maps.Copy(nv.Metadata, v.Metadata)
-	}
-
-	if v.Postings != nil {
-		nv.Postings = make([]Posting, len(v.Postings))
-		copy(nv.Postings, v.Postings)
-	}
-
-	if v.AccountMetadata != nil {
-		nv.AccountMetadata = make(map[string]map[string]string, len(v.AccountMetadata))
-		for acc, m := range v.AccountMetadata {
-			inner := make(map[string]string, len(m))
-			maps.Copy(inner, m)
-			nv.AccountMetadata[acc] = inner
-		}
-	}
-
-	if v.metadataTypes != nil {
-		nv.metadataTypes = make(map[string]commonpb.MetadataType, len(v.metadataTypes))
-		maps.Copy(nv.metadataTypes, v.metadataTypes)
-	}
-
-	if v.accountMetadataTypes != nil {
-		nv.accountMetadataTypes = make(map[string]map[string]commonpb.MetadataType, len(v.accountMetadataTypes))
-		for acc, m := range v.accountMetadataTypes {
-			inner := make(map[string]commonpb.MetadataType, len(m))
-			maps.Copy(inner, m)
-			nv.accountMetadataTypes[acc] = inner
-		}
-	}
-
-	return nv
-}
+func celLogType() *cel.Type      { return cel.ObjectType(logTypeName) }
+func celCreatedType() *cel.Type  { return cel.ObjectType(createdTypeName) }
+func celRevertedType() *cel.Type { return cel.ObjectType(revertedTypeName) }
+func celSavedType() *cel.Type    { return cel.ObjectType(savedTypeName) }
 
 type compiledRule struct {
 	match   cel.Program
@@ -275,7 +139,7 @@ func NewRewriter(rules []*commonpb.MirrorRewriteRule) (*Rewriter, error) {
 			return nil, fmt.Errorf("rule %d: match: %w", i, err)
 		}
 
-		rewriteProg, err := r.compile(rule.GetCel(), celTxType())
+		rewriteProg, err := r.compile(rule.GetCel(), celLogType())
 		if err != nil {
 			return nil, fmt.Errorf("rule %d: cel: %w", i, err)
 		}
@@ -290,22 +154,21 @@ func NewRewriter(rules []*commonpb.MirrorRewriteRule) (*Rewriter, error) {
 	return r, nil
 }
 
-func celTxType() *cel.Type {
-	return cel.ObjectType(celTypeName)
-}
-
 func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 	ast, iss := r.env.Compile(src)
 	if iss != nil && iss.Err() != nil {
 		return nil, fmt.Errorf("compile error: %w", iss.Err())
 	}
 
-	if out := ast.OutputType(); out.String() != want.String() {
-		return nil, fmt.Errorf("expression must evaluate to %s, got %s", want.String(), out.String())
-	}
-
+	// Reject view construction before the output-type check so a bare
+	// `celrewrite.CreatedView{}` is reported as an illegal construction rather
+	// than a type mismatch.
 	if err := rejectViewConstruction(ast); err != nil {
 		return nil, err
+	}
+
+	if out := ast.OutputType(); out.String() != want.String() {
+		return nil, fmt.Errorf("expression must evaluate to %s, got %s", want.String(), out.String())
 	}
 
 	if err := r.validateRegexPatterns(ast); err != nil {
@@ -332,12 +195,21 @@ func (r *Rewriter) compile(src string, want *cel.Type) (cel.Program, error) {
 	return prog, nil
 }
 
-// rejectViewConstruction forbids constructing the internal TxView/Posting types
-// in CEL (e.g. `celrewrite.TxView{...}`). A rule must derive its result from the
-// input `tx` threaded through the helper functions; a hand-built literal would
-// bypass every helper guarantee — metadata validation, and the posting-count and
-// account-target invariants — so it is rejected at compile/admission time. With
-// construction blocked, the only TxView values in play trace back to `tx`.
+// viewTypeNames are the native view types a rule must not construct directly.
+var viewTypeNames = map[string]struct{}{
+	logTypeName:      {},
+	createdTypeName:  {},
+	revertedTypeName: {},
+	savedTypeName:    {},
+	deletedTypeName:  {},
+	postingTypeName:  {},
+}
+
+// rejectViewConstruction forbids constructing the native view types in CEL (e.g.
+// `celrewrite.Log{...}`). A rule must derive its result from the input `log`
+// threaded through the helpers; a hand-built literal could fabricate an entry,
+// set the wrong variant, or bypass the metadata/posting-count guarantees, so it
+// is rejected at compile/admission time.
 func rejectViewConstruction(ast *cel.Ast) error {
 	root := celast.NavigateAST(ast.NativeRep())
 	structs := celast.MatchDescendants(root, func(e celast.NavigableExpr) bool {
@@ -345,47 +217,18 @@ func rejectViewConstruction(ast *cel.Ast) error {
 	})
 
 	for _, s := range structs {
-		if name := s.AsStruct().TypeName(); name == celTypeName || name == postingTypeName {
-			return fmt.Errorf("constructing %s is not allowed; derive the result from tx and its helper functions", name)
+		if name := s.AsStruct().TypeName(); isViewType(name) {
+			return fmt.Errorf("constructing %s is not allowed; derive the result from log and its helper functions", name)
 		}
 	}
 
 	return nil
 }
 
-// rejectNonDeterministicMapIteration forbids order-sensitive iteration over a
-// map. A CEL comprehension whose range is a map (tx.metadata,
-// tx.accountMetadata) visits keys in Go's randomized order, so a .map/.filter
-// that projects those keys into a list produces a non-deterministic result. The
-// rewrite must be pure — identical input yields identical bytes, computed once on
-// the leader and replicated verbatim — so such an expression is rejected at
-// admission. Scalar aggregations over a map (.all/.exists/.exists_one, which
-// return a bool) are order-insensitive and stay allowed; comprehensions over an
-// ordered list range (tx.postings, tx.addresses()) are deterministic and allowed
-// (this is what tx.mapAddress expands to).
-func rejectNonDeterministicMapIteration(ast *cel.Ast) error {
-	root := celast.NavigateAST(ast.NativeRep())
+func isViewType(name string) bool {
+	_, ok := viewTypeNames[name]
 
-	for _, comp := range celast.MatchDescendants(root, func(e celast.NavigableExpr) bool {
-		return e.Kind() == celast.ComprehensionKind
-	}) {
-		iterRange, ok := comp.AsComprehension().IterRange().(celast.NavigableExpr)
-		if !ok {
-			continue
-		}
-
-		if iterRange.Type().Kind() != types.MapKind {
-			continue
-		}
-
-		// A map range feeding a list result is a .map/.filter — order-sensitive.
-		// A bool/int result (.all/.exists/.exists_one) does not depend on order.
-		if comp.Type().Kind() == types.ListKind {
-			return errors.New("order-sensitive iteration over a map is not allowed: mapping or filtering a map (tx.metadata, tx.accountMetadata) into a list is non-deterministic because map keys iterate in random order; use a scalar predicate (exists/all) or iterate an ordered list (tx.postings)")
-		}
-	}
-
-	return nil
+	return ok
 }
 
 // regexHelpers are the CEL helper functions whose first argument is a constant
@@ -394,8 +237,7 @@ var regexHelpers = []string{"rewriteAddress", "setAccountMetadataFromAddress"}
 
 // validateRegexPatterns enforces that a regex helper's pattern is a constant and
 // eagerly compiles it, so a malformed pattern (bad RE2 or empty) is rejected at
-// compile/admission time instead of stalling a mirror batch at run time —
-// keeping the guarantee that an admitted config is safe on the worker. It also
+// compile/admission time instead of stalling a mirror batch at run time. It also
 // warms the regex cache. Requiring a constant means every pattern is validated
 // up front; a computed pattern is rejected outright.
 func (r *Rewriter) validateRegexPatterns(ast *cel.Ast) error {
@@ -491,8 +333,8 @@ var (
 
 // validateMetadataLiterals eagerly validates literal metadata keys and values at
 // compile/admission time (same fail-fast treatment as literal regex patterns),
-// so a statically-invalid helper such as tx.setMetadata("bad key", "v") is
-// rejected before the config is persisted instead of stalling a mirror batch.
+// so a statically-invalid helper such as log.created.setMetadata("bad key", "v")
+// is rejected before the config is persisted instead of stalling a mirror batch.
 func validateMetadataLiterals(ast *cel.Ast) error {
 	root := celast.NavigateAST(ast.NativeRep())
 
@@ -530,116 +372,403 @@ func validateMetadataLiterals(ast *cel.Ast) error {
 	return nil
 }
 
-// buildEnv constructs the deterministic CEL environment: the TxView/Posting
-// native types, the tx variable, ext.Strings (all deterministic), and the
+// rejectNonDeterministicMapIteration forbids order-sensitive iteration over a
+// map. A CEL comprehension whose range is a map (log.created.metadata,
+// log.created.accountMetadata, ...) visits keys in Go's randomized order, so a
+// .map/.filter that projects those keys into a list produces a non-deterministic
+// result. The rewrite must be pure — identical input yields identical bytes,
+// computed once on the leader and replicated verbatim — so such an expression is
+// rejected at admission. Scalar aggregations over a map (.all/.exists/
+// .exists_one, which return a bool) are order-insensitive and stay allowed;
+// comprehensions over an ordered list range (postings, log.addresses()) are
+// deterministic and allowed (this is what log.mapAddress expands to).
+func rejectNonDeterministicMapIteration(ast *cel.Ast) error {
+	root := celast.NavigateAST(ast.NativeRep())
+
+	for _, comp := range celast.MatchDescendants(root, func(e celast.NavigableExpr) bool {
+		return e.Kind() == celast.ComprehensionKind
+	}) {
+		iterRange, ok := comp.AsComprehension().IterRange().(celast.NavigableExpr)
+		if !ok {
+			continue
+		}
+
+		if iterRange.Type().Kind() != types.MapKind {
+			continue
+		}
+
+		if comp.Type().Kind() == types.ListKind {
+			return errors.New("order-sensitive iteration over a map is not allowed: mapping or filtering a metadata map into a list is non-deterministic because map keys iterate in random order; use a scalar predicate (exists/all) or iterate an ordered list (postings)")
+		}
+	}
+
+	return nil
+}
+
+// buildEnv constructs the deterministic CEL environment: the native view types,
+// the `log` variable, ext.Strings/Lists/Math (all deterministic), and the
 // rewrite helper member functions. No non-deterministic function is registered.
 func (r *Rewriter) buildEnv() (*cel.Env, error) {
-	tx := celTxType()
+	tLog := celLogType()
+	tCreated := celCreatedType()
+	tReverted := celRevertedType()
+	tSaved := celSavedType()
+	str := cel.StringType
 
 	return cel.NewEnv(
-		ext.NativeTypes(reflect.TypeFor[TxView](), reflect.TypeFor[Posting](), ext.ParseStructTag("cel")),
+		ext.NativeTypes(
+			reflect.TypeFor[Log](), reflect.TypeFor[CreatedView](), reflect.TypeFor[RevertedView](),
+			reflect.TypeFor[SavedMetadataView](), reflect.TypeFor[DeletedMetadataView](), reflect.TypeFor[Posting](),
+			ext.ParseStructTag("cel"),
+		),
 		ext.Strings(),
 		ext.Lists(),
 		ext.Math(),
-		cel.Variable("tx", tx),
+		cel.Variable("log", tLog),
+
 		// mapAddress(a, expr) maps a CEL expression over every account address in
-		// the transaction. It expands to the private internalMapAddressApply
-		// writeback (fed addresses().map(a, expr)); that positional list-write is
-		// deliberately NOT exposed as a public helper — see mapAddressMacro.
+		// the active variant. It expands to the private internalMapAddressApply
+		// writeback (fed log.addresses().map(a, expr)) — see mapAddressMacro.
 		cel.Macros(cel.ReceiverMacro("mapAddress", 2, mapAddressMacro)),
+
 		cel.Function("addresses",
-			cel.MemberOverload("txview_addresses",
-				[]*cel.Type{tx}, cel.ListType(cel.StringType),
+			cel.MemberOverload("log_addresses",
+				[]*cel.Type{tLog}, cel.ListType(str),
 				cel.UnaryBinding(r.bindAddresses))),
 		cel.Function(internalMapAddressApply,
-			cel.MemberOverload("txview_mapAddressApply_list",
-				[]*cel.Type{tx, cel.ListType(cel.StringType)}, tx,
+			cel.MemberOverload("log_mapAddressApply_list",
+				[]*cel.Type{tLog, cel.ListType(str)}, tLog,
 				cel.BinaryBinding(r.bindMapAddressApply))),
 		cel.Function("rewriteAddress",
-			cel.MemberOverload("txview_rewriteAddress_string_string",
-				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
+			cel.MemberOverload("log_rewriteAddress_string_string",
+				[]*cel.Type{tLog, str, str}, tLog,
 				cel.FunctionBinding(r.bindRewriteAddress))),
-		cel.Function("setAccountMetadataFromAddress",
-			cel.MemberOverload("txview_setAccountMetadataFromAddress_string_string_string",
-				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType}, tx,
-				cel.FunctionBinding(r.bindSetAccountMetadataFromAddress)),
-			cel.MemberOverload("txview_setAccountMetadataFromAddress_string_string_string_string",
-				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType, cel.StringType}, tx,
-				cel.FunctionBinding(r.bindSetAccountMetadataFromAddress))),
-		cel.Function("setMetadata",
-			cel.MemberOverload("txview_setMetadata_string_string",
-				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
-				cel.FunctionBinding(r.bindSetMetadata)),
-			cel.MemberOverload("txview_setMetadata_string_string_string",
-				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType}, tx,
-				cel.FunctionBinding(r.bindSetMetadata))),
-		cel.Function("deleteMetadata",
-			cel.MemberOverload("txview_deleteMetadata_string",
-				[]*cel.Type{tx, cel.StringType}, tx,
-				cel.FunctionBinding(r.bindDeleteMetadata))),
-		cel.Function("setAccountMetadata",
-			cel.MemberOverload("txview_setAccountMetadata_string_string_string",
-				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType}, tx,
-				cel.FunctionBinding(r.bindSetAccountMetadata)),
-			cel.MemberOverload("txview_setAccountMetadata_string_string_string_string",
-				[]*cel.Type{tx, cel.StringType, cel.StringType, cel.StringType, cel.StringType}, tx,
-				cel.FunctionBinding(r.bindSetAccountMetadata))),
-		cel.Function("deleteAccountMetadata",
-			cel.MemberOverload("txview_deleteAccountMetadata_string_string",
-				[]*cel.Type{tx, cel.StringType, cel.StringType}, tx,
-				cel.FunctionBinding(r.bindDeleteAccountMetadata))),
 		cel.Function("drop",
-			cel.MemberOverload("txview_drop",
-				[]*cel.Type{tx}, tx,
-				cel.FunctionBinding(r.bindDrop))),
+			cel.MemberOverload("log_drop",
+				[]*cel.Type{tLog}, tLog,
+				cel.UnaryBinding(r.bindDrop))),
+
+		// Functional-update wrappers: lift a transformed variant back into the
+		// entry. Each accepts ONLY its variant type, so wrapping the wrong variant
+		// is a compile error.
+		cel.Function("withCreated",
+			cel.MemberOverload("log_withCreated",
+				[]*cel.Type{tLog, tCreated}, tLog,
+				cel.BinaryBinding(r.bindWithCreated))),
+		cel.Function("withReverted",
+			cel.MemberOverload("log_withReverted",
+				[]*cel.Type{tLog, tReverted}, tLog,
+				cel.BinaryBinding(r.bindWithReverted))),
+		cel.Function("withSavedMetadata",
+			cel.MemberOverload("log_withSavedMetadata",
+				[]*cel.Type{tLog, tSaved}, tLog,
+				cel.BinaryBinding(r.bindWithSaved))),
+
+		// Metadata setters/deleters, registered per variant that carries a
+		// metadata field. deletedMetadata has no metadata map, so it has no
+		// overload — log.deletedMetadata.setMetadata(...) is a compile error.
+		cel.Function("setMetadata",
+			cel.MemberOverload("created_setMetadata", []*cel.Type{tCreated, str, str}, tCreated, cel.FunctionBinding(r.bindSetMetadata)),
+			cel.MemberOverload("created_setMetadata_typed", []*cel.Type{tCreated, str, str, str}, tCreated, cel.FunctionBinding(r.bindSetMetadata)),
+			cel.MemberOverload("reverted_setMetadata", []*cel.Type{tReverted, str, str}, tReverted, cel.FunctionBinding(r.bindSetMetadata)),
+			cel.MemberOverload("reverted_setMetadata_typed", []*cel.Type{tReverted, str, str, str}, tReverted, cel.FunctionBinding(r.bindSetMetadata)),
+			cel.MemberOverload("saved_setMetadata", []*cel.Type{tSaved, str, str}, tSaved, cel.FunctionBinding(r.bindSetMetadata)),
+			cel.MemberOverload("saved_setMetadata_typed", []*cel.Type{tSaved, str, str, str}, tSaved, cel.FunctionBinding(r.bindSetMetadata)),
+		),
+		cel.Function("deleteMetadata",
+			cel.MemberOverload("created_deleteMetadata", []*cel.Type{tCreated, str}, tCreated, cel.FunctionBinding(r.bindDeleteMetadata)),
+			cel.MemberOverload("reverted_deleteMetadata", []*cel.Type{tReverted, str}, tReverted, cel.FunctionBinding(r.bindDeleteMetadata)),
+			cel.MemberOverload("saved_deleteMetadata", []*cel.Type{tSaved, str}, tSaved, cel.FunctionBinding(r.bindDeleteMetadata)),
+		),
+
+		// Account-metadata helpers: created only.
+		cel.Function("setAccountMetadata",
+			cel.MemberOverload("created_setAccountMetadata", []*cel.Type{tCreated, str, str, str}, tCreated, cel.FunctionBinding(r.bindSetAccountMetadata)),
+			cel.MemberOverload("created_setAccountMetadata_typed", []*cel.Type{tCreated, str, str, str, str}, tCreated, cel.FunctionBinding(r.bindSetAccountMetadata)),
+		),
+		cel.Function("deleteAccountMetadata",
+			cel.MemberOverload("created_deleteAccountMetadata", []*cel.Type{tCreated, str, str}, tCreated, cel.FunctionBinding(r.bindDeleteAccountMetadata)),
+		),
+		cel.Function("setAccountMetadataFromAddress",
+			cel.MemberOverload("created_setAccountMetadataFromAddress", []*cel.Type{tCreated, str, str, str}, tCreated, cel.FunctionBinding(r.bindSetAccountMetadataFromAddress)),
+			cel.MemberOverload("created_setAccountMetadataFromAddress_typed", []*cel.Type{tCreated, str, str, str, str}, tCreated, cel.FunctionBinding(r.bindSetAccountMetadataFromAddress)),
+		),
 	)
 }
 
-func receiver(v ref.Val) (*TxView, ref.Val) {
-	tv, ok := v.Value().(*TxView)
+// stringArg extracts a string call argument, returning a CEL error value when it
+// is not a string (should not happen given the type checker, but the binding is
+// defensive).
+func stringArg(args []ref.Val, i int, fn, name string) (string, ref.Val) {
+	s, ok := args[i].Value().(string)
 	if !ok {
-		return nil, types.NewErr("receiver is not a transaction")
+		return "", types.NewErr("%s: %s must be a string", fn, name)
 	}
 
-	return tv, nil
+	return s, nil
 }
 
-// requireKind fails a mutation helper loudly when the entry variant has no wire
-// field to persist the mutation, instead of dropping it silently at commit. The
-// wire variants (raft_cmd.proto) MirrorRevertedTransaction / MirrorSavedMetadata
-// / MirrorDeletedMetadata carry no account_metadata field, and
-// MirrorDeletedMetadata also carries no metadata field — so the corresponding
-// helpers have nothing to write there and a silent no-op would hide the mistake.
-//
-// This is enforced at evaluation, not admission: a rule's match/cel pair is not
-// statically bound to one variant (a `true` match runs on every kind), so the
-// incompatible combination is only knowable once an entry is in hand. A rule that
-// legitimately targets one kind must scope itself with tx.type, e.g.
-// `tx.type == "created" ? tx.setAccountMetadata(...) : tx` — CEL's lazy ternary
-// means the guarded helper is never evaluated on the other kinds.
-func requireKind(tv *TxView, fn string, allowed ...string) ref.Val {
-	if slices.Contains(allowed, tv.Type) {
-		return nil
-	}
-
-	return types.NewErr("%s is not supported on %s entries (only %s); guard the rule with tx.type",
-		fn, tv.Type, strings.Join(allowed, ", "))
-}
-
-func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
-	tv, errv := receiver(args[0])
-	if tv == nil {
+func (r *Rewriter) bindSetMetadata(args ...ref.Val) ref.Val {
+	key, errv := stringArg(args, 1, "setMetadata", "key")
+	if errv != nil {
 		return errv
 	}
 
-	pattern, ok := args[1].Value().(string)
-	if !ok {
-		return types.NewErr("rewriteAddress: pattern must be a string")
+	value, errv := stringArg(args, 2, "setMetadata", "value")
+	if errv != nil {
+		return errv
 	}
 
-	replacement, ok := args[2].Value().(string)
+	if errv := validateMetadataKV("setMetadata", key, value); errv != nil {
+		return errv
+	}
+
+	t, typed, errv := optionalMetadataType("setMetadata", args, 3)
+	if errv != nil {
+		return errv
+	}
+
+	switch v := args[0].Value().(type) {
+	case *CreatedView:
+		nv := v.clone()
+		nv.Metadata, nv.metadataTypes = setMetadataEntry(nv.Metadata, nv.metadataTypes, key, value, t, typed)
+
+		return r.adapter.NativeToValue(nv)
+	case *RevertedView:
+		nv := v.clone()
+		nv.Metadata, nv.metadataTypes = setMetadataEntry(nv.Metadata, nv.metadataTypes, key, value, t, typed)
+
+		return r.adapter.NativeToValue(nv)
+	case *SavedMetadataView:
+		nv := v.clone()
+		nv.Metadata, nv.metadataTypes = setMetadataEntry(nv.Metadata, nv.metadataTypes, key, value, t, typed)
+
+		return r.adapter.NativeToValue(nv)
+	default:
+		return types.NewErr("setMetadata: unexpected receiver %T", args[0].Value())
+	}
+}
+
+func (r *Rewriter) bindDeleteMetadata(args ...ref.Val) ref.Val {
+	key, errv := stringArg(args, 1, "deleteMetadata", "key")
+	if errv != nil {
+		return errv
+	}
+
+	switch v := args[0].Value().(type) {
+	case *CreatedView:
+		nv := v.clone()
+		nv.Metadata, nv.metadataTypes = deleteMetadataEntry(nv.Metadata, nv.metadataTypes, key)
+
+		return r.adapter.NativeToValue(nv)
+	case *RevertedView:
+		nv := v.clone()
+		nv.Metadata, nv.metadataTypes = deleteMetadataEntry(nv.Metadata, nv.metadataTypes, key)
+
+		return r.adapter.NativeToValue(nv)
+	case *SavedMetadataView:
+		nv := v.clone()
+		nv.Metadata, nv.metadataTypes = deleteMetadataEntry(nv.Metadata, nv.metadataTypes, key)
+
+		return r.adapter.NativeToValue(nv)
+	default:
+		return types.NewErr("deleteMetadata: unexpected receiver %T", args[0].Value())
+	}
+}
+
+func (r *Rewriter) bindSetAccountMetadata(args ...ref.Val) ref.Val {
+	c, ok := args[0].Value().(*CreatedView)
 	if !ok {
-		return types.NewErr("rewriteAddress: replacement must be a string")
+		return types.NewErr("setAccountMetadata: unexpected receiver %T", args[0].Value())
+	}
+
+	account, errv := stringArg(args, 1, "setAccountMetadata", "account")
+	if errv != nil {
+		return errv
+	}
+
+	key, errv := stringArg(args, 2, "setAccountMetadata", "key")
+	if errv != nil {
+		return errv
+	}
+
+	value, errv := stringArg(args, 3, "setAccountMetadata", "value")
+	if errv != nil {
+		return errv
+	}
+
+	if errv := validateMetadataKV("setAccountMetadata", key, value); errv != nil {
+		return errv
+	}
+
+	t, typed, errv := optionalMetadataType("setAccountMetadata", args, 4)
+	if errv != nil {
+		return errv
+	}
+
+	nc := c.clone()
+	nc.setAccountMetadata(account, key, value, t, typed)
+
+	return r.adapter.NativeToValue(nc)
+}
+
+func (r *Rewriter) bindDeleteAccountMetadata(args ...ref.Val) ref.Val {
+	c, ok := args[0].Value().(*CreatedView)
+	if !ok {
+		return types.NewErr("deleteAccountMetadata: unexpected receiver %T", args[0].Value())
+	}
+
+	account, errv := stringArg(args, 1, "deleteAccountMetadata", "account")
+	if errv != nil {
+		return errv
+	}
+
+	key, errv := stringArg(args, 2, "deleteAccountMetadata", "key")
+	if errv != nil {
+		return errv
+	}
+
+	nc := c.clone()
+	nc.deleteAccountMetadata(account, key)
+
+	return r.adapter.NativeToValue(nc)
+}
+
+func (r *Rewriter) bindSetAccountMetadataFromAddress(args ...ref.Val) ref.Val {
+	c, ok := args[0].Value().(*CreatedView)
+	if !ok {
+		return types.NewErr("setAccountMetadataFromAddress: unexpected receiver %T", args[0].Value())
+	}
+
+	pattern, errv := stringArg(args, 1, "setAccountMetadataFromAddress", "pattern")
+	if errv != nil {
+		return errv
+	}
+
+	key, errv := stringArg(args, 2, "setAccountMetadataFromAddress", "key")
+	if errv != nil {
+		return errv
+	}
+
+	replacement, errv := stringArg(args, 3, "setAccountMetadataFromAddress", "replacement")
+	if errv != nil {
+		return errv
+	}
+
+	if err := invariants.ValidateMetadataKey(key); err != nil {
+		return types.NewErr("setAccountMetadataFromAddress: invalid metadata key %q: %v", key, err)
+	}
+
+	t, typed, errv := optionalMetadataType("setAccountMetadataFromAddress", args, 4)
+	if errv != nil {
+		return errv
+	}
+
+	re, err := r.compileRegex(pattern)
+	if err != nil {
+		return types.NewErr("setAccountMetadataFromAddress: %v", err)
+	}
+
+	nc := c.clone()
+
+	// Collect the unique matching posting addresses in sorted order, so the
+	// resulting map is built deterministically.
+	seen := map[string]struct{}{}
+	matched := make([]string, 0, len(nc.Postings)*2)
+
+	for _, p := range nc.Postings {
+		for _, addr := range [...]string{p.Source, p.Destination} {
+			if _, dup := seen[addr]; dup {
+				continue
+			}
+
+			seen[addr] = struct{}{}
+
+			if re.MatchString(addr) {
+				matched = append(matched, addr)
+			}
+		}
+	}
+
+	sortStrings(matched)
+
+	for _, addr := range matched {
+		value := re.ReplaceAllString(addr, replacement)
+		if err := invariants.ValidateMetadataString(value); err != nil {
+			return types.NewErr("setAccountMetadataFromAddress: invalid metadata value %q for %q: %v", value, addr, err)
+		}
+
+		nc.setAccountMetadata(addr, key, value, t, typed)
+	}
+
+	return r.adapter.NativeToValue(nc)
+}
+
+func (r *Rewriter) bindWithCreated(logv, cv ref.Val) ref.Val {
+	l, ok := logv.Value().(*Log)
+	if !ok {
+		return types.NewErr("withCreated: unexpected receiver %T", logv.Value())
+	}
+
+	c, ok := cv.Value().(*CreatedView)
+	if !ok {
+		return types.NewErr("withCreated: argument is not a created transaction")
+	}
+
+	nl := l.clone()
+	nl.Created = c
+
+	return r.adapter.NativeToValue(nl)
+}
+
+func (r *Rewriter) bindWithReverted(logv, rv ref.Val) ref.Val {
+	l, ok := logv.Value().(*Log)
+	if !ok {
+		return types.NewErr("withReverted: unexpected receiver %T", logv.Value())
+	}
+
+	rev, ok := rv.Value().(*RevertedView)
+	if !ok {
+		return types.NewErr("withReverted: argument is not a reverted transaction")
+	}
+
+	nl := l.clone()
+	nl.Reverted = rev
+
+	return r.adapter.NativeToValue(nl)
+}
+
+func (r *Rewriter) bindWithSaved(logv, sv ref.Val) ref.Val {
+	l, ok := logv.Value().(*Log)
+	if !ok {
+		return types.NewErr("withSavedMetadata: unexpected receiver %T", logv.Value())
+	}
+
+	s, ok := sv.Value().(*SavedMetadataView)
+	if !ok {
+		return types.NewErr("withSavedMetadata: argument is not a setMetadata op")
+	}
+
+	nl := l.clone()
+	nl.SavedMetadata = s
+
+	return r.adapter.NativeToValue(nl)
+}
+
+func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
+	l, ok := args[0].Value().(*Log)
+	if !ok {
+		return types.NewErr("rewriteAddress: unexpected receiver %T", args[0].Value())
+	}
+
+	pattern, errv := stringArg(args, 1, "rewriteAddress", "pattern")
+	if errv != nil {
+		return errv
+	}
+
+	replacement, errv := stringArg(args, 2, "rewriteAddress", "replacement")
+	if errv != nil {
+		return errv
 	}
 
 	re, err := r.compileRegex(pattern)
@@ -647,32 +776,56 @@ func (r *Rewriter) bindRewriteAddress(args ...ref.Val) ref.Val {
 		return types.NewErr("rewriteAddress: %v", err)
 	}
 
-	nv := tv.clone()
-
-	for i := range nv.Postings {
-		nv.Postings[i].Source = re.ReplaceAllString(nv.Postings[i].Source, replacement)
-		nv.Postings[i].Destination = re.ReplaceAllString(nv.Postings[i].Destination, replacement)
-	}
-
-	if nv.Target != "" {
-		nv.Target = re.ReplaceAllString(nv.Target, replacement)
-	}
-
-	// Remap the account-metadata keys and their parallel type map identically so
-	// declared types survive an address rewrite.
-	nv.AccountMetadata = rewriteAddrKeyedMap(nv.AccountMetadata, re, replacement)
-	nv.accountMetadataTypes = rewriteAddrKeyedMap(nv.accountMetadataTypes, re, replacement)
-
-	return r.adapter.NativeToValue(nv)
+	return r.adapter.NativeToValue(l.rewriteAddresses(re, replacement))
 }
 
-// mapAddressMacro expands `tx.mapAddress(a, body)` into
-// `tx.internalMapAddressApply(tx.addresses().map(a, body))`: it maps the CEL
+func (r *Rewriter) bindAddresses(v ref.Val) ref.Val {
+	l, ok := v.Value().(*Log)
+	if !ok {
+		return types.NewErr("addresses: receiver is not a log entry")
+	}
+
+	return r.adapter.NativeToValue(l.orderedAddresses())
+}
+
+func (r *Rewriter) bindMapAddressApply(recv, list ref.Val) ref.Val {
+	l, ok := recv.Value().(*Log)
+	if !ok {
+		return types.NewErr("mapAddress: receiver is not a log entry")
+	}
+
+	native, err := list.ConvertToNative(reflect.TypeFor[[]string]())
+	if err != nil {
+		return types.NewErr("mapAddress: %v", err)
+	}
+
+	nl, msg := l.withAddresses(native.([]string))
+	if msg != "" {
+		return types.NewErr("mapAddress: %s (addresses can be transformed but not added or removed)", msg)
+	}
+
+	return r.adapter.NativeToValue(nl)
+}
+
+func (r *Rewriter) bindDrop(v ref.Val) ref.Val {
+	l, ok := v.Value().(*Log)
+	if !ok {
+		return types.NewErr("drop: receiver is not a log entry")
+	}
+
+	nl := l.clone()
+	nl.dropped = true
+
+	return r.adapter.NativeToValue(nl)
+}
+
+// mapAddressMacro expands `log.mapAddress(a, body)` into
+// `log.internalMapAddressApply(log.addresses().map(a, body))`: it maps the CEL
 // expression `body` (with `a` bound to each account address) over every address
-// in the transaction. This is the general, computed-address transform — e.g.
-// `tx.mapAddress(a, a.split(":").reverse().join(":"))` reverses the
-// segments of every address, which a constant regex cannot express. The
-// resulting addresses are validated at commit like any other rewrite.
+// in the active variant. This is the general, computed-address transform — e.g.
+// `log.mapAddress(a, a.split(":").reverse().join(":"))` reverses the segments of
+// every address, which a constant regex cannot express. The resulting addresses
+// are validated at commit like any other rewrite.
 //
 // The writeback target (internalMapAddressApply) is a positional list-write:
 // element N overwrites the Nth address in orderedAddresses order. That raw
@@ -695,7 +848,7 @@ func mapAddressMacro(eh cel.MacroExprFactory, target celast.Expr, args []celast.
 	}
 
 	// Build the same comprehension the built-in `.map` macro produces, over the
-	// transaction's ordered address list, then feed the result to the private
+	// active variant's ordered address list, then feed the result to the private
 	// writeback function.
 	mapped := eh.NewComprehension(
 		eh.NewMemberCall("addresses", target),
@@ -708,225 +861,6 @@ func mapAddressMacro(eh cel.MacroExprFactory, target celast.Expr, args []celast.
 	)
 
 	return eh.NewMemberCall(internalMapAddressApply, target, mapped), nil
-}
-
-// bindAddresses returns the transaction's account addresses in a stable order:
-// each posting's source then destination (in posting order), the account target
-// (when the entry targets an account), then the account-metadata keys sorted.
-// The mapAddress writeback consumes the list in exactly this order.
-func (r *Rewriter) bindAddresses(v ref.Val) ref.Val {
-	tv, ok := v.Value().(*TxView)
-	if !ok {
-		return types.NewErr("addresses: receiver is not a transaction")
-	}
-
-	return r.adapter.NativeToValue(orderedAddresses(tv))
-}
-
-// bindMapAddressApply replaces every account address from a list produced in the
-// same order as addresses(). It is the private writeback the mapAddress macro
-// expands to (never a public helper). Amounts/assets are untouched;
-// account-metadata keys (and their type sidecar) are re-keyed with a
-// deterministic merge on collision. Each new address is validated at commit.
-func (r *Rewriter) bindMapAddressApply(recv, list ref.Val) ref.Val {
-	tv, ok := recv.Value().(*TxView)
-	if !ok {
-		return types.NewErr("mapAddress: receiver is not a transaction")
-	}
-
-	native, err := list.ConvertToNative(reflect.TypeFor[[]string]())
-	if err != nil {
-		return types.NewErr("mapAddress: %v", err)
-	}
-
-	nv, errv := tv.withAddresses(native.([]string))
-	if errv != nil {
-		return errv
-	}
-
-	return r.adapter.NativeToValue(nv)
-}
-
-func orderedAddresses(v *TxView) []string {
-	acctKeys := sortedStringKeys(v.AccountMetadata)
-
-	out := make([]string, 0, 2*len(v.Postings)+1+len(acctKeys))
-	for _, p := range v.Postings {
-		out = append(out, p.Source, p.Destination)
-	}
-
-	if v.targetsAccount {
-		out = append(out, v.Target)
-	}
-
-	return append(out, acctKeys...)
-}
-
-// withAddresses rebuilds the view with the given addresses, consumed in the
-// exact order orderedAddresses produced them.
-func (v *TxView) withAddresses(addrs []string) (*TxView, ref.Val) {
-	acctKeys := sortedStringKeys(v.AccountMetadata)
-
-	want := 2*len(v.Postings) + len(acctKeys)
-	if v.targetsAccount {
-		want++
-	}
-
-	if len(addrs) != want {
-		return nil, types.NewErr("mapAddress: expected %d addresses, got %d (addresses can be transformed but not added or removed)", want, len(addrs))
-	}
-
-	nv := v.clone()
-
-	i := 0
-	for p := range nv.Postings {
-		nv.Postings[p].Source = addrs[i]
-		nv.Postings[p].Destination = addrs[i+1]
-		i += 2
-	}
-
-	if nv.targetsAccount {
-		nv.Target = addrs[i]
-		i++
-	}
-
-	if len(acctKeys) > 0 {
-		newAM := make(map[string]map[string]string, len(acctKeys))
-		newAT := make(map[string]map[string]commonpb.MetadataType)
-
-		for j, oldKey := range acctKeys {
-			newKey := addrs[i+j]
-
-			inner, ok := newAM[newKey]
-			if !ok {
-				inner = make(map[string]string, len(v.AccountMetadata[oldKey]))
-				newAM[newKey] = inner
-			}
-
-			maps.Copy(inner, v.AccountMetadata[oldKey])
-
-			if srcTypes := v.accountMetadataTypes[oldKey]; len(srcTypes) > 0 {
-				tInner, ok := newAT[newKey]
-				if !ok {
-					tInner = make(map[string]commonpb.MetadataType, len(srcTypes))
-					newAT[newKey] = tInner
-				}
-
-				maps.Copy(tInner, srcTypes)
-			}
-		}
-
-		nv.AccountMetadata = newAM
-		if len(newAT) > 0 {
-			nv.accountMetadataTypes = newAT
-		} else {
-			nv.accountMetadataTypes = nil
-		}
-	}
-
-	return nv, nil
-}
-
-func sortedStringKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
-
-	return keys
-}
-
-// bindSetAccountMetadataFromAddress implements
-// tx.setAccountMetadataFromAddress(pattern, key, replacement[, type]): for every
-// posting account address matching pattern, it sets
-// accountMetadata[address][key] = re.ReplaceAllString(address, replacement) —
-// the mirror of rewriteAddress, used to derive per-account metadata from the
-// address (e.g. capture a segment via a group and store it). The optional type
-// coerces the value (default string). Account metadata is only persisted for
-// created transactions.
-func (r *Rewriter) bindSetAccountMetadataFromAddress(args ...ref.Val) ref.Val {
-	tv, errv := receiver(args[0])
-	if tv == nil {
-		return errv
-	}
-
-	if errv := requireKind(tv, "setAccountMetadataFromAddress", KindCreated); errv != nil {
-		return errv
-	}
-
-	pattern, ok := args[1].Value().(string)
-	if !ok {
-		return types.NewErr("setAccountMetadataFromAddress: pattern must be a string")
-	}
-
-	key, ok := args[2].Value().(string)
-	if !ok {
-		return types.NewErr("setAccountMetadataFromAddress: key must be a string")
-	}
-
-	replacement, ok := args[3].Value().(string)
-	if !ok {
-		return types.NewErr("setAccountMetadataFromAddress: replacement must be a string")
-	}
-
-	if err := invariants.ValidateMetadataKey(key); err != nil {
-		return types.NewErr("setAccountMetadataFromAddress: invalid metadata key %q: %v", key, err)
-	}
-
-	mdType, typed, errv := optionalMetadataType("setAccountMetadataFromAddress", args, 4)
-	if errv != nil {
-		return errv
-	}
-
-	re, err := r.compileRegex(pattern)
-	if err != nil {
-		return types.NewErr("setAccountMetadataFromAddress: %v", err)
-	}
-
-	nv := tv.clone()
-
-	// Collect the unique matching posting addresses, in sorted order, so the
-	// resulting map is built deterministically.
-	seen := map[string]struct{}{}
-	matched := make([]string, 0, len(nv.Postings)*2)
-
-	for _, p := range nv.Postings {
-		for _, addr := range [...]string{p.Source, p.Destination} {
-			if _, dup := seen[addr]; dup {
-				continue
-			}
-
-			seen[addr] = struct{}{}
-
-			if re.MatchString(addr) {
-				matched = append(matched, addr)
-			}
-		}
-	}
-
-	sort.Strings(matched)
-
-	for _, addr := range matched {
-		value := re.ReplaceAllString(addr, replacement)
-		if err := invariants.ValidateMetadataString(value); err != nil {
-			return types.NewErr("setAccountMetadataFromAddress: invalid metadata value %q for %q: %v", value, addr, err)
-		}
-
-		if nv.AccountMetadata == nil {
-			nv.AccountMetadata = map[string]map[string]string{}
-		}
-
-		if nv.AccountMetadata[addr] == nil {
-			nv.AccountMetadata[addr] = map[string]string{}
-		}
-
-		nv.AccountMetadata[addr][key] = value
-		nv.applyAccountMetadataType(addr, key, mdType, typed)
-	}
-
-	return r.adapter.NativeToValue(nv)
 }
 
 // optionalMetadataType resolves a metadata type token at position idx of args
@@ -950,46 +884,6 @@ func optionalMetadataType(fn string, args []ref.Val, idx int) (commonpb.Metadata
 	return t, true, nil
 }
 
-func (r *Rewriter) bindSetMetadata(args ...ref.Val) ref.Val {
-	tv, errv := receiver(args[0])
-	if tv == nil {
-		return errv
-	}
-
-	if errv := requireKind(tv, "setMetadata", KindCreated, KindReverted, KindSetMetadata); errv != nil {
-		return errv
-	}
-
-	key, ok := args[1].Value().(string)
-	if !ok {
-		return types.NewErr("setMetadata: key must be a string")
-	}
-
-	value, ok := args[2].Value().(string)
-	if !ok {
-		return types.NewErr("setMetadata: value must be a string")
-	}
-
-	if errv := validateMetadataKV("setMetadata", key, value); errv != nil {
-		return errv
-	}
-
-	mdType, typed, errv := optionalMetadataType("setMetadata", args, 3)
-	if errv != nil {
-		return errv
-	}
-
-	nv := tv.clone()
-	if nv.Metadata == nil {
-		nv.Metadata = map[string]string{}
-	}
-
-	nv.Metadata[key] = value
-	nv.applyMetadataType(key, mdType, typed)
-
-	return r.adapter.NativeToValue(nv)
-}
-
 // validateMetadataKV validates a CEL-produced metadata key/value to the same
 // standard as admission. Mirror-ingest orders bypass the admission metadata
 // gate, so metadata a rule introduces must be checked here or an invalid key or
@@ -1004,158 +898,6 @@ func validateMetadataKV(fn, key, value string) ref.Val {
 	}
 
 	return nil
-}
-
-func (r *Rewriter) bindDeleteMetadata(args ...ref.Val) ref.Val {
-	tv, errv := receiver(args[0])
-	if tv == nil {
-		return errv
-	}
-
-	if errv := requireKind(tv, "deleteMetadata", KindCreated, KindReverted, KindSetMetadata); errv != nil {
-		return errv
-	}
-
-	key, ok := args[1].Value().(string)
-	if !ok {
-		return types.NewErr("deleteMetadata: key must be a string")
-	}
-
-	nv := tv.clone()
-	delete(nv.Metadata, key)
-	nv.clearMetadataType(key)
-
-	return r.adapter.NativeToValue(nv)
-}
-
-func (r *Rewriter) bindSetAccountMetadata(args ...ref.Val) ref.Val {
-	tv, errv := receiver(args[0])
-	if tv == nil {
-		return errv
-	}
-
-	if errv := requireKind(tv, "setAccountMetadata", KindCreated); errv != nil {
-		return errv
-	}
-
-	account, ok := args[1].Value().(string)
-	if !ok {
-		return types.NewErr("setAccountMetadata: account must be a string")
-	}
-
-	key, ok := args[2].Value().(string)
-	if !ok {
-		return types.NewErr("setAccountMetadata: key must be a string")
-	}
-
-	value, ok := args[3].Value().(string)
-	if !ok {
-		return types.NewErr("setAccountMetadata: value must be a string")
-	}
-
-	if errv := validateMetadataKV("setAccountMetadata", key, value); errv != nil {
-		return errv
-	}
-
-	mdType, typed, errv := optionalMetadataType("setAccountMetadata", args, 4)
-	if errv != nil {
-		return errv
-	}
-
-	nv := tv.clone()
-	if nv.AccountMetadata == nil {
-		nv.AccountMetadata = map[string]map[string]string{}
-	}
-
-	if nv.AccountMetadata[account] == nil {
-		nv.AccountMetadata[account] = map[string]string{}
-	}
-
-	nv.AccountMetadata[account][key] = value
-	nv.applyAccountMetadataType(account, key, mdType, typed)
-
-	return r.adapter.NativeToValue(nv)
-}
-
-func (r *Rewriter) bindDeleteAccountMetadata(args ...ref.Val) ref.Val {
-	tv, errv := receiver(args[0])
-	if tv == nil {
-		return errv
-	}
-
-	if errv := requireKind(tv, "deleteAccountMetadata", KindCreated); errv != nil {
-		return errv
-	}
-
-	account, ok := args[1].Value().(string)
-	if !ok {
-		return types.NewErr("deleteAccountMetadata: account must be a string")
-	}
-
-	key, ok := args[2].Value().(string)
-	if !ok {
-		return types.NewErr("deleteAccountMetadata: key must be a string")
-	}
-
-	nv := tv.clone()
-	if inner := nv.AccountMetadata[account]; inner != nil {
-		delete(inner, key)
-		if len(inner) == 0 {
-			delete(nv.AccountMetadata, account)
-		}
-	}
-
-	nv.clearAccountMetadataType(account, key)
-
-	return r.adapter.NativeToValue(nv)
-}
-
-func (r *Rewriter) bindDrop(args ...ref.Val) ref.Val {
-	tv, errv := receiver(args[0])
-	if tv == nil {
-		return errv
-	}
-
-	nv := tv.clone()
-	nv.dropped = true
-
-	return r.adapter.NativeToValue(nv)
-}
-
-// rewriteAccountMetadataKeys applies re/replacement to every account key. When
-// two source accounts collapse onto the same rewritten key their maps are
-// merged; iteration is over sorted source keys so the last writer on a metadata
-// conflict is deterministic regardless of Go map order.
-// rewriteAddrKeyedMap rewrites the account-address keys of an account-keyed map
-// (account metadata values or their declared types). It is generic so the value
-// map and the parallel type map are remapped identically — same sorted iteration
-// and same last-writer-wins merge on collision — keeping them in sync.
-func rewriteAddrKeyedMap[V any](in map[string]map[string]V, re *regexp.Regexp, replacement string) map[string]map[string]V {
-	if len(in) == 0 {
-		return in
-	}
-
-	keys := make([]string, 0, len(in))
-	for k := range in {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
-
-	out := make(map[string]map[string]V, len(in))
-	for _, account := range keys {
-		rewritten := re.ReplaceAllString(account, replacement)
-
-		existing, ok := out[rewritten]
-		if !ok {
-			existing = make(map[string]V, len(in[account]))
-			out[rewritten] = existing
-		}
-
-		maps.Copy(existing, in[account])
-	}
-
-	return out
 }
 
 func (r *Rewriter) compileRegex(pattern string) (*regexp.Regexp, error) {

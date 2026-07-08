@@ -14,9 +14,10 @@ import (
 
 // Apply runs the compiled rules against a single mirror log entry and returns
 // the (possibly rewritten) entry. A nil receiver is a valid pass-through. The
-// entry is mutated in place only after the whole rule chain succeeds and all
-// output addresses validate; a rule that calls tx.drop() turns the entry into a
-// fill-gap that still advances the transaction ID counter.
+// entry is mutated in place only after the whole rule chain succeeds, the
+// single-variant invariant holds, and all output addresses validate; a rule that
+// calls log.drop() turns the entry into a fill-gap that still advances the
+// transaction ID counter.
 func (r *Rewriter) Apply(entry *raftcmdpb.MirrorLogEntry) (*raftcmdpb.MirrorLogEntry, error) {
 	if r == nil || entry == nil {
 		return entry, nil
@@ -30,15 +31,15 @@ func (r *Rewriter) Apply(entry *raftcmdpb.MirrorLogEntry) (*raftcmdpb.MirrorLogE
 
 	cur := view
 	for i, rule := range r.rules {
-		out, _, err := rule.match.Eval(map[string]any{"tx": cur})
+		out, _, err := rule.match.Eval(map[string]any{"log": cur})
 		if err != nil {
-			// A match that errors at runtime is treated as "does not apply"
-			// rather than failing the batch. `match` is type-checked at compile
-			// time, so runtime errors are value-shape errors — overwhelmingly
-			// indexing a metadata key the transaction doesn't have
-			// (`tx.metadata["k"]` is a "no such key" error in CEL, not false).
-			// Stalling the entire mirror on a data-dependent predicate would be
-			// far worse than conservatively not touching this transaction.
+			// A match that errors at runtime is treated as "does not apply" rather
+			// than failing the batch. `match` is type-checked at compile time, so
+			// runtime errors are value-shape errors — overwhelmingly indexing a
+			// metadata key the entry doesn't have (`m["k"]` is a "no such key" error
+			// in CEL, not false). Stalling the entire mirror on a data-dependent
+			// predicate would be far worse than conservatively not touching this
+			// entry.
 			continue
 		}
 
@@ -51,17 +52,17 @@ func (r *Rewriter) Apply(entry *raftcmdpb.MirrorLogEntry) (*raftcmdpb.MirrorLogE
 			continue
 		}
 
-		res, _, err := rule.rewrite.Eval(map[string]any{"tx": cur})
+		res, _, err := rule.rewrite.Eval(map[string]any{"log": cur})
 		if err != nil {
 			return nil, fmt.Errorf("evaluating rule %d cel: %w", i, err)
 		}
 
-		nv, isTx := res.Value().(*TxView)
-		if !isTx {
-			return nil, fmt.Errorf("rule %d cel did not return a transaction", i)
+		nl, isLog := res.Value().(*Log)
+		if !isLog {
+			return nil, fmt.Errorf("rule %d cel did not return a log entry", i)
 		}
 
-		cur = nv
+		cur = nl
 
 		if rule.stop {
 			break
@@ -72,11 +73,18 @@ func (r *Rewriter) Apply(entry *raftcmdpb.MirrorLogEntry) (*raftcmdpb.MirrorLogE
 		return fillGapFor(entry), nil
 	}
 
+	// A rule may only transform the original variant. Unguarded access to a
+	// foreign variant (has()-less) fabricates a zero view that withX would merge
+	// in, so reject any result that is not exactly the source variant.
+	if err := checkSingleVariant(view.kind, cur); err != nil {
+		return nil, err
+	}
+
 	// targetsAccount is a property of the source entry, not of the rewritten
-	// value. Pin it from the original view so target validation cannot be
-	// weakened by the rule chain (construction of TxView is already blocked at
+	// value; pin it from the original view so target validation cannot be weakened
+	// by the rule chain (construction of the view types is already blocked at
 	// compile time, so this is defense in depth).
-	cur.targetsAccount = view.targetsAccount
+	pinTargetsAccount(view, cur)
 
 	if err := validateAddresses(cur); err != nil {
 		return nil, err
@@ -89,48 +97,57 @@ func (r *Rewriter) Apply(entry *raftcmdpb.MirrorLogEntry) (*raftcmdpb.MirrorLogE
 	return entry, nil
 }
 
-// viewFromEntry builds the CEL-visible view of a mirror log entry. The second
-// return is false for entry kinds the engine does not rewrite (fill-gap).
-func viewFromEntry(entry *raftcmdpb.MirrorLogEntry) (*TxView, bool) {
+// viewFromEntry builds the CEL-visible view of a mirror log entry with exactly
+// the source variant populated. The second return is false for entry kinds the
+// engine does not rewrite (fill-gap).
+func viewFromEntry(entry *raftcmdpb.MirrorLogEntry) (*Log, bool) {
 	switch data := entry.GetData().(type) {
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
 		ct := data.CreatedTransaction
 
-		return &TxView{
-			Type:            KindCreated,
-			Reference:       ct.GetReference(),
-			Metadata:        metadataToStrings(ct.GetMetadata()),
-			Postings:        postingsToView(ct.GetPostings()),
-			AccountMetadata: accountMetadataToStrings(ct.GetAccountMetadata()),
+		return &Log{
+			kind: KindCreated,
+			Created: &CreatedView{
+				Reference:       ct.GetReference(),
+				Postings:        postingsToView(ct.GetPostings()),
+				Metadata:        metadataToStrings(ct.GetMetadata()),
+				AccountMetadata: accountMetadataToStrings(ct.GetAccountMetadata()),
+			},
 		}, true
 
 	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
 		rt := data.RevertedTransaction
 
-		return &TxView{
-			Type:     KindReverted,
-			Metadata: metadataToStrings(rt.GetMetadata()),
-			Postings: postingsToView(rt.GetReversePostings()),
+		return &Log{
+			kind: KindReverted,
+			Reverted: &RevertedView{
+				Postings: postingsToView(rt.GetReversePostings()),
+				Metadata: metadataToStrings(rt.GetMetadata()),
+			},
 		}, true
 
 	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
 		sm := data.SavedMetadata
 
-		return &TxView{
-			Type:           KindSetMetadata,
-			Metadata:       metadataToStrings(sm.GetMetadata()),
-			Target:         targetAddr(sm.GetTarget()),
-			targetsAccount: isAccountTarget(sm.GetTarget()),
+		return &Log{
+			kind: KindSetMetadata,
+			SavedMetadata: &SavedMetadataView{
+				Target:         targetAddr(sm.GetTarget()),
+				Metadata:       metadataToStrings(sm.GetMetadata()),
+				targetsAccount: isAccountTarget(sm.GetTarget()),
+			},
 		}, true
 
 	case *raftcmdpb.MirrorLogEntry_DeletedMetadata:
 		dm := data.DeletedMetadata
 
-		return &TxView{
-			Type:           KindDeleteMetadata,
-			Target:         targetAddr(dm.GetTarget()),
-			MetadataKey:    dm.GetKey(),
-			targetsAccount: isAccountTarget(dm.GetTarget()),
+		return &Log{
+			kind: KindDeleteMetadata,
+			DeletedMetadata: &DeletedMetadataView{
+				Target:         targetAddr(dm.GetTarget()),
+				Key:            dm.GetKey(),
+				targetsAccount: isAccountTarget(dm.GetTarget()),
+			},
 		}, true
 
 	default:
@@ -138,60 +155,113 @@ func viewFromEntry(entry *raftcmdpb.MirrorLogEntry) (*TxView, bool) {
 	}
 }
 
+// celField maps a pinned kind to the CEL field name of its variant, for guidance
+// in error messages.
+func celField(kind string) string {
+	switch kind {
+	case KindSetMetadata:
+		return "savedMetadata"
+	case KindDeleteMetadata:
+		return "deletedMetadata"
+	default:
+		return kind
+	}
+}
+
+// checkSingleVariant enforces that the rewritten log carries exactly the source
+// variant. A rule cannot change the entry kind, and unguarded access to a
+// foreign variant fabricates a zero view (native pointer fields read as a zero
+// value, not null) that withX would merge in — this catches that loudly instead
+// of committing a corrupt two-variant entry.
+func checkSingleVariant(kind string, l *Log) error {
+	var set []string
+
+	if l.Created != nil {
+		set = append(set, KindCreated)
+	}
+
+	if l.Reverted != nil {
+		set = append(set, KindReverted)
+	}
+
+	if l.SavedMetadata != nil {
+		set = append(set, KindSetMetadata)
+	}
+
+	if l.DeletedMetadata != nil {
+		set = append(set, KindDeleteMetadata)
+	}
+
+	if len(set) != 1 || set[0] != kind {
+		return fmt.Errorf("rewrite produced variants %v but may only transform the source %s variant; guard variant access with has(log.%s)", set, kind, celField(kind))
+	}
+
+	return nil
+}
+
+func pinTargetsAccount(orig, cur *Log) {
+	switch orig.kind {
+	case KindSetMetadata:
+		if cur.SavedMetadata != nil && orig.SavedMetadata != nil {
+			cur.SavedMetadata.targetsAccount = orig.SavedMetadata.targetsAccount
+		}
+	case KindDeleteMetadata:
+		if cur.DeletedMetadata != nil && orig.DeletedMetadata != nil {
+			cur.DeletedMetadata.targetsAccount = orig.DeletedMetadata.targetsAccount
+		}
+	}
+}
+
 // commitToEntry writes the mutable fields of the view back onto the proto entry.
-// Amounts, assets and IDs are never written (read-only in the view). Only
-// posting source/destination are copied, by index — so the view's posting count
-// must match the entry's. Helpers preserve the count, but a rule that returns a
-// hand-built TxView literal could change it; that is rejected here rather than
-// silently mis-aligning addresses with the wrong amounts.
-func commitToEntry(entry *raftcmdpb.MirrorLogEntry, v *TxView) error {
+// Amounts, assets and IDs are never written. checkSingleVariant guarantees the
+// committing variant is present; the nil guards are should-not-happen backstops.
+func commitToEntry(entry *raftcmdpb.MirrorLogEntry, l *Log) error {
 	switch data := entry.GetData().(type) {
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
+		c := l.Created
+		if c == nil {
+			return errors.New("invariant: created view missing after rewrite")
+		}
+
 		ct := data.CreatedTransaction
-		if err := writeBackPostings(ct.GetPostings(), v.Postings); err != nil {
+		if err := writeBackPostings(ct.GetPostings(), c.Postings); err != nil {
 			return err
 		}
 
-		ct.Metadata = stringsToMetadata(v.Metadata, v.metadataTypes)
-		ct.AccountMetadata = stringsToAccountMetadata(v.AccountMetadata, v.accountMetadataTypes)
+		ct.Metadata = stringsToMetadata(c.Metadata, c.metadataTypes)
+		ct.AccountMetadata = stringsToAccountMetadata(c.AccountMetadata, c.accountMetadataTypes)
 
 	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
+		rv := l.Reverted
+		if rv == nil {
+			return errors.New("invariant: reverted view missing after rewrite")
+		}
+
 		rt := data.RevertedTransaction
-		if err := writeBackPostings(rt.GetReversePostings(), v.Postings); err != nil {
+		if err := writeBackPostings(rt.GetReversePostings(), rv.Postings); err != nil {
 			return err
 		}
 
-		// MirrorRevertedTransaction has no account_metadata field. requireKind
-		// rejects setAccountMetadata* on reverted entries, so a non-empty map here
-		// is impossible by design — fail loudly rather than drop it silently.
-		if len(v.AccountMetadata) > 0 {
-			return errors.New("invariant: account metadata present on a reverted entry (no wire field); should have been rejected by requireKind")
-		}
-
-		rt.Metadata = stringsToMetadata(v.Metadata, v.metadataTypes)
+		rt.Metadata = stringsToMetadata(rv.Metadata, rv.metadataTypes)
 
 	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
-		sm := data.SavedMetadata
-
-		// MirrorSavedMetadata has no account_metadata field (see reverted case).
-		if len(v.AccountMetadata) > 0 {
-			return errors.New("invariant: account metadata present on a setMetadata entry (no wire field); should have been rejected by requireKind")
+		s := l.SavedMetadata
+		if s == nil {
+			return errors.New("invariant: savedMetadata view missing after rewrite")
 		}
 
-		setTargetAddr(sm.GetTarget(), v.Target)
-		sm.Metadata = stringsToMetadata(v.Metadata, v.metadataTypes)
+		sm := data.SavedMetadata
+		setTargetAddr(sm.GetTarget(), s.Target)
+		sm.Metadata = stringsToMetadata(s.Metadata, s.metadataTypes)
 
 	case *raftcmdpb.MirrorLogEntry_DeletedMetadata:
-		dm := data.DeletedMetadata
-
-		// MirrorDeletedMetadata has neither a metadata nor an account_metadata
-		// field. requireKind rejects setMetadata/deleteMetadata/setAccountMetadata*
-		// on delete entries, so either map being non-empty is impossible by design.
-		if len(v.Metadata) > 0 || len(v.AccountMetadata) > 0 {
-			return errors.New("invariant: metadata present on a deleteMetadata entry (no wire field); should have been rejected by requireKind")
+		d := l.DeletedMetadata
+		if d == nil {
+			return errors.New("invariant: deletedMetadata view missing after rewrite")
 		}
 
-		setTargetAddr(dm.GetTarget(), v.Target)
+		dm := data.DeletedMetadata
+		setTargetAddr(dm.GetTarget(), d.Target)
 	}
 
 	return nil
@@ -219,31 +289,53 @@ func fillGapFor(entry *raftcmdpb.MirrorLogEntry) *raftcmdpb.MirrorLogEntry {
 	}
 }
 
-func validateAddresses(v *TxView) error {
-	for i := range v.Postings {
-		if err := invariants.ValidateLedgerAccountAddress(v.Postings[i].Source); err != nil {
-			return fmt.Errorf("rewritten posting source %q invalid: %w", v.Postings[i].Source, err)
+// validateAddresses checks every output address of the active variant with
+// invariants.ValidateLedgerAccountAddress, so a bad rewrite fails the batch
+// (cursor does not advance, worker retries) rather than corrupting the mirror.
+func validateAddresses(l *Log) error {
+	switch {
+	case l.Created != nil:
+		return validatePostingsAndAccounts(l.Created.Postings, l.Created.AccountMetadata)
+
+	case l.Reverted != nil:
+		return validatePostingsAndAccounts(l.Reverted.Postings, nil)
+
+	case l.SavedMetadata != nil && l.SavedMetadata.targetsAccount:
+		return validateTarget(l.SavedMetadata.Target)
+
+	case l.DeletedMetadata != nil && l.DeletedMetadata.targetsAccount:
+		return validateTarget(l.DeletedMetadata.Target)
+	}
+
+	return nil
+}
+
+func validatePostingsAndAccounts(postings []Posting, accountMetadata map[string]map[string]string) error {
+	for i := range postings {
+		if err := invariants.ValidateLedgerAccountAddress(postings[i].Source); err != nil {
+			return fmt.Errorf("rewritten posting source %q invalid: %w", postings[i].Source, err)
 		}
 
-		if err := invariants.ValidateLedgerAccountAddress(v.Postings[i].Destination); err != nil {
-			return fmt.Errorf("rewritten posting destination %q invalid: %w", v.Postings[i].Destination, err)
+		if err := invariants.ValidateLedgerAccountAddress(postings[i].Destination); err != nil {
+			return fmt.Errorf("rewritten posting destination %q invalid: %w", postings[i].Destination, err)
 		}
 	}
 
-	// An account-targeted metadata op must keep a valid address. Gate on the
-	// original entry (targetsAccount), not on whether Target is now non-empty:
-	// a rule that rewrote the account target to "" must be rejected, not silently
-	// treated as a transaction-level (no-account) target.
-	if v.targetsAccount {
-		if err := invariants.ValidateLedgerAccountAddress(v.Target); err != nil {
-			return fmt.Errorf("rewritten target %q invalid: %w", v.Target, err)
-		}
-	}
-
-	for account := range v.AccountMetadata {
+	for account := range accountMetadata {
 		if err := invariants.ValidateLedgerAccountAddress(account); err != nil {
 			return fmt.Errorf("rewritten account-metadata address %q invalid: %w", account, err)
 		}
+	}
+
+	return nil
+}
+
+// validateTarget rejects an account-targeted metadata op whose target a rule
+// rewrote to an empty/invalid address (distinct from a legitimately absent,
+// transaction-level target).
+func validateTarget(target string) error {
+	if err := invariants.ValidateLedgerAccountAddress(target); err != nil {
+		return fmt.Errorf("rewritten target %q invalid: %w", target, err)
 	}
 
 	return nil
@@ -269,7 +361,7 @@ func postingsToView(postings []*commonpb.Posting) []Posting {
 
 func writeBackPostings(dst []*commonpb.Posting, src []Posting) error {
 	// The view's postings map onto the proto postings by index, so a rule must
-	// not change their count (helpers don't; a hand-built TxView literal could).
+	// not change their count (helpers don't; construction is blocked at compile).
 	if len(src) != len(dst) {
 		return fmt.Errorf("rewrite changed posting count (%d -> %d); postings can be edited but not added or removed", len(dst), len(src))
 	}

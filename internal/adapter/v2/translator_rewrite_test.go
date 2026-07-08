@@ -16,7 +16,7 @@ func dropWorkerRewriter(t *testing.T) *celrewrite.Rewriter {
 	t.Helper()
 
 	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
-		{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
+		{Cel: `log.rewriteAddress(":worker:\\d+", "")`},
 	})
 	require.NoError(t, err)
 
@@ -169,7 +169,7 @@ func TestTranslateBatch_Rewrite_InvalidResultErrors(t *testing.T) {
 	t.Parallel()
 
 	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
-		{Cel: `tx.rewriteAddress(".+", "")`},
+		{Cel: `log.rewriteAddress(".+", "")`},
 	})
 	require.NoError(t, err)
 
@@ -197,7 +197,7 @@ func TestTranslateBatch_Rewrite_DropBecomesFillGap(t *testing.T) {
 	t.Parallel()
 
 	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
-		{Match: `tx.metadata["skip"] == "yes"`, Cel: `tx.drop()`},
+		{Match: `has(log.created) && log.created.metadata["skip"] == "yes"`, Cel: `log.drop()`},
 	})
 	require.NoError(t, err)
 

@@ -155,8 +155,8 @@ func TestBuildCreateArgs_MirrorHTTPWithRewriteRules(t *testing.T) {
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		RewriteRules: []ledgerv1alpha1.MirrorRewriteRule{
-			{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
-			{Match: `tx.metadata["type"] == "payout"`, Cel: `tx.setMetadata("category", "external")`, Stop: true},
+			{Cel: `log.rewriteAddress(":worker:\\d+", "")`},
+			{Match: `log.created.metadata["type"] == "payout"`, Cel: `log.withCreated(log.created.setMetadata("category", "external"))`, Stop: true},
 		},
 		HTTP: &ledgerv1alpha1.HTTPMirrorSource{
 			BaseURL: "https://source.example.com",
@@ -168,8 +168,8 @@ func TestBuildCreateArgs_MirrorHTTPWithRewriteRules(t *testing.T) {
 	assert.Equal(t, []string{
 		"ledgers", "create", "--name", "ledger1",
 		"--mode", "mirror",
-		"--mirror-rewrite-rule", `{"cel":"tx.rewriteAddress(\":worker:\\\\d+\", \"\")"}`,
-		"--mirror-rewrite-rule", `{"match":"tx.metadata[\"type\"] == \"payout\"","cel":"tx.setMetadata(\"category\", \"external\")","stop":true}`,
+		"--mirror-rewrite-rule", `{"cel":"log.rewriteAddress(\":worker:\\\\d+\", \"\")"}`,
+		"--mirror-rewrite-rule", `{"match":"log.created.metadata[\"type\"] == \"payout\"","cel":"log.withCreated(log.created.setMetadata(\"category\", \"external\"))","stop":true}`,
 		"--mirror-source-type", "http",
 		"--mirror-base-url", "https://source.example.com",
 	}, args)
@@ -193,7 +193,7 @@ func TestBuildCreateArgs_MirrorPostgresWithRewriteRules(t *testing.T) {
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		RewriteRules: []ledgerv1alpha1.MirrorRewriteRule{
-			{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
+			{Cel: `log.rewriteAddress(":worker:\\d+", "")`},
 		},
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
 			Host:     "db.example.com",
@@ -213,7 +213,7 @@ func TestBuildCreateArgs_MirrorPostgresWithRewriteRules(t *testing.T) {
 	assert.Equal(t, []string{
 		"ledgers", "create", "--name", "ledger1",
 		"--mode", "mirror",
-		"--mirror-rewrite-rule", `{"cel":"tx.rewriteAddress(\":worker:\\\\d+\", \"\")"}`,
+		"--mirror-rewrite-rule", `{"cel":"log.rewriteAddress(\":worker:\\\\d+\", \"\")"}`,
 		"--mirror-source-type", "postgres",
 		"--mirror-dsn", "postgres://ledger:s3cr3t@db.example.com:5432/ledger?sslmode=require",
 	}, args)
