@@ -27,6 +27,9 @@
     preload_cache_hits: 'admission.preload.cache_hits',
     audit_missing_caller: 'admission.audit.missing_caller',
     audit_caller_subject_empty: 'admission.audit.caller_subject_empty',
+    resolve_batch_duration: 'admission.resolve_batch.duration',
+    orders_preparation_duration: 'admission.orders_preparation.duration',
+    scripts_duration: 'admission.scripts.duration',
   },
 
   // bloom — internal/infra/bloom/bloom.go
