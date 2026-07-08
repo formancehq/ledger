@@ -82,6 +82,15 @@ type Admission struct {
 	preloadCacheHitsCounter        metric.Int64Counter
 	missingCallerCounter           metric.Int64Counter
 	callerSubjectEmptyCounter      metric.Int64Counter
+
+	// Per-phase histograms — decompose command.duration into
+	// resolve_batch (signature verify) + orders_prep (orders + coverage
+	// extraction) + scripts (numscript resolution + coverage enrichment).
+	// The remaining phases (preload build, propose, fsm wait) already have
+	// their own histograms above.
+	resolveBatchDurationHistogram      metric.Int64Histogram
+	ordersPreparationDurationHistogram metric.Int64Histogram
+	scriptsDurationHistogram           metric.Int64Histogram
 }
 
 // NewAdmission creates a new Admission handler.
@@ -299,6 +308,42 @@ func NewAdmission(
 		panic(err)
 	}
 
+	resolveBatchDurationHistogram, err := meter.Int64Histogram(
+		"admission.resolve_batch.duration",
+		metric.WithDescription("Time spent verifying batch signature and unmarshaling the trusted ApplyBatch"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	ordersPreparationDurationHistogram, err := meter.Int64Histogram(
+		"admission.orders_preparation.duration",
+		metric.WithDescription("Time spent converting requests to orders and extracting preload needs (excludes script-dependent needs)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	scriptsDurationHistogram, err := meter.Int64Histogram(
+		"admission.scripts.duration",
+		metric.WithDescription("Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	a.commandDurationHistogram = commandDurationHistogram
 	a.commandSizeHistogram = commandSizeHistogram
 	a.proposeQueueLoadHistogram = proposeQueueLoadHistogram
@@ -313,6 +358,9 @@ func NewAdmission(
 	a.preloadCacheHitsCounter = preloadCacheHitsCounter
 	a.missingCallerCounter = missingCallerCounter
 	a.callerSubjectEmptyCounter = callerSubjectEmptyCounter
+	a.resolveBatchDurationHistogram = resolveBatchDurationHistogram
+	a.ordersPreparationDurationHistogram = ordersPreparationDurationHistogram
+	a.scriptsDurationHistogram = scriptsDurationHistogram
 
 	return a
 }
@@ -370,7 +418,9 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	// unmarshaled from those bytes — signing the batch authenticates its
 	// composition and ordering, not just individual request content.
 	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
+	resolveBatchStart := time.Now()
 	batch, err := a.resolveBatch(req)
+	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Microseconds())
 
 	sigSpan.End()
 
@@ -385,6 +435,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 
 	// Convert requests to orders. Idempotency and signature are batch-level now
 	// (carried on the Proposal), so orders no longer hold either.
+	ordersPrepStart := time.Now()
 	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
@@ -405,11 +456,15 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 		perOrder[0].IdempotencyKeys[domain.IdempotencyKey{Key: batch.key}] = struct{}{}
 	}
 
+	a.ordersPreparationDurationHistogram.Record(ctx, time.Since(ordersPrepStart).Microseconds())
+
 	// Step 2: Resolve script references and discover script dependencies.
 	// This enriches needs with volumes/metadata discovered from scripts.
+	scriptsStart := time.Now()
 	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder); err != nil {
 		return nil, err
 	}
+	a.scriptsDurationHistogram.Record(ctx, time.Since(scriptsStart).Microseconds())
 
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)

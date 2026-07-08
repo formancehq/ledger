@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime/pprof"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -15,7 +16,14 @@ import (
 )
 
 // handleBulk handles POST /{ledgerName}/bulk to create multiple transactions/operations.
+//
+// The handler goroutine is tagged with `component=admission.http` so Pyroscope
+// (CPU / block/delay / mutex profiles) can attribute its cost separately from
+// the FSM pipeline (applier.main, applier.decoder, applier.committer). The
+// label propagates to any child goroutines spawned inside the handler.
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
+	pprof.SetGoroutineLabels(pprof.WithLabels(r.Context(), pprof.Labels("component", "admission.http")))
+
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
 		return
