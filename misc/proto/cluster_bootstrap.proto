@@ -43,6 +43,7 @@ message JoinAsLearnerRequest {
   uint64 node_id = 1;          // Numeric ID for the new learner node
   string raft_address = 2;     // Raft transport address of the learner
   string service_address = 3;  // Service API address of the learner
+  bytes instance_id = 4;       // 16-byte UUID identifying this peer's WAL/PVC incarnation (EN-1045); required
 }
 
 message JoinAsLearnerResponse {}

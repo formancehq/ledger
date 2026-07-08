@@ -254,6 +254,14 @@ const (
 	// other peer survive restarts without relying on the WAL snapshot
 	// payload (EN-1413).
 	SubGlobPeers byte = 0x14
+	// SubGlobRemovedMembers stores the removed-member registry (EN-1045):
+	// [ZoneGlobal][SubGlobRemovedMembers][node_id BE 8][instance_id 16] →
+	// raftcmdpb.RemovedMemberEntry. Written atomically with the peer row
+	// delete on ConfChangeRemoveNode (consensus and force paths), read by
+	// JoinAsLearner admission and checkAndPromoteLearners to prevent a
+	// still-alive removed pod from rejoining and being auto-promoted. See
+	// docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
+	SubGlobRemovedMembers byte = 0x15
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

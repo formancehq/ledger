@@ -3,6 +3,10 @@
 
 package clusterbootstrappb
 
+import (
+	bytes "bytes"
+)
+
 // GetPeersRequestReader provides read-only access to GetPeersRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetPeersRequestReader interface {
@@ -213,6 +217,7 @@ type JoinAsLearnerRequestReader interface {
 	GetNodeId() uint64
 	GetRaftAddress() string
 	GetServiceAddress() string
+	GetInstanceId() []byte
 	Mutate() *JoinAsLearnerRequest
 }
 
@@ -228,6 +233,10 @@ func (r *joinAsLearnerRequestReadonly) GetRaftAddress() string {
 
 func (r *joinAsLearnerRequestReadonly) GetServiceAddress() string {
 	return (*JoinAsLearnerRequest)(r).GetServiceAddress()
+}
+
+func (r *joinAsLearnerRequestReadonly) GetInstanceId() []byte {
+	return bytes.Clone((*JoinAsLearnerRequest)(r).GetInstanceId())
 }
 
 func (r *joinAsLearnerRequestReadonly) Mutate() *JoinAsLearnerRequest {

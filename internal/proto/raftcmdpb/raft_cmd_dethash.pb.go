@@ -1976,6 +1976,17 @@ func (m *PeerAddress) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
+func (m *RemovedMemberEntry) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
 func (m *GenerationSnapshot) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA

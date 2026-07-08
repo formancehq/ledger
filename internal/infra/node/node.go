@@ -1,7 +1,9 @@
 package node
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -70,6 +72,11 @@ var (
 
 	// ErrNodeNotInCluster is returned when trying to remove a node that is not a cluster member.
 	ErrNodeNotInCluster = errors.New("node is not a member of the cluster")
+
+	// ErrNodeRemoved is returned by AddLearner / JoinAsLearner when the
+	// (nodeID, instance_id) tuple is present in the removed-member
+	// registry (EN-1045).
+	ErrNodeRemoved = errors.New("node was previously removed from this cluster")
 
 	// ErrNodeSyncing is returned by ReadIndexAndWait when the node is still catching up
 	// (restoring a snapshot or replaying spool). Callers should forward the read to the leader.
@@ -419,7 +426,7 @@ func NewNode(
 	// writes self for Bootstrap/Restore, but the restart branch never
 	// did — that's the gap the previous bootstrap hook used to cover
 	// before transport wiring moved into Membership.
-	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr); err != nil {
+	if err := membership.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID); err != nil {
 		return nil, fmt.Errorf("refreshing self in peer store: %w", err)
 	}
 
@@ -1279,9 +1286,9 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		// the transport must be wired by then.)
 		err := membership.WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *membership.ConfChangeContext) error {
 			switch t {
-			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
 				if ctx != nil {
-					node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress)
+					node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID)
 				}
 			case raftpb.ConfChangeRemoveNode:
 				node.membership.Remove(nodeID)
@@ -2212,7 +2219,16 @@ func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, p
 // retryConfChange acquires confChangeMu and retries a ConfChange proposal until
 // it commits or the context is cancelled. etcd/raft silently drops ConfChange
 // proposals when another is pending; this method handles that transparently.
-func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name string, proposeFn func() error) error {
+//
+// postApplyFn (optional) is invoked while confChangeMu is still held, AFTER
+// the ConfChange has been committed and the pending-future has been resolved
+// by finishReady. Callers use it to block until a specific FSM side-effect
+// is visible in Pebble — the future in finishReady resolves before the
+// async applier has processed the entry, so subsequent operations acquiring
+// confChangeMu may otherwise not observe the FSM write. Currently used by
+// RemoveNode to guarantee the RemovedMemberEntry tombstone is visible
+// before a racing JoinAsLearner's blacklist re-check runs (EN-1045).
+func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name string, proposeFn func() error, postApplyFn func(ctx context.Context) error) error {
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()
 
@@ -2225,7 +2241,11 @@ func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name strin
 		}
 
 		if committed {
-			return nil
+			if postApplyFn == nil {
+				return nil
+			}
+
+			return postApplyFn(ctx)
 		}
 
 		node.logger.WithFields(map[string]any{
@@ -2236,11 +2256,26 @@ func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name strin
 
 // AddLearner proposes adding a non-voting learner node to the Raft cluster.
 // The call blocks until the ConfChange is committed through Raft consensus.
+// instanceID (16 bytes, empty only from the admin cluster.AddLearner RPC
+// where the target pod hasn't booted yet) travels in the marshaled
+// ConfChangeContext so every node's FSM apply lands the same PeerAddress
+// row (EN-1045).
+//
+// When the peer already exists in Raft (typical of the admin AddLearner +
+// boot flow: admin pre-registered the row with a nil instance_id, then
+// the pod boots and calls JoinAsLearner with its real instance_id), and
+// we have a fresh 16-byte instance_id to fill in, this method proposes a
+// ConfChangeUpdateNode instead of returning ErrNodeAlreadyInCluster —
+// this refreshes the peer row across all nodes and unblocks
+// checkAndPromoteLearners which otherwise defers promotion for rows
+// without an instance_id.
+//
 // Must be called on the leader.
-func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
+func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
 	ccCtx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
 		RaftAddress:    raftAddr,
 		ServiceAddress: serviceAddr,
+		InstanceID:     instanceID,
 	})
 	if err != nil {
 		return fmt.Errorf("marshaling conf change context: %w", err)
@@ -2252,8 +2287,45 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 			return ErrNotLeader
 		}
 
+		// EN-1045 defense against a race between JoinAsLearner admission
+		// (Pebble IsRemoved check) and RemoveNode commit: re-check the
+		// blacklist here, inside the confChangeMu-serialized path. Any
+		// prior RemoveNode has fully applied by now (retryConfChange
+		// waits for commit), so a tombstone written in the interval is
+		// visible. Empty instance_id (admin AddLearner without a booted
+		// pod) can't be blacklisted, so we skip the check.
+		if len(instanceID) == 16 {
+			removed, checkErr := node.membership.IsRemoved(nodeID, instanceID)
+			if checkErr != nil {
+				return fmt.Errorf("checking removed-member registry for %d: %w", nodeID, checkErr)
+			}
+
+			if removed {
+				return ErrNodeRemoved
+			}
+		}
+
 		if _, ok := status.Progress[nodeID]; ok {
-			return ErrNodeAlreadyInCluster
+			// Peer already a Raft member. Refresh the peer row via
+			// UpdateNode whenever the stored instance_id differs
+			// from the joining pod's — the admin cluster.AddLearner
+			// + boot flow (stored is empty), and reprovisioning of
+			// a learner before promotion (stored is a stale
+			// previous instance_id). Otherwise return AlreadyExists
+			// (idempotent join with matching identity).
+			existing, hasRow := node.membership.GetInstanceID(nodeID)
+			needsRefresh := hasRow && len(instanceID) == 16 && !bytes.Equal(existing, instanceID)
+			if !needsRefresh {
+				return ErrNodeAlreadyInCluster
+			}
+
+			return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
+				Changes: []raftpb.ConfChangeSingle{{
+					Type:   raftpb.ConfChangeUpdateNode,
+					NodeID: nodeID,
+				}},
+				Context: ccCtx,
+			})
 		}
 
 		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
@@ -2263,7 +2335,7 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 			}},
 			Context: ccCtx,
 		})
-	})
+	}, nil)
 }
 
 // PromoteLearner proposes promoting a learner node to a full voter.
@@ -2291,14 +2363,30 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 				NodeID: nodeID,
 			}},
 		})
-	})
+	}, nil)
 }
 
 // RemoveNode proposes removing a node (voter or learner) from the Raft cluster.
 // The call blocks until the ConfChange is committed through Raft consensus.
 // Must be called on the leader. Cannot remove the leader itself.
+//
+// EN-1045: the removed peer's instance_id (looked up from Membership) is
+// packed into the ConfChange context so every node's FSM apply lands a
+// matching RemovedMemberEntry atomically with the peer row delete — a
+// still-alive pod at the same nodeID cannot silently rejoin and be
+// auto-promoted after this ConfChange commits.
 func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
-	return node.retryConfChange(ctx, nodeID, "RemoveNode", func() error {
+	// The target's identity is captured INSIDE the propose closure below,
+	// after confChangeMu has been acquired. Reading it outside would race
+	// with a concurrent ConfChangeUpdateNode (reprovisioned learner
+	// refresh) that mutates the Membership row: we'd blacklist the stale
+	// identity and let the current pod rejoin freely.
+	var (
+		capturedInstanceID      []byte
+		capturedBlacklistableID bool
+	)
+
+	proposeFn := func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -2312,13 +2400,93 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 			return ErrNodeNotInCluster
 		}
 
+		// Look up the target's identity from the in-memory Membership
+		// cache (updated by finishReady when the prior ConfChange
+		// resolved its future). We're inside the confChangeMu-
+		// serialized path, so no other ConfChangeUpdateNode can race
+		// with this read — any pending refresh from a reprovisioned
+		// learner has fully applied before this closure runs.
+		instanceID, hasIdentity := node.membership.GetInstanceID(nodeID)
+		capturedInstanceID = instanceID
+		capturedBlacklistableID = hasIdentity && len(instanceID) == 16
+
+		// Missing instance_id means the peer's row has no identity —
+		// either the row was created via the admin cluster.AddLearner
+		// path without the target ever booting (phantom learner), or
+		// it is a bootstrap initial peer that has not yet joined.
+		// Both cases are legal: propose the removal without a Context,
+		// and WriteConfChange will delete the peer row without writing
+		// a blacklist entry (nothing to blacklist).
+		var ccCtx []byte
+
+		if capturedBlacklistableID {
+			marshaled, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
+				InstanceID: instanceID,
+			})
+			if err != nil {
+				return fmt.Errorf("marshaling remove-node context for %d: %w", nodeID, err)
+			}
+
+			ccCtx = marshaled
+		}
+
 		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
 			Changes: []raftpb.ConfChangeSingle{{
 				Type:   raftpb.ConfChangeRemoveNode,
 				NodeID: nodeID,
 			}},
+			Context: ccCtx,
 		})
-	})
+	}
+
+	// EN-1045: after the ConfChange commits (raft-level), also wait for
+	// the async applier to have persisted the RemovedMemberEntry
+	// tombstone to Pebble before releasing confChangeMu. This closes a
+	// TOCTOU race where a concurrent JoinAsLearner acquiring the mutex
+	// next would otherwise re-check the blacklist and miss the tombstone
+	// still queued behind the applier's async submit.
+	postApplyFn := func(ctx context.Context) error {
+		if !capturedBlacklistableID {
+			return nil
+		}
+
+		return node.waitForBlacklistApplied(ctx, nodeID, capturedInstanceID)
+	}
+
+	return node.retryConfChange(ctx, nodeID, "RemoveNode", proposeFn, postApplyFn)
+}
+
+// waitForBlacklistApplied polls the removed-member registry on the local
+// Pebble store until (nodeID, instanceID) is visible or the context is
+// cancelled. Used by RemoveNode to bridge the gap between raft commit
+// (future resolved in finishReady) and FSM apply (RemovedMemberEntry
+// written by the async applier). Runs while confChangeMu is held.
+func (node *Node) waitForBlacklistApplied(ctx context.Context, nodeID uint64, instanceID []byte) error {
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for {
+		removed, err := node.membership.IsRemoved(nodeID, instanceID)
+		if err != nil {
+			return fmt.Errorf("polling removed-member visibility for %d: %w", nodeID, err)
+		}
+
+		if removed {
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for RemovedMemberEntry(%d) to be applied", nodeID)
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 // ForceRemoveNode removes a node from the Raft cluster by directly applying a
@@ -2330,8 +2498,13 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 // unreachable nodes where consensus-based removal would block indefinitely.
 // The caller must ensure the removed node will never rejoin with stale state.
 //
+// EN-1045: when the removed peer's instance_id is known (present in the
+// Membership row), the same lifecycle path also writes a RemovedMemberEntry
+// atomically with the peer row delete — a still-alive pod at that (nodeID,
+// instance_id) cannot silently rejoin even by racing back before the
+// StatefulSet shrinks. Followers converge via the next snapshot.
+//
 // Must be called on the leader.
-// todo: add a blacklist to prevent staled node reconnection
 func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()
@@ -2349,6 +2522,17 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		if _, ok := status.Progress[nodeID]; !ok {
 			return ErrNodeNotInCluster
 		}
+
+		// Look up the target peer's identity before applying the
+		// ConfChange — Membership.GetInstanceID reads the in-memory
+		// cache populated at boot from Pebble. Missing instance_id
+		// means the peer has a row without identity (phantom learner
+		// added via admin cluster.AddLearner without ever booting, or
+		// a bootstrap initial peer that never joined). Force-removing
+		// such a peer is legal; the blacklist write is skipped
+		// because there is nothing to blacklist.
+		instanceID, hasIdentity := node.membership.GetInstanceID(nodeID)
+		hasIdentity = hasIdentity && len(instanceID) == 16
 
 		// Apply the ConfChange directly (bypasses consensus).
 		cc := raftpb.ConfChangeV2{
@@ -2375,17 +2559,29 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 			return fmt.Errorf("persisting confstate after force-remove: %w", err)
 		}
 
-		if err := node.membership.Unregister(nodeID); err != nil {
-			return fmt.Errorf("removing peer after force-remove: %w", err)
+		// EN-1045: when we know the target's identity, land the
+		// blacklist entry atomically with the peer row delete in a
+		// single Pebble batch. For phantom learners without an
+		// identity (see hasIdentity comment above), fall back to
+		// the plain peer row delete — nothing to blacklist.
+		if hasIdentity {
+			if err := node.membership.UnregisterAndBlacklist(nodeID, instanceID, uint64(time.Now().UnixMicro())); err != nil {
+				return fmt.Errorf("force-remove atomic batch: %w", err)
+			}
+		} else {
+			if err := node.membership.Unregister(nodeID); err != nil {
+				return fmt.Errorf("removing peer after force-remove: %w", err)
+			}
 		}
 
 		node.logger.WithFields(map[string]any{
 			"removedNodeID": nodeID,
 			"voters":        cs.Voters,
 			"learners":      cs.Learners,
+			"blacklisted":   hasIdentity,
 		}).Infof("Force-removed node (bypassed consensus)")
 
-		// membership.Unregister above already wired the peer out of
+		// UnregisterAndBlacklist above already wired the peer out of
 		// transport / service pool, so no observer event is needed.
 
 		return nil
@@ -2430,6 +2626,42 @@ func (node *Node) checkAndPromoteLearners() {
 				if now.Sub(lastAttempt) < autoPromoteRetryInterval {
 					continue
 				}
+			}
+
+			// EN-1045: refuse to promote a learner whose (nodeID,
+			// instance_id) has been blacklisted. Belt-and-suspenders
+			// check — JoinAsLearner admission should have refused
+			// this rejoin earlier. Missing instance_id here means
+			// the learner has a row without identity (admin
+			// AddLearner without a booted peer yet); skip promotion
+			// this tick and try again once the peer refreshes its
+			// row via JoinAsLearner.
+			instanceID, hasIdentity := node.membership.GetInstanceID(id)
+			if !hasIdentity || len(instanceID) != 16 {
+				node.logger.WithFields(map[string]any{
+					"node_id": id,
+				}).Infof("Auto-promote: learner has no instance_id yet; deferring promotion")
+
+				continue
+			}
+
+			removed, checkErr := node.membership.IsRemoved(id, instanceID)
+			if checkErr != nil {
+				node.logger.WithFields(map[string]any{
+					"node_id": id,
+					"error":   checkErr,
+				}).Errorf("Auto-promote: reading removed-member registry failed; skipping promotion this tick")
+
+				continue
+			}
+
+			if removed {
+				node.logger.WithFields(map[string]any{
+					"node_id":    id,
+					"instanceID": hex.EncodeToString(instanceID),
+				}).Infof("Auto-promote: refusing blacklisted learner (EN-1045); operator must forget-removed to re-admit")
+
+				continue
 			}
 
 			node.lastAutoPromote[id] = now
@@ -2512,13 +2744,18 @@ func initialJoinVoters(peers []Peer, selfID uint64) []uint64 {
 // through WriteConfChange).
 func registerInitialPeers(m *membership.Membership, cfg NodeConfig, includeSelf bool) error {
 	if includeSelf {
-		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr); err != nil {
+		if err := m.Register(cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID); err != nil {
 			return fmt.Errorf("persisting self in peer store: %w", err)
 		}
 	}
 
+	// Initial peers' instance IDs are not known at cluster-formation time
+	// — each peer generates its own on first boot and reports it via
+	// JoinAsLearner. Persist with empty InstanceID; the row is refreshed
+	// by WriteConfChange when the peer later goes through ConfChange
+	// apply (EN-1045).
 	for _, p := range cfg.Peers {
-		if err := m.Register(p.ID, p.Address, p.ServiceAddress); err != nil {
+		if err := m.Register(p.ID, p.Address, p.ServiceAddress, nil); err != nil {
 			return fmt.Errorf("persisting initial peer %d: %w", p.ID, err)
 		}
 	}

@@ -62,6 +62,7 @@ type Membership struct {
 	selfNodeID      uint64
 	selfRaftAddr    string
 	selfServiceAddr string
+	selfInstanceID  []byte
 	logger          logging.Logger
 
 	mu        sync.RWMutex
@@ -91,7 +92,7 @@ type Membership struct {
 // Failure to read the peer rows is fatal: without them the node would
 // boot with an empty cache while the WAL ConfState still claims the
 // cluster has voters.
-func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, logger logging.Logger) (*Membership, error) {
+func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
 	addresses, err := store.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("loading peers from pebble: %w", err)
@@ -108,6 +109,7 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 		selfNodeID:      selfNodeID,
 		selfRaftAddr:    selfRaftAddr,
 		selfServiceAddr: selfServiceAddr,
+		selfInstanceID:  selfInstanceID,
 		logger:          logger,
 		addresses:       addresses,
 	}, nil
@@ -190,6 +192,27 @@ func (m *Membership) PeerAddresses() map[uint64]ConfChangeContext {
 	return cp
 }
 
+// GetInstanceID returns the peer's 16-byte identity UUID from the in-memory
+// cache, and ok=true when the peer is currently known. Returns (nil, false)
+// when the peer is not in the cache — the caller decides whether that's an
+// error (RemoveNode) or a skip (checkAndPromoteLearners of a not-yet-added
+// learner).
+//
+// Used by Node.RemoveNode to pack the target's identity into the
+// ConfChange context before proposing, so every node's FSM apply lands the
+// same RemovedMemberEntry atomically with the peer row delete.
+func (m *Membership) GetInstanceID(nodeID uint64) ([]byte, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	addr, ok := m.addresses[nodeID]
+	if !ok {
+		return nil, false
+	}
+
+	return addr.InstanceID, true
+}
+
 // Set upserts a peer in the cache AND wires it into the transport +
 // service pool so the Raft transport / client RPCs can reach it on the
 // next tick. Used from finishReady once a ConfChange has been observed
@@ -200,13 +223,14 @@ func (m *Membership) PeerAddresses() map[uint64]ConfChangeContext {
 // Cache mutation and transport wiring both happen inside the lock so
 // they stay in lockstep with a concurrent Rehydrate. See Rehydrate's
 // locking note.
-func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string) {
+func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.addresses[nodeID] = ConfChangeContext{
 		RaftAddress:    raftAddr,
 		ServiceAddress: serviceAddr,
+		InstanceID:     instanceID,
 	}
 
 	m.wireAdd(nodeID, raftAddr, serviceAddr)
@@ -231,12 +255,17 @@ func (m *Membership) Remove(nodeID uint64) {
 // Register writes a peer through Pebble (own session) AND the cache, in
 // lockstep. Used by lifecycle paths that bypass the FSM: bootstrap
 // initial-peer persistence and ForceRemoveNode (dual: Unregister).
-func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string) error {
-	if err := m.store.Put(nodeID, raftAddr, serviceAddr); err != nil {
+// instanceID is 16 bytes (EN-1045) for peers whose identity is known
+// (self at boot, JoinAsLearner outcome); may be empty for bootstrap
+// initial-peer entries whose identity is not known at cluster-formation
+// time (the row is refreshed by WriteConfChange when the peer later
+// goes through the ConfChange apply path).
+func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
+	if err := m.store.Put(nodeID, raftAddr, serviceAddr, instanceID); err != nil {
 		return fmt.Errorf("persisting peer %d: %w", nodeID, err)
 	}
 
-	m.Set(nodeID, raftAddr, serviceAddr)
+	m.Set(nodeID, raftAddr, serviceAddr, instanceID)
 
 	return nil
 }
@@ -252,6 +281,66 @@ func (m *Membership) Unregister(nodeID uint64) error {
 	m.Remove(nodeID)
 
 	return nil
+}
+
+// UnregisterAndBlacklist removes a peer AND persists a RemovedMemberEntry
+// for (nodeID, instanceID) in the same Pebble transaction. Used by
+// ForceRemoveNode so a still-alive removed pod cannot silently rejoin and
+// be auto-promoted (EN-1045).
+//
+// The two writes commit atomically inside a single dal.WriteSession — the
+// closest we can get given WAL and Pebble are independent stores (see
+// docs/technical/architecture/subsystems/consensus/removed-member-registry.md).
+// Followers converge via the next snapshot they receive.
+//
+// removedAt is stamped by the leader with wall-clock time; this path runs
+// outside the FSM apply hot path and is therefore free to use time (unlike
+// the consensus path which is deterministic-only).
+func (m *Membership) UnregisterAndBlacklist(nodeID uint64, instanceID []byte, removedAt uint64) error {
+	if len(instanceID) != 16 {
+		return fmt.Errorf("UnregisterAndBlacklist: instance id must be 16 bytes, got %d", len(instanceID))
+	}
+
+	session := m.store.OpenWriteSession()
+
+	if err := m.store.DeleteInSession(session, nodeID); err != nil {
+		_ = session.Cancel()
+
+		return fmt.Errorf("deleting peer %d in force-remove batch: %w", nodeID, err)
+	}
+
+	if err := m.store.MarkRemoved(session, &raftcmdpb.RemovedMemberEntry{
+		NodeId:     nodeID,
+		InstanceId: instanceID,
+		RemovedAt:  removedAt,
+		Reason:     removedReasonForce,
+	}); err != nil {
+		_ = session.Cancel()
+
+		return fmt.Errorf("writing blacklist entry in force-remove batch: %w", err)
+	}
+
+	if err := session.Commit(); err != nil {
+		return fmt.Errorf("commit force-remove batch: %w", err)
+	}
+
+	m.Remove(nodeID)
+
+	return nil
+}
+
+// IsRemoved reports whether a tombstone exists for (nodeID, instanceID).
+// Thin passthrough to PeerStore.IsRemoved kept on Membership so callers
+// depend on a single membership surface.
+func (m *Membership) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
+	return m.store.IsRemoved(nodeID, instanceID)
+}
+
+// PeerStore exposes the underlying store — admin RPCs use it for the
+// list-removed / forget-removed paths. Prefer IsRemoved /
+// UnregisterAndBlacklist on Membership for the common paths.
+func (m *Membership) PeerStore() *PeerStore {
+	return m.store
 }
 
 // ReconcileAgainstConfState drops every peer (Pebble + cache +
@@ -342,7 +431,7 @@ func (m *Membership) Rehydrate() error {
 	// address change is modelled as RemovePeer + AddPeer.
 	for nodeID, addr := range fresh {
 		oldAddr, existed := old[nodeID]
-		if existed && oldAddr == addr {
+		if existed && oldAddr.Equal(addr) {
 			continue
 		}
 
@@ -395,7 +484,7 @@ func (m *Membership) OnSnapshotInstalled() {
 	// Better to fall through and let Rehydrate reload from Pebble
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
-	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr); err != nil {
+	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Refreshing self in Pebble before snapshot reload failed; next checkpoint we serve may carry a stale self address")
@@ -432,21 +521,53 @@ func (m *Membership) WriteConfChange(entry raftpb.Entry, session *dal.WriteSessi
 
 	return WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
 		switch t {
-		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
 			if ctx == nil {
 				return nil
 			}
 
+			// UpdateNode uses the same peer-row write path as Add/AddLearner:
+			// it refreshes an existing row with a fresh (addr, instance_id).
+			// Used by the admin cluster.AddLearner + boot flow (EN-1045) so
+			// a row initially written with nil instance_id gets updated when
+			// the pod actually calls JoinAsLearner.
 			if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
 				NodeId:         nodeID,
 				RaftAddress:    ctx.RaftAddress,
 				ServiceAddress: ctx.ServiceAddress,
+				InstanceId:     ctx.InstanceID,
 			}); err != nil {
 				return fmt.Errorf("session write peer %d: %w", nodeID, err)
 			}
 		case raftpb.ConfChangeRemoveNode:
 			if err := session.DeleteKey(peerKey(nodeID)); err != nil {
 				return fmt.Errorf("session delete peer %d: %w", nodeID, err)
+			}
+
+			// EN-1045: when the proposer packed the removed peer's
+			// instance_id into the context, land the RemovedMemberEntry
+			// atomically with the peer row delete. Missing context is
+			// legal for peers whose row was created via the admin
+			// cluster.AddLearner path without the target ever booting
+			// (phantom learner) — their identity is unknown and there
+			// is nothing to blacklist. In that case only the peer row
+			// is deleted.
+			if ctx == nil || len(ctx.InstanceID) != 16 {
+				return nil
+			}
+
+			if err := m.store.MarkRemoved(session, &raftcmdpb.RemovedMemberEntry{
+				NodeId:     nodeID,
+				InstanceId: ctx.InstanceID,
+				Reason:     removedReasonConsensus,
+				// RemovedAt is intentionally left 0 in the consensus
+				// path: FSM apply must be deterministic (invariant #2),
+				// wall-clock time is off limits, and the raft entry
+				// index/term are not audit-friendly timestamps. The
+				// force path (leader-local, not FSM apply) stamps a
+				// wall-clock microsecond timestamp.
+			}); err != nil {
+				return err
 			}
 		}
 
