@@ -1824,6 +1824,14 @@ type chainBoundState struct {
 	reverted     map[string]map[uint64]uint64
 	metadata     map[string]map[string]map[string][]chainBoundMutation
 	accountTypes map[string]map[string][]chainBoundMutation
+	// nextTxID mirrors LedgerBoundaries.NextTransactionId per ledger,
+	// bumped on every SUCCESSFUL CreateTransactionOrder / RevertTransactionOrder
+	// the chain scan replays (skipped orders don't consume a slot). Seeded
+	// to 1 at CreateLedger — the FSM's initial value. Used to derive the
+	// tx id an order's transaction-scoped metadata (CreateTransaction.metadata,
+	// RevertTransaction.metadata) actually targeted, so a later
+	// DeleteMetadata(target=<that tx id>) skip check can see the presence.
+	nextTxID map[string]uint64
 }
 
 // chainBoundMutation records one presence-flip observed on the audit
@@ -1844,6 +1852,7 @@ func newChainBoundState() *chainBoundState {
 		reverted:     make(map[string]map[uint64]uint64),
 		metadata:     make(map[string]map[string]map[string][]chainBoundMutation),
 		accountTypes: make(map[string]map[string][]chainBoundMutation),
+		nextTxID:     make(map[string]uint64),
 	}
 }
 
@@ -2063,11 +2072,19 @@ func collectExpectedSkippable(
 //
 //   - RemoveAccountType → chainBound.accountTypes (exists=false).
 //
-// Documented gap: transaction-scoped metadata (CreateTransaction.metadata,
-// RevertTransaction.metadata) is NOT tracked because it targets a tx id
-// the FSM allocates from per-ledger NextTransactionId — the id is not
-// visible on the chain-bound order and would require replaying
-// per-ledger counters. Follow-up ticket.
+//   - CreateTransaction.metadata → chainBound.metadata (exists=true)
+//     at target=<allocated tx id>. The tx id is derived from the
+//     per-ledger nextTxID counter which mirrors the FSM's
+//     LedgerBoundaries.NextTransactionId. Skipped CreateTransactions
+//     (identified via the chain-bound reference already claimed) do
+//     NOT consume a slot — see chainBoundCreateTxSkipped.
+//
+//   - RevertTransaction.metadata → chainBound.metadata (exists=true)
+//     at target=<newly-allocated revert tx id>. The revert produces a
+//     NEW transaction (the inverse posting); metadata on the order
+//     targets that new tx, not the original one being reverted.
+//     Skipped RevertTransactions (via chain-bound prior revert of
+//     the same tx) do NOT consume a slot.
 //
 // All other order shapes are inert.
 func recordChainBoundMutations(
@@ -2081,6 +2098,11 @@ func recordChainBoundMutations(
 	}
 
 	if cl := ls.GetCreateLedger(); cl != nil {
+		// Initial FSM counter: LedgerBoundaries.NextTransactionId = 1.
+		if _, seen := chainBound.nextTxID[ledger]; !seen {
+			chainBound.nextTxID[ledger] = 1
+		}
+
 		for name := range cl.GetAccountTypes() {
 			if name != "" {
 				appendAccountTypeMutation(chainBound.accountTypes, ledger, name, logSeq, true)
@@ -2091,10 +2113,6 @@ func recordChainBoundMutations(
 	apply := ls.GetApply()
 	if apply == nil {
 		return
-	}
-
-	if rt := apply.GetRevertTransaction(); rt != nil {
-		rememberFirstRevert(chainBound.reverted, ledger, rt.GetTransactionId(), logSeq)
 	}
 
 	if am := apply.GetAddMetadata(); am != nil {
@@ -2115,6 +2133,9 @@ func recordChainBoundMutations(
 	}
 
 	if ct := apply.GetCreateTransaction(); ct != nil {
+		// account_metadata targets are known independently of the
+		// FSM-allocated tx id, so record them regardless of skip
+		// state.
 		for account, mm := range ct.GetAccountMetadata() {
 			if account == "" {
 				continue
@@ -2122,6 +2143,38 @@ func recordChainBoundMutations(
 
 			for key := range mm.GetValues() {
 				appendMetadataMutation(chainBound.metadata, ledger, account, key, logSeq, true)
+			}
+		}
+
+		// Chain-bound tx id derivation: if the reference was already
+		// claimed at an earlier live seq, this order would be skipped
+		// by TRANSACTION_REFERENCE_CONFLICT and the counter is NOT
+		// bumped. Otherwise the order succeeds and takes the current
+		// slot.
+		if !chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) {
+			txID := allocateChainBoundTxID(ledger, chainBound)
+			target := strconv.FormatUint(txID, 10)
+
+			for key := range ct.GetMetadata() {
+				appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
+			}
+		}
+	}
+
+	if rt := apply.GetRevertTransaction(); rt != nil {
+		if !chainBoundRevertSkipped(ledger, rt, chainBound) {
+			// The revert creates a NEW tx (with the inverse
+			// postings); RevertTransactionOrder.metadata targets that
+			// new tx. Chain-bound.reverted is bumped WITH the
+			// ORIGINAL tx id (first-revert-wins), separately from
+			// counter allocation.
+			rememberFirstRevert(chainBound.reverted, ledger, rt.GetTransactionId(), logSeq)
+
+			newTxID := allocateChainBoundTxID(ledger, chainBound)
+			target := strconv.FormatUint(newTxID, 10)
+
+			for key := range rt.GetMetadata() {
+				appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
 			}
 		}
 	}
@@ -2137,6 +2190,77 @@ func recordChainBoundMutations(
 			appendAccountTypeMutation(chainBound.accountTypes, ledger, name, logSeq, false)
 		}
 	}
+}
+
+// allocateChainBoundTxID mirrors the FSM's boundary bump: returns the
+// current nextTxID for the ledger, then increments. Auto-initialises to
+// 1 (matching CreateLedger's initial value) when the ledger's counter
+// has not been seeded yet — this covers ledgers whose CreateLedger
+// order lives in an archived chapter beyond our live scan window.
+func allocateChainBoundTxID(ledger string, chainBound *chainBoundState) uint64 {
+	current, seen := chainBound.nextTxID[ledger]
+	if !seen {
+		current = 1
+	}
+
+	chainBound.nextTxID[ledger] = current + 1
+
+	return current
+}
+
+// chainBoundCreateTxSkipped predicts whether a CreateTransactionOrder
+// would have been converted to an OrderSkippedLog by the FSM. Today
+// only TRANSACTION_REFERENCE_CONFLICT is skippable on that action, and
+// the sub-processor detects the conflict via a chain-bound reference
+// claim strictly earlier than the current logSeq. Consulting
+// chainBound.references BEFORE the current item's reference is recorded
+// answers "was this reference already claimed by an earlier live entry?".
+func chainBoundCreateTxSkipped(
+	ledger string,
+	ct *raftcmdpb.CreateTransactionOrder,
+	logSeq uint64,
+	chainBound *chainBoundState,
+) bool {
+	if ct == nil {
+		return false
+	}
+
+	ref := ct.GetReference()
+	if ref == "" {
+		return false
+	}
+
+	firstSeenSeq, claimed := chainBound.references[ledger][ref]
+	if !claimed {
+		return false
+	}
+
+	return firstSeenSeq < logSeq
+}
+
+// chainBoundRevertSkipped predicts whether a RevertTransactionOrder
+// would have been converted to an OrderSkippedLog by the FSM. Only
+// TRANSACTION_ALREADY_REVERTED is skippable on revert, and the
+// sub-processor gates on chain-bound.reverted[ledger][txID] existing
+// strictly earlier than this order. Consulting the map BEFORE the
+// current revert is recorded answers "was tx already reverted?".
+func chainBoundRevertSkipped(
+	ledger string,
+	rt *raftcmdpb.RevertTransactionOrder,
+	chainBound *chainBoundState,
+) bool {
+	if rt == nil {
+		return false
+	}
+
+	txID := rt.GetTransactionId()
+	if txID == 0 {
+		return false
+	}
+
+	_, seen := chainBound.reverted[ledger][txID]
+
+	return seen
 }
 
 // recordMirrorIngestMutations mirrors recordChainBoundMutations for the

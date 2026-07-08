@@ -809,7 +809,7 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(items, expectedSkip, &chainBoundState{references: refs, reverted: make(map[string]map[uint64]uint64), metadata: make(map[string]map[string]map[string][]chainBoundMutation), accountTypes: make(map[string]map[string][]chainBoundMutation)})
+	collectExpectedSkippable(items, expectedSkip, chainBoundStateFromRefs(refs))
 
 	require.Equal(t, uint64(100), refs["L"]["ref-A"], "first claim must win for re-claimed reference")
 	require.Equal(t, uint64(101), refs["L"]["ref-B"])
@@ -863,7 +863,7 @@ func TestCollectExpectedSkippable_TracksMirrorIngestedReferences(t *testing.T) {
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(items, expectedSkip, &chainBoundState{references: refs, reverted: make(map[string]map[uint64]uint64), metadata: make(map[string]map[string]map[string][]chainBoundMutation), accountTypes: make(map[string]map[string][]chainBoundMutation)})
+	collectExpectedSkippable(items, expectedSkip, chainBoundStateFromRefs(refs))
 
 	require.Equal(t, uint64(50), refs["L"]["mirror-ref"],
 		"mirror-ingested reference must be recorded at its log sequence so later skip verifiers see the prior claim")
@@ -909,7 +909,7 @@ func TestCollectExpectedSkippable_HonoursItemLogSequence(t *testing.T) {
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(items, expectedSkip, &chainBoundState{references: refs, reverted: make(map[string]map[uint64]uint64), metadata: make(map[string]map[string]map[string][]chainBoundMutation), accountTypes: make(map[string]map[string][]chainBoundMutation)})
+	collectExpectedSkippable(items, expectedSkip, chainBoundStateFromRefs(refs))
 
 	require.Contains(t, expectedSkip, uint64(80))
 	require.Contains(t, expectedSkip, uint64(200))
@@ -1371,4 +1371,128 @@ func TestVerifySkippedOrder_AccountTypeNotFoundRejectsMissingCorrelator(t *testi
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
 	events := captureEvents(t, "L", 7, payload, expected, nil, false)
 	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestCollectExpectedSkippable_TracksTransactionScopedMetadata pins the
+// per-ledger nextTxID counter: metadata written by CreateTransaction
+// (via .metadata → new tx id) and RevertTransaction (via .metadata →
+// new revert tx id) MUST appear on chainBound.metadata at target=<tx
+// id string>. Without this a later DeleteMetadata(target=TransactionId,
+// key=X) with skippable_reasons=[METADATA_NOT_FOUND] would falsely pass
+// the "was absent" check because the timeline would look empty.
+func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) {
+	t.Parallel()
+
+	// Build a synthetic audit-item stream on ledger "L":
+	//   seq=10: CreateLedger — seeds nextTxID to 1
+	//   seq=11: CreateTransaction with metadata{foo:bar} — takes tx id 1
+	//   seq=12: CreateTransaction with reference "ref-A" — takes tx id 2
+	//   seq=13: CreateTransaction with reference "ref-A" AND skippable_reasons=[REF_CONFLICT]
+	//           → skipped (chain shows ref-A claimed at 12), does NOT consume tx id 3
+	//   seq=14: RevertTransaction targeting tx id 1 with metadata{note:reverted}
+	//           → NEW tx id 3 assigned to the revert
+	//
+	// After the run, chainBound.metadata["L"] must contain:
+	//   target="1", key="foo": {seq=11, exists=true}
+	//   target="3", key="note": {seq=14, exists=true}
+	// AND chainBound.nextTxID["L"] must be 4.
+
+	items := []*auditpb.AuditItem{
+		buildAuditItem(t, 10, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
+			},
+		}}),
+		buildAuditItem(t, 11, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+							Metadata: map[string]*commonpb.MetadataValue{"foo": commonpb.NewStringValue("bar")},
+						},
+					}},
+				},
+			},
+		}}),
+		buildAuditItem(t, 12, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+						CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: "ref-A"},
+					}},
+				},
+			},
+		}}),
+		buildAuditItem(t, 13, &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "L",
+					Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+						Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Reference: "ref-A",
+								Metadata:  map[string]*commonpb.MetadataValue{"skipped": commonpb.NewStringValue("y")},
+							},
+						}},
+					},
+				},
+			},
+			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		}),
+		buildAuditItem(t, 14, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+						RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+							TransactionId: 1,
+							Metadata:      map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("reverted")},
+						},
+					}},
+				},
+			},
+		}}),
+	}
+
+	cb := newChainBoundState()
+	collectExpectedSkippable(items, map[uint64]*expectedSkippableOrder{}, cb)
+
+	// Tx-scoped metadata from CreateTransaction @ seq=11 → target="1".
+	fooMuts := cb.metadata["L"]["1"]["foo"]
+	require.Len(t, fooMuts, 1)
+	require.True(t, fooMuts[0].exists, "CreateTransaction.metadata must be recorded as exists=true")
+	require.Equal(t, uint64(11), fooMuts[0].seq)
+
+	// Tx-scoped metadata from RevertTransaction @ seq=14 → target="3"
+	// (revert consumes a new tx id after ref-A at 12 was assigned 2).
+	noteMuts := cb.metadata["L"]["3"]["note"]
+	require.Len(t, noteMuts, 1)
+	require.True(t, noteMuts[0].exists)
+	require.Equal(t, uint64(14), noteMuts[0].seq)
+
+	// Skipped CreateTransaction @ seq=13 did NOT consume tx id 3 and
+	// did NOT leak its metadata onto the timeline.
+	require.Empty(t, cb.metadata["L"]["3"]["skipped"], "skipped CreateTransaction.metadata must not surface on the timeline")
+
+	// Counter: 1 (initial) + create(1→2) + create(2→3) + skip + revert(3→4) = 4.
+	require.Equal(t, uint64(4), cb.nextTxID["L"], "nextTxID must reflect only successful CreateTransaction/RevertTransaction orders")
+}
+
+// buildAuditItem is the test-side constructor for an AuditItem: takes
+// the log seq and the raftcmdpb.Order to serialize into serialized_order.
+func buildAuditItem(t *testing.T, logSeq uint64, order *raftcmdpb.Order) *auditpb.AuditItem {
+	t.Helper()
+
+	raw, err := order.MarshalVT()
+	require.NoError(t, err)
+
+	return &auditpb.AuditItem{
+		LogSequence:     logSeq,
+		SerializedOrder: raw,
+	}
 }
