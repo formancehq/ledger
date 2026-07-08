@@ -2,8 +2,10 @@ package state
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
+	"runtime/pprof"
 	"slices"
 	"sort"
 
@@ -20,6 +22,29 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// labeledMerge wraps a merge worker in a pprof-labeled scope so Pyroscope
+// can attribute the goroutine's CPU to the specific store. The label pair
+// `component=applier.merge, store=<name>` composes with the labels set
+// by Applier.Run (component=applier.main / applier.decoder / applier.committer):
+//
+//   - {component="applier.merge"}                  — all 11 workers together
+//   - {component="applier.merge", store="volumes"} — just the Volumes worker
+//   - {component="applier.main"}                   — main loop excluding the
+//     merge workers (they run on their own goroutines with the merge label)
+//
+// pprof.Do resets the goroutine's label set for the duration of the callback
+// and restores it on return, so no cleanup is needed.
+func labeledMerge(store string, fn func() error) func() error {
+	return func() error {
+		var err error
+		pprof.Do(context.Background(), pprof.Labels("component", "applier.merge", "store", store), func(context.Context) {
+			err = fn()
+		})
+
+		return err
+	}
+}
 
 // signingKeyUpdate represents a pending signing key change to be applied during Merge.
 type signingKeyUpdate struct {
@@ -269,7 +294,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	var g errgroup.Group
 
-	g.Go(func() error {
+	g.Go(labeledMerge("ledgers", func() error {
 		var err error
 		ledgerUpdates, ledgerDeletions, err = b.Derived.Ledgers.Merge()
 		if err != nil {
@@ -277,8 +302,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("volumes", func() error {
 		var err error
 		volumeUpdates, _, err = b.Derived.Volumes.Merge()
 		if err != nil {
@@ -286,8 +311,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("account_metadata", func() error {
 		var err error
 		metadataUpdates, metadataDeletions, err = b.Derived.AccountMetadata.Merge()
 		if err != nil {
@@ -295,8 +320,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("references", func() error {
 		var err error
 		referenceUpdates, referenceDeletions, err = b.Derived.References.Merge()
 		if err != nil {
@@ -304,8 +329,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("transactions", func() error {
 		var err error
 		transactionUpdates, transactionDeletions, err = b.Derived.Transactions.Merge()
 		if err != nil {
@@ -313,8 +338,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("ledger_metadata", func() error {
 		var err error
 		ledgerMetadataUpdates, ledgerMetadataDeletions, err = b.Derived.LedgerMetadata.Merge()
 		if err != nil {
@@ -322,8 +347,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("sink_configs", func() error {
 		var err error
 		sinkConfigUpdates, sinkConfigDeletions, err = b.Derived.SinkConfigs.Merge()
 		if err != nil {
@@ -331,8 +356,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("numscript_versions", func() error {
 		var err error
 		numscriptVersionUpdates, numscriptVersionDeletions, err = b.Derived.NumscriptVersions.Merge()
 		if err != nil {
@@ -340,8 +365,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("numscript_contents", func() error {
 		var err error
 		numscriptContentUpdates, numscriptContentDeletions, err = b.Derived.NumscriptContents.Merge()
 		if err != nil {
@@ -349,8 +374,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("prepared_queries", func() error {
 		var err error
 		preparedQueryUpdates, preparedQueryDeletions, err = b.Derived.PreparedQueries.Merge()
 		if err != nil {
@@ -358,8 +383,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
-	g.Go(func() error {
+	}))
+	g.Go(labeledMerge("indexes", func() error {
 		var err error
 		indexUpdates, indexDeletions, err = b.Derived.Indexes.Merge()
 		if err != nil {
@@ -367,7 +392,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 
 		return nil
-	})
+	}))
 
 	if err := g.Wait(); err != nil {
 		return err
