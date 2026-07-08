@@ -234,6 +234,7 @@ func resolveInvolvedAccount(expr accounts.InvolvedAccountExpr) (string, bool) {
 		if e.Amount == nil {
 			return "", false
 		}
+
 		return e.Amount.String(), true
 	case accounts.ConcatAccount:
 		left, ok := resolveInvolvedAccount(e.Left)
@@ -244,8 +245,10 @@ func resolveInvolvedAccount(expr accounts.InvolvedAccountExpr) (string, bool) {
 		if !ok {
 			return "", false
 		}
+
 		return left + right, true
 	}
+
 	return "", false
 }
 
@@ -272,19 +275,23 @@ func resolveInvolvedAsset(expr accounts.InvolvedAccountExpr) (string, bool) {
 		if asset, ok := resolveInvolvedAsset(e.Left); ok {
 			return asset, true
 		}
+
 		return resolveInvolvedAsset(e.Right)
 	case accounts.Sub:
 		if asset, ok := resolveInvolvedAsset(e.Left); ok {
 			return asset, true
 		}
+
 		return resolveInvolvedAsset(e.Right)
 	case accounts.Div:
 		if asset, ok := resolveInvolvedAsset(e.Left); ok {
 			return asset, true
 		}
+
 		return resolveInvolvedAsset(e.Right)
 	case accounts.SubPrefix:
 		return resolveInvolvedAsset(e.Expr)
 	}
+
 	return "", false
 }
