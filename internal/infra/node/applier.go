@@ -42,6 +42,22 @@ type applyWork struct {
 	responses []raftpb.Message
 }
 
+// decodedApplyWork is the post-prefetch shape consumed by Run's main loop.
+// The decoder goroutine (see Run) reads applyWork from a.ch, invokes
+// state.DecodeEntries for work items carrying entries, and forwards the
+// result here so the Prepare stage never blocks on the UnmarshalVT
+// pass. Non-entries work items (barrier, syncLeader, installSnapshot) are
+// forwarded with `decoded` nil and `err` nil — the decoder is a strict
+// pass-through for them, preserving ordering vs entries.
+//
+// If DecodeEntries fails, `err` carries the wrapped error and `decoded` is
+// nil. The main loop propagates the error immediately without applying.
+type decodedApplyWork struct {
+	work    applyWork
+	decoded []state.DecodedEntry
+	err     error
+}
+
 // gatingResult carries the outcome of a maintenance task back to the Run
 // goroutine so it can decide whether to unspool or mark the node out-of-sync.
 type gatingResult struct {
@@ -70,8 +86,9 @@ type Applier struct {
 	gatingReason     atomic.Int32 // gatingReason* constants — for observability
 	syncProgress     atomic.Pointer[state.SyncProgress]
 	gatingTerminated chan gatingResult
-	ch               chan applyWork  // buffered(1)
-	commitCh         chan commitWork // buffered(1), read by the committer goroutine
+	ch               chan applyWork        // buffered(1); producer-facing input
+	decodedCh        chan decodedApplyWork // buffered(1); read by Run, populated by the decoder goroutine
+	commitCh         chan commitWork       // buffered(1), read by the committer goroutine
 
 	// pending holds the in-flight commit result channel, if any.
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
@@ -189,6 +206,7 @@ func NewApplier(
 		responseSink:            responseSink,
 		status:                  &initialStatus,
 		ch:                      make(chan applyWork, 1),
+		decodedCh:               make(chan decodedApplyWork, 1),
 		commitCh:                make(chan commitWork, 1),
 	}
 
@@ -690,6 +708,35 @@ func (a *Applier) Status() int32 {
 
 // Run is the Applier goroutine. It processes submitted work items and
 // handles gating termination (unspool after maintenance tasks).
+//
+// Concurrency layout inside Run:
+//
+//	Submit / Barrier / SyncFromLeader / ... ─▶ a.ch
+//	                                             │
+//	                                             ▼
+//	                                      [decoder goroutine]
+//	                                       - reads a.ch
+//	                                       - state.DecodeEntries for entries
+//	                                       - forwards everything else as-is
+//	                                             │
+//	                                             ▼
+//	                                          a.decodedCh
+//	                                             │
+//	                                             ▼
+//	                                    [main loop below]
+//	                                     - Prepare / async commit
+//	                                     - Barrier / status transitions
+//	                                             │
+//	                                             ▼
+//	                                          a.commitCh
+//	                                             │
+//	                                             ▼
+//	                                      [committer goroutine]
+//	                                       - CommitPreparedBatch
+//
+// The decoder stage is what lets Prepare(N) overlap with Decode(N+1):
+// UnmarshalVT of the next batch runs on a spare core while the applier
+// holds fsm.mu for the current batch.
 func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	// Start the dedicated committer goroutine. It exits when commitCh is closed.
 	committerDone := make(chan struct{})
@@ -697,6 +744,19 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	go func() {
 		a.runCommitter(ctx, stop)
 		close(committerDone)
+	}()
+
+	// Start the decoder goroutine. It exits when its context is cancelled
+	// (below on Run's exit) OR when a.ch is closed. We use a local cancel
+	// tied to Run's lifetime so the decoder unwinds even on normal exit
+	// where the outer ctx is still live (e.g. tests that stop the applier
+	// via a stop channel without cancelling ctx).
+	decoderCtx, cancelDecoder := context.WithCancel(ctx)
+	decoderDone := make(chan struct{})
+
+	go func() {
+		defer close(decoderDone)
+		a.runDecoder(decoderCtx)
 	}()
 
 	defer func() {
@@ -707,6 +767,15 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 		close(a.commitCh)
 		<-committerDone
+
+		// Signal the decoder to stop, then drain any batches it managed to
+		// hand off before cancellation. Every release returns pooled
+		// proposals to vtproto's pool.
+		cancelDecoder()
+		<-decoderDone
+		for dw := range a.decodedCh {
+			state.ReleaseDecodedEntries(dw.decoded)
+		}
 	}()
 
 	var (
@@ -717,7 +786,8 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 	for {
 		select {
-		case work := <-a.ch:
+		case dw := <-a.decodedCh:
+			work := dw.work
 			a.batchWaitDurationHistogram.Record(ctx, time.Since(waitStart).Microseconds())
 
 			if work.barrier != nil {
@@ -777,18 +847,39 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 			switch a.status.Load() {
 			case statusNormal:
-				// applyEntriesToFSM threads work.responses down to the last
-				// applyEntriesPipelined call, which attaches them to the
+				// Fail fast on a decode error surfaced by the prefetcher —
+				// the raft entry payload is corrupt (or the wire schema
+				// version is wrong), no point going further.
+				if dw.err != nil {
+					return dw.err
+				}
+				// applyDecodedEntriesToFSM threads work.responses down to the
+				// last applyEntriesPipelined call, which attaches them to the
 				// commitWork sent to runCommitter. runCommitter fires the
 				// responses AFTER CommitPreparedBatch succeeds, so
 				// raft.Applied advances in lockstep with FSM-applied without
 				// serializing prepare-N+1 against commit-N (the
 				// applier→committer pipeline is preserved).
-				err := a.applyEntriesToFSM(ctx, stop, work.confState, work.responses, work.entries...)
+				//
+				// The dw.decoded slice is pre-decoded by the runDecoder
+				// goroutine; applyDecodedEntriesToFSM takes ownership and
+				// releases it back to the pool via its defer.
+				err := a.applyDecodedEntriesToFSM(ctx, stop, work.confState, work.responses, dw.decoded)
 				if err != nil {
 					return err
 				}
 			default:
+				// Non-normal status: the pre-decoded proposals will not be
+				// applied by the FSM (entries go to the spool instead). Return
+				// them to the pool immediately so we don't leak on a
+				// long-running gating period.
+				//
+				// A decode error is non-fatal on this path — the raw entry
+				// bytes are still valid and get spooled as-is; a subsequent
+				// replay will re-attempt the decode with a matching wire
+				// schema.
+				state.ReleaseDecodedEntries(dw.decoded)
+
 				// Drain pending commit before switching to spool mode.
 				if err := a.waitPendingCommit(ctx); err != nil {
 					return err
@@ -1084,6 +1175,67 @@ func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture
 // races into the sink send AFTER orchestrate stopped draining would sit
 // forever on ctx.Done alone (finding 70740916). Selecting on stop too
 // unblocks the send synchronously with orchestrate's exit.
+// runDecoder is the prefetching decoder goroutine started by Run. It reads
+// applyWork items from a.ch, invokes state.DecodeEntries when the item
+// carries raft entries, and forwards the decoded batch (or a decode error)
+// on a.decodedCh. Non-entries work items (barrier / syncLeader /
+// installSnapshot) are forwarded verbatim with a nil decoded slice — the
+// decoder is a strict pass-through for them so ordering vs. entries is
+// preserved via a single goroutine.
+//
+// Exit conditions:
+//   - ctx.Done(): drop the currently-in-flight decode result (release its
+//     pooled Proposals) and return. Closing a.decodedCh here signals the
+//     main loop of an unclean shutdown; the Run defer drains anything still
+//     buffered.
+//   - a.ch closed (Stop): drain any remaining items, forward them, then
+//     close a.decodedCh cleanly so the main loop's <-a.decodedCh returns
+//     zero-value on the next iteration and the loop unwinds.
+//
+// The buffer=1 on a.decodedCh lets this goroutine race one batch ahead of
+// the applier: while Prepare(N) runs under fsm.mu, UnmarshalVT(N+1) runs on
+// a separate core. If Prepare(N) finishes before Decode(N+1) — unlikely on
+// the observed workload — the main loop simply waits on <-a.decodedCh.
+func (a *Applier) runDecoder(ctx context.Context) {
+	defer close(a.decodedCh)
+
+	for {
+		var (
+			work applyWork
+			ok   bool
+		)
+
+		select {
+		case <-ctx.Done():
+			return
+		case work, ok = <-a.ch:
+			if !ok {
+				return
+			}
+		}
+
+		dw := decodedApplyWork{work: work}
+		if len(work.entries) > 0 {
+			decoded, err := state.DecodeEntries(work.entries)
+			if err != nil {
+				dw.err = fmt.Errorf("decoding entries: %w", err)
+			} else {
+				dw.decoded = decoded
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			// Handoff aborted: release any pooled proposals we just
+			// decoded so vtproto's pool doesn't leak.
+			state.ReleaseDecodedEntries(dw.decoded)
+
+			return
+		case a.decodedCh <- dw:
+		}
+	}
+}
+
 func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 	for work := range a.commitCh {
 		err := a.fsm.CommitPreparedBatch(ctx, work.prepared)
@@ -1240,10 +1392,16 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 	}
 }
 
-// applyEntriesToFSM applies entries to the Machine using pipelined commits.
-// The prepare phase (CPU-bound) runs immediately while the previous batch's
-// commit may still be in-flight. The commit is deferred until the next batch
-// arrives or a drain is required.
+// applyDecodedEntriesToFSM applies pre-decoded entries to the Machine using
+// pipelined commits. The prepare phase (CPU-bound) runs immediately while
+// the previous batch's commit may still be in-flight; the commit is
+// deferred until the next batch arrives or a drain is required.
+//
+// The hot path in Run reads batches from the prefetching decoder goroutine
+// (Run → runDecoder → decodedCh) and calls this method directly, so the
+// UnmarshalVT cost is masked behind the previous batch's
+// PrepareDecodedEntries. The caller passes ownership of `decoded` — this
+// method releases it before returning.
 //
 // To preserve the "one PrepareEntries call = one commit through runCommitter"
 // invariant, callers must never mix a checkpoint-trigger entry with later
@@ -1259,15 +1417,7 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 // When that happens we MUST continue processing the tail in subsequent FSM
 // batches; dropping it produces an "entry index gap detected" panic in the
 // next PrepareEntries call. Hence the loop.
-func (a *Applier) applyEntriesToFSM(ctx context.Context, stop chan struct{}, confState *raftpb.ConfState, responses []raftpb.Message, entries ...raftpb.Entry) error {
-	// Decode once at the applier boundary so every downstream stage
-	// (checkpoint boundary scan, FSM apply, position validation) reads the
-	// already-decoded proposal instead of re-unmarshalling the raw payload.
-	decoded, err := state.DecodeEntries(entries)
-	if err != nil {
-		return fmt.Errorf("decoding entries: %w", err)
-	}
-
+func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct{}, confState *raftpb.ConfState, responses []raftpb.Message, decoded []state.DecodedEntry) error {
 	defer state.ReleaseDecodedEntries(decoded)
 
 	for offset := 0; offset < len(decoded); {
