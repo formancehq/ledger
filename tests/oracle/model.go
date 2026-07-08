@@ -217,14 +217,22 @@ func (s LedgerState) Hash(h io.Writer) {
 	hashFieldTypes(h, "TF", s.transactionFieldTypes)
 
 	// The log is already in id order; hash each tx's identity (id, reference,
-	// reverted) and its metadata. Postings are fixed at creation, so they add
-	// nothing to the canonical fingerprint.
+	// reverted), postings, and metadata. Postings belong in the fingerprint
+	// because two commuting unreferenced transactions can reach identical volumes
+	// and metadata under opposite serializations while differing only in which id
+	// holds which postings — a distinction validateTransactionRead checks by id.
+	var amt uint256.Int
 	for _, tx := range s.txs {
 		rev := ""
 		if tx.reverted {
 			rev = "R"
 		}
 		_, _ = fmt.Fprintf(h, "TX|%d|%s|%s\n", tx.id, tx.reference, rev)
+
+		for _, p := range tx.postings {
+			p.GetAmount().IntoUint256(&amt)
+			_, _ = fmt.Fprintf(h, "TP|%d|%s|%s|%s|%s\n", tx.id, p.GetSource(), p.GetDestination(), p.GetAsset(), amt.Dec())
+		}
 
 		mkeys := make([]string, 0, len(tx.metadata))
 		for k := range tx.metadata {
@@ -343,7 +351,7 @@ func (g GlobalState) Hash(h io.Writer) {
 	for _, n := range names {
 		ls := g.ledgers[n]
 		if len(ls.types) == 0 && len(ls.volumes) == 0 && len(ls.metadata) == 0 && len(ls.ledgerMeta) == 0 &&
-			len(ls.accountFieldTypes) == 0 && len(ls.ledgerFieldTypes) == 0 {
+			len(ls.accountFieldTypes) == 0 && len(ls.ledgerFieldTypes) == 0 && len(ls.transactionFieldTypes) == 0 {
 			continue
 		}
 		_, _ = fmt.Fprintf(h, "L|%s\n", n)

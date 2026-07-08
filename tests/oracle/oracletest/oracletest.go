@@ -117,6 +117,21 @@ func RevertReqL(ledger string, txID uint64, force bool) *servicepb.Request {
 	}
 }
 
+// SetTxFieldTypeReq declares a transaction-metadata field type, so tests can
+// build a ledger whose only state is its transaction schema.
+func SetTxFieldTypeReq(ledger, key string, t commonpb.MetadataType) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SetMetadataFieldType{
+			SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+				Ledger:     ledger,
+				TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+				Key:        key,
+				Type:       t,
+			},
+		},
+	}
+}
+
 // AddTxMetaReq builds an AddMetadata targeting transaction txID (ledger "L").
 func AddTxMetaReq(txID uint64, md map[string]*commonpb.MetadataValue) *servicepb.Request {
 	return &servicepb.Request{
