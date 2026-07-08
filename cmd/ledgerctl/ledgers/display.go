@@ -1,6 +1,7 @@
 package ledgers
 
 import (
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -70,14 +72,37 @@ func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 		pterm.Printf("  Rewrites:\n")
 
 		for i, rule := range rules {
-			match := rule.GetMatch()
-			if match == "" {
-				match = "true"
-			}
-
-			pterm.Printf("    [%d] match=%q cel=%q stop=%t\n", i, match, rule.GetCel(), rule.GetStop())
+			pterm.Printf("    [%d] %s stop=%t\n", i, describeRewriteRule(rule), rule.GetStop())
 		}
 	}
+}
+
+// describeRewriteRule renders a rule as `<scope> match=<expr> actions=<n>` for
+// the CLI display. It never inspects action payloads — that would double the
+// output; the scope and action count are enough to eyeball a config.
+func describeRewriteRule(rule *commonpb.MirrorRewriteRule) string {
+	switch scope := rule.GetScope().(type) {
+	case *commonpb.MirrorRewriteRule_CreatedTransaction:
+		return fmt.Sprintf("scope=created_transaction match=%q actions=%d", matchOrTrue(scope.CreatedTransaction.GetMatch()), len(scope.CreatedTransaction.GetActions()))
+	case *commonpb.MirrorRewriteRule_RevertedTransaction:
+		return fmt.Sprintf("scope=reverted_transaction match=%q actions=%d", matchOrTrue(scope.RevertedTransaction.GetMatch()), len(scope.RevertedTransaction.GetActions()))
+	case *commonpb.MirrorRewriteRule_SavedMetadata:
+		return fmt.Sprintf("scope=saved_metadata match=%q actions=%d", matchOrTrue(scope.SavedMetadata.GetMatch()), len(scope.SavedMetadata.GetActions()))
+	case *commonpb.MirrorRewriteRule_DeletedMetadata:
+		return fmt.Sprintf("scope=deleted_metadata match=%q actions=%d", matchOrTrue(scope.DeletedMetadata.GetMatch()), len(scope.DeletedMetadata.GetActions()))
+	case *commonpb.MirrorRewriteRule_AnyVariant:
+		return fmt.Sprintf("scope=any_variant match=%q actions=%d", matchOrTrue(scope.AnyVariant.GetMatch()), len(scope.AnyVariant.GetActions()))
+	default:
+		return "scope=<unset>"
+	}
+}
+
+func matchOrTrue(m string) string {
+	if m == "" {
+		return "true"
+	}
+
+	return m
 }
 
 // renderMirrorSyncProgress displays mirror sync progress information.
@@ -237,20 +262,14 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 	return commonpb.LedgerMode_LEDGER_MODE_MIRROR, cfg, nil
 }
 
-// rewriteRuleFile is the on-disk shape of a single CEL rewrite rule, parsed from
-// the YAML/JSON file passed to --mirror-rewrite-file.
-type rewriteRuleFile struct {
-	Match string `json:"match" yaml:"match"`
-	Cel   string `json:"cel"   yaml:"cel"`
-	Stop  bool   `json:"stop"  yaml:"stop"`
-}
-
-// parseRewriteRules assembles the mirror CEL rewrite rules from
-// --mirror-rewrite-file (a YAML/JSON list of {match, cel, stop}) followed by any
-// --mirror-rewrite-rule flags (one JSON object each). The rules are validated
-// server-side at admission; here we only parse them.
+// parseRewriteRules assembles the mirror rewrite rules from
+// --mirror-rewrite-file (a YAML/JSON list of MirrorRewriteRule) followed by
+// any --mirror-rewrite-rule flags (one YAML/JSON object each). Each rule is
+// routed through protojson so proto oneof variants (`scope`, `action`)
+// dispatch correctly; the default JSON decoder cannot do that. Rules are
+// validated server-side at admission — here we only decode.
 func parseRewriteRules(cmd *cobra.Command) ([]*commonpb.MirrorRewriteRule, error) {
-	var parsed []rewriteRuleFile
+	var rules []*commonpb.MirrorRewriteRule
 
 	if path, _ := cmd.Flags().GetString("mirror-rewrite-file"); path != "" {
 		data, err := os.ReadFile(path)
@@ -258,37 +277,78 @@ func parseRewriteRules(cmd *cobra.Command) ([]*commonpb.MirrorRewriteRule, error
 			return nil, fmt.Errorf("reading --mirror-rewrite-file %q: %w", path, err)
 		}
 
-		if err := yaml.Unmarshal(data, &parsed); err != nil {
+		fileRules, err := decodeRewriteRuleList(data)
+		if err != nil {
 			return nil, fmt.Errorf("parsing --mirror-rewrite-file %q: %w", path, err)
 		}
+
+		rules = append(rules, fileRules...)
 	}
 
 	inline, _ := cmd.Flags().GetStringArray("mirror-rewrite-rule")
 	for _, entry := range inline {
-		var rule rewriteRuleFile
-		if err := yaml.Unmarshal([]byte(entry), &rule); err != nil {
+		rule, err := decodeRewriteRule([]byte(entry))
+		if err != nil {
 			return nil, fmt.Errorf("parsing --mirror-rewrite-rule %q: %w", entry, err)
 		}
 
-		parsed = append(parsed, rule)
-	}
-
-	if len(parsed) == 0 {
-		return nil, nil
-	}
-
-	rules := make([]*commonpb.MirrorRewriteRule, 0, len(parsed))
-	for i, rule := range parsed {
-		if rule.Cel == "" {
-			return nil, fmt.Errorf("mirror rewrite rule %d: cel must not be empty", i)
-		}
-
-		rules = append(rules, &commonpb.MirrorRewriteRule{
-			Match: rule.Match,
-			Cel:   rule.Cel,
-			Stop:  rule.Stop,
-		})
+		rules = append(rules, rule)
 	}
 
 	return rules, nil
+}
+
+// decodeRewriteRuleList decodes a YAML/JSON list into MirrorRewriteRule
+// protos. YAML is bridged to JSON first because protojson is the only
+// decoder that understands the proto oneof dispatch.
+func decodeRewriteRuleList(data []byte) ([]*commonpb.MirrorRewriteRule, error) {
+	var raw []any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+
+	out := make([]*commonpb.MirrorRewriteRule, 0, len(raw))
+
+	for i, item := range raw {
+		jsonBytes, err := yamlToJSON(item)
+		if err != nil {
+			return nil, fmt.Errorf("rule %d: %w", i, err)
+		}
+
+		rule := &commonpb.MirrorRewriteRule{}
+		if err := protojson.Unmarshal(jsonBytes, rule); err != nil {
+			return nil, fmt.Errorf("rule %d: %w", i, err)
+		}
+
+		out = append(out, rule)
+	}
+
+	return out, nil
+}
+
+// decodeRewriteRule decodes a single YAML/JSON rule the same way.
+func decodeRewriteRule(data []byte) (*commonpb.MirrorRewriteRule, error) {
+	var raw any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+
+	jsonBytes, err := yamlToJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	rule := &commonpb.MirrorRewriteRule{}
+	if err := protojson.Unmarshal(jsonBytes, rule); err != nil {
+		return nil, err
+	}
+
+	return rule, nil
+}
+
+// yamlToJSON marshals a Go value produced by yaml.Unmarshal into JSON that
+// protojson can then decode. yaml.v3 already produces map[string]any for
+// mappings, so encoding/json handles the conversion natively.
+func yamlToJSON(v any) ([]byte, error) {
+	return stdjson.Marshal(v)
 }

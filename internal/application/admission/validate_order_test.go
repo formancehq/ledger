@@ -883,10 +883,22 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
-					{Match: `tx.metadata["type"] == "payout"`, Cel: `tx.setMetadata("category", "external")`, Stop: true},
+					anyRuleRewriteAddress(":worker:\\d+", ""),
+					createdRuleSetMetadata(`log.metadata["type"].string_value == "payout"`, "category", "external", true),
 				},
 			},
+		},
+		{
+			name: "unset scope rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Stop: true},
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
 		},
 		{
 			name: "invalid cel expression rejected at admission",
@@ -895,7 +907,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `this is not valid cel`},
+					anyRuleWithMatch(`this is not valid cel`),
 				},
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
@@ -907,19 +919,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Match: `"a string"`, Cel: `tx`},
-				},
-			},
-			wantErr: ErrMirrorRewriteRuleInvalid,
-		},
-		{
-			name: "cel not returning a transaction rejected at admission",
-			src: &commonpb.MirrorSourceConfig{
-				Type: &commonpb.MirrorSourceConfig_Http{
-					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
-				},
-				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `"not a tx"`},
+					anyRuleWithMatch(`"a string"`),
 				},
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
@@ -931,7 +931,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `tx.rewriteAddress("(", "")`},
+					anyRuleRewriteAddress("(", ""),
 				},
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,
@@ -943,19 +943,7 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
 				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `tx.setMetadata("bad key", "v")`},
-				},
-			},
-			wantErr: ErrMirrorRewriteRuleInvalid,
-		},
-		{
-			name: "unknown metadata type token rejected at admission",
-			src: &commonpb.MirrorSourceConfig{
-				Type: &commonpb.MirrorSourceConfig_Http{
-					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
-				},
-				RewriteRules: []*commonpb.MirrorRewriteRule{
-					{Cel: `tx.setMetadata("k", "v", "integer")`},
+					createdRuleSetMetadata("", "bad key", "v", false),
 				},
 			},
 			wantErr: ErrMirrorRewriteRuleInvalid,

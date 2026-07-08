@@ -381,10 +381,32 @@ var _ = Describe("Mirror", Ordered, func() {
 								},
 							},
 							RewriteRules: []*commonpb.MirrorRewriteRule{
-								// Strip ":worker:<n>" from every address and tag the tx.
-								{Cel: `tx.rewriteAddress(":worker:\\d+", "").setMetadata("mirrored", "true")`},
+								// Strip ":worker:<n>" from every address, whichever variant carries it.
+								{Scope: &commonpb.MirrorRewriteRule_AnyVariant{AnyVariant: &commonpb.AnyVariantRule{
+									Actions: []*commonpb.AnyVariantAction{{
+										Action: &commonpb.AnyVariantAction_RewriteAddress{
+											RewriteAddress: &commonpb.RewriteAddressAction{Pattern: ":worker:\\d+", Replacement: ""},
+										},
+									}},
+								}}},
+								// Tag every created transaction with a marker.
+								{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransactionRule{
+									Actions: []*commonpb.CreatedTransactionAction{{
+										Action: &commonpb.CreatedTransactionAction_SetMetadata{
+											SetMetadata: &commonpb.SetMetadataAction{
+											Key:    "mirrored",
+											Source: &commonpb.SetMetadataAction_Value{Value: "true"},
+										},
+										},
+									}},
+								}}},
 								// Never mirror transactions flagged skip=yes.
-								{Match: `has(tx.metadata.skip) && tx.metadata["skip"] == "yes"`, Cel: `tx.drop()`},
+								{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransactionRule{
+									Match: `has(log.metadata.skip) && log.metadata["skip"].string_value == "yes"`,
+									Actions: []*commonpb.CreatedTransactionAction{{
+										Action: &commonpb.CreatedTransactionAction_Drop{Drop: &commonpb.DropAction{}},
+									}},
+								}}},
 							},
 						},
 					},
@@ -454,7 +476,11 @@ var _ = Describe("Mirror", Ordered, func() {
 								Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: mockV2.URL()},
 							},
 							RewriteRules: []*commonpb.MirrorRewriteRule{
-								{Cel: `this is not valid cel`},
+								// Scope is set but `match` is an invalid CEL expression:
+								// admission must reject the rule at compile time.
+								{Scope: &commonpb.MirrorRewriteRule_AnyVariant{AnyVariant: &commonpb.AnyVariantRule{
+									Match: `this is not valid cel`,
+								}}},
 							},
 						},
 					},

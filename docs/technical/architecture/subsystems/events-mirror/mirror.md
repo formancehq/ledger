@@ -66,12 +66,13 @@ oneof payload {
 
 Optional `rewrite_rules` on `MirrorSourceConfig` are CEL rewrite rules applied, in order, to every mirror log entry as v2 logs are translated. They can rename address segments, transform metadata, or drop transactions. See [Mirror CEL rewrite engine](cel-rewrite.md) for the full CEL surface, determinism model, and drop→fill-gap behaviour.
 
-Each rule is `{match, cel, stop}`: `match` is a CEL boolean selecting which transactions the rule fires on, `cel` rewrites the transaction via helper functions (`tx.rewriteAddress`, `tx.setMetadata`, `tx.deleteMetadata`, `tx.setAccountMetadata`, `tx.deleteAccountMetadata`, `tx.drop`), and `stop` halts the chain once the rule matches. The engine runs once per assembled `MirrorLogEntry` in `TranslateBatch` (`internal/adapter/v2/celrewrite`).
+Each rule carries a `scope` (one of `created_transaction`, `reverted_transaction`, `saved_metadata`, `deleted_metadata`, `any_variant`), a `match` CEL predicate typed against that scope, and a list of typed `actions` (rewrite_address, set_metadata, delete_metadata, set_account_metadata, drop, …). Actions available in a rule are constrained by its scope at the wire level. When `stop` is true and the rule matches, no further rules run. The engine is applied once per assembled `MirrorLogEntry` in `TranslateBatch` (`internal/adapter/v2/celrewrite`).
 
 Properties:
 - **Pure, deterministic projection** — the source v2 ledger is untouched; rewriting only shapes the v3 orders the leader proposes, so followers apply identical bytes. The CEL environment exposes no non-deterministic function.
-- **Validated** — rules are compile-checked at admission (`ErrMirrorRewriteRuleInvalid`) before the config is persisted; at translation time a rewrite that produces an invalid address fails the batch, so the cursor does not advance and the worker retries (the standard translation-error path).
-- **Drop preserves IDs** — `tx.drop()` emits a `FillGap` carrying the dropped transaction ID in `skipped_transaction_ids`, so log-ID contiguity and transaction-ID advancement are both preserved.
+- **Wire-level scope safety** — the rule's `scope` oneof restricts which actions can appear inside it: `set_account_metadata` inside a `saved_metadata` rule is impossible to construct because the proto doesn't include that variant in `SavedMetadataAction`.
+- **Compile-checked at admission** — rules are validated by `celrewrite.NewRewriter` via `ErrMirrorRewriteRuleInvalid` before the config is persisted; at translation time a rewrite that produces an invalid address fails the batch, so the cursor does not advance and the worker retries (the standard translation-error path).
+- **Drop preserves IDs** — a `drop` action emits a `FillGap` carrying the dropped transaction ID in `skipped_transaction_ids`, so log-ID contiguity and transaction-ID advancement are both preserved.
 
 ## The Raft command
 

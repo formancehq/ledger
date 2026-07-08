@@ -12,15 +12,41 @@ import (
 
 // dropWorkerRewriter drops the ":worker:<n>" lock-avoidance segment from every
 // address, exercising the CEL rewrite engine end-to-end through TranslateBatch.
+// dropWorkerRewriter builds a Rewriter with a single any-variant rule that
+// strips ":worker:<n>" from every address slot across every variant.
 func dropWorkerRewriter(t *testing.T) *celrewrite.Rewriter {
 	t.Helper()
 
 	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
-		{Cel: `tx.rewriteAddress(":worker:\\d+", "")`},
+		anyRule("", rewriteAddress(":worker:\\d+", "")),
 	})
 	require.NoError(t, err)
 
 	return r
+}
+
+// Rule + action constructors, isolated so tests read like a config file.
+
+func anyRule(match string, actions ...*commonpb.AnyVariantAction) *commonpb.MirrorRewriteRule {
+	return &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_AnyVariant{
+		AnyVariant: &commonpb.AnyVariantRule{Match: match, Actions: actions},
+	}}
+}
+
+func createdRule(match string, actions ...*commonpb.CreatedTransactionAction) *commonpb.MirrorRewriteRule {
+	return &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
+		CreatedTransaction: &commonpb.CreatedTransactionRule{Match: match, Actions: actions},
+	}}
+}
+
+func rewriteAddress(pattern, replacement string) *commonpb.AnyVariantAction {
+	return &commonpb.AnyVariantAction{Action: &commonpb.AnyVariantAction_RewriteAddress{
+		RewriteAddress: &commonpb.RewriteAddressAction{Pattern: pattern, Replacement: replacement},
+	}}
+}
+
+func dropCreated() *commonpb.CreatedTransactionAction {
+	return &commonpb.CreatedTransactionAction{Action: &commonpb.CreatedTransactionAction_Drop{Drop: &commonpb.DropAction{}}}
 }
 
 func TestTranslateBatch_Rewrite_CreatedTransaction(t *testing.T) {
@@ -169,7 +195,7 @@ func TestTranslateBatch_Rewrite_InvalidResultErrors(t *testing.T) {
 	t.Parallel()
 
 	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
-		{Cel: `tx.rewriteAddress(".+", "")`},
+		anyRule("", rewriteAddress(".+", "")),
 	})
 	require.NoError(t, err)
 
@@ -197,7 +223,7 @@ func TestTranslateBatch_Rewrite_DropBecomesFillGap(t *testing.T) {
 	t.Parallel()
 
 	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
-		{Match: `tx.metadata["skip"] == "yes"`, Cel: `tx.drop()`},
+		createdRule(`log.metadata["skip"].string_value == "yes"`, dropCreated()),
 	})
 	require.NoError(t, err)
 

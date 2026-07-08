@@ -782,32 +782,188 @@ message MirrorSourceConfig {
     PostgresMirrorSourceConfig postgres = 3;
   }
   uint32 batch_size = 4;  // Max logs per batch (0 = default 100). Client's responsibility to avoid saturating the instance.
-  // Field 5 was `repeated AddressRewriteRule address_rewrite_rules`, the
-  // regex-based address rewriter. It was replaced by the CEL rewrite engine
-  // (rewrite_rules below); the number is reserved so it is never reused.
-  reserved 5;
-  reserved "address_rewrite_rules";
-  // Ordered CEL rewrite rules applied to every mirror log entry as v2 logs are
+  // Ordered rewrite rules applied to every mirror log entry as v2 logs are
   // translated into v3 orders. Each rule can rename address segments, transform
   // metadata, or drop transactions. See MirrorRewriteRule.
-  repeated MirrorRewriteRule rewrite_rules = 6;
+  repeated MirrorRewriteRule rewrite_rules = 5;
 }
 
 // MirrorRewriteRule transforms a mirror log entry during v2->v3 translation.
-// `match` is a CEL boolean expression over the transaction (`tx`) selecting
-// which entries the rule fires on (empty = always). `cel` is a CEL expression
-// evaluating to the rewritten `tx`, built with helper functions
-// (tx.rewriteAddress, tx.setMetadata, tx.deleteMetadata, tx.setAccountMetadata,
-// tx.deleteAccountMetadata, tx.drop). When `stop` is true and the rule matches,
-// no further rules are evaluated. Rewriting is a pure, deterministic
-// translation-time projection performed on the mirror leader: the source v2
-// ledger is never modified, and any rewritten address must remain a valid
-// ledger account address.
+//
+// A rule is scoped to exactly one variant of MirrorLogEntry.data: the `scope`
+// oneof selects which. That scope determines two things: (a) the CEL type of
+// `log` in the rule's `match` predicate, and (b) which actions are legal in
+// its `actions` list. This makes invalid combinations (e.g. set_metadata on a
+// deleted_metadata rule) impossible to represent on the wire — the proto oneof
+// nesting rejects them at deserialisation.
+//
+// Rules run top-to-bottom against every translated log entry. A rule whose
+// scope doesn't match the entry's variant is silently skipped. When `stop` is
+// true and the rule matches (scope + predicate), no further rules are
+// evaluated. Rewriting is a pure, deterministic translation-time projection
+// performed on the mirror leader; the source v2 ledger is never modified.
 message MirrorRewriteRule {
-  string match = 1;
-  string cel = 2;
-  bool stop = 3;
+  // Exactly one must be set.
+  oneof scope {
+    CreatedTransactionRule created_transaction = 1;
+    RevertedTransactionRule reverted_transaction = 2;
+    SavedMetadataRule saved_metadata = 3;
+    DeletedMetadataRule deleted_metadata = 4;
+    AnyVariantRule any_variant = 5;
+  }
+  bool stop = 6;
 }
+
+// Per-variant rules. In each rule's `match`, the CEL variable `log` is typed
+// as the corresponding variant proto message directly (e.g. inside a
+// CreatedTransactionRule, `log.metadata["k"]` — NOT
+// `log.created_transaction.metadata["k"]`). This keeps predicates concise and
+// forbids reading fields of other variants by construction.
+
+message CreatedTransactionRule {
+  string match = 1;
+  repeated CreatedTransactionAction actions = 2;
+}
+
+message RevertedTransactionRule {
+  string match = 1;
+  repeated RevertedTransactionAction actions = 2;
+}
+
+message SavedMetadataRule {
+  string match = 1;
+  repeated SavedMetadataAction actions = 2;
+}
+
+message DeletedMetadataRule {
+  string match = 1;
+  repeated DeletedMetadataAction actions = 2;
+}
+
+// AnyVariantRule runs on every variant. `log` is typed as MirrorLogEntry, so
+// its match must use `has(log.<variant>)` guards to read variant-specific
+// fields. Its action set is restricted to operations that are meaningful on
+// every variant.
+message AnyVariantRule {
+  string match = 1;
+  repeated AnyVariantAction actions = 2;
+}
+
+// Actions per variant. Each oneof exposes only the actions that make semantic
+// sense on that variant. E.g. DeletedMetadataAction has no set_metadata
+// because MirrorDeletedMetadata carries only a key, not a metadata map.
+
+message CreatedTransactionAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;
+    SetMetadataAction set_metadata = 2;
+    DeleteMetadataAction delete_metadata = 3;
+    SetAccountMetadataAction set_account_metadata = 4;
+    DeleteAccountMetadataAction delete_account_metadata = 5;
+    SetAccountMetadataFromAddressAction set_account_metadata_from_address = 6;
+    DropAction drop = 7;
+  }
+}
+
+message RevertedTransactionAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;
+    SetMetadataAction set_metadata = 2;
+    DeleteMetadataAction delete_metadata = 3;
+    DropAction drop = 4;
+  }
+}
+
+message SavedMetadataAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;  // acts on Target only
+    SetMetadataAction set_metadata = 2;
+    DeleteMetadataAction delete_metadata = 3;
+    DropAction drop = 4;
+  }
+}
+
+message DeletedMetadataAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;  // acts on Target only
+    DropAction drop = 2;
+  }
+}
+
+message AnyVariantAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;
+    DropAction drop = 2;
+  }
+}
+
+// Shared action payloads. Each carries the parameters an operator supplies for
+// that operation; there is no CEL evaluation involved — the values are
+// consumed by a typed Go executor.
+
+message RewriteAddressAction {
+  string pattern = 1;      // RE2 pattern, validated at admission
+  string replacement = 2;  // may reference groups from `pattern`
+}
+
+message SetMetadataAction {
+  string key = 1;
+  // Source of the metadata value. `value` is a literal string; `value_expr` is
+  // a CEL expression evaluated at commit time against the current variant
+  // (e.g. `log.reference`, `log.metadata["other_key"].string_value`). Neither
+  // set = literal empty string.
+  oneof source {
+    string value = 2;
+    string value_expr = 3;
+  }
+  // Optional metadata type token: one of "string" (default), "int64", "bool",
+  // "uint64", "int8", "int16", "int32", "uint8", "uint16", "uint32",
+  // "datetime". When set, the produced string is coerced into the matching
+  // typed MetadataValue via the platform conversion matrix — a value that does
+  // not parse as the declared type becomes a null value preserving the
+  // original string. Empty = string (unchanged behaviour).
+  string type = 4;
+}
+
+message DeleteMetadataAction {
+  string key = 1;
+}
+
+message SetAccountMetadataAction {
+  string account = 1;
+  string key = 2;
+  // See SetMetadataAction.source for the literal-vs-CEL semantics.
+  oneof source {
+    string value = 3;
+    string value_expr = 4;
+  }
+  // See SetMetadataAction.type — same tokens, same coercion semantics.
+  string type = 5;
+}
+
+message DeleteAccountMetadataAction {
+  string account = 1;
+  string key = 2;
+}
+
+// SetAccountMetadataFromAddressAction runs a single RE2 pattern over every
+// posting address in the current CreatedTransaction and, for each matching
+// address, writes one or more metadata entries on the *matched account* using
+// group-capturing replacements. Multiple replacements share the same pattern
+// so an operator can extract several fields from a single address in one pass
+// (e.g. worker id + acquirer name from `acquirer:acme:worker:001:bank`).
+message SetAccountMetadataFromAddressAction {
+  string pattern = 1;  // RE2 pattern, should anchor with ^…$ for exact match
+  repeated SetAccountMetadataFromAddressReplacement replacements = 2;
+}
+
+message SetAccountMetadataFromAddressReplacement {
+  string key = 1;
+  string replacement = 2;  // RE2 replacement (uses groups from the parent pattern)
+  string type = 3;         // optional metadata type token — see SetMetadataAction.type
+}
+
+message DropAction {}
 
 message HttpMirrorSourceConfig {
   string base_url = 1;
