@@ -1496,3 +1496,155 @@ func buildAuditItem(t *testing.T, logSeq uint64, order *raftcmdpb.Order) *auditp
 		SerializedOrder: raw,
 	}
 }
+
+// TestVerifySkippedOrder_LedgerMismatchAcrossReasons pins the hoisted
+// ledger-envelope check: for EVERY whitelisted reason (not just
+// CONFLICT), a projection that claims a different ledger than the
+// chain-bound order MUST be flagged. Log sequences are proposal-global,
+// so exactly one chain-bound order sits at each seq — a projection at
+// a different ledger identifies the tampering directly.
+func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
+	t.Parallel()
+
+	// One case per whitelisted reason to prove the check is uniform
+	// across the switch — before the fix, only CONFLICT would fire.
+	cases := []struct {
+		name       string
+		reason     commonpb.ErrorReason
+		expected   *expectedSkippableOrder
+		context    map[string]string
+		buildBound func(*chainBoundState)
+	}{
+		{
+			name:   "revert_already_reverted",
+			reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
+			expected: &expectedSkippableOrder{
+				reasons:       []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED},
+				ledger:        "audit-L",
+				transactionID: 42,
+			},
+			context: map[string]string{"transactionId": "42"},
+			buildBound: func(cb *chainBoundState) {
+				cb.reverted["audit-L"] = map[uint64]uint64{42: 3}
+			},
+		},
+		{
+			name:   "metadata_not_found",
+			reason: commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
+			expected: &expectedSkippableOrder{
+				reasons:        []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
+				ledger:         "audit-L",
+				metadataTarget: "alice",
+				metadataKey:    "role",
+			},
+			context: map[string]string{"target": "alice", "key": "role"},
+		},
+		{
+			name:   "account_type_already_exists",
+			reason: commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
+			expected: &expectedSkippableOrder{
+				reasons:         []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS},
+				ledger:          "audit-L",
+				accountTypeName: "customer",
+			},
+			context: map[string]string{"name": "customer"},
+			buildBound: func(cb *chainBoundState) {
+				cb.accountTypes["audit-L"] = map[string][]chainBoundMutation{
+					"customer": {{seq: 3, exists: true}},
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			expected := map[uint64]*expectedSkippableOrder{7: tc.expected}
+
+			cb := newChainBoundState()
+			if tc.buildBound != nil {
+				tc.buildBound(cb)
+			}
+
+			// Projection claims "tampered-L" while the chain-bound
+			// order targets "audit-L". Every reason must fire.
+			payload := skippedPayloadWithContext(tc.reason, tc.context)
+			events := captureEventsState(t, "tampered-L", 7, payload, expected, cb, false)
+			requireInvalidSkipEvent(t, events, 7)
+		})
+	}
+}
+
+// TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved
+// closes the archive-escape hole where a live RemoveAccountType before
+// seq is positive proof of absence — archives cannot undo a live
+// removal, so the escape must NOT apply. Live-witnessed absence is
+// authoritative.
+func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:         []commonpb.ErrorReason{reason},
+			ledger:          "L",
+			accountTypeName: "customer",
+		},
+	}
+
+	cb := newChainBoundState()
+	cb.accountTypes["L"] = map[string][]chainBoundMutation{
+		"customer": {
+			{seq: 2, exists: true},  // Add
+			{seq: 5, exists: false}, // Remove — live-witnessed absence at seq 7
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
+	// hasArchivedChapters=true — the escape must NOT trigger because
+	// live has positive evidence of absence via the Remove at seq 5.
+	events := captureEventsState(t, "L", 7, payload, expected, cb, true)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_MetadataNotFoundPermissiveOnArchivedTxIDLedger
+// pins the "archived-history ledger + tx-id target" safety net: when
+// the ledger's CreateLedger was NOT observed in live (chain scan opened
+// past the ledger's history), the nextTxID counter is defaulted and
+// tx-scoped metadata was NOT recorded. The verifier stays permissive
+// for tx-id-scoped METADATA_NOT_FOUND skips under archives on such
+// ledgers — a strict check would produce a false-positive INVALID_SKIP
+// on legitimate skips. Account-address targets remain strictly
+// verified because their recording bypasses the counter.
+func TestVerifySkippedOrder_MetadataNotFoundPermissiveOnArchivedTxIDLedger(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "101", // tx-id-shaped target
+			metadataKey:    "foo",
+		},
+	}
+
+	// Bare state: ledgerCreationSeen is empty (archived history), no
+	// metadata recorded for target="101". Under archives the tx-id
+	// verification should stay permissive.
+	cb := newChainBoundState()
+
+	payload := skippedPayloadWithContext(reason, map[string]string{"target": "101", "key": "foo"})
+	events := captureEventsState(t, "L", 7, payload, expected, cb, true)
+	require.Empty(t, events, "tx-id target on archived-history ledger must be permissive")
+
+	// Contrast: same setup WITHOUT archives should NOT stay permissive
+	// — my check would otherwise silently hide real forgeries on
+	// live-only ledgers.
+	events = captureEventsState(t, "L", 7, payload, expected, cb, false)
+	// present=false, no fire on "was present". Falls through with no
+	// error. Non-archives behavior is unchanged from the pre-fix
+	// baseline for empty timelines.
+	require.Empty(t, events)
+}

@@ -1826,12 +1826,25 @@ type chainBoundState struct {
 	accountTypes map[string]map[string][]chainBoundMutation
 	// nextTxID mirrors LedgerBoundaries.NextTransactionId per ledger,
 	// bumped on every SUCCESSFUL CreateTransactionOrder / RevertTransactionOrder
-	// the chain scan replays (skipped orders don't consume a slot). Seeded
-	// to 1 at CreateLedger — the FSM's initial value. Used to derive the
-	// tx id an order's transaction-scoped metadata (CreateTransaction.metadata,
-	// RevertTransaction.metadata) actually targeted, so a later
-	// DeleteMetadata(target=<that tx id>) skip check can see the presence.
+	// the chain scan replays (skipped orders don't consume a slot). Used
+	// to derive the tx id an order's transaction-scoped metadata
+	// (CreateTransaction.metadata, RevertTransaction.metadata) actually
+	// targeted, so a later DeleteMetadata(target=<that tx id>) skip
+	// check can see the presence. Only anchored when the ledger's
+	// CreateLedger order was observed in live (see ledgerCreationSeen);
+	// for ledgers whose CreateLedger sits in an archived chapter, the
+	// counter is UNRELIABLE and tx-scoped metadata is not recorded.
 	nextTxID map[string]uint64
+	// ledgerCreationSeen names ledgers whose CreateLedger order was
+	// witnessed in the live audit range — the guarantee that nextTxID
+	// is anchored to the FSM's true counter. For ledgers absent from
+	// this set, tx-scoped metadata mutations (CreateTransaction.metadata,
+	// RevertTransaction.metadata) are NOT recorded (a fake tx id would
+	// mismatch the client's DeleteMetadata target and either false-
+	// positive or false-negative the skip check). The verifier consults
+	// this set to stay permissive on tx-id-scoped METADATA_NOT_FOUND
+	// skips for archived-history ledgers.
+	ledgerCreationSeen map[string]struct{}
 }
 
 // chainBoundMutation records one presence-flip observed on the audit
@@ -1848,11 +1861,12 @@ type chainBoundMutation struct {
 // observes each ledger.
 func newChainBoundState() *chainBoundState {
 	return &chainBoundState{
-		references:   make(map[string]map[string]uint64),
-		reverted:     make(map[string]map[uint64]uint64),
-		metadata:     make(map[string]map[string]map[string][]chainBoundMutation),
-		accountTypes: make(map[string]map[string][]chainBoundMutation),
-		nextTxID:     make(map[string]uint64),
+		references:         make(map[string]map[string]uint64),
+		reverted:           make(map[string]map[uint64]uint64),
+		metadata:           make(map[string]map[string]map[string][]chainBoundMutation),
+		accountTypes:       make(map[string]map[string][]chainBoundMutation),
+		nextTxID:           make(map[string]uint64),
+		ledgerCreationSeen: make(map[string]struct{}),
 	}
 }
 
@@ -2099,9 +2113,18 @@ func recordChainBoundMutations(
 
 	if cl := ls.GetCreateLedger(); cl != nil {
 		// Initial FSM counter: LedgerBoundaries.NextTransactionId = 1.
+		// Only anchor when the ledger's counter has not yet been seeded —
+		// a rebuild that replays chain items in-order sees CreateLedger
+		// once per ledger. Also mark the ledger as "creation seen" so
+		// downstream tx-scoped metadata recording knows the counter is
+		// anchored (without this flag, defaulting nextTxID=1 for a
+		// ledger whose CreateLedger lives in archive would produce
+		// wrong tx-id attribution — see finding cf7f890b).
 		if _, seen := chainBound.nextTxID[ledger]; !seen {
 			chainBound.nextTxID[ledger] = 1
 		}
+
+		chainBound.ledgerCreationSeen[ledger] = struct{}{}
 
 		for name := range cl.GetAccountTypes() {
 			if name != "" {
@@ -2151,12 +2174,20 @@ func recordChainBoundMutations(
 		// by TRANSACTION_REFERENCE_CONFLICT and the counter is NOT
 		// bumped. Otherwise the order succeeds and takes the current
 		// slot.
+		//
+		// Tx-scoped metadata is only recorded when the ledger's counter
+		// is anchored (CreateLedger observed in live). For archived-
+		// history ledgers the counter is defaulted and mislabelling
+		// would cause false-negative INVALID_SKIP on future
+		// DeleteMetadata(target=<real tx id>). See ledgerCreationSeen.
 		if !chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) {
 			txID := allocateChainBoundTxID(ledger, chainBound)
-			target := strconv.FormatUint(txID, 10)
 
-			for key := range ct.GetMetadata() {
-				appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				target := strconv.FormatUint(txID, 10)
+				for key := range ct.GetMetadata() {
+					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
+				}
 			}
 		}
 	}
@@ -2171,10 +2202,12 @@ func recordChainBoundMutations(
 			rememberFirstRevert(chainBound.reverted, ledger, rt.GetTransactionId(), logSeq)
 
 			newTxID := allocateChainBoundTxID(ledger, chainBound)
-			target := strconv.FormatUint(newTxID, 10)
 
-			for key := range rt.GetMetadata() {
-				appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				target := strconv.FormatUint(newTxID, 10)
+				for key := range rt.GetMetadata() {
+					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
+				}
 			}
 		}
 	}
@@ -2401,6 +2434,21 @@ func appendAccountTypeMutation(
 	perLedger[name] = append(perLedger[name], chainBoundMutation{seq: logSeq, exists: exists})
 }
 
+// isNumericTxIDTarget reports whether a formatTargetForSkipContext
+// output looks like a Target_TransactionId (a decimal uint64), i.e. NOT
+// an account address. Used to gate tx-id-scoped metadata verification
+// on the ledgerCreationSeen anchor — account-address targets are
+// unaffected because their recording bypasses the nextTxID counter.
+func isNumericTxIDTarget(target string) bool {
+	if target == "" {
+		return false
+	}
+
+	_, err := strconv.ParseUint(target, 10, 64)
+
+	return err == nil
+}
+
 // formatTargetForSkipContext mirrors the string ErrMetadataNotFound stamps
 // into its Metadata()["target"] — account targets carry the raw address,
 // transaction targets carry the id as a decimal string. Kept in lockstep
@@ -2621,6 +2669,23 @@ func verifySkippedOrder(
 		return
 	}
 
+	// Ledger-envelope pinning: catch a tampered ApplyLedgerLog envelope
+	// that transplants a skip from its chain-bound ledger onto a
+	// different one. LogSequence is proposal-global, so exactly one
+	// chain-bound order sits at this seq — a projection claiming a
+	// different ledger identifies the tampering directly. Kept before
+	// the per-reason switch so every reason inherits the check, not
+	// just CONFLICT.
+	if expected.ledger != ledger {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			fmt.Sprintf("log %d records OrderSkipped on ledger %q but the chain-bound order targets ledger %q", seq, ledger, expected.ledger),
+			seq, ledger, "", "",
+		))
+
+		return
+	}
+
 	// Reason-specific replay: confirm the underlying condition was
 	// plausible at this sequence given the chain-bound order.
 	//
@@ -2639,19 +2704,6 @@ func verifySkippedOrder(
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but the audited order on ledger %q has no reference set", seq, ledger),
-				seq, ledger, "", "",
-			))
-
-			return
-		}
-
-		// expected.ledger comes from the chain-bound order; cross-check it
-		// against the log's ledger to catch a tampered ApplyLedgerLog
-		// envelope that points the skip at a different ledger.
-		if expected.ledger != ledger {
-			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
-				fmt.Sprintf("log %d records OrderSkipped on ledger %q but the chain-bound order targets ledger %q", seq, ledger, expected.ledger),
 				seq, ledger, "", "",
 			))
 
@@ -2831,6 +2883,21 @@ func verifySkippedOrder(
 			return
 		}
 
+		// Tx-id-scoped metadata on a ledger whose CreateLedger sits in
+		// an archived chapter: the chain-bound nextTxID counter was
+		// defaulted (no CreateLedger observed → wrong tx-id
+		// attribution), so we did NOT record any CreateTransaction/
+		// RevertTransaction metadata for this ledger. The timeline is
+		// UNRELIABLE for tx-id targets on such ledgers — treat the
+		// verification as inconclusive rather than false-negative or
+		// false-positive. Account-address targets are not affected
+		// (recorded directly from the order without counter derivation).
+		if isNumericTxIDTarget(expected.metadataTarget) {
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; !anchored && hasArchivedChapters {
+				return
+			}
+		}
+
 		if mutationStateAtSeq(chainBound.metadata[ledger][expected.metadataTarget][expected.metadataKey], seq) {
 			// Chain-bound state says the key was PRESENT just before
 			// seq — a DeleteMetadata that ran on that state would have
@@ -2886,21 +2953,27 @@ func verifySkippedOrder(
 			return
 		}
 
-		present := mutationStateAtSeq(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
+		present, witnessed := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
 		mustBePresent := reason == commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 		if present != mustBePresent {
-			// Archive escape is direction-aware:
+			// Archive escape is direction-aware AND witness-aware:
 			//
-			//   - ALREADY_EXISTS + live shows ABSENT: archives may
-			//     contain an AddAccountType that hasn't been Removed
-			//     in the live range — permissive.
+			//   - ALREADY_EXISTS + live shows ABSENT + no witness:
+			//     archives may contain an AddAccountType that was
+			//     never Removed in live — permissive.
+			//
+			//   - ALREADY_EXISTS + live shows ABSENT + witnessed
+			//     (a live RemoveAccountType before seq): live has
+			//     positive proof the name is absent regardless of
+			//     archives — a legitimate Add would have succeeded,
+			//     not conflicted. Archive escape SHOULD NOT apply.
 			//
 			//   - NOT_FOUND + live shows PRESENT: archives lie BEFORE
 			//     the current live range and cannot undo a live
 			//     AddAccountType. Live-presence is authoritative — no
 			//     archive escape.
-			if mustBePresent && hasArchivedChapters {
+			if mustBePresent && hasArchivedChapters && !witnessed {
 				return
 			}
 
