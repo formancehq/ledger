@@ -124,3 +124,49 @@ func TestCreateReadIndexCheckpointNoopWhenReady(t *testing.T) {
 	_, err := os.Stat(filepath.Join(dir, "sentinel"))
 	require.NoError(t, err, "ready checkpoint must not be rebuilt on a redundant call")
 }
+
+// TestCreateReadIndexCheckpointClearsStaleTempDir verifies a leftover temp
+// directory from a crashed prior attempt is cleared before the checkpoint is
+// rebuilt (pebble.Checkpoint would otherwise fail with ErrExist on the temp
+// path).
+func TestCreateReadIndexCheckpointClearsStaleTempDir(t *testing.T) {
+	t.Parallel()
+
+	b := newCheckpointTestBuilder(t)
+
+	const cpID = uint64(19)
+	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
+	tmpDir := finalDir + ".tmp"
+
+	// Simulate a stale temp dir left by a crash mid-materialization.
+	require.NoError(t, os.MkdirAll(tmpDir, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "partial.sst"), []byte("x"), 0o640))
+
+	require.NoError(t, b.createReadIndexCheckpoint(cpID))
+	require.True(t, readstore.CheckpointDirReady(finalDir))
+
+	_, err := os.Stat(tmpDir)
+	require.True(t, os.IsNotExist(err), "stale temp dir must be cleared and not survive")
+}
+
+// TestDeleteReadIndexCheckpoint verifies the delete path removes the checkpoint
+// directory (and tolerates an absent directory).
+func TestDeleteReadIndexCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	b := newCheckpointTestBuilder(t)
+
+	const cpID = uint64(23)
+	require.NoError(t, b.createReadIndexCheckpoint(cpID))
+
+	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
+	require.True(t, readstore.CheckpointDirReady(dir))
+
+	b.deleteReadIndexCheckpoint(cpID)
+
+	_, err := os.Stat(dir)
+	require.True(t, os.IsNotExist(err), "checkpoint dir must be gone after delete")
+
+	// Deleting an already-absent checkpoint is a tolerated no-op.
+	b.deleteReadIndexCheckpoint(cpID)
+}
