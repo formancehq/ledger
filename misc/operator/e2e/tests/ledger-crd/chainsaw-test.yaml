@@ -41,6 +41,55 @@ spec:
                 | grep my-ledger
             timeout: 30s
 
+    - name: Verify declared indexes were created
+      try:
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Ledger
+              metadata:
+                name: test-ledger
+              status:
+                (conditions[?type == 'IndexesSynced'])[0].status: "True"
+        - script:
+            content: |
+              OUTPUT=$(kubectl exec ledger-crd-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl indexes list --ledger my-ledger --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+              echo "$OUTPUT"
+              # Builtins + account asset + metadata field must all be present.
+              echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_REFERENCE || { echo "FAIL: reference index missing"; exit 1; }
+              echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_ADDRESS   || { echo "FAIL: address index missing"; exit 1; }
+              echo "$OUTPUT" | grep -q ACCT_BUILTIN_INDEX_ASSET   || { echo "FAIL: account asset index missing"; exit 1; }
+              echo "$OUTPUT" | grep -q '"category"'               || { echo "FAIL: metadata category index missing"; exit 1; }
+              echo "OK: declared indexes present"
+            timeout: 60s
+
+    - name: Reconcile index changes (drop address, add timestamp)
+      try:
+        - apply:
+            file: ledger-reindexed.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Ledger
+              metadata:
+                name: test-ledger
+              status:
+                (conditions[?type == 'IndexesSynced'])[0].status: "True"
+        - script:
+            content: |
+              OUTPUT=$(kubectl exec ledger-crd-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl indexes list --ledger my-ledger --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+              echo "$OUTPUT"
+              echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_TIMESTAMP  || { echo "FAIL: timestamp index not created"; exit 1; }
+              echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_REFERENCE  || { echo "FAIL: reference index lost"; exit 1; }
+              if echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_ADDRESS; then
+                echo "FAIL: address index should have been dropped"
+                exit 1
+              fi
+              echo "OK: index reconcile converged (address dropped, timestamp added)"
+            timeout: 60s
+
     - name: Delete Ledger CRD
       try:
         - script:

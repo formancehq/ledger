@@ -36,6 +36,72 @@ type LedgerCRDSpec struct {
 	// Required when mode is "mirror".
 	// +optional
 	MirrorSource *MirrorSourceSpec `json:"mirrorSource,omitempty"`
+
+	// Indexes declares the account/transaction indexes the operator maintains
+	// on this ledger. This is especially useful for mirror ledgers, which are
+	// read-only and provisioned entirely through this CRD: it lets you keep the
+	// mirror queryable without hand-running `ledgerctl indexes create`.
+	//
+	// Ownership semantics:
+	//   - Field ABSENT (nil) => unmanaged. The operator never lists, creates,
+	//     or drops indexes on this ledger. This is the safe default so an
+	//     operator upgrade does not touch pre-existing indexes.
+	//   - Field PRESENT (even empty {}) => managed. The operator reconciles the
+	//     indexes it owns to match this spec: it creates the declared indexes
+	//     and drops indexes it previously created that are no longer declared.
+	//     It only ever drops indexes it created itself (tracked in
+	//     status.appliedIndexes) — externally-created indexes and index kinds
+	//     this CRD cannot express are left untouched. An empty {} therefore
+	//     means "drop the indexes I previously managed", not "drop every index".
+	//
+	// Index maintenance is independent of ledger immutability: editing this
+	// field never trips the SpecDrifted condition.
+	// +optional
+	Indexes *LedgerIndexesSpec `json:"indexes,omitempty"`
+}
+
+// LedgerIndexesSpec declares the set of indexes the operator maintains on a
+// ledger. A nil *LedgerIndexesSpec means "unmanaged"; a non-nil value (even
+// with all lists empty) means "managed" (see LedgerCRDSpec.Indexes).
+type LedgerIndexesSpec struct {
+	// Transaction lists the builtin transaction indexes to maintain.
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:items:Enum=reference;timestamp;address;sourceAddress;destinationAddress;insertedAt;revertedAt
+	Transaction []string `json:"transaction,omitempty"`
+
+	// Account lists the builtin account indexes to maintain. Only "asset"
+	// (which backs the `has asset` filter) is supported today.
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:items:Enum=asset
+	Account []string `json:"account,omitempty"`
+
+	// Metadata lists the metadata-key indexes to maintain on account or
+	// transaction metadata. Each (target, key) pair must be unique.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(x, self.exists_one(y, y.target == x.target && y.key == x.key))",message="metadata index (target,key) pairs must be unique"
+	Metadata []MetadataIndexSpec `json:"metadata,omitempty"`
+}
+
+// MetadataIndexSpec declares one metadata-key index. Creating a metadata index
+// requires the metadata field to exist in the ledger schema first, so the
+// operator declares the field type (via `ledgers set-metadata-type`) before
+// creating the index. The declared field type is reconciled too: changing Type
+// re-declares the field, which the server treats as a schema change (it bumps
+// the index forward-encoding version and schedules a rewrite).
+type MetadataIndexSpec struct {
+	// Target of the metadata key.
+	// +kubebuilder:validation:Enum=account;transaction
+	Target string `json:"target"`
+
+	// Key is the metadata key name to index.
+	// +kubebuilder:validation:MinLength=1
+	Key string `json:"key"`
+
+	// Type is the metadata field type declared before indexing.
+	// +kubebuilder:validation:Enum=string;int64;bool;uint64;int8;int16;int32;uint8;uint16;uint32;datetime
+	Type string `json:"type"`
 }
 
 // MirrorSourceSpec configures the source for mirror replication.
@@ -233,8 +299,17 @@ type LedgerCRDStatus struct {
 
 	// AppliedSpecHash is the hash of the spec at the time of creation.
 	// Used to detect post-creation modifications (ledgers are immutable).
+	// The indexes field is excluded from this hash since it is mutable.
 	// +optional
 	AppliedSpecHash string `json:"appliedSpecHash,omitempty"`
+
+	// AppliedIndexes is the set of index identifiers (canonical form) the
+	// operator has created on this ledger. It is the operator-owned set that
+	// scopes index drops: only indexes listed here are ever dropped, so
+	// externally-created and CRD-unrepresentable indexes are preserved.
+	// +optional
+	// +listType=atomic
+	AppliedIndexes []string `json:"appliedIndexes,omitempty"`
 }
 
 // +kubebuilder:object:root=true
