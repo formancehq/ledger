@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -190,6 +191,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// RemovedMetadataFieldType logs. Compared against the stored
 		// LedgerInfo.MetadataSchema in compareSchema.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
+		// Expected account types per ledger, derived from AddAccountType /
+		// RemoveAccountType logs. Compared against the stored
+		// LedgerInfo.AccountTypes in compareAccountTypes. Kept separate from
+		// rawLedgerTypes (which drives the ephemeral-purge simulation and is
+		// seeded from the live store) so verification stays independent.
+		expectedAccountTypes = make(map[string]map[string]*commonpb.AccountType)
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -259,11 +266,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			}
 		}
 
-		// The pre-archive schema was declared in now-purged logs; seed it from
-		// the boundary-time baseline checkpoint (independent of the live store)
-		// so the post-archive replay applies its delta on top and compareSchema
-		// does not false-positive on pre-archive fields.
-		c.seedExpectedSchemasFromBaseline(ctx, expectedSchemas)
+		// The pre-archive schema and account types were declared in now-purged
+		// logs; seed them from the boundary-time baseline checkpoint (independent
+		// of the live store) so the post-archive replay applies its delta on top
+		// and compareSchema / compareAccountTypes do not false-positive on
+		// pre-archive declarations.
+		c.seedExpectedFromBaseline(ctx, expectedSchemas, expectedAccountTypes)
 
 		// Pre-populate knownTxIDs from archived transaction states so that
 		// reversion invariant checks work correctly for non-archived logs.
@@ -365,6 +373,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
 					delete(expectedSchemas, name)
+					delete(expectedAccountTypes, name)
 					deletedInReplay[name] = struct{}{}
 
 					// DeleteLedger purges every SubAttrIndex entry scoped to
@@ -427,6 +436,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 								}
 								delete(expectedIndexes, key)
 								indexReplayActivity[key] = struct{}{}
+							}
+						case *commonpb.LedgerLogPayload_AddedAccountType:
+							if at := d.AddedAccountType.GetAccountType(); at != nil {
+								addExpectedAccountType(expectedAccountTypes, ledgerName, at)
+							}
+						case *commonpb.LedgerLogPayload_RemovedAccountType:
+							if l := d.RemovedAccountType; l != nil {
+								removeExpectedAccountType(expectedAccountTypes, ledgerName, l.GetName())
 							}
 						case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 							if l := d.SetMetadataFieldType; l != nil {
@@ -572,6 +589,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	c.compareIndexes(snap, expectedIndexes, indexReplayActivity, deletedInReplay, hasArchivedChapters, pendingCleanupLedgers, callback)
 
 	if err := c.compareSchema(ctx, snap, expectedSchemas, callback); err != nil {
+		return err
+	}
+
+	if err := c.compareAccountTypes(ctx, snap, expectedAccountTypes, callback); err != nil {
 		return err
 	}
 
@@ -1998,13 +2019,13 @@ func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, ex
 	return nil
 }
 
-// seedExpectedSchemasFromBaseline loads the boundary-time metadata schema for
-// each ledger from the baseline checkpoint into expected, so the post-archive
-// replay applies its delta on top. It is the independent (non-live) source the
-// checker needs when the pre-archive declaration logs have been purged. A no-op
-// when no baseline exists — the caller (archived-chapters path) then skips
-// entry-by-entry comparison entirely.
-func (c *Checker) seedExpectedSchemasFromBaseline(ctx context.Context, expected map[string]*commonpb.MetadataSchema) {
+// seedExpectedFromBaseline loads the boundary-time metadata schema and account
+// types for each ledger from the baseline checkpoint, so the post-archive replay
+// applies its delta on top. It is the independent (non-live) source the checker
+// needs when the pre-archive declaration logs have been purged. A no-op when no
+// baseline exists — the caller (archived-chapters path) then skips entry-by-entry
+// comparison entirely.
+func (c *Checker) seedExpectedFromBaseline(ctx context.Context, schemas map[string]*commonpb.MetadataSchema, accountTypes map[string]map[string]*commonpb.AccountType) {
 	path, exists := c.store.BaselineCheckpointPath()
 	if !exists {
 		return
@@ -2015,7 +2036,7 @@ func (c *Checker) seedExpectedSchemasFromBaseline(ctx context.Context, expected 
 		ReadOnly: true,
 	})
 	if err != nil {
-		c.logger.Infof("failed to open baseline checkpoint for schema seeding: %v", err)
+		c.logger.Infof("failed to open baseline checkpoint for seeding: %v", err)
 
 		return
 	}
@@ -2024,23 +2045,101 @@ func (c *Checker) seedExpectedSchemasFromBaseline(ctx context.Context, expected 
 
 	ledgerCursor, err := query.ReadLedgers(ctx, db)
 	if err != nil {
-		c.logger.Infof("failed to read baseline ledgers for schema seeding: %v", err)
+		c.logger.Infof("failed to read baseline ledgers for seeding: %v", err)
 
 		return
 	}
 
 	ledgers, err := cursor.Collect(ledgerCursor)
 	if err != nil {
-		c.logger.Infof("failed to collect baseline ledgers for schema seeding: %v", err)
+		c.logger.Infof("failed to collect baseline ledgers for seeding: %v", err)
 
 		return
 	}
 
 	for _, info := range ledgers {
 		if schema := info.GetMetadataSchema(); schema != nil {
-			expected[info.GetName()] = schema.CloneVT()
+			schemas[info.GetName()] = schema.CloneVT()
+		}
+
+		if types := info.GetAccountTypes(); len(types) > 0 {
+			cloned := make(map[string]*commonpb.AccountType, len(types))
+			maps.Copy(cloned, types)
+
+			accountTypes[info.GetName()] = cloned
 		}
 	}
+}
+
+// compareAccountTypes verifies each ledger's stored account types
+// (LedgerInfo.AccountTypes) against the set re-derived from the audit
+// (AddAccountType / RemoveAccountType). The logged AccountType is the exact
+// object stored on LedgerInfo (processAddAccountType), so a proto.Equal
+// divergence is tampering or a restore-rebuild gap.
+func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleReader, expected map[string]map[string]*commonpb.AccountType, callback func(*servicepb.CheckStoreEvent)) error {
+	ledgerCursor, err := query.ReadLedgers(ctx, reader)
+	if err != nil {
+		return fmt.Errorf("reading ledgers for account-type verification: %w", err)
+	}
+
+	ledgers, err := cursor.Collect(ledgerCursor)
+	if err != nil {
+		return fmt.Errorf("collecting ledgers for account-type verification: %w", err)
+	}
+
+	for _, info := range ledgers {
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		name := info.GetName()
+		if !accountTypesEqual(expected[name], info.GetAccountTypes()) {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
+				fmt.Sprintf("ledger %q account types diverge from the audit-derived declarations", name),
+				0, name, "", "",
+			))
+		}
+	}
+
+	return nil
+}
+
+// addExpectedAccountType records an account-type declaration on the ledger's
+// expected set during replay, lazily creating it. Mirrors processAddAccountType.
+func addExpectedAccountType(types map[string]map[string]*commonpb.AccountType, ledger string, at *commonpb.AccountType) {
+	m := types[ledger]
+	if m == nil {
+		m = make(map[string]*commonpb.AccountType)
+		types[ledger] = m
+	}
+
+	m[at.GetName()] = at
+}
+
+// removeExpectedAccountType drops an account-type declaration during replay.
+// Mirrors processRemoveAccountType.
+func removeExpectedAccountType(types map[string]map[string]*commonpb.AccountType, ledger, name string) {
+	if m := types[ledger]; m != nil {
+		delete(m, name)
+	}
+}
+
+// accountTypesEqual compares two account-type sets by content, treating a nil
+// map and an empty one as equal.
+func accountTypesEqual(a, b map[string]*commonpb.AccountType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for k, av := range a {
+		bv, ok := b[k]
+		if !ok || !proto.Equal(av, bv) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // setExpectedSchemaField records a field-type declaration on the ledger's

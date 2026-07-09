@@ -64,6 +64,11 @@ const (
 	// RemovedMetadataFieldType log payloads. The schema is a projection of those
 	// audit-bound orders.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH CheckStoreErrorType = 11
+	// Emitted when a ledger's stored account types (LedgerInfo.AccountTypes)
+	// diverge from the set the checker re-derived by replaying AddAccountType /
+	// RemoveAccountType log payloads. The account-type chart is a projection of
+	// those audit-bound orders.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH CheckStoreErrorType = 12
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -81,6 +86,7 @@ var (
 		9:  "CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH",
 		10: "CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH",
 		11: "CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH",
+		12: "CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
@@ -95,6 +101,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH":        9,
 		"CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH":              10,
 		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":             11,
+		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":       12,
 	}
 )
 
@@ -9304,7 +9311,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xb9\x04\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xeb\x04\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9318,7 +9325,8 @@ const file_bucket_proto_rawDesc = "" +
 	"+CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH\x10\t\x12)\n" +
 	"%CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH\x10\n" +
 	"\x12*\n" +
-	"&CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH\x10\v*W\n" +
+	"&CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH\x10\v\x120\n" +
+	",CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH\x10\f*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

@@ -2265,11 +2265,16 @@ func TestCompareSchema_ExtraInStored(t *testing.T) {
 // TestSeedExpectedSchemasFromBaseline proves the baseline snapshot carries
 // LedgerInfo (so the schema is seeded from the boundary state, not the live
 // store) and that the checker reads it back.
-func TestSeedExpectedSchemasFromBaseline(t *testing.T) {
+func TestSeedExpectedFromBaseline(t *testing.T) {
 	t.Parallel()
 
 	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+		{
+			Name:           "L1",
+			Id:             1,
+			MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
+			AccountTypes:   map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "assets:*"}},
+		},
 	})
 
 	reader, err := store.NewReadHandle()
@@ -2280,11 +2285,86 @@ func TestSeedExpectedSchemasFromBaseline(t *testing.T) {
 	require.NoError(t, attributes.CreateBaselineSnapshot(reader, attributes.New(), dest))
 	_ = reader.Close()
 
-	expected := map[string]*commonpb.MetadataSchema{}
-	checker.seedExpectedSchemasFromBaseline(context.Background(), expected)
+	schemas := map[string]*commonpb.MetadataSchema{}
+	accountTypes := map[string]map[string]*commonpb.AccountType{}
+	checker.seedExpectedFromBaseline(context.Background(), schemas, accountTypes)
 
-	require.Contains(t, expected, "L1")
+	require.Contains(t, schemas, "L1")
 	require.Equal(t,
 		commonpb.MetadataType_METADATA_TYPE_STRING,
-		expected["L1"].GetAccountFields()["tier"].GetType())
+		schemas["L1"].GetAccountFields()["tier"].GetType())
+
+	require.Contains(t, accountTypes, "L1")
+	require.Equal(t, "assets:*", accountTypes["L1"]["asset"].GetPattern())
+}
+
+// TestCompareAccountTypes_Identical: stored account types match the audit-derived
+// set, so the verifier stays silent.
+func TestCompareAccountTypes_Identical(t *testing.T) {
+	t.Parallel()
+
+	at := map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "assets:*"}}
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, AccountTypes: at},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Empty(t, events)
+}
+
+// TestCompareAccountTypes_MissingFromStored: the audit declares an account type
+// the stored LedgerInfo lacks.
+func TestCompareAccountTypes_MissingFromStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
+// TestCompareAccountTypes_PatternTampered: the stored account type's pattern
+// diverges from the audit-declared one.
+func TestCompareAccountTypes_PatternTampered(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, AccountTypes: map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "tampered:*"}}},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
+		events[0].GetError().GetErrorType())
 }
