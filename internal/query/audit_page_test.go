@@ -159,6 +159,55 @@ func TestReadAuditEntriesPage_SeqSetSkipsPurged(t *testing.T) {
 	require.Equal(t, []uint64{1, 5}, collectSeqs(t, c), "purged seq 3 is skipped")
 }
 
+func TestReadAuditEntriesPage_ZeroPageSizeReturnsAll(t *testing.T) {
+	t.Parallel()
+
+	s := newAuditStore(t, 1, 2, 3)
+	handle, err := s.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	// pageSize=0 -> no cap (zone scan).
+	c, err := query.ReadAuditEntriesPage(logging.TestingContext(), handle, nil, false, 0, ^uint64(0), 0, false, 0)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1, 2, 3}, collectSeqs(t, c))
+
+	// pageSize=0 -> no cap (seq-set path).
+	c, err = query.ReadAuditEntriesPage(logging.TestingContext(), handle, []uint64{1, 2, 3}, true, 0, ^uint64(0), 0, false, 0)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1, 2, 3}, collectSeqs(t, c))
+}
+
+func TestReadAuditEntriesPage_ZoneScanEmptyWindow(t *testing.T) {
+	t.Parallel()
+
+	s := newAuditStore(t, 1, 2, 3)
+	handle, err := s.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	// loSeq > hiSeq -> empty.
+	c, err := query.ReadAuditEntriesPage(logging.TestingContext(), handle, nil, false, 5, 2, 0, false, 10)
+	require.NoError(t, err)
+	require.Empty(t, collectSeqs(t, c))
+}
+
+func TestReadAuditEntriesPage_SeqSetPurgeDoesNotShortenPage(t *testing.T) {
+	t.Parallel()
+
+	// Zone has 1,2,4,5 (seq 3 purged). Index references {1,2,3,4,5}, pageSize=3.
+	// Truncating candidates to [1,2,3] before the purge skip would return only
+	// {1,2}; the fix must fill the page with 4 -> {1,2,4}.
+	s := newAuditStore(t, 1, 2, 4, 5)
+	handle, err := s.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	c, err := query.ReadAuditEntriesPage(logging.TestingContext(), handle, []uint64{1, 2, 3, 4, 5}, true, 0, ^uint64(0), 0, false, 3)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1, 2, 4}, collectSeqs(t, c), "purged seq 3 must not consume a page slot")
+}
+
 func TestReadAuditEntriesPage_SeqSetWindowFilter(t *testing.T) {
 	t.Parallel()
 

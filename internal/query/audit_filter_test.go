@@ -281,6 +281,169 @@ func TestCompileAuditFilter_StringParamRejected(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
+func TestCompileAuditFilter_UnspecifiedFieldRejected(t *testing.T) {
+	t.Parallel()
+
+	_, _, _, _, err := CompileAuditFilter(&fakeAuditIndex{},
+		auditString(commonpb.AuditField_AUDIT_FIELD_UNSPECIFIED, "x"))
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCompileAuditFilter_StringFieldWrongConditionType(t *testing.T) {
+	t.Parallel()
+
+	// A string field (ledger) given a uint condition must be rejected.
+	_, _, _, _, err := CompileAuditFilter(&fakeAuditIndex{},
+		auditUint(commonpb.AuditField_AUDIT_FIELD_LEDGER, new(uint64(1)), new(uint64(2))))
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCompileAuditFilter_UintFieldWrongConditionType(t *testing.T) {
+	t.Parallel()
+
+	// A uint field (proposal_id) given a string condition must be rejected.
+	_, _, _, _, err := CompileAuditFilter(&fakeAuditIndex{},
+		auditString(commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, "x"))
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCompileAuditFilter_OutcomeWrongConditionType(t *testing.T) {
+	t.Parallel()
+
+	_, _, _, _, err := CompileAuditFilter(&fakeAuditIndex{},
+		auditUint(commonpb.AuditField_AUDIT_FIELD_OUTCOME, new(uint64(1)), new(uint64(1))))
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCompileAuditFilter_SeqWrongConditionType(t *testing.T) {
+	t.Parallel()
+
+	_, _, _, _, err := CompileAuditFilter(&fakeAuditIndex{},
+		auditString(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, "x"))
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCompileAuditFilter_TimestampAndLogSeqDispatch(t *testing.T) {
+	t.Parallel()
+
+	var gotFields []byte
+	idx := &fakeAuditIndex{byRange: func(field byte, _, _ uint64) []uint64 {
+		gotFields = append(gotFields, field)
+
+		return []uint64{1}
+	}}
+
+	_, _, _, _, err := CompileAuditFilter(idx, auditUint(commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, new(uint64(10)), nil))
+	require.NoError(t, err)
+
+	_, _, _, _, err = CompileAuditFilter(idx, auditUint(commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, nil, new(uint64(20))))
+	require.NoError(t, err)
+
+	require.Equal(t, []byte{readstore.AuditFieldTimestamp, readstore.AuditFieldLogSeq}, gotFields)
+}
+
+func TestCompileAuditFilter_CallerSubjectAndOrderTypeDispatch(t *testing.T) {
+	t.Parallel()
+
+	idx := &fakeAuditIndex{byString: map[string][]uint64{
+		string(readstore.AuditFieldCallerSubject) + "alice":          {2},
+		string(readstore.AuditFieldOrderType) + "create_transaction": {3},
+	}}
+
+	seqs, _, _, _, err := CompileAuditFilter(idx, auditString(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, "alice"))
+	require.NoError(t, err)
+	require.Equal(t, []uint64{2}, seqs)
+
+	seqs, _, _, _, err = CompileAuditFilter(idx, auditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"))
+	require.NoError(t, err)
+	require.Equal(t, []uint64{3}, seqs)
+}
+
+func TestCompileAuditFilter_EmptyUintRangeMatchesNothing(t *testing.T) {
+	t.Parallel()
+
+	// proposal_id > MaxUint64 is unsatisfiable -> narrowed with empty set,
+	// the index is never consulted.
+	consulted := false
+	idx := &fakeAuditIndex{byRange: func(_ byte, _, _ uint64) []uint64 {
+		consulted = true
+
+		return []uint64{1}
+	}}
+
+	cond := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Audit{
+			Audit: &commonpb.AuditCondition{
+				Field: commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID,
+				Condition: &commonpb.AuditCondition_UintCond{
+					UintCond: &commonpb.UintCondition{Min: new(uint64(math.MaxUint64)), MinExclusive: true},
+				},
+			},
+		},
+	}
+
+	seqs, _, _, narrowed, err := CompileAuditFilter(idx, cond)
+	require.NoError(t, err)
+	require.True(t, narrowed)
+	require.Empty(t, seqs)
+	require.False(t, consulted, "unsatisfiable range must not hit the index")
+}
+
+func TestCompileAuditFilter_EmptyAndIsUnconstrained(t *testing.T) {
+	t.Parallel()
+
+	filter := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{}},
+	}
+
+	seqs, lo, hi, narrowed, err := CompileAuditFilter(&fakeAuditIndex{}, filter)
+	require.NoError(t, err)
+	require.False(t, narrowed)
+	require.Nil(t, seqs)
+	require.Equal(t, uint64(0), lo)
+	require.Equal(t, uint64(math.MaxUint64), hi)
+}
+
+func TestCompileAuditFilter_AndOfTwoSeqBounds(t *testing.T) {
+	t.Parallel()
+
+	// audit[seq] >= 5 and audit[seq] <= 20 -> both non-narrowed, bounds intersect
+	// to [5,20]; the index is never consulted.
+	filter := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
+				auditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, new(uint64(5)), nil),
+				auditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, nil, new(uint64(20))),
+			}},
+		},
+	}
+
+	seqs, lo, hi, narrowed, err := CompileAuditFilter(&fakeAuditIndex{}, filter)
+	require.NoError(t, err)
+	require.False(t, narrowed)
+	require.Nil(t, seqs)
+	require.Equal(t, uint64(5), lo)
+	require.Equal(t, uint64(20), hi)
+}
+
+func TestCompileAuditFilter_EmptyOrMatchesNothing(t *testing.T) {
+	t.Parallel()
+
+	filter := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{}},
+	}
+
+	seqs, _, _, narrowed, err := CompileAuditFilter(&fakeAuditIndex{}, filter)
+	require.NoError(t, err)
+	require.True(t, narrowed)
+	require.Empty(t, seqs)
+}
+
 func TestIntersectSorted(t *testing.T) {
 	t.Parallel()
 

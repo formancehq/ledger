@@ -25,7 +25,7 @@ func NewListCommand() *cobra.Command {
 		Short:   "List audit entries",
 		Long: `List audit log entries (successes and failures) via gRPC streaming.
 
-Entries are shown newest first by default; use --reverse for oldest first.
+Entries are shown oldest first by default (chronological); use --reverse for newest first.
 
 The --filter flag accepts audit[...] conditions combined with and/or:
   audit[outcome] == failure
