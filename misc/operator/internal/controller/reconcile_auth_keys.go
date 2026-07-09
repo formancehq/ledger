@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"sort"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -19,6 +20,12 @@ import (
 
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
+
+// authKeysPendingRequeueInterval is how soon to requeue a Cluster whose matching
+// Credentials are not distributed yet. The Credentials watch already re-enqueues
+// on distribution, so this poll is a safety net bounding convergence when the
+// watch event is missed, not the primary trigger.
+const authKeysPendingRequeueInterval = 10 * time.Second
 
 // credentialsKeyInfo holds the resolved key information for an credentials matching a Cluster.
 type credentialsKeyInfo struct {
@@ -47,16 +54,34 @@ type authKeyEntry struct {
 // reconcileAuthKeys resolves all Credentials matching the given Cluster,
 // creates/updates (or deletes) a ConfigMap with aggregated auth keys, and returns the
 // list of credentials key info for use by the StatefulSet reconciler.
-func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, error) {
+//
+// It distinguishes two zero-key situations that must NOT be conflated (EN-1487):
+//
+//   - No Credentials match the selector at all — a legitimate removal. The
+//     ConfigMap is deleted and the caller strips the auth wiring from the
+//     StatefulSet.
+//   - One or more Credentials match but none is distributed yet (their
+//     status.DistributedSecretRefs is transiently empty, e.g. during
+//     operator/Credentials churn). Deleting the ConfigMap and stripping the
+//     StatefulSet here would produce AUTH_ENABLED=true without any key and
+//     crash-loop an otherwise healthy cluster. This is a transient state, so we
+//     fail safe: preserve the existing ConfigMap and StatefulSet wiring, and
+//     report pending=true so the caller sets the AuthKeysPending condition and
+//     requeues. The Credentials watch reconverges once distribution completes.
+//
+// The returned pending flag is true only in the second case.
+func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, bool, error) {
 	logger := log.FromContext(ctx)
 
-	// Collect keys from cluster-scoped Credentials.
-	credentials, err := r.collectClusterCredentialsKeys(ctx, ledger)
+	// Collect keys from cluster-scoped Credentials. matched counts Credentials
+	// whose selector matches this Cluster, regardless of distribution state;
+	// credentials holds only those already distributed and readable.
+	credentials, matched, err := r.collectClusterCredentialsKeys(ctx, ledger)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	logger.V(1).Info("resolved credentials keys", "clusterAgents", len(credentials))
+	logger.V(1).Info("resolved credentials keys", "matched", matched, "resolved", len(credentials))
 
 	// Sort by prefix+name for deterministic output.
 	sort.Slice(credentials, func(i, j int) bool {
@@ -69,20 +94,30 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	cmName := authKeysConfigMapName(ledger.Name)
 
 	if len(credentials) == 0 {
+		if matched > 0 {
+			// Transient: Credentials match but none is distributed yet. Fail
+			// safe — do not touch the ConfigMap or the StatefulSet auth wiring.
+			// The caller sets the AuthKeysPending condition and requeues.
+			logger.Info("matching credentials are not distributed yet, preserving existing auth-key wiring",
+				"matched", matched)
+
+			return nil, true, nil
+		}
+
 		// No credentials match: delete the ConfigMap if it exists.
 		cm := &corev1.ConfigMap{}
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, fmt.Errorf("checking auth-keys ConfigMap: %w", err)
+				return nil, false, fmt.Errorf("checking auth-keys ConfigMap: %w", err)
 			}
 		} else {
 			if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
-				return nil, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
+				return nil, false, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
 			}
 			logger.Info("deleted auth-keys ConfigMap (no matching credentials)")
 		}
 
-		return nil, nil
+		return nil, false, nil
 	}
 
 	// Build the auth-keys.json content.
@@ -104,7 +139,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 
 	authKeysBytes, err := json.MarshalIndent(authKeys, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("marshaling auth-keys.json: %w", err)
+		return nil, false, fmt.Errorf("marshaling auth-keys.json: %w", err)
 	}
 
 	// Create or update the ConfigMap.
@@ -125,23 +160,29 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		return controllerutil.SetControllerReference(ledger, cm, r.Scheme)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("reconciling auth-keys ConfigMap: %w", err)
+		return nil, false, fmt.Errorf("reconciling auth-keys ConfigMap: %w", err)
 	}
 
-	return credentials, nil
+	return credentials, false, nil
 }
 
 // collectClusterCredentialsKeys lists all Credentials and returns keys for
-// those whose selector matches the given Cluster.
-func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, error) {
+// those whose selector matches the given Cluster. It also returns matched: the
+// number of Credentials whose selector matches this Cluster, counted before any
+// distribution filtering. matched >= len(keys) always; the gap is the set of
+// matching-but-not-yet-distributed Credentials that the caller uses to tell a
+// legitimate removal (matched == 0) apart from a transient non-distribution
+// (matched > 0, len(keys) == 0) — see reconcileAuthKeys.
+func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, int, error) {
 	logger := log.FromContext(ctx)
 
 	var list ledgerv1alpha1.CredentialsList
 	if err := r.List(ctx, &list); err != nil {
-		return nil, fmt.Errorf("listing Credentials: %w", err)
+		return nil, 0, fmt.Errorf("listing Credentials: %w", err)
 	}
 
 	var keys []credentialsKeyInfo
+	matched := 0
 	for i := range list.Items {
 		cred := &list.Items[i]
 
@@ -155,6 +196,8 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, l
 			continue
 		}
 
+		matched++
+
 		if len(cred.Status.DistributedSecretRefs) == 0 {
 			logger.Info("credentials has no distributed secret yet, skipping", "credentials", cred.Name)
 
@@ -163,14 +206,14 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, l
 
 		info, ok, err := r.readCredentialsKeyFromSecret(ctx, cred.Name, cred.Status.DistributedSecretRefs[0], cred.Spec.Scopes, cred.Spec.God, "credentials")
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if ok {
 			keys = append(keys, info)
 		}
 	}
 
-	return keys, nil
+	return keys, matched, nil
 }
 
 // readCredentialsKeyFromSecret reads the public key from an credentials's secret and returns

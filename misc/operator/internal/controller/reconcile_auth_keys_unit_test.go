@@ -1,0 +1,225 @@
+package controller
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+)
+
+// authKeysScheme builds a scheme with everything reconcileAuthKeys touches.
+func authKeysScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+
+	return scheme
+}
+
+// authEnabledCluster returns a minimal auth-enabled Cluster carrying the given
+// labels (used by Credentials selectors).
+func authEnabledCluster(name, namespace string, labels map[string]string) *ledgerv1alpha1.Cluster {
+	enabled := true
+
+	return &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: labels},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+		},
+	}
+}
+
+// matchingCredentials returns a cluster-scoped Credentials selecting the given
+// labels. If distributed is true its status carries a DistributedSecretRefs
+// entry pointing at secretNS/secretName.
+func matchingCredentials(name string, selector map[string]string, distributed bool, secretNS, secretName string) *ledgerv1alpha1.Credentials {
+	cred := &ledgerv1alpha1.Credentials{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: ledgerv1alpha1.CredentialsSpec{
+			Scopes:   []string{"read"},
+			Selector: metav1.LabelSelector{MatchLabels: selector},
+		},
+	}
+	if distributed {
+		cred.Status.DistributedSecretRefs = []ledgerv1alpha1.SecretReference{
+			{Namespace: secretNS, Name: secretName},
+		}
+	}
+
+	return cred
+}
+
+// existingAuthKeysConfigMap returns a ConfigMap standing in for a previously
+// reconciled auth-keys ConfigMap for the given Cluster.
+func existingAuthKeysConfigMap(clusterName, namespace string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      authKeysConfigMapName(clusterName),
+			Namespace: namespace,
+		},
+		Data: map[string]string{
+			"auth-keys.json": `{"keys":[{"keyId":"stale","publicKeyFile":"/auth-keys/stale.hex","scopes":["read"]}]}`,
+		},
+	}
+}
+
+// TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap covers the
+// core EN-1487 fix: matching Credentials exist but none is distributed yet, and
+// a ConfigMap already exists. reconcileAuthKeys must NOT delete the ConfigMap,
+// must return no credentials, and must signal pending so the caller preserves
+// the StatefulSet wiring, sets AuthKeysPending, and requeues.
+func TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	existingCM := existingAuthKeysConfigMap(clusterName, namespace)
+	cred := matchingCredentials("thierry-cred", selector, false, "", "")
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existingCM, cred).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.True(t, pending, "transient non-distribution must report pending")
+	assert.Nil(t, credentials, "no key must be returned while credentials are undistributed")
+
+	// The existing ConfigMap must survive untouched — deleting it is exactly the
+	// bug that crash-loops auth-enabled clusters.
+	cm := &corev1.ConfigMap{}
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	require.NoError(t, err, "existing auth-keys ConfigMap must be preserved during transient non-distribution")
+	assert.Equal(t, existingCM.Data["auth-keys.json"], cm.Data["auth-keys.json"],
+		"ConfigMap content must not be mutated during transient non-distribution")
+}
+
+// TestReconcileAuthKeys_NoMatch_DeletesConfigMap covers the legitimate removal
+// path: zero Credentials match the selector, so the ConfigMap is deleted and no
+// pending signal is raised.
+func TestReconcileAuthKeys_NoMatch_DeletesConfigMap(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+
+	scheme := authKeysScheme(t)
+	existingCM := existingAuthKeysConfigMap(clusterName, namespace)
+	// A Credentials that does NOT match the cluster labels.
+	cred := matchingCredentials("other-cred", map[string]string{"tier": "silver"}, true, namespace, "some-secret")
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existingCM, cred).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	// Cluster carries labels matched by no Credentials.
+	cluster := authEnabledCluster(clusterName, namespace, map[string]string{"tier": "gold"})
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.False(t, pending, "no matching credentials is a legitimate removal, not pending")
+	assert.Nil(t, credentials)
+
+	cm := &corev1.ConfigMap{}
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	assert.True(t, apierrors.IsNotFound(err),
+		"auth-keys ConfigMap must be deleted when no Credentials match the selector")
+}
+
+// TestReconcileAuthKeys_Distributed_CreatesConfigMap covers convergence: once a
+// matching Credentials becomes distributed and its Secret is readable, the
+// ConfigMap is (re)created with the aggregated keys and pending is cleared.
+func TestReconcileAuthKeys_Distributed_CreatesConfigMap(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		secretName  = "thierry-cred-secret"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	cred := matchingCredentials("thierry-cred", selector, true, namespace, secretName)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+		Data: map[string][]byte{
+			"pubkey.hex": []byte("deadbeef"),
+			"key-id":     []byte("kid-123"),
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cred, secret).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.False(t, pending, "a distributed credentials must not be pending")
+	require.Len(t, credentials, 1, "the distributed credentials must be resolved into a key")
+	assert.Equal(t, "kid-123", credentials[0].KeyID)
+
+	cm := &corev1.ConfigMap{}
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	require.NoError(t, err, "auth-keys ConfigMap must be created once credentials are distributed")
+	assert.Contains(t, cm.Data, "auth-keys.json")
+	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
+}
+
+// TestCredentialsToClusters_EnqueuesMatchingCluster verifies the watch mapping
+// that drives convergence: a Credentials change must enqueue every Cluster its
+// selector matches, so the transition non-distributed -> distributed triggers a
+// re-reconcile without waiting for the requeue safety net.
+func TestCredentialsToClusters_EnqueuesMatchingCluster(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	matching := authEnabledCluster(clusterName, namespace, selector)
+	nonMatching := authEnabledCluster("other", namespace, map[string]string{"tier": "silver"})
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(matching, nonMatching).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cred := matchingCredentials("thierry-cred", selector, true, namespace, "secret")
+
+	requests := r.credentialsToClusters(context.Background(), client.Object(cred))
+	require.Len(t, requests, 1, "only the Cluster matched by the selector must be enqueued")
+	assert.Equal(t, types.NamespacedName{Name: clusterName, Namespace: namespace}, requests[0].NamespacedName)
+}

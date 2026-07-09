@@ -223,12 +223,39 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Reconcile auth keys from Credentials (before StatefulSet).
-	credentials, err := r.reconcileAuthKeys(ctx, ledger)
+	credentials, authKeysPending, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
 		logger.Error(err, "failed to reconcile auth keys")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
 	}
+
+	// Fail-safe (EN-1487): matching Credentials exist but none is distributed
+	// yet. reconcileAuthKeys left the existing ConfigMap untouched; we must NOT
+	// reconcile the StatefulSet now, because buildStatefulSetSpec would emit
+	// AUTH_ENABLED=true without any Ed25519 key (credentials is nil), stripping
+	// the auth volume/env and rolling a healthy cluster into CrashLoopBackOff.
+	// Skip the StatefulSet pass entirely to preserve its current template,
+	// surface an explicit AuthKeysPending condition + event, and requeue; the
+	// Credentials watch also reconverges the moment distribution completes.
+	if authKeysPending {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "AuthKeysPending",
+			Status:             metav1.ConditionTrue,
+			Reason:             "CredentialsNotDistributed",
+			Message:            "matching Credentials exist but none is distributed yet; preserving existing auth-key wiring and waiting for distribution",
+			ObservedGeneration: ledger.Generation,
+		})
+		if r.Recorder != nil {
+			r.Recorder.Event(ledger, corev1.EventTypeWarning, "AuthKeysPending",
+				"matching Credentials are not distributed yet; StatefulSet auth wiring preserved, waiting for distribution")
+		}
+
+		return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
+	}
+
+	// Auth keys resolved (or none match at all): clear any pending condition.
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, "AuthKeysPending")
 
 	// Reconcile cluster secret only when TLS will be at least partially
 	// active during this pass. The secret is a static bearer token; it must
