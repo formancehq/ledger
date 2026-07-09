@@ -465,7 +465,6 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 
 	cmd.ExecutionPlan = build.ExecutionPlan
 	cmd.CallerSnapshot = auth.ResolveCallerSnapshot(ctx)
-	a.observeCallerSnapshot(ctx, cmd.GetCallerSnapshot())
 
 	preloadSpan.End()
 
@@ -556,6 +555,11 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	}
 
 	a.fsmFutureWaitHistogram.Record(ctx, time.Since(fsmWaitStart).Microseconds())
+
+	// The proposal is committed and applied here — an audit entry carrying this
+	// caller snapshot has been written. Observing attribution gaps at this point
+	// excludes proposals rejected before commit (guard/marshal/stale/queue-full).
+	a.observeCallerSnapshot(ctx, cmd.GetCallerSnapshot())
 
 	// Resolve CreatedLogOrReference entries into concrete logs.
 	// Created logs are returned directly; reference sequences (idempotent responses)
