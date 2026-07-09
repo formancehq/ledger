@@ -1219,7 +1219,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 	var c cursor.Cursor[*auditpb.AuditEntry]
 
 	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
-		mainStore, readIdx, openErr := impl.openCheckpointStores(cpID)
+		mainStore, readIdx, openErr := impl.openCheckpointStores(ctx, cpID)
 		if openErr != nil {
 			return openErr
 		}
