@@ -15,10 +15,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// validFieldFilterJSON is a minimal QueryFilter wire shape with a populated
-// oneof, used to exercise the create/update paths without depending on the
-// full filter grammar.
-const validFieldFilterJSON = `{"field":{"field":{"metadata":"foo"},"existsCond":{}}}`
+// validFieldFilterJSON is a minimal QueryFilter wire shape (canonical flat
+// shape) with a populated leaf condition, used to exercise the create/update
+// paths without depending on the full filter grammar.
+const validFieldFilterJSON = `{"match":{"type":"field","metadata":"foo","condition":{"type":"exists"}}}`
 
 func TestHandleCreatePreparedQuery_Success(t *testing.T) {
 	t.Parallel()
@@ -65,12 +65,10 @@ func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 		"name": "vip-high-risk",
 		"target": "ACCOUNTS",
 		"filter": {
-			"and": {
-				"filters": [
-					{"field": {"field": {"metadata": "risk_score"}, "intCond": {"min": "70"}}},
-					{"field": {"field": {"metadata": "vip"},        "boolCond": {"hardcoded": true}}}
-				]
-			}
+			"and": [
+				{"match": {"type": "field", "metadata": "risk_score", "condition": {"type": "int", "min": 70}}},
+				{"match": {"type": "field", "metadata": "vip",        "condition": {"type": "bool", "equals": true}}}
+			]
 		}
 	}`
 

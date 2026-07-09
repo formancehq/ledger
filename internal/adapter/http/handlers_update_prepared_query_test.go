@@ -55,12 +55,10 @@ func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 
 	body := `{
 		"filter": {
-			"or": {
-				"filters": [
-					{"field": {"field": {"metadata": "tier"}, "stringCond": {"hardcoded": "gold"}}},
-					{"field": {"field": {"metadata": "tier"}, "stringCond": {"hardcoded": "platinum"}}}
-				]
-			}
+			"or": [
+				{"match": {"type": "field", "metadata": "tier", "condition": {"type": "string", "equals": "gold"}}},
+				{"match": {"type": "field", "metadata": "tier", "condition": {"type": "string", "equals": "platinum"}}}
+			]
 		}
 	}`
 

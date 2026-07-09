@@ -93,6 +93,35 @@ These accelerators are correctness-neutral: turning them off (e.g. by a saturate
 
 **Cursor for `ListPreparedQueries`.** The cursor is the query name itself (printable ASCII, exactly what the name-validator requires). Listing is a single-ledger scan.
 
+## Canonical `QueryFilter` JSON shape (REST)
+
+`QueryFilter` is a protobuf oneof; naively routing it through `protojson` leaks the
+proto-internal oneof/wrapper names onto the public REST surface (`and.filters[]`,
+`not.filter`, `field.field.metadata`, `stringCond`, `hardcodedExact`, and the
+`QUERY_TARGET_*` enum prefix). To keep the wire aligned with the OpenAPI schema,
+`QueryFilter` carries a **hand-written JSON codec** (`internal/proto/commonpb/query_filter.go`),
+and `PreparedQuery.MarshalJSON` (`internal/proto/commonpb/common.pb.json.go`) uses
+it plus a string target enum. The HTTP decoder
+(`internal/adapter/http/prepared_query_filter.go`) decodes through the same codec.
+
+The canonical shape is:
+
+- **Combinators** (exactly one per node): `{"and": [QueryFilter, ...]}`,
+  `{"or": [QueryFilter, ...]}`, `{"not": QueryFilter}`.
+- **Leaf**: `{"match": <Condition>}`, where `<Condition>` is a tagged union
+  discriminated by a `type` field (`field`, `address`, `reference`, `ledger`,
+  `logId`, `builtinUint`, `logBuiltinUint`, `accountHasAsset`, `reverted`).
+  `field` nests a second tagged union (`string`/`int`/`uint`/`bool`/`exists`).
+
+The codec is bidirectional and lossless (unsigned bounds are carried as decimal
+strings to survive values above 2^53). It fails loudly on an unknown `type`, on a
+node that sets zero or more than one of `and`/`or`/`not`/`match`, and on a proto
+oneof arm it does not recognise — so a new proto arm cannot silently drop a
+filter. The full schema (including every condition sub-type) is documented under
+`QueryFilter` / `Condition` in `openapi.yml`. Round-trip and error-path tests live
+in `internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
+`tests/e2e/business/prepared_query_rest_shape_test.go`.
+
 ## Recent changes
 
 | Commit | Effect |
@@ -100,6 +129,7 @@ These accelerators are correctness-neutral: turning them off (e.g. by a saturate
 | `c1f79db80` (EN-1321) | Wire prepared queries into the per-attribute bloom registry. |
 | `7662d2bae` | Monotonic-skip and probe-based `AndIterator` optimisations for filter execution. |
 | `dedb005bc` (fix/376) | Fix protojson oneOf/enum encoding for prepared-query payloads. |
+| EN-1465 | Canonical flat `QueryFilter` JSON codec (replaces the protojson leak); string target enum on `PreparedQuery`. |
 
 ## What's not (yet) here
 
