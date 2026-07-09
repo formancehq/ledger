@@ -329,11 +329,38 @@ func AggregateVolumes(ctx context.Context, client servicepb.BucketServiceClient,
 	})
 }
 
-// ListAuditEntries collects all audit entries from the streaming RPC.
+// ListAuditEntries collects all audit entries from the streaming RPC. When
+// failuresOnly is true it applies the shared filter `audit[outcome] == failure`
+// (failures_only is no longer a top-level request field — EN-1241).
 func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, failuresOnly bool) ([]*auditpb.AuditEntry, error) {
-	return ListAuditEntriesWithRequest(ctx, client, &servicepb.ListAuditEntriesRequest{
-		FailuresOnly: failuresOnly,
-	})
+	req := &servicepb.ListAuditEntriesRequest{}
+	if failuresOnly {
+		req.Options = &commonpb.ListOptions{Filter: AuditOutcomeFilter(false)}
+	}
+
+	return ListAuditEntriesWithRequest(ctx, client, req)
+}
+
+// AuditOutcomeFilter builds the QueryFilter matching audit entries by outcome:
+// success=true -> `audit[outcome] == success`, success=false -> failure.
+func AuditOutcomeFilter(success bool) *commonpb.QueryFilter {
+	val := "failure"
+	if success {
+		val = "success"
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Audit{
+			Audit: &commonpb.AuditCondition{
+				Field: commonpb.AuditField_AUDIT_FIELD_OUTCOME,
+				Condition: &commonpb.AuditCondition_StringCond{
+					StringCond: &commonpb.StringCondition{
+						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: val},
+					},
+				},
+			},
+		},
+	}
 }
 
 // ListAuditEntriesWithRequest collects all audit entries matching the given
@@ -351,13 +378,14 @@ func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketSer
 	// page request — dropping it would silently turn a freshness-gated audit
 	// scan into a stale read against a lagging follower.
 	page := &servicepb.ListAuditEntriesRequest{
+		Ledger: req.GetLedger(),
 		Options: &commonpb.ListOptions{
 			Read:     req.GetOptions().GetRead(),
 			PageSize: listAllPageSize,
 			Cursor:   req.GetOptions().GetCursor(),
+			Reverse:  req.GetOptions().GetReverse(),
+			Filter:   req.GetOptions().GetFilter(),
 		},
-		FailuresOnly: req.GetFailuresOnly(),
-		Ledger:       req.GetLedger(),
 	}
 
 	var entries []*auditpb.AuditEntry

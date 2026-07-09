@@ -1202,13 +1202,9 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 
 	opts := req.GetOptions()
 
-	// The audit controller does not yet honor filter / reverse /
-	// checkpoint_id — see #436 for the alignment work.
-	if err := ValidateListOptions(opts, ListOptionsSupport{}); err != nil {
-		return err
-	}
-
-	if err := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); err != nil {
+	// Audit listing is fully under the shared contract: filter (audit[...]
+	// conditions), reverse, and checkpoint_id are all honored (EN-1241).
+	if err := ValidateListOptions(opts, ListOptionsSupport{Filter: true, Reverse: true, CheckpointID: true}); err != nil {
 		return err
 	}
 
@@ -1218,13 +1214,30 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 	}
 
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
+	fetchSize := pageSizePlusOne(pageSize)
 
-	var afterSeqPtr *uint64
-	if opts.GetCursor() != "" {
-		afterSeqPtr = &afterSeq
+	var c cursor.Cursor[*auditpb.AuditEntry]
+
+	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
+		mainStore, readIdx, openErr := impl.openCheckpointStores(cpID)
+		if openErr != nil {
+			return openErr
+		}
+
+		defer func() {
+			_ = readIdx.Close()
+			_ = mainStore.Close()
+		}()
+
+		c, err = impl.localCtrl.ListAuditEntriesFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
+	} else {
+		if waitErr := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); waitErr != nil {
+			return waitErr
+		}
+
+		c, err = impl.ctrl.ListAuditEntries(ctx, req.GetLedger(), fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
 	}
 
-	c, err := impl.ctrl.ListAuditEntries(ctx, afterSeqPtr, req.GetFailuresOnly(), pageSizePlusOne(pageSize), req.GetLedger())
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
