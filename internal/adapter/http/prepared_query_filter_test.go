@@ -29,7 +29,7 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 		{
 			name:    "empty object",
 			raw:     "{}",
-			wantErr: "exactly one of",
+			wantErr: "empty object",
 		},
 		{
 			name:    "invalid json",
@@ -37,29 +37,29 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 			wantErr: "filter:",
 		},
 		{
-			name: "and filter with nested field conditions",
-			raw: `{"and":[
-				{"match":{"type":"field","metadata":"x","condition":{"type":"int","min":1}}},
-				{"match":{"type":"field","metadata":"y","condition":{"type":"bool","equals":true}}}
+			name: "and filter with nested conditions",
+			raw: `{"$and":[
+				{"$gte":{"metadata[x]":1}},
+				{"$match":{"metadata[y]":true}}
 			]}`,
 		},
 		{
 			name: "or filter",
-			raw:  `{"or":[{"match":{"type":"field","metadata":"x","condition":{"type":"exists"}}}]}`,
+			raw:  `{"$or":[{"$exists":{"metadata":"x"}}]}`,
 		},
 		{
-			name: "leaf field condition",
-			raw:  `{"match":{"type":"field","metadata":"x","condition":{"type":"exists"}}}`,
+			name: "leaf metadata exists",
+			raw:  `{"$exists":{"metadata":"x"}}`,
 		},
 		{
-			name:    "unknown condition type rejected",
-			raw:     `{"match":{"type":"bogus"}}`,
-			wantErr: "unknown condition type",
+			name:    "unknown operator rejected",
+			raw:     `{"$bogus":{}}`,
+			wantErr: "unknown operator",
 		},
 		{
-			name:    "multiple top-level keys rejected",
-			raw:     `{"and":[],"not":{"match":{"type":"reverted","value":true}}}`,
-			wantErr: "exactly one of",
+			name:    "multiple top-level operators rejected",
+			raw:     `{"$and":[],"$not":{"$match":{"reverted":true}}}`,
+			wantErr: "exactly one operator",
 		},
 	}
 

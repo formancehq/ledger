@@ -33,17 +33,17 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	It("accepts the canonical flat filter shape on POST and echoes it back on GET", func() {
-		// Canonical flat shape: combinators are direct arrays / value, and the
-		// leaf `match` is a tagged union discriminated by `type`.
+	It("accepts the v2-aligned filter shape on POST and echoes it back on GET", func() {
+		// v2-aligned query DSL: $-prefixed operators, single-key
+		// operator->{field:value} bodies, $and/$or arrays, $not single.
 		body := `{
 			"name": "vip-and-ref",
 			"target": "TRANSACTIONS",
 			"filter": {
-				"and": [
-					{"match": {"type": "reference", "equals": "order-1"}},
-					{"match": {"type": "field", "metadata": "tier", "condition": {"type": "string", "equals": "gold"}}},
-					{"not": {"match": {"type": "reverted", "value": true}}}
+				"$and": [
+					{"$match": {"reference": "order-1"}},
+					{"$match": {"metadata[tier]": "gold"}},
+					{"$not": {"$match": {"reverted": true}}}
 				]
 			}
 		}`
@@ -71,10 +71,9 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 		Expect(err).To(Succeed())
 		listStr := string(listRaw)
 
-		// Positive: the flat contract is present.
+		// Positive: the v2 contract is present.
 		Expect(listStr).To(ContainSubstring(`"target":"TRANSACTIONS"`))
-		Expect(listStr).To(ContainSubstring(`"match":{"type":"reference"`))
-		Expect(listStr).To(ContainSubstring(`"equals":"order-1"`))
+		Expect(listStr).To(ContainSubstring(`"$match":{"reference":"order-1"}`))
 
 		// Negative: no protobuf-internal names leak.
 		for _, leak := range []string{
@@ -100,19 +99,19 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 			if q.Name == "vip-and-ref" {
 				found = true
 				var f struct {
-					And []json.RawMessage `json:"and"`
+					And []json.RawMessage `json:"$and"`
 				}
 				Expect(json.Unmarshal(q.Filter, &f)).To(Succeed())
-				Expect(f.And).To(HaveLen(3), "and combinator must round-trip as a direct array")
+				Expect(f.And).To(HaveLen(3), "$and combinator must round-trip as a direct array")
 			}
 		}
 		Expect(found).To(BeTrue(), "created prepared query not found in list")
 	})
 
 	It("rejects a legacy protojson-shaped filter (no silent acceptance)", func() {
-		// The old wire shape (`and.filters[]`, `field.field.metadata`) must now
-		// be rejected rather than silently parsed — it is not the documented
-		// contract.
+		// The old protojson wire shape (`and.filters[]`, `field.field.metadata`)
+		// must be rejected rather than silently parsed — it is not the documented
+		// v2-aligned contract.
 		body := `{
 			"name": "legacy",
 			"target": "TRANSACTIONS",

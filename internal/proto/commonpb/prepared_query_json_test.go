@@ -11,13 +11,13 @@ import (
 // TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString guards two regressions:
 //   - #478: default encoding/json emitted PascalCase oneof keys
 //     (`"Filter":{"Reference":{...}}`) and a raw enum int (`"target":1`).
-//   - EN-1465: the earlier protojson fix leaked the proto-internal oneof/wrapper
-//     names of QueryFilter (`"reference":{"cond":{"hardcoded":...}}`) and the
-//     QUERY_TARGET_* enum prefix onto the public surface.
+//   - EN-1465: protojson leaked the proto-internal oneof/wrapper names of
+//     QueryFilter and the QUERY_TARGET_* enum prefix onto the public surface.
 //
-// The current contract is the canonical flat shape: target is the bare string
-// enum (ACCOUNTS/TRANSACTIONS/LOGS) and the filter uses `match` + tagged-union
-// conditions (see query_filter.go).
+// The current contract is the v2-aligned query DSL: target is the bare string
+// enum (ACCOUNTS/TRANSACTIONS/LOGS) and the filter uses `$`-prefixed operators
+// (`$match`/`$gt`/…) with single-key operator->{field:value} bodies (see
+// query_filter.go).
 func TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString(t *testing.T) {
 	t.Parallel()
 
@@ -42,10 +42,8 @@ func TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString(t *testing.T) {
 	require.Contains(t, out, `"name":"q1"`)
 	require.Contains(t, out, `"target":"TRANSACTIONS"`,
 		"enum must be emitted as the bare string constant, not a raw int or the QUERY_TARGET_* prefix")
-	require.Contains(t, out, `"match":{"type":"reference"`,
-		"filter must use the canonical flat match shape")
-	require.Contains(t, out, `"equals":"order-123"`,
-		"string condition must use the public `equals` key")
+	require.Contains(t, out, `"$match":{"reference":"order-123"}`,
+		"filter must use the v2-aligned query DSL shape")
 
 	// The PreparedQuery value no longer carries a ledger field — the ledger
 	// lives on the storage key, on the surrounding RPC request, and (for

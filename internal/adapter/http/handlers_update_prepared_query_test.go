@@ -55,9 +55,9 @@ func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 
 	body := `{
 		"filter": {
-			"or": [
-				{"match": {"type": "field", "metadata": "tier", "condition": {"type": "string", "equals": "gold"}}},
-				{"match": {"type": "field", "metadata": "tier", "condition": {"type": "string", "equals": "platinum"}}}
+			"$or": [
+				{"$match": {"metadata[tier]": "gold"}},
+				{"$match": {"metadata[tier]": "platinum"}}
 			]
 		}
 	}`
@@ -80,12 +80,12 @@ func TestHandleUpdatePreparedQuery_NestedOneofs(t *testing.T) {
 	require.NotNil(t, filter)
 
 	or := filter.GetOr()
-	require.NotNil(t, or, "outer OR oneof was not dispatched")
+	require.NotNil(t, or, "outer $or was not dispatched")
 	require.Len(t, or.GetFilters(), 2)
 	for i, child := range or.GetFilters() {
 		f := child.GetField()
-		require.NotNil(t, f, "child %d field oneof was not dispatched", i)
-		require.NotNil(t, f.GetStringCond(), "child %d string_cond oneof was not dispatched", i)
+		require.NotNil(t, f, "child %d metadata condition was not dispatched", i)
+		require.NotNil(t, f.GetStringCond(), "child %d string condition was not dispatched", i)
 	}
 }
 
