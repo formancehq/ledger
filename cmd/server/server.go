@@ -17,7 +17,9 @@ import (
 	"go.uber.org/fx"
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	auth "github.com/formancehq/go-libs/v5/pkg/authn/jwt"
 	"github.com/formancehq/go-libs/v5/pkg/fx/observefx"
@@ -719,6 +721,18 @@ func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tls
 		peers, err := discoverPeersFromCluster(raftAddr, tlsCfg, clusterID, clusterSecret)
 		if err == nil {
 			return peers, nil
+		}
+
+		// A cluster-secret mismatch is a hard configuration error, never
+		// transient: retrying with the same (mis)configuration would spin
+		// until the deadline and then surface an opaque "context deadline
+		// exceeded". Fail fast with an actionable message instead. EN-1080.
+		if st, ok := status.FromError(err); ok && st.Code() == codes.Unauthenticated {
+			return nil, &bootstrap.JoinAuthError{
+				PeerAddress: raftAddr,
+				HasSecret:   clusterSecret != "",
+				Detail:      st.Message(),
+			}
 		}
 
 		select {

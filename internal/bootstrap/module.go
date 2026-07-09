@@ -1372,6 +1372,50 @@ func Module() fx.Option {
 	)
 }
 
+// JoinAuthError is returned when a joining node is rejected by the target
+// cluster's inter-node RaftServer with codes.Unauthenticated. This is always
+// a cluster-secret misconfiguration (EN-1080): the join flow carries no user
+// JWT, so the only credential in play is the shared cluster secret sent as a
+// Bearer token. The error is fatal and never retried — looping on the same
+// (mis)configuration cannot succeed.
+//
+// It covers both inter-node join RPCs: peer discovery
+// (ClusterBootstrapService.GetPeers, before the fx app starts, where PeerID
+// is not yet known and stays 0) and learner registration
+// (ClusterBootstrapService.JoinAsLearner, which carries the target PeerID).
+type JoinAuthError struct {
+	// PeerID identifies the rejecting cluster member. It is 0 during peer
+	// discovery, where the joining node only knows the --join address.
+	PeerID      uint64
+	PeerAddress string
+	// HasSecret reports whether this node was started with --cluster-secret.
+	// It drives the actionable hint: a missing secret vs a mismatched one.
+	HasSecret bool
+	// Detail is the raw gRPC status message from the target for diagnostics.
+	Detail string
+}
+
+func (e *JoinAuthError) Error() string {
+	var hint string
+	if e.HasSecret {
+		hint = "this node was started with --cluster-secret, but the target cluster rejected it: " +
+			"verify the secret matches the value configured on the existing cluster nodes"
+	} else {
+		hint = "this node was started without --cluster-secret, but the target cluster requires one: " +
+			"set --cluster-secret to the value configured on the existing cluster nodes (and --tls-mode, which --cluster-secret requires)"
+	}
+
+	target := e.PeerAddress
+	if e.PeerID != 0 {
+		target = fmt.Sprintf("peer %d (%s)", e.PeerID, e.PeerAddress)
+	}
+
+	return fmt.Sprintf(
+		"cluster join rejected by %s: inter-node authentication failed (%s); %s",
+		target, e.Detail, hint,
+	)
+}
+
 // tryAddLearner attempts to register this node as a learner on an existing
 // cluster, using the inter-node ClusterBootstrapService exposed on the
 // RaftServer. It retries on transient errors (Unavailable, no leader)
@@ -1469,6 +1513,22 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 				}).Infof("JoinAsLearner unavailable, will retry")
 
 				continue
+			}
+
+			// Unauthenticated is a hard configuration error, never transient:
+			// the target cluster's RaftServer rejected our cluster-secret
+			// bearer (missing, wrong, or malformed). Retrying with the same
+			// (mis)configuration can only loop forever, so fail fast with an
+			// actionable message instead of leaking the opaque gRPC status
+			// ("missing authorization metadata on Raft RPC", etc.) up the
+			// bootstrap chain. EN-1080.
+			if ok && st.Code() == codes.Unauthenticated {
+				return &JoinAuthError{
+					PeerID:      peer.ID,
+					PeerAddress: peer.Address,
+					HasSecret:   cfg.ClusterSecret != "",
+					Detail:      st.Message(),
+				}
 			}
 
 			// Non-transient error — fatal.
