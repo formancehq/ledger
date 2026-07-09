@@ -757,11 +757,19 @@ message CheckStoreProgress {
 // ============================================================================
 
 message ListAuditEntriesRequest {
-  common.ListOptions options = 1;
-  // failures_only filters audit entries to only those carrying a failure status.
-  bool failures_only = 2;
-  // ledger filters audit entries to only those containing orders targeting this ledger.
-  string ledger = 3;
+  // ledger optionally scopes the listing to audit entries touching this ledger
+  // (match-any over AuditEntry.ledgers). Empty lists every ledger. Kept
+  // top-level for parity with the other ledger-scoped list RPCs; internally it
+  // is ANDed into options.filter as audit[ledger] == <ledger>.
+  string ledger = 1;
+  common.ListOptions options = 2;
+
+  // Previously: options=1, failures_only=2, ledger=3. The request now follows
+  // the canonical { ledger, options } shape; failures_only folds into
+  // options.filter as `audit[outcome] == failure`. Old field names reserved so
+  // they cannot be silently reintroduced with a different meaning.
+  reserved 3;
+  reserved "failures_only";
 }
 
 message GetAuditEntryRequest {

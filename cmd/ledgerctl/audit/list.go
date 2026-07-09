@@ -20,19 +20,44 @@ import (
 // NewListCommand creates the audit list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "list",
-		Aliases:           cmdutil.ListAliases,
-		Short:             "List audit entries",
-		Long:              "List audit log entries (successes and failures) via gRPC streaming",
+		Use:     "list",
+		Aliases: cmdutil.ListAliases,
+		Short:   "List audit entries",
+		Long: `List audit log entries (successes and failures) via gRPC streaming.
+
+Entries are shown newest first by default; use --reverse for oldest first.
+
+The --filter flag accepts audit[...] conditions combined with and/or:
+  audit[outcome] == failure
+  audit[ledger] == main and audit[order_type] == create_transaction
+  audit[order_type] in (create_transaction, revert_transaction)
+  audit[caller.subject] == "svc:payments"
+  audit[seq] between 1000 and 2000
+  audit[proposal_id] == 42
+  audit[timestamp] >= 1700000000000000    # unix microseconds
+  audit[log_seq] == 500
+
+Supported fields: seq, proposal_id, timestamp, log_seq (numeric);
+outcome (success|failure), ledger, caller.subject, order_type (string).
+Unsupported conditions (not, non-indexed fields) are rejected.
+
+Examples:
+  ledgerctl audit list
+  ledgerctl audit list --failures-only
+  ledgerctl audit list --ledger my-ledger --reverse
+  ledgerctl audit list --filter 'audit[outcome] == failure'
+  ledgerctl audit list --checkpoint-id 7`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
 	}
 
-	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{})
-	cmdutil.AddMinLogSequenceFlag(cmd)
+	cmd.Flags().String("ledger", "", "Scope to audit entries touching this ledger")
+	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
+	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
+	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
-	cmd.Flags().Bool("failures-only", false, "Show only failed entries")
+	cmd.Flags().Bool("failures-only", false, "Show only failed entries (shorthand for --filter 'audit[outcome] == failure')")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("expand", false, "Expand orders within each audit entry")
 
@@ -52,12 +77,25 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	failuresOnly, _ := cmd.Flags().GetBool("failures-only")
 	expand, _ := cmd.Flags().GetBool("expand")
-	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
+	ledger, _ := cmd.Flags().GetString("ledger")
 	pgn := cmdutil.GetPaginationFlags(cmd)
+	flt := cmdutil.GetFilterFlags(cmd)
+	cns := cmdutil.GetConsistencyFlags(cmd)
+
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix)
+	if err != nil {
+		return err
+	}
+
+	// --failures-only is a convenience shorthand for `audit[outcome] ==
+	// failure`, AND-combined with any explicit --filter.
+	if failuresOnly {
+		filter = combineAuditFilter(filter, auditOutcomeFailureFilter())
+	}
 
 	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		Options:      cmdutil.BuildListOptions(pgn, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, nil),
-		FailuresOnly: failuresOnly,
+		Ledger:  ledger,
+		Options: cmdutil.BuildListOptions(pgn, cns, filter),
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to list audit entries", err)
@@ -110,6 +148,39 @@ func runList(cmd *cobra.Command, _ []string) error {
 	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
+}
+
+// auditOutcomeFailureFilter builds the `audit[outcome] == failure` condition
+// that backs the --failures-only shorthand.
+func auditOutcomeFailureFilter() *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Audit{
+			Audit: &commonpb.AuditCondition{
+				Field: commonpb.AuditField_AUDIT_FIELD_OUTCOME,
+				Condition: &commonpb.AuditCondition_StringCond{
+					StringCond: &commonpb.StringCondition{
+						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "failure"},
+					},
+				},
+			},
+		},
+	}
+}
+
+// combineAuditFilter AND-combines two filters. Either may be nil.
+func combineAuditFilter(a, b *commonpb.QueryFilter) *commonpb.QueryFilter {
+	switch {
+	case a == nil:
+		return b
+	case b == nil:
+		return a
+	default:
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_And{
+				And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{a, b}},
+			},
+		}
+	}
 }
 
 // printAuditEntry prints a single audit entry in a human-readable format.

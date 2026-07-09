@@ -980,13 +980,16 @@ or_expr        := and_expr ("or" and_expr)*
 and_expr       := unary_expr ("and" unary_expr)*
 unary_expr     := "not" unary_expr | primary
 primary        := "(" expression ")" | condition
-condition      := metadata_cond | address_cond | source_cond | destination_cond | has_asset_cond
+condition      := metadata_cond | audit_cond | address_cond | source_cond | destination_cond | has_asset_cond
 metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists")
+audit_cond     := "audit" "[" AUDIT_FIELD "]" ("==" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 address_cond   := "address" ("==" VALUE | "^=" VALUE)
 source_cond    := "source" ("==" VALUE | "^=" VALUE)
 destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 has_asset_cond := "has" "asset" ASSET_BASE ["/" PRECISION]
 ```
+
+`audit[...]` conditions are only valid on `audit list` (see [audit list](#audit-list) for the field/operator matrix). They are rejected on other list endpoints.
 
 **Conditions:**
 
@@ -2236,13 +2239,43 @@ ledgerctl audit list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--failures-only` | `false` | Show only failed entries |
+| `--ledger` | (all) | Scope to audit entries touching this ledger (match-any over the entry's ledgers). |
+| `--failures-only` | `false` | Shorthand for `--filter 'audit[outcome] == failure'`. Combined (AND) with any explicit `--filter`. |
 | `--expand` | `false` | Expand orders within each audit entry |
 
-Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
+Also honors the full [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
+
+**Audit filter grammar (`--filter`):** the audit trail is queried through its
+secondary index, so `--filter` accepts `audit[<field>] <op> <value>` conditions
+combined with `and` / `or`:
+
+| Field | Type | Operators | Notes |
+|-------|------|-----------|-------|
+| `seq` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | Audit sequence (served by an audit-zone key-range bound). |
+| `proposal_id` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | |
+| `timestamp` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | Unix **microseconds**. |
+| `log_seq` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | Match-any over the entry's item log sequences. |
+| `outcome` | string | `==`, `in` | `success` or `failure`. |
+| `ledger` | string | `==`, `in` | Match-any over the entry's ledgers. |
+| `caller.subject` | string | `==`, `in` | Auth subject on the caller snapshot. |
+| `order_type` | string | `==`, `in` | Order kind token (e.g. `create_transaction`, `revert_transaction`, `save_numscript`); match-any over the entry's items. |
+
+Unsupported conditions are rejected with `InvalidArgument` rather than silently
+ignored: `not`, `!=` (both need a complement the index cannot serve), and any
+non-audit condition (`metadata[...]`, `address`, `source`, …). This keeps audit
+reads first-class with every other list endpoint while never degrading to a
+full-chain scan.
+
+> **Consistency note.** The audit secondary index is maintained by an
+> asynchronous per-node worker, so a *filtered* audit read (including `--ledger`
+> / `--failures-only`) is eventually consistent — a just-applied entry may take
+> up to ~200 ms to appear. `--min-log-sequence` gates the read-side log index,
+> not the audit index. An *unfiltered* read (plain `audit list`, optionally with
+> `--reverse` / `audit[seq]` bounds) reads the audit zone directly and is
+> strongly consistent.
 
 **Behavior:**
-- Streams audit entries from the server
+- Streams audit entries from the server, newest first by default (`--reverse` for oldest first)
 - Each entry shows: sequence number, timestamp, proposal ID, and outcome (OK/FAIL)
 - By default, shows the order count summary; use `--expand` to show full order details
 - Below each entry, all orders are listed in a tree structure with:
@@ -2255,11 +2288,29 @@ Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `-
 **Example:**
 
 ```bash
-# List audit entries
+# List audit entries (newest first)
 ledgerctl audit list
 
-# Show only failures
+# Oldest first
+ledgerctl audit list --reverse
+
+# Show only failures (shorthand)
 ledgerctl audit list --failures-only
+
+# Filter by outcome and ledger via the shared filter grammar
+ledgerctl audit list --filter 'audit[outcome] == failure and audit[ledger] == main'
+
+# Filter by order type
+ledgerctl audit list --filter 'audit[order_type] in (create_transaction, revert_transaction)'
+
+# Sequence range
+ledgerctl audit list --filter 'audit[seq] between 1000 and 2000'
+
+# Scope to a ledger
+ledgerctl audit list --ledger my-ledger
+
+# Read from a query checkpoint instead of the live store
+ledgerctl audit list --checkpoint-id 7
 
 # Resume after a previous page
 ledgerctl audit list --page-size 20 --cursor <token>

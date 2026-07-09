@@ -70,8 +70,15 @@ func prefixUpperBound(prefix []byte) []byte {
 // caller wants each matching entry once, so duplicates are collapsed. They are
 // not necessarily adjacent (keys sort by value then seq, so the same seq can
 // appear at different value positions), hence a seen-set rather than a
-// previous-value comparison. First-occurrence order is preserved.
-func (s *Store) auditSeqsForPrefix(lower, upper []byte) ([]uint64, error) {
+// previous-value comparison. Results are sorted ascending by sequence.
+//
+// exactLen, when non-zero, restricts matching to keys of exactly that byte
+// length. String-valued fields are indexed as [field][value\x00][seq BE8] and
+// scanned by the prefix [field][value\x00]; without the length guard a lookup
+// for "alice" would also match a value indexed as "alice\x00evil" (whose key
+// shares the prefix). Fixed-width fields (uint64, byte) pass exactLen=0 since
+// their value segment cannot be a prefix of a longer value.
+func (s *Store) auditSeqsForPrefix(lower, upper []byte, exactLen int) ([]uint64, error) {
 	iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil, fmt.Errorf("creating audit index iterator: %w", err)
@@ -85,6 +92,9 @@ func (s *Store) auditSeqsForPrefix(lower, upper []byte) ([]uint64, error) {
 		if len(k) < 8 {
 			return nil, fmt.Errorf("audit index key too short: %d", len(k))
 		}
+		if exactLen != 0 && len(k) != exactLen {
+			continue
+		}
 		seq := binary.BigEndian.Uint64(k[len(k)-8:])
 		if _, ok := seen[seq]; ok {
 			continue
@@ -96,15 +106,24 @@ func (s *Store) auditSeqsForPrefix(lower, upper []byte) ([]uint64, error) {
 		return nil, fmt.Errorf("iterating audit index: %w", err)
 	}
 
+	// Keys sort by value then seq, so a range/match-any scan can surface
+	// sequences out of global order (e.g. two ledgers, or a [lo,hi] range).
+	// Callers rely on ascending seq order for cursor/reverse pagination and
+	// for set intersection/union, so normalize here.
+	slices.Sort(seqs)
+
 	return seqs, nil
 }
 
 // AuditSeqsByString returns audit sequences indexed under a string field for an
 // exact value (equality match).
 //
-// Matching is a prefix scan over [field][value\x00]; it is unambiguous only
-// while indexed values contain no NUL byte (see AuditIndexStringKey). EN-1305
-// must add NUL disambiguation before exposing arbitrary caller.subject filters.
+// Matching is a prefix scan over [field][value\x00]. Because an indexed value
+// may itself contain a NUL byte (a caller.subject is an arbitrary auth-server
+// string), the prefix alone is ambiguous — "alice" would also match a value
+// stored as "alice\x00evil". The exact-length guard (prefix + 8-byte seq)
+// rejects any key longer than a single [prefix][seq] entry, so only the true
+// equality matches survive.
 func (s *Store) AuditSeqsByString(field byte, value string) ([]uint64, error) {
 	kb := dal.NewKeyBuilder()
 	lower := kb.Reset().
@@ -114,7 +133,7 @@ func (s *Store) AuditSeqsByString(field byte, value string) ([]uint64, error) {
 		PutStringNull(value).
 		Build()
 
-	return s.auditSeqsForPrefix(lower, prefixUpperBound(lower))
+	return s.auditSeqsForPrefix(lower, prefixUpperBound(lower), len(lower)+8)
 }
 
 // AuditSeqsByOutcome returns audit sequences for success (true) or failure (false).
@@ -131,7 +150,7 @@ func (s *Store) AuditSeqsByOutcome(success bool) ([]uint64, error) {
 		PutByte(b).
 		Build()
 
-	return s.auditSeqsForPrefix(lower, prefixUpperBound(lower))
+	return s.auditSeqsForPrefix(lower, prefixUpperBound(lower), 0)
 }
 
 // AuditSeqsByUint64Range returns audit sequences for a numeric field whose value
@@ -163,5 +182,5 @@ func (s *Store) AuditSeqsByUint64Range(field byte, lo, hi uint64) ([]uint64, err
 			Build()
 	}
 
-	return s.auditSeqsForPrefix(lower, upper)
+	return s.auditSeqsForPrefix(lower, upper, 0)
 }
