@@ -1013,7 +1013,8 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		if wasLeader != isLeader {
 			// Use rd.HardState.Term instead of rawNode.Status().Term to avoid
 			// calling rawNode from the processReadies goroutine (rawNode is not thread-safe).
-			term := rd.Term
+			// v3.7: rd.HardState is a nil-able embedded pointer; use the getter for a nil-safe read.
+			term := rd.HardState.GetTerm()
 			logger := node.logger.WithFields(map[string]any{
 				"lead": ss.Lead,
 				"term": term,
