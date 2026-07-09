@@ -25,6 +25,8 @@
     preload_total: 'admission.preload.total',
     preload_keys_needed: 'admission.preload.keys_needed',
     preload_cache_hits: 'admission.preload.cache_hits',
+    audit_missing_caller: 'admission.audit.missing_caller',
+    audit_caller_subject_empty: 'admission.audit.caller_subject_empty',
   },
 
   // bloom — internal/infra/bloom/bloom.go

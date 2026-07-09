@@ -34,6 +34,19 @@ Built by `state.BuildHashedHeaderPayload(entry)` (`internal/infra/state/audit_en
 
 Every field is hashed — none is "informational and excluded".
 
+### `CallerSnapshot` sub-payload
+
+The `CallerSnapshot` bytes are built by `state.buildCallerSnapshotPayload` (`audit_envelope.go`): the subject (length-prefixed), then a one-byte source tag with its length-prefixed value, then the god flag (one byte), then the sorted scopes. The source tag identifies who acted:
+
+| Tag | Source | Meaning |
+|-----|--------|---------|
+| `0x00` | none | subject with no known origin |
+| `0x01` | issuer | OIDC token issuer URL |
+| `0x02` | key_id | Ed25519 signing key ID |
+| `0x03` | system_component | system/internal action (e.g. `chapter-archiver`, `mirror`); subject is empty |
+
+The tag switches on the oneof *wrapper type*, not the inner string value, so a source set to an empty string is still distinct from an absent source. A system action therefore hashes differently from a caller-less entry (`0x03` + component vs `0x00` + empty), which is what makes system-generated entries unambiguously attributable in the chain.
+
 ### Per-item payloads
 
 Each `AuditItem` (one per order in the proposal) is encoded by `state.BuildPerItemPayload(item)` (`audit_envelope.go:246-254`):

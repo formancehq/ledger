@@ -1464,7 +1464,7 @@ message PersistedConfig {
   uint32 storage_schema_version = 4;
 }
 
-// CallerIdentity uniquely identifies an authenticated caller. It is
+// CallerIdentity uniquely identifies who initiated an action. It is
 // strictly an *identification* — subject plus the mechanism that
 // authenticated it — and carries no authorization decision.
 //
@@ -1472,6 +1472,10 @@ message PersistedConfig {
 // a request to the leader) because no downstream code makes an
 // authorization decision based on it: the admission point that issued
 // it already vetted the call.
+//
+// source distinguishes a user (issuer or key_id) from a system action
+// (system_component). An absent source means the identity is a bare
+// subject with no known origin.
 message CallerIdentity {
   string subject = 1;
   // Fields 2 and 3 historically held `repeated string scopes` and
@@ -1482,8 +1486,9 @@ message CallerIdentity {
   reserved 2, 3;
   reserved "scopes", "god";
   oneof source {
-    string issuer = 4;   // OIDC token issuer URL
-    string key_id = 5;   // Ed25519 signing key ID
+    string issuer = 4;             // OIDC token issuer URL
+    string key_id = 5;             // Ed25519 signing key ID
+    string system_component = 6;   // system/internal actor (no user); names the subsystem
   }
 }
 
@@ -1494,8 +1499,9 @@ message CallerIdentity {
 // etc.).
 //
 // Carried on Proposals through Raft, then copied to AuditEntry by the
-// FSM. Nil when authentication is disabled or for system-initiated
-// proposals.
+// FSM. Nil when authentication is disabled. System-initiated proposals
+// carry a non-nil identity whose source is system_component (never nil),
+// so an audit entry is never ambiguously blank.
 message CallerSnapshot {
   CallerIdentity identity = 1;
   repeated string scopes = 2;

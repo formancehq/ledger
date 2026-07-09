@@ -478,6 +478,7 @@ func (e *Emitter) proposeSinkUpdateOnce(ctx context.Context, update *raftcmdpb.E
 	e.proposal.Reset()
 	e.proposal.Id = commands.GenerateRandomID()
 	e.proposal.ExecutionPlan = nil
+	e.proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentEventsSink)
 	e.proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_EventsSink{EventsSink: update},
 	}}

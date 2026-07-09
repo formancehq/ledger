@@ -348,6 +348,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	// Build proposal with orders and preloads for cache population
 	cmd := commands.NewCommand(orders...)
+	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentMirror)
 
 	preloadStart := time.Now()
 
@@ -503,7 +504,8 @@ func (w *Worker) drainPrefetch(ch chan prefetchResult) {
 
 func (w *Worker) reportError(ctx context.Context, message string) {
 	cmd := &raftcmdpb.Proposal{
-		Date: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+		Date:           &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentMirror),
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
 			Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
 				MirrorSync: &raftcmdpb.MirrorSyncUpdate{
