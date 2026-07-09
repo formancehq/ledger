@@ -1287,7 +1287,7 @@ message LogIdCondition {
   UintCondition cond = 1;
 }
 
-// BuiltinUintCondition filters transactions by a built-in uint64 field (id, timestamp, or inserted_at).
+// BuiltinUintCondition filters transactions by a built-in uint64 field (id, timestamp, inserted_at, or reverted_at).
 message BuiltinUintCondition {
   TransactionBuiltinIndex field = 1;
   UintCondition cond = 2;

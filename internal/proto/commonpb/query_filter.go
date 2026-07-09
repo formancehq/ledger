@@ -164,13 +164,13 @@ func (x *QueryFilter) UnmarshalJSON(data []byte) error {
 
 	switch {
 	case env.And != nil:
-		filters, err := unmarshalFilterList(env.And)
+		filters, err := unmarshalFilterList("and", env.And)
 		if err != nil {
 			return err
 		}
 		x.Filter = &QueryFilter_And{And: &AndFilter{Filters: filters}}
 	case env.Or != nil:
-		filters, err := unmarshalFilterList(env.Or)
+		filters, err := unmarshalFilterList("or", env.Or)
 		if err != nil {
 			return err
 		}
@@ -188,7 +188,14 @@ func (x *QueryFilter) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func unmarshalFilterList(raw []json.RawMessage) ([]*QueryFilter, error) {
+func unmarshalFilterList(combinator string, raw []json.RawMessage) ([]*QueryFilter, error) {
+	// An empty combinator is ambiguous (empty AND = match-all, empty OR =
+	// match-nothing) and almost always a client mistake — reject it loudly
+	// rather than silently building a degenerate filter.
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("%s: must contain at least one filter", combinator)
+	}
+
 	filters := make([]*QueryFilter, 0, len(raw))
 	for i, r := range raw {
 		sub := &QueryFilter{}
@@ -539,11 +546,15 @@ func marshalAddressMatch(am *AddressMatch) (json.RawMessage, error) {
 }
 
 func unmarshalAddressMatch(raw json.RawMessage) (*AddressMatch, error) {
+	// value/param are presence-tracked pointers so an explicit empty string
+	// (a match-all hardcoded prefix, constructible via gRPC) round-trips
+	// losslessly, while an omitted key is rejected — exactly one of the two must
+	// be *present*, mirroring the string/bool conditions.
 	var in struct {
-		Operator string `json:"operator"`
-		Value    string `json:"value"`
-		Param    string `json:"param"`
-		Role     string `json:"role"`
+		Operator string  `json:"operator"`
+		Value    *string `json:"value"`
+		Param    *string `json:"param"`
+		Role     string  `json:"role"`
 	}
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return nil, fmt.Errorf("address: %w", err)
@@ -558,26 +569,25 @@ func unmarshalAddressMatch(raw json.RawMessage) (*AddressMatch, error) {
 		return nil, fmt.Errorf("address: unknown operator %q", in.Operator)
 	}
 
-	// Exactly one of value/param must be set. A hardcoded empty prefix/exact
-	// would silently match every address (over-broad), so the empty case is
-	// rejected rather than defaulted.
-	if in.Value != "" && in.Param != "" {
+	// Exactly one of value/param must be present. Absence of both is rejected
+	// (an omitted value would otherwise default to a match-all empty prefix).
+	if in.Value != nil && in.Param != nil {
 		return nil, errors.New("address: set only one of value or param")
 	}
-	if in.Value == "" && in.Param == "" {
+	if in.Value == nil && in.Param == nil {
 		return nil, errors.New("address: set one of value or param")
 	}
 
 	am := &AddressMatch{}
 	switch {
-	case in.Operator == "prefix" && in.Param != "":
-		am.Match = &AddressMatch_ParamPrefix{ParamPrefix: in.Param}
+	case in.Operator == "prefix" && in.Param != nil:
+		am.Match = &AddressMatch_ParamPrefix{ParamPrefix: *in.Param}
 	case in.Operator == "prefix":
-		am.Match = &AddressMatch_HardcodedPrefix{HardcodedPrefix: in.Value}
-	case in.Operator == "exact" && in.Param != "":
-		am.Match = &AddressMatch_ParamExact{ParamExact: in.Param}
+		am.Match = &AddressMatch_HardcodedPrefix{HardcodedPrefix: *in.Value}
+	case in.Operator == "exact" && in.Param != nil:
+		am.Match = &AddressMatch_ParamExact{ParamExact: *in.Param}
 	default: // exact + hardcoded value
-		am.Match = &AddressMatch_HardcodedExact{HardcodedExact: in.Value}
+		am.Match = &AddressMatch_HardcodedExact{HardcodedExact: *in.Value}
 	}
 
 	if in.Role != "" {

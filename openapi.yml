@@ -3749,7 +3749,13 @@ components:
           enum:
             - ACCOUNTS
             - TRANSACTIONS
-          description: Target entity type
+            - LOGS
+          description: >-
+            Target entity type. `LOGS` only appears on prepared queries created
+            through gRPC/CLI — the REST create/update paths accept only
+            `ACCOUNTS` and `TRANSACTIONS` (see CreatePreparedQueryRequest) — but
+            list/get responses echo a query's true target, so a client must
+            tolerate `LOGS` here.
         filter:
           $ref: '#/components/schemas/QueryFilter'
         allowedModes:
@@ -3761,17 +3767,20 @@ components:
       type: object
       description: >-
         Recursive filter tree. Exactly one of `and`, `or`, `not`, or `match`
-        must be set on each node. `and`/`or` combine child filters; `not` negates
-        a single child filter; `match` is a leaf condition (a tagged union
-        discriminated by its `type` field — see `Condition`).
+        must be set on each node. `and`/`or` combine child filters (and must be
+        non-empty — an empty combinator is rejected); `not` negates a single
+        child filter; `match` is a leaf condition (a tagged union discriminated
+        by its `type` field — see `Condition`).
       properties:
         and:
           type: array
+          minItems: 1
           description: Logical AND of the child filters (all must match).
           items:
             $ref: '#/components/schemas/QueryFilter'
         or:
           type: array
+          minItems: 1
           description: Logical OR of the child filters (at least one must match).
           items:
             $ref: '#/components/schemas/QueryFilter'

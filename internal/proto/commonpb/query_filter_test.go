@@ -96,6 +96,13 @@ func TestQueryFilterRoundTrip(t *testing.T) {
 			filter: &QueryFilter{Filter: &QueryFilter_Address{Address: &AddressMatch{Match: &AddressMatch_HardcodedExact{HardcodedExact: "acc:1"}}}},
 		},
 		{
+			// Empty hardcoded prefix (match-all) is constructible via gRPC; the
+			// codec must round-trip it losslessly (explicit empty value present,
+			// not omitted).
+			name:   "address/hardcoded empty prefix",
+			filter: &QueryFilter{Filter: &QueryFilter_Address{Address: &AddressMatch{Match: &AddressMatch_HardcodedPrefix{HardcodedPrefix: ""}}}},
+		},
+		{
 			name:   "address/param prefix destination",
 			filter: &QueryFilter{Filter: &QueryFilter_Address{Address: &AddressMatch{Match: &AddressMatch_ParamPrefix{ParamPrefix: "p"}, Role: AddressRole_ADDRESS_ROLE_DESTINATION}}},
 		},
@@ -200,6 +207,8 @@ func TestQueryFilterUnmarshalErrors(t *testing.T) {
 		{"string cond both equals and param", `{"match":{"type":"field","metadata":"x","condition":{"type":"string","equals":"a","param":"b"}}}`, "only one of equals or param"},
 		{"address missing both value and param", `{"match":{"type":"address","operator":"prefix"}}`, "set one of value or param"},
 		{"reverted missing value", `{"match":{"type":"reverted"}}`, "value is required"},
+		{"empty and combinator", `{"and":[]}`, "and: must contain at least one filter"},
+		{"empty or combinator", `{"or":[]}`, "or: must contain at least one filter"},
 	}
 
 	for _, tc := range cases {
