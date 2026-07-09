@@ -212,7 +212,7 @@ func readAuditPageFromZone(
 	if !reverse && afterSeq != 0 && afterSeq+1 > lo {
 		lo = afterSeq + 1
 	}
-	if reverse && afterSeq != 0 && afterSeq >= 1 && afterSeq-1 < hi {
+	if reverse && afterSeq != 0 && afterSeq-1 < hi {
 		hi = afterSeq - 1
 	}
 	if lo > hi {
@@ -236,7 +236,7 @@ func readAuditPageFromZone(
 		return nil, fmt.Errorf("creating iterator for audit entries: %w", err)
 	}
 
-	entries := make([]*auditpb.AuditEntry, 0)
+	entries := make([]*auditpb.AuditEntry, 0, pageCap(pageSize))
 	valid := iter.Last
 	if !reverse {
 		valid = iter.First

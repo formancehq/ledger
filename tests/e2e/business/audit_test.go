@@ -28,7 +28,7 @@ func collectAuditEntries(ctx context.Context, client servicepb.BucketServiceClie
 	return actions.ListAuditEntriesWithRequest(ctx, client, req)
 }
 
-// auditFilter builds a single-condition audit QueryFilter.
+// auditStringFilter builds a single-condition string audit QueryFilter.
 func auditStringFilter(field commonpb.AuditField, value string) *commonpb.QueryFilter {
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_Audit{
