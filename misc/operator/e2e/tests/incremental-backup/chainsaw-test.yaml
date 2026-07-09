@@ -40,7 +40,7 @@ spec:
     - name: Run full backup
       try:
         - apply:
-            file: ledgerbackup.yaml
+            file: backup.yaml
         - assert:
             file: assert-full-done.yaml
 

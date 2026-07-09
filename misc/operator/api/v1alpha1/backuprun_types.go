@@ -4,7 +4,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// BackupRunPhase describes the current lifecycle phase of a LedgerBackupRun.
+// BackupRunPhase describes the current lifecycle phase of a BackupRun.
 // +kubebuilder:validation:Enum=Pending;Running;Succeeded;Failed
 type BackupRunPhase string
 
@@ -24,17 +24,17 @@ const (
 	BackupRunTypeIncremental BackupRunType = "Incremental"
 )
 
-// Labels and annotations used to associate LedgerBackupRun resources with their parent.
+// Labels and annotations used to associate BackupRun resources with their parent.
 const (
-	// LabelLedgerBackup carries the name of the parent LedgerBackup.
-	LabelLedgerBackup = "ledger.formance.com/backup"
-	// LabelLedgerBackupRunType carries the BackupRunType of the run.
-	LabelLedgerBackupRunType = "ledger.formance.com/backup-type"
+	// LabelBackup carries the name of the parent Backup.
+	LabelBackup = "ledger.formance.com/backup"
+	// LabelBackupRunType carries the BackupRunType of the run.
+	LabelBackupRunType = "ledger.formance.com/backup-type"
 )
 
-// LedgerBackupRunSpec defines the desired state of a LedgerBackupRun.
-type LedgerBackupRunSpec struct {
-	// BackupRef is the name of the parent LedgerBackup in the same namespace.
+// BackupRunSpec defines the desired state of a BackupRun.
+type BackupRunSpec struct {
+	// BackupRef is the name of the parent Backup in the same namespace.
 	// Destination and serviceRef are inherited from the parent.
 	// +kubebuilder:validation:Required
 	BackupRef string `json:"backupRef"`
@@ -45,8 +45,8 @@ type LedgerBackupRunSpec struct {
 	Type BackupRunType `json:"type,omitempty"`
 }
 
-// LedgerBackupRunStatus defines the observed state of a LedgerBackupRun.
-type LedgerBackupRunStatus struct {
+// BackupRunStatus defines the observed state of a BackupRun.
+type BackupRunStatus struct {
 	// Phase is the current lifecycle phase.
 	// +optional
 	Phase BackupRunPhase `json:"phase,omitempty"`
@@ -78,38 +78,38 @@ type LedgerBackupRunStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName=lbkr
+// +kubebuilder:resource:shortName=bkr
 // +kubebuilder:printcolumn:name="Backup",type=string,JSONPath=`.spec.backupRef`
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Started",type=date,JSONPath=`.status.startTime`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// LedgerBackupRun represents a single backup execution triggered either by a LedgerBackup schedule
+// BackupRun represents a single backup execution triggered either by a Backup schedule
 // or manually (e.g. via `kubectl ledger backup trigger`).
-type LedgerBackupRun struct {
+type BackupRun struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   LedgerBackupRunSpec   `json:"spec,omitempty"`
-	Status LedgerBackupRunStatus `json:"status,omitempty"`
+	Spec   BackupRunSpec   `json:"spec,omitempty"`
+	Status BackupRunStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// LedgerBackupRunList contains a list of LedgerBackupRun.
-type LedgerBackupRunList struct {
+// BackupRunList contains a list of BackupRun.
+type BackupRunList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 
-	Items []LedgerBackupRun `json:"items"`
+	Items []BackupRun `json:"items"`
 }
 
 // IsTerminal reports whether the run is in a terminal phase (Succeeded or Failed).
-func (r *LedgerBackupRun) IsTerminal() bool {
+func (r *BackupRun) IsTerminal() bool {
 	return r.Status.Phase == BackupRunPhaseSucceeded || r.Status.Phase == BackupRunPhaseFailed
 }
 
 func init() {
-	SchemeBuilder.Register(&LedgerBackupRun{}, &LedgerBackupRunList{})
+	SchemeBuilder.Register(&BackupRun{}, &BackupRunList{})
 }

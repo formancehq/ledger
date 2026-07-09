@@ -1,5 +1,5 @@
 apiVersion: ledger.formance.com/v1alpha1
-kind: LedgerBackupRun
+kind: BackupRun
 metadata:
   name: manual-bk-run-1
   labels:

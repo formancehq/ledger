@@ -14,7 +14,7 @@ Features, performance benchmarks, and key differentiators. For understanding wha
 Architecture, internals, and contributor guides. Start with the [Architecture Overview](./technical/architecture-overview.md) for the 10,000-foot view, then dive into specific topics.
 
 ### [Operator](../misc/operator/README.md)
-Kubernetes operator for deploying and managing high-availability Ledger clusters. Manages `Cluster`, `LedgerBackup`, and `Credentials` custom resources. Includes a `kubectl ledger` plugin and a web UI.
+Kubernetes operator for deploying and managing high-availability Ledger clusters. Manages `Cluster`, `Backup`, and `Credentials` custom resources. Includes a `kubectl ledger` plugin and a web UI.
 
 ### [Design RFCs](./drafts/)
 Experimental ideas, advanced concepts, and future design proposals.

@@ -40,7 +40,7 @@ spec:
     - name: Run full backup
       try:
         - apply:
-            file: ledgerbackup.yaml
+            file: backup.yaml
         - assert:
             file: assert-full-done.yaml
 
@@ -63,7 +63,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl delete ledgerbackup ri-bk -n $NAMESPACE --ignore-not-found
+              kubectl delete backup ri-bk -n $NAMESPACE --ignore-not-found
               kubectl delete cluster ri-svc -n $NAMESPACE --wait=true --timeout=60s
               kubectl wait --for=delete pod/ledger-ri-svc-0 -n $NAMESPACE --timeout=60s 2>/dev/null || true
               kubectl delete pvc wal-ledger-ri-svc-0 data-ledger-ri-svc-0 cold-cache-ledger-ri-svc-0 -n $NAMESPACE --ignore-not-found

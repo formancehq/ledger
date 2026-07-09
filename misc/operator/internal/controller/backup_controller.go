@@ -22,23 +22,23 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerbackups,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerbackups/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerbackups/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=backups,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=backups/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=backups/finalizers,verbs=update
 
 const (
 	defaultSuccessfulRunsHistoryLimit int32 = 3
 	defaultFailedRunsHistoryLimit     int32 = 1
 )
 
-// LedgerBackupReconciler reconciles a LedgerBackup object.
+// BackupReconciler reconciles a Backup object.
 //
 // The reconciler acts as a scheduler/template: it does NOT run backups itself.
-// When a cron schedule fires, it creates a LedgerBackupRun whose own reconciler
-// performs the actual ledgerctl invocation. It also maintains LedgerBackup status
+// When a cron schedule fires, it creates a BackupRun whose own reconciler
+// performs the actual ledgerctl invocation. It also maintains Backup status
 // summaries from the latest Succeeded child runs and prunes runs in excess of the
 // configured history limits.
-type LedgerBackupReconciler struct {
+type BackupReconciler struct {
 	client.Client
 
 	Scheme    *runtime.Scheme
@@ -46,10 +46,10 @@ type LedgerBackupReconciler struct {
 	Clientset kubernetes.Interface
 }
 
-func (r *LedgerBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	var backup ledgerv1alpha1.LedgerBackup
+	var backup ledgerv1alpha1.Backup
 	if err := r.Get(ctx, req.NamespacedName, &backup); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -151,12 +151,12 @@ func (r *LedgerBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{RequeueAfter: nextRequeue}, nil
 }
 
-// scheduleType creates a new LedgerBackupRun of the given type if the schedule is due
+// scheduleType creates a new BackupRun of the given type if the schedule is due
 // and no run of the same type is currently in flight. Returns the next scheduled time.
-func (r *LedgerBackupReconciler) scheduleType(
+func (r *BackupReconciler) scheduleType(
 	ctx context.Context,
-	backup *ledgerv1alpha1.LedgerBackup,
-	runs []ledgerv1alpha1.LedgerBackupRun,
+	backup *ledgerv1alpha1.Backup,
+	runs []ledgerv1alpha1.BackupRun,
 	runType ledgerv1alpha1.BackupRunType,
 	sched cron.Schedule,
 	now time.Time,
@@ -176,17 +176,17 @@ func (r *LedgerBackupReconciler) scheduleType(
 	}
 
 	if err := r.createRun(ctx, backup, runType); err != nil {
-		return time.Time{}, fmt.Errorf("creating %s LedgerBackupRun: %w", runType, err)
+		return time.Time{}, fmt.Errorf("creating %s BackupRun: %w", runType, err)
 	}
 	logger.Info("scheduled backup run", "type", runType, "backup", backup.Name)
 
 	return sched.Next(now), nil
 }
 
-// createRun creates a new LedgerBackupRun owned by the given LedgerBackup.
-func (r *LedgerBackupReconciler) createRun(
+// createRun creates a new BackupRun owned by the given Backup.
+func (r *BackupReconciler) createRun(
 	ctx context.Context,
-	backup *ledgerv1alpha1.LedgerBackup,
+	backup *ledgerv1alpha1.Backup,
 	runType ledgerv1alpha1.BackupRunType,
 ) error {
 	var suffix string
@@ -199,16 +199,16 @@ func (r *LedgerBackupReconciler) createRun(
 		return fmt.Errorf("unsupported backup run type %q", runType)
 	}
 
-	run := &ledgerv1alpha1.LedgerBackupRun{
+	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:    backup.Namespace,
 			GenerateName: backup.Name + "-" + suffix,
 			Labels: map[string]string{
-				ledgerv1alpha1.LabelLedgerBackup:        backup.Name,
-				ledgerv1alpha1.LabelLedgerBackupRunType: string(runType),
+				ledgerv1alpha1.LabelBackup:        backup.Name,
+				ledgerv1alpha1.LabelBackupRunType: string(runType),
 			},
 		},
-		Spec: ledgerv1alpha1.LedgerBackupRunSpec{
+		Spec: ledgerv1alpha1.BackupRunSpec{
 			BackupRef: backup.Name,
 			Type:      runType,
 		},
@@ -221,9 +221,9 @@ func (r *LedgerBackupReconciler) createRun(
 }
 
 // refreshStatusSummaries updates LastFullBackup / LastIncrementalBackup from the latest Succeeded run.
-func (r *LedgerBackupReconciler) refreshStatusSummaries(
-	backup *ledgerv1alpha1.LedgerBackup,
-	runs []ledgerv1alpha1.LedgerBackupRun,
+func (r *BackupReconciler) refreshStatusSummaries(
+	backup *ledgerv1alpha1.Backup,
+	runs []ledgerv1alpha1.BackupRun,
 ) {
 	if latest := latestSucceededRun(runs, ledgerv1alpha1.BackupRunTypeFull); latest != nil && latest.Status.Full != nil {
 		backup.Status.LastFullBackup = latest.Status.Full.DeepCopy()
@@ -263,10 +263,10 @@ func (r *LedgerBackupReconciler) refreshStatusSummaries(
 }
 
 // pruneRuns deletes runs in excess of the per-type history limits, oldest first.
-func (r *LedgerBackupReconciler) pruneRuns(
+func (r *BackupReconciler) pruneRuns(
 	ctx context.Context,
-	backup *ledgerv1alpha1.LedgerBackup,
-	runs []ledgerv1alpha1.LedgerBackupRun,
+	backup *ledgerv1alpha1.Backup,
+	runs []ledgerv1alpha1.BackupRun,
 ) error {
 	logger := log.FromContext(ctx)
 	successLimit := defaultSuccessfulRunsHistoryLimit
@@ -296,14 +296,14 @@ func (r *LedgerBackupReconciler) pruneRuns(
 	return nil
 }
 
-func (r *LedgerBackupReconciler) listChildRuns(
+func (r *BackupReconciler) listChildRuns(
 	ctx context.Context,
-	backup *ledgerv1alpha1.LedgerBackup,
-) ([]ledgerv1alpha1.LedgerBackupRun, error) {
-	var list ledgerv1alpha1.LedgerBackupRunList
+	backup *ledgerv1alpha1.Backup,
+) ([]ledgerv1alpha1.BackupRun, error) {
+	var list ledgerv1alpha1.BackupRunList
 	if err := r.List(ctx, &list,
 		client.InNamespace(backup.Namespace),
-		client.MatchingLabels{ledgerv1alpha1.LabelLedgerBackup: backup.Name},
+		client.MatchingLabels{ledgerv1alpha1.LabelBackup: backup.Name},
 	); err != nil {
 		return nil, err
 	}
@@ -311,7 +311,7 @@ func (r *LedgerBackupReconciler) listChildRuns(
 	return list.Items, nil
 }
 
-func (r *LedgerBackupReconciler) setFailed(ctx context.Context, backup *ledgerv1alpha1.LedgerBackup, message string) (ctrl.Result, error) {
+func (r *BackupReconciler) setFailed(ctx context.Context, backup *ledgerv1alpha1.Backup, message string) (ctrl.Result, error) {
 	backup.Status.Phase = ledgerv1alpha1.BackupPhaseFailed
 	backup.Status.Message = message
 	if err := r.Status().Update(ctx, backup); err != nil {
@@ -321,11 +321,11 @@ func (r *LedgerBackupReconciler) setFailed(ctx context.Context, backup *ledgerv1
 	return ctrl.Result{}, nil
 }
 
-func (r *LedgerBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&ledgerv1alpha1.LedgerBackup{}).
-		Owns(&ledgerv1alpha1.LedgerBackupRun{}).
-		Named("ledgerbackup").
+		For(&ledgerv1alpha1.Backup{}).
+		Owns(&ledgerv1alpha1.BackupRun{}).
+		Named("backup").
 		Complete(r)
 }
 
@@ -348,7 +348,7 @@ func minDuration(current, candidate time.Duration) time.Duration {
 
 // hasRunningRun reports whether any run of the given type is currently Running or Pending.
 // A Pending run also blocks scheduling (Forbid concurrency includes queued runs).
-func hasRunningRun(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alpha1.BackupRunType) bool {
+func hasRunningRun(runs []ledgerv1alpha1.BackupRun, runType ledgerv1alpha1.BackupRunType) bool {
 	for i := range runs {
 		if runs[i].Spec.Type != runType {
 			continue
@@ -362,7 +362,7 @@ func hasRunningRun(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alpha1
 	return false
 }
 
-func hasSucceededRun(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alpha1.BackupRunType) bool {
+func hasSucceededRun(runs []ledgerv1alpha1.BackupRun, runType ledgerv1alpha1.BackupRunType) bool {
 	for i := range runs {
 		if runs[i].Spec.Type == runType && runs[i].Status.Phase == ledgerv1alpha1.BackupRunPhaseSucceeded {
 			return true
@@ -373,7 +373,7 @@ func hasSucceededRun(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alph
 }
 
 // lastRunTime returns the CompletionTime of the most recent terminal run of the given type, or nil.
-func lastRunTime(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alpha1.BackupRunType) *metav1.Time {
+func lastRunTime(runs []ledgerv1alpha1.BackupRun, runType ledgerv1alpha1.BackupRunType) *metav1.Time {
 	var latest *metav1.Time
 	for i := range runs {
 		if runs[i].Spec.Type != runType {
@@ -394,16 +394,16 @@ func lastRunTime(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alpha1.B
 	return latest
 }
 
-func latestSucceededRun(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alpha1.BackupRunType) *ledgerv1alpha1.LedgerBackupRun {
+func latestSucceededRun(runs []ledgerv1alpha1.BackupRun, runType ledgerv1alpha1.BackupRunType) *ledgerv1alpha1.BackupRun {
 	return latestRunInPhase(runs, runType, ledgerv1alpha1.BackupRunPhaseSucceeded)
 }
 
-func latestFailedRun(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alpha1.BackupRunType) *ledgerv1alpha1.LedgerBackupRun {
+func latestFailedRun(runs []ledgerv1alpha1.BackupRun, runType ledgerv1alpha1.BackupRunType) *ledgerv1alpha1.BackupRun {
 	return latestRunInPhase(runs, runType, ledgerv1alpha1.BackupRunPhaseFailed)
 }
 
-func latestRunInPhase(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alpha1.BackupRunType, phase ledgerv1alpha1.BackupRunPhase) *ledgerv1alpha1.LedgerBackupRun {
-	var latest *ledgerv1alpha1.LedgerBackupRun
+func latestRunInPhase(runs []ledgerv1alpha1.BackupRun, runType ledgerv1alpha1.BackupRunType, phase ledgerv1alpha1.BackupRunPhase) *ledgerv1alpha1.BackupRun {
+	var latest *ledgerv1alpha1.BackupRun
 	for i := range runs {
 		if runs[i].Spec.Type != runType || runs[i].Status.Phase != phase {
 			continue
@@ -416,7 +416,7 @@ func latestRunInPhase(runs []ledgerv1alpha1.LedgerBackupRun, runType ledgerv1alp
 	return latest
 }
 
-func completionOrCreation(run *ledgerv1alpha1.LedgerBackupRun) metav1.Time {
+func completionOrCreation(run *ledgerv1alpha1.BackupRun) metav1.Time {
 	if run.Status.CompletionTime != nil {
 		return *run.Status.CompletionTime
 	}
@@ -426,12 +426,12 @@ func completionOrCreation(run *ledgerv1alpha1.LedgerBackupRun) metav1.Time {
 
 // excessRuns returns runs of the given type/phase beyond `limit`, oldest first.
 func excessRuns(
-	runs []ledgerv1alpha1.LedgerBackupRun,
+	runs []ledgerv1alpha1.BackupRun,
 	runType ledgerv1alpha1.BackupRunType,
 	phase ledgerv1alpha1.BackupRunPhase,
 	limit int32,
-) []ledgerv1alpha1.LedgerBackupRun {
-	var filtered []ledgerv1alpha1.LedgerBackupRun
+) []ledgerv1alpha1.BackupRun {
+	var filtered []ledgerv1alpha1.BackupRun
 	for i := range runs {
 		if runs[i].Spec.Type == runType && runs[i].Status.Phase == phase {
 			filtered = append(filtered, runs[i])

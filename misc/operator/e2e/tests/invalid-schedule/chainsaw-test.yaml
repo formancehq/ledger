@@ -22,6 +22,6 @@ spec:
     - name: Backup with invalid cron schedule should fail
       try:
         - apply:
-            file: ledgerbackup.yaml
+            file: backup.yaml
         - assert:
             file: assert-failed.yaml

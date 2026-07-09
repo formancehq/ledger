@@ -125,22 +125,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.LedgerBackupReconciler{
+	if err = (&controller.BackupReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		Config:    cfg,
 		Clientset: clientset,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LedgerBackup")
+		setupLog.Error(err, "unable to create controller", "controller", "Backup")
 		os.Exit(1)
 	}
 
-	if err = (&controller.LedgerBackupRunReconciler{
+	if err = (&controller.BackupRunReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		Clientset: clientset,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LedgerBackupRun")
+		setupLog.Error(err, "unable to create controller", "controller", "BackupRun")
 		os.Exit(1)
 	}
 

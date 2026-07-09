@@ -13,26 +13,26 @@ import (
 func TestHasRunningRun_TreatsPendingAndEmptyAsRunning(t *testing.T) {
 	t.Parallel()
 
-	runs := []ledgerv1alpha1.LedgerBackupRun{
+	runs := []ledgerv1alpha1.BackupRun{
 		{
-			Spec:   ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
-			Status: ledgerv1alpha1.LedgerBackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhasePending},
+			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhasePending},
 		},
 	}
 	assert.True(t, hasRunningRun(runs, ledgerv1alpha1.BackupRunTypeFull), "Pending must block scheduling")
 
-	runs = []ledgerv1alpha1.LedgerBackupRun{
+	runs = []ledgerv1alpha1.BackupRun{
 		{
-			Spec:   ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
-			Status: ledgerv1alpha1.LedgerBackupRunStatus{Phase: ""},
+			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Status: ledgerv1alpha1.BackupRunStatus{Phase: ""},
 		},
 	}
 	assert.True(t, hasRunningRun(runs, ledgerv1alpha1.BackupRunTypeFull), "uninitialized phase must block scheduling")
 
-	runs = []ledgerv1alpha1.LedgerBackupRun{
+	runs = []ledgerv1alpha1.BackupRun{
 		{
-			Spec:   ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
-			Status: ledgerv1alpha1.LedgerBackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded},
+			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded},
 		},
 	}
 	assert.False(t, hasRunningRun(runs, ledgerv1alpha1.BackupRunTypeFull))
@@ -41,10 +41,10 @@ func TestHasRunningRun_TreatsPendingAndEmptyAsRunning(t *testing.T) {
 func TestHasRunningRun_IgnoresOtherTypes(t *testing.T) {
 	t.Parallel()
 
-	runs := []ledgerv1alpha1.LedgerBackupRun{
+	runs := []ledgerv1alpha1.BackupRun{
 		{
-			Spec:   ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental},
-			Status: ledgerv1alpha1.LedgerBackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseRunning},
+			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental},
+			Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseRunning},
 		},
 	}
 	assert.False(t, hasRunningRun(runs, ledgerv1alpha1.BackupRunTypeFull),
@@ -57,19 +57,19 @@ func TestLatestSucceededRun_PicksMostRecent(t *testing.T) {
 	older := metav1.NewTime(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
 	newer := metav1.NewTime(time.Date(2025, 1, 2, 12, 0, 0, 0, time.UTC))
 
-	runs := []ledgerv1alpha1.LedgerBackupRun{
+	runs := []ledgerv1alpha1.BackupRun{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "old"},
-			Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
-			Status: ledgerv1alpha1.LedgerBackupRunStatus{
+			Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Status: ledgerv1alpha1.BackupRunStatus{
 				Phase:          ledgerv1alpha1.BackupRunPhaseSucceeded,
 				CompletionTime: &older,
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "new"},
-			Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
-			Status: ledgerv1alpha1.LedgerBackupRunStatus{
+			Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Status: ledgerv1alpha1.BackupRunStatus{
 				Phase:          ledgerv1alpha1.BackupRunPhaseSucceeded,
 				CompletionTime: &newer,
 			},
@@ -85,13 +85,13 @@ func TestLatestSucceededRun_PicksMostRecent(t *testing.T) {
 func TestExcessRuns_KeepsLimitAndReturnsOldestFirst(t *testing.T) {
 	t.Parallel()
 
-	mkRun := func(name string, completion time.Time) ledgerv1alpha1.LedgerBackupRun {
+	mkRun := func(name string, completion time.Time) ledgerv1alpha1.BackupRun {
 		t := metav1.NewTime(completion)
 
-		return ledgerv1alpha1.LedgerBackupRun{
+		return ledgerv1alpha1.BackupRun{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
-			Status: ledgerv1alpha1.LedgerBackupRunStatus{
+			Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Status: ledgerv1alpha1.BackupRunStatus{
 				Phase:          ledgerv1alpha1.BackupRunPhaseSucceeded,
 				CompletionTime: &t,
 			},
@@ -99,7 +99,7 @@ func TestExcessRuns_KeepsLimitAndReturnsOldestFirst(t *testing.T) {
 	}
 
 	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	runs := []ledgerv1alpha1.LedgerBackupRun{
+	runs := []ledgerv1alpha1.BackupRun{
 		mkRun("a", base),
 		mkRun("b", base.Add(time.Minute)),
 		mkRun("c", base.Add(2*time.Minute)),
@@ -120,10 +120,10 @@ func TestExcessRuns_UnderLimitReturnsNone(t *testing.T) {
 	t.Parallel()
 
 	t1 := metav1.NewTime(time.Now())
-	runs := []ledgerv1alpha1.LedgerBackupRun{
+	runs := []ledgerv1alpha1.BackupRun{
 		{
-			Spec:   ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
-			Status: ledgerv1alpha1.LedgerBackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &t1},
+			Spec:   ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+			Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &t1},
 		},
 	}
 
@@ -142,8 +142,8 @@ func TestIsTerminal(t *testing.T) {
 	}
 
 	for phase, expected := range cases {
-		run := &ledgerv1alpha1.LedgerBackupRun{
-			Status: ledgerv1alpha1.LedgerBackupRunStatus{Phase: phase},
+		run := &ledgerv1alpha1.BackupRun{
+			Status: ledgerv1alpha1.BackupRunStatus{Phase: phase},
 		}
 		assert.Equal(t, expected, run.IsTerminal(), "phase %q", phase)
 	}

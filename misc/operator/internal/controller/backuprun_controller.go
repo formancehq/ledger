@@ -20,28 +20,28 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerbackupruns,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerbackupruns/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerbackupruns/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=backupruns,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=backupruns/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=backupruns/finalizers,verbs=update
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 
-// LedgerBackupRunReconciler reconciles a LedgerBackupRun object.
+// BackupRunReconciler reconciles a BackupRun object.
 //
-// A LedgerBackupRun represents a single backup execution. It is created either:
-//   - by the LedgerBackupReconciler when a cron schedule fires, or
+// A BackupRun represents a single backup execution. It is created either:
+//   - by the BackupReconciler when a cron schedule fires, or
 //   - manually (e.g. by the kubectl-ledger plugin or directly with kubectl apply).
 //
 // The reconciler enforces a Forbid concurrency policy: if another run for the
-// same parent LedgerBackup is in the Running phase, this run stays Pending and
+// same parent Backup is in the Running phase, this run stays Pending and
 // is re-enqueued until the in-flight run terminates.
 //
 // Backups themselves are delegated to a dedicated batchv1.Job per run; the
 // reconciler does not block the controller while ledgerctl uploads to S3 — it
 // creates the Job, watches its status, parses the JSON summary from the pod
 // logs on success, and surfaces failures on the run status.
-type LedgerBackupRunReconciler struct {
+type BackupRunReconciler struct {
 	client.Client
 
 	Scheme    *runtime.Scheme
@@ -49,13 +49,13 @@ type LedgerBackupRunReconciler struct {
 }
 
 // concurrencyRequeue is how long to wait before re-checking when another run
-// is in flight for the same LedgerBackup.
+// is in flight for the same Backup.
 const concurrencyRequeue = 10 * time.Second
 
-func (r *LedgerBackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	var run ledgerv1alpha1.LedgerBackupRun
+	var run ledgerv1alpha1.BackupRun
 	if err := r.Get(ctx, req.NamespacedName, &run); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -72,12 +72,12 @@ func (r *LedgerBackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		run.Spec.Type = ledgerv1alpha1.BackupRunTypeFull
 	}
 
-	var backup ledgerv1alpha1.LedgerBackup
+	var backup ledgerv1alpha1.Backup
 	if err := r.Get(ctx, types.NamespacedName{
 		Name:      run.Spec.BackupRef,
 		Namespace: run.Namespace,
 	}, &backup); err != nil {
-		return r.setRunFailed(ctx, &run, fmt.Sprintf("LedgerBackup %q not found: %v", run.Spec.BackupRef, err))
+		return r.setRunFailed(ctx, &run, fmt.Sprintf("Backup %q not found: %v", run.Spec.BackupRef, err))
 	}
 
 	var cluster ledgerv1alpha1.Cluster
@@ -162,12 +162,12 @@ func (r *LedgerBackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 }
 
 // ensureBackupJob creates the Job for the run on first reconcile and returns
-// the live Job afterwards. The Job is owner-referenced by the LedgerBackupRun
+// the live Job afterwards. The Job is owner-referenced by the BackupRun
 // so deletion cascades.
-func (r *LedgerBackupRunReconciler) ensureBackupJob(
+func (r *BackupRunReconciler) ensureBackupJob(
 	ctx context.Context,
-	run *ledgerv1alpha1.LedgerBackupRun,
-	backup *ledgerv1alpha1.LedgerBackup,
+	run *ledgerv1alpha1.BackupRun,
+	backup *ledgerv1alpha1.Backup,
 	ls *ledgerv1alpha1.Cluster,
 ) (*batchv1.Job, error) {
 	existing := &batchv1.Job{}
@@ -203,14 +203,14 @@ func (r *LedgerBackupRunReconciler) ensureBackupJob(
 
 // applyJobResult fetches the JSON summary produced by the Job's ledgerctl
 // invocation and stamps the corresponding status sub-object on the
-// LedgerBackupRun. The summary is read from
+// BackupRun. The summary is read from
 // ContainerStatus.State.Terminated.Message (populated from the container's
 // terminationMessagePath when ledgerctl --json finishes cleanly) and falls
 // back to the merged stdout+stderr log stream if the structured field is
 // missing — e.g. the container died before writing the file.
-func (r *LedgerBackupRunReconciler) applyJobResult(
+func (r *BackupRunReconciler) applyJobResult(
 	ctx context.Context,
-	run *ledgerv1alpha1.LedgerBackupRun,
+	run *ledgerv1alpha1.BackupRun,
 	_ *ledgerv1alpha1.Cluster,
 	job *batchv1.Job,
 ) error {
@@ -263,7 +263,7 @@ func (r *LedgerBackupRunReconciler) applyJobResult(
 }
 
 // setRunFailed transitions the run to Failed with the given message and returns a terminal result.
-func (r *LedgerBackupRunReconciler) setRunFailed(ctx context.Context, run *ledgerv1alpha1.LedgerBackupRun, message string) (ctrl.Result, error) {
+func (r *BackupRunReconciler) setRunFailed(ctx context.Context, run *ledgerv1alpha1.BackupRun, message string) (ctrl.Result, error) {
 	completion := metav1.Now()
 	run.Status.Phase = ledgerv1alpha1.BackupRunPhaseFailed
 	run.Status.Message = message
@@ -282,14 +282,14 @@ func (r *LedgerBackupRunReconciler) setRunFailed(ctx context.Context, run *ledge
 	return ctrl.Result{}, nil
 }
 
-// findBlockingSibling returns the name of an in-flight sibling LedgerBackupRun
+// findBlockingSibling returns the name of an in-flight sibling BackupRun
 // (same parent backup, Running phase) that blocks the current run, or "" if
 // none. Self is excluded.
-func (r *LedgerBackupRunReconciler) findBlockingSibling(ctx context.Context, run *ledgerv1alpha1.LedgerBackupRun) (string, error) {
-	var list ledgerv1alpha1.LedgerBackupRunList
+func (r *BackupRunReconciler) findBlockingSibling(ctx context.Context, run *ledgerv1alpha1.BackupRun) (string, error) {
+	var list ledgerv1alpha1.BackupRunList
 	if err := r.List(ctx, &list,
 		client.InNamespace(run.Namespace),
-		client.MatchingLabels{ledgerv1alpha1.LabelLedgerBackup: run.Spec.BackupRef},
+		client.MatchingLabels{ledgerv1alpha1.LabelBackup: run.Spec.BackupRef},
 	); err != nil {
 		return "", err
 	}
@@ -308,10 +308,10 @@ func (r *LedgerBackupRunReconciler) findBlockingSibling(ctx context.Context, run
 	return "", nil
 }
 
-func (r *LedgerBackupRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *BackupRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&ledgerv1alpha1.LedgerBackupRun{}).
+		For(&ledgerv1alpha1.BackupRun{}).
 		Owns(&batchv1.Job{}).
-		Named("ledgerbackuprun").
+		Named("backuprun").
 		Complete(r)
 }

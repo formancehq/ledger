@@ -11,7 +11,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "backup",
 		Aliases: []string{"backups", "bk"},
-		Short:   "Manage LedgerBackup resources and trigger manual backup runs",
+		Short:   "Manage Backup resources and trigger manual backup runs",
 	}
 
 	cmd.AddCommand(
