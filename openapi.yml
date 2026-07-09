@@ -2347,15 +2347,24 @@ components:
             type: string
             enum:
               - TRANSACTION_REFERENCE_CONFLICT
+              - TRANSACTION_ALREADY_REVERTED
+              - METADATA_NOT_FOUND
+              - ACCOUNT_TYPE_ALREADY_EXISTS
+              - ACCOUNT_TYPE_NOT_FOUND
           description: |
             Opt-in continue-on-failure list for this entry. When the FSM
             would otherwise reject the underlying order with a business
             error whose typed reason matches one of these entries, the
             order is recorded as an `OrderSkippedLog` (no state mutation)
             and the bulk result's `data` surfaces the skip context.
-            Reasons outside the per-action business whitelist (structural /
-            internal reasons) are rejected at admission. Currently accepted
-            on `CREATE_TRANSACTION`: `TRANSACTION_REFERENCE_CONFLICT`.
+            Reasons outside the per-action business whitelist (structural
+            / internal reasons) are rejected at admission. Accepted
+            reasons per action:
+              - `CREATE_TRANSACTION` → `TRANSACTION_REFERENCE_CONFLICT`
+              - `REVERT_TRANSACTION` → `TRANSACTION_ALREADY_REVERTED`
+              - `DELETE_METADATA`    → `METADATA_NOT_FOUND`
+              - `ADD_ACCOUNT_TYPE`    → `ACCOUNT_TYPE_ALREADY_EXISTS`
+              - `REMOVE_ACCOUNT_TYPE` → `ACCOUNT_TYPE_NOT_FOUND`
             Empty (default) preserves the historical fail-on-error
             behaviour.
 

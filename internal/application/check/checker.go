@@ -230,6 +230,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("loading baseline references: %w", err)
 	}
 
+	// Sibling folds for the non-CONFLICT skip reasons: seed reverted /
+	// metadata / accountTypes / ledgerCreationSeen / nextTxID from the
+	// baseline so ledgers whose relevant history predates the archive
+	// boundary still verify accurately. Without this the archive
+	// escapes in the per-reason branches accept forged skips.
+	if err := c.foldBaselineChainState(baselineDB, chainBound); err != nil {
+		return fmt.Errorf("loading baseline skip-replay state: %w", err)
+	}
+
 	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, chapters, archiveEndSeq)
 	if err != nil {
 		return fmt.Errorf("reading proposal log boundaries: %w", err)
@@ -2570,6 +2579,234 @@ func (c *Checker) foldBaselineReferences(
 	}
 
 	return true, nil
+}
+
+// foldBaselineChainState seeds chainBound.reverted / metadata /
+// accountTypes / ledgerCreationSeen / nextTxID from the baseline
+// snapshot. Sibling of foldBaselineReferences — closes the archive-
+// boundary integrity gap for non-CONFLICT skip reasons on ledgers whose
+// relevant history predates the archive boundary.
+//
+// baselineDB=nil short-circuits every fold (no archived data or
+// baseline unavailable; the caller already gated the open).
+//
+// Every seeded entry uses sentinel seq=0 so mutationStateAtSeq's
+// backward walk finds it below any live log seq — the baseline claims
+// win on empty live but never override a live mutation.
+func (c *Checker) foldBaselineChainState(
+	baselineDB *pebble.DB,
+	chainBound *chainBoundState,
+) error {
+	if baselineDB == nil {
+		return nil
+	}
+
+	if err := c.foldBaselineLedgers(baselineDB, chainBound); err != nil {
+		return err
+	}
+
+	if err := c.foldBaselineBoundaries(baselineDB, chainBound); err != nil {
+		return err
+	}
+
+	if err := c.foldBaselineReverted(baselineDB, chainBound); err != nil {
+		return err
+	}
+
+	if err := c.foldBaselineMetadata(baselineDB, chainBound); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// foldBaselineLedgers marks every ledger present in the baseline as
+// creation-seen and seeds its account-type set from LedgerInfo.
+// account_types. Fixes two false-negatives on archived-history ledgers:
+//
+//   - The tx-id-scoped metadata permissive fallback (see
+//     isNumericTxIDTarget) no longer applies for ledgers whose
+//     CreateLedger sits in an archive but whose LedgerInfo IS in the
+//     baseline — the counter can be seeded via foldBaselineBoundaries.
+//
+//   - A later skippable AddAccountType of a type present at ledger
+//     creation (but archived away) is legitimately valid; the checker
+//     would previously flag it INVALID_SKIP.
+func (c *Checker) foldBaselineLedgers(
+	baselineDB *pebble.DB,
+	chainBound *chainBoundState,
+) error {
+	iter, err := c.attrs.Ledger.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return fmt.Errorf("iterating baseline ledgers: %w", err)
+	}
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var lk domain.LedgerKey
+		if err := lk.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		if lk.Name == "" || entry.Value == nil {
+			continue
+		}
+
+		chainBound.ledgerCreationSeen[lk.Name] = struct{}{}
+
+		for name := range entry.Value.GetAccountTypes() {
+			if name == "" {
+				continue
+			}
+
+			appendAccountTypeMutation(chainBound.accountTypes, lk.Name, name, 0, true)
+		}
+	}
+
+	if err := iter.Close(); err != nil {
+		return fmt.Errorf("closing baseline ledgers iterator: %w", err)
+	}
+
+	return iter.Err()
+}
+
+// foldBaselineBoundaries seeds nextTxID per ledger from the baseline's
+// LedgerBoundaries.NextTransactionId. Without this, ledgers whose
+// CreateLedger sits in an archive default nextTxID to 1 and mislabel
+// live CreateTransaction / RevertTransaction metadata under wrong
+// tx-id targets (see finding cf7f890b).
+func (c *Checker) foldBaselineBoundaries(
+	baselineDB *pebble.DB,
+	chainBound *chainBoundState,
+) error {
+	iter, err := c.attrs.Boundary.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return fmt.Errorf("iterating baseline boundaries: %w", err)
+	}
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var lk domain.LedgerKey
+		if err := lk.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		if lk.Name == "" || entry.Value == nil {
+			continue
+		}
+
+		next := entry.Value.GetNextTransactionId()
+		if next == 0 {
+			continue
+		}
+
+		// Existing seed (from live CreateLedger) wins if it was already
+		// observed — live is authoritative on the current counter.
+		if existing, seen := chainBound.nextTxID[lk.Name]; !seen || existing < next {
+			chainBound.nextTxID[lk.Name] = next
+		}
+	}
+
+	if err := iter.Close(); err != nil {
+		return fmt.Errorf("closing baseline boundaries iterator: %w", err)
+	}
+
+	return iter.Err()
+}
+
+// foldBaselineReverted seeds chainBound.reverted from the baseline's
+// TransactionState.RevertedByTransaction markers. Every tx already
+// reverted at the archive boundary lands with sentinel seq=0 so a
+// later legitimate skippable RevertTransaction targeting that tx sees
+// the prior revert regardless of whether it lives in an archived
+// chapter.
+func (c *Checker) foldBaselineReverted(
+	baselineDB *pebble.DB,
+	chainBound *chainBoundState,
+) error {
+	iter, err := c.attrs.Transaction.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return fmt.Errorf("iterating baseline transactions: %w", err)
+	}
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var tk domain.TransactionKey
+		if err := tk.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		if tk.LedgerName == "" || entry.Value == nil {
+			continue
+		}
+
+		if entry.Value.GetRevertedByTransaction() == 0 {
+			continue
+		}
+
+		// First-revert-wins semantic: sentinel 0 beats any live seq.
+		perLedger, ok := chainBound.reverted[tk.LedgerName]
+		if !ok {
+			perLedger = make(map[uint64]uint64)
+			chainBound.reverted[tk.LedgerName] = perLedger
+		}
+
+		if _, seen := perLedger[tk.ID]; seen {
+			continue
+		}
+
+		perLedger[tk.ID] = 0
+	}
+
+	if err := iter.Close(); err != nil {
+		return fmt.Errorf("closing baseline transactions iterator: %w", err)
+	}
+
+	return iter.Err()
+}
+
+// foldBaselineMetadata seeds chainBound.metadata (exists=true, seq=0)
+// for every account-metadata entry present in the baseline. Closes
+// the log-only tampering vector where a live DeleteMetadata skip
+// falsely passes because the metadata's Set lived in an archived
+// chapter — the baseline still holds the key.
+//
+// Only account-metadata targets are folded here; transaction-scoped
+// metadata is not persisted as a separate attribute in the baseline
+// (it lives on TransactionState). Tx-scoped metadata verification
+// stays under the ledgerCreationSeen / nextTxID anchoring path.
+func (c *Checker) foldBaselineMetadata(
+	baselineDB *pebble.DB,
+	chainBound *chainBoundState,
+) error {
+	iter, err := c.attrs.Metadata.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return fmt.Errorf("iterating baseline metadata: %w", err)
+	}
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var mk domain.MetadataKey
+		if err := mk.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		if mk.LedgerName == "" || mk.Account == "" || mk.Key == "" {
+			continue
+		}
+
+		appendMetadataMutation(chainBound.metadata, mk.LedgerName, mk.Account, mk.Key, 0, true)
+	}
+
+	if err := iter.Close(); err != nil {
+		return fmt.Errorf("closing baseline metadata iterator: %w", err)
+	}
+
+	return iter.Err()
 }
 
 // verifySkippedOrder flags an OrderSkippedLog projection whose reason was
