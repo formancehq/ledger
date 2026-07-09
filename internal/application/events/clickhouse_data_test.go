@@ -645,7 +645,7 @@ func TestClickHouseCreateTableDDL(t *testing.T) {
 	ddl := ClickHouseCreateTableDDL("test_events")
 	require.Contains(t, ddl, "CREATE TABLE IF NOT EXISTS test_events")
 	require.Contains(t, ddl, "log_sequence UInt64")
-	require.Contains(t, ddl, "MergeTree()")
+	require.Contains(t, ddl, "ReplacingMergeTree()")
 }
 
 func TestSinkTime_MarshalJSON(t *testing.T) {

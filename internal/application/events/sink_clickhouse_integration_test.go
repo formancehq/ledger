@@ -18,6 +18,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -294,6 +295,74 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 	require.Equal(t, "world", postingSource)
 	require.Equal(t, "merchant", postingDest)
 	require.Equal(t, "EUR", postingAsset)
+}
+
+// dedupedRowCount returns the row count of the table as seen through
+// ReplacingMergeTree deduplication. FINAL is required because dedup happens on
+// background merges, not at insert time.
+func dedupedRowCount(t *testing.T, dsn, table string) uint64 {
+	t.Helper()
+
+	conn := openTestClickHouseConn(t, dsn)
+
+	var count uint64
+	require.NoError(t, conn.QueryRow(context.Background(),
+		fmt.Sprintf("SELECT count() FROM %s FINAL", table)).Scan(&count))
+
+	return count
+}
+
+func TestClickHouseSinkIntegration_RedeliveryIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	dsn := sharedClickHouseDSN
+	table := uniqueTopic("ledger_events_dedup")
+
+	now := libtime.Now()
+
+	// A batch the emitter re-delivers verbatim when it crashes after the
+	// ClickHouse insert but before the Raft cursor advance (delivery is
+	// at-least-once). The redelivered rows are byte-identical.
+	batch := []*eventspb.Event{
+		{
+			Type:        commonpb.EventType_CREATED_LEDGER,
+			Ledger:      "orders",
+			LogSequence: 1,
+			Date:        commonpb.NewTimestamp(now),
+			Log: &commonpb.Log{
+				Sequence: 1,
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{Name: "orders"},
+					},
+				},
+			},
+		},
+		{
+			Type:        commonpb.EventType_COMMITTED_TRANSACTION,
+			Ledger:      "orders",
+			LogSequence: 2,
+			Date:        commonpb.NewTimestamp(now),
+			Log:         &commonpb.Log{Sequence: 2},
+		},
+	}
+
+	sink, err := events.NewClickHouseSink(context.Background(), events.ClickHouseSinkConfig{
+		DSN:   dsn,
+		Table: table,
+	})
+	require.NoError(t, err)
+
+	defer func() { _ = sink.Close() }()
+
+	ctx := context.Background()
+
+	require.NoError(t, sink.Publish(ctx, batch))
+	require.Equal(t, uint64(len(batch)), dedupedRowCount(t, dsn, table))
+
+	// Re-delivering the identical batch must not grow the deduplicated table.
+	require.NoError(t, sink.Publish(ctx, batch))
+	require.Equal(t, uint64(len(batch)), dedupedRowCount(t, dsn, table))
 }
 
 func TestClickHouseSinkIntegration_AutoCreateTable(t *testing.T) {
