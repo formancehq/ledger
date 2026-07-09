@@ -28,58 +28,6 @@ func TestCheckpointDirReadyRequiresMarker(t *testing.T) {
 	require.True(t, CheckpointDirReady(dir))
 }
 
-// TestWaitForCheckpointFastPath returns immediately when the marker already
-// exists.
-func TestWaitForCheckpointFastPath(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-	dir := t.TempDir()
-	require.NoError(t, MarkCheckpointReady(dir))
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	require.NoError(t, s.WaitForCheckpoint(ctx, dir))
-}
-
-// TestWaitForCheckpointBlocksUntilMarker reproduces the EN-1460 race: a reader
-// waits on a checkpoint whose directory is not yet materialized, then the
-// index builder writes the marker and broadcasts. The wait must unblock only
-// once the marker exists — never on the bare directory.
-func TestWaitForCheckpointBlocksUntilMarker(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-	dir := t.TempDir()
-
-	waitErr := make(chan error, 1)
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		waitErr <- s.WaitForCheckpoint(ctx, dir)
-	}()
-
-	// The waiter must not have returned yet — the marker is absent.
-	select {
-	case err := <-waitErr:
-		t.Fatalf("WaitForCheckpoint returned before marker was written: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	// Simulate the index builder finishing the checkpoint: write the marker,
-	// then broadcast progress exactly as createReadIndexCheckpoint does.
-	require.NoError(t, MarkCheckpointReady(dir))
-	s.NotifyProgress()
-
-	select {
-	case err := <-waitErr:
-		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("WaitForCheckpoint did not return after marker was written")
-	}
-}
-
 // TestCreateCheckpointThenMarkIsOpenable mirrors what the index builder does
 // (CreateCheckpoint + MarkCheckpointReady) and asserts the resulting directory
 // is a valid, openable read-only Pebble read index — i.e. once the marker is
@@ -100,10 +48,9 @@ func TestCreateCheckpointThenMarkIsOpenable(t *testing.T) {
 }
 
 // TestCreateCheckpointFailsIfDirExists documents the pebble contract the index
-// builder relies on for crash-safe recreation: CreateCheckpoint errors when the
-// destination already exists, so a replay-after-crash MUST clear the stale
-// directory first (createReadIndexCheckpoint does exactly that). A recreate over
-// a cleared path then succeeds.
+// builder relies on: CreateCheckpoint errors when the destination already
+// exists, so the atomic materialization builds into a temp dir and renames.
+// A recreate over a cleared path succeeds.
 func TestCreateCheckpointFailsIfDirExists(t *testing.T) {
 	t.Parallel()
 
@@ -120,8 +67,62 @@ func TestCreateCheckpointFailsIfDirExists(t *testing.T) {
 	require.NoError(t, s.CreateCheckpoint(destDir))
 }
 
+// TestWaitForCheckpointFastPath returns immediately when the marker already
+// exists.
+func TestWaitForCheckpointFastPath(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	dir := t.TempDir()
+	require.NoError(t, MarkCheckpointReady(dir))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	require.NoError(t, s.WaitForCheckpoint(ctx, dir))
+}
+
+// TestWaitForCheckpointBlocksUntilMarker reproduces the EN-1460 create-side
+// race: CreateQueryCheckpoint waits on the creator node's marker; the wait must
+// unblock only once the marker exists (after the atomic materialization + the
+// builder's NotifyProgress), never on a bare directory.
+func TestWaitForCheckpointBlocksUntilMarker(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	dir := t.TempDir()
+
+	waitErr := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		waitErr <- s.WaitForCheckpoint(ctx, dir)
+	}()
+
+	// The waiter must not return yet — the marker is absent.
+	select {
+	case err := <-waitErr:
+		t.Fatalf("WaitForCheckpoint returned before marker was written: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Simulate the builder finishing the checkpoint: write the marker, then
+	// broadcast progress exactly as the inline path does after materialization.
+	require.NoError(t, MarkCheckpointReady(dir))
+	s.NotifyProgress()
+
+	select {
+	case err := <-waitErr:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("WaitForCheckpoint did not return after marker was written")
+	}
+}
+
 // TestWaitForCheckpointContextCancel unblocks on context cancellation and
-// returns the context error rather than hanging.
+// returns the context error rather than hanging. Exercises the missed-wakeup
+// fix: the cancellation broadcast is delivered while holding progressMu, so a
+// cancel that lands in the narrow window around cond.Wait() is never lost.
 func TestWaitForCheckpointContextCancel(t *testing.T) {
 	t.Parallel()
 

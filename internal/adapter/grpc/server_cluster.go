@@ -453,16 +453,16 @@ func (impl *ClusterServiceServerImpl) CreateQueryCheckpoint(ctx context.Context,
 		return nil, fmt.Errorf("creating query checkpoint via raft: %w", err)
 	}
 
-	// Extract the assigned checkpoint ID and log sequence from the response.
+	// Block until the read-index checkpoint is materialized on THIS (the creator)
+	// node before returning, so a read at the returned checkpoint_id on this node
+	// succeeds immediately. We wait on the local .ready marker — not on the index
+	// builder progress cursor, whose fast path was the EN-1460 root cause: the
+	// cursor is persisted in the batch that precedes the physical checkpoint
+	// creation, so it reaches the target sequence ~100-150ms before the directory
+	// exists. The checkpoint is materialized per-replica; reads routed to another
+	// node whose builder has not yet crossed the log get a typed, retryable
+	// Unavailable (ErrCheckpointNotReady) until that node materializes it inline.
 	if cp := logs[0].GetPayload().GetCreatedQueryCheckpoint(); cp != nil {
-		// Wait for the read-index checkpoint directory to be fully materialized
-		// by the index builder before returning. Waiting on the log sequence
-		// alone (WaitForSequence) is insufficient: the progress cursor is
-		// persisted in the batch that precedes the physical checkpoint creation,
-		// so the sequence advances ~100-150ms before the directory exists
-		// (EN-1460). WaitForCheckpoint gates on the readiness marker the builder
-		// writes as the last step, so the checkpoint is readable the moment this
-		// call returns.
 		readIndexDir := impl.store.QueryCheckpointReadIndexDir(cp.GetCheckpointId())
 		if err := impl.readStore.WaitForCheckpoint(ctx, readIndexDir); err != nil {
 			return nil, fmt.Errorf("waiting for read index checkpoint: %w", err)

@@ -414,13 +414,28 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(checkpointID uint64) (
 	mainPath := impl.store.QueryCheckpointMainDir(checkpointID)
 	readIndexPath := impl.store.QueryCheckpointReadIndexDir(checkpointID)
 
-	// The read-index checkpoint is materialized asynchronously by the index
-	// builder, and on a follower node the builder may not have caught up to the
-	// checkpoint's log sequence yet. Opening a not-yet-materialized directory
-	// would surface an opaque, non-retryable Unknown (EN-1460). Gate on the
-	// builder's readiness marker and return a typed, retryable error instead —
-	// mirrors the INDEX_BUILDING -> Unavailable pattern for metadata indexes.
+	// The read-index checkpoint is materialized asynchronously and per-replica by
+	// each node's index builder, and on a follower the builder may not have
+	// caught up to the checkpoint's log sequence yet. Opening a
+	// not-yet-materialized directory would surface an opaque, non-retryable
+	// Unknown (EN-1460). Distinguish two cases via the .ready marker:
+	//   - marker present  -> materialized on this replica, open it.
+	//   - marker absent   -> either the checkpoint is registered in Raft but not
+	//     yet materialized here (transient: ErrCheckpointNotReady -> Unavailable,
+	//     the reconciler will materialize it), OR the checkpoint id does not
+	//     exist at all (permanent: NotFound so clients stop retrying).
 	if !readstore.CheckpointDirReady(readIndexPath) {
+		exists, existsErr := impl.queryCheckpointExists(checkpointID)
+		if existsErr != nil {
+			return nil, nil, existsErr
+		}
+
+		if !exists {
+			return nil, nil, commonpb.NewNotFoundError("query checkpoint %d not found", checkpointID)
+		}
+
+		// Registered but not materialized on this replica yet — mirrors the
+		// INDEX_BUILDING -> Unavailable pattern for metadata indexes.
 		return nil, nil, &domain.ErrCheckpointNotReady{CheckpointID: checkpointID}
 	}
 
@@ -437,6 +452,26 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(checkpointID uint64) (
 	}
 
 	return mainStore, readIdx, nil
+}
+
+// queryCheckpointExists reports whether a query checkpoint id is present in the
+// Raft-replicated QueryCheckpointState registry on this node. Used to tell a
+// permanently non-existent checkpoint (NotFound) apart from one that is
+// registered but not yet locally materialized (retryable ErrCheckpointNotReady).
+func (impl *BucketServiceServerImpl) queryCheckpointExists(checkpointID uint64) (bool, error) {
+	handle, err := impl.store.NewReadHandle()
+	if err != nil {
+		return false, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	cp, err := query.ReadQueryCheckpoint(handle, checkpointID)
+	if err != nil {
+		return false, fmt.Errorf("reading query checkpoint %d: %w", checkpointID, err)
+	}
+
+	return cp != nil, nil
 }
 
 // readController selects the controller to serve a read from. When
