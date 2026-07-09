@@ -223,11 +223,39 @@ func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
 		quoted[i] = shellSingleQuote(arg)
 	}
 
-	cmd := fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$CLUSTER_SECRET"`,
+	cmd := otelExecPrologue + fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$CLUSTER_SECRET"`,
 		strings.Join(quoted, " "), serverAddr, ledgerctlTLSFlag(tlsMode))
 
 	return []string{"/bin/sh", "-c", cmd}
 }
+
+// otelExecPrologue makes ledgerctl's OpenTelemetry setup cheap when the
+// operator execs it inside a ledger pod, so a per-invocation trace flush can
+// never exceed ledgerExecTimeout and turn an index/create/cluster command into
+// an opaque "context deadline exceeded".
+//
+// The pod carries go-libs' OTEL_* env — OTEL_TRACES_EXPORTER=otlp plus the
+// endpoint under the go-libs name OTEL_TRACES_EXPORTER_OTLP_ENDPOINT — but
+// ledgerctl reads the OTEL-SDK-standard OTEL_EXPORTER_OTLP_ENDPOINT, which the
+// pod never sets. With the exporter selected but no standard endpoint
+// resolvable, ledgerctl builds an OTLP exporter against the SDK default
+// localhost:4317, and its deferred span flush blocks for the full 5s shutdown
+// timeout on every invocation.
+//
+// Fix: if a traces endpoint is configured, expose it under the standard name
+// (adding the http/https scheme the SDK requires — derived from the go-libs
+// insecure flag, since a bare host:port makes the SDK attempt TLS against a
+// plaintext collector and hang the same 5s). If no endpoint is configured,
+// disable the SDK entirely so the flush is a no-op. The go-libs var names are
+// the ones this same operator injects in appendMonitoringEnvVars, so both ends
+// stay in sync.
+const otelExecPrologue = `if [ -n "${OTEL_TRACES_EXPORTER_OTLP_ENDPOINT:-}" ]; then ` +
+	`case "$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT" in ` +
+	`http://*|https://*) export OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT" ;; ` +
+	`*) if [ "${OTEL_TRACES_EXPORTER_OTLP_INSECURE:-}" = "true" ]; then ` +
+	`export OTEL_EXPORTER_OTLP_ENDPOINT="http://$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT"; else ` +
+	`export OTEL_EXPORTER_OTLP_ENDPOINT="https://$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT"; fi ;; ` +
+	`esac; else export OTEL_SDK_DISABLED=true; fi; `
 
 // shellSingleQuote returns s wrapped in single quotes safe for /bin/sh -c.
 // A single quote inside the string is encoded as `'\”` (close, escaped
