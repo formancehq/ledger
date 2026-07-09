@@ -8,27 +8,30 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// preparedQueryTargets maps the public REST target enum
-// (ACCOUNTS/TRANSACTIONS/LOGS, per openapi.yml) to the proto QueryTarget. All
-// three targets are supported by the query executor and creatable via
-// gRPC/CLI, so REST must accept them too.
+// preparedQueryTargets maps the public REST target enum to the proto
+// QueryTarget. Only ACCOUNTS and TRANSACTIONS are exposed over REST: the
+// prepared-query execution path (query.Execute) hydrates only account and
+// transaction data — there is no log result field on PreparedQueryCursor — so a
+// LOGS-target prepared query would execute to an empty cursor. LOGS remains a
+// valid direct ListLogs target; it is just not a usable *prepared-query* target
+// yet, so REST does not advertise it. See openapi.yml (ACCOUNTS/TRANSACTIONS).
 var preparedQueryTargets = map[string]commonpb.QueryTarget{
 	"ACCOUNTS":     commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 	"TRANSACTIONS": commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-	"LOGS":         commonpb.QueryTarget_QUERY_TARGET_LOGS,
 }
 
 // parsePreparedQueryTarget resolves the `target` field of a prepared-query
-// request. An unknown value is rejected loudly rather than silently coerced to
-// a default (which would run a different query than the caller asked for).
+// request. An unknown or unsupported value is rejected loudly rather than
+// silently coerced to a default (which would run a different query than the
+// caller asked for).
 func parsePreparedQueryTarget(target string) (commonpb.QueryTarget, error) {
 	if target == "" {
-		return 0, errors.New("target is required (ACCOUNTS, TRANSACTIONS or LOGS)")
+		return 0, errors.New("target is required (ACCOUNTS or TRANSACTIONS)")
 	}
 
 	t, ok := preparedQueryTargets[target]
 	if !ok {
-		return 0, fmt.Errorf("unknown target %q (use ACCOUNTS, TRANSACTIONS or LOGS)", target)
+		return 0, fmt.Errorf("unknown or unsupported target %q (use ACCOUNTS or TRANSACTIONS)", target)
 	}
 
 	return t, nil

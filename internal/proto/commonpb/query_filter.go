@@ -505,23 +505,28 @@ func unmarshalFieldCondition(raw json.RawMessage) (*FieldCondition, error) {
 // --- AddressMatch ---------------------------------------------------------
 
 func marshalAddressMatch(am *AddressMatch) (json.RawMessage, error) {
+	// value/param are pointers so that whichever variant is set is always
+	// emitted, even when its string value is empty. Using `omitempty` on plain
+	// strings would drop an explicit empty hardcoded value, producing a payload
+	// (operator with no value/param) that the decoder correctly rejects — the
+	// marshal/unmarshal round-trip must stay lossless and canonical.
 	out := struct {
-		Type     string `json:"type"`
-		Operator string `json:"operator"`
-		Value    string `json:"value,omitempty"`
-		Param    string `json:"param,omitempty"`
-		Role     string `json:"role,omitempty"`
+		Type     string  `json:"type"`
+		Operator string  `json:"operator"`
+		Value    *string `json:"value,omitempty"`
+		Param    *string `json:"param,omitempty"`
+		Role     string  `json:"role,omitempty"`
 	}{Type: "address"}
 
 	switch m := am.GetMatch().(type) {
 	case *AddressMatch_HardcodedPrefix:
-		out.Operator, out.Value = "prefix", m.HardcodedPrefix
+		out.Operator, out.Value = "prefix", &m.HardcodedPrefix
 	case *AddressMatch_HardcodedExact:
-		out.Operator, out.Value = "exact", m.HardcodedExact
+		out.Operator, out.Value = "exact", &m.HardcodedExact
 	case *AddressMatch_ParamPrefix:
-		out.Operator, out.Param = "prefix", m.ParamPrefix
+		out.Operator, out.Param = "prefix", &m.ParamPrefix
 	case *AddressMatch_ParamExact:
-		out.Operator, out.Param = "exact", m.ParamExact
+		out.Operator, out.Param = "exact", &m.ParamExact
 	default:
 		return nil, errors.New("address: no match set")
 	}

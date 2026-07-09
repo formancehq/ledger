@@ -177,18 +177,14 @@ func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestHandleCreatePreparedQuery_LogsTarget(t *testing.T) {
+func TestHandleCreatePreparedQuery_LogsTargetRejected(t *testing.T) {
 	t.Parallel()
 
-	var captured *servicepb.Request
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, reqs *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			captured = reqs.GetUnsigned().GetRequests()[0]
-
-			return []*commonpb.Log{{}}, nil
-		}).AnyTimes()
-	srv := newTestServer(t, backend)
+	// LOGS is not a usable prepared-query target over REST: query.Execute has
+	// no LOGS hydration path (PreparedQueryCursor carries only account/txn
+	// data), so a LOGS prepared query would execute to an empty cursor. REST
+	// must reject it at ingestion rather than advertise a broken path.
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
@@ -197,10 +193,7 @@ func TestHandleCreatePreparedQuery_LogsTarget(t *testing.T) {
 
 	srv.handleCreatePreparedQuery(w, r)
 
-	require.Equal(t, http.StatusNoContent, w.Code)
-	require.NotNil(t, captured)
-	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_LOGS,
-		captured.GetCreatePreparedQuery().GetQuery().GetTarget())
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestHandleCreatePreparedQuery_UnknownTargetRejected(t *testing.T) {

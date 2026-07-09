@@ -3678,7 +3678,6 @@ components:
           enum:
             - ACCOUNTS
             - TRANSACTIONS
-            - LOGS
           description: Target entity type
         filter:
           $ref: '#/components/schemas/QueryFilter'
@@ -3750,7 +3749,6 @@ components:
           enum:
             - ACCOUNTS
             - TRANSACTIONS
-            - LOGS
           description: Target entity type
         filter:
           $ref: '#/components/schemas/QueryFilter'
