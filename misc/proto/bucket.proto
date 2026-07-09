@@ -761,13 +761,15 @@ message ListAuditEntriesRequest {
   // filters: ledger scope and outcome selection are expressed through
   // options.filter (e.g. `audit[ledger] == <name>`, `audit[outcome] ==
   // failure`), exactly like every other filtered list endpoint.
-  common.ListOptions options = 2;
+  //
+  // options keeps its ORIGINAL tag 1 (the shape on release/v3.0 was
+  // { options=1, failures_only=2, ledger=3 }); the two dedicated fields are
+  // removed and their tags/names reserved. Keeping options on tag 1 avoids
+  // renumbering a live field — a client that still sends options on tag 1
+  // continues to be understood.
+  common.ListOptions options = 1;
 
-  // History: options was field 1, then { ledger=1, options=2 } with
-  // failures_only=2/ledger=3 folded into the filter. All dedicated fields are
-  // now removed — only options remains. Old tags/names reserved so they cannot
-  // be silently reintroduced with a different meaning.
-  reserved 1, 3;
+  reserved 2, 3;
   reserved "failures_only", "ledger";
 }
 
