@@ -509,6 +509,42 @@ func TestCompileAuditFilter_EmptyOrMatchesNothing(t *testing.T) {
 	require.Empty(t, seqs)
 }
 
+func TestCompileAuditFilter_RejectsTooDeep(t *testing.T) {
+	t.Parallel()
+
+	// Build an and/or tree nested deeper than MaxFilterDepth; the compiler must
+	// return InvalidArgument rather than overflow the stack.
+	leaf := auditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")
+	f := leaf
+	for range MaxFilterDepth + 5 {
+		f = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{f}}},
+		}
+	}
+
+	_, _, _, _, err := CompileAuditFilter(&fakeAuditIndex{byOutcome: map[bool][]uint64{false: {1}}}, f)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCompileAuditFilter_AcceptsAtDepthLimit(t *testing.T) {
+	t.Parallel()
+
+	// A tree just under the limit still compiles.
+	leaf := auditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")
+	f := leaf
+	for range MaxFilterDepth - 2 {
+		f = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{f}}},
+		}
+	}
+
+	seqs, _, _, narrowed, err := CompileAuditFilter(&fakeAuditIndex{byOutcome: map[bool][]uint64{false: {1}}}, f)
+	require.NoError(t, err)
+	require.True(t, narrowed)
+	require.Equal(t, []uint64{1}, seqs)
+}
+
 func TestIntersectSorted(t *testing.T) {
 	t.Parallel()
 

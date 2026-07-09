@@ -64,7 +64,7 @@ func CompileAuditFilter(idx AuditIndexReader, filter *commonpb.QueryFilter) (seq
 		return nil, 0, math.MaxUint64, false, nil
 	}
 
-	c, err := compileAuditNode(idx, filter)
+	c, err := compileAuditNode(idx, filter, 0)
 	if err != nil {
 		return nil, 0, 0, false, err
 	}
@@ -72,14 +72,23 @@ func CompileAuditFilter(idx AuditIndexReader, filter *commonpb.QueryFilter) (seq
 	return c.seqs, c.loSeq, c.hiSeq, c.narrowed, nil
 }
 
-func compileAuditNode(idx AuditIndexReader, filter *commonpb.QueryFilter) (auditCompiled, error) {
+// compileAuditNode recursively compiles a filter node. depth bounds the
+// and/or nesting so a maliciously (or accidentally) deep proto tree returns
+// InvalidArgument instead of overflowing the Go stack — mirroring the shared
+// query.Compile depth guard (MaxFilterDepth).
+func compileAuditNode(idx AuditIndexReader, filter *commonpb.QueryFilter, depth int) (auditCompiled, error) {
+	if depth >= MaxFilterDepth {
+		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
+			"audit filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
+	}
+
 	switch f := filter.GetFilter().(type) {
 	case *commonpb.QueryFilter_Audit:
 		return compileAuditLeaf(idx, f.Audit)
 	case *commonpb.QueryFilter_And:
-		return compileAuditAnd(idx, f.And.GetFilters())
+		return compileAuditAnd(idx, f.And.GetFilters(), depth+1)
 	case *commonpb.QueryFilter_Or:
-		return compileAuditOr(idx, f.Or.GetFilters())
+		return compileAuditOr(idx, f.Or.GetFilters(), depth+1)
 	default:
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
 			"unsupported filter for audit entries: only audit[...] conditions combined with and/or are allowed")
@@ -238,7 +247,7 @@ func indexUintLeaf(idx AuditIndexReader, field byte, cond *commonpb.AuditConditi
 	return auditCompiled{seqs: seqs, narrowed: true, loSeq: 0, hiSeq: math.MaxUint64}, nil
 }
 
-func compileAuditAnd(idx AuditIndexReader, filters []*commonpb.QueryFilter) (auditCompiled, error) {
+func compileAuditAnd(idx AuditIndexReader, filters []*commonpb.QueryFilter, depth int) (auditCompiled, error) {
 	if len(filters) == 0 {
 		// An empty AND conventionally matches everything; but for audit we treat
 		// a degenerate empty filter as unconstrained rather than error.
@@ -247,7 +256,7 @@ func compileAuditAnd(idx AuditIndexReader, filters []*commonpb.QueryFilter) (aud
 
 	acc := unconstrained()
 	for _, f := range filters {
-		c, err := compileAuditNode(idx, f)
+		c, err := compileAuditNode(idx, f, depth)
 		if err != nil {
 			return auditCompiled{}, err
 		}
@@ -258,7 +267,7 @@ func compileAuditAnd(idx AuditIndexReader, filters []*commonpb.QueryFilter) (aud
 	return acc, nil
 }
 
-func compileAuditOr(idx AuditIndexReader, filters []*commonpb.QueryFilter) (auditCompiled, error) {
+func compileAuditOr(idx AuditIndexReader, filters []*commonpb.QueryFilter, depth int) (auditCompiled, error) {
 	if len(filters) == 0 {
 		return auditCompiled{seqs: nil, narrowed: true, loSeq: 0, hiSeq: math.MaxUint64}, nil
 	}
@@ -266,7 +275,7 @@ func compileAuditOr(idx AuditIndexReader, filters []*commonpb.QueryFilter) (audi
 	var acc auditCompiled
 	first := true
 	for _, f := range filters {
-		c, err := compileAuditNode(idx, f)
+		c, err := compileAuditNode(idx, f, depth)
 		if err != nil {
 			return auditCompiled{}, err
 		}
