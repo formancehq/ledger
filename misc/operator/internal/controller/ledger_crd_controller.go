@@ -211,6 +211,17 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 
 	grpcPort, err := r.resolveEndpoint(ctx, ledger)
 	if err != nil {
+		// Index reconciliation did not run for this generation. Mark
+		// IndexesSynced=False so a prior True is not left stale (consumers such
+		// as `kubectl wait` / Chainsaw must not see the new desired set as
+		// synced while no create/drop actually ran).
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               conditionIndexesSynced,
+			Status:             metav1.ConditionFalse,
+			Reason:             "EndpointUnavailable",
+			Message:            fmt.Sprintf("waiting for Cluster before reconciling indexes: %v", err),
+			ObservedGeneration: ledger.Generation,
+		})
 		ledger.Status.Message = fmt.Sprintf("waiting for Cluster for index reconcile: %v", err)
 
 		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
