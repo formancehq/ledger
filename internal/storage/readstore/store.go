@@ -205,10 +205,20 @@ func (s *Store) LastIndexedSequence() (uint64, error) {
 	return s.ReadProgress()
 }
 
-// NotifyProgress wakes all goroutines waiting in WaitForSequence.
-// Must be called after WriteProgress commits successfully.
+// NotifyProgress wakes all goroutines waiting in WaitForSequence /
+// WaitForCheckpoint. Must be called after WriteProgress commits successfully.
+//
+// The broadcast is issued while holding progressMu: a waiter checks its
+// condition and calls cond.Wait() under the same lock, and Wait atomically
+// releases the lock only once it is parked. Taking progressMu here therefore
+// serializes against that window — the broadcast either lands before the waiter
+// locks (it will re-check the condition when it acquires the lock) or after it
+// has parked (it will be woken). Without the lock, a broadcast between the
+// condition check and Wait() would be missed until the next notification.
 func (s *Store) NotifyProgress() {
+	s.progressMu.Lock()
 	s.progressCond.Broadcast()
+	s.progressMu.Unlock()
 }
 
 // ReadAppliedProposalProgress returns the last consumed AppliedProposal
@@ -563,8 +573,8 @@ func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
 // checkpoint can fail mid-link (EN-1460's "link ... no such file or directory"),
 // so a directory or manifest merely existing is NOT sufficient — a half-written
 // or half-linked directory is indistinguishable from a complete one except by
-// the marker. The reconciler therefore never trusts an unmarked directory; it
-// rebuilds from scratch.
+// the marker. The index builder therefore never trusts an unmarked directory; it
+// discards and rebuilds from scratch.
 const checkpointReadyMarker = ".ready"
 
 // CheckpointDirReady reports whether a query checkpoint read-index directory

@@ -320,7 +320,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 	checkpoint := req.GetCheckpointId() > 0
 	if checkpoint {
-		mainStore, readIdx, closeErr := impl.openCheckpointStores(req.GetCheckpointId())
+		mainStore, readIdx, closeErr := impl.openCheckpointStores(ctx, req.GetCheckpointId())
 		if closeErr != nil {
 			return nil, closeErr
 		}
@@ -410,33 +410,19 @@ func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Conte
 
 // openCheckpointStores opens the checkpoint's main store and read index in read-only mode.
 // The caller must close both stores when done.
-func (impl *BucketServiceServerImpl) openCheckpointStores(checkpointID uint64) (*dal.Store, *readstore.Store, error) {
+func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, checkpointID uint64) (*dal.Store, *readstore.Store, error) {
 	mainPath := impl.store.QueryCheckpointMainDir(checkpointID)
 	readIndexPath := impl.store.QueryCheckpointReadIndexDir(checkpointID)
 
 	// The read-index checkpoint is materialized asynchronously and per-replica by
-	// each node's index builder, and on a follower the builder may not have
-	// caught up to the checkpoint's log sequence yet. Opening a
-	// not-yet-materialized directory would surface an opaque, non-retryable
-	// Unknown (EN-1460). Distinguish two cases via the .ready marker:
-	//   - marker present  -> materialized on this replica, open it.
-	//   - marker absent   -> either the checkpoint is registered in Raft but not
-	//     yet materialized here (transient: ErrCheckpointNotReady -> Unavailable,
-	//     the reconciler will materialize it), OR the checkpoint id does not
-	//     exist at all (permanent: NotFound so clients stop retrying).
+	// each node's index builder, at the moment its builder crosses the
+	// CreatedQueryCheckpoint log. Opening a not-yet-materialized directory would
+	// surface an opaque, non-retryable Unknown (EN-1460). The .ready marker
+	// distinguishes the cases:
+	//   - marker present -> materialized on this replica, open it.
+	//   - marker absent  -> resolve readiness vs existence (see resolveMissingMarker).
 	if !readstore.CheckpointDirReady(readIndexPath) {
-		exists, existsErr := impl.queryCheckpointExists(checkpointID)
-		if existsErr != nil {
-			return nil, nil, existsErr
-		}
-
-		if !exists {
-			return nil, nil, commonpb.NewNotFoundError("query checkpoint %d not found", checkpointID)
-		}
-
-		// Registered but not materialized on this replica yet — mirrors the
-		// INDEX_BUILDING -> Unavailable pattern for metadata indexes.
-		return nil, nil, &domain.ErrCheckpointNotReady{CheckpointID: checkpointID}
+		return nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
 
 	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
@@ -454,10 +440,62 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(checkpointID uint64) (
 	return mainStore, readIdx, nil
 }
 
+// resolveMissingMarker classifies a checkpoint read whose local .ready marker is
+// absent, returning the error to surface. It must never return a permanent
+// NotFound for a checkpoint that exists cluster-wide but simply has not been
+// applied/materialized on this replica yet.
+//
+// Checkpoint reads are served locally on whichever node receives the request and
+// deliberately skip the live-read barrier (a checkpoint is a fixed snapshot).
+// That means the local QueryCheckpointState registry can lag the cluster on a
+// follower whose FSM has not yet applied the CreatedQueryCheckpoint entry — so
+// "absent locally" alone does NOT prove the checkpoint does not exist.
+//
+// We therefore only conclude NotFound after a linearizable barrier
+// (ReadIndexAndWait) confirms the local FSM has caught up to the cluster commit
+// index and the checkpoint is still absent:
+//   - registered locally (before or after the barrier)      -> ErrCheckpointNotReady (Unavailable): the read
+//     index just is not materialized on this replica yet.
+//   - node still syncing / no leader (barrier inconclusive)  -> ErrCheckpointNotReady (Unavailable): we cannot
+//     prove absence, so stay retryable rather than lie NotFound.
+//   - absent after a successful barrier                      -> NotFound (permanent): the id genuinely does not
+//     exist cluster-wide.
+func (impl *BucketServiceServerImpl) resolveMissingMarker(ctx context.Context, checkpointID uint64) error {
+	exists, err := impl.queryCheckpointExists(checkpointID)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		// Registered but not materialized on this replica yet — mirrors the
+		// INDEX_BUILDING -> Unavailable pattern for metadata indexes.
+		return &domain.ErrCheckpointNotReady{CheckpointID: checkpointID}
+	}
+
+	// Absent locally is inconclusive on a lagging follower: catch the local FSM
+	// up to the cluster commit index before deciding. If the barrier cannot be
+	// established (node syncing, no leader), stay retryable — never NotFound.
+	if _, err := impl.forwarder.node.ReadIndexAndWait(ctx); err != nil {
+		return &domain.ErrCheckpointNotReady{CheckpointID: checkpointID}
+	}
+
+	// The local FSM is now caught up to the cluster. Re-check: still absent means
+	// the checkpoint genuinely does not exist cluster-wide.
+	exists, err = impl.queryCheckpointExists(checkpointID)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return commonpb.NewNotFoundError("query checkpoint %d not found", checkpointID)
+	}
+
+	// Applied between the two reads — registered now, materialization pending.
+	return &domain.ErrCheckpointNotReady{CheckpointID: checkpointID}
+}
+
 // queryCheckpointExists reports whether a query checkpoint id is present in the
-// Raft-replicated QueryCheckpointState registry on this node. Used to tell a
-// permanently non-existent checkpoint (NotFound) apart from one that is
-// registered but not yet locally materialized (retryable ErrCheckpointNotReady).
+// Raft-replicated QueryCheckpointState registry as applied on this node.
 func (impl *BucketServiceServerImpl) queryCheckpointExists(checkpointID uint64) (bool, error) {
 	handle, err := impl.store.NewReadHandle()
 	if err != nil {
@@ -480,12 +518,12 @@ func (impl *BucketServiceServerImpl) queryCheckpointExists(checkpointID uint64) 
 // then reflect the checkpoint's point-in-time state. When zero it returns the
 // live (routed) controller and a no-op cleanup. The caller must always defer
 // the returned cleanup.
-func (impl *BucketServiceServerImpl) readController(checkpointID uint64) (ctrl.Controller, func(), error) {
+func (impl *BucketServiceServerImpl) readController(ctx context.Context, checkpointID uint64) (ctrl.Controller, func(), error) {
 	if checkpointID == 0 {
 		return impl.ctrl, func() {}, nil
 	}
 
-	mainStore, readIdx, err := impl.openCheckpointStores(checkpointID)
+	mainStore, readIdx, err := impl.openCheckpointStores(ctx, checkpointID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -543,7 +581,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	var c cursor.Cursor[*commonpb.Transaction]
 
 	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
-		mainStore, readIdx, openErr := impl.openCheckpointStores(cpID)
+		mainStore, readIdx, openErr := impl.openCheckpointStores(ctx, cpID)
 		if openErr != nil {
 			return openErr
 		}
@@ -614,7 +652,7 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		}
 	}
 
-	listingCtrl, cleanup, err := impl.readController(read.GetCheckpointId())
+	listingCtrl, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
 		return err
 	}
@@ -663,7 +701,7 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 		}
 	}
 
-	c, cleanup, err := impl.readController(read.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
 		return nil, err
 	}
@@ -681,7 +719,7 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servic
 		return nil, domain.ErrLedgerNameRequired
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
 		return nil, err
 	}
@@ -707,7 +745,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	read := opts.GetRead()
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 
-	c, cleanup, err := impl.readController(read.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
 		return err
 	}
@@ -1178,7 +1216,7 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 		return nil, err
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
 		return nil, err
 	}
@@ -1205,7 +1243,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		return err
 	}
 
-	c, cleanup, err := impl.readController(read.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
 		return err
 	}
@@ -1530,7 +1568,7 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 		return nil, domain.ErrLedgerNameRequired
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
 		return nil, err
 	}
@@ -1548,7 +1586,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 		return nil, domain.ErrLedgerNameRequired
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
 		return nil, err
 	}
@@ -1585,7 +1623,7 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *serv
 		}
 	}
 
-	c, cleanup, err := impl.readController(read.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
 		return nil, err
 	}
@@ -1615,7 +1653,7 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 		}
 	}
 
-	c, cleanup, err := impl.readController(read.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
 		return err
 	}
@@ -1659,7 +1697,7 @@ func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *serv
 		return nil, domain.ErrMetadataKeyRequired
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
 		return nil, err
 	}
