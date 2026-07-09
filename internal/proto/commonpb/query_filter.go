@@ -305,6 +305,18 @@ func marshalLeaf(x *QueryFilter) (map[string]any, error) {
 		default:
 			return nil, fmt.Errorf("logBuiltinUint: unsupported field %v", f.LogBuiltinUint.GetField())
 		}
+	case *QueryFilter_Audit:
+		// AuditCondition is a gRPC-only filter (ledgerctl audit list --filter,
+		// carried as protobuf). It is deliberately NOT exposed on the REST-JSON
+		// surface: the only JSON entry point for QueryFilter is prepared queries,
+		// which are scoped to ACCOUNTS/TRANSACTIONS (see
+		// http.preparedQueryTargets), and this field-name-dispatched DSL cannot
+		// round-trip an audit condition losslessly anyway — audit field names
+		// (ledger, timestamp, …) collide with the transaction/log conditions the
+		// decoder already claims for those names. Fail loud (invariant #7) rather
+		// than emit a JSON node that would silently decode back to the wrong
+		// condition type.
+		return nil, errors.New("query filter: audit conditions are not supported over REST JSON (gRPC-only)")
 	default:
 		return nil, fmt.Errorf("query filter: unhandled leaf %T", f)
 	}
