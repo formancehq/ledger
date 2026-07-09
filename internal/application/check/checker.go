@@ -213,7 +213,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// live audit-chain mutations on top.
 	chainBound := newChainBoundState()
 
-	baselineReferencesAvailable, err := c.foldBaselineReferences(baselineDB, chainBound.references)
+	baselineReferencesAvailable, err := c.foldBaselineReferences(baselineDB, chainBound.references, chainBound.referenceTxIDs)
 	if err != nil {
 		return fmt.Errorf("loading baseline references: %w", err)
 	}
@@ -1822,10 +1822,23 @@ func (c *Checker) verifyAuditHashChain(
 //     exists=false). Verifies presence/absence at seq for
 //     ACCOUNT_TYPE_ALREADY_EXISTS / ACCOUNT_TYPE_NOT_FOUND.
 type chainBoundState struct {
-	references   map[string]map[string]uint64
-	reverted     map[string]map[uint64]uint64
-	metadata     map[string]map[string]map[string][]chainBoundMutation
-	accountTypes map[string]map[string][]chainBoundMutation
+	references map[string]map[string]uint64
+	// referenceTxIDs mirrors references (ledger → reference → owning
+	// transaction id) with the SAME first-claim-wins semantic, so the
+	// verifier can re-derive and pin OrderSkipped.context["existingTransactionId"]
+	// against audit-bound data. Every reference-claim source carries the
+	// owning tx id: a live CreateTransaction gets it from the chain-bound
+	// counter (allocateChainBoundTxID), a mirror ingest from
+	// MirrorCreatedTransaction.transaction_id, and the baseline archive
+	// fold from TransactionReferenceValue.transaction_id. An id of 0 means
+	// "claim seen but owning tx id not derivable" (e.g. a live claim whose
+	// CreateTransaction sits behind an unanchored counter) — the verifier
+	// stays permissive in that case, matching the archive-escape philosophy
+	// of the seq map. See finding EN-1356 existingTransactionId (invariant #8).
+	referenceTxIDs map[string]map[string]uint64
+	reverted       map[string]map[uint64]uint64
+	metadata       map[string]map[string]map[string][]chainBoundMutation
+	accountTypes   map[string]map[string][]chainBoundMutation
 	// nextTxID mirrors LedgerBoundaries.NextTransactionId per ledger,
 	// bumped on every SUCCESSFUL CreateTransactionOrder / RevertTransactionOrder
 	// the chain scan replays (skipped orders don't consume a slot). Used
@@ -1864,6 +1877,7 @@ type chainBoundMutation struct {
 func newChainBoundState() *chainBoundState {
 	return &chainBoundState{
 		references:         make(map[string]map[string]uint64),
+		referenceTxIDs:     make(map[string]map[string]uint64),
 		reverted:           make(map[string]map[uint64]uint64),
 		metadata:           make(map[string]map[string]map[string][]chainBoundMutation),
 		accountTypes:       make(map[string]map[string][]chainBoundMutation),
@@ -2185,7 +2199,18 @@ func recordChainBoundMutations(
 		if !chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) {
 			txID := allocateChainBoundTxID(ledger, chainBound)
 
+			// The successful CreateTransaction owns its reference — record
+			// the (ref → txID) binding so a later conflicting order's skip
+			// can have its context["existingTransactionId"] pinned. Only
+			// anchored ledgers get a reliable counter; on unanchored
+			// (archived-CreateLedger) ledgers allocateChainBoundTxID
+			// defaults the counter and the id would be mis-attributed, so
+			// leave the binding absent and let the verifier stay permissive.
 			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
+				if ref := ct.GetReference(); ref != "" {
+					rememberReferenceTxID(chainBound.referenceTxIDs, ledger, ref, txID)
+				}
+
 				target := strconv.FormatUint(txID, 10)
 				for key := range ct.GetMetadata() {
 					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
@@ -2333,6 +2358,10 @@ func recordMirrorIngestMutations(
 	if mct := entry.GetCreatedTransaction(); mct != nil {
 		if ref := mct.GetReference(); ref != "" {
 			rememberReferenceClaim(chainBound.references, ledger, ref, logSeq)
+			// Mirror ingestion preserves the source ledger's tx id, so the
+			// owning tx id for a mirror-claimed reference is carried on the
+			// entry — record it for existingTransactionId verification.
+			rememberReferenceTxID(chainBound.referenceTxIDs, ledger, ref, mct.GetTransactionId())
 		}
 	}
 
@@ -2498,6 +2527,37 @@ func rememberReferenceClaim(
 	perLedger[reference] = logSeq
 }
 
+// rememberReferenceTxID records the owning transaction id of the FIRST
+// successful claim of a reference (ledger → reference → txID), mirroring
+// rememberReferenceClaim's first-claim-wins semantic. Only successful
+// claimants call this (a skipped CreateTransaction consumes no tx slot),
+// so the recorded id is the transaction that actually owns the reference
+// and is therefore the value a later TRANSACTION_REFERENCE_CONFLICT skip
+// surfaces as context["existingTransactionId"]. A txID of 0 is treated as
+// "not derivable" and not recorded — the verifier stays permissive rather
+// than pinning a bogus id.
+func rememberReferenceTxID(
+	chainBoundReferenceTxIDs map[string]map[string]uint64,
+	ledger, reference string,
+	txID uint64,
+) {
+	if ledger == "" || reference == "" || txID == 0 {
+		return
+	}
+
+	perLedger := chainBoundReferenceTxIDs[ledger]
+	if perLedger == nil {
+		perLedger = make(map[string]uint64)
+		chainBoundReferenceTxIDs[ledger] = perLedger
+	}
+
+	if _, claimed := perLedger[reference]; claimed {
+		return
+	}
+
+	perLedger[reference] = txID
+}
+
 // foldBaselineReferences merges the TransactionReference attribute from
 // the baseline checkpoint into chainBoundReferences with a sentinel
 // sequence of 0 (always precedes any live log seq). The baseline is the
@@ -2516,6 +2576,7 @@ func rememberReferenceClaim(
 func (c *Checker) foldBaselineReferences(
 	baselineDB *pebble.DB,
 	chainBoundReferences map[string]map[string]uint64,
+	chainBoundReferenceTxIDs map[string]map[string]uint64,
 ) (bool, error) {
 	if baselineDB == nil {
 		return false, nil
@@ -2537,6 +2598,13 @@ func (c *Checker) foldBaselineReferences(
 		if trk.LedgerName == "" || trk.Reference == "" {
 			continue
 		}
+
+		// The baseline TransactionReferenceValue carries the owning tx id
+		// of the archived claim — fold it so a live conflicting skip that
+		// resolves against an archived reference can still pin its
+		// context["existingTransactionId"]. First-claim-wins inside the map;
+		// the baseline is the earliest claim by construction (sentinel 0).
+		rememberReferenceTxID(chainBoundReferenceTxIDs, trk.LedgerName, trk.Reference, entry.Value.GetTransactionId())
 
 		perLedger := chainBoundReferences[trk.LedgerName]
 		if perLedger == nil {
@@ -3017,11 +3085,14 @@ func verifySkippedOrder(
 		// not hash-bound.
 		//
 		// ErrTransactionReferenceConflict.Metadata() ALWAYS writes both
-		// `ledger` and `reference`, so missing or empty values are also
-		// tampering — flag them. ExistingTransactionId is not in the
-		// audit chain (tx ids are FSM-allocated and not re-derivable
-		// from the chain alone), so the verifier only pins the two
-		// fields it can re-derive.
+		// `ledger` and `reference`; when the FSM detected the collision it
+		// also writes `existingTransactionId`. All three are re-derivable
+		// from audit-bound data (existingTransactionId via the owning tx id
+		// the checker recorded when it replayed the first successful claim —
+		// see chainBound.referenceTxIDs), so all three are pinned. Missing
+		// or mismatched values are tampering — the LedgerLog projection is
+		// not hash-bound, so the checker is the only guard for these
+		// client-facing fields (invariant #8).
 		ctx := skipped.OrderSkipped.GetContext()
 
 		if got := ctx["reference"]; got != expected.reference {
@@ -3042,6 +3113,34 @@ func verifySkippedOrder(
 			))
 
 			return
+		}
+
+		// Pin context["existingTransactionId"] against the owning tx id the
+		// checker recorded for the first successful claim of this reference
+		// (chainBound.referenceTxIDs, populated from the live CreateTransaction
+		// counter, mirror ingestion, or the baseline archive fold). A
+		// tamperer who rewrites this field to misattribute the conflicting
+		// transaction is caught here. Stays permissive only when the owning
+		// id is not derivable (ownerTxID==0): a live claim on an unanchored
+		// (archived-CreateLedger) ledger, or a claim whose CreateTransaction
+		// lives entirely in a purged chapter with no baseline. In that case
+		// the field cannot be re-derived, so pinning it would false-positive;
+		// this matches the archive-escape philosophy of the seq lookup below.
+		if ownerTxID := chainBound.referenceTxIDs[ledger][expected.reference]; ownerTxID != 0 {
+			want := strconv.FormatUint(ownerTxID, 10)
+			// Only enforce when the projection actually carries the field —
+			// ErrTransactionReferenceConflict omits it when the FSM could not
+			// resolve the owner (ExistingTransactionID==0), so an absent
+			// field is not tampering.
+			if got, present := ctx["existingTransactionId"]; present && got != want {
+				callback(errorEvent(
+					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+					fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.existingTransactionId=%q but the reference %q on ledger %q is owned by transaction %s", seq, got, expected.reference, ledger, want),
+					seq, ledger, "", "",
+				))
+
+				return
+			}
 		}
 
 		// Look up the reference in the audit-derived map. firstSeenSeq is

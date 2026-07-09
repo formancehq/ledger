@@ -573,8 +573,9 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger(t *tes
 }
 
 // TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext pins the
-// happy-path round trip for context: when the persisted context.reference
-// and context.ledger match the chain-bound values, the verifier passes.
+// happy-path round trip for context: when the persisted context.reference,
+// context.ledger AND context.existingTransactionId match the chain-bound
+// values, the verifier passes.
 func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T) {
 	t.Parallel()
 
@@ -585,9 +586,12 @@ func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T
 			reference: "ref",
 		},
 	}
-	refs := map[string]map[string]uint64{
-		"L": {"ref": 3},
-	}
+	// The owning tx id (42) is now re-derivable from audit-bound data —
+	// the checker records it when it replays the first successful claim.
+	cb := chainBoundStateFromRefsAndTxIDs(
+		map[string]map[string]uint64{"L": {"ref": 3}},
+		map[string]map[string]uint64{"L": {"ref": 42}},
+	)
 
 	payload := &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
@@ -596,14 +600,93 @@ func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T
 				Context: map[string]string{
 					"ledger":                "L",
 					"reference":             "ref",
-					"existingTransactionId": "42", // not verifiable from chain alone — must not fail the check
+					"existingTransactionId": "42",
 				},
 			},
 		},
 	}
 
-	events := captureEvents(t, "L", 7, payload, expected, refs, false)
-	require.Empty(t, events, "matching context must round-trip even with non-verifiable fields like existingTransactionId")
+	events := captureEventsState(t, "L", 7, payload, expected, cb, false)
+	require.Empty(t, events, "matching context (including existingTransactionId) must round-trip")
+}
+
+// TestVerifySkippedOrder_ReferenceConflictRejectsTamperedExistingTxID pins
+// invariant #8 for the client-facing existingTransactionId projection field:
+// a stored skip log whose context misattributes the conflicting transaction
+// (context.existingTransactionId != the audit-derived owner) is flagged
+// INVALID_SKIP. Without this, a tamperer could rewrite the field in the
+// non-hash-bound LedgerLog to mislead a client about which transaction owns
+// the reference.
+func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedExistingTxID(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref",
+		},
+	}
+	cb := chainBoundStateFromRefsAndTxIDs(
+		map[string]map[string]uint64{"L": {"ref": 3}},
+		map[string]map[string]uint64{"L": {"ref": 42}},
+	)
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{
+					"ledger":                "L",
+					"reference":             "ref",
+					"existingTransactionId": "99", // audit-derived owner is 42
+				},
+			},
+		},
+	}
+
+	events := captureEventsState(t, "L", 7, payload, expected, cb, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown pins the
+// permissive fallback: when the owning tx id is not re-derivable (no entry in
+// referenceTxIDs — e.g. a live claim on an unanchored/archived-CreateLedger
+// ledger, or a purged claim with no baseline), the verifier must NOT pin
+// existingTransactionId. Pinning it there would false-positive on a
+// legitimate skip whose owner the checker genuinely cannot reconstruct.
+func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testing.T) {
+	t.Parallel()
+
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+			ledger:    "L",
+			reference: "ref",
+		},
+	}
+	// references seeded (so the firstSeenSeq < seq claim check passes) but
+	// referenceTxIDs left empty → owner not derivable.
+	cb := chainBoundStateFromRefsAndTxIDs(
+		map[string]map[string]uint64{"L": {"ref": 3}},
+		nil,
+	)
+
+	payload := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+			OrderSkipped: &commonpb.OrderSkippedLog{
+				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+				Context: map[string]string{
+					"ledger":                "L",
+					"reference":             "ref",
+					"existingTransactionId": "7", // arbitrary — must NOT fail when owner unknown
+				},
+			},
+		},
+	}
+
+	events := captureEventsState(t, "L", 7, payload, expected, cb, false)
+	require.Empty(t, events, "must stay permissive on existingTransactionId when the owner is not re-derivable")
 }
 
 // TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived pins the
@@ -973,6 +1056,23 @@ func chainBoundStateFromRefs(refs map[string]map[string]uint64) *chainBoundState
 	cb := newChainBoundState()
 	if refs != nil {
 		cb.references = refs
+	}
+
+	return cb
+}
+
+// chainBoundStateFromRefsAndTxIDs builds a *chainBoundState with the
+// references (ledger → reference → firstSeenSeq) and referenceTxIDs
+// (ledger → reference → owning tx id) maps populated. Used by the
+// existingTransactionId verification tests; a nil txIDs argument leaves
+// the owner-lookup empty (permissive path).
+func chainBoundStateFromRefsAndTxIDs(
+	refs map[string]map[string]uint64,
+	txIDs map[string]map[string]uint64,
+) *chainBoundState {
+	cb := chainBoundStateFromRefs(refs)
+	if txIDs != nil {
+		cb.referenceTxIDs = txIDs
 	}
 
 	return cb
